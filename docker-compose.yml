@@ -1,0 +1,125 @@
+services:
+  # Core Infrastructure Services
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: squadops-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP port
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: squadops
+      RABBITMQ_DEFAULT_PASS: squadops123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - squadnet
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  postgres:
+    image: postgres:15
+    container_name: squadops-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: squadops
+      POSTGRES_USER: squadops
+      POSTGRES_PASSWORD: squadops123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - squadnet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U squadops -d squadops"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: squadops-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - squadnet
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  prefect-server:
+    image: prefecthq/prefect:2.14-python3.11
+    container_name: squadops-prefect-server
+    ports:
+      - "4200:4200"
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_SERVER_API_PORT: 4200
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://squadops:squadops123@postgres:5432/squadops
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - squadnet
+    command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  prefect-ui:
+    image: prefecthq/prefect:2.14-python3.11
+    container_name: squadops-prefect-ui
+    ports:
+      - "4201:4201"
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    networks:
+      - squadnet
+    command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4201"]
+
+  # Health Check Service
+  health-check:
+    build:
+      context: ./infra/health-check
+      dockerfile: Dockerfile
+    container_name: squadops-health-check
+    ports:
+      - "8000:8000"
+    environment:
+      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
+      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
+      REDIS_URL: redis://redis:6379
+      PREFECT_URL: http://prefect-server:4200/api
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      prefect-server:
+        condition: service_healthy
+    networks:
+      - squadnet
+
+volumes:
+  rabbitmq_data:
+  postgres_data:
+  redis_data:
+
+networks:
+  squadnet:
+    driver: bridge

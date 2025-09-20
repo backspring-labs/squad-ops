@@ -175,32 +175,53 @@
 
 ---
 
-## 🚀 **Implementation Roadmap**
+## 🚀 **Three-Tier Deployment Strategy**
 
-### **Phase 1: Foundation (Day 0-1)**
+### **Tier 1: MacBook Air (Infrastructure + Agent Stubs)**
 - [x] Repo structure and documentation
-- [ ] Docker infrastructure (RabbitMQ, Postgres, Prefect)
-- [ ] Basic agent containers (Max, Neo)
-- [ ] Health check endpoints
-- [ ] HelloSquad reference app (PID-001)
+- [ ] **Real Infrastructure Services:**
+  - [ ] RabbitMQ (real message broker)
+  - [ ] Postgres (real database for logs/metrics)
+  - [ ] Prefect (real orchestration engine)
+  - [ ] Redis (real caching and pub/sub)
+- [ ] **All 9 Agent Containers (Stubs):**
+  - [ ] Protocol compliance with real communication
+  - [ ] Mock LLM responses (no actual model inference)
+  - [ ] Real task orchestration via Prefect
+  - [ ] Real agent communication via RabbitMQ
+- [ ] Health check endpoints with actual service status
+- [ ] Complete WarmBoot protocol implementation
+- [ ] Documentation and book content production
 
-### **Phase 2: Core Protocols**
-- [ ] WarmBoot protocol implementation
-- [ ] Communication and task concurrency
-- [ ] Agent profile tuning system
-- [ ] Basic metrics and logging
+### **Tier 2: Jetson Nano (Proof of Concept)**
+- [ ] **Minimal Infrastructure:**
+  - [ ] RabbitMQ + SQLite + simple orchestration
+  - [ ] ARM64 optimized containers
+- [ ] **Two Starter Agents (Real Models):**
+  - [ ] Max + Neo with actual local models (Ollama, vLLM)
+  - [ ] Real LLM inference for HelloSquad development
+  - [ ] Edge deployment validation
+- [ ] HelloSquad reference app (PID-001) built by agents
+- [ ] Basic metrics and performance baseline
 
-### **Phase 3: Enterprise Features**
-- [ ] Complete testing protocol
-- [ ] Data governance implementation
-- [ ] Tagging and analytics
-- [ ] SOC UI dashboard
-
-### **Phase 4: Advanced Features**
-- [ ] Meta-squad capabilities
-- [ ] Advanced reasoning modes
-- [ ] Self-optimization
-- [ ] Production deployment
+### **Tier 3: DGX Spark (Full Production)**
+- [ ] **Complete Infrastructure:**
+  - [ ] Full Postgres, Prefect, Redis, Keycloak
+  - [ ] Production-grade orchestration
+- [ ] **All 9 Agents (Full LLM Power):**
+  - [ ] Complete agent squad with enterprise protocols
+  - [ ] WarmBoot benchmarking and optimization
+  - [ ] Production-grade governance and compliance
+- [ ] **Enterprise Features:**
+  - [ ] Complete testing protocol with penetration testing
+  - [ ] Data governance with KDE registry
+  - [ ] Tagging and analytics integration
+  - [ ] SOC UI dashboard
+- [ ] **Advanced Features:**
+  - [ ] Meta-squad capabilities
+  - [ ] Advanced reasoning modes
+  - [ ] Self-optimization
+  - [ ] Real-world validation through Backspring Industries
 
 ---
 
@@ -222,19 +243,19 @@
 
 ## 📈 **Current Status**
 - **Theoretical Foundation:** ✅ Complete (25 comprehensive protocol documents)
-- **Implementation Phase:** 🚧 Ready to begin
-- **First Target:** HelloSquad (PID-001) FastAPI "Hello World" service
-- **Next Milestone:** Working Docker infrastructure with Max + Neo agents
+- **Implementation Phase:** 🚧 Ready to begin with MacBook infrastructure + agent stubs
+- **First Target:** MacBook Air with real infrastructure services and agent protocol stubs
+- **Next Milestone:** Working Docker infrastructure with RabbitMQ, Postgres, Prefect, Redis + all 9 agent stubs
 
 ---
 
 ## 🎯 **Immediate Next Steps**
 1. **Push to GitHub** and sync remote repository
-2. **Create Docker Compose** for core infrastructure
-3. **Implement health check endpoints** with FastAPI
-4. **Build basic Max + Neo agent containers**
-5. **Create HelloSquad reference app** as proof of concept
-6. **Document everything** for the book
+2. **Create Docker Compose** for real infrastructure services (RabbitMQ, Postgres, Prefect, Redis)
+3. **Build all 9 agent container stubs** with protocol compliance
+4. **Implement health check endpoints** with actual service status
+5. **Create mock LLM responses** for agent outputs
+6. **Document everything** for the book and Jetson deployment preparation
 
 ---
 
