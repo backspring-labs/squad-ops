@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-EVE - Counterfactual Reasoning Agent
-Reasoning Style: Counterfactual
+EVE - Home Automation Agent
+Reasoning Style: Home automation and security
 Memory Structure: State machine
-Task Model: Regression testing
+Task Model: Local network automation
 Local Model: LLaMA 3 70B (mocked)
-Premium Consultation: Security testing
+Premium Consultation: Intrusion detection
 """
 
 import asyncio
@@ -17,58 +17,59 @@ from base_agent import BaseAgent, AgentMessage
 logger = logging.getLogger(__name__)
 
 class EVEAgent(BaseAgent):
-    """EVE - The Counterfactual Reasoning Agent"""
+    """EVE - The Home Automation Agent"""
     
     def __init__(self):
         super().__init__(
             name="EVE",
-            agent_type="security",
-            reasoning_style="counterfactual"
+            agent_type="home_automation",
+            reasoning_style="home_automation"
         )
         self.state_machine = {}
-        self.test_scenarios = []
-        self.vulnerability_db = {}
+        self.home_devices = {}
+        self.security_protocols = {}
+        self.local_network_status = {}
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process security tasks using counterfactual reasoning"""
+        """Process home automation tasks"""
         task_id = task.get('task_id', 'unknown')
-        task_type = task.get('type', 'security_test')
+        task_type = task.get('type', 'home_automation')
         
-        logger.info(f"EVE processing security task: {task_id}")
+        logger.info(f"EVE processing home automation task: {task_id}")
         
         # Update task status
         await self.update_task_status(task_id, "Active-Non-Blocking", 20.0)
         
-        # Define state machine
-        await self.define_state_machine(task)
+        # Define state machine for home automation
+        await self.define_home_automation_state(task)
         
-        # Generate counterfactual scenarios
+        # Manage home devices
         await self.update_task_status(task_id, "Active-Non-Blocking", 40.0)
         
-        scenarios = await self.generate_counterfactual_scenarios(task)
+        device_management = await self.manage_home_devices(task)
         
-        # Execute regression tests
+        # Monitor local network security
         await self.update_task_status(task_id, "Active-Non-Blocking", 60.0)
         
-        test_results = await self.execute_regression_tests(scenarios, task)
+        security_status = await self.monitor_local_network_security(task)
         
-        # Analyze vulnerabilities
+        # Execute automation routines
         await self.update_task_status(task_id, "Active-Non-Blocking", 80.0)
         
-        vulnerabilities = await self.analyze_vulnerabilities(test_results, task)
+        automation_result = await self.execute_automation_routines(task)
         
         await self.update_task_status(task_id, "Completed", 100.0)
         
         return {
             'task_id': task_id,
             'status': 'completed',
-            'scenarios': len(scenarios),
-            'test_results': test_results,
-            'vulnerabilities': vulnerabilities,
-            'security_score': self.calculate_security_score(vulnerabilities),
+            'devices_managed': len(device_management.get('devices', [])),
+            'security_status': security_status,
+            'automation_routines': automation_result,
+            'local_network_health': security_status.get('network_health', 'good'),
             'mock_response': await self.mock_llm_response(
-                f"Security testing for {task_type}",
-                f"Vulnerabilities found: {len(vulnerabilities)}"
+                f"Home automation for {task_type}",
+                f"Devices managed: {len(device_management.get('devices', []))}"
             )
         }
     

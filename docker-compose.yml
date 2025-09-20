@@ -217,6 +217,27 @@ services:
     networks:
       - squadnet
 
+  hal:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile.template
+      args:
+        AGENT_NAME: hal
+    container_name: squadops-hal
+    environment:
+      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
+      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - squadnet
+
   quark:
     build:
       context: ./agents
@@ -224,48 +245,6 @@ services:
       args:
         AGENT_NAME: quark
     container_name: squadops-quark
-    environment:
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - squadnet
-
-  glyph:
-    build:
-      context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: glyph
-    container_name: squadops-glyph
-    environment:
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - squadnet
-
-  og:
-    build:
-      context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: og
-    container_name: squadops-og
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
