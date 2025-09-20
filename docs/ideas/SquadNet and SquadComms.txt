@@ -1,0 +1,107 @@
+# SquadNet and SquadComms Architecture Specification
+
+**Date Generated:** 2025-07-23
+
+---
+
+## 🕸️ SquadNet — Agent Networking Layer
+
+SquadNet is the internal network mesh used to connect agent containers across devices or nodes. It provides:
+
+- IP/DNS resolution for agent discovery
+- Port mapping for HTTP/WebSocket/RPC
+- Internal TLS optional for secure agent comms
+- Support for NAT bridging between edge devices and centralized nodes
+
+**Typical Setup:**
+
+- Docker Compose or K8s-managed overlay network
+- Hostnames mapped to agent identities
+- Configurable per WarmBoot or Mission Cycle
+
+---
+
+## 📡 SquadComms — Agent Messaging Bus (RMQ)
+
+SquadComms is the asynchronous communication layer using RabbitMQ. It handles:
+
+- Task and status updates
+- Inter-agent handoffs
+- Event publishing (e.g., "agent online", "task failed")
+
+**Key Queues and Topics:**
+
+- `max.task.assign` – Tasks assigned from Max
+- `neo.dev.status` – Dev task updates from Neo
+- `broadcast.system.alerts` – Global messages
+- `logs.agent.telemetry` – Structured agent output
+
+---
+
+## 🔤 Message Schema (v1)
+
+All messages are structured JSON packets with the following MVP attributes:
+
+```json
+{
+  "id": "msg-2025-001",
+  "sender": "max",
+  "recipient": "neo",
+  "timestamp": "2025-07-22T09:30:00Z",
+  "type": "TASK_ASSIGNMENT",
+  "payload": {
+    "task_id": "task-001",
+    "description": "Build mock API for HelloSquad",
+    "priority": "high"
+  },
+  "context": {
+    "project": "HelloSquad",
+    "cycle": "Cycle-01"
+  }
+}
+```
+
+---
+
+## 🧠 MCP (Model Context Protocol)
+
+Defines contextual model metadata to accompany agent decisions. Includes:
+
+- Model name/version (e.g., gpt-4o)
+- Available tools or toolchain paths
+- Runtime limits (memory, token count, timeouts)
+- Current mission/project/task tags
+
+---
+
+## 🧩 Container Overview
+
+| Container         | Components                          | Notes |
+|------------------|-------------------------------------|-------|
+| `infra_container`| RabbitMQ (SquadComms), Postgres, Prefect | Core infra, logs and routing |
+| `max_container`  | Max agent, CrewAI runtime            | Squad lead, delegates, monitors |
+| `neo_container`  | Neo agent, dev toolchain             | DevOps, code generation |
+| Others (e.g. Joi, Nat, HAL) | Agent-specific tools | Each connects to `SquadComms` & `SquadNet` |
+
+---
+
+## 📈 Logging & History
+
+All messages, task results, and state transitions are logged to Postgres under:
+
+- `agent_logs`
+- `squadcomms_messages`
+- `warmboot_runs`
+- `optimization_log`
+
+---
+
+## 🧪 Usage
+
+1. Spin up containers with `SquadNet` defined in `docker-compose.yml`
+2. Start RabbitMQ in `infra_container`
+3. Register agents and announce via `SquadComms`
+4. Monitor queues for agent status and task flow
+
+---
+

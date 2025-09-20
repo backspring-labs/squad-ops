@@ -1,0 +1,120 @@
+
+# ✅ Nexa Squad Tagging Protocol Specification (v1.0)
+
+---
+
+## 📌 Purpose
+Establish a standardized protocol for **analytics tagging and event tracking**, ensuring all user interactions and critical system events are **traceable, measurable, and tied to Process IDs (PIDs)**. This enables observability, product insights, and supports both **open-source and commercial analytics integrations**.
+
+---
+
+## ✅ Protocol Objectives
+- Ensure all key interactions are tagged consistently across applications
+- Maintain a **PID-linked tagging map** for traceability
+- Support **configurable analytics tooling**: Open Source (Snowplow, PostHog) or Commercial (Adobe Analytics, Tealium, Segment)
+- Enable feature flag control for tagging toggles per PID
+
+---
+
+## ✅ Tagging Artifacts and Structure
+
+| Artifact | Description | Example Path |
+|----------|-------------|--------------|
+| **Tagging Specification** | Maps PIDs, User Stories, and Use Cases to tracked events | `/analytics/tagging_spec.md` |
+| **Event Schema** | JSON schema defining tracked event structure | `/analytics/event_schema.json` |
+| **Tagging Implementation Layer** | Code or SDK layer that triggers event tracking | `/analytics/tagging_layer.js` |
+| **Tag Manager Config** | Optional config for Tealium, Adobe Launch, etc. | `/analytics/tealium_tags.json` |
+| **Metrics Mapping** | Defines linkage between events and product KPIs | `/metrics/metrics_map.md` |
+
+---
+
+## ✅ Tagging Specification Template
+
+\`\`\`markdown
+# Tagging Specification for PID-XXX: [Process Name]
+
+## Linked Artifacts
+- **User Stories:** US-XXX
+- **Use Cases:** UC-XXX
+- **Wireframes:** WF-XXX-[screen-name].svg
+
+## Events to Track
+
+| Event Name     | Trigger Point             | Payload Example                                | Tied Metric            |
+|----------------|---------------------------|------------------------------------------------|------------------------|
+| `event_name`   | When/where the event fires | `{ "user_id": "UUID", "timestamp": "ISO8601" }` | Associated Product KPI |
+\`\`\`
+
+---
+
+## ✅ Event Schema Sample
+
+\`\`\`json
+{
+  "event_name": "string",
+  "pid": "PID-XXX",
+  "user_id": "string",
+  "timestamp": "ISO8601 timestamp",
+  "metadata": {
+    "key": "value"
+  }
+}
+\`\`\`
+
+---
+
+## ✅ Recommended Tooling
+
+| Tooling Type | Options |
+|--------------|---------|
+| **Open Source Analytics** | Snowplow, PostHog |
+| **Commercial Analytics** | Adobe Analytics, Tealium, Segment |
+| **Event Routing** | RudderStack (FOSS), Segment (paid), Kafka for internal pipelines |
+
+---
+
+## ✅ Feature Flag Control via Flagsmith
+
+Define per-event feature flags:
+\`\`\`
+TAGGING_ENABLED_PID_XXX = true
+TAGGING_SAMPLE_RATE_PID_XXX = 50  # percentage of users/events tracked
+\`\`\`
+
+This allows toggling:
+- Tagging fully on/off
+- Sampling rates for volume control
+- Enabling/disabling per environment (dev, staging, prod)
+
+---
+
+## ✅ Agent Responsibilities
+
+| Responsibility | Assigned Agent |
+|----------------|----------------|
+| Define tagging requirements per PID | **Data** |
+| Align tagging with product KPIs | **Data + Nat** |
+| Implement tagging layer in codebase | **Neo** |
+| Validate events firing during tests | **EVE** |
+| Confirm UX tagging consistency | **Joi** |
+| Ensure governance, privacy compliance | **Max** |
+
+---
+
+## ✅ Governance & Compliance
+- Max enforces:
+  - Tagging documentation exists for every PID in `tagging_spec.md`
+  - No PII captured without consent
+  - Feature flags exist to control/disable tracking
+  - Compliance logs updated if data collection changes
+
+---
+
+## ✅ Bonus Recommendations
+- Include tagging snapshots with **WarmBoot version deliverables**
+- Implement **event validation tests** via EVE to catch broken or missing tags in builds
+- Provide a **human-readable tagging manifest** in deliverables for customers
+
+---
+
+> This protocol ensures that Nexa Squad projects deliver **complete, transparent, and governed tagging frameworks**, fully integrated with the SquadOps process and traceability model.

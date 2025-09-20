@@ -1,0 +1,250 @@
+# ✅ Nexa Squad Documentation Traceability Protocol (v1.1)
+
+---
+
+## 📌 **Purpose**
+Establish a consistent and structured method for linking all functional, technical, visual, and governance documentation to a **Process ID (PID)**. This ensures traceability from business processes to technical implementations, supporting quality, governance, and scalability.
+
+---
+
+## ✅ **Process ID (PID) Standard**
+
+- **Format:** `PID-XXX` where `XXX` is a **zero-padded 3-digit identifier (001–999)**.
+- Each **business process** receives a unique PID.
+- All associated artifacts — wireframes, diagrams, specifications — inherit this PID in their filenames.
+
+> **Example:**  
+`PID-001`: User Login  
+All documentation and visuals related to User Login are prefixed with `001`.
+
+---
+
+## ✅ **Naming Conventions**
+
+| Artifact Type            | Naming Format | Example |
+|--------------------------|---------------|---------|
+| Business Process Docs    | **CamelCase** | `BP-001-UserLogin.md` |
+| Use Case Docs            | **CamelCase** | `UC-001-LoginAttempt.md` |
+| Wireframes (Images)      | **kebab-case** | `WF-001-login-screen.svg` |
+| Wireframe Flow Diagrams  | **kebab-case** | `WF-FLOW-001.xml` |
+| Wireframe Manifest       | **kebab-case** | `001-manifest.md` |
+| Sequence Diagrams        | **snake_case** | `SEQ-001-login_sequence.xml` |
+| Activity Diagrams        | **snake_case** | `ACT-001-login_activity.xml` |
+| Class Diagrams           | **snake_case** | `CL-001-auth_classes.xml` |
+| API Specs / Data Models  | **snake_case** | `user_login_payload.json` |
+| Metrics Mapping          | **snake_case** | `metrics_dashboard_flow.xml` |
+
+### ✅ **Naming Standard Summary**
+
+| Format      | Used For            | Reason |
+|-------------|---------------------|--------|
+| **CamelCase** | Business and Use Case docs | Readable by business stakeholders |
+| **kebab-case** | Wireframes, visual assets | File/URL friendly, visual convention |
+| **snake_case** | Technical diagrams, APIs, data models | Consistent with developer norms |
+
+---
+
+## ✅ **Folder Structure Example**
+
+/business_processes/
+BP-001-UserLogin.md
+
+/use_cases/
+UC-001-LoginAttempt.md
+
+/wireframes/
+WF-001-login-screen.svg
+WF-001-forgot-password.svg
+WF-FLOW-001.xml
+001-manifest.md
+
+/technical/sequence_diagrams/
+SEQ-001-login_sequence.xml
+
+/technical/activity_diagrams/
+ACT-001-login_activity.xml
+
+/technical/class_diagrams/
+CL-001-auth_classes.xml
+
+---
+
+## ✅ **Process Diagram Index Template**
+
+Process Diagram Index
+
+PID-001: User Login
+	•	Business Process: BP-001-UserLogin.md
+	•	Use Cases: UC-001-LoginAttempt.md
+	•	Wireframes:
+	•	WF-001-login-screen.svg
+	•	WF-001-forgot-password.svg
+	•	Wireframe Flow: WF-FLOW-001.xml
+	•	Sequence Diagram: SEQ-001-login_sequence.xml
+	•	Activity Diagram: ACT-001-login_activity.xml
+	•	Class Diagram: CL-001-auth_classes.xml
+	•	APIs: Documented under PID-001 in api_specifications.md
+	•	Metrics: See metrics_map.md entry for PID-001
+
+---
+
+## ✅ **PID Lifecycle Policy**
+- **Assignment:** PIDs are assigned sequentially upon process definition.
+- **Reservation:** Unused numbers can be reserved for upcoming processes.
+- **Deprecation:** Retired processes are marked in the **PID Registry** with status `DEPRECATED` but are never re-used.
+- **Prefix Extension:** For multi-product systems, prefix with product/domain codes:
+  - `APP1-PID-001`
+  - `CORE-PID-045`
+
+---
+
+## ✅ **Change Management and Versioning**
+- Changes to any PID-related process trigger:
+  - Code updates linked to the PID
+  - Documentation updates within the corresponding `/docs/vX.X.X/` directory
+  - **PID Registry updates** reflecting the last updated version and change summary
+  - Optionally, a **changelog section** within each `BP-XXX` file documenting process evolution.
+
+---
+
+## ✅ **Benefits**
+- **Full Traceability:** Clear linkage from business process to all associated diagrams, wireframes, APIs, and metrics.
+- **Version Control Ready:** Seamless Git versioning of code and documentation together.
+- **Governance Compliant:** Supports audits, compliance checks, and architectural reviews.
+- **Consistent Naming:** Distinguishes business, technical, and visual artifacts via naming conventions.
+
+---
+
+## ✅ **Bonus Recommendations**
+- Maintain a **PID Register (`process_registry.md`)** capturing:
+  - PID number
+  - Process name
+  - Status (Active, Reserved, Deprecated)
+  - Last Updated Version
+  - Change Notes
+
+---
+
+> This protocol ensures the Nexa Squad produces and maintains **structured, traceable, and scalable documentation**, fully integrated with code versioning and process governance.
+
+# ✅ Nexa Squad Process Registry
+
+This registry tracks all assigned **Process IDs (PIDs)** within the Nexa Squad documentation and development system. It records the status, version history, and change notes for each business process.
+
+---
+
+## 📌 **PID Status Legend**
+- **Active:** Process is in use and actively maintained.
+- **Reserved:** PID is allocated for a future or pending process.
+- **Deprecated:** Process is retired and no longer active, but historical documentation remains.
+
+---
+
+## ✅ **Process Registry Table**
+
+| PID  | Process Name      | Status   | Last Updated Version | Change Notes |
+|------|-------------------|----------|----------------------|--------------|
+| 001  | User Login        | Active   | v1.2.0               | Updated for OAuth 2.1 token flow, UX enhancements |
+| 002  | Data Synchronization | Active | v1.0.0               | Initial process and data flow established |
+| 003  | Payment Processing | Reserved | -                    | PID reserved for upcoming payment workflow |
+| 004  | Legacy User Import | Deprecated | v0.9.1             | Deprecated after migration to unified user model |
+
+---
+
+## ✅ **How to Update the Registry**
+1. **When defining a new process:**  
+   - Assign the next available PID.
+   - Mark status as **Reserved** or **Active**.
+2. **When updating a process:**  
+   - Update the **Last Updated Version** to reflect the release.
+   - Summarize the **Change Notes**.
+3. **When deprecating a process:**  
+   - Set status to **Deprecated**.
+   - Add a note on the rationale or replacement process.
+
+---
+
+## ✅ **Maintenance Notes**
+- The **PID registry should be updated with each release cycle.**
+- Max is responsible for governance review to ensure PID status accuracy.
+- Reserved PIDs must have a tracking note to prevent orphaned allocations.
+
+---
+
+> This registry ensures a transparent, traceable map of all business processes within the Nexa Squad ecosystem, tying together functional, technical, and governance artifacts.
+
+# ✅ Nexa Squad User Story to Use Case Mapping Guide (v1.0)
+
+---
+
+## 📌 **Purpose**
+Provide a standardized protocol for mapping **User Stories (US)** from Agile practices to formal **Use Cases (UC)** and corresponding technical diagrams. This ensures seamless traceability between business value, system behavior, and implementation artifacts.
+
+---
+
+## ✅ **Mapping Convention**
+
+| Artifact        | Prefix | Example |
+|-----------------|--------|---------|
+| **User Story**  | `US-XXX` | `US-001` |
+| **Use Case**    | `UC-XXX` | `UC-001` |
+| **Process ID**  | `PID-XXX` | `PID-001` |
+
+- **Each User Story (US)** maps to **one or more Use Cases (UC)**.
+- Each Use Case is tagged to a **PID**, linking it to the overall business process and technical artifacts.
+
+---
+
+## ✅ **Mapping Table Example**
+
+| User Story ID | Description | Use Case(s) | PID |
+|---------------|-------------|-------------|-----|
+| `US-001` | As a user, I want to log in with my email and password. | `UC-001` Login Attempt | `PID-001` |
+| `US-002` | As a user, I want to reset my password if I forget it. | `UC-002` Password Recovery | `PID-001` |
+| `US-003` | As an admin, I want to deactivate user accounts. | `UC-003` Admin Deactivation | `PID-005` |
+
+---
+
+## ✅ **Document Cross-Referencing Standard**
+
+### In **User Story Document (`US-001.md`)**
+```markdown
+## Linked Use Cases
+- `UC-001`: Login Attempt
+
+## Process ID
+- `PID-001`: User Login
+
+## Related User Story
+- `US-001`: "As a user, I want to log in with my email and password..."
+
+## Process ID
+- `PID-001`: User Login
+
+## Related Diagrams
+- Sequence Diagram: `SEQ-001-login_sequence.xml`
+- Activity Diagram: `ACT-001-login_activity.xml`
+- Wireframes:
+  - `WF-001-login-screen.svg`
+  - `WF-001-forgot-password.svg`
+
+User Story (US-001)
+     ↓
+Use Case (UC-001)
+     ↓
+PID-001
+     ↓
+|-- Wireframes
+|-- Sequence Diagrams
+|-- Activity Diagrams
+|-- Test Cases
+|-- Metrics
+
+✅ Maintenance Responsibility
+	•	Nat: Ensures each new User Story is mapped to Use Cases and PIDs.
+	•	Max: Validates traceability exists before code merges or releases.
+	•	Neo + Glyph: Generate diagrams linked via PID and UC.
+	•	Joi: Aligns UX writing and wireframes with mapped Use Cases.
+
+This protocol ensures that every business need captured as a User Story is fully traceable to system design, technical implementation, and validation artifacts.
+

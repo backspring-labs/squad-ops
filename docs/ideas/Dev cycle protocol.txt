@@ -1,0 +1,92 @@
+# Dev Cycle Protocol (Digital Pulse Model)
+
+## 1. Core Analogy
+Each development cycle is treated as a **digital pulse** — a discrete tick of progress.  
+Unlike fixed-time sprints, pulses do **not** occur at a uniform clock rate. Instead, the 
+**frequency adapts dynamically** based on:
+
+- Task complexity  
+- Dependency resolution  
+- Resource availability  
+
+The squad’s “clock speed” modulates like a CPU or a neuron firing at variable rates depending on workload intensity.
+
+---
+
+## 2. Pulse Structure
+Every pulse, regardless of its duration, follows the same mini-protocol:
+
+1. **Trigger / Input Signal**
+   - A requirement or feature spec is finalized (Nat)  
+   - A module is ready for implementation (Neo)  
+   - A test harness is prepared (EVE)  
+   - Max detects a rise in loss requiring corrective action  
+
+2. **Execution**
+   - Assigned agents act with autonomy  
+   - Dependencies are resolved locally where possible  
+
+3. **Validation**
+   - EVE runs the test harness  
+   - Max logs outcome metrics and loss signals  
+   - If passed, results are committed to the golden config/project state  
+
+4. **Triage / Correction**
+   - If failed → perform root cause analysis (requirement vs code vs test)  
+   - If ambiguity remains → escalate (remote agent or human reviewer)  
+
+5. **Log & Learn**
+   - Og/Data record metrics, outcomes, agent states  
+   - Results feed into tuning knobs for future pulses  
+
+---
+
+## 3. Pulse Modulation
+- **Fast Pulses (High Frequency):**  
+  Small, independent tasks with few dependencies  
+  Example: helper function implementation, quick test patch  
+
+- **Slow Pulses (Low Frequency):**  
+  Large, interdependent milestones  
+  Example: feature integration across agents, complex compliance scenario  
+
+- **Adaptive Rhythm:**  
+  Max regulates the squad heartbeat based on signals.  
+  - If backlog is light and dependencies clear → faster pulses  
+  - If dependencies are heavy or uncertainty is high → slower, deliberative pulses  
+
+---
+
+## 4. Feedback & Loss Recovery
+- **Pulse-to-pulse trajectory:** Loss should trend downward over time even if some pulses fail.  
+- **Escalation Tiers:**  
+  - Local self-correction (agent retries)  
+  - Max nudge if drift persists  
+  - Remote agent/human called if pulse fails multiple times  
+
+---
+
+## 5. Relationship to Task and Comms Protocols
+The Dev Cycle Protocol is interdependent with:  
+
+- **Task Protocol:** Defines *what* is being done (task breakdown, dependencies, owners).  
+- **Comms Protocol:** Defines *how* signals propagate (status updates, escalations, nudges).  
+- **Dev Cycle Protocol:** Defines *when* cycles fire and complete (pulse rhythm).  
+
+Together: **Task = what, Comms = how, Pulse = when.**
+
+---
+
+## 6. Benefits of the Pulse Model
+- Avoids rigid, calendar-driven sprints  
+- Avoids chaos of uncoordinated swarm activity  
+- Provides structured checkpoints that are event-driven, not time-boxed  
+- Generates rich, loggable units of work → each pulse doubles as training data for squad tuning  
+
+---
+
+## 7. Summary
+The Dev Cycle Protocol ensures that squad development proceeds as a sequence of **adaptive pulses**, 
+each representing a bounded iteration of **trigger → execute → validate → triage → log**.  
+Pulse rate is modulated by complexity and dependencies, creating a **variable-frequency digital clock** 
+that governs agent collaboration while preserving autonomy and collective goal alignment.

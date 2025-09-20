@@ -1,0 +1,21 @@
+
+# AI Squad Agent Access Matrix (Template)
+
+| **Agent Name**     | **Access Needed**                                                                 | **Access Method**                             | **Scope & Limits**                                         | **Governance Notes**                                |
+|--------------------|------------------------------------------------------------------------------------|------------------------------------------------|------------------------------------------------------------|-----------------------------------------------------|
+| **SchemaScraper**  | Database schemas, ERDs, dbt models                                                 | Metadata API / Read-only DB connector         | No access to row-level data, only structure/relationships   | Mask sensitive names; log queries                   |
+| **ConceptMapper**  | Business glossaries, code comments, naming conventions                             | Read-only to doc tools or source annotations  | Read access to glossary terms and schema annotations only   | Monitor for bias or inaccurate mapping              |
+| **ProcessMiner**   | Application logs, workflow traces, event streams                                   | ELK Stack, DataDog, S3 log ingestion          | Pseudonymized logs only; restrict PII/PHI access            | Require consent/audit for production logs           |
+| **RuleMapper**     | Business rule engine configs, scripts, SQL logic                                   | GitHub API (read-only), rules engine export   | Limited to rules folder or specific services                | Track mapping accuracy; support explainability      |
+| **ModelExplainer** | ML model artifacts, notebooks, input/output samples                                | MLflow, SageMaker, HuggingFace Model Hub      | Read-only to metadata, hyperparams, and model versions      | Do not expose training data                         |
+| **GovernanceBot**  | Policy documents, compliance standards, mappings between rules and policies        | PDF extractors, RAG-style retrieval            | Only for specific policy types or keywords                  | Highlight traceability gaps                        |
+| **DocWriter**      | Access to all derived outputs, agent logs, and summary templates                   | Internal squad APIs                           | Only generates, not edits or executes logic                 | Track source lineage for each section              |
+| **UIAgent**        | Semantic layer metadata, mock APIs, visualization scaffolds                        | Squad internal APIs, mock server              | No access to prod APIs directly                             | Use test datasets only                             |
+| **TestRunner**     | Endpoint schemas, mock data, and health check APIs                                 | Local Postman collection or mock server       | Cannot mutate live systems                                 | Auto-clean test artifacts                          |
+
+## 🔐 Recommended Best Practices
+
+- **Agent AuthN/AuthZ**: Treat each agent like a service account with minimal access.
+- **Audit Trails**: Log agent decisions and what input data was used.
+- **Data Lineage**: Trace how a conclusion was reached and what source it came from.
+- **Simulation First**: Run new capabilities in “dry run” mode before enabling updates.

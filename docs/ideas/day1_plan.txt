@@ -1,0 +1,71 @@
+# 🚀 Day 1 – Get Started Plan (Jetson Nano + SquadOps Repo)
+
+This plan gets you from **zero → running infra → first agent tasks → logged WarmBoot run → GitHub history** in one day.
+
+---
+
+## 1. Repo Setup
+- [ ] Create GitHub repo: `squad_ops`
+- [ ] Initialize repo with:
+  ```
+  /agents/
+  /infra/
+  /docs/
+  /warmboot_runs/
+  /optimizations/
+  docker-compose.yml
+  README.md
+  ```
+- [ ] Add `.gitignore` (Python, Docker, venv, etc.)
+
+---
+
+## 2. Local Infra (Dockerized)
+- [ ] Define **Infra container**: RabbitMQ, Postgres, Prefect (core orchestration/logging)
+- [ ] Create **Agent containers**: Start with Max + Neo (minimum viable services)
+- [ ] Configure **Networking**: Define `squadnet` bridge in `docker-compose.yml`
+- [ ] Scaffold **Health Check Endpoints** with FastAPI:
+  - `/health/infra`
+  - `/health/agents`
+
+---
+
+## 3. Protocol Anchors
+- [ ] Adopt **PID Traceability** (`PID-001` for HelloSquad test app)
+- [ ] Add `process_registry.md` with first entry
+- [ ] Create stubs:
+  - `BP-001-HelloSquad.md` (business process doc)
+  - `UC-001-HelloWorld.md` (use case)
+  - `TC-001-HelloWorld.md` (test case)
+
+---
+
+## 4. First Reference App
+- [ ] Start with **HelloSquad** app (simple “hello world” API)
+- [ ] Neo builds `hello.py` (FastAPI endpoint)
+- [ ] EVE writes `pytest` case for `/hello`
+- [ ] Run WarmBoot v0.1 with just Max + Neo
+- [ ] Tag run branch: `warmboot/run-001`
+
+---
+
+## 5. Logging & Metrics
+- [ ] Enable **task logging** table in Postgres
+- [ ] Add JSON schema for logs (agent, task, pid, duration, status)
+- [ ] Generate a **Mermaid Gantt chart snippet** after first run
+
+---
+
+## 6. Commit & Push
+- [ ] Commit all stubs, docker-compose, health check, and HelloSquad app
+- [ ] Push to GitHub
+- [ ] Tag release: `v0.1-warmboot-001`
+
+---
+
+## 7. Stretch Goals
+- [ ] Add **SOC UI** scaffold (basic HTML/Bootstrap to show task status)
+- [ ] Containerize **Nat** (product strategy) → have 3 agents online
+- [ ] Add simple **tagging layer** (`/analytics/tagging_spec.md`)
+
+---

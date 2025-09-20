@@ -1,0 +1,94 @@
+
+# SquadOps Git Workflow Protocol
+
+## Purpose
+To provide a structured and traceable Git workflow for:
+- Managing agent versioning
+- Tracking WarmBoot runs
+- Safely experimenting with optimizations
+- Maintaining a clean, stable `main` branch
+
+---
+
+## Branching Strategy
+
+### `main`
+- Stable, production-grade state of the squad
+- Contains validated agent versions, protocols, and task lists
+- Updated only after successful optimization validation
+
+### `warmboot/run-###`
+- Dedicated branch for each WarmBoot execution
+- Tracks:
+  - Squad manifest used
+  - Task list for the run
+  - WarmBoot run logs
+  - Performance metrics
+  - Optimizations identified but not yet validated
+- Example: `warmboot/run-001`, `warmboot/run-002`
+
+### `experiment/agent-tuning-<agent>-vX.Y`
+- For isolated experiments with agent configuration, reasoning, or tools
+- Example: `experiment/agent-tuning-max-v1.2`
+
+### `feature/agent-upgrade-<agent>-<feature>`
+- For applying a model or tool upgrade to an agent
+- Example: `feature/agent-upgrade-neo-llama3-8b`
+
+### `protocol-upgrade-<description>`
+- For refining SquadOps protocols (e.g., task management, optimization logging)
+- Example: `protocol-upgrade-warmboot-logging`
+
+---
+
+## Tagging
+- Tag every completed WarmBoot run:
+```
+v0.1-warmboot-001
+v0.2-warmboot-002
+```
+
+- Tag stable `main` milestones after merging optimizations:
+```
+v1.0, v1.1, v2.0
+```
+
+---
+
+## Merging Strategy
+| From | To | Condition |
+|------|----|-----------|
+| `experiment/*` | `warmboot/run-###` | If optimization is relevant to an active WarmBoot |
+| `warmboot/run-###` | `main` | After post-run validation and optimization success |
+| `feature/*` | `experiment/*` | For testing new tools, models, or agent upgrades |
+| `protocol-upgrade-*` | `main` | After governance or protocol changes are validated |
+
+---
+
+## File Tracking Guidelines
+| Directory | Branches |
+|-----------|----------|
+| `/agents/` | All |
+| `/squad_manifests/` | All |
+| `/warmboot_runs/` | `warmboot/*`, `main` (only validated summaries) |
+| `/optimizations/` | `warmboot/*`, `main` (post-validation only) |
+| `/docs/` | All |
+
+---
+
+## Commit Message Guidelines
+```
+[Agent:<Name>] Updated reasoning strategy to v1.2
+[WarmBoot:run-002] Added performance metrics and log summary
+[Optimization] Glyph prompt tuning to reduce iteration time
+[Protocol] Added traceability logging spec
+```
+
+---
+
+## Summary
+This protocol ensures:
+- Traceable squad evolution
+- Isolated experiment and testing
+- A clean and validated `main` state
+- Historical logs for every WarmBoot and optimization applied

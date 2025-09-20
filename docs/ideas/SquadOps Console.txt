@@ -1,0 +1,64 @@
+# ✅ Squad Ops Console (SOC) — Deployment Architecture Summary
+
+## Core Components
+| Service              | Purpose                                                  |
+|----------------------|----------------------------------------------------------|
+| **Prefect Server + UI** | Task orchestration, scheduling, tracking, and state management |
+| **RabbitMQ**         | Inter-agent communication via pub/sub messaging         |
+| **Postgres**         | Central data store for Prefect, SOC Ledger, and Keycloak |
+| **SOC UI**           | Custom dashboard to monitor agent tasks, queues, history, and metrics |
+| **Redis**            | Caching, state sync, and pub/sub backbone for Prefect    |
+| **Keycloak**         | Identity and access management for SOC UI and services  |
+| **Agent Containers** | Individual containers for each AI agent, communicating via RabbitMQ and managed tasks via Prefect |
+| **Max**              | Runs in the **Core Infra container**, co-located with Prefect and RabbitMQ |
+
+---
+
+## Optional / Advanced Components
+| Service              | Purpose                                                  |
+|----------------------|----------------------------------------------------------|
+| **Prometheus**       | Metrics collection for agents, SOC services, and system health |
+| **Grafana**          | Visual dashboards for metrics and historical performance |
+| **ELK Stack**        | Centralized logging and searchable ops data             |
+| **Jaeger / OpenTelemetry** | Distributed tracing across agent interactions      |
+| **MinIO / S3 Storage** | Storing large artifacts, logs, or task outputs         |
+| **NATS**             | Alternative to RabbitMQ for lightweight messaging       |
+| **Vault / Consul**   | Secrets management and service discovery                |
+| **OAuth2 Proxy**     | Add OAuth2 authentication (via Keycloak) to services like Prefect UI |
+
+---
+
+## Networking & Communication
+- All containers share a Docker network: `squadnet`
+- **RabbitMQ** exposed internally at `rabbitmq:5672`
+- **Prefect API** accessible at `prefect-server:4200`
+- **Postgres** shared across Prefect, SOC, and Keycloak
+- **Keycloak** accessible at `keycloak:8080` for authentication
+
+---
+
+## Authentication
+- **Keycloak** governs:
+  - SOC UI login via OAuth2 / OIDC
+  - Optional: Securing agent-to-SOC API communications
+  - Future: RBAC for user roles (Admin, Observer, Auditor)
+
+---
+
+## Deployment Strategy
+1. Deploy **Postgres**, **RabbitMQ**, **Redis**, and **Keycloak**.
+2. Deploy **Prefect Server + UI**, linked to Postgres and Redis.
+3. Deploy **SOC UI**, configured to authenticate via Keycloak.
+4. Deploy agent containers, each configured to connect to:
+   - RabbitMQ for inter-agent messaging
+   - Prefect for task management
+5. (Optional) Add **Prometheus + Grafana** for monitoring and visualization.
+
+---
+
+## Next Steps
+- Write a **Docker Compose file** scaffolding all services.
+- Define a **standard set of environment variables** across agents for service URLs.
+- Create **agent Dockerfile templates** for quick and consistent deployment.
+
+---

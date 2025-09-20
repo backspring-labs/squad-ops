@@ -1,0 +1,132 @@
+
+# ✅ Nexa Squad Agent Task Logging & Gantt Chart Metrics Protocol (Extended)
+
+---
+
+## 📌 Purpose
+Provide an in-depth protocol for capturing, storing, and visualizing **agent task execution metrics** to enable precise **Gantt chart visualizations** and performance optimization insights.
+
+---
+
+## ✅ Agent Task Logging Specification
+
+### Logged Fields
+
+| Field | Description |
+|-------|-------------|
+| **Agent Name** | The agent performing the task |
+| **Task Name** | Descriptive task name |
+| **PID** | Process ID linked to the business process |
+| **Task ID** | Unique identifier per task |
+| **Start Time** | Timestamp (ISO8601) when the task started |
+| **End Time** | Timestamp when the task completed |
+| **Duration** | Computed in seconds or minutes |
+| **Dependencies** | Array of Task IDs this task depends on |
+| **Output Artifacts** | Produced files, diagrams, documentation |
+| **Resource Utilization** | CPU, Memory, GPU usage snapshot (optional) |
+| **Task Status** | e.g., Completed, Failed, In Progress |
+
+### Sample Log Entry
+
+```json
+{
+  "agent": "Neo",
+  "task_name": "API Specification",
+  "pid": "PID-004",
+  "task_id": "TID-NEO-004-API-SPEC",
+  "start_time": "2025-07-21T08:00:00Z",
+  "end_time": "2025-07-21T12:00:00Z",
+  "duration": "4h",
+  "dependencies": ["TID-DATA-004-KDE"],
+  "artifacts": ["api_spec_v1.md"],
+  "resource_utilization": {"cpu": "50%", "gpu": "20%", "memory": "4GB"},
+  "task_status": "Completed"
+}
+```
+
+---
+
+## ✅ Storage of Metrics
+
+### Recommended Storage Architecture
+
+| Component | Purpose | Recommended Tools |
+|-----------|---------|-------------------|
+| **Task Log Store** | Raw structured logs | PostgreSQL, MongoDB |
+| **Time-Series Data Store** | Metrics like CPU, GPU, Memory, Duration | Prometheus, InfluxDB |
+| **Artifacts Repository** | Store output artifacts for traceability | MinIO (S3-compatible), Git LFS |
+| **Query & API Layer** | Access logs for visualization or audits | Hasura (for GraphQL), RESTful API using FastAPI |
+
+### Suggested Schema (PostgreSQL)
+
+```sql
+CREATE TABLE agent_task_logs (
+    task_id TEXT PRIMARY KEY,
+    agent_name TEXT,
+    task_name TEXT,
+    pid TEXT,
+    start_time TIMESTAMP,
+    end_time TIMESTAMP,
+    duration INTERVAL,
+    dependencies TEXT[],
+    artifacts TEXT[],
+    resource_utilization JSONB,
+    task_status TEXT
+);
+```
+
+---
+
+## ✅ Visualization Tools
+
+| Tool | Use Case | Notes |
+|------|----------|-------|
+| **Mermaid.js** | Simple Gantt visualization in markdown | Lightweight, markdown-compatible |
+| **Plotly / Dash** | Interactive visualizations | For dashboards |
+| **Grafana** | Time-series and resource utilization | Plugs into Prometheus |
+| **GanttLab** | Git-integrated Gantt charts | Good for continuous monitoring |
+| **Custom D3.js** | Fully customized visuals | Requires frontend coding effort |
+
+---
+
+## ✅ Implementation Strategy
+
+1. **Agent Instrumentation**
+   - All agents log task metadata in real-time or post-task via a shared API endpoint.
+2. **Central Metrics API**
+   - A service (built with FastAPI or Flask) captures and writes logs to PostgreSQL and Prometheus.
+3. **Visualization Pipeline**
+   - Data ETL into visualization tools like Plotly or Grafana.
+   - Preconfigured Mermaid.js for textual Gantt output per WarmBoot run.
+
+### Example: Mermaid Gantt Snippet
+
+```
+gantt
+    dateFormat  YYYY-MM-DD
+    section Nat
+    Requirements Definition   :done, TID-NAT-001, 2025-07-21, 4h
+    section Data
+    KDE & Governance          :done, TID-DATA-002, after TID-NAT-001, 3h
+    section Neo
+    API Specification         :active, TID-NEO-004, after TID-DATA-002, 4h
+```
+
+---
+
+## ✅ Optimization Insights
+
+- **Serialization Points:** Visualized dependencies reveal where agents are blocked.
+- **Resource Utilization:** High compute loads may suggest task/model optimizations.
+- **Idle Time Analysis:** Track gaps between agent tasks to improve orchestration.
+
+---
+
+## ✅ Future Enhancements
+
+- Enable **task replay or simulation mode** for optimization experiments.
+- Integrate **automatic performance recommendations** from Data agent based on logs.
+
+---
+
+> This protocol ensures that all agent squad operations are **measurable, auditable, and optimizable**, enabling continuous refinement of squad performance through rich data capture and visualization.

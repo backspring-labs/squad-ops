@@ -1,0 +1,64 @@
+# Neural Pulse Model for SquadOps
+
+## Overview
+The **Neural Pulse Model** frames agent squad operations as analogous to the human nervous system.  
+Agents behave like neurons: autonomous, specialized processors. The squad operates as a network, with Max modulating pulse frequency like the central nervous system.
+
+---
+
+## Core Mappings
+
+| Biological System       | SquadOps Equivalent |
+|-------------------------|---------------------|
+| Neurons (specialized cells) | Agents (Neo, Nat, EVE, etc.) |
+| Synapses (signal channels)  | Comms Protocol + SquadNet |
+| Neural pulses (spikes)      | Dev Cycle Protocol pulses |
+| CNS rhythm modulation       | Max adjusting squad heartbeat |
+| Plasticity (learning)       | RCA + tuning logs |
+| EEG (brain telemetry)       | SquadOps metrics dashboards |
+
+---
+
+## Principles
+
+1. **Autonomy with Synchrony**  
+   Agents act independently but must fire in synchrony through modulated pulses. Alignment emerges from rhythm, not from constant supervision.
+
+2. **Pulse Frequency = Cognitive Load**  
+   - High frequency: lightweight, independent tasks.  
+   - Low frequency: complex, interdependent tasks.  
+   Max adapts frequency just like brain rhythms shift (alpha, beta, gamma).
+
+3. **Alignment = Synchrony**  
+   A squad is aligned when pulses are coherent. Misalignment looks like asynchrony — long delays, repeated retries, excessive escalation.
+
+4. **Learning = Plasticity**  
+   Outcomes of pulses strengthen or weaken connections. Logs, Sparks, and RCAs are the digital equivalent of synaptic weight adjustments.
+
+---
+
+## Measurement
+
+- **Pulse Telemetry (Squad EEG):**  
+  - Pulse frequency over time  
+  - Escalation heatmap (synchrony stress)  
+  - Loss trajectory (learning vs repetition)
+
+- **Alignment Score:** Derived from how well agent outputs integrate on each pulse.  
+- **Efficiency Score:** Ratio of fast vs slow pulses relative to task complexity.
+
+---
+
+## Benefits
+
+- Provides an intuitive, biological metaphor for digital-native squads.  
+- Reinforces the idea that progress is not time-boxed, but rhythm-modulated.  
+- Makes alignment and drift visible as *signals* instead of managerial opinions.  
+- Extends naturally into WarmBoot benchmarking and observability dashboards.
+
+---
+
+## Summary
+
+The **Neural Pulse Model** positions SquadOps as more than a dev methodology.  
+It’s a *digital nervous system* where agents fire like neurons, pulses act as the heartbeat, and telemetry is the squad’s EEG — making progress and alignment measurable in a native, agent-first way.

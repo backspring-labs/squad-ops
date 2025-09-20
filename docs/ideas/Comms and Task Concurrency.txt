@@ -1,0 +1,113 @@
+# ✅ SquadOps Communication & Task Concurrency Protocol (v1.0)
+
+---
+
+## 📌 **Purpose**
+Establish a standardized protocol within Nexa Squad for agents to:
+- Execute tasks without losing the ability to communicate or receive critical signals.
+- Enable coordination, consultation, and governance intervention without compromising task progress.
+- Support transparency of agent status and task execution phases.
+
+---
+
+## ✅ **Core Concepts**
+
+### 1. **Dual-Channel Architecture**
+Agents operate with two distinct but synchronized channels:
+
+| Channel Type | Purpose |
+|--------------|---------|
+| **Task Channel** | Handles the active execution of the assigned task (e.g., coding, testing, writing) |
+| **Comms Channel** | Maintains an open pathway for receiving squad communications, consultations, and governance signals |
+
+---
+
+## ✅ **Agent Status States**
+
+Agents must report and maintain their current **Status Flag**, reflecting availability and task state:
+
+| Status | Definition |
+|--------|------------|
+| **Available** | Not actively executing a task, fully responsive to squad communications |
+| **Active - Non-Blocking** | Task in progress but agent remains responsive to incoming messages on the Comms Channel |
+| **Active - Blocking** | Task in progress, communications deferred until task checkpoint or completion |
+| **Blocked - External Input Needed** | Task paused, awaiting information, decision, or resolution from another agent |
+| **Completed** | Task finished, results published to squad memory/log |
+
+---
+
+## ✅ **Comms Protocol Behavior**
+
+- **Default Mode:** Agents operate in **Active - Non-Blocking** where possible, responding to pings or consultation requests asynchronously while progressing on the Task Channel.
+- **Urgent Interrupts:**  
+  - Agents must respect **Urgency Flags** on incoming messages:
+    - `Normal`: queue message for next checkpoint.
+    - `High`: interrupt processing for immediate attention.
+    - `Governance Override`: immediate escalation, agent pauses work.
+
+---
+
+## ✅ **Checkpoint Mechanism**
+
+- Agents performing complex or long-running tasks implement **Checkpoint Intervals**, at which:
+  - Progress is saved.
+  - Comms Channel is polled for incoming messages.
+  - Status Flag is reassessed.
+
+Agents should expose:
+
+function checkpoint():
+save_progress()
+check_comms_channel()
+update_status_flag()
+
+---
+
+## ✅ **Max Governance Authority**
+
+- **Max** may issue:
+  - `Status Query` to any agent to assess task and availability.
+  - `Suspend Task` directive to pause task execution.
+  - `Redirect Task` directive to reassign or split the task based on squad priorities.
+  - `Escalation Ping` with override flag to enforce immediate attention.
+
+---
+
+## ✅ **Consultation Request Handling**
+
+When an agent sends a **Consultation Request**:
+1. Target agent acknowledges receipt within the **Comms Channel.**
+2. If in **Active - Blocking** state, agent responds after next checkpoint.
+3. If in **Active - Non-Blocking**, agent prioritizes consultation before next task segment.
+4. Failure to respond within the acceptable time triggers escalation to Max.
+
+---
+
+## ✅ **Example Flow**
+
+1. **Neo** begins coding task — sets status to `Active - Non-Blocking`.
+2. **Nat** sends a consultation request about architectural alignment.
+3. Neo hits checkpoint, receives Nat’s message, responds with input.
+4. **Max** pings Neo with `Status Query`, Neo replies with current progress.
+5. If Nat’s input changes the direction, Max may issue `Suspend Task` to Neo with new instructions.
+
+---
+
+## ✅ **Benefits of This Protocol**
+- Prevents communication bottlenecks.
+- Enables proactive consultation without disrupting workflow integrity.
+- Ensures transparency across the squad.
+- Allows governance to maintain mission alignment in real-time.
+
+---
+
+## ✅ **Future Enhancements**
+- Implement **event-driven hooks** for Comms Channel activity.
+- Integrate **time-based auto-checkpoints** for long tasks.
+- Add **feedback priority queues** for different agent roles.
+
+---
+
+## ✅ **Versioning**
+- **v1.0:** Dual-channel, status flags, checkpointing, governance control
+- **v2.0 (Future):** Full asynchronous, event-driven messaging with dynamic priority weighting

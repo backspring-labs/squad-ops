@@ -1,0 +1,105 @@
+# SquadOps Health Check Page Requirements
+
+Here's a requirements.md file. Please build a minimal FastAPI backend with two endpoints that return the mock JSON. Then scaffold a basic HTML page using Bootstrap that displays the results in two tables with colored status indicators.
+
+Create a simple HTML page that fetches from /health/infra and /health/agents and renders two tables with status indicators and auto-refresh every 60s. You can mock the JSON locally.
+
+This document outlines the infrastructure components, API endpoints, and requirements to build a dynamic **Health Check Page** that reflects the real-time status of the squad and its supporting infrastructure.
+
+---
+
+## ✅ Purpose
+
+The Health Check Page ensures the squad is online and functioning correctly by:
+
+- Verifying that all core infrastructure components are operational.
+- Checking that each agent is reachable and reporting its status.
+- Displaying request counts and version info from dev tools like the mock server.
+- Exposing a clean API for frontend display.
+
+---
+
+## 🔁 Core API Endpoints
+
+### `GET /health/infra`
+Returns the status of core infrastructure components.
+
+#### Example Response
+```json
+[
+  {
+    "component": "RabbitMQ",
+    "type": "Message Broker",
+    "status": "online",
+    "version": "3.12.11",
+    "purpose": "Handles inter-agent communication",
+    "notes": "0 messages in queue"
+  },
+  {
+    "component": "PostgreSQL",
+    "type": "Relational DB",
+    "status": "online",
+    "version": "15.3",
+    "purpose": "Persistent data and logs",
+    "notes": "80% disk usage"
+  },
+  {
+    "component": "Mock API Server",
+    "type": "Dev Tool",
+    "status": "online",
+    "version": "0.17.4",
+    "purpose": "Simulates APIs for dev/testing",
+    "notes": "148 requests served"
+  }
+]
+```
+
+---
+
+### `GET /health/agents`
+Returns the status of each squad agent.
+
+#### Example Response
+```json
+[
+  {
+    "agent": "Max",
+    "role": "Task Lead",
+    "status": "online",
+    "version": "1.0.0",
+    "tps": 12
+  },
+  {
+    "agent": "Neo",
+    "role": "Developer",
+    "status": "idle",
+    "version": "1.0.0",
+    "tps": 18
+  }
+]
+```
+
+---
+
+## 📄 Frontend Page Requirements
+
+### Functional Requirements
+- On load or refresh, the page should:
+  - Call `/health/infra` and `/health/agents`.
+  - Render two tables: one for Infra and one for Agents.
+  - Color-code status (✅ online, ⚠️ degraded, ❌ offline).
+  - Show request count for mock server.
+  - Display TPS for each agent if available.
+
+### Non-Functional Requirements
+- Page should be accessible locally at `/health`.
+- Responsive layout (mobile and desktop).
+- Lightweight, no login or auth required.
+- Should auto-refresh every 60 seconds.
+
+---
+
+## 🧱 Optional Enhancements
+- Include a timestamp of last check.
+- Export status as downloadable JSON.
+- Allow toggling Bedrock or local model view if both exist.

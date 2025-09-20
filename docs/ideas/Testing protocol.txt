@@ -1,0 +1,106 @@
+
+# ✅ Nexa Squad Testing Protocol Specification (v1.1)
+
+---
+
+## 📌 Purpose
+Establish a comprehensive protocol for the generation, execution, and traceability of testing artifacts for Nexa Squad projects, ensuring software quality, security, and governance alignment through the **Process ID (PID)** convention.
+
+---
+
+## ✅ Protocol Objectives
+- Ensure full coverage of functional, security, performance, and governance validations
+- Map all testing artifacts to PIDs for traceability
+- Integrate penetration testing as part of pre-release security validation
+- Enable feature flag control for test scenarios
+- Version testing artifacts with software releases
+
+---
+
+## ✅ Testing Artifacts and Naming Convention
+
+| Artifact | Naming Convention | Example |
+|----------|-------------------|---------|
+| **Test Plan** | `TP-{PID}-{process_name}.md` | `TP-001-UserLogin.md` |
+| **Test Cases** | `TC-{PID}-{process_name}.md` | `TC-001-UserLogin.md` |
+| **Test Coverage Report** | `TCR-{PID}-{process_name}.md` | `TCR-001-UserLogin.md` |
+| **Security Testing Report** | `SEC-{PID}-{process_name}.md` | `SEC-001-UserLogin.md` |
+| **Performance Testing Report** | `PERF-{PID}-{process_name}.md` | `PERF-001-UserLogin.md` |
+| **Penetration Testing Report** | `PEN-{PID}-{process_name}.md` | `PEN-001-UserLogin.md` |
+| **QA Checklist** | `QA-{PID}-{process_name}.md` | `QA-001-UserLogin.md` |
+
+---
+
+## ✅ Testing Artifacts by Project Phase
+
+| Phase | Artifact | Responsible Agent(s) | Tools |
+|-------|----------|----------------------|-------|
+| **Before Development** | `TP-{PID}` (Test Plan) | EVE + Max | Markdown documentation |
+| | `QA-{PID}` (QA Checklist) | EVE | Markdown documentation |
+| **During Development** | `TC-{PID}` (Test Cases) | EVE | Pytest, Jest, Postman/Newman, Selenium |
+| | `SEC-{PID}` (Security Testing) | EVE | OWASP ZAP, Snyk, Burp Suite |
+| | `PERF-{PID}` (Performance Testing) | EVE + Data | k6, Locust, JMeter |
+| **Post-Development (Pre-Release)** | `TCR-{PID}` (Coverage Report) | EVE | Coverage.py, Istanbul/nyc |
+| | `PEN-{PID}` (Penetration Testing Report) | EVE + Max | OWASP ZAP, Burp Suite, Nikto, Nmap |
+| | `QA-{PID}` | EVE | Manual verification + automated checks |
+
+---
+
+## ✅ Penetration Testing Specifics
+
+### Tools Used
+- **OWASP ZAP:** Automated vulnerability scanning
+- **Burp Suite:** Interactive application security testing (manual + automated)
+- **Nikto:** Web server vulnerability scanning
+- **Nmap:** Network-level reconnaissance
+
+### Artifact
+```markdown
+# Penetration Testing Report for PID-XXX: [Process Name]
+
+## Summary of Findings
+| Vulnerability | Severity | Remediation Recommendation |
+|---------------|----------|----------------------------|
+| Example Vuln  | High     | Apply patch XYZ            |
+
+## Tools Used
+- OWASP ZAP
+- Burp Suite
+- Nikto
+- Nmap
+
+## Date of Test
+YYYY-MM-DD
+```
+
+---
+
+## ✅ Governance & Compliance
+- **Max:** Ensures all test artifacts are completed, versioned, and linked to PIDs before production approval.
+- Max validates that all **PEN-{PID}** reports are reviewed and remediated where needed.
+
+---
+
+## ✅ Directory Structure Example
+
+```
+/testing/
+    /test_plans/
+    /test_cases/
+    /test_coverage/
+    /security_reports/
+    /performance_reports/
+    /penetration_reports/
+    /qa_checklists/
+```
+
+---
+
+## ✅ Bonus Recommendations
+- Include test artifacts in all **WarmBoot deliverables**
+- Automate penetration testing in CI/CD where feasible
+- Maintain historical **PEN-{PID}** reports for audit compliance
+
+---
+
+> This protocol ensures Nexa Squad projects are validated for functional correctness, performance, security, and governance readiness, with penetration testing formalized as a standard pre-release step.
