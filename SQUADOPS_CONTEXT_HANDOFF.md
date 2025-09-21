@@ -165,9 +165,9 @@
 
 ---
 
-## 🚀 **Three-Tier Deployment Strategy**
+## 🚀 **Three-Phase Deployment Strategy**
 
-### **Tier 1: MacBook Air (Infrastructure + Agent Stubs)** ✅ **COMPLETE**
+### **Phase 1: MacBook Air (Infrastructure + Agent Stubs)** ✅ **COMPLETE**
 - [x] Repo structure and documentation
 - [x] **Real Infrastructure Services:**
   - [x] RabbitMQ (real message broker)
@@ -183,7 +183,7 @@
 - [x] Complete WarmBoot protocol implementation
 - [x] Documentation and book content production
 
-### **Tier 2: Jetson Nano (Proof of Concept)**
+### **Phase 2: Jetson Nano (Proof of Concept)**
 - [ ] **Minimal Infrastructure:**
   - [ ] RabbitMQ + SQLite + simple orchestration
   - [ ] ARM64 optimized containers
@@ -194,7 +194,7 @@
 - [ ] HelloSquad reference app (PID-001) built by agents
 - [ ] Basic metrics and performance baseline
 
-### **Tier 3: DGX Spark (Full Production)**
+### **Phase 3: DGX Spark (Full Production)**
 - [ ] **Complete Infrastructure:**
   - [ ] Full Postgres, Prefect, Redis, Keycloak
   - [ ] Production-grade orchestration
