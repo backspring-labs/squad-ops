@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Base Agent Class for SquadOps
-Provides common functionality for all 9 agents in the squad
+Provides common functionality for all agents in the squad
 """
 
 import asyncio

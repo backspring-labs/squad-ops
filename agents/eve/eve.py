@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-EVE - Home Automation Agent
-Reasoning Style: Home automation and security
+EVE - Test Lead Agent
+Reasoning Style: Counterfactual
 Memory Structure: State machine
-Task Model: Local network automation
+Task Model: Regression testing
 Local Model: LLaMA 3 70B (mocked)
-Premium Consultation: Intrusion detection
+Premium Consultation: Security testing
 """
 
 import asyncio
@@ -17,59 +17,64 @@ from base_agent import BaseAgent, AgentMessage
 logger = logging.getLogger(__name__)
 
 class EVEAgent(BaseAgent):
-    """EVE - The Home Automation Agent"""
+    """EVE - The Test Lead Agent"""
     
     def __init__(self):
         super().__init__(
             name="EVE",
-            agent_type="home_automation",
-            reasoning_style="home_automation"
+            agent_type="testing",
+            reasoning_style="counterfactual"
         )
         self.state_machine = {}
-        self.home_devices = {}
+        self.test_suites = {}
         self.security_protocols = {}
-        self.local_network_status = {}
+        self.regression_tests = {}
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process home automation tasks"""
+        """Process testing and QA tasks"""
         task_id = task.get('task_id', 'unknown')
-        task_type = task.get('type', 'home_automation')
+        task_type = task.get('type', 'testing')
         
-        logger.info(f"EVE processing home automation task: {task_id}")
+        logger.info(f"EVE processing testing task: {task_id}")
         
         # Update task status
         await self.update_task_status(task_id, "Active-Non-Blocking", 20.0)
         
-        # Define state machine for home automation
-        await self.define_home_automation_state(task)
+        # Define state machine for testing workflow
+        await self.define_testing_state_machine(task)
         
-        # Manage home devices
+        # Create test suites
         await self.update_task_status(task_id, "Active-Non-Blocking", 40.0)
         
-        device_management = await self.manage_home_devices(task)
+        test_suite_creation = await self.create_test_suites(task)
         
-        # Monitor local network security
+        # Execute security testing
         await self.update_task_status(task_id, "Active-Non-Blocking", 60.0)
         
-        security_status = await self.monitor_local_network_security(task)
+        security_testing = await self.execute_security_tests(task)
         
-        # Execute automation routines
+        # Run regression tests
         await self.update_task_status(task_id, "Active-Non-Blocking", 80.0)
         
-        automation_result = await self.execute_automation_routines(task)
+        regression_results = await self.run_regression_tests(task)
+        
+        # Generate test report
+        await self.update_task_status(task_id, "Active-Non-Blocking", 90.0)
+        
+        test_report = await self.generate_test_report(task)
         
         await self.update_task_status(task_id, "Completed", 100.0)
         
         return {
             'task_id': task_id,
             'status': 'completed',
-            'devices_managed': len(device_management.get('devices', [])),
-            'security_status': security_status,
-            'automation_routines': automation_result,
-            'local_network_health': security_status.get('network_health', 'good'),
+            'test_suites_created': len(test_suite_creation.get('suites', [])),
+            'security_tests': security_testing,
+            'regression_results': regression_results,
+            'test_report': test_report,
             'mock_response': await self.mock_llm_response(
-                f"Home automation for {task_type}",
-                f"Devices managed: {len(device_management.get('devices', []))}"
+                f"Testing and QA for {task_type}",
+                f"Test suites created: {len(test_suite_creation.get('suites', []))}"
             )
         }
     
@@ -84,8 +89,8 @@ class EVEAgent(BaseAgent):
         else:
             logger.info(f"EVE received message: {message.message_type} from {message.sender}")
     
-    async def define_state_machine(self, task: Dict[str, Any]):
-        """Define state machine for security testing"""
+    async def define_testing_state_machine(self, task: Dict[str, Any]):
+        """Define state machine for testing workflow"""
         task_id = task.get('task_id')
         
         self.state_machine[task_id] = {
@@ -98,6 +103,70 @@ class EVEAgent(BaseAgent):
             'current_state': 'initial'
         }
     
+    async def create_test_suites(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Create comprehensive test suites for the task"""
+        task_id = task.get('task_id')
+        
+        # Mock test suite creation
+        suites = [
+            {'name': 'unit_tests', 'type': 'unit', 'coverage': 85},
+            {'name': 'integration_tests', 'type': 'integration', 'coverage': 70},
+            {'name': 'e2e_tests', 'type': 'e2e', 'coverage': 60},
+            {'name': 'security_tests', 'type': 'security', 'coverage': 90}
+        ]
+        
+        self.test_suites[task_id] = suites
+        
+        return {
+            'suites': suites,
+            'total_coverage': sum(s['coverage'] for s in suites) / len(suites)
+        }
+    
+    async def execute_security_tests(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute security testing protocols"""
+        task_id = task.get('task_id')
+        
+        # Mock security testing
+        security_tests = {
+            'authentication_tests': {'passed': 8, 'failed': 0},
+            'authorization_tests': {'passed': 6, 'failed': 1},
+            'input_validation_tests': {'passed': 12, 'failed': 0},
+            'sql_injection_tests': {'passed': 5, 'failed': 0},
+            'xss_tests': {'passed': 7, 'failed': 0}
+        }
+        
+        return security_tests
+    
+    async def run_regression_tests(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Run regression test suite"""
+        task_id = task.get('task_id')
+        
+        # Mock regression testing
+        regression_results = {
+            'total_tests': 45,
+            'passed': 42,
+            'failed': 3,
+            'execution_time': '2.3s',
+            'coverage': 78
+        }
+        
+        return regression_results
+    
+    async def generate_test_report(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate comprehensive test report"""
+        task_id = task.get('task_id')
+        
+        # Mock test report generation
+        report = {
+            'test_summary': 'All critical tests passed',
+            'coverage_report': '78% code coverage achieved',
+            'security_assessment': 'No critical vulnerabilities found',
+            'recommendations': ['Increase unit test coverage', 'Add performance tests'],
+            'next_steps': ['Deploy to staging', 'Run load tests']
+        }
+        
+        return report
+
     async def generate_counterfactual_scenarios(self, task: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate counterfactual scenarios for testing"""
         scenarios = []
