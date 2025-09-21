@@ -187,18 +187,55 @@
 - [ ] **Minimal Infrastructure:**
   - [ ] RabbitMQ + SQLite + simple orchestration
   - [ ] ARM64 optimized containers
+- [ ] **LLM Integration:**
+  - [ ] Ollama/vLLM for local LLM inference
+  - [ ] Model management and versioning
+- [ ] **File Storage:**
+  - [ ] MinIO for artifact and file management
+  - [ ] Code generation storage
+- [ ] **Monitoring:**
+  - [ ] Basic Prometheus + Grafana for metrics
+  - [ ] Performance baseline establishment
 - [ ] **Two Starter Agents (Real Models):**
-  - [ ] Max + Neo with actual local models (Ollama, vLLM)
+  - [ ] Max + Neo with actual local models
   - [ ] Real LLM inference for HelloSquad development
   - [ ] Edge deployment validation
 - [ ] HelloSquad reference app (PID-001) built by agents
-- [ ] Basic metrics and performance baseline
 
 ### **Phase 3: DGX Spark (Full Production)**
 - [ ] **Complete Infrastructure:**
   - [ ] Full Postgres, Prefect, Redis, Keycloak
   - [ ] Production-grade orchestration
-- [ ] **All 9 Agents (Full LLM Power):**
+- [ ] **Security & Authentication:**
+  - [ ] Keycloak for agent authentication and RBAC
+  - [ ] API key management
+  - [ ] Secure inter-agent communication (TLS)
+- [ ] **Observability & Monitoring:**
+  - [ ] Prometheus + Grafana for metrics
+  - [ ] ELK Stack (Elasticsearch, Logstash, Kibana) for logs
+  - [ ] Distributed tracing (Jaeger/Zipkin)
+  - [ ] Alerting system (AlertManager)
+- [ ] **CI/CD & Deployment:**
+  - [ ] GitLab CI/GitHub Actions for automated testing
+  - [ ] Container registry (Harbor/Docker Registry)
+  - [ ] Blue-green deployment strategy
+  - [ ] Rollback mechanisms
+- [ ] **Configuration Management:**
+  - [ ] Consul/Vault for secrets management
+  - [ ] Environment-specific configs
+  - [ ] Feature flags system
+  - [ ] Dynamic configuration updates
+- [ ] **Error Handling & Recovery:**
+  - [ ] Circuit breakers
+  - [ ] Retry mechanisms with backoff
+  - [ ] Dead letter queues
+  - [ ] Automatic failover
+- [ ] **External Integrations:**
+  - [ ] GitHub/GitLab API integration
+  - [ ] External service APIs
+  - [ ] Webhook handling
+  - [ ] Third-party tool integrations
+- [ ] **All 10 Agents (Full LLM Power):**
   - [ ] Complete agent squad with enterprise protocols
   - [ ] WarmBoot benchmarking and optimization
   - [ ] Production-grade governance and compliance
