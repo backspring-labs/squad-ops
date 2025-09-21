@@ -51,7 +51,7 @@ class BaseAgent(ABC):
         self.name = name
         self.agent_type = agent_type
         self.reasoning_style = reasoning_style
-        self.status = "Available"
+        self.status = "online"
         self.current_task = None
         self.connection = None
         self.channel = None
@@ -159,6 +159,35 @@ class BaseAgent(ABC):
                 VALUES ($1, $2, $3, $4)
             """, self.name, activity, json.dumps(details or {}), datetime.utcnow().isoformat())
     
+    async def send_heartbeat(self):
+        """Send heartbeat to health monitoring system"""
+        try:
+            async with self.db_pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO agent_status (agent_name, status, version, tps, last_heartbeat, current_task_id, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    ON CONFLICT (agent_name) 
+                    DO UPDATE SET 
+                        status = $2,
+                        tps = $4,
+                        last_heartbeat = $5,
+                        current_task_id = $6,
+                        updated_at = $7
+                """, 
+                self.name, 
+                self.status, 
+                "1.0.0", 
+                0,  # Mock TPS for now
+                datetime.utcnow(),
+                self.current_task,
+                datetime.utcnow()
+                )
+                
+            logger.debug(f"{self.name} heartbeat sent")
+            
+        except Exception as e:
+            logger.error(f"{self.name} heartbeat failed: {e}")
+    
     @abstractmethod
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process a task - must be implemented by each agent"""
@@ -193,6 +222,10 @@ class BaseAgent(ABC):
         
         try:
             await self.initialize()
+            
+            # Send initial heartbeat
+            await self.send_heartbeat()
+            logger.info(f"{self.name} registered with health monitoring system")
             
             # Start listening for tasks and messages
             task_queue = await self.channel.declare_queue(f"{self.name.lower()}_tasks", durable=True)
@@ -247,11 +280,18 @@ class BaseAgent(ABC):
                         logger.error(f"{self.name} broadcast processing error: {e}")
                         await message.nack(requeue=False)
             
+            async def heartbeat_loop():
+                """Send periodic heartbeats"""
+                while True:
+                    await self.send_heartbeat()
+                    await asyncio.sleep(30)  # Send heartbeat every 30 seconds
+            
             # Run all processors concurrently
             await asyncio.gather(
                 process_tasks(),
                 process_comms(),
-                process_broadcasts()
+                process_broadcasts(),
+                heartbeat_loop()
             )
             
         except Exception as e:

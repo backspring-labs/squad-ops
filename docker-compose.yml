@@ -28,6 +28,7 @@ services:
       POSTGRES_DB: squadops
       POSTGRES_USER: squadops
       POSTGRES_PASSWORD: squadops123
+    command: ["postgres", "-c", "max_connections=200"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -132,7 +133,7 @@ services:
   nat:
     build:
       context: ./agents
-      dockerfile: Dockerfile.neo
+      dockerfile: Dockerfile.nat
     container_name: squadops-nat
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -151,7 +152,7 @@ services:
   joi:
     build:
       context: ./agents
-      dockerfile: Dockerfile.neo
+      dockerfile: Dockerfile.joi
     container_name: squadops-joi
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -170,7 +171,7 @@ services:
   data:
     build:
       context: ./agents
-      dockerfile: Dockerfile.neo
+      dockerfile: Dockerfile.data
     container_name: squadops-data
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -189,7 +190,7 @@ services:
   eve:
     build:
       context: ./agents
-      dockerfile: Dockerfile.neo
+      dockerfile: Dockerfile.eve
     container_name: squadops-eve
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -208,7 +209,7 @@ services:
   hal:
     build:
       context: ./agents
-      dockerfile: Dockerfile.neo
+      dockerfile: Dockerfile.hal
     container_name: squadops-hal
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -227,8 +228,46 @@ services:
   quark:
     build:
       context: ./agents
-      dockerfile: Dockerfile.neo
+      dockerfile: Dockerfile.quark
     container_name: squadops-quark
+    environment:
+      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
+      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - squadnet
+
+  og:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile.og
+    container_name: squadops-og
+    environment:
+      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
+      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - squadnet
+
+  glyph:
+    build:
+      context: ./agents
+      dockerfile: Dockerfile.glyph
+    container_name: squadops-glyph
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops

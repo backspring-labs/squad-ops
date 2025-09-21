@@ -1,289 +1,211 @@
 #!/usr/bin/env python3
 """
-Glyph - Creative Synthesis Agent
-Reasoning Style: Creative synthesis
-Memory Structure: Visual asset library
-Task Model: Iterative
-Local Model: Stable Diffusion XL (mocked)
-Premium Consultation: Visual inspiration
+Glyph - The Creative Design Agent
+Specializes in visual asset creation, creative synthesis, and visual inspiration
 """
 
 import asyncio
-import json
 import logging
-from typing import Dict, Any, List
-from base_agent import BaseAgent, AgentMessage
+from typing import Dict, Any
+from base_agent import BaseAgent
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class GlyphAgent(BaseAgent):
-    """Glyph - The Creative Synthesis Agent"""
+    """Glyph - The Creative Design Agent"""
     
     def __init__(self):
         super().__init__(
             name="Glyph",
             agent_type="creative",
-            reasoning_style="creative_synthesis"
+            reasoning_style="iterative"
         )
         self.visual_assets = {}
-        self.creative_iterations = []
+        self.creative_queue = asyncio.Queue()
         self.inspiration_library = {}
-    
+        
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process creative tasks using creative synthesis"""
+        """Process creative design tasks"""
+        task_type = task.get('type', 'unknown')
         task_id = task.get('task_id', 'unknown')
-        task_type = task.get('type', 'creative_design')
         
-        logger.info(f"Glyph processing creative task: {task_id}")
+        logger.info(f"Glyph processing {task_type} task: {task_id}")
         
-        # Update task status
-        await self.update_task_status(task_id, "Active-Non-Blocking", 15.0)
-        
-        # Gather inspiration
-        inspiration = await self.gather_inspiration(task)
-        
-        # Generate initial concepts
-        await self.update_task_status(task_id, "Active-Non-Blocking", 30.0)
-        
-        concepts = await self.generate_concepts(task, inspiration)
-        
-        # Iterative refinement
-        await self.update_task_status(task_id, "Active-Non-Blocking", 50.0)
-        
-        refined_concepts = await self.iterative_refinement(concepts, task)
-        
-        # Synthesize final design
-        await self.update_task_status(task_id, "Active-Non-Blocking", 75.0)
-        
-        final_design = await self.synthesize_design(refined_concepts, task)
-        
-        # Store visual assets
-        await self.update_task_status(task_id, "Active-Non-Blocking", 90.0)
-        
-        await self.store_visual_assets(task_id, final_design)
-        
-        await self.update_task_status(task_id, "Completed", 100.0)
-        
-        return {
-            'task_id': task_id,
-            'status': 'completed',
-            'inspiration_sources': len(inspiration),
-            'concepts_generated': len(concepts),
-            'iterations': len(self.creative_iterations),
-            'final_design': final_design,
-            'visual_assets': len(self.visual_assets.get(task_id, [])),
-            'mock_response': await self.mock_llm_response(
-                f"Creative design for {task_type}",
-                f"Concepts generated: {len(concepts)}"
-            )
-        }
-    
-    async def handle_message(self, message: AgentMessage) -> None:
-        """Handle creative-related messages"""
-        if message.message_type == "visual_inspiration":
-            await self.handle_visual_inspiration(message)
-        elif message.message_type == "design_request":
-            await self.handle_design_request(message)
-        elif message.message_type == "creative_collaboration":
-            await self.handle_creative_collaboration(message)
+        if task_type == 'visual_asset_creation':
+            return await self.create_visual_asset(task)
+        elif task_type == 'creative_synthesis':
+            return await self.perform_creative_synthesis(task)
+        elif task_type == 'visual_inspiration':
+            return await self.provide_visual_inspiration(task)
+        elif task_type == 'design_review':
+            return await self.review_design(task)
         else:
-            logger.info(f"Glyph received message: {message.message_type} from {message.sender}")
+            return await self.handle_generic_task(task)
     
-    async def gather_inspiration(self, task: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Gather inspiration for creative work"""
-        inspiration_sources = task.get('inspiration_sources', [])
+    async def create_visual_asset(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Create visual assets using creative synthesis"""
+        asset_type = task.get('asset_type', 'generic')
+        specifications = task.get('specifications', {})
         
-        # Mock inspiration gathering
-        inspiration = []
-        for source in inspiration_sources:
-            inspiration.append({
-                'source': source,
-                'type': 'visual',
-                'elements': ['color', 'shape', 'texture'],
-                'mood': 'modern',
-                'style': 'minimalist'
-            })
+        # Mock visual asset creation (would use Stable Diffusion XL in real implementation)
+        asset_id = f"asset_{task.get('task_id', 'unknown')}"
         
-        # Add default inspiration if none provided
-        if not inspiration:
-            inspiration = [
-                {'source': 'nature', 'type': 'organic', 'elements': ['flow', 'growth'], 'mood': 'calm'},
-                {'source': 'technology', 'type': 'geometric', 'elements': ['precision', 'efficiency'], 'mood': 'dynamic'}
-            ]
-        
-        return inspiration
-    
-    async def generate_concepts(self, task: Dict[str, Any], inspiration: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Generate initial creative concepts"""
-        concepts = []
-        
-        for i, insp in enumerate(inspiration):
-            concept = {
-                'id': f"concept_{i+1}",
-                'name': f"Concept {i+1}",
-                'inspiration': insp['source'],
-                'style': insp['style'] if 'style' in insp else 'modern',
-                'elements': insp['elements'],
-                'mood': insp['mood'],
-                'description': f"Creative concept inspired by {insp['source']}",
-                'iteration': 1
-            }
-            concepts.append(concept)
-        
-        return concepts
-    
-    async def iterative_refinement(self, concepts: List[Dict[str, Any]], task: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Refine concepts through iteration"""
-        refined_concepts = []
-        
-        for concept in concepts:
-            # Mock iterative refinement
-            refined_concept = concept.copy()
-            refined_concept['iteration'] = concept['iteration'] + 1
-            refined_concept['refinements'] = [
-                'Enhanced color palette',
-                'Improved composition',
-                'Better typography'
-            ]
-            refined_concept['feedback_applied'] = True
-            
-            refined_concepts.append(refined_concept)
-            
-            # Store iteration
-            self.creative_iterations.append({
-                'concept_id': concept['id'],
-                'iteration': refined_concept['iteration'],
-                'changes': refined_concept['refinements']
-            })
-        
-        return refined_concepts
-    
-    async def synthesize_design(self, concepts: List[Dict[str, Any]], task: Dict[str, Any]) -> Dict[str, Any]:
-        """Synthesize final design from refined concepts"""
-        # Select best concept (mock selection)
-        best_concept = concepts[0] if concepts else {}
-        
-        final_design = {
-            'design_id': f"design_{task.get('task_id')}",
-            'concept_basis': best_concept.get('id'),
-            'style': best_concept.get('style', 'modern'),
-            'elements': best_concept.get('elements', []),
-            'mood': best_concept.get('mood', 'neutral'),
-            'specifications': {
-                'dimensions': '1920x1080',
-                'color_scheme': 'modern_monochrome',
-                'typography': 'clean_sans_serif',
-                'layout': 'grid_based'
+        result = {
+            "asset_id": asset_id,
+            "asset_type": asset_type,
+            "status": "created",
+            "specifications": specifications,
+            "creative_notes": f"Created {asset_type} asset with iterative refinement approach",
+            "visual_elements": {
+                "color_palette": ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4"],
+                "style": "modern_minimalist",
+                "mood": "inspiring"
             },
-            'assets': [
-                'logo_variant_1.png',
-                'color_palette.json',
-                'typography_specs.txt'
+            "iterations": 3,
+            "final_version": "v3.0"
+        }
+        
+        self.visual_assets[asset_id] = result
+        logger.info(f"Glyph created visual asset: {asset_id}")
+        
+        return result
+    
+    async def perform_creative_synthesis(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Perform creative synthesis combining multiple elements"""
+        elements = task.get('elements', [])
+        synthesis_type = task.get('synthesis_type', 'blend')
+        
+        # Mock creative synthesis
+        synthesis_id = f"synthesis_{task.get('task_id', 'unknown')}"
+        
+        result = {
+            "synthesis_id": synthesis_id,
+            "synthesis_type": synthesis_type,
+            "input_elements": elements,
+            "creative_process": "iterative_blending",
+            "output": {
+                "concept": "Unified creative vision",
+                "visual_harmony": 0.95,
+                "innovation_score": 0.87,
+                "aesthetic_appeal": 0.92
+            },
+            "recommendations": [
+                "Consider adding subtle gradients",
+                "Balance warm and cool tones",
+                "Maintain visual hierarchy"
             ]
         }
         
-        return final_design
+        logger.info(f"Glyph performed creative synthesis: {synthesis_id}")
+        return result
     
-    async def store_visual_assets(self, task_id: str, design: Dict[str, Any]):
-        """Store visual assets in library"""
-        if task_id not in self.visual_assets:
-            self.visual_assets[task_id] = []
+    async def provide_visual_inspiration(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Provide visual inspiration and creative direction"""
+        context = task.get('context', 'general')
+        mood = task.get('mood', 'neutral')
         
-        for asset in design.get('assets', []):
-            asset_entry = {
-                'asset_name': asset,
-                'design_id': design['design_id'],
-                'type': 'visual',
-                'status': 'generated'
-            }
-            self.visual_assets[task_id].append(asset_entry)
-    
-    async def handle_visual_inspiration(self, message: AgentMessage):
-        """Handle visual inspiration requests"""
-        inspiration_type = message.payload.get('type', 'general')
-        task_id = message.payload.get('task_id')
+        # Mock visual inspiration
+        inspiration_id = f"inspiration_{task.get('task_id', 'unknown')}"
         
-        logger.info(f"Glyph providing visual inspiration: {inspiration_type}")
-        
-        # Generate inspiration
-        inspiration = {
-            'type': inspiration_type,
-            'sources': ['modern_art', 'nature', 'architecture'],
-            'styles': ['minimalist', 'brutalist', 'organic'],
-            'color_palettes': [
-                {'name': 'ocean', 'colors': ['#0066CC', '#0099FF', '#66CCFF']},
-                {'name': 'earth', 'colors': ['#8B4513', '#D2691E', '#F4A460']}
+        result = {
+            "inspiration_id": inspiration_id,
+            "context": context,
+            "mood": mood,
+            "visual_direction": {
+                "primary_colors": ["#E8F4FD", "#B8E6B8", "#FFEAA7"],
+                "secondary_colors": ["#DDA0DD", "#98D8C8", "#F7DC6F"],
+                "typography_style": "clean_modern",
+                "layout_approach": "grid_based",
+                "visual_metaphors": ["growth", "connection", "innovation"]
+            },
+            "creative_prompts": [
+                "Think outside the box while maintaining usability",
+                "Create visual stories that resonate emotionally",
+                "Balance creativity with functional design"
             ],
-            'recommendations': ['Focus on clean lines', 'Use natural materials']
-        }
-        
-        await self.send_message(
-            message.sender,
-            "visual_inspiration_response",
-            {
-                'task_id': task_id,
-                'inspiration': inspiration,
-                'designer': 'Glyph'
-            }
-        )
-    
-    async def handle_design_request(self, message: AgentMessage):
-        """Handle design requests"""
-        design_type = message.payload.get('design_type', 'general')
-        task_id = message.payload.get('task_id')
-        
-        logger.info(f"Glyph handling design request: {design_type}")
-        
-        # Create design
-        design = {
-            'type': design_type,
-            'concept': f"Modern {design_type} design",
-            'elements': ['clean_layout', 'bold_typography', 'subtle_animations'],
-            'deliverables': [
-                f"{design_type}_mockup.png",
-                f"{design_type}_style_guide.pdf",
-                f"{design_type}_assets.zip"
+            "reference_styles": [
+                "Scandinavian minimalism",
+                "Japanese wabi-sabi",
+                "Swiss design principles"
             ]
         }
         
-        await self.send_message(
-            message.sender,
-            "design_response",
-            {
-                'task_id': task_id,
-                'design': design,
-                'designer': 'Glyph'
-            }
-        )
+        self.inspiration_library[inspiration_id] = result
+        logger.info(f"Glyph provided visual inspiration: {inspiration_id}")
+        return result
     
-    async def handle_creative_collaboration(self, message: AgentMessage):
-        """Handle creative collaboration requests"""
-        collaboration_type = message.payload.get('type', 'brainstorming')
-        task_id = message.payload.get('task_id')
+    async def review_design(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Review and provide feedback on designs"""
+        design_data = task.get('design_data', {})
+        review_criteria = task.get('criteria', ['aesthetics', 'usability', 'brand_consistency'])
         
-        logger.info(f"Glyph handling creative collaboration: {collaboration_type}")
+        # Mock design review
+        review_id = f"review_{task.get('task_id', 'unknown')}"
         
-        # Generate collaboration response
-        collaboration = {
-            'type': collaboration_type,
-            'ideas': [
-                'Interactive user experience',
-                'Gamification elements',
-                'Personalization features'
-            ],
-            'mood_board': 'collaborative_creative_mood.png',
-            'next_steps': ['Refine concepts', 'Create prototypes', 'Gather feedback']
+        result = {
+            "review_id": review_id,
+            "design_data": design_data,
+            "criteria": review_criteria,
+            "scores": {
+                "aesthetics": 0.88,
+                "usability": 0.92,
+                "brand_consistency": 0.85,
+                "innovation": 0.79,
+                "overall": 0.86
+            },
+            "feedback": {
+                "strengths": [
+                    "Strong visual hierarchy",
+                    "Excellent color harmony",
+                    "Clear user flow"
+                ],
+                "improvements": [
+                    "Consider adding more visual interest",
+                    "Enhance accessibility features",
+                    "Strengthen brand personality"
+                ]
+            },
+            "recommendations": [
+                "Add subtle animations for engagement",
+                "Consider responsive design patterns",
+                "Implement design system consistency"
+            ]
         }
         
-        await self.send_message(
-            message.sender,
-            "creative_collaboration_response",
-            {
-                'task_id': task_id,
-                'collaboration': collaboration,
-                'collaborator': 'Glyph'
-            }
-        )
+        logger.info(f"Glyph completed design review: {review_id}")
+        return result
+    
+    async def handle_generic_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle generic creative tasks"""
+        task_description = task.get('description', 'No description provided')
+        
+        result = {
+            "task_id": task.get('task_id', 'unknown'),
+            "status": "completed",
+            "creative_approach": "iterative_synthesis",
+            "output": f"Creative solution for: {task_description}",
+            "visual_elements": {
+                "style": "adaptive",
+                "mood": "inspiring",
+                "approach": "human_centered"
+            },
+            "notes": "Applied creative thinking principles with iterative refinement"
+        }
+        
+        logger.info(f"Glyph handled generic creative task: {task.get('task_id', 'unknown')}")
+        return result
+    
+    async def handle_message(self, message):
+        """Handle incoming messages with creative perspective"""
+        if message.message_type == "creative_request":
+            await self.creative_queue.put(message)
+            logger.info(f"Glyph received creative request from {message.sender}")
+        elif message.message_type == "design_feedback":
+            logger.info(f"Glyph received design feedback from {message.sender}")
+        else:
+            logger.info(f"Glyph received message from {message.sender}: {message.content}")
 
 async def main():
     """Main entry point for Glyph agent"""

@@ -174,8 +174,9 @@ class HealthChecker:
                 {"agent": "Data", "role": "Analytics", "status": "offline", "version": "1.0.0", "tps": 0},
                 {"agent": "EVE", "role": "QA & Security", "status": "offline", "version": "1.0.0", "tps": 0},
                 {"agent": "Quark", "role": "Finance & Ops", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "Glyph", "role": "Creative Design", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "Og", "role": "R&D & Curation", "status": "offline", "version": "1.0.0", "tps": 0}
+                {"agent": "HAL", "role": "Monitoring", "status": "offline", "version": "1.0.0", "tps": 0},
+                {"agent": "Og", "role": "R&D & Curation", "status": "offline", "version": "1.0.0", "tps": 0},
+                {"agent": "Glyph", "role": "Creative Design", "status": "offline", "version": "1.0.0", "tps": 0}
             ]
     
     def _get_agent_role(self, agent_name: str) -> str:
@@ -188,8 +189,9 @@ class HealthChecker:
             "Data": "Analytics",
             "EVE": "QA & Security",
             "Quark": "Finance & Ops",
-            "Glyph": "Creative Design",
-            "Og": "R&D & Curation"
+            "HAL": "Monitoring",
+            "Og": "R&D & Curation",
+            "Glyph": "Creative Design"
         }
         return roles.get(agent_name, "Unknown")
 
@@ -233,6 +235,17 @@ async def health_dashboard():
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
         <meta http-equiv="refresh" content="60">
+        <style>
+            .table th, .table td {{
+                white-space: nowrap;
+                padding: 8px 12px;
+            }}
+            .table th:nth-child(1), .table td:nth-child(1) {{ width: 20%; }}
+            .table th:nth-child(2), .table td:nth-child(2) {{ width: 20%; }}
+            .table th:nth-child(3), .table td:nth-child(3) {{ width: 15%; }}
+            .table th:nth-child(4), .table td:nth-child(4) {{ width: 15%; }}
+            .table th:nth-child(5), .table td:nth-child(5) {{ width: 30%; }}
+        </style>
     </head>
     <body>
         <div class="container mt-4">
@@ -240,7 +253,7 @@ async def health_dashboard():
             <p class="text-muted">Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
             
             <div class="row">
-                <div class="col-md-6">
+                <div class="col-12">
                     <h2>Infrastructure Status</h2>
                     <div class="table-responsive">
                         <table class="table table-striped">
@@ -275,8 +288,10 @@ async def health_dashboard():
                         </table>
                     </div>
                 </div>
-                
-                <div class="col-md-6">
+            </div>
+            
+            <div class="row mt-4">
+                <div class="col-12">
                     <h2>Agent Status</h2>
                     <div class="table-responsive">
                         <table class="table table-striped">
