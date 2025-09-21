@@ -18,7 +18,7 @@
 
 ---
 
-## 🤖 **The 9-Agent Squad Architecture**
+## 🤖 **The 10-Agent Squad Architecture**
 
 | Agent | Reasoning Style | Memory Structure | Task Model | Local Model | Premium Consultation |
 |-------|-----------------|-----------------|------------|-------------|---------------------|
@@ -262,6 +262,9 @@
 - ✅ **Implemented Heartbeat:** 30-second periodic status updates to health monitoring
 - ✅ **Improved UI:** Fixed table layout, no text wrapping, vertical stacking
 - ✅ **Agent Identity:** Each agent uses individual Dockerfile and Python implementation
+- ✅ **Version Management System:** Centralized agent versioning with CLI tools for rollbacks
+- ✅ **Agent Folder Structure:** Clean organization with individual agent directories
+- ✅ **Code Deduplication:** Eliminated duplicate base_agent.py files across agents
 
 ---
 

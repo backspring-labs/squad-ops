@@ -64,6 +64,27 @@ You should see:
 - **Heartbeat Monitoring** - Agents report status every 30 seconds
 - **Status Consistency** - All services show "online" with green checkmarks
 
+### Version Management
+- **Centralized Configuration** - All agent versions managed in `config/version.py`
+- **CLI Tools** - Use `python version_cli.py` for version management
+- **Agent-Specific Configs** - Each agent has its own configuration in `agents/<agent>/config.py`
+- **Rollback Capability** - Easy rollback to previous agent versions if needed
+
+#### Version Management Commands:
+```bash
+# List all agent versions
+python version_cli.py list
+
+# Show specific agent details
+python version_cli.py show Max
+
+# Update agent version (example)
+python version_cli.py update Neo 1.1.0 gpt-4 deductive-v2 "Testing GPT-4"
+
+# Rollback to previous version
+python version_cli.py rollback Neo 1.0.0
+```
+
 ## Troubleshooting
 
 ### If containers fail to start:

@@ -16,12 +16,13 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 ---
 
 ## 🧩 Core Components
-- **Agent Containers** – Specialized reasoning agents (Neo, Max, Nat, Joi, etc.)
+- **10-Agent Squad** – Specialized reasoning agents (Max, Neo, Nat, Joi, Data, EVE, HAL, Quark, Og, Glyph)
 - **SquadNet** – Networking mesh for inter-agent communication
 - **SquadComms** – Messaging bus (RabbitMQ) for task delegation & status updates
 - **Prefect** – Task orchestration and state management
 - **Postgres** – Central store for logs, metrics, and governance data
-- **SOC (SquadOps Console)** – Dashboard for monitoring agents, tasks, and health
+- **Health Dashboard** – Web interface for monitoring agents, tasks, and health
+- **Version Management** – Centralized agent versioning with CLI tools for rollbacks
 
 ---
 
@@ -40,12 +41,19 @@ All protocols live under `/docs/`.
 
 ## 🏗️ Repo Structure
 ```
-/agents/              # Agent container configs & code
-/infra/               # Infra services: RabbitMQ, Postgres, Prefect
+/agents/              # Agent implementations & shared base class
+├── base_agent.py     # Shared base class for all agents
+├── max/              # Individual agent folders
+│   ├── max.py        # Agent-specific implementation
+│   ├── config.py     # Agent-specific configuration
+│   ├── requirements.txt
+│   └── Dockerfile
+└── ... (same for all 10 agents)
+/infra/               # Infrastructure services: RabbitMQ, Postgres, Prefect
+/config/              # Centralized version management
 /docs/                # Protocols, governance, PIDs
-/warmboot_runs/       # Logs & metrics from warmboot runs
-/optimizations/       # Improvements & tuning logs
 docker-compose.yml    # Multi-container setup
+version_cli.py        # Version management CLI tool
 README.md             # Project overview (this file)
 ```
 
@@ -76,8 +84,14 @@ README.md             # Project overview (this file)
 ---
 
 ## ✅ Status
-This repo is currently in **bootstrap mode**.  
-Core infra + HelloSquad reference app will validate the first WarmBoot run.
+This repo is currently **fully operational** with:
+- ✅ **10-Agent Squad** deployed and healthy
+- ✅ **Infrastructure Services** running (RabbitMQ, PostgreSQL, Redis, Prefect)
+- ✅ **Health Dashboard** monitoring all components
+- ✅ **Version Management** system with CLI tools
+- ✅ **Heartbeat Monitoring** for real-time status tracking
+
+Ready for **Agent Coordination & Task Execution** phase.
 
 ---
 
