@@ -94,9 +94,7 @@ services:
   max:
     build:
       context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: max
+      dockerfile: Dockerfile.max
     container_name: squadops-max
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -115,9 +113,7 @@ services:
   neo:
     build:
       context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: neo
+      dockerfile: Dockerfile.neo
     container_name: squadops-neo
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -136,9 +132,7 @@ services:
   nat:
     build:
       context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: nat
+      dockerfile: Dockerfile.neo
     container_name: squadops-nat
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -157,9 +151,7 @@ services:
   joi:
     build:
       context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: joi
+      dockerfile: Dockerfile.neo
     container_name: squadops-joi
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -178,9 +170,7 @@ services:
   data:
     build:
       context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: data
+      dockerfile: Dockerfile.neo
     container_name: squadops-data
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -199,9 +189,7 @@ services:
   eve:
     build:
       context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: eve
+      dockerfile: Dockerfile.neo
     container_name: squadops-eve
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -220,9 +208,7 @@ services:
   hal:
     build:
       context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: hal
+      dockerfile: Dockerfile.neo
     container_name: squadops-hal
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -241,9 +227,7 @@ services:
   quark:
     build:
       context: ./agents
-      dockerfile: Dockerfile.template
-      args:
-        AGENT_NAME: quark
+      dockerfile: Dockerfile.neo
     container_name: squadops-quark
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
