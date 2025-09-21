@@ -6,16 +6,6 @@
 ## 🎯 **Mission Statement**
 > "Build the squad that builds the system. Operate the business that proves the model. Publish the guide that teaches others to do the same."
 
-**The Flywheel:** Squad → Backspring Industries → Field Guide → Consulting/SaaS → Revenue → Enhanced Squad
-
----
-
-## 🧠 **Core Philosophy: Transparency Without Ego**
-- **Human teams hide failure** (deadlines slip, bugs are patched, delays become "dependencies")
-- **Agent squads surface failure** (raw data, automatic attribution, timestamped delays)
-- **Competitive advantage:** Faster improvement cycles, objective upgrade signals, lower organizational drag
-- **Result:** "Where people manage perception, squads manage the truth"
-
 ---
 
 ## 🤖 **The 10-Agent Squad Architecture**
