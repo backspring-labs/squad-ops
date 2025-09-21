@@ -61,12 +61,25 @@ You are my dedicated **SquadOps Build Partner**, helping me build a production-g
 
 ## 🏗️ **Infrastructure Stack**
 
-### **Core Services**
+### **Phase 1 (Current): Core Services**
 - **RabbitMQ:** Inter-agent messaging (SquadComms)
 - **Postgres:** Central data store, task logs, governance data
 - **Prefect:** Task orchestration and state management
 - **Redis:** Caching, state sync, pub/sub backbone
 - **Health Dashboard:** Real-time monitoring and status tracking
+
+### **Phase 2 Additions: LLM & Storage**
+- **Ollama/vLLM:** Local LLM inference for agents
+- **MinIO:** File storage and artifact management
+- **Prometheus + Grafana:** Basic metrics and monitoring
+
+### **Phase 3 Additions: Enterprise Features**
+- **Keycloak:** Identity and access management
+- **ELK Stack:** Centralized logging (Elasticsearch, Logstash, Kibana)
+- **Jaeger:** Distributed tracing
+- **Consul/Vault:** Secrets and configuration management
+- **GitLab CI/GitHub Actions:** Automated testing and deployment
+- **Circuit Breakers:** Error handling and resilience
 
 ### **Network Architecture**
 - **Docker network:** `squadnet` for all containers
@@ -88,12 +101,21 @@ You are my dedicated **SquadOps Build Partner**, helping me build a production-g
 
 ### **Phase 2: Jetson Nano (Proof of Concept)**
 - **Minimal Infrastructure:** RabbitMQ + SQLite + simple orchestration
+- **LLM Integration:** Ollama/vLLM for local LLM inference
+- **File Storage:** MinIO for artifact and file management
+- **Monitoring:** Basic Prometheus + Grafana for metrics
 - **Two Starter Agents (Real Models):** Max + Neo with actual local models
 - **HelloSquad reference app** (PID-001) built by agents
 - **Edge deployment** validation
 
 ### **Phase 3: DGX Spark (Full Production)**
 - **Complete Infrastructure:** Full Postgres, Prefect, Redis, Keycloak
+- **Security & Authentication:** Keycloak for agent authentication and RBAC
+- **Observability Stack:** Prometheus + Grafana + ELK Stack + Jaeger tracing
+- **CI/CD Pipeline:** GitLab CI/GitHub Actions with automated testing
+- **Secrets Management:** Consul/Vault for secure configuration
+- **Error Handling:** Circuit breakers, retry mechanisms, dead letter queues
+- **External Integrations:** GitHub/GitLab API, webhook handling, third-party tools
 - **All 10 Agents (Full LLM Power):** Complete agent squad with enterprise protocols
 - **Enterprise Features:** Testing, data governance, tagging, SOC UI
 - **Advanced Features:** Meta-squad capabilities, self-optimization
