@@ -8,12 +8,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
+COPY agents/nat/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
-COPY base_agent.py .
-COPY data.py .
+COPY agents/nat/base_agent.py .
+COPY agents/nat/nat.py .
 
 # Create logs directory
 RUN mkdir -p /app/logs
@@ -26,4 +26,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "print('Agent healthy')" || exit 1
 
 # Run the agent
-CMD ["python", "data.py"]
+CMD ["python", "nat.py"]

@@ -8,12 +8,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
+COPY agents/og/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
-COPY base_agent.py .
-COPY neo.py .
+COPY agents/og/base_agent.py .
+COPY agents/og/og.py .
 
 # Create logs directory
 RUN mkdir -p /app/logs
@@ -26,4 +26,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "print('Agent healthy')" || exit 1
 
 # Run the agent
-CMD ["python", "neo.py"]
+CMD ["python", "og.py"]

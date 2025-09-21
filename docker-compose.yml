@@ -94,8 +94,8 @@ services:
   # SquadOps Agents
   max:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.max
+      context: .
+      dockerfile: agents/max/Dockerfile
     container_name: squadops-max
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -113,8 +113,8 @@ services:
 
   neo:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.neo
+      context: .
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-neo
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -132,8 +132,8 @@ services:
 
   nat:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.nat
+      context: .
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-nat
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -151,8 +151,8 @@ services:
 
   joi:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.joi
+      context: .
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-joi
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -170,8 +170,8 @@ services:
 
   data:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.data
+      context: .
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-data
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -189,8 +189,8 @@ services:
 
   eve:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.eve
+      context: .
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-eve
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -208,8 +208,8 @@ services:
 
   hal:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.hal
+      context: .
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-hal
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -227,8 +227,8 @@ services:
 
   quark:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.quark
+      context: .
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-quark
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -246,8 +246,8 @@ services:
 
   og:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.og
+      context: .
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-og
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -265,8 +265,8 @@ services:
 
   glyph:
     build:
-      context: ./agents
-      dockerfile: Dockerfile.glyph
+      context: .
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-glyph
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
@@ -286,7 +286,7 @@ services:
   health-check:
     build:
       context: ./infra/health-check
-      dockerfile: Dockerfile
+      dockerfile: agents/neo/Dockerfile
     container_name: squadops-health-check
     ports:
       - "8000:8000"
