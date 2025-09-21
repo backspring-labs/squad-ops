@@ -28,6 +28,16 @@ CREATE TABLE IF NOT EXISTS agent_status (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Task Status Table
+CREATE TABLE IF NOT EXISTS task_status (
+    task_id TEXT PRIMARY KEY,
+    agent_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress FLOAT DEFAULT 0.0,
+    eta TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- SquadComms Messages Table
 CREATE TABLE IF NOT EXISTS squadcomms_messages (
     id SERIAL PRIMARY KEY,
