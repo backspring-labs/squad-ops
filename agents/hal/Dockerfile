@@ -12,7 +12,7 @@ COPY agents/hal/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
-COPY agents/hal/base_agent.py .
+COPY agents/base_agent.py .
 COPY agents/hal/hal.py .
 
 # Create logs directory

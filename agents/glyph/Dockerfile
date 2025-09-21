@@ -12,7 +12,7 @@ COPY agents/glyph/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
-COPY agents/glyph/base_agent.py .
+COPY agents/base_agent.py .
 COPY agents/glyph/glyph.py .
 
 # Create logs directory

@@ -12,7 +12,7 @@ COPY agents/og/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
-COPY agents/og/base_agent.py .
+COPY agents/base_agent.py .
 COPY agents/og/og.py .
 
 # Create logs directory

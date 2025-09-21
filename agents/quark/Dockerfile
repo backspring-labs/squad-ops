@@ -12,7 +12,7 @@ COPY agents/quark/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
-COPY agents/quark/base_agent.py .
+COPY agents/base_agent.py .
 COPY agents/quark/quark.py .
 
 # Create logs directory

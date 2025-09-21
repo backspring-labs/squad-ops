@@ -12,7 +12,7 @@ COPY agents/eve/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
-COPY agents/eve/base_agent.py .
+COPY agents/base_agent.py .
 COPY agents/eve/eve.py .
 
 # Create logs directory

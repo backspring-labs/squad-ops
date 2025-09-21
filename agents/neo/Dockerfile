@@ -12,7 +12,7 @@ COPY agents/neo/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
-COPY agents/neo/base_agent.py .
+COPY agents/base_agent.py .
 COPY agents/neo/neo.py .
 
 # Create logs directory
