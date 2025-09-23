@@ -9,8 +9,11 @@ import json
 from datetime import datetime
 from typing import List, Dict, Any
 import os
+import sys
+sys.path.append('/Users/jladd/Code/squad-ops')
+from config.version import FRAMEWORK_VERSION, AGENT_VERSIONS, get_agent_version
 
-app = FastAPI(title="SquadOps Health Check Service", version="1.0.0")
+app = FastAPI(title="SquadOps Health Check Service", version=FRAMEWORK_VERSION)
 
 # Configuration
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://squadops:squadops123@rabbitmq:5672/")
@@ -37,13 +40,45 @@ class HealthChecker:
             connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
             channel = connection.channel()
             queue_info = channel.queue_declare(queue='health_check', durable=False, auto_delete=True)
+            
+            # Try to get RabbitMQ version from management API
+            version = "Unknown"
+            try:
+                # RabbitMQ management API endpoint for version info
+                import urllib.request
+                import json
+                import base64
+                
+                # Extract credentials from RABBITMQ_URL
+                url_parts = RABBITMQ_URL.replace("amqp://", "").split("@")
+                if len(url_parts) == 2:
+                    creds = url_parts[0]
+                    host_port = url_parts[1].split("/")[0]
+                    mgmt_url = f"http://{host_port.replace(':5672', ':15672')}/api/overview"
+                    
+                    # Create basic auth header
+                    auth_string = base64.b64encode(creds.encode()).decode()
+                    headers = {'Authorization': f'Basic {auth_string}'}
+                    
+                    req = urllib.request.Request(mgmt_url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        data = json.loads(response.read().decode())
+                        version = data.get('rabbitmq_version', 'Unknown')
+            except:
+                # Fallback: try to get version from connection properties
+                try:
+                    props = connection.server_properties
+                    version = props.get('version', 'Unknown')
+                except:
+                    pass
+            
             connection.close()
             
             return {
                 "component": "RabbitMQ",
                 "type": "Message Broker",
                 "status": "online",
-                "version": "3.12.11",
+                "version": version,
                 "purpose": "Handles inter-agent communication",
                 "notes": f"{queue_info.method.message_count} messages in queue"
             }
@@ -52,7 +87,7 @@ class HealthChecker:
                 "component": "RabbitMQ",
                 "type": "Message Broker",
                 "status": "offline",
-                "version": "3.12.11",
+                "version": "Unknown",
                 "purpose": "Handles inter-agent communication",
                 "notes": f"Error: {str(e)}"
             }
@@ -64,14 +99,23 @@ class HealthChecker:
                 await self.init_connections()
             
             async with self.pg_pool.acquire() as conn:
-                result = await conn.fetchval("SELECT version()")
+                version_result = await conn.fetchval("SELECT version()")
                 count = await conn.fetchval("SELECT COUNT(*) FROM agent_status")
+                
+                # Extract version number from PostgreSQL version string
+                version = "Unknown"
+                if version_result:
+                    # PostgreSQL version string format: "PostgreSQL 15.3 on x86_64-pc-linux-gnu..."
+                    import re
+                    match = re.search(r'PostgreSQL (\d+\.\d+)', version_result)
+                    if match:
+                        version = match.group(1)
                 
             return {
                 "component": "PostgreSQL",
                 "type": "Relational DB",
                 "status": "online",
-                "version": "15.3",
+                "version": version,
                 "purpose": "Persistent data and logs",
                 "notes": f"{count} agents registered"
             }
@@ -80,7 +124,7 @@ class HealthChecker:
                 "component": "PostgreSQL",
                 "type": "Relational DB",
                 "status": "offline",
-                "version": "15.3",
+                "version": "Unknown",
                 "purpose": "Persistent data and logs",
                 "notes": f"Error: {str(e)}"
             }
@@ -98,7 +142,7 @@ class HealthChecker:
                 "component": "Redis",
                 "type": "Cache & Pub/Sub",
                 "status": "online",
-                "version": "7.0",
+                "version": info.get('redis_version', 'Unknown'),
                 "purpose": "Caching, state sync, pub/sub backbone",
                 "notes": f"Memory used: {info.get('used_memory_human', 'Unknown')}"
             }
@@ -107,7 +151,7 @@ class HealthChecker:
                 "component": "Redis",
                 "type": "Cache & Pub/Sub",
                 "status": "offline",
-                "version": "7.0",
+                "version": "Unknown",
                 "purpose": "Caching, state sync, pub/sub backbone",
                 "notes": f"Error: {str(e)}"
             }
@@ -116,13 +160,26 @@ class HealthChecker:
         """Check Prefect health"""
         try:
             async with aiohttp.ClientSession() as session:
+                # First check health
                 async with session.get(f"{PREFECT_URL}/health") as response:
                     if response.status == 200:
+                        # Try to get version from version endpoint
+                        version = "Unknown"
+                        try:
+                            version_url = f"{PREFECT_URL}/version"
+                            async with session.get(version_url) as version_response:
+                                if version_response.status == 200:
+                                    version_text = await version_response.text()
+                                    # Remove quotes if present
+                                    version = version_text.strip('"')
+                        except:
+                            pass
+                        
                         return {
                             "component": "Prefect Server",
                             "type": "Orchestration Engine",
                             "status": "online",
-                            "version": "2.14.0",
+                            "version": version,
                             "purpose": "Task orchestration and state management",
                             "notes": "API responding"
                         }
@@ -133,7 +190,7 @@ class HealthChecker:
                 "component": "Prefect Server",
                 "type": "Orchestration Engine",
                 "status": "offline",
-                "version": "2.14.0",
+                "version": "Unknown",
                 "purpose": "Task orchestration and state management",
                 "notes": f"Error: {str(e)}"
             }
@@ -165,18 +222,18 @@ class HealthChecker:
             
             return agents
         except Exception as e:
-            # Return mock data if database is unavailable
+            # Return mock data if database is unavailable - use config versions as fallback
             return [
-                {"agent": "Max", "role": "Task Lead", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "Neo", "role": "Developer", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "Nat", "role": "Product Strategy", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "Joi", "role": "Communications", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "Data", "role": "Analytics", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "EVE", "role": "QA & Security", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "Quark", "role": "Finance & Ops", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "HAL", "role": "Monitoring", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "Og", "role": "R&D & Curation", "status": "offline", "version": "1.0.0", "tps": 0},
-                {"agent": "Glyph", "role": "Creative Design", "status": "offline", "version": "1.0.0", "tps": 0}
+                {"agent": "Max", "role": "Task Lead", "status": "offline", "version": get_agent_version("max"), "tps": 0},
+                {"agent": "Neo", "role": "Developer", "status": "offline", "version": get_agent_version("neo"), "tps": 0},
+                {"agent": "Nat", "role": "Product Strategy", "status": "offline", "version": get_agent_version("nat"), "tps": 0},
+                {"agent": "Joi", "role": "Communications", "status": "offline", "version": get_agent_version("joi"), "tps": 0},
+                {"agent": "Data", "role": "Analytics", "status": "offline", "version": get_agent_version("data"), "tps": 0},
+                {"agent": "EVE", "role": "QA & Security", "status": "offline", "version": get_agent_version("eve"), "tps": 0},
+                {"agent": "Quark", "role": "Finance & Ops", "status": "offline", "version": get_agent_version("quark"), "tps": 0},
+                {"agent": "HAL", "role": "Monitoring", "status": "offline", "version": get_agent_version("hal"), "tps": 0},
+                {"agent": "Og", "role": "R&D & Curation", "status": "offline", "version": get_agent_version("og"), "tps": 0},
+                {"agent": "Glyph", "role": "Creative Design", "status": "offline", "version": get_agent_version("glyph"), "tps": 0}
             ]
     
     def _get_agent_role(self, agent_name: str) -> str:
@@ -342,7 +399,7 @@ async def health_dashboard():
 
 @app.get("/")
 async def root():
-    return {"message": "SquadOps Health Check Service", "version": "1.0.0"}
+    return {"message": "SquadOps Health Check Service", "version": FRAMEWORK_VERSION}
 
 if __name__ == "__main__":
     import uvicorn

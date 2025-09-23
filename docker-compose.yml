@@ -285,8 +285,8 @@ services:
   # Health Check Service
   health-check:
     build:
-      context: ./infra/health-check
-      dockerfile: agents/neo/Dockerfile
+      context: .
+      dockerfile: infra/health-check/Dockerfile
     container_name: squadops-health-check
     ports:
       - "8000:8000"

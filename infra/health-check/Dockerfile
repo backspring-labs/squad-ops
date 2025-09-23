@@ -16,8 +16,9 @@ RUN pip install --no-cache-dir \
     pika==1.3.2 \
     aiohttp==3.9.1
 
-# Copy application code
-COPY main.py .
+# Copy application code and config
+COPY infra/health-check/main.py .
+COPY config ./config
 
 # Expose port
 EXPOSE 8000
