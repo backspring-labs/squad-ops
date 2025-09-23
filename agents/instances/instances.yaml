@@ -1,0 +1,98 @@
+# SquadOps Agent Instances Configuration
+# This file defines all agent instances and their role mappings
+
+instances:
+  # Lead Role
+  - id: max
+    display_name: Max
+    role: lead
+    model: llama3-8b
+    enabled: true
+    description: "Task Lead - Governance and coordination"
+
+  # Strategy Role  
+  - id: nat
+    display_name: Nat
+    role: strat
+    model: mixtral-8x7b
+    enabled: true
+    description: "Product Strategy - Abductive reasoning"
+
+  # Creative Role
+  - id: glyph
+    display_name: Glyph
+    role: creative
+    model: stable-diffusion-xl
+    enabled: true
+    description: "Creative Design - Visual synthesis"
+
+  # Development Role
+  - id: neo
+    display_name: Neo
+    role: dev
+    model: codellama-70b
+    enabled: true
+    description: "Developer - Deductive reasoning"
+
+  # QA Role
+  - id: eve
+    display_name: EVE
+    role: qa
+    model: llama3-70b
+    enabled: true
+    description: "QA & Security - Counterfactual reasoning"
+
+  # Data Role
+  - id: data
+    display_name: Data
+    role: data
+    model: mixtral-8x7b
+    enabled: true
+    description: "Analytics - Inductive reasoning"
+
+  # Finance Role
+  - id: quark
+    display_name: Quark
+    role: finance
+    model: llama3-8b
+    enabled: true
+    description: "Finance & Ops - Rule-based reasoning"
+
+  # Communications Role
+  - id: joi
+    display_name: Joi
+    role: comms
+    model: llama3-8b
+    enabled: true
+    description: "Communications - Empathetic reasoning"
+
+  # Curation Role
+  - id: og
+    display_name: Og
+    role: curator
+    model: llama3-70b
+    enabled: true
+    description: "R&D & Curation - Pattern detection"
+
+  # Audit Role
+  - id: hal
+    display_name: HAL
+    role: audit
+    model: llama3-8b
+    enabled: true
+    description: "Monitoring & Audit - Continuous monitoring"
+
+# Future multi-agent support examples (disabled):
+# - id: alex
+#   display_name: Alex
+#   role: lead
+#   model: llama3-70b
+#   enabled: false
+#   description: "Backup Lead - Alternative governance model"
+#
+# - id: sarah
+#   display_name: Sarah
+#   role: dev
+#   model: codellama-70b
+#   enabled: false
+#   description: "Senior Developer - Advanced coding tasks"
