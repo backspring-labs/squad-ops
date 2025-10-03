@@ -1,7 +1,7 @@
-# EVE Agent Configuration
-# Qa Security Agent
+# Qa Role Configuration
+# Qa Role
 
-AGENT_NAME = "EVE"
+ROLE_TYPE = "qa"
 AGENT_TYPE = "qa_security"
 REASONING_STYLE = "counterfactual"
 

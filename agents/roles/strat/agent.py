@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-Nat - Abductive Reasoning Agent
-Reasoning Style: Abductive
-Memory Structure: Prioritized queue
-Task Model: Opportunistic
-Local Model: Mixtral 8x7B (mocked)
-Premium Consultation: Product strategy
-"""
+"""Strat Agent - Strat Role"""
 
 import asyncio
 import json
@@ -18,12 +11,12 @@ import heapq
 
 logger = logging.getLogger(__name__)
 
-class NatAgent(BaseAgent):
-    """Nat - The Abductive Reasoning Agent"""
+class StratAgent(BaseAgent):
+    """Strat Agent - Strat Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="Nat",
+            name=identity,
             agent_type="product",
             reasoning_style="abductive"
         )
@@ -219,8 +212,10 @@ class NatAgent(BaseAgent):
         )
 
 async def main():
-    """Main entry point for Nat agent"""
-    agent = NatAgent()
+    """Main entry point for Strat agent"""
+    import os
+    identity = os.getenv('AGENT_ID', 'strat_agent')
+    agent = StratAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

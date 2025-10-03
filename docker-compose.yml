@@ -1,104 +1,127 @@
+version: '3.8'
 services:
-  # Core Infrastructure Services
   rabbitmq:
     image: rabbitmq:3.12-management
     container_name: squadops-rabbitmq
     ports:
-      - "5672:5672"    # AMQP port
-      - "15672:15672"  # Management UI
+    - 5672:5672
+    - 15672:15672
     environment:
       RABBITMQ_DEFAULT_USER: squadops
       RABBITMQ_DEFAULT_PASS: squadops123
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+    - rabbitmq_data:/var/lib/rabbitmq
     networks:
-      - squadnet
+    - squadnet
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      test:
+      - CMD
+      - rabbitmq-diagnostics
+      - ping
       interval: 30s
       timeout: 10s
       retries: 5
-
   postgres:
     image: postgres:15
     container_name: squadops-postgres
     ports:
-      - "5432:5432"
+    - 5432:5432
     environment:
       POSTGRES_DB: squadops
       POSTGRES_USER: squadops
       POSTGRES_PASSWORD: squadops123
-    command: ["postgres", "-c", "max_connections=200"]
+    command:
+    - postgres
+    - -c
+    - max_connections=200
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql
+    - postgres_data:/var/lib/postgresql/data
+    - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - squadnet
+    - squadnet
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U squadops -d squadops"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U squadops -d squadops
       interval: 30s
       timeout: 10s
       retries: 5
-
   redis:
     image: redis:7-alpine
     container_name: squadops-redis
     ports:
-      - "6379:6379"
+    - 6379:6379
     volumes:
-      - redis_data:/data
+    - redis_data:/data
     networks:
-      - squadnet
+    - squadnet
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+      - CMD
+      - redis-cli
+      - ping
       interval: 30s
       timeout: 10s
       retries: 5
-
   prefect-server:
     image: prefecthq/prefect:2.14-python3.11
     container_name: squadops-prefect-server
     ports:
-      - "4200:4200"
+    - 4200:4200
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
       PREFECT_SERVER_API_HOST: 0.0.0.0
-      PREFECT_SERVER_API_PORT: 4200
+      PREFECT_SERVER_API_PORT: '4200'
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://squadops:squadops123@postgres:5432/squadops
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - squadnet
-    command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"]
+    - squadnet
+    command:
+    - prefect
+    - server
+    - start
+    - --host
+    - 0.0.0.0
+    - --port
+    - '4200'
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')
       interval: 30s
       timeout: 10s
       retries: 5
-
   prefect-ui:
     image: prefecthq/prefect:2.14-python3.11
     container_name: squadops-prefect-ui
     ports:
-      - "4201:4201"
+    - 4201:4201
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
     depends_on:
       prefect-server:
         condition: service_healthy
     networks:
-      - squadnet
-    command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4201"]
-
-  # Health Check Service
+    - squadnet
+    command:
+    - prefect
+    - server
+    - start
+    - --host
+    - 0.0.0.0
+    - --port
+    - '4201'
   health-check:
     build:
       context: .
       dockerfile: infra/health-check/Dockerfile
     container_name: squadops-health-check
     ports:
-      - "8000:8000"
+    - 8000:8000
     environment:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
@@ -114,23 +137,19 @@ services:
       prefect-server:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # SquadOps Agents - Role-Based Structure
-  # These services are dynamically instantiated based on instances.yaml
-  # Each agent service uses environment variables for configuration
-  
-  # Lead Role Agents
+    - squadnet
   max:
     build:
       context: .
       dockerfile: agents/roles/lead/Dockerfile
+      args:
+        AGENT_ROLE: lead
     container_name: squadops-max
     environment:
       AGENT_ID: max
-      ROLE: lead
-      DISPLAY_NAME: Max
-      MODEL: llama3-8b
+      AGENT_ROLE: lead
+      AGENT_DISPLAY_NAME: Max
+      AGENT_MODEL: llama3-8b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -142,19 +161,19 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # Strategy Role Agents
+    - squadnet
   nat:
     build:
       context: .
       dockerfile: agents/roles/strat/Dockerfile
+      args:
+        AGENT_ROLE: strat
     container_name: squadops-nat
     environment:
       AGENT_ID: nat
-      ROLE: strat
-      DISPLAY_NAME: Nat
-      MODEL: mixtral-8x7b
+      AGENT_ROLE: strat
+      AGENT_DISPLAY_NAME: Nat
+      AGENT_MODEL: mixtral-8x7b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -166,19 +185,19 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # Creative Role Agents
+    - squadnet
   glyph:
     build:
       context: .
       dockerfile: agents/roles/creative/Dockerfile
+      args:
+        AGENT_ROLE: creative
     container_name: squadops-glyph
     environment:
       AGENT_ID: glyph
-      ROLE: creative
-      DISPLAY_NAME: Glyph
-      MODEL: stable-diffusion-xl
+      AGENT_ROLE: creative
+      AGENT_DISPLAY_NAME: Glyph
+      AGENT_MODEL: stable-diffusion-xl
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -190,19 +209,19 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # Development Role Agents
+    - squadnet
   neo:
     build:
       context: .
       dockerfile: agents/roles/dev/Dockerfile
+      args:
+        AGENT_ROLE: dev
     container_name: squadops-neo
     environment:
       AGENT_ID: neo
-      ROLE: dev
-      DISPLAY_NAME: Neo
-      MODEL: codellama-70b
+      AGENT_ROLE: dev
+      AGENT_DISPLAY_NAME: Neo
+      AGENT_MODEL: codellama-70b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -214,19 +233,19 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # QA Role Agents
+    - squadnet
   eve:
     build:
       context: .
       dockerfile: agents/roles/qa/Dockerfile
+      args:
+        AGENT_ROLE: qa
     container_name: squadops-eve
     environment:
       AGENT_ID: eve
-      ROLE: qa
-      DISPLAY_NAME: EVE
-      MODEL: llama3-70b
+      AGENT_ROLE: qa
+      AGENT_DISPLAY_NAME: EVE
+      AGENT_MODEL: llama3-70b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -238,19 +257,19 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # Data Role Agents
+    - squadnet
   data:
     build:
       context: .
       dockerfile: agents/roles/data/Dockerfile
+      args:
+        AGENT_ROLE: data
     container_name: squadops-data
     environment:
       AGENT_ID: data
-      ROLE: data
-      DISPLAY_NAME: Data
-      MODEL: mixtral-8x7b
+      AGENT_ROLE: data
+      AGENT_DISPLAY_NAME: Data
+      AGENT_MODEL: mixtral-8x7b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -262,19 +281,19 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # Finance Role Agents
+    - squadnet
   quark:
     build:
       context: .
       dockerfile: agents/roles/finance/Dockerfile
+      args:
+        AGENT_ROLE: finance
     container_name: squadops-quark
     environment:
       AGENT_ID: quark
-      ROLE: finance
-      DISPLAY_NAME: Quark
-      MODEL: llama3-8b
+      AGENT_ROLE: finance
+      AGENT_DISPLAY_NAME: Quark
+      AGENT_MODEL: llama3-8b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -286,19 +305,19 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # Communications Role Agents
+    - squadnet
   joi:
     build:
       context: .
       dockerfile: agents/roles/comms/Dockerfile
+      args:
+        AGENT_ROLE: comms
     container_name: squadops-joi
     environment:
       AGENT_ID: joi
-      ROLE: comms
-      DISPLAY_NAME: Joi
-      MODEL: llama3-8b
+      AGENT_ROLE: comms
+      AGENT_DISPLAY_NAME: Joi
+      AGENT_MODEL: llama3-8b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -310,19 +329,19 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # Curation Role Agents
+    - squadnet
   og:
     build:
       context: .
       dockerfile: agents/roles/curator/Dockerfile
+      args:
+        AGENT_ROLE: curator
     container_name: squadops-og
     environment:
       AGENT_ID: og
-      ROLE: curator
-      DISPLAY_NAME: Og
-      MODEL: llama3-70b
+      AGENT_ROLE: curator
+      AGENT_DISPLAY_NAME: Og
+      AGENT_MODEL: llama3-70b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -334,19 +353,19 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
-  # Audit Role Agents
+    - squadnet
   hal:
     build:
       context: .
       dockerfile: agents/roles/audit/Dockerfile
+      args:
+        AGENT_ROLE: audit
     container_name: squadops-hal
     environment:
       AGENT_ID: hal
-      ROLE: audit
-      DISPLAY_NAME: HAL
-      MODEL: llama3-8b
+      AGENT_ROLE: audit
+      AGENT_DISPLAY_NAME: HAL
+      AGENT_MODEL: llama3-8b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -358,13 +377,11 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - squadnet
-
+    - squadnet
 volumes:
-  rabbitmq_data:
-  postgres_data:
-  redis_data:
-
+  rabbitmq_data: {}
+  postgres_data: {}
+  redis_data: {}
 networks:
   squadnet:
     driver: bridge

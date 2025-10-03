@@ -1,7 +1,7 @@
-# Joi Agent Configuration
-# Communications Agent
+# Comms Role Configuration
+# Comms Role
 
-AGENT_NAME = "Joi"
+ROLE_TYPE = "comms"
 AGENT_TYPE = "communications"
 REASONING_STYLE = "empathetic"
 

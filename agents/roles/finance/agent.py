@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-Quark - Rule-based Agent
-Reasoning Style: Rule-based
-Memory Structure: Ledger-like
-Task Model: Constraint solving
-Local Model: LLaMA 3 13B (mocked)
-Premium Consultation: Financial modeling
-"""
+"""Finance Agent - Finance Role"""
 
 import asyncio
 import json
@@ -16,12 +9,12 @@ from base_agent import BaseAgent, AgentMessage
 
 logger = logging.getLogger(__name__)
 
-class QuarkAgent(BaseAgent):
-    """Quark - The Rule-based Agent"""
+class FinanceAgent(BaseAgent):
+    """Finance Agent - Finance Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="Quark",
+            name=identity,
             agent_type="financial",
             reasoning_style="rule-based"
         )
@@ -255,8 +248,10 @@ class QuarkAgent(BaseAgent):
         )
 
 async def main():
-    """Main entry point for Quark agent"""
-    agent = QuarkAgent()
+    """Main entry point for Finance agent"""
+    import os
+    identity = os.getenv('AGENT_ID', 'finance_agent')
+    agent = FinanceAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

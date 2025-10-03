@@ -1,7 +1,7 @@
-# HAL Agent Configuration
-# Monitoring Agent
+# Audit Role Configuration
+# Audit Role
 
-AGENT_NAME = "HAL"
+ROLE_TYPE = "audit"
 AGENT_TYPE = "monitoring"
 REASONING_STYLE = "analytical"
 

@@ -1,7 +1,7 @@
-# Glyph Agent Configuration
-# Creative Design Agent
+# Creative Role Configuration
+# Creative Role
 
-AGENT_NAME = "Glyph"
+ROLE_TYPE = "creative"
 AGENT_TYPE = "creative_design"
 REASONING_STYLE = "creative_synthesis"
 

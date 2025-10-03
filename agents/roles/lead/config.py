@@ -1,7 +1,7 @@
-# Max Agent Configuration
-# Task Lead & Governance Agent
+# Lead Role Configuration
+# Task Lead & Governance Role
 
-AGENT_NAME = "Max"
+ROLE_TYPE = "lead"
 AGENT_TYPE = "governance"
 REASONING_STYLE = "governance"
 

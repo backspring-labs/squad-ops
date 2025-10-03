@@ -83,13 +83,6 @@ instances:
     description: "Monitoring & Audit - Continuous monitoring"
 
 # Future multi-agent support examples (disabled):
-# - id: alex
-#   display_name: Alex
-#   role: lead
-#   model: llama3-70b
-#   enabled: false
-#   description: "Backup Lead - Alternative governance model"
-#
 # - id: sarah
 #   display_name: Sarah
 #   role: dev

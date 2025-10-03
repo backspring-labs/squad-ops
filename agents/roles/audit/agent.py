@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-HAL - Monitoring and Audit Agent
-Reasoning Style: Monitoring and audit
-Memory Structure: Secure log storage
-Task Model: Continuous monitoring
-Local Model: LLaMA 3 70B (mocked)
-Premium Consultation: Anomaly detection
-"""
+"""Audit Agent - Audit Role"""
 
 import asyncio
 import json
@@ -17,12 +10,12 @@ import time
 
 logger = logging.getLogger(__name__)
 
-class HALAgent(BaseAgent):
-    """HAL - The Monitoring and Audit Agent"""
+class AuditAgent(BaseAgent):
+    """Audit Agent - Audit Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="HAL",
+            name=identity,
             agent_type="monitoring",
             reasoning_style="monitoring_audit"
         )
@@ -279,8 +272,10 @@ class HALAgent(BaseAgent):
         )
 
 async def main():
-    """Main entry point for HAL agent"""
-    agent = HALAgent()
+    """Main entry point for Audit agent"""
+    import os
+    identity = os.getenv('AGENT_ID', 'audit_agent')
+    agent = AuditAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

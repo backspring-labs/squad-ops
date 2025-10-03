@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-Neo - Deductive Reasoning Agent
-Reasoning Style: Deductive
-Memory Structure: Graph-based
-Task Model: Depth-first
-Local Model: CodeLlama 70B (mocked)
-Premium Consultation: Code refactoring
-"""
+"""Dev Agent - Dev Role"""
 
 import asyncio
 import json
@@ -16,12 +9,12 @@ from base_agent import BaseAgent, AgentMessage
 
 logger = logging.getLogger(__name__)
 
-class NeoAgent(BaseAgent):
-    """Neo - The Deductive Reasoning Agent"""
+class DevAgent(BaseAgent):
+    """Dev Agent - Dev Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="Neo",
+            name=identity,
             agent_type="code",
             reasoning_style="deductive"
         )
@@ -258,8 +251,10 @@ class NeoAgent(BaseAgent):
         )
 
 async def main():
-    """Main entry point for Neo agent"""
-    agent = NeoAgent()
+    """Main entry point for Dev agent"""
+    import os
+    identity = os.getenv('AGENT_ID', 'dev_agent')
+    agent = DevAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

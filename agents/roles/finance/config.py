@@ -1,7 +1,7 @@
-# Quark Agent Configuration
-# Finance Ops Agent
+# Finance Role Configuration
+# Finance Role
 
-AGENT_NAME = "Quark"
+ROLE_TYPE = "finance"
 AGENT_TYPE = "finance_ops"
 REASONING_STYLE = "rule_based"
 

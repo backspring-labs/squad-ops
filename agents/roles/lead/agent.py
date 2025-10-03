@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Max - Governance Agent
+Lead Agent - Governance Role
 Reasoning Style: Governance
 Memory Structure: Task state log
 Task Model: Approval/escalation
@@ -16,12 +16,12 @@ from base_agent import BaseAgent, AgentMessage
 
 logger = logging.getLogger(__name__)
 
-class MaxAgent(BaseAgent):
-    """Max - The Governance Agent"""
+class LeadAgent(BaseAgent):
+    """Lead Agent - The Governance Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="Max",
+            name=identity,
             agent_type="governance",
             reasoning_style="governance"
         )
@@ -172,8 +172,10 @@ class MaxAgent(BaseAgent):
         )
 
 async def main():
-    """Main entry point for Max agent"""
-    agent = MaxAgent()
+    """Main entry point for Lead agent"""
+    import os
+    identity = os.getenv('AGENT_ID', 'lead_agent')
+    agent = LeadAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

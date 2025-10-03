@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-Data - Inductive Reasoning Agent
-Reasoning Style: Inductive
-Memory Structure: Time-series DB
-Task Model: Batch processing
-Local Model: Mixtral 8x7B (mocked)
-Premium Consultation: Analytics patterns
-"""
+"""Data Agent - Data Role"""
 
 import asyncio
 import json
@@ -18,11 +11,11 @@ import time
 logger = logging.getLogger(__name__)
 
 class DataAgent(BaseAgent):
-    """Data - The Inductive Reasoning Agent"""
+    """Data Agent - Data Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="Data",
+            name=identity,
             agent_type="data",
             reasoning_style="inductive"
         )
@@ -246,7 +239,9 @@ class DataAgent(BaseAgent):
 
 async def main():
     """Main entry point for Data agent"""
-    agent = DataAgent()
+    import os
+    identity = os.getenv('AGENT_ID', 'data_agent')
+    agent = DataAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
-# Nat Agent Configuration
-# Product Strategy Agent
+# Strat Role Configuration
+# Strat Role
 
-AGENT_NAME = "Nat"
+ROLE_TYPE = "strat"
 AGENT_TYPE = "product_strategy"
 REASONING_STYLE = "abductive"
 

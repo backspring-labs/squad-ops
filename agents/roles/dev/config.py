@@ -1,7 +1,7 @@
-# Neo Agent Configuration
-# Developer & Technical Implementation Agent
+# Dev Role Configuration
+# Dev Role
 
-AGENT_NAME = "Neo"
+ROLE_TYPE = "dev"
 AGENT_TYPE = "developer"
 REASONING_STYLE = "deductive"
 

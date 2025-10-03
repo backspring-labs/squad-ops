@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-EVE - Test Lead Agent
-Reasoning Style: Counterfactual
-Memory Structure: State machine
-Task Model: Regression testing
-Local Model: LLaMA 3 70B (mocked)
-Premium Consultation: Security testing
-"""
+"""Qa Agent - Qa Role"""
 
 import asyncio
 import json
@@ -16,12 +9,12 @@ from base_agent import BaseAgent, AgentMessage
 
 logger = logging.getLogger(__name__)
 
-class EVEAgent(BaseAgent):
-    """EVE - The Test Lead Agent"""
+class QAAgent(BaseAgent):
+    """Qa Agent - Qa Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="EVE",
+            name=identity,
             agent_type="testing",
             reasoning_style="counterfactual"
         )
@@ -245,18 +238,7 @@ class EVEAgent(BaseAgent):
         return vulnerabilities
     
     def calculate_security_score(self, vulnerabilities: List[Dict[str, Any]]) -> float:
-        """Calculate security score based on vulnerabilities"""
-        if not vulnerabilities:
-            return 10.0
-        
-        high_severity = sum(1 for v in vulnerabilities if v['severity'] == 'high')
-        medium_severity = sum(1 for v in vulnerabilities if v['severity'] == 'medium')
-        
-        score = 10.0 - (high_severity * 3.0) - (medium_severity * 1.0)
-        return max(0.0, score)
-    
-    async def handle_security_audit(self, message: AgentMessage):
-        """Handle security audit requests"""
+        """Calculate security score based on vulnerabilities"""Qa Agent - Qa Role"""Handle security audit requests"""
         audit_type = message.payload.get('audit_type', 'general')
         task_id = message.payload.get('task_id')
         
@@ -336,8 +318,10 @@ class EVEAgent(BaseAgent):
         )
 
 async def main():
-    """Main entry point for EVE agent"""
-    agent = EVEAgent()
+    """Main entry point for Qa agent"""
+    import os
+    identity = os.getenv('AGENT_ID', 'qa_agent')
+    agent = QAAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

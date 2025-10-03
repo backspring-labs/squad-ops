@@ -2,18 +2,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Build argument for agent role
+ARG AGENT_ROLE=lead
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY agents/max/requirements.txt .
+COPY agents/roles/${AGENT_ROLE}/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
 COPY agents/base_agent.py .
-COPY agents/max/max.py .
+COPY agents/roles/${AGENT_ROLE}/agent.py .
 
 # Copy version management
 COPY config ./config
@@ -29,4 +32,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "print('Agent healthy')" || exit 1
 
 # Run the agent
-CMD ["python", "max.py"]
+CMD ["python", "agent.py"]

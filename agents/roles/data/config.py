@@ -1,7 +1,7 @@
-# Data Agent Configuration
-# Analytics Agent
+# Data Role Configuration
+# Data Role
 
-AGENT_NAME = "Data"
+ROLE_TYPE = "data"
 AGENT_TYPE = "analytics"
 REASONING_STYLE = "inductive"
 

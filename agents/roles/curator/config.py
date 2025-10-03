@@ -1,7 +1,7 @@
-# Og Agent Configuration
-# Rd Curation Agent
+# Curator Role Configuration
+# Curator Role
 
-AGENT_NAME = "Og"
+ROLE_TYPE = "curator"
 AGENT_TYPE = "rd_curation"
 REASONING_STYLE = "pattern_detection"
 

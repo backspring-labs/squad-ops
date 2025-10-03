@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-Joi - Empathetic Agent
-Reasoning Style: Empathetic
-Memory Structure: Conversational decay
-Task Model: Interrupt-driven
-Local Model: LLaMA 3 13B (mocked)
-Premium Consultation: Emotional nuance
-"""
+"""Comms Agent - Comms Role"""
 
 import asyncio
 import json
@@ -18,12 +11,12 @@ import time
 
 logger = logging.getLogger(__name__)
 
-class JoiAgent(BaseAgent):
-    """Joi - The Empathetic Agent"""
+class CommsAgent(BaseAgent):
+    """Comms Agent - Comms Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="Joi",
+            name=identity,
             agent_type="communication",
             reasoning_style="empathetic"
         )
@@ -246,8 +239,10 @@ class JoiAgent(BaseAgent):
         )
 
 async def main():
-    """Main entry point for Joi agent"""
-    agent = JoiAgent()
+    """Main entry point for Comms agent"""
+    import os
+    identity = os.getenv('AGENT_ID', 'comms_agent')
+    agent = CommsAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Glyph - The Creative Design Agent
-Specializes in visual asset creation, creative synthesis, and visual inspiration
-"""
+"""Creative Agent - Creative Role"""
 
 import asyncio
 import logging
@@ -13,12 +10,12 @@ from base_agent import BaseAgent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class GlyphAgent(BaseAgent):
-    """Glyph - The Creative Design Agent"""
+class CreativeAgent(BaseAgent):
+    """Creative Agent - Creative Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="Glyph",
+            name=identity,
             agent_type="creative",
             reasoning_style="iterative"
         )
@@ -208,8 +205,10 @@ class GlyphAgent(BaseAgent):
             logger.info(f"Glyph received message from {message.sender}: {message.content}")
 
 async def main():
-    """Main entry point for Glyph agent"""
-    agent = GlyphAgent()
+    """Main entry point for Creative agent"""
+    import os
+    identity = os.getenv('AGENT_ID', 'creative_agent')
+    agent = CreativeAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

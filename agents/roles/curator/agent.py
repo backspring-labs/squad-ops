@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-Og - Pattern Detection Agent
-Reasoning Style: Pattern detection
-Memory Structure: Knowledge graph
-Task Model: Continuous learning
-Local Model: LLaMA 3 70B (mocked)
-Premium Consultation: Trend synthesis
-"""
+"""Curator Agent - Curator Role"""
 
 import asyncio
 import json
@@ -16,12 +9,12 @@ from base_agent import BaseAgent, AgentMessage
 
 logger = logging.getLogger(__name__)
 
-class OgAgent(BaseAgent):
-    """Og - The Pattern Detection Agent"""
+class CuratorAgent(BaseAgent):
+    """Curator Agent - Curator Role"""
     
-    def __init__(self):
+    def __init__(self, identity: str):
         super().__init__(
-            name="Og",
+            name=identity,
             agent_type="pattern",
             reasoning_style="pattern_detection"
         )
@@ -294,8 +287,10 @@ class OgAgent(BaseAgent):
         )
 
 async def main():
-    """Main entry point for Og agent"""
-    agent = OgAgent()
+    """Main entry point for Curator agent"""
+    import os
+    identity = os.getenv('AGENT_ID', 'curator_agent')
+    agent = CuratorAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":
