@@ -211,7 +211,7 @@ class HealthChecker:
             agents = []
             for row in rows:
                 agents.append({
-                    "agent": row['agent_name'],
+                    "agent": self._get_display_name(row['agent_name']),
                     "role": self._get_agent_role(row['agent_name']),
                     "status": row['status'],
                     "version": row['version'],
@@ -236,19 +236,36 @@ class HealthChecker:
                 {"agent": "Glyph", "role": "Creative Design", "status": "offline", "version": get_agent_version("glyph"), "tps": 0}
             ]
     
+    def _get_display_name(self, agent_id: str) -> str:
+        """Get agent display name from agent ID"""
+        display_names = {
+            "max": "Max",
+            "neo": "Neo", 
+            "nat": "Nat",
+            "joi": "Joi",
+            "data": "Data",
+            "eve": "EVE",
+            "quark": "Quark",
+            "hal": "HAL",
+            "og": "Og",
+            "glyph": "Glyph"
+        }
+        return display_names.get(agent_id, agent_id.title())
+    
     def _get_agent_role(self, agent_name: str) -> str:
         """Get agent role description"""
+        # Map lowercase agent IDs to role descriptions
         roles = {
-            "Max": "Task Lead",
-            "Neo": "Developer", 
-            "Nat": "Product Strategy",
-            "Joi": "Communications",
-            "Data": "Analytics",
-            "EVE": "QA & Security",
-            "Quark": "Finance & Ops",
-            "HAL": "Monitoring",
-            "Og": "R&D & Curation",
-            "Glyph": "Creative Design"
+            "max": "Task Lead",
+            "neo": "Developer", 
+            "nat": "Product Strategy",
+            "joi": "Communications",
+            "data": "Analytics",
+            "eve": "QA & Security",
+            "quark": "Finance & Ops",
+            "hal": "Monitoring",
+            "og": "R&D & Curation",
+            "glyph": "Creative Design"
         }
         return roles.get(agent_name, "Unknown")
 
