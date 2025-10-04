@@ -14,10 +14,21 @@ After analyzing **23 SIPs**, this roadmap focuses on **high-value, practical imp
 ## 🎯 **Core Production-Ready SIPs (Immediate Implementation)**
 
 ### **Phase 1: Essential Monitoring & Memory (2-3 weeks)**
-*Priority: HIGH | Focus: Production Readiness*
+*Priority: HIGH | Focus: Production Readiness + Getting Started Experience*
 
-#### **1.1 SIP-003: Paperclip Protocol (Agent Memory)**
-**Why First**: Revolutionary agent memory system with "lore" concept
+#### **1.1 Getting Started Strategy Implementation**
+**Why First**: Need a smooth onboarding experience for new users
+**Implementation**:
+- Create narrated audio guide (15 minutes) covering Meta Mission, Why Squads vs Human Teams, Design Evolution
+- Implement HelloSquad Day 1 Plan with Max + Neo + Data (core trio)
+- Add WarmBoot tagging system (`v0.1-warmboot-001`)
+- Generate Mermaid Gantt snippets for run visualization
+- Create Health Check Page at `/health`
+
+**Immediate Value**: Zero-friction onboarding for new SquadOps users
+
+#### **1.2 SIP-003: Paperclip Protocol (Agent Memory)**
+**Why Revolutionary**: Agent memory with "lore" system transforms agent capabilities
 **Implementation**:
 - Implement agent memory persistence with lore system
 - Create memory retrieval and context binding
@@ -25,7 +36,7 @@ After analyzing **23 SIPs**, this roadmap focuses on **high-value, practical imp
 
 **Immediate Value**: Agents remember past interactions and build context
 
-#### **1.2 SIP-005: Four-Layer Metrics Protocol**
+#### **1.3 SIP-005: Four-Layer Metrics Protocol**
 **Why Essential**: Production monitoring requires proper metrics
 **Implementation**:
 - Agent Layer: Individual agent performance metrics
@@ -35,7 +46,7 @@ After analyzing **23 SIPs**, this roadmap focuses on **high-value, practical imp
 
 **Immediate Value**: Real production monitoring instead of basic health checks
 
-#### **1.3 Agent Status vs LLM Mode Separation**
+#### **1.4 Agent Status vs LLM Mode Separation**
 **Why Critical**: Need to distinguish agent availability from LLM backend status
 **Implementation**:
 - Extend health check API with `llm_mode` and `model_primary` fields
@@ -47,9 +58,19 @@ After analyzing **23 SIPs**, this roadmap focuses on **high-value, practical imp
 ---
 
 ### **Phase 2: Cost Management & Security (3-4 weeks)**
-*Priority: HIGH | Focus: Production Economics*
+*Priority: HIGH | Focus: Production Economics + Getting Started Day 2*
 
-#### **2.1 SIP-010: Creds & Secrets Lifecycle Protocol**
+#### **2.1 Getting Started Day 2 Stretch Goals**
+**Why Builds Momentum**: Day 1 success leads to Day 2 expansion
+**Implementation**:
+- Add EVE for test automation to HelloSquad
+- Enable task logging into Postgres
+- Launch Health Check Page at `/health`
+- Expand from core trio (Max + Neo + Data) to full squad
+
+**Immediate Value**: Complete HelloSquad experience with all 9 agents
+
+#### **2.2 SIP-010: Creds & Secrets Lifecycle Protocol**
 **Why Critical**: Production deployment requires proper credential management
 **Implementation**:
 - Implement credential rotation system
@@ -79,9 +100,20 @@ After analyzing **23 SIPs**, this roadmap focuses on **high-value, practical imp
 ---
 
 ### **Phase 3: Production Deployment (4-6 weeks)**
-*Priority: MEDIUM-HIGH | Focus: Real Deployment*
+*Priority: MEDIUM-HIGH | Focus: Real Deployment + Learning Progression*
 
-#### **3.1 SIP-012: Pattern-First Development Protocol**
+#### **3.1 Learning Progression Path Implementation**
+**Why Structured Learning**: After HelloSquad, users need guided deep-dive
+**Implementation**:
+- Create Core Protocol Anchors documentation
+- Implement PID Traceability Protocol (foundation for everything)
+- Add Testing Protocol (functional, performance, security validation)
+- Build Data Governance Protocol (enterprise-grade data lineage)
+- Create Task Logging & Metrics Protocol (observability and optimization)
+
+**Immediate Value**: Structured knowledge base for advanced users
+
+#### **3.2 SIP-012: Pattern-First Development Protocol**
 **Why Valuable**: Improves code quality and consistency
 **Implementation**:
 - Create pattern catalog and selection matrix
@@ -143,13 +175,13 @@ After analyzing **23 SIPs**, this roadmap focuses on **high-value, practical imp
 
 ## 🎯 **Focused Implementation Plan**
 
-| Phase | Duration | Core SIPs | Priority | Immediate Value |
-|-------|----------|-----------|----------|----------------|
-| **Phase 1** | 2-3 weeks | SIP-003 (Memory), SIP-005 (Metrics), Status/Mode | HIGH | Production monitoring & agent memory |
-| **Phase 2** | 3-4 weeks | SIP-010 (Secrets), Cost Monitoring, SIP-007 (Armory) | HIGH | Secure deployment & cost control |
-| **Phase 3** | 4-6 weeks | SIP-012 (Patterns), AWS Bootstrap, WarmBoot | MEDIUM-HIGH | Production deployment capability |
+| Phase | Duration | Core SIPs + Getting Started | Priority | Immediate Value |
+|-------|----------|----------------------------|----------|----------------|
+| **Phase 1** | 2-3 weeks | Getting Started Strategy, SIP-003 (Memory), SIP-005 (Metrics), Status/Mode | HIGH | Zero-friction onboarding + production monitoring |
+| **Phase 2** | 3-4 weeks | Day 2 Stretch Goals, SIP-010 (Secrets), Cost Monitoring, SIP-007 (Armory) | HIGH | Complete HelloSquad + secure deployment |
+| **Phase 3** | 4-6 weeks | Learning Progression, SIP-012 (Patterns), AWS Bootstrap, WarmBoot | MEDIUM-HIGH | Structured learning + production deployment |
 
-**Total Timeline**: 9-13 weeks for core production readiness
+**Total Timeline**: 9-13 weeks for complete onboarding + production readiness
 
 ---
 
@@ -174,34 +206,46 @@ After analyzing **23 SIPs**, this roadmap focuses on **high-value, practical imp
 
 ## 📊 **Success Metrics**
 
-### **Phase 1 Success (Essential Monitoring & Memory)**
+### **Phase 1 Success (Essential Monitoring & Memory + Getting Started)**
+- ✅ 15-minute narrated audio guide created and accessible
+- ✅ HelloSquad Day 1 Plan working with Max + Neo + Data
+- ✅ WarmBoot tagging system operational (`v0.1-warmboot-001`)
+- ✅ Mermaid Gantt snippets generated for run visualization
 - ✅ Agents have persistent memory with lore system
 - ✅ Four-layer metrics providing real production monitoring
 - ✅ Clear agent status vs LLM mode separation
-- ✅ Health dashboard shows comprehensive agent state
 
-### **Phase 2 Success (Cost Management & Security)**
+### **Phase 2 Success (Cost Management & Security + Day 2 Goals)**
+- ✅ HelloSquad expanded to full 9-agent squad
+- ✅ EVE test automation integrated
+- ✅ Task logging into Postgres operational
+- ✅ Health Check Page at `/health` launched
 - ✅ Credential rotation system preventing security incidents
 - ✅ Cost attribution preventing budget overruns
 - ✅ Centralized tool registry improving consistency
-- ✅ Nightly readiness checks ensuring deployment safety
 
-### **Phase 3 Success (Production Deployment)**
+### **Phase 3 Success (Production Deployment + Learning Progression)**
+- ✅ Core Protocol Anchors documentation complete
+- ✅ PID Traceability Protocol implemented
+- ✅ Testing Protocol (functional, performance, security) operational
+- ✅ Data Governance Protocol with enterprise-grade lineage
 - ✅ Pattern-first development improving code quality
 - ✅ AWS deployment working with multi-environment support
 - ✅ WarmBoot management enabling safe rollbacks
-- ✅ Real production deployments with monitoring
 
 ---
 
 ## 🎯 **Key Insights**
 
-1. **Focus on production readiness** rather than enterprise complexity
-2. **Build what you need today** - the reconsideration backlog preserves future options
-3. **Clear success metrics** for each phase ensure tangible progress
-4. **Risk mitigation** through security and cost management from day one
-5. **Incremental value delivery** - each phase solves real problems immediately
+1. **Complete onboarding experience** - from zero-entry audio to production deployment
+2. **Hands-on learning** - HelloSquad Day 1/2 provides immediate success feeling
+3. **Structured progression** - zero → hello → deep protocols → production
+4. **Focus on production readiness** rather than enterprise complexity
+5. **Build what you need today** - the reconsideration backlog preserves future options
+6. **Clear success metrics** for each phase ensure tangible progress
+7. **Risk mitigation** through security and cost management from day one
+8. **Incremental value delivery** - each phase solves real problems immediately
 
 ---
 
-**This focused roadmap transforms SquadOps into a production-ready system while avoiding over-engineering!** 🚀
+**This integrated roadmap provides both the onboarding experience AND production readiness!** 🚀
