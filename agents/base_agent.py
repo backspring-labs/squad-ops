@@ -228,6 +228,49 @@ class BaseAgent(ABC):
         # Return appropriate mock response based on agent type
         return responses.get(self.agent_type.lower(), f"[MOCK RESPONSE] {prompt[:50]}...")
     
+    async def llm_response(self, prompt: str, context: str = "") -> str:
+        """Generate LLM response using Ollama or fallback to mock"""
+        try:
+            # Check if we should use local LLM
+            use_local_llm = os.getenv('USE_LOCAL_LLM', 'false').lower() == 'true'
+            model_name = os.getenv('AGENT_MODEL', '')
+            
+            if use_local_llm and model_name:
+                return await self._ollama_response(prompt, context, model_name)
+            else:
+                return await self.mock_llm_response(prompt, context)
+        except Exception as e:
+            logger.warning(f"LLM call failed, falling back to mock: {e}")
+            return await self.mock_llm_response(prompt, context)
+    
+    async def _ollama_response(self, prompt: str, context: str, model: str) -> str:
+        """Generate response using Ollama API"""
+        import aiohttp
+        
+        ollama_url = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+        
+        # Prepare the full prompt with context
+        full_prompt = f"{context}\n\n{prompt}" if context else prompt
+        
+        payload = {
+            "model": model,
+            "prompt": full_prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "max_tokens": 1000
+            }
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{ollama_url}/api/generate", json=payload) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get('response', 'No response generated')
+                else:
+                    raise Exception(f"Ollama API error: {response.status}")
+    
     async def run(self):
         """Main agent loop"""
         logger.info(f"{self.name} starting up...")

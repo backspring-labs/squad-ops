@@ -138,6 +138,29 @@ services:
         condition: service_healthy
     networks:
     - squadnet
+  
+  # Hello Squad Application - Built by Max & Neo
+  hello-squad:
+    build:
+      context: ./warm-boot/apps/hello-squad
+      dockerfile: Dockerfile
+    container_name: squadops-hello-squad
+    ports:
+    - 3000:3000
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - squadnet
+    restart: unless-stopped
+  
   max:
     build:
       context: .
@@ -149,7 +172,9 @@ services:
       AGENT_ID: max
       AGENT_ROLE: lead
       AGENT_DISPLAY_NAME: Max
-      AGENT_MODEL: llama3-8b
+      AGENT_MODEL: llama3.1:8b
+      USE_LOCAL_LLM: "true"
+      OLLAMA_URL: http://host.docker.internal:11434
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -221,7 +246,9 @@ services:
       AGENT_ID: neo
       AGENT_ROLE: dev
       AGENT_DISPLAY_NAME: Neo
-      AGENT_MODEL: codellama-70b
+      AGENT_MODEL: qwen2.5:7b
+      USE_LOCAL_LLM: "true"
+      OLLAMA_URL: http://host.docker.internal:11434
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379

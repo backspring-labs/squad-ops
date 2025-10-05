@@ -6,7 +6,7 @@ instances:
   - id: max
     display_name: Max
     role: lead
-    model: llama3-8b
+    model: llama3.1:8b
     enabled: true
     description: "Task Lead - Governance and coordination"
 
@@ -30,7 +30,7 @@ instances:
   - id: neo
     display_name: Neo
     role: dev
-    model: codellama-70b
+    model: qwen2.5:7b
     enabled: true
     description: "Developer - Deductive reasoning"
 

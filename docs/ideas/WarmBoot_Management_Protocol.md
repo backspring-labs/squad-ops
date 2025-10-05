@@ -99,13 +99,13 @@ history**.
 
     /docs/prd/
        PRD-001-HelloSquad.md
-    /business_processes/
+    /docs/framework/business-processes/
        BP-001-HelloSquad.md
-    /use_cases/
-       UC-001-HelloWorld.md
+    /docs/framework/use-cases/
+       UC-001-HelloSquad.md
     /testing/test_cases/
-       TC-001-HelloWorld.md
-    /warmboot_runs/
+       TC-001-HelloSquad.md
+    /warm-boot/runs/
        run-001-summary.md
        run-001-logs.json
        run-001.env

@@ -13,8 +13,8 @@ This document tracks all Process IDs (PIDs) and their associated governance arti
 ### PID-001: HelloSquad
 - **Description**: First reference app - FastAPI "Hello World" service
 - **Business Process**: `BP-001-HelloSquad.md`
-- **Use Case**: `UC-001-HelloWorld.md`
-- **Test Case**: `TC-001-HelloWorld.md`
+- **Use Case**: `UC-001-HelloSquad.md`
+- **Test Case**: `TC-001-HelloSquad.md`
 - **Status**: Reserved for first WarmBoot run
 - **Agents**: Max (orchestrator), Neo (developer), EVE (tester)
 
