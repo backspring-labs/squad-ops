@@ -91,11 +91,11 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// Version endpoint for run-002 enhancement
+// Version endpoint - SquadOps Framework 0.1.X
 app.get('/api/version', (req, res) => {
   res.status(200).json({
-    version: process.env.APP_VERSION || '1.1.0',
-    run_id: process.env.WARMBOOT_RUN_ID || 'run-002',
+    framework_version: process.env.SQUADOPS_VERSION || '0.1.4',
+    warmboot_run: process.env.WARMBOOT_RUN_ID || "run-004",
     timestamp: process.env.BUILD_TIMESTAMP || new Date().toISOString(),
     git_hash: process.env.GIT_HASH || 'unknown'
   });
