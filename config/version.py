@@ -6,16 +6,16 @@ SQUADOPS_VERSION = "0.1.4"
 
 # Agent Versions (individual agent versions)
 AGENT_VERSIONS = {
-    "max": "1.0.0",
-    "neo": "1.0.0", 
-    "nat": "1.0.0",
-    "joi": "1.0.0",
-    "data": "1.0.0",
-    "eve": "1.0.0",
-    "quark": "1.0.0",
-    "og": "1.0.0",
-    "glyph": "1.0.0",
-    "hal": "1.0.0"
+    "max": "0.1.0",  # Real agent with local LLM
+    "neo": "0.1.0",  # Real agent with file modification capabilities
+    "nat": "0.0.0",  # Mock agent
+    "joi": "0.0.0",  # Mock agent
+    "data": "0.0.0", # Mock agent
+    "eve": "0.0.0",  # Mock agent
+    "quark": "0.0.0", # Mock agent
+    "og": "0.0.0",   # Mock agent
+    "glyph": "0.0.0", # Mock agent
+    "hal": "0.0.0"   # Mock agent
 }
 
 # Configuration Versions
@@ -35,10 +35,10 @@ CONFIG_VERSIONS = {
 # Version History
 VERSION_HISTORY = {
     "max": [
-        {"version": "1.0.0", "date": "2025-10-05", "llm": "llama3.1:8b", "notes": "Initial version with local LLM"},
+        {"version": "0.1.0", "date": "2025-10-05", "llm": "llama3.1:8b", "notes": "Real agent with local LLM integration"},
     ],
     "neo": [
-        {"version": "1.0.0", "date": "2025-10-05", "llm": "qwen2.5:7b", "notes": "Initial version with file modification capabilities"},
+        {"version": "0.1.0", "date": "2025-10-05", "llm": "qwen2.5:7b", "notes": "Real agent with file modification capabilities"},
     ]
 }
 
