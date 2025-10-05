@@ -90,13 +90,17 @@ class DevAgent(BaseAgent):
             result = await self.process_task(task)
             logger.info(f"Neo completed task: {task_id}")
             
-            # NEW: Implement actual file modifications based on task type
-            if task_type == "footer_warmboot_update":
-                await self.implement_footer_update(task)
-            elif task_type == "code_implementation":
-                await self.implement_code_changes(task)
-            elif task_type == "file_modification":
-                await self.implement_file_modifications(task)
+               # NEW: Implement actual capabilities based on task type
+               if task_type == "footer_warmboot_update":
+                   await self.implement_footer_update(task)
+               elif task_type == "code_implementation":
+                   await self.implement_code_changes(task)
+               elif task_type == "file_modification":
+                   await self.implement_file_modifications(task)
+               elif task_type == "deployment":
+                   await self.implement_deployment(task)
+               elif task_type == "documentation":
+                   await self.implement_documentation(task)
             
             # Send completion message back to Max
             await self.send_message(
@@ -224,6 +228,91 @@ class DevAgent(BaseAgent):
             
         except Exception as e:
             logger.error(f"Neo failed to implement file modifications: {e}")
+            return False
+    
+    async def implement_deployment(self, task: Dict[str, Any]) -> bool:
+        """Implement application deployment"""
+        try:
+            task_id = task.get('task_id', 'unknown')
+            deployment_config = task.get('deployment_config', {})
+            
+            logger.info(f"Neo implementing deployment for task: {task_id}")
+            
+            # Extract deployment parameters
+            app_name = deployment_config.get('app_name', 'hello-squad')
+            context_path = deployment_config.get('context_path', 'warm-boot/apps/hello-squad')
+            image_name = deployment_config.get('image_name', f'squad-ops-{app_name}')
+            ports = deployment_config.get('ports', ['3000:3000'])
+            env_vars = deployment_config.get('env_vars', {})
+            build_args = deployment_config.get('build_args', {})
+            
+            # Step 1: Build Docker image
+            logger.info(f"Neo building Docker image: {image_name}")
+            build_success = await self.build_docker_image(context_path, image_name, build_args)
+            
+            if not build_success:
+                logger.error(f"Neo failed to build Docker image: {image_name}")
+                return False
+            
+            # Step 2: Deploy service
+            logger.info(f"Neo deploying service: {app_name}")
+            deploy_success = await self.deploy_service(app_name, image_name, ports, env_vars)
+            
+            if not deploy_success:
+                logger.error(f"Neo failed to deploy service: {app_name}")
+                return False
+            
+            # Step 3: Check service status
+            logger.info(f"Neo checking service status: {app_name}")
+            status = await self.check_service_status(app_name)
+            
+            if status.get('running', False):
+                logger.info(f"Neo successfully deployed and verified service: {app_name}")
+                return True
+            else:
+                logger.error(f"Neo service deployment verification failed: {app_name}")
+                return False
+            
+        except Exception as e:
+            logger.error(f"Neo failed to implement deployment: {e}")
+            return False
+    
+    async def implement_documentation(self, task: Dict[str, Any]) -> bool:
+        """Implement documentation creation"""
+        try:
+            task_id = task.get('task_id', 'unknown')
+            doc_config = task.get('documentation_config', {})
+            
+            logger.info(f"Neo implementing documentation for task: {task_id}")
+            
+            # Extract documentation parameters
+            run_id = doc_config.get('run_id', 'unknown')
+            doc_type = doc_config.get('type', 'summary')
+            doc_data = doc_config.get('data', {})
+            
+            success = False
+            
+            if doc_type == 'summary':
+                success = await self.create_run_summary(run_id, doc_data)
+            elif doc_type == 'logs':
+                success = await self.create_run_logs(run_id, doc_data)
+            elif doc_type == 'manifest':
+                success = await self.create_release_manifest(run_id, doc_data)
+            else:
+                # Generic documentation
+                doc_path = doc_config.get('path', f'docs/{run_id}-{doc_type}.md')
+                content = doc_config.get('content', 'No content provided')
+                success = await self.create_documentation(doc_path, content)
+            
+            if success:
+                logger.info(f"Neo successfully created {doc_type} documentation for run: {run_id}")
+            else:
+                logger.error(f"Neo failed to create {doc_type} documentation for run: {run_id}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Neo failed to implement documentation: {e}")
             return False
     
     async def build_knowledge_graph(self, task: Dict[str, Any]):

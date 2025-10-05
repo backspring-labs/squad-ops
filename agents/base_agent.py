@@ -472,9 +472,19 @@ class BaseAgent(ABC):
     # ============================================================================
     
     async def build_docker_image(self, context_path: str, image_name: str, build_args: Dict[str, str] = None) -> bool:
-        """Build a Docker image"""
+        """Build a Docker image with enhanced capabilities"""
         try:
             import subprocess
+            import os
+            
+            # Ensure we're in the right directory
+            if not context_path.startswith('/'):
+                context_path = f"/app/{context_path}"
+            
+            # Validate context path exists
+            if not os.path.exists(context_path):
+                logger.error(f"{self.name} Docker context path does not exist: {context_path}")
+                return False
             
             cmd = ["docker", "build", "-t", image_name]
             
@@ -485,10 +495,11 @@ class BaseAgent(ABC):
             
             cmd.append(context_path)
             
+            logger.info(f"{self.name} building Docker image: {image_name} from {context_path}")
             result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app")
             
             if result.returncode == 0:
-                logger.info(f"{self.name} built Docker image: {image_name}")
+                logger.info(f"{self.name} successfully built Docker image: {image_name}")
                 return True
             else:
                 logger.error(f"{self.name} failed to build Docker image: {result.stderr}")
@@ -499,11 +510,19 @@ class BaseAgent(ABC):
             return False
     
     async def deploy_service(self, service_name: str, image_name: str, ports: List[str] = None, env_vars: Dict[str, str] = None) -> bool:
-        """Deploy a service using docker-compose"""
+        """Deploy a service using docker-compose with enhanced capabilities"""
         try:
             import subprocess
+            import os
             
-            # For now, we'll use docker run as a simple deployment
+            # First, try to stop and remove existing container
+            try:
+                subprocess.run(["docker", "stop", service_name], capture_output=True, text=True)
+                subprocess.run(["docker", "rm", service_name], capture_output=True, text=True)
+            except:
+                pass  # Container might not exist
+            
+            # Build docker run command
             cmd = ["docker", "run", "-d", "--name", service_name]
             
             # Add port mappings
@@ -516,12 +535,16 @@ class BaseAgent(ABC):
                 for key, value in env_vars.items():
                     cmd.extend(["-e", f"{key}={value}"])
             
+            # Add network (use existing squadnet)
+            cmd.extend(["--network", "squad-ops_squadnet"])
+            
             cmd.append(image_name)
             
+            logger.info(f"{self.name} deploying service: {service_name} with image: {image_name}")
             result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app")
             
             if result.returncode == 0:
-                logger.info(f"{self.name} deployed service: {service_name}")
+                logger.info(f"{self.name} successfully deployed service: {service_name}")
                 return True
             else:
                 logger.error(f"{self.name} failed to deploy service: {result.stderr}")
@@ -531,32 +554,255 @@ class BaseAgent(ABC):
             logger.error(f"{self.name} failed to deploy service: {e}")
             return False
     
+    async def update_docker_compose(self, service_config: Dict[str, Any]) -> bool:
+        """Update docker-compose.yml with new service configuration"""
+        try:
+            import yaml
+            import os
+            
+            compose_file = "/app/docker-compose.yml"
+            
+            # Read existing docker-compose.yml
+            if os.path.exists(compose_file):
+                with open(compose_file, 'r') as f:
+                    compose_data = yaml.safe_load(f) or {}
+            else:
+                compose_data = {}
+            
+            # Ensure services section exists
+            if 'services' not in compose_data:
+                compose_data['services'] = {}
+            
+            # Add or update service
+            service_name = service_config.get('name')
+            if service_name:
+                compose_data['services'][service_name] = service_config.get('config', {})
+                
+                # Write updated docker-compose.yml
+                with open(compose_file, 'w') as f:
+                    yaml.dump(compose_data, f, default_flow_style=False)
+                
+                logger.info(f"{self.name} updated docker-compose.yml with service: {service_name}")
+                return True
+            else:
+                logger.error(f"{self.name} service config missing 'name' field")
+                return False
+                
+        except Exception as e:
+            logger.error(f"{self.name} failed to update docker-compose: {e}")
+            return False
+    
+    async def restart_service(self, service_name: str) -> bool:
+        """Restart a Docker service"""
+        try:
+            import subprocess
+            
+            # Stop the service
+            stop_result = subprocess.run(["docker", "stop", service_name], capture_output=True, text=True)
+            
+            # Start the service
+            start_result = subprocess.run(["docker", "start", service_name], capture_output=True, text=True)
+            
+            if start_result.returncode == 0:
+                logger.info(f"{self.name} successfully restarted service: {service_name}")
+                return True
+            else:
+                logger.error(f"{self.name} failed to restart service: {start_result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"{self.name} failed to restart service: {e}")
+            return False
+    
+    async def check_service_status(self, service_name: str) -> Dict[str, Any]:
+        """Check the status of a Docker service"""
+        try:
+            import subprocess
+            
+            # Get container status
+            result = subprocess.run(
+                ["docker", "inspect", service_name], 
+                capture_output=True, text=True
+            )
+            
+            if result.returncode == 0:
+                import json
+                container_info = json.loads(result.stdout)[0]
+                
+                status = {
+                    "name": service_name,
+                    "running": container_info["State"]["Running"],
+                    "status": container_info["State"]["Status"],
+                    "ports": container_info["NetworkSettings"]["Ports"],
+                    "image": container_info["Config"]["Image"]
+                }
+                
+                logger.info(f"{self.name} checked service status: {service_name} - {status['status']}")
+                return status
+            else:
+                logger.error(f"{self.name} failed to check service status: {result.stderr}")
+                return {"name": service_name, "error": "Service not found"}
+                
+        except Exception as e:
+            logger.error(f"{self.name} failed to check service status: {e}")
+            return {"name": service_name, "error": str(e)}
+    
     # ============================================================================
     # DOCUMENTATION CAPABILITIES
     # ============================================================================
     
     async def create_documentation(self, doc_path: str, content: str, doc_type: str = "markdown") -> bool:
-        """Create documentation file"""
+        """Create documentation file with enhanced capabilities"""
         try:
             # Ensure proper file extension
             if not doc_path.endswith('.md') and doc_type == "markdown":
                 doc_path += '.md'
             
-            return await self.write_file(doc_path, content)
+            # Add timestamp and agent attribution
+            timestamp = datetime.utcnow().isoformat()
+            header = f"<!-- Generated by {self.name} on {timestamp} -->\n\n"
+            full_content = header + content
+            
+            success = await self.write_file(doc_path, full_content)
+            if success:
+                logger.info(f"{self.name} created documentation: {doc_path}")
+            return success
         except Exception as e:
             logger.error(f"{self.name} failed to create documentation: {e}")
             return False
     
     async def update_documentation(self, doc_path: str, updates: List[Dict[str, Any]]) -> bool:
-        """Update existing documentation"""
+        """Update existing documentation with enhanced capabilities"""
         try:
             if await self.file_exists(doc_path):
-                return await self.modify_file(doc_path, updates)
+                # Add update timestamp
+                timestamp = datetime.utcnow().isoformat()
+                update_note = f"<!-- Updated by {self.name} on {timestamp} -->\n"
+                
+                # Read current content
+                current_content = await self.read_file(doc_path)
+                
+                # Apply updates
+                success = await self.modify_file(doc_path, updates)
+                
+                if success:
+                    # Add update note to the end
+                    updated_content = await self.read_file(doc_path)
+                    await self.write_file(doc_path, updated_content + "\n" + update_note)
+                    logger.info(f"{self.name} updated documentation: {doc_path}")
+                
+                return success
             else:
                 logger.warning(f"{self.name} documentation file not found: {doc_path}")
                 return False
         except Exception as e:
             logger.error(f"{self.name} failed to update documentation: {e}")
+            return False
+    
+    async def create_run_summary(self, run_id: str, summary_data: Dict[str, Any]) -> bool:
+        """Create WarmBoot run summary documentation"""
+        try:
+            doc_path = f"warm-boot/runs/{run_id}-summary.md"
+            
+            content = f"""# WarmBoot {run_id} Summary
+
+**Run ID:** {run_id}  
+**Date:** {summary_data.get('date', datetime.utcnow().isoformat())}  
+**Status:** {summary_data.get('status', 'Completed')}  
+**Agent Work:** {summary_data.get('agent_work_percentage', 'Unknown')}% Real
+
+## Executive Summary
+
+{summary_data.get('summary', 'No summary provided')}
+
+## Agent Collaboration
+
+{summary_data.get('collaboration_details', 'No collaboration details')}
+
+## Technical Implementation
+
+{summary_data.get('technical_details', 'No technical details')}
+
+## Verification Results
+
+{summary_data.get('verification_results', 'No verification results')}
+
+## Files Modified
+
+{summary_data.get('files_modified', 'No files modified')}
+
+## Next Steps
+
+{summary_data.get('next_steps', 'No next steps defined')}
+
+---
+*Generated by {self.name} on {datetime.utcnow().isoformat()}*
+"""
+            
+            return await self.create_documentation(doc_path, content)
+        except Exception as e:
+            logger.error(f"{self.name} failed to create run summary: {e}")
+            return False
+    
+    async def create_run_logs(self, run_id: str, log_data: Dict[str, Any]) -> bool:
+        """Create WarmBoot run logs in JSON format"""
+        try:
+            import json
+            
+            doc_path = f"warm-boot/runs/{run_id}-logs.json"
+            
+            # Add metadata
+            log_data['generated_by'] = self.name
+            log_data['generated_at'] = datetime.utcnow().isoformat()
+            
+            content = json.dumps(log_data, indent=2)
+            
+            return await self.write_file(doc_path, content)
+        except Exception as e:
+            logger.error(f"{self.name} failed to create run logs: {e}")
+            return False
+    
+    async def create_release_manifest(self, run_id: str, manifest_data: Dict[str, Any]) -> bool:
+        """Create release manifest for WarmBoot run"""
+        try:
+            doc_path = f"warm-boot/runs/{run_id}/release_manifest.yaml"
+            
+            # Ensure directory exists
+            await self.create_directory(f"warm-boot/runs/{run_id}")
+            
+            content = f"""# WarmBoot {run_id} Release Manifest
+
+**Release ID:** {run_id}  
+**Release Date:** {manifest_data.get('release_date', datetime.utcnow().isoformat())}  
+**Status:** {manifest_data.get('status', 'Deployed')}
+
+## Infrastructure Versions
+
+{manifest_data.get('infrastructure_versions', 'No infrastructure details')}
+
+## Code Versions
+
+{manifest_data.get('code_versions', 'No code details')}
+
+## Configuration
+
+{manifest_data.get('configuration', 'No configuration details')}
+
+## Deployment Details
+
+{manifest_data.get('deployment_details', 'No deployment details')}
+
+## Verification
+
+{manifest_data.get('verification', 'No verification details')}
+
+---
+*Generated by {self.name} on {datetime.utcnow().isoformat()}*
+"""
+            
+            return await self.create_documentation(doc_path, content)
+        except Exception as e:
+            logger.error(f"{self.name} failed to create release manifest: {e}")
             return False
     
     async def cleanup(self):
