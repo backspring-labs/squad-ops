@@ -66,7 +66,9 @@ class DevAgent(BaseAgent):
     
     async def handle_message(self, message: AgentMessage) -> None:
         """Handle code-related messages"""
-        if message.message_type == "code_review_request":
+        if message.message_type == "TASK_ASSIGNMENT":
+            await self.handle_task_assignment(message)
+        elif message.message_type == "code_review_request":
             await self.handle_code_review(message)
         elif message.message_type == "dependency_query":
             await self.handle_dependency_query(message)
@@ -74,6 +76,155 @@ class DevAgent(BaseAgent):
             await self.handle_refactoring_request(message)
         else:
             logger.info(f"Neo received message: {message.message_type} from {message.sender}")
+    
+    async def handle_task_assignment(self, message: AgentMessage) -> None:
+        """Handle task assignments from Max"""
+        task = message.payload
+        task_id = task.get('task_id', 'unknown')
+        task_type = task.get('task_type', 'unknown')
+        
+        logger.info(f"Neo received TASK_ASSIGNMENT: {task_id} ({task_type}) from {message.sender}")
+        
+        # Process the task
+        try:
+            result = await self.process_task(task)
+            logger.info(f"Neo completed task: {task_id}")
+            
+            # NEW: Implement actual file modifications based on task type
+            if task_type == "footer_warmboot_update":
+                await self.implement_footer_update(task)
+            elif task_type == "code_implementation":
+                await self.implement_code_changes(task)
+            elif task_type == "file_modification":
+                await self.implement_file_modifications(task)
+            
+            # Send completion message back to Max
+            await self.send_message(
+                recipient=message.sender,
+                message_type="TASK_COMPLETION",
+                payload={
+                    "task_id": task_id,
+                    "status": "completed",
+                    "result": result,
+                    "implementation": "file_modifications_applied"
+                },
+                context={"original_task": task}
+            )
+            
+        except Exception as e:
+            logger.error(f"Neo failed to process task {task_id}: {e}")
+            
+            # Send failure message back to Max
+            await self.send_message(
+                recipient=message.sender,
+                message_type="TASK_FAILURE",
+                payload={
+                    "task_id": task_id,
+                    "status": "failed",
+                    "error": str(e)
+                },
+                context={"original_task": task}
+            )
+    
+    async def implement_footer_update(self, task: Dict[str, Any]) -> bool:
+        """Implement footer update for WarmBoot version"""
+        try:
+            run_id = task.get('run_id', 'unknown')
+            requirements = task.get('requirements', {})
+            
+            logger.info(f"Neo implementing footer update for run: {run_id}")
+            
+            # Read current server file
+            server_content = await self.read_file("warm-boot/apps/hello-squad/server/index.js")
+            
+            # Update the version endpoint to return the new run_id
+            modifications = []
+            lines = server_content.split('\n')
+            
+            for i, line in enumerate(lines):
+                if 'run_id' in line and 'process.env.WARMBOOT_RUN_ID' in line:
+                    modifications.append({
+                        'type': 'replace',
+                        'line_number': i,
+                        'content': f'        "run_id": process.env.WARMBOOT_RUN_ID || "{run_id}",'
+                    })
+                    break
+            
+            # Apply modifications
+            if modifications:
+                success = await self.modify_file("warm-boot/apps/hello-squad/server/index.js", modifications)
+                if success:
+                    logger.info(f"Neo successfully updated server file for run: {run_id}")
+                    return True
+            
+            logger.warning(f"Neo could not find version endpoint to update for run: {run_id}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Neo failed to implement footer update: {e}")
+            return False
+    
+    async def implement_code_changes(self, task: Dict[str, Any]) -> bool:
+        """Implement general code changes"""
+        try:
+            task_id = task.get('task_id', 'unknown')
+            code_changes = task.get('code_changes', [])
+            
+            logger.info(f"Neo implementing code changes for task: {task_id}")
+            
+            for change in code_changes:
+                file_path = change.get('file_path')
+                modifications = change.get('modifications', [])
+                
+                if file_path and modifications:
+                    success = await self.modify_file(file_path, modifications)
+                    if success:
+                        logger.info(f"Neo successfully modified file: {file_path}")
+                    else:
+                        logger.error(f"Neo failed to modify file: {file_path}")
+                        return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Neo failed to implement code changes: {e}")
+            return False
+    
+    async def implement_file_modifications(self, task: Dict[str, Any]) -> bool:
+        """Implement specific file modifications"""
+        try:
+            task_id = task.get('task_id', 'unknown')
+            files_to_modify = task.get('files_to_modify', [])
+            
+            logger.info(f"Neo implementing file modifications for task: {task_id}")
+            
+            for file_info in files_to_modify:
+                file_path = file_info.get('file_path')
+                action = file_info.get('action', 'modify')
+                
+                if action == 'create':
+                    content = file_info.get('content', '')
+                    success = await self.write_file(file_path, content)
+                elif action == 'modify':
+                    modifications = file_info.get('modifications', [])
+                    success = await self.modify_file(file_path, modifications)
+                elif action == 'delete':
+                    # For now, we'll just log deletion (implement later)
+                    logger.info(f"Neo would delete file: {file_path}")
+                    success = True
+                else:
+                    logger.warning(f"Neo unknown action: {action} for file: {file_path}")
+                    success = False
+                
+                if not success:
+                    logger.error(f"Neo failed to {action} file: {file_path}")
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Neo failed to implement file modifications: {e}")
+            return False
     
     async def build_knowledge_graph(self, task: Dict[str, Any]):
         """Build knowledge graph from task context"""

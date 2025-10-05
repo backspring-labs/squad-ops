@@ -17,6 +17,9 @@ import aio_pika
 import asyncpg
 import redis.asyncio as redis
 from dataclasses import dataclass, asdict
+import aiofiles
+import shutil
+from pathlib import Path
 
 # Import version management
 sys.path.append('/app')
@@ -161,7 +164,7 @@ class BaseAgent(ABC):
                 VALUES ($1, $2, $3, $4, $5, $6)
                 ON CONFLICT (task_id) 
                 DO UPDATE SET status = $3, progress = $4, eta = $5, updated_at = $6
-            """, task_id, self.name, status, progress, eta, datetime.utcnow().isoformat())
+            """, task_id, self.name, status, progress, eta, datetime.utcnow())
     
     async def log_activity(self, activity: str, details: Dict[str, Any] = None):
         """Log agent activity"""
@@ -353,6 +356,208 @@ class BaseAgent(ABC):
             logger.error(f"{self.name} runtime error: {e}")
         finally:
             await self.cleanup()
+    
+    # ============================================================================
+    # FILE MODIFICATION CAPABILITIES
+    # ============================================================================
+    
+    async def read_file(self, file_path: str) -> str:
+        """Read a file and return its contents"""
+        try:
+            # Ensure path is relative to warm-boot directory
+            if not file_path.startswith('/'):
+                file_path = f"/app/{file_path}"
+            
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                logger.info(f"{self.name} read file: {file_path}")
+                return content
+        except Exception as e:
+            logger.error(f"{self.name} failed to read file {file_path}: {e}")
+            raise
+    
+    async def write_file(self, file_path: str, content: str) -> bool:
+        """Write content to a file"""
+        try:
+            # Ensure path is relative to warm-boot directory
+            if not file_path.startswith('/'):
+                file_path = f"/app/{file_path}"
+            
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            
+            async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+                await f.write(content)
+                logger.info(f"{self.name} wrote file: {file_path}")
+                return True
+        except Exception as e:
+            logger.error(f"{self.name} failed to write file {file_path}: {e}")
+            return False
+    
+    async def modify_file(self, file_path: str, modifications: List[Dict[str, Any]]) -> bool:
+        """Apply modifications to a file (replace, insert, delete)"""
+        try:
+            # Read current content
+            current_content = await self.read_file(file_path)
+            lines = current_content.split('\n')
+            
+            # Apply modifications in reverse order to maintain line numbers
+            modifications.sort(key=lambda x: x.get('line_number', 0), reverse=True)
+            
+            for mod in modifications:
+                mod_type = mod.get('type', 'replace')
+                line_number = mod.get('line_number', 0)
+                content = mod.get('content', '')
+                
+                if mod_type == 'replace' and 0 <= line_number < len(lines):
+                    lines[line_number] = content
+                elif mod_type == 'insert' and 0 <= line_number <= len(lines):
+                    lines.insert(line_number, content)
+                elif mod_type == 'delete' and 0 <= line_number < len(lines):
+                    lines.pop(line_number)
+            
+            # Write modified content
+            new_content = '\n'.join(lines)
+            return await self.write_file(file_path, new_content)
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to modify file {file_path}: {e}")
+            return False
+    
+    async def create_directory(self, dir_path: str) -> bool:
+        """Create a directory"""
+        try:
+            if not dir_path.startswith('/'):
+                dir_path = f"/app/{dir_path}"
+            
+            os.makedirs(dir_path, exist_ok=True)
+            logger.info(f"{self.name} created directory: {dir_path}")
+            return True
+        except Exception as e:
+            logger.error(f"{self.name} failed to create directory {dir_path}: {e}")
+            return False
+    
+    async def list_files(self, dir_path: str) -> List[str]:
+        """List files in a directory"""
+        try:
+            if not dir_path.startswith('/'):
+                dir_path = f"/app/{dir_path}"
+            
+            files = []
+            for item in os.listdir(dir_path):
+                item_path = os.path.join(dir_path, item)
+                if os.path.isfile(item_path):
+                    files.append(item)
+            logger.info(f"{self.name} listed files in: {dir_path}")
+            return files
+        except Exception as e:
+            logger.error(f"{self.name} failed to list files in {dir_path}: {e}")
+            return []
+    
+    async def file_exists(self, file_path: str) -> bool:
+        """Check if a file exists"""
+        try:
+            if not file_path.startswith('/'):
+                file_path = f"/app/{file_path}"
+            
+            exists = os.path.isfile(file_path)
+            logger.info(f"{self.name} checked file existence: {file_path} = {exists}")
+            return exists
+        except Exception as e:
+            logger.error(f"{self.name} failed to check file existence {file_path}: {e}")
+            return False
+    
+    # ============================================================================
+    # DEPLOYMENT CAPABILITIES
+    # ============================================================================
+    
+    async def build_docker_image(self, context_path: str, image_name: str, build_args: Dict[str, str] = None) -> bool:
+        """Build a Docker image"""
+        try:
+            import subprocess
+            
+            cmd = ["docker", "build", "-t", image_name]
+            
+            # Add build args
+            if build_args:
+                for key, value in build_args.items():
+                    cmd.extend(["--build-arg", f"{key}={value}"])
+            
+            cmd.append(context_path)
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app")
+            
+            if result.returncode == 0:
+                logger.info(f"{self.name} built Docker image: {image_name}")
+                return True
+            else:
+                logger.error(f"{self.name} failed to build Docker image: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"{self.name} failed to build Docker image: {e}")
+            return False
+    
+    async def deploy_service(self, service_name: str, image_name: str, ports: List[str] = None, env_vars: Dict[str, str] = None) -> bool:
+        """Deploy a service using docker-compose"""
+        try:
+            import subprocess
+            
+            # For now, we'll use docker run as a simple deployment
+            cmd = ["docker", "run", "-d", "--name", service_name]
+            
+            # Add port mappings
+            if ports:
+                for port in ports:
+                    cmd.extend(["-p", port])
+            
+            # Add environment variables
+            if env_vars:
+                for key, value in env_vars.items():
+                    cmd.extend(["-e", f"{key}={value}"])
+            
+            cmd.append(image_name)
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app")
+            
+            if result.returncode == 0:
+                logger.info(f"{self.name} deployed service: {service_name}")
+                return True
+            else:
+                logger.error(f"{self.name} failed to deploy service: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"{self.name} failed to deploy service: {e}")
+            return False
+    
+    # ============================================================================
+    # DOCUMENTATION CAPABILITIES
+    # ============================================================================
+    
+    async def create_documentation(self, doc_path: str, content: str, doc_type: str = "markdown") -> bool:
+        """Create documentation file"""
+        try:
+            # Ensure proper file extension
+            if not doc_path.endswith('.md') and doc_type == "markdown":
+                doc_path += '.md'
+            
+            return await self.write_file(doc_path, content)
+        except Exception as e:
+            logger.error(f"{self.name} failed to create documentation: {e}")
+            return False
+    
+    async def update_documentation(self, doc_path: str, updates: List[Dict[str, Any]]) -> bool:
+        """Update existing documentation"""
+        try:
+            if await self.file_exists(doc_path):
+                return await self.modify_file(doc_path, updates)
+            else:
+                logger.warning(f"{self.name} documentation file not found: {doc_path}")
+                return False
+        except Exception as e:
+            logger.error(f"{self.name} failed to update documentation: {e}")
+            return False
     
     async def cleanup(self):
         """Cleanup resources"""
