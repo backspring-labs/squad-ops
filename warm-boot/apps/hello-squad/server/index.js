@@ -91,6 +91,16 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// Version endpoint for run-002 enhancement
+app.get('/api/version', (req, res) => {
+  res.status(200).json({
+    version: process.env.APP_VERSION || '1.1.0',
+    run_id: process.env.WARMBOOT_RUN_ID || 'run-002',
+    timestamp: process.env.BUILD_TIMESTAMP || new Date().toISOString(),
+    git_hash: process.env.GIT_HASH || 'unknown'
+  });
+});
+
 // Serve the main page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));

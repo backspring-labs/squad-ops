@@ -156,6 +156,15 @@
             font-size: 0.9em;
         }
         
+        .version-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 0.8em;
+            color: #666;
+        }
+        
         @media (max-width: 600px) {
             .container {
                 padding: 20px;
@@ -206,6 +215,9 @@
         <div class="footer">
             <p>Powered by SquadOps AI Agent Collaboration</p>
             <p>Real-time updates via WebSocket</p>
+            <div class="version-info" id="version-display">
+                Loading version...
+            </div>
         </div>
     </div>
 
@@ -276,6 +288,19 @@
             })
             .catch(error => {
                 console.error('Error loading names:', error);
+            });
+        
+        // Load version info
+        fetch('/api/version')
+            .then(response => response.json())
+            .then(data => {
+                const buildDate = new Date(data.timestamp).toLocaleDateString();
+                document.getElementById('version-display').textContent = 
+                    `Version: ${data.version} | WarmBoot: ${data.run_id} | Built: ${buildDate}`;
+            })
+            .catch(error => {
+                console.error('Error loading version:', error);
+                document.getElementById('version-display').textContent = 'Version: Unknown';
             });
     </script>
 </body>

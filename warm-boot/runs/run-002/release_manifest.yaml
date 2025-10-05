@@ -1,0 +1,112 @@
+# Release Manifest: run-002
+
+**Run ID:** run-002  
+**PID:** PID-001 (HelloSquad enhancement)  
+**Release Date:** 2025-10-05  
+**Version:** v0.2-warmboot-002  
+
+## Infrastructure Versions
+
+```yaml
+infrastructure:
+  docker_compose: "2.20.0"
+  rabbitmq: "3.12-management"
+  postgresql: "15-alpine"
+  redis: "7-alpine"
+  prefect: "2.14.0"
+```
+
+## Agent Versions
+
+```yaml
+agents:
+  max:
+    role: "lead"
+    model: "llama3.1:8b"
+    llm_mode: "real"
+    status: "online"
+  neo:
+    role: "dev" 
+    model: "qwen2.5:7b"
+    llm_mode: "real"
+    status: "online"
+```
+
+## Application Versions
+
+```yaml
+applications:
+  hello_squad:
+    version: "1.1.0"
+    technology: "Vue.js 3 + Express.js + WebSocket"
+    port: 3000
+    status: "deployed"
+    endpoints:
+      - "/api/hello"
+      - "/api/status"
+      - "/api/version"  # NEW in run-002
+      - "/api/names"
+      - "/"
+    enhancements:
+      - "Version tracking in footer"
+      - "Dynamic version loading from API"
+      - "Build-time version injection"
+```
+
+## Version Tracking
+
+```yaml
+version_info:
+  version: "1.1.0"
+  run_id: "run-002"
+  timestamp: "2025-10-05T01:03:58Z"
+  git_hash: "3b4c483"
+```
+
+## Deployment Commands
+
+```bash
+# Deploy run-002
+git checkout v0.2-warmboot-002
+docker compose build hello-squad \
+  --build-arg APP_VERSION=1.1.0 \
+  --build-arg WARMBOOT_RUN_ID=run-002 \
+  --build-arg BUILD_TIMESTAMP=2025-10-05T01:03:58Z \
+  --build-arg GIT_HASH=3b4c483
+docker compose up -d hello-squad
+
+# Verify deployment
+curl http://localhost:3000/api/version
+curl http://localhost:3000/
+```
+
+## Rollback Commands
+
+```bash
+# Rollback to run-001
+git checkout v0.1-warmboot-001
+docker compose down hello-squad
+docker compose up -d hello-squad
+```
+
+## Health Checks
+
+- **Application**: http://localhost:3000/api/status
+- **Version API**: http://localhost:3000/api/version
+- **Main Page**: http://localhost:3000/
+- **Health Dashboard**: http://localhost:8080
+- **RabbitMQ Management**: http://localhost:15672
+- **PostgreSQL**: localhost:5432
+
+## Dependencies
+
+- Docker Desktop
+- Ollama with llama3.1:8b and qwen2.5:7b models
+- Ports 3000, 8080, 5432, 6379, 15672 available
+
+## New Features (run-002)
+
+- **Version API**: `/api/version` endpoint with metadata
+- **Footer Enhancement**: Dynamic version display
+- **Build Integration**: Version injection during Docker build
+- **Test Coverage**: Comprehensive validation of new features
