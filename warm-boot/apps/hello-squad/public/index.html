@@ -290,13 +290,13 @@
                 console.error('Error loading names:', error);
             });
         
-        // Load version info - SquadOps Framework 0.1.X
+        // Load version info
         fetch('/api/version')
             .then(response => response.json())
             .then(data => {
                 const buildDate = new Date(data.timestamp).toLocaleDateString();
                 document.getElementById('version-display').textContent = 
-                    `SquadOps: ${data.framework_version} | WarmBoot: ${data.warmboot_run} | Built: ${buildDate}`;
+                    `Version: ${data.version} | WarmBoot: ${data.run_id} | Built: ${buildDate}`;
             })
             .catch(error => {
                 console.error('Error loading version:', error);
