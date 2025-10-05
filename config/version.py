@@ -1,9 +1,10 @@
-# SquadOps Version Management
+# SquadOps Framework Version Management
+# This file is the single source of truth for the SquadOps framework version
 
-# Core Framework Version
-FRAMEWORK_VERSION = "1.0.0"
+# Framework Version
+SQUADOPS_VERSION = "0.1.4"
 
-# Agent Versions - Update these when testing new configurations
+# Agent Versions (individual agent versions)
 AGENT_VERSIONS = {
     "max": "1.0.0",
     "neo": "1.0.0", 
@@ -11,162 +12,83 @@ AGENT_VERSIONS = {
     "joi": "1.0.0",
     "data": "1.0.0",
     "eve": "1.0.0",
-    "hal": "1.0.0",
     "quark": "1.0.0",
     "og": "1.0.0",
-    "glyph": "1.0.0"
+    "glyph": "1.0.0",
+    "hal": "1.0.0"
 }
 
-# Configuration Versions - Track LLM/model changes
+# Configuration Versions
 CONFIG_VERSIONS = {
-    "max": {
-        "llm": "llama-3-13b",
-        "config": "governance-v1",
-        "version": "1.0.0"
-    },
-    "neo": {
-        "llm": "codellama-70b", 
-        "config": "deductive-v1",
-        "version": "1.0.0"
-    },
-    "nat": {
-        "llm": "mixtral-8x7b",
-        "config": "abductive-v1", 
-        "version": "1.0.0"
-    },
-    "joi": {
-        "llm": "llama-3-13b",
-        "config": "empathetic-v1",
-        "version": "1.0.0"
-    },
-    "data": {
-        "llm": "mixtral-8x7b",
-        "config": "inductive-v1",
-        "version": "1.0.0"
-    },
-    "eve": {
-        "llm": "llama-3-70b",
-        "config": "counterfactual-v1",
-        "version": "1.0.0"
-    },
-    "hal": {
-        "llm": "llama-3-13b",
-        "config": "monitoring-v1",
-        "version": "1.0.0"
-    },
-    "quark": {
-        "llm": "llama-3-13b",
-        "config": "rule-based-v1",
-        "version": "1.0.0"
-    },
-    "og": {
-        "llm": "llama-3-70b",
-        "config": "pattern-detection-v1",
-        "version": "1.0.0"
-    },
-    "glyph": {
-        "llm": "stable-diffusion-xl",
-        "config": "creative-synthesis-v1",
-        "version": "1.0.0"
-    }
+    "max": {"llm": "llama3.1:8b", "config": "lead-agent"},
+    "neo": {"llm": "qwen2.5:7b", "config": "dev-agent"},
+    "nat": {"llm": "mock", "config": "strategy-agent"},
+    "joi": {"llm": "mock", "config": "comms-agent"},
+    "data": {"llm": "mock", "config": "data-agent"},
+    "eve": {"llm": "mock", "config": "qa-agent"},
+    "quark": {"llm": "mock", "config": "finance-agent"},
+    "og": {"llm": "mock", "config": "curator-agent"},
+    "glyph": {"llm": "mock", "config": "creative-agent"},
+    "hal": {"llm": "mock", "config": "audit-agent"}
 }
 
-# Version History - Track changes for rollback
+# Version History
 VERSION_HISTORY = {
     "max": [
-        {"version": "1.0.0", "config": "governance-v1", "llm": "llama-3-13b", "date": "2024-09-20", "notes": "Initial deployment"}
+        {"version": "1.0.0", "date": "2025-10-05", "llm": "llama3.1:8b", "notes": "Initial version with local LLM"},
     ],
     "neo": [
-        {"version": "1.0.0", "config": "deductive-v1", "llm": "codellama-70b", "date": "2024-09-20", "notes": "Initial deployment"}
-    ],
-    "nat": [
-        {"version": "1.0.0", "config": "abductive-v1", "llm": "mixtral-8x7b", "date": "2024-09-20", "notes": "Initial deployment"}
-    ],
-    "joi": [
-        {"version": "1.0.0", "config": "empathetic-v1", "llm": "llama-3-13b", "date": "2024-09-20", "notes": "Initial deployment"}
-    ],
-    "data": [
-        {"version": "1.0.0", "config": "inductive-v1", "llm": "mixtral-8x7b", "date": "2024-09-20", "notes": "Initial deployment"}
-    ],
-    "eve": [
-        {"version": "1.0.0", "config": "counterfactual-v1", "llm": "llama-3-70b", "date": "2024-09-20", "notes": "Initial deployment"}
-    ],
-    "hal": [
-        {"version": "1.0.0", "config": "monitoring-v1", "llm": "llama-3-13b", "date": "2024-09-20", "notes": "Initial deployment"}
-    ],
-    "quark": [
-        {"version": "1.0.0", "config": "rule-based-v1", "llm": "llama-3-13b", "date": "2024-09-20", "notes": "Initial deployment"}
-    ],
-    "og": [
-        {"version": "1.0.0", "config": "pattern-detection-v1", "llm": "llama-3-70b", "date": "2024-09-20", "notes": "Initial deployment"}
-    ],
-    "glyph": [
-        {"version": "1.0.0", "config": "creative-synthesis-v1", "llm": "stable-diffusion-xl", "date": "2024-09-20", "notes": "Initial deployment"}
+        {"version": "1.0.0", "date": "2025-10-05", "llm": "qwen2.5:7b", "notes": "Initial version with file modification capabilities"},
     ]
 }
 
-def get_agent_version(agent_name: str) -> str:
-    """Get current version for an agent"""
-    return AGENT_VERSIONS.get(agent_name.lower(), "1.0.0")
+def get_framework_version():
+    """Get the current SquadOps framework version"""
+    return SQUADOPS_VERSION
 
-def get_agent_config(agent_name: str) -> dict:
-    """Get current configuration for an agent"""
-    return CONFIG_VERSIONS.get(agent_name.lower(), {
-        "llm": "unknown",
-        "config": "unknown", 
-        "version": "1.0.0"
-    })
+def get_agent_version(agent_name):
+    """Get version for a specific agent"""
+    return AGENT_VERSIONS.get(agent_name.lower(), "unknown")
 
-def update_agent_version(agent_name: str, new_version: str, llm: str = None, config: str = None, notes: str = ""):
-    """Update agent version and track in history"""
-    from datetime import datetime
-    
+def get_agent_config(agent_name):
+    """Get configuration for a specific agent"""
+    return CONFIG_VERSIONS.get(agent_name.lower(), {})
+
+def update_agent_version(agent_name, version, llm=None, config=None, notes=""):
+    """Update agent version and add to history"""
     agent_key = agent_name.lower()
+    AGENT_VERSIONS[agent_key] = version
     
-    # Update current version
-    AGENT_VERSIONS[agent_key] = new_version
-    
-    # Update config if provided
-    if llm or config:
-        current_config = CONFIG_VERSIONS.get(agent_key, {})
-        if llm:
-            current_config["llm"] = llm
-        if config:
-            current_config["config"] = config
-        current_config["version"] = new_version
-        CONFIG_VERSIONS[agent_key] = current_config
-    
-    # Add to version history
     if agent_key not in VERSION_HISTORY:
         VERSION_HISTORY[agent_key] = []
     
     VERSION_HISTORY[agent_key].append({
-        "version": new_version,
-        "config": config or current_config.get("config", "unknown"),
-        "llm": llm or current_config.get("llm", "unknown"),
-        "date": datetime.now().strftime("%Y-%m-%d"),
+        "version": version,
+        "date": "2025-10-05",  # Would use datetime.now().isoformat() in real implementation
+        "llm": llm or CONFIG_VERSIONS.get(agent_key, {}).get("llm", "unknown"),
         "notes": notes
     })
 
-def get_version_history(agent_name: str) -> list:
-    """Get version history for an agent"""
+def get_version_history(agent_name):
+    """Get version history for a specific agent"""
     return VERSION_HISTORY.get(agent_name.lower(), [])
 
-def rollback_agent(agent_name: str, target_version: str) -> bool:
+def rollback_agent(agent_name, target_version):
     """Rollback agent to a previous version"""
     agent_key = agent_name.lower()
     history = VERSION_HISTORY.get(agent_key, [])
     
-    # Find the target version in history
     for entry in reversed(history):
         if entry["version"] == target_version:
-            # Update current version and config
             AGENT_VERSIONS[agent_key] = target_version
-            CONFIG_VERSIONS[agent_key] = {
-                "llm": entry["llm"],
-                "config": entry["config"],
-                "version": target_version
-            }
             return True
-    
     return False
+
+# Version increment rules:
+# 0.1.X - Development phase (current)
+# 0.2.X - Production ready (when 100% agent work + multi-agent + production deployment)
+# 1.0.X - Stable release (when enterprise features + external users)
+
+# Current status: 0.1.4 (WarmBoot run-004)
+# Next increment: 0.1.5 (WarmBoot run-005)
+# Major increment: 0.2.0 (Production ready)
