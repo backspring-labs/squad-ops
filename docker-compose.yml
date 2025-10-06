@@ -139,26 +139,26 @@ services:
     networks:
     - squadnet
   
-  # Hello Squad Application - Built by Max & Neo
-  hello-squad:
-    build:
-      context: ./warm-boot/apps/hello-squad
-      dockerfile: Dockerfile
-    container_name: squadops-hello-squad
-    ports:
-    - 3000:3000
-    environment:
-      PORT: 3000
-      NODE_ENV: production
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - squadnet
+  # Hello Squad Application - Archived (v1) - New v2 will be built from scratch
+  # hello-squad:
+  #   build:
+  #     context: ./warm-boot/apps/hello-squad
+  #     dockerfile: Dockerfile
+  #   container_name: squadops-hello-squad
+  #   ports:
+  #   - 3000:3000
+  #   environment:
+  #     PORT: 3000
+  #     NODE_ENV: production
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #   - squadnet
     restart: unless-stopped
   
   max:

@@ -1,59 +1,130 @@
-# WarmBoot Applications
+# WarmBoot Applications & Runs
 
-This directory contains applications built by SquadOps agent collaboration through the WarmBoot process.
+This directory contains applications built by AI agents through WarmBoot runs and their associated run history.
 
-## Structure
+## Directory Structure
 
 ```
 warm-boot/
-├── apps/                    # Applications built by agents
-│   └── hello-squad/        # Hello Squad web application
-│       ├── Dockerfile      # Container definition
-│       ├── package.json    # Node.js dependencies
-│       ├── server/         # Express.js backend
-│       └── public/         # Frontend web interface
-├── runs/                    # WarmBoot run history and logs
-│   └── run-001/            # First successful WarmBoot run
-│       ├── run-001-summary.md
-│       ├── run-001-logs.json
-│       └── release_manifest.yaml
+├── apps/                    # Active applications built by agents
+│   └── [app-name]/         # Individual application directories
+├── runs/                   # WarmBoot run history and documentation
+│   ├── run-001/           # Individual run directories
+│   │   ├── run-001-summary.md
+│   │   ├── run-001-logs.json
+│   │   └── release_manifest.yaml
+│   ├── run-002/
+│   │   ├── run-002-requirements.md
+│   │   ├── run-002-summary.md
+│   │   ├── run-002-logs.json
+│   │   └── release_manifest.yaml
+│   ├── run-005/
+│   │   ├── run-005-summary.md
+│   │   └── run-005-logs.json
+│   └── ...
+├── prd/                    # Product Requirements Documents
+│   └── PRD-001-HelloSquad.md  # Hello Squad PRD
+├── business-processes/     # Business process documentation
+│   └── BP-001-HelloSquad.md   # Hello Squad business process
+├── use-cases/             # Use case documentation
+│   └── UC-001-HelloSquad.md   # Hello Squad use cases
+├── testing/               # Testing documentation
+│   └── test_cases/        # Test case documentation
+│       └── TC-001-HelloSquad.md  # Hello Squad test cases
+├── archive/                # Archived applications and versions
+│   └── hello-squad-v0.1.5/    # Archived Hello Squad v0.1.5
 └── README.md              # This file
-
-## Documentation Structure
-
-WarmBoot runs are documented across multiple directories:
-
-- **Framework Documentation**: `docs/framework/` - How SquadOps works
-- **Application Documentation**: `docs/prd/` - Product requirements
-- **Test Documentation**: `testing/test_cases/` - Test specifications
-- **Run History**: `warm-boot/runs/` - Execution logs and summaries
 ```
 
-## Hello Squad Application
+## Current Status
 
-**Built by:** Max (LeadAgent) + Neo (DevAgent)  
-**Technology:** Vue.js 3 + Express.js + WebSocket  
-**Status:** ✅ Running at http://localhost:3000  
-**WarmBoot Date:** 2025-10-05  
+### Active Applications
+- **None** - All applications archived for fresh start
 
-### Features
-- Welcome page with agent credits
-- Real-time name submission form
-- WebSocket-powered live updates
-- Modern responsive design
-- REST API endpoints
+### Archived Applications
+- **Hello Squad v0.1.5** - Archived after WarmBoot runs 001-005
+  - Location: `archive/hello-squad-v0.1.5/`
+  - Final Version: v0.1.5
+  - Status: 100% real agent work achieved
+  - Replaced by: Fresh Hello Squad v0.2.0 (from-scratch build)
 
-### Access
-- **Web Interface:** http://localhost:3000
-- **API Status:** http://localhost:3000/api/status
-- **API Names:** http://localhost:3000/api/names
+## WarmBoot Run History
 
-## WarmBoot Process
+### Run-001: Initial Hello Squad Build
+- Built basic Hello Squad application
+- Simple API and HTML page
+- Basic agent collaboration
 
-1. **Max (LeadAgent)** creates project plan using Llama 3.1 8B
-2. **Max** delegates specific tasks to Neo via RabbitMQ
-3. **Neo (DevAgent)** implements features using Qwen 2.5 7B
-4. **SquadOps Protocol** deploys application as Docker container
-5. **Application** becomes accessible in SquadOps infrastructure
+### Run-002: Version Tracking Enhancement
+- Added version tracking capabilities
+- Enhanced footer display
+- Improved agent coordination
 
-This demonstrates complete end-to-end agent collaboration from planning to deployment.
+### Run-003: Real Agent Work
+- First real RabbitMQ communication
+- Actual file modifications by agents
+- Real LLM responses via Ollama
+
+### Run-004: File Operations Breakthrough
+- Agents gained file modification capabilities
+- Real implementation of features
+- 80% real agent work achieved
+
+### Run-005: 100% Real Agent Work
+- **BREAKTHROUGH**: 100% real agent work achieved
+- Comprehensive feature implementation
+- Backend APIs, frontend components, database schema
+- Integration testing and documentation
+- **Paradigm shift** from simulation to real autonomous collaboration
+
+## Next Steps
+
+### Fresh Start Approach
+- **Hello Squad v0.2.0**: Build from scratch using standard PRD
+- **User-focused requirements**: Business value over technical implementation
+- **Agent translation**: Max translates business requirements into technical tasks
+- **Pure creation**: Test agents' ability to build complete applications from nothing
+
+### Framework Enhancements
+- **Archive system**: Proper archiving of previous versions
+- **Clean slate**: Fresh apps directory for new builds
+- **Version management**: Clear versioning and traceability
+- **Documentation**: Comprehensive run history and achievements
+
+## Usage
+
+### Starting a New WarmBoot Run
+
+#### For From-Scratch Builds
+1. **Simple Git-based approach**:
+   ```bash
+   # Archive current work
+   git tag v0.1.5-hello-squad-archived
+   git add . && git commit -m "Archive Hello Squad v0.1.5"
+   
+   # Clean slate for fresh build
+   rm -rf warm-boot/apps/hello-squad
+   mkdir -p warm-boot/apps/hello-squad
+   ```
+
+2. **Agent-managed approach** (Recommended):
+   - Let **Max (Lead Agent)** read the PRD from `warm-boot/prd/`
+   - **Max** creates tasks for **Neo** to archive old version and build new
+   - **Neo** handles archiving, building, and deployment
+   - **Agents** manage the entire lifecycle
+
+#### For Incremental Builds
+1. Continue with existing application
+2. Let agents enhance and modify existing code
+3. No archiving required
+
+### Archiving Applications
+**Agent-managed archiving** (Recommended):
+- **Neo (Dev Agent)** handles archiving as part of from-scratch build
+- **Agents** create archive documentation
+- **Agents** update docker-compose.yml and manage containers
+- **Agents** ensure proper versioning and traceability
+
+---
+
+**Note**: This directory structure supports both incremental enhancement and fresh start approaches for WarmBoot runs, providing flexibility for different testing scenarios and development strategies.

@@ -8,15 +8,14 @@ import sys
 import json
 from datetime import datetime
 from config.version import (
-    SQUADOPS_VERSION, AGENT_VERSIONS, CONFIG_VERSIONS, VERSION_HISTORY,
-    get_framework_version, get_agent_version, get_agent_config, update_agent_version,
+    AGENT_VERSIONS, CONFIG_VERSIONS, VERSION_HISTORY,
+    get_agent_version, get_agent_config, update_agent_version,
     get_version_history, rollback_agent
 )
 
 def list_agents():
     """List all agents and their current versions"""
-    print(f"🚀 SquadOps Framework v{get_framework_version()}")
-    print("🤖 Agent Versions")
+    print("🤖 SquadOps Agent Versions")
     print("=" * 50)
     for agent, version in AGENT_VERSIONS.items():
         config = CONFIG_VERSIONS.get(agent, {})
@@ -65,7 +64,7 @@ def rollback_to_version(agent_name, target_version):
 def export_versions():
     """Export current version configuration"""
     config = {
-        "framework_version": get_framework_version(),
+        "framework_version": "1.0.0",
         "agent_versions": AGENT_VERSIONS,
         "config_versions": CONFIG_VERSIONS,
         "export_date": datetime.now().isoformat()

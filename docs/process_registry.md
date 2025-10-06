@@ -11,12 +11,13 @@ This document tracks all Process IDs (PIDs) and their associated governance arti
 ## Reserved PIDs
 
 ### PID-001: HelloSquad
-- **Description**: First reference app - FastAPI "Hello World" service
-- **Business Process**: `BP-001-HelloSquad.md`
-- **Use Case**: `UC-001-HelloSquad.md`
-- **Test Case**: `TC-001-HelloSquad.md`
-- **Status**: Reserved for first WarmBoot run
-- **Agents**: Max (orchestrator), Neo (developer), EVE (tester)
+- **Description**: Collaborative workspace application demonstrating AI agent teams
+- **PRD**: `warm-boot/prd/PRD-001-HelloSquad.md`
+- **Business Process**: `warm-boot/business-processes/BP-001-HelloSquad.md`
+- **Use Case**: `warm-boot/use-cases/UC-001-HelloSquad.md`
+- **Test Case**: `warm-boot/testing/test_cases/TC-001-HelloSquad.md`
+- **Status**: From-scratch build in progress (v0.2.0)
+- **Agents**: Max (Lead), Neo (Dev)
 
 ## Future PIDs
 - PID-002: [To be assigned]
