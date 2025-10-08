@@ -13,9 +13,9 @@ from typing import List, Dict, Any, Optional
 import os
 import sys
 sys.path.append('/Users/jladd/Code/squad-ops')
-from config.version import FRAMEWORK_VERSION, AGENT_VERSIONS, get_agent_version
+from config.version import SQUADOPS_VERSION, AGENT_VERSIONS, get_agent_version
 
-app = FastAPI(title="SquadOps Health Check Service", version=FRAMEWORK_VERSION)
+app = FastAPI(title="SquadOps Health Check Service", version=SQUADOPS_VERSION)
 
 # Pydantic models for WarmBoot requests
 class WarmBootRequest(BaseModel):
@@ -26,6 +26,7 @@ class WarmBootRequest(BaseModel):
     priority: str
     description: str
     requirements: Optional[str] = None
+    prd_path: Optional[str] = None
 
 # Configuration
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://squadops:squadops123@rabbitmq:5672/")
@@ -284,42 +285,9 @@ class HealthChecker:
     async def submit_warmboot_request(self, request: WarmBootRequest) -> Dict[str, Any]:
         """Submit WarmBoot request to agents via RabbitMQ"""
         try:
-            # Create task in database
+            # Initialize connections if needed
             if not self.pg_pool:
                 await self.init_connections()
-            
-            async with self.pg_pool.acquire() as conn:
-                # Create main task record
-                task_id = await conn.fetchval("""
-                    INSERT INTO tasks (task_id, title, description, priority, status, created_at, assignee)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    RETURNING task_id
-                """, 
-                f"{request.run_id}-main",
-                f"WarmBoot {request.run_id}: {request.application}",
-                request.description,
-                request.priority,
-                "PENDING",
-                datetime.utcnow(),
-                "max"  # Max is always the lead
-                )
-                
-                # Create subtasks for each agent
-                for agent in request.agents:
-                    subtask_id = f"{request.run_id}-{agent}-001"
-                    await conn.execute("""
-                        INSERT INTO tasks (task_id, title, description, priority, status, created_at, assignee, parent_task_id)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    """,
-                    subtask_id,
-                    f"{agent.title()} Task for {request.application}",
-                    f"Agent-specific task for {request.description}",
-                    request.priority,
-                    "PENDING",
-                    datetime.utcnow(),
-                    agent,
-                    task_id
-                    )
             
             # Send messages to agents via RabbitMQ
             connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
@@ -327,7 +295,8 @@ class HealthChecker:
             
             # Send to Max (lead agent) first
             max_message = {
-                "message_type": "WARMBOOT_REQUEST",
+                "task_id": f"{request.run_id}-main",
+                "type": "governance",
                 "run_id": request.run_id,
                 "application": request.application,
                 "request_type": request.request_type,
@@ -335,12 +304,13 @@ class HealthChecker:
                 "priority": request.priority,
                 "description": request.description,
                 "requirements": request.requirements,
+                "prd_path": request.prd_path,
                 "timestamp": datetime.utcnow().isoformat()
             }
             
             channel.basic_publish(
                 exchange='',
-                routing_key='agent_max_queue',
+                routing_key='max_tasks',
                 body=json.dumps(max_message),
                 properties=pika.BasicProperties(
                     content_type='application/json',
@@ -350,9 +320,23 @@ class HealthChecker:
             
             # Send individual tasks to each agent
             for agent in request.agents:
+                # Map agent to appropriate task type
+                task_type_map = {
+                    "max": "governance",
+                    "neo": "code",
+                    "nat": "product",
+                    "eve": "security",
+                    "data": "data_analysis",
+                    "quark": "financial",
+                    "joi": "communication",
+                    "og": "pattern_analysis",
+                    "glyph": "creative",
+                    "hal": "audit"
+                }
+                
                 agent_message = {
-                    "message_type": "TASK_ASSIGNMENT",
                     "task_id": f"{request.run_id}-{agent}-001",
+                    "type": task_type_map.get(agent, "code"),
                     "run_id": request.run_id,
                     "application": request.application,
                     "request_type": request.request_type,
@@ -364,7 +348,7 @@ class HealthChecker:
                 
                 channel.basic_publish(
                     exchange='',
-                    routing_key=f'agent_{agent}_queue',
+                    routing_key=f'{agent}_tasks',
                     body=json.dumps(agent_message),
                     properties=pika.BasicProperties(
                         content_type='application/json',
@@ -377,7 +361,7 @@ class HealthChecker:
             return {
                 "status": "success",
                 "message": f"WarmBoot request {request.run_id} submitted successfully",
-                "task_id": task_id,
+                "run_id": request.run_id,
                 "agents_notified": request.agents,
                 "timestamp": datetime.utcnow().isoformat()
             }
@@ -396,29 +380,36 @@ class HealthChecker:
                 await self.init_connections()
             
             async with self.pg_pool.acquire() as conn:
-                # Get main task status
-                main_task = await conn.fetchrow("""
-                    SELECT task_id, title, status, created_at, updated_at
-                    FROM tasks
-                    WHERE task_id = $1
-                """, f"{run_id}-main")
+                # Get task statuses from task_status table (like successful WarmBoot runs)
+                task_statuses = await conn.fetch("""
+                    SELECT task_id, agent_name, status, progress, updated_at
+                    FROM task_status
+                    WHERE task_id LIKE $1
+                    ORDER BY agent_name
+                """, f"{run_id}%")
                 
-                # Get subtask statuses
-                subtasks = await conn.fetch("""
-                    SELECT task_id, assignee, status, created_at, updated_at
-                    FROM tasks
-                    WHERE parent_task_id = (SELECT task_id FROM tasks WHERE task_id = $1)
-                    ORDER BY assignee
-                """, f"{run_id}-main")
-                
-                if not main_task:
-                    return {"status": "not_found", "message": f"WarmBoot run {run_id} not found"}
+                if not task_statuses:
+                    return {
+                        "run_id": run_id,
+                        "status": "submitted",
+                        "message": f"WarmBoot run {run_id} submitted to agents",
+                        "task_statuses": [],
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
                 
                 return {
                     "run_id": run_id,
-                    "main_task": dict(main_task),
-                    "subtasks": [dict(task) for task in subtasks],
-                    "overall_status": main_task['status'],
+                    "status": "in_progress",
+                    "task_statuses": [
+                        {
+                            "task_id": task["task_id"],
+                            "agent_name": task["agent_name"],
+                            "status": task["status"],
+                            "progress": task["progress"],
+                            "updated_at": task["updated_at"].isoformat() if task["updated_at"] else None
+                        }
+                        for task in task_statuses
+                    ],
                     "timestamp": datetime.utcnow().isoformat()
                 }
                 
@@ -428,6 +419,123 @@ class HealthChecker:
                 "message": f"Failed to get WarmBoot status: {str(e)}",
                 "timestamp": datetime.utcnow().isoformat()
             }
+    
+    async def get_available_prds(self) -> List[Dict[str, Any]]:
+        """Get available PRDs from warm-boot/prd/ directory"""
+        try:
+            import os
+            import re
+            
+            prds = []
+            prd_dir = "warm-boot/prd/"
+            
+            if not os.path.exists(prd_dir):
+                return prds
+            
+            for filename in os.listdir(prd_dir):
+                if filename.endswith('.md'):
+                    file_path = os.path.join(prd_dir, filename)
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        # Extract PRD metadata
+                        title_match = re.search(r'^# (.+)$', content, re.MULTILINE)
+                        pid_match = re.search(r'PID-(\d+)', content)
+                        description_match = re.search(r'## Summary\s*\n(.+?)(?=\n##|\n#|$)', content, re.DOTALL)
+                        
+                        title = title_match.group(1) if title_match else filename.replace('.md', '')
+                        pid = f"PID-{pid_match.group(1)}" if pid_match else "Unknown"
+                        description = description_match.group(1).strip() if description_match else "No description available"
+                        
+                        prds.append({
+                            "file_path": file_path,
+                            "filename": filename,
+                            "title": title,
+                            "pid": pid,
+                            "description": description[:200] + "..." if len(description) > 200 else description
+                        })
+                    except Exception as e:
+                        # Skip files that can't be read
+                        continue
+            
+            return prds
+            
+        except Exception as e:
+            return []
+    
+    async def get_next_run_id(self) -> str:
+        """Get next sequential run ID"""
+        try:
+            import os
+            
+            runs_dir = "warm-boot/runs/"
+            existing_runs = []
+            
+            if os.path.exists(runs_dir):
+                for item in os.listdir(runs_dir):
+                    if item.startswith("run-") and os.path.isdir(os.path.join(runs_dir, item)):
+                        try:
+                            run_num = int(item.split("-")[1])
+                            existing_runs.append(run_num)
+                        except:
+                            continue
+            
+            next_num = max(existing_runs) + 1 if existing_runs else 1
+            return f"run-{next_num:03d}"
+            
+        except Exception as e:
+            return "run-001"
+    
+    async def get_agent_messages(self, since: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get recent agent messages for live communication feed"""
+        try:
+            if not self.pg_pool:
+                await self.init_connections()
+            
+            async with self.pg_pool.acquire() as conn:
+                # Get recent messages (last 50 or since timestamp)
+                if since:
+                    messages = await conn.fetch("""
+                        SELECT timestamp, message_type, sender, recipient, payload, context, message_id
+                        FROM squadcomms_messages
+                        WHERE timestamp > $1
+                        ORDER BY timestamp DESC
+                        LIMIT 50
+                    """, since)
+                else:
+                    messages = await conn.fetch("""
+                        SELECT timestamp, message_type, sender, recipient, payload, context, message_id
+                        FROM squadcomms_messages
+                        ORDER BY timestamp DESC
+                        LIMIT 50
+                    """)
+                
+                # Convert to format expected by frontend
+                formatted_messages = []
+                for msg in messages:
+                    # Extract content from payload or use message_type as content
+                    content = "Message sent"
+                    if msg['payload']:
+                        if isinstance(msg['payload'], dict):
+                            content = msg['payload'].get('description', msg['payload'].get('content', 'Message sent'))
+                        else:
+                            content = str(msg['payload'])
+                    
+                    formatted_messages.append({
+                        'timestamp': msg['timestamp'],
+                        'message_type': msg['message_type'],
+                        'sender': msg['sender'],
+                        'recipient': msg['recipient'],
+                        'content': content,
+                        'metadata': msg['context'] or {}
+                    })
+                
+                # Return in chronological order (oldest first)
+                return list(reversed(formatted_messages))
+                
+        except Exception as e:
+            return []
 
 # Initialize health checker
 health_checker = HealthChecker()
@@ -587,6 +695,30 @@ async def get_warmboot_status(run_id: str):
     result = await health_checker.get_warmboot_status(run_id)
     return JSONResponse(content=result)
 
+@app.get("/warmboot/prds")
+async def get_available_prds():
+    """Get available PRDs from warm-boot/prd/ directory"""
+    prds = await health_checker.get_available_prds()
+    return JSONResponse(content=prds)
+
+@app.get("/warmboot/next-run-id")
+async def get_next_run_id():
+    """Get next sequential run ID"""
+    run_id = await health_checker.get_next_run_id()
+    return JSONResponse(content={"run_id": run_id})
+
+@app.get("/warmboot/agents")
+async def get_agent_status_for_form():
+    """Get agent status for form checkbox defaults"""
+    agents = await health_checker.get_agent_status()
+    return JSONResponse(content=agents)
+
+@app.get("/warmboot/messages")
+async def get_agent_messages(since: Optional[str] = None):
+    """Get recent agent messages for live communication feed"""
+    messages = await health_checker.get_agent_messages(since)
+    return JSONResponse(content=messages)
+
 @app.get("/warmboot/form")
 async def warmboot_form():
     """Get WarmBoot request form HTML"""
@@ -658,12 +790,12 @@ async def warmboot_form():
                                 <label for="request_type" class="form-label">Request Type</label>
                                 <select class="form-select" id="request_type" name="request_type" required>
                                     <option value="">Select Type</option>
-                                    <option value="from-scratch">From-Scratch Build</option>
-                                    <option value="feature-update">Feature Update</option>
-                                    <option value="bug-fix">Bug Fix</option>
-                                    <option value="refactor">Refactor</option>
-                                    <option value="deployment">Deployment</option>
-                                    <option value="testing">Testing</option>
+                                    <option value="from-scratch">From-Scratch Build (archive previous, build new)</option>
+                                    <option value="feature-update">Feature Update (modify existing)</option>
+                                    <option value="bug-fix">Bug Fix (fix existing)</option>
+                                    <option value="refactor">Refactor (improve existing)</option>
+                                    <option value="deployment">Deployment (deploy existing)</option>
+                                    <option value="testing">Testing (test existing)</option>
                                 </select>
                             </div>
                         </div>
@@ -740,6 +872,19 @@ async def warmboot_form():
                     </div>
                 </form>
                 
+                <div class="mt-4">
+                    <h4>Live Agent Communication</h4>
+                    <div class="agent-chat-container">
+                        <textarea id="agentChat" class="form-control" rows="15" readonly 
+                                  style="font-family: monospace; font-size: 12px; background-color: #f8f9fa;"
+                                  placeholder="Agent communication will appear here after submitting a WarmBoot request..."></textarea>
+                        <div class="chat-controls mt-2">
+                            <button id="clearChat" class="btn btn-sm btn-outline-secondary">Clear</button>
+                            <span id="chatStatus" class="badge bg-secondary ms-2">Waiting</span>
+                        </div>
+                    </div>
+                </div>
+                
                 <div id="statusContainer" class="status-container">
                     <div id="statusMessage"></div>
                     <div id="statusDetails" class="mt-2"></div>
@@ -748,6 +893,159 @@ async def warmboot_form():
         </div>
         
         <script>
+            let currentRunId = null;
+            let chatRefreshInterval = null;
+            let lastMessageTime = null;
+            
+            // Initialize form on page load
+            document.addEventListener('DOMContentLoaded', async function() {
+                await initializeForm();
+            });
+            
+            async function initializeForm() {
+                // Generate Run ID
+                await generateRunId();
+                
+                // Populate PRD dropdown
+                await populatePrdDropdown();
+                
+                // Set up agent checkboxes
+                await setupAgentCheckboxes();
+                
+                // Set up chat controls
+                setupChatControls();
+            }
+            
+            async function generateRunId() {
+                try {
+                    const response = await fetch('/warmboot/next-run-id');
+                    const result = await response.json();
+                    document.getElementById('run_id').value = result.run_id;
+                    currentRunId = result.run_id;
+                } catch (error) {
+                    console.error('Failed to generate Run ID:', error);
+                    document.getElementById('run_id').value = 'run-001';
+                    currentRunId = 'run-001';
+                }
+            }
+            
+            async function populatePrdDropdown() {
+                try {
+                    const response = await fetch('/warmboot/prds');
+                    const prds = await response.json();
+                    const prdSelect = document.getElementById('application');
+                    
+                    // Clear existing options except the first one
+                    prdSelect.innerHTML = '<option value="">Select Application</option>';
+                    
+                    // Add PRD options
+                    prds.forEach(prd => {
+                        const option = document.createElement('option');
+                        option.value = prd.file_path;
+                        option.textContent = `${prd.title} (${prd.pid})`;
+                        option.title = prd.description;
+                        prdSelect.appendChild(option);
+                    });
+                    
+                    // Add custom options
+                    const customOption = document.createElement('option');
+                    customOption.value = 'custom';
+                    customOption.textContent = 'Custom Application';
+                    prdSelect.appendChild(customOption);
+                    
+                } catch (error) {
+                    console.error('Failed to load PRDs:', error);
+                }
+            }
+            
+            async function setupAgentCheckboxes() {
+                try {
+                    const response = await fetch('/warmboot/agents');
+                    const agents = await response.json();
+                    
+                    agents.forEach(agent => {
+                        const checkbox = document.getElementById(`agent_${agent.agent.toLowerCase()}`);
+                        if (checkbox) {
+                            // Set default selection based on agent status
+                            checkbox.checked = agent.status === 'online' || agent.agent === 'Max';
+                            
+                            // Disable Max (always required)
+                            if (agent.agent === 'Max') {
+                                checkbox.disabled = true;
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.error('Failed to load agent status:', error);
+                }
+            }
+            
+            function setupChatControls() {
+                // Clear chat button
+                document.getElementById('clearChat').addEventListener('click', function() {
+                    document.getElementById('agentChat').value = '';
+                    lastMessageTime = null;
+                });
+            }
+            
+            function startChatFeed() {
+                if (chatRefreshInterval) {
+                    clearInterval(chatRefreshInterval);
+                }
+                
+                const chatStatus = document.getElementById('chatStatus');
+                chatStatus.className = 'badge bg-success ms-2';
+                chatStatus.textContent = 'Live';
+                
+                chatRefreshInterval = setInterval(async () => {
+                    try {
+                        const sinceParam = lastMessageTime ? `?since=${lastMessageTime}` : '';
+                        const response = await fetch(`/warmboot/messages${sinceParam}`);
+                        const messages = await response.json();
+                        
+                        if (messages.length > 0) {
+                            const chatArea = document.getElementById('agentChat');
+                            
+                            messages.forEach(msg => {
+                                const formattedMsg = formatMessage(msg);
+                                chatArea.value += formattedMsg + '\\n';
+                            });
+                            
+                            // Auto-scroll to bottom
+                            chatArea.scrollTop = chatArea.scrollHeight;
+                            
+                            // Update last message time
+                            lastMessageTime = messages[messages.length - 1].timestamp;
+                        }
+                    } catch (error) {
+                        console.error('Chat feed error:', error);
+                    }
+                }, 1000); // Refresh every second
+            }
+            
+            function formatMessage(msg) {
+                const timestamp = new Date(msg.timestamp).toLocaleTimeString();
+                const icon = getMessageIcon(msg.message_type);
+                const direction = msg.sender === 'warmboot-orchestrator' ? '←' : '→';
+                
+                return `[${timestamp}] ${icon} ${msg.message_type}: ${msg.recipient} ${direction} ${msg.sender}\\n           "${msg.content}"`;
+            }
+            
+            function getMessageIcon(messageType) {
+                const icons = {
+                    'WARMBOOT_REQUEST': '🚀',
+                    'TASK_ASSIGNMENT': '📋', 
+                    'TASK_ACKNOWLEDGED': '✅',
+                    'TASK_UPDATE': '🔄',
+                    'PROGRESS_UPDATE': '📝',
+                    'BUILD_START': '🏗️',
+                    'TASK_COMPLETED': '✅',
+                    'TASK_FAILED': '❌'
+                };
+                return icons[messageType] || '💬';
+            }
+            
+            // Form submission
             document.getElementById('warmbootForm').addEventListener('submit', async function(e) {
                 e.preventDefault();
                 
@@ -783,11 +1081,15 @@ async def warmboot_form():
                         statusContainer.className = 'status-container status-success';
                         statusMessage.innerHTML = '<strong>✅ Success!</strong> ' + result.message;
                         statusDetails.innerHTML = `
-                            <strong>Task ID:</strong> ${result.task_id}<br>
+                            <strong>Run ID:</strong> ${result.run_id}<br>
                             <strong>Agents Notified:</strong> ${result.agents_notified.join(', ')}<br>
                             <strong>Timestamp:</strong> ${result.timestamp}<br>
                             <a href="/warmboot/status/${requestData.run_id}" class="btn btn-sm btn-outline-success mt-2">View Status</a>
                         `;
+                        
+                        // Start live chat feed
+                        startChatFeed();
+                        
                     } else {
                         statusContainer.className = 'status-container status-error';
                         statusMessage.innerHTML = '<strong>❌ Error!</strong> ' + result.message;
@@ -815,7 +1117,7 @@ async def warmboot_form():
 
 @app.get("/")
 async def root():
-    return {"message": "SquadOps Health Check Service", "version": FRAMEWORK_VERSION}
+    return {"message": "SquadOps Health Check Service", "version": SQUADOPS_VERSION}
 
 if __name__ == "__main__":
     import uvicorn

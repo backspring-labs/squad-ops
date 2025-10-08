@@ -178,6 +178,8 @@ services:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
+    volumes:
+      - ./warm-boot:/app/warm-boot
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -252,6 +254,10 @@ services:
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
+    volumes:
+      - ./warm-boot:/app/warm-boot
+      - ./docker-compose.yml:/app/docker-compose.yml
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       rabbitmq:
         condition: service_healthy

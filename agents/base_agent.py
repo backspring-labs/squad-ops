@@ -10,6 +10,8 @@ import logging
 import os
 import sys
 import time
+import aiofiles
+import subprocess
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -161,15 +163,15 @@ class BaseAgent(ABC):
                 VALUES ($1, $2, $3, $4, $5, $6)
                 ON CONFLICT (task_id) 
                 DO UPDATE SET status = $3, progress = $4, eta = $5, updated_at = $6
-            """, task_id, self.name, status, progress, eta, datetime.utcnow().isoformat())
+            """, task_id, self.name, status, progress, eta, datetime.utcnow())
     
     async def log_activity(self, activity: str, details: Dict[str, Any] = None):
         """Log agent activity"""
         async with self.db_pool.acquire() as conn:
             await conn.execute("""
-                INSERT INTO agent_logs (agent_name, activity, details, timestamp)
-                VALUES ($1, $2, $3, $4)
-            """, self.name, activity, json.dumps(details or {}), datetime.utcnow().isoformat())
+                INSERT INTO agent_task_logs (task_id, agent_name, task_name, task_status, start_time, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            """, f"{self.name}_{activity}_{int(time.time() * 1000)}", self.name, activity, "completed", datetime.utcnow(), datetime.utcnow())
     
     async def send_heartbeat(self):
         """Send heartbeat to health monitoring system"""
@@ -191,7 +193,7 @@ class BaseAgent(ABC):
                 get_agent_version(self.name), 
                 0,  # Mock TPS for now
                 datetime.utcnow(),
-                self.current_task,
+                self.current_task or None,
                 datetime.utcnow()
                 )
                 
@@ -290,15 +292,21 @@ class BaseAgent(ABC):
             async def process_tasks():
                 async for message in task_queue:
                     try:
+                        print(f"DEBUG: {self.name} received message: {message.body.decode()}")
                         task_data = json.loads(message.body.decode())
+                        print(f"DEBUG: {self.name} parsed task_data: {task_data}")
+                        print(f"DEBUG: {self.name} about to call process_task")
                         result = await self.process_task(task_data)
+                        print(f"DEBUG: {self.name} process_task completed: {result}")
                         
                         # Update task status
+                        print(f"DEBUG: {self.name} about to call update_task_status")
                         await self.update_task_status(
                             task_data.get('task_id', 'unknown'),
                             'Completed',
                             progress=100.0
                         )
+                        print(f"DEBUG: {self.name} update_task_status completed")
                         
                         await message.ack()
                         logger.info(f"{self.name} completed task: {task_data.get('task_id', 'unknown')}")
@@ -354,6 +362,140 @@ class BaseAgent(ABC):
         finally:
             await self.cleanup()
     
+    # ============================================================================
+    # GENERIC AGENT CAPABILITIES
+    # ============================================================================
+    
+    async def read_file(self, file_path: str) -> str:
+        """Read file content asynchronously"""
+        try:
+            # Handle both absolute and relative paths
+            if not os.path.isabs(file_path):
+                file_path = os.path.join('/app', file_path)
+            
+            logger.info(f"{self.name} read file: {file_path}")
+            
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                return content
+                
+        except Exception as e:
+            logger.error(f"{self.name} failed to read file {file_path}: {e}")
+            raise
+    
+    async def write_file(self, file_path: str, content: str) -> bool:
+        """Write content to file asynchronously"""
+        try:
+            # Handle both absolute and relative paths
+            if not os.path.isabs(file_path):
+                file_path = os.path.join('/app', file_path)
+            
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            
+            logger.info(f"{self.name} wrote file: {file_path}")
+            
+            async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+                await f.write(content)
+                return True
+                
+        except Exception as e:
+            logger.error(f"{self.name} failed to write file {file_path}: {e}")
+            return False
+    
+    async def modify_file(self, file_path: str, modifications: List[Dict[str, Any]]) -> bool:
+        """Modify file content based on modifications list"""
+        try:
+            # Read current content
+            content = await self.read_file(file_path)
+            
+            # Apply modifications
+            for mod in modifications:
+                mod_type = mod.get('type', 'replace')
+                
+                if mod_type == 'replace':
+                    old_text = mod.get('old_text', '')
+                    new_text = mod.get('new_text', '')
+                    content = content.replace(old_text, new_text)
+                    
+                elif mod_type == 'insert_after':
+                    after_text = mod.get('after_text', '')
+                    new_text = mod.get('new_text', '')
+                    content = content.replace(after_text, after_text + new_text)
+                    
+                elif mod_type == 'insert_before':
+                    before_text = mod.get('before_text', '')
+                    new_text = mod.get('new_text', '')
+                    content = content.replace(before_text, new_text + before_text)
+            
+            # Write modified content
+            return await self.write_file(file_path, content)
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to modify file {file_path}: {e}")
+            return False
+    
+    async def execute_command(self, command: str, cwd: str = None) -> Dict[str, Any]:
+        """Execute shell command asynchronously"""
+        try:
+            if cwd is None:
+                cwd = '/app'
+            
+            logger.info(f"{self.name} executing command: {command}")
+            
+            process = await asyncio.create_subprocess_shell(
+                command,
+                cwd=cwd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            return {
+                'success': process.returncode == 0,
+                'returncode': process.returncode,
+                'stdout': stdout.decode('utf-8') if stdout else '',
+                'stderr': stderr.decode('utf-8') if stderr else ''
+            }
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to execute command {command}: {e}")
+            return {
+                'success': False,
+                'returncode': -1,
+                'stdout': '',
+                'stderr': str(e)
+            }
+    
+    async def list_files(self, directory: str, pattern: str = None) -> List[str]:
+        """List files in directory"""
+        try:
+            if not os.path.isabs(directory):
+                directory = os.path.join('/app', directory)
+            
+            files = []
+            for root, dirs, filenames in os.walk(directory):
+                for filename in filenames:
+                    if pattern is None or pattern in filename:
+                        files.append(os.path.join(root, filename))
+            
+            return files
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to list files in {directory}: {e}")
+            return []
+    
+    async def file_exists(self, file_path: str) -> bool:
+        """Check if file exists"""
+        try:
+            if not os.path.isabs(file_path):
+                file_path = os.path.join('/app', file_path)
+            return os.path.exists(file_path)
+        except Exception as e:
+            logger.error(f"{self.name} failed to check file existence {file_path}: {e}")
+            return False
+
     async def cleanup(self):
         """Cleanup resources"""
         if self.connection:

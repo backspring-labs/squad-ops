@@ -38,6 +38,21 @@ CREATE TABLE IF NOT EXISTS task_status (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Tasks Table (Enhanced for WarmBoot)
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    priority TEXT,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    assignee TEXT,
+    parent_task_id TEXT,
+    progress_message TEXT,
+    result_data JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- SquadComms Messages Table
 CREATE TABLE IF NOT EXISTS squadcomms_messages (
     id SERIAL PRIMARY KEY,
@@ -94,6 +109,9 @@ CREATE INDEX IF NOT EXISTS idx_agent_task_logs_start_time ON agent_task_logs(sta
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_sender ON squadcomms_messages(sender);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_recipient ON squadcomms_messages(recipient);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_timestamp ON squadcomms_messages(timestamp);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id);
 
 -- Insert initial process registry entries
 INSERT INTO process_registry (pid, process_name, status, last_updated_version, change_notes) VALUES
