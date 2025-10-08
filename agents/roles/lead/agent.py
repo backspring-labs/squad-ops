@@ -29,22 +29,28 @@ class LeadAgent(BaseAgent):
         self.task_state_log = []
         self.approval_queue = []
         self.communication_log = []
-        self.escalation_threshold = 0.8
+        # Import configuration
+        import sys
+        import os
+        sys.path.append('/app')
+        from config.agent_config import get_complexity_threshold
+        
+        self.escalation_threshold = get_complexity_threshold("escalation")
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process governance tasks with approval/escalation logic"""
-        print(f"DEBUG: Max process_task START - task: {task}")
+        logger.debug(f"Max process_task START - task: {task}")
         
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', 'unknown')
         complexity = task.get('complexity', 0.5)
         
-        print(f"DEBUG: Max parsed task_id={task_id}, task_type={task_type}, complexity={complexity}")
+        logger.debug(f"Max parsed task_id={task_id}, task_type={task_type}, complexity={complexity}")
         logger.info(f"Max processing governance task: {task_id}")
         
         # Check if this is a governance task with PRD path
         if task_type == "governance" and task.get('prd_path'):
-            print(f"DEBUG: Max handling governance task with PRD path")
+            logger.debug(f"Max handling governance task with PRD path")
             prd_path = task.get('prd_path', '')
             application = task.get('application', 'Application')
             
@@ -70,18 +76,18 @@ class LeadAgent(BaseAgent):
         })
         
         # Update task status
-        print(f"DEBUG: Max about to call update_task_status with task_id={task_id}")
+        logger.debug(f"Max about to call update_task_status with task_id={task_id}")
         await self.update_task_status(task_id, "Active-Non-Blocking", 25.0)
-        print(f"DEBUG: Max update_task_status completed successfully")
+        logger.debug(f"Max update_task_status completed successfully")
         
         # Governance decision logic
         if complexity > self.escalation_threshold:
-            print(f"DEBUG: Max escalating task due to high complexity: {complexity} > {self.escalation_threshold}")
+            logger.debug(f"Max escalating task due to high complexity: {complexity} > {self.escalation_threshold}")
             # Escalate to premium consultation
             await self.escalate_task(task_id, task)
-            print(f"DEBUG: Max escalate_task completed")
+            logger.debug(f"Max escalate_task completed")
             await self.update_task_status(task_id, "Blocked", 50.0, "Escalated to premium consultation")
-            print(f"DEBUG: Max update_task_status (escalated) completed")
+            logger.debug(f"Max update_task_status (escalated) completed")
             
             return {
                 'task_id': task_id,
@@ -94,14 +100,14 @@ class LeadAgent(BaseAgent):
                 )
             }
         else:
-            print(f"DEBUG: Max approving task for delegation (complexity: {complexity} <= {self.escalation_threshold})")
+            logger.debug(f"Max approving task for delegation (complexity: {complexity} <= {self.escalation_threshold})")
             # Approve and delegate
             await self.update_task_status(task_id, "Active-Non-Blocking", 75.0)
-            print(f"DEBUG: Max update_task_status (delegation) completed")
+            logger.debug(f"Max update_task_status (delegation) completed")
             
             # Determine delegation target
             delegation_target = await self.determine_delegation_target(task_type)
-            print(f"DEBUG: Max determined delegation_target: {delegation_target}")
+            logger.debug(f"Max determined delegation_target: {delegation_target}")
             
             # Send message to delegation target
             await self.send_message(

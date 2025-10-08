@@ -19,6 +19,12 @@ class DevAgent(BaseAgent):
             agent_type="code",
             reasoning_style="deductive"
         )
+        
+        # Import configuration
+        import sys
+        import os
+        sys.path.append('/app')
+        from config.deployment_config import get_deployment_config, get_docker_config
         self.knowledge_graph = {}
         self.code_dependencies = {}
         self.depth_first_stack = []
@@ -640,9 +646,9 @@ CMD ["nginx", "-g", "daemon off;"]''',
                 'service_config': {
                     'image': f'{app_kebab}:{version}',
                     'container_name': f'squadops-{app_kebab}',
-                    'ports': ['8080:80'],
+                    'ports': [f"{get_deployment_config('default_port')}:80"],
                     'networks': ['squadnet'],
-                    'restart': 'unless-stopped'
+                    'restart': get_docker_config('restart_policy')
                 }
             },
             {
@@ -866,7 +872,7 @@ The archived version ({existing_version}) was replaced with new version ({new_ve
                     pass  # Ignore if container doesn't exist
             
             # Start the new container
-            await self.execute_command(f"docker run -d --name {container_name} --network squad-ops_squadnet -p 8080:80 --restart unless-stopped {app_kebab}:{version}")
+            await self.execute_command(f"docker run -d --name {container_name} --network {get_docker_config('network_name')} -p {get_deployment_config('default_port')}:80 --restart {get_docker_config('restart_policy')} {app_kebab}:{version}")
             logger.info(f"Neo started container: {container_name}")
             
             logger.info(f"Neo completed deploy task: {task_id}")

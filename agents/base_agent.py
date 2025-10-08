@@ -292,21 +292,21 @@ class BaseAgent(ABC):
             async def process_tasks():
                 async for message in task_queue:
                     try:
-                        print(f"DEBUG: {self.name} received message: {message.body.decode()}")
+                        logger.debug(f"{self.name} received message: {message.body.decode()}")
                         task_data = json.loads(message.body.decode())
-                        print(f"DEBUG: {self.name} parsed task_data: {task_data}")
-                        print(f"DEBUG: {self.name} about to call process_task")
+                        logger.debug(f"{self.name} parsed task_data: {task_data}")
+                        logger.debug(f"{self.name} about to call process_task")
                         result = await self.process_task(task_data)
-                        print(f"DEBUG: {self.name} process_task completed: {result}")
+                        logger.debug(f"{self.name} process_task completed: {result}")
                         
                         # Update task status
-                        print(f"DEBUG: {self.name} about to call update_task_status")
+                        logger.debug(f"{self.name} about to call update_task_status")
                         await self.update_task_status(
                             task_data.get('task_id', 'unknown'),
                             'Completed',
                             progress=100.0
                         )
-                        print(f"DEBUG: {self.name} update_task_status completed")
+                        logger.debug(f"{self.name} update_task_status completed")
                         
                         await message.ack()
                         logger.info(f"{self.name} completed task: {task_data.get('task_id', 'unknown')}")
