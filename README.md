@@ -1,8 +1,9 @@
 # SquadOps – Agent Squad Framework
 
 ## 📌 Overview
-**SquadOps** is an operational framework for running AI-powered squads of specialized agents that can build, test, and govern software systems with production-grade rigor.  
-This repo provides the starting point for your first **agent squad deployment** and includes infrastructure, agent containers, governance protocols, and reference applications.
+**SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
+
+**Current Status**: Two functional agents (Max/Lead, Neo/Dev) with basic PRD processing, code generation, and container deployment capabilities. Seven additional agents are implemented as mock templates.
 
 ---
 
@@ -16,82 +17,119 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 ---
 
 ## 🧩 Core Components
-- **10-Agent Squad** – Specialized reasoning agents (Max, Neo, Nat, Joi, Data, EVE, HAL, Quark, Og, Glyph)
-- **SquadNet** – Networking mesh for inter-agent communication
-- **SquadComms** – Messaging bus (RabbitMQ) for task delegation & status updates
-- **Prefect** – Task orchestration and state management
-- **Postgres** – Central store for logs, metrics, and governance data
-- **Health Dashboard** – Web interface for monitoring agents, tasks, and health
-- **Version Management** – Centralized agent versioning with CLI tools for rollbacks
+- **Agent Squad** – 2 functional agents (Max/Lead, Neo/Dev) + 7 mock agents
+- **SquadComms** – RabbitMQ messaging for inter-agent communication
+- **PostgreSQL** – Task logging and state persistence
+- **Redis** – Caching and performance optimization
+- **Health Check Service** – FastAPI monitoring and WarmBoot API
+- **Docker Compose** – Multi-container development environment
+- **Version Management** – Dynamic versioning (framework + run sequence)
 
 ---
 
-## 📚 Protocol Anchors
-Every process is mapped via **Process IDs (PIDs)** and linked to governance artifacts.
+## 📚 Documentation
+Comprehensive documentation and protocols are available in `/docs/`:
 
-- **Documentation Traceability Protocol** – PID-based docs & diagrams
-- **Testing Protocol** – Test plans, cases, coverage, security, performance, pen testing
-- **Data Governance Protocol** – KDEs, KPIs, data lineage, privacy
-- **Tagging Protocol** – Analytics event tagging mapped to PIDs
-- **Comms & Task Concurrency Protocol** – Ensures coordination without bottlenecks
-
-All protocols live under `/docs/`.
+- **SIPs (SquadOps Improvement Proposals)** – 25+ protocol specifications
+- **Design Reviews** – Technical architecture assessments
+- **Retrospectives** – WarmBoot run analysis and lessons learned
+- **Protocols** – Testing, data governance, communication patterns
+- **Roadmaps** – Development plans and strategic direction
 
 ---
 
 ## 🏗️ Repo Structure
 ```
-/agents/              # Agent implementations & shared base class
-├── base_agent.py     # Shared base class for all agents
-├── max/              # Individual agent folders
-│   ├── max.py        # Agent-specific implementation
-│   ├── config.py     # Agent-specific configuration
-│   ├── requirements.txt
-│   └── Dockerfile
-└── ... (same for all 10 agents)
-/infra/               # Infrastructure services: RabbitMQ, Postgres, Prefect
-/config/              # Centralized version management
-/docs/                # Protocols, governance, PIDs
-docker-compose.yml    # Multi-container setup
-version_cli.py        # Version management CLI tool
-README.md             # Project overview (this file)
+/agents/              # Agent implementations
+├── base_agent.py     # Shared base class (514 lines)
+├── roles/            # Agent role implementations
+│   ├── lead/         # Max - Task orchestration (536 lines)
+│   ├── dev/          # Neo - Code generation (1,463 lines)
+│   └── ...           # 7 mock agents (template-based)
+├── factory/          # Agent instantiation system
+└── templates/        # Agent generation templates
+/infra/               # Infrastructure services
+├── health-check/     # FastAPI monitoring service (1,125 lines)
+├── init.sql          # Database schema
+└── config.env        # Environment configuration
+/warm-boot/           # Application development
+├── apps/             # Generated applications
+├── prd/              # Product Requirements Documents
+└── runs/             # WarmBoot execution records
+/docs/                # Documentation and protocols
+├── reviews/          # Design reviews and recommendations
+├── SIPs/             # SquadOps Improvement Proposals
+└── retro/            # Retrospectives and analysis
+docker-compose.yml    # Multi-container setup (421 lines)
 ```
 
 ---
 
-## 🧪 First Reference App: HelloSquad
-- **PID-001** is reserved for *HelloSquad*, a simple FastAPI "Hello World" service.  
-- It serves as the baseline benchmark for running your first WarmBoot (`warmboot/run-001`).  
-- EVE writes the pytest, Neo builds the endpoint, Max orchestrates.
+## 🧪 Reference Application: HelloSquad
+- **HelloSquad** is a web application generated by the agent collaboration system
+- Demonstrates end-to-end workflow: PRD → Task Planning → Code Generation → Deployment
+- Deployed at `http://localhost:8080/hello-squad/` with proper versioning and archiving
+- Shows real AI agent collaboration for software development tasks
 
 ---
 
 ## 🛠️ Getting Started
-1. Follow **DAY0_KICKOFF.md** to set up local environment & accounts
-2. Proceed to **DAY1_KICKOFF.md** for repo + infra scaffolding
-3. Spin up containers with `docker-compose up`
-4. Verify health endpoints at `/health/infra` and `/health/agents`
-5. Run your first WarmBoot and tag the run in Git
+1. **Prerequisites**: Docker, Docker Compose, Ollama (for local LLMs)
+2. **Start Infrastructure**: `docker-compose up -d`
+3. **Verify Health**: Visit `http://localhost:8000/health` for system status
+4. **Test WarmBoot**: Submit PRD via `http://localhost:8000/warmboot/submit`
+5. **View Application**: Generated apps available at `http://localhost:8080/`
+
+**Quick Test**:
+```bash
+curl -X POST http://localhost:8000/warmboot/submit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "run_id": "run-001",
+    "application": "HelloSquad",
+    "request_type": "prd_request",
+    "agents": ["max", "neo"],
+    "priority": "HIGH",
+    "description": "Test application",
+    "prd_path": "warm-boot/prd/PRD-001-HelloSquad.md"
+  }'
+```
 
 ---
 
-## 📈 Future Roadmap
-- Expand reference apps (fitness trackers, financial trackers, etc.)
-- Introduce full SOC UI with metrics dashboards
-- Implement governance checks for production readiness
-- Extend squads with premium LLM consultations
+## 📈 Development Roadmap
+**Current Phase**: Code Quality & Production Readiness
+- **Priority 1**: Refactor large classes, remove debug code, extract configuration
+- **Priority 2**: Implement security (secrets management, authentication, input validation)
+- **Priority 3**: Add comprehensive testing (unit tests, integration tests)
+- **Priority 4**: Performance monitoring and error handling improvements
+
+**Next Phase**: Multi-Agent Expansion
+- Implement remaining 7 agents with real functionality
+- Add complex application types (APIs, databases, microservices)
+- Cloud deployment support (AWS, GCP, Azure)
+- Advanced monitoring and alerting
 
 ---
 
-## ✅ Status
-This repo is currently **fully operational** with:
-- ✅ **10-Agent Squad** deployed and healthy
-- ✅ **Infrastructure Services** running (RabbitMQ, PostgreSQL, Redis, Prefect)
-- ✅ **Health Dashboard** monitoring all components
-- ✅ **Version Management** system with CLI tools
-- ✅ **Heartbeat Monitoring** for real-time status tracking
+## ✅ Current Status
+**Framework Version**: 0.1.4  
+**Development Status**: Working prototype with code quality issues
 
-Ready for **Agent Coordination & Task Execution** phase.
+**Functional Components**:
+- ✅ **2 Functional Agents** (Max/Lead, Neo/Dev) with real capabilities
+- ✅ **Infrastructure Services** (RabbitMQ, PostgreSQL, Redis, Health Check)
+- ✅ **End-to-End Workflow** (PRD → Application deployment)
+- ✅ **Docker Compose** development environment
+- ✅ **Version Management** and archiving system
+
+**Known Issues**:
+- ⚠️ **Code Quality**: Large classes, mixed concerns, debug code
+- ⚠️ **Security**: Hardcoded credentials, no authentication
+- ⚠️ **Testing**: < 5% test coverage, no unit tests
+- ⚠️ **Production Readiness**: Development-focused configuration
+
+**Recommendation**: Focus on code quality improvements before expanding functionality.
 
 ---
 
