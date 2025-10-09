@@ -1,6 +1,6 @@
-// Application JavaScript
+// HelloSquad JavaScript
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Application loaded');
+    console.log('HelloSquad application loaded');
     
     // Simulate real-time updates
     updateAgentStatus();

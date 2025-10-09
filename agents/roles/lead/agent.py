@@ -47,6 +47,7 @@ class LeadAgent(BaseAgent):
         
         logger.debug(f"Max parsed task_id={task_id}, task_type={task_type}, complexity={complexity}")
         logger.info(f"Max processing governance task: {task_id}")
+        logger.info(f"Max DEBUG: task_type='{task_type}', has_prd_path={bool(task.get('prd_path'))}")
         
         # Check if this is a governance task with PRD path
         if task_type == "governance" and task.get('prd_path'):
@@ -101,7 +102,22 @@ class LeadAgent(BaseAgent):
             }
         else:
             logger.debug(f"Max approving task for delegation (complexity: {complexity} <= {self.escalation_threshold})")
-            # Approve and delegate
+            logger.info(f"Max DEBUG: task_type='{task_type}', task_type.lower()='{task_type.lower()}'")
+            
+            # Governance tasks should be handled directly by Max, not delegated
+            if task_type.lower() == 'governance':
+                logger.info(f"Max handling governance task directly: {task_id}")
+                await self.update_task_status(task_id, "Completed", 100.0)
+                return {
+                    'task_id': task_id,
+                    'status': 'completed',
+                    'governance_decision': f"Governance task {task_id} handled directly by Max",
+                    'message': 'Governance tasks are handled directly by the Lead Agent'
+                }
+            
+            logger.info(f"Max DEBUG: Not a governance task, proceeding with delegation for task_type='{task_type}'")
+            
+            # Approve and delegate non-governance tasks
             await self.update_task_status(task_id, "Active-Non-Blocking", 75.0)
             logger.debug(f"Max update_task_status (delegation) completed")
             
@@ -240,6 +256,7 @@ class LeadAgent(BaseAgent):
         """Determine which agent should handle the task"""
         delegation_map = {
             'code': 'Neo',
+            'development': 'Neo',
             'product': 'Nat',
             'data': 'Data',
             'security': 'EVE',
@@ -248,6 +265,10 @@ class LeadAgent(BaseAgent):
             'analysis': 'Og',
             'communication': 'Joi'
         }
+        
+        # Governance tasks should NEVER be delegated - Max handles them directly
+        if task_type.lower() == 'governance':
+            raise ValueError(f"Governance tasks should not be delegated - Max should handle them directly")
         
         return delegation_map.get(task_type.lower(), 'Neo')
     

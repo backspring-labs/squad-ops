@@ -24,6 +24,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy agent files
 COPY agents/base_agent.py .
 COPY agents/roles/${AGENT_ROLE}/agent.py .
+COPY agents/roles/${AGENT_ROLE}/code_generator.py .
+COPY agents/roles/${AGENT_ROLE}/docker_manager.py .
+COPY agents/roles/${AGENT_ROLE}/version_manager.py .
+COPY agents/roles/${AGENT_ROLE}/file_manager.py .
+COPY config ./config
 
 # Create logs directory
 RUN mkdir -p /app/logs
