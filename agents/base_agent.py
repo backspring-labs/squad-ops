@@ -18,6 +18,7 @@ from typing import Dict, Any, Optional, List
 import aio_pika
 import asyncpg
 import redis.asyncio as redis
+import aiohttp
 from dataclasses import dataclass, asdict
 
 # Import version management
@@ -76,6 +77,7 @@ class BaseAgent(ABC):
         self.rabbitmq_url = os.getenv('RABBITMQ_URL', 'amqp://squadops:squadops123@rabbitmq:5672/')
         self.postgres_url = os.getenv('POSTGRES_URL', 'postgresql://squadops:squadops123@postgres:5432/squadops')
         self.redis_url = os.getenv('REDIS_URL', 'redis://redis:6379')
+        self.task_api_url = os.getenv("TASK_API_URL", "http://task-api:8001")
         
     async def initialize(self):
         """Initialize agent connections"""
@@ -172,6 +174,106 @@ class BaseAgent(ABC):
                 INSERT INTO agent_task_logs (task_id, agent_name, task_name, task_status, start_time, created_at)
                 VALUES ($1, $2, $3, $4, $5, $6)
             """, f"{self.name}_{activity}_{int(time.time() * 1000)}", self.name, activity, "completed", datetime.utcnow(), datetime.utcnow())
+    
+    async def create_execution_cycle(self, ecid: str, pid: str, run_type: str, 
+                                     title: str, description: str = None):
+        """Create execution cycle via API"""
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.task_api_url}/api/v1/execution-cycles",
+                json={
+                    "ecid": ecid,
+                    "pid": pid,
+                    "run_type": run_type,
+                    "title": title,
+                    "description": description,
+                    "initiated_by": self.name
+                }
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to create execution cycle: {await resp.text()}")
+                return await resp.json()
+
+    async def log_task_start(self, task_id: str, ecid: str, description: str, 
+                             priority: str = "MEDIUM", dependencies: List[str] = None,
+                             delegated_by: str = None, delegated_to: str = None):
+        """Log task start via API"""
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.task_api_url}/api/v1/tasks/start",
+                json={
+                    "task_id": task_id,
+                    "ecid": ecid,
+                    "agent": self.name,
+                    "status": "started",
+                    "priority": priority,
+                    "description": description,
+                    "dependencies": dependencies or [],
+                    "delegated_by": delegated_by,
+                    "delegated_to": delegated_to
+                }
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to log task start: {await resp.text()}")
+                return await resp.json()
+
+    async def log_task_delegation(self, task_id: str, ecid: str, delegated_to: str, 
+                                  description: str):
+        """Log task delegation via API - update existing task record"""
+        async with aiohttp.ClientSession() as session:
+            async with session.put(
+                f"{self.task_api_url}/api/v1/tasks/{task_id}",
+                json={
+                    "status": "delegated",
+                    "delegated_by": self.name,
+                    "delegated_to": delegated_to
+                }
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to log task delegation: {await resp.text()}")
+                return await resp.json()
+
+    async def log_task_completion(self, task_id: str, artifacts: Dict[str, Any] = None):
+        """Log task completion via API"""
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.task_api_url}/api/v1/tasks/complete",
+                json={
+                    "task_id": task_id,
+                    "artifacts": artifacts
+                }
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to log task completion: {await resp.text()}")
+                return await resp.json()
+
+    async def log_task_failure(self, task_id: str, error_log: str):
+        """Log task failure via API"""
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.task_api_url}/api/v1/tasks/fail",
+                json={
+                    "task_id": task_id,
+                    "error_log": error_log
+                }
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to log task failure: {await resp.text()}")
+                return await resp.json()
+
+    async def update_execution_cycle_status(self, ecid: str, status: str, notes: str = None):
+        """Update execution cycle status via API"""
+        async with aiohttp.ClientSession() as session:
+            async with session.put(
+                f"{self.task_api_url}/api/v1/execution-cycles/{ecid}",
+                json={
+                    "status": status,
+                    "notes": notes
+                }
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to update execution cycle: {await resp.text()}")
+                return await resp.json()
     
     async def send_heartbeat(self):
         """Send heartbeat to health monitoring system"""

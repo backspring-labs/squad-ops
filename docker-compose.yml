@@ -138,6 +138,21 @@ services:
         condition: service_healthy
     networks:
     - squadnet
+    restart: unless-stopped
+  task-api:
+    build:
+      context: ./infra/task-api
+    container_name: squadops-task-api
+    ports:
+    - 8001:8001
+    environment:
+      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
+    networks:
+    - squadnet
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
   
   # Hello Squad Application - Archived (v1) - New v2 will be built from scratch
   # hello-squad:
@@ -159,7 +174,7 @@ services:
   #       condition: service_healthy
   #   networks:
   #   - squadnet
-    restart: unless-stopped
+  #   restart: unless-stopped
   
   max:
     build:

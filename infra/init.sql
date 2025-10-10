@@ -1,20 +1,41 @@
 -- SquadOps Database Initialization Script
 -- Creates tables for task logging, metrics, and governance data
 
--- Task Logs Table
-CREATE TABLE IF NOT EXISTS agent_task_logs (
+-- Drop old table
+DROP TABLE IF EXISTS agent_task_logs CASCADE;
+
+-- Execution Cycle table (SIP-024)
+CREATE TABLE IF NOT EXISTS execution_cycle (
+    ecid TEXT PRIMARY KEY,
+    pid TEXT NOT NULL,
+    run_type TEXT CHECK (run_type IN ('warmboot','project','experiment','tuning')),
+    title TEXT,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT now(),
+    initiated_by TEXT,
+    status TEXT DEFAULT 'active',
+    notes TEXT
+);
+
+-- Task Log table (SIP-024/025)
+CREATE TABLE IF NOT EXISTS agent_task_log (
     task_id TEXT PRIMARY KEY,
-    agent_name TEXT NOT NULL,
-    task_name TEXT NOT NULL,
     pid TEXT,
-    start_time TIMESTAMP NOT NULL,
+    ecid TEXT REFERENCES execution_cycle(ecid),
+    agent TEXT NOT NULL,
+    phase TEXT,
+    status TEXT NOT NULL,
+    priority TEXT,
+    description TEXT,
+    start_time TIMESTAMP,
     end_time TIMESTAMP,
     duration INTERVAL,
+    artifacts JSONB,
     dependencies TEXT[],
-    artifacts TEXT[],
-    resource_utilization JSONB,
-    task_status TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    error_log TEXT,
+    delegated_by TEXT,
+    delegated_to TEXT,
+    created_at TIMESTAMP DEFAULT now()
 );
 
 -- Agent Status Table
@@ -103,9 +124,10 @@ CREATE TABLE IF NOT EXISTS optimization_log (
 );
 
 -- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_agent_task_logs_agent_name ON agent_task_logs(agent_name);
-CREATE INDEX IF NOT EXISTS idx_agent_task_logs_pid ON agent_task_logs(pid);
-CREATE INDEX IF NOT EXISTS idx_agent_task_logs_start_time ON agent_task_logs(start_time);
+CREATE INDEX IF NOT EXISTS idx_agent_task_log_ecid ON agent_task_log(ecid);
+CREATE INDEX IF NOT EXISTS idx_agent_task_log_agent ON agent_task_log(agent);
+CREATE INDEX IF NOT EXISTS idx_agent_task_log_status ON agent_task_log(status);
+CREATE INDEX IF NOT EXISTS idx_execution_cycle_run_type ON execution_cycle(run_type);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_sender ON squadcomms_messages(sender);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_recipient ON squadcomms_messages(recipient);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_timestamp ON squadcomms_messages(timestamp);

@@ -104,12 +104,21 @@ class DockerManager:
             }
             
         except Exception as e:
-            logger.error(f"DockerManager failed to stop container: {e}")
-            return {
-                'status': 'error',
-                'error': str(e),
-                'container_name': container_name
-            }
+            # Check if container doesn't exist - this is expected during cleanup
+            if "No such container" in str(e):
+                logger.debug(f"DockerManager: container {container_name} doesn't exist (expected during cleanup)")
+                return {
+                    'status': 'not_found',
+                    'container_name': container_name,
+                    'action': 'not_found'
+                }
+            else:
+                logger.error(f"DockerManager failed to stop container: {e}")
+                return {
+                    'status': 'error',
+                    'error': str(e),
+                    'container_name': container_name
+                }
     
     async def remove_container(self, container_name: str) -> Dict[str, Any]:
         """Remove a container"""
@@ -126,12 +135,21 @@ class DockerManager:
             }
             
         except Exception as e:
-            logger.error(f"DockerManager failed to remove container: {e}")
-            return {
-                'status': 'error',
-                'error': str(e),
-                'container_name': container_name
-            }
+            # Check if container doesn't exist - this is expected during cleanup
+            if "No such container" in str(e):
+                logger.debug(f"DockerManager: container {container_name} doesn't exist (expected during cleanup)")
+                return {
+                    'status': 'not_found',
+                    'container_name': container_name,
+                    'action': 'not_found'
+                }
+            else:
+                logger.error(f"DockerManager failed to remove container: {e}")
+                return {
+                    'status': 'error',
+                    'error': str(e),
+                    'container_name': container_name
+                }
     
     async def get_container_status(self, container_name: str) -> Dict[str, Any]:
         """Get container status"""
@@ -273,7 +291,9 @@ class DockerManager:
             return stdout.decode().strip()
             
         except Exception as e:
-            logger.error(f"DockerManager command execution failed: {command}, Error: {e}")
+            # Don't log "No such container" errors as they're expected during cleanup
+            if "No such container" not in str(e):
+                logger.error(f"DockerManager command execution failed: {command}, Error: {e}")
             raise
     
     async def health_check(self) -> Dict[str, Any]:

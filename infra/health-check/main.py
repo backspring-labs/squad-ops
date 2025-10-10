@@ -289,15 +289,18 @@ class HealthChecker:
             if not self.pg_pool:
                 await self.init_connections()
             
+            # Create ECID for this warmboot (Max will create the execution cycle)
+            ecid = f"ECID-WB-{request.run_id.replace('run-', '')}"
+            
             # Send messages to agents via RabbitMQ
             connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
             channel = connection.channel()
             
             # Send to Max (lead agent) first
             max_message = {
-                "task_id": f"{request.run_id}-main",
+                "task_id": f"{ecid}-main",
                 "type": "governance",
-                "run_id": request.run_id,
+                "ecid": ecid,
                 "application": request.application,
                 "request_type": request.request_type,
                 "agents": request.agents,

@@ -57,10 +57,10 @@ class LeadAgent(BaseAgent):
             
             if prd_path:
                 logger.info(f"Max processing PRD from path: {prd_path}")
-                # Get run_id from the task
-                run_id = task.get('run_id', 'run-001')
+                # Get ecid from the task
+                ecid = task.get('ecid', 'ECID-WB-001')
                 # Process PRD from file path
-                result = await self.process_prd_request(prd_path, run_id)
+                result = await self.process_prd_request(prd_path, ecid)
                 await self.update_task_status(task_id, "Completed", 100.0)
                 return result
             else:
@@ -387,7 +387,7 @@ class LeadAgent(BaseAgent):
                 "success_criteria": ["Functional requirements", "Performance", "User acceptance"]
             }
     
-    async def create_development_tasks(self, prd_analysis: Dict[str, Any], app_name: str = "application") -> List[Dict[str, Any]]:
+    async def create_development_tasks(self, prd_analysis: Dict[str, Any], app_name: str = "application", ecid: str = None) -> List[Dict[str, Any]]:
         """Create generic development tasks based on PRD analysis"""
         try:
             # Import version info
@@ -409,10 +409,10 @@ class LeadAgent(BaseAgent):
             # Get framework version and determine warm-boot sequence
             framework_version = get_framework_version()  # e.g., "0.1.4"
             
-            # Extract warm-boot sequence from the current run_id
-            # The run_id is passed in the task (e.g., "run-014" -> "014")
-            current_run_id = getattr(self, 'current_run_id', 'run-001')
-            warm_boot_sequence = current_run_id.split("-")[1] if "-" in current_run_id else "001"
+            # Extract warm-boot sequence from the current ecid
+            # The ecid is passed in the task (e.g., "ECID-WB-014" -> "014")
+            current_ecid = getattr(self, 'current_ecid', 'ECID-WB-001')
+            warm_boot_sequence = current_ecid.split("-")[-1] if "-" in current_ecid else "001"
             
             app_version = f"{framework_version}.{warm_boot_sequence}"  # e.g., "0.1.4.008"
             
@@ -421,6 +421,7 @@ class LeadAgent(BaseAgent):
                 {
                     "task_id": f"{app_kebab}-archive-{int(time.time())}",
                     "task_type": "development",
+                    "ecid": ecid,
                     "description": f"Archive any existing {app_name} application to ensure clean slate build for version {app_version}",
                     "requirements": {
                         "action": "archive",
@@ -436,7 +437,8 @@ class LeadAgent(BaseAgent):
                 },
                 {
                     "task_id": f"{app_kebab}-build-{int(time.time())}",
-                    "task_type": "development", 
+                    "task_type": "development",
+                    "ecid": ecid,
                     "description": f"Build {app_name} application version {app_version} from scratch",
                     "requirements": {
                         "action": "build",
@@ -455,6 +457,7 @@ class LeadAgent(BaseAgent):
                 {
                     "task_id": f"{app_kebab}-deploy-{int(time.time())}",
                     "task_type": "development",
+                    "ecid": ecid,
                     "description": f"Deploy {app_name} application version {app_version} with proper versioning",
                     "requirements": {
                         "action": "deploy",
@@ -471,6 +474,16 @@ class LeadAgent(BaseAgent):
                 }
             ]
             
+            # Log task creation for each task
+            for task in tasks:
+                await self.log_task_start(
+                    task['task_id'], 
+                    ecid, 
+                    task['description'],
+                    task['priority'],
+                    task.get('dependencies', [])
+                )
+            
             logger.info(f"Max created {len(tasks)} development tasks for {app_name} version {app_version}")
             return tasks
             
@@ -478,15 +491,27 @@ class LeadAgent(BaseAgent):
             logger.error(f"Max failed to create development tasks: {e}")
             return []
     
-    async def process_prd_request(self, prd_path: str, run_id: str = None) -> Dict[str, Any]:
+    async def process_prd_request(self, prd_path: str, ecid: str = None) -> Dict[str, Any]:
         """Process a PRD request - read PRD, analyze, and create tasks"""
         try:
             logger.info(f"Max processing PRD request: {prd_path}")
             
-            # Store the current run_id for use in create_development_tasks
-            if run_id:
-                self.current_run_id = run_id
-                logger.info(f"Max stored current run_id: {run_id}")
+            # Use provided ecid or create default
+            if not ecid:
+                ecid = "ECID-WB-001"
+            
+            # Create execution cycle (Max owns the execution cycle lifecycle)
+            try:
+                await self.create_execution_cycle(ecid, "PID-001", "warmboot", 
+                                                 f"WarmBoot {ecid}", prd_path)
+                logger.info(f"Max created execution cycle {ecid}")
+            except Exception as e:
+                # Execution cycle may already exist in edge cases - continue anyway
+                logger.warning(f"Execution cycle {ecid} creation failed (may already exist): {e}")
+            
+            # Store the current ecid for use in create_development_tasks
+            self.current_ecid = ecid
+            logger.info(f"Max stored current ecid: {ecid}")
             
             # Read PRD
             prd_content = await self.read_prd(prd_path)
@@ -510,7 +535,7 @@ class LeadAgent(BaseAgent):
                     app_name = match.group(1)
             
             # Create development tasks
-            tasks = await self.create_development_tasks(prd_analysis, app_name)
+            tasks = await self.create_development_tasks(prd_analysis, app_name, ecid)
             if not tasks:
                 return {"status": "error", "message": "Failed to create tasks"}
             
@@ -518,6 +543,14 @@ class LeadAgent(BaseAgent):
             delegated_tasks = []
             for task in tasks:
                 delegation_target = await self.determine_delegation_target(task["task_type"])
+                
+                # Log task delegation
+                await self.log_task_delegation(
+                    task['task_id'],
+                    ecid,
+                    delegation_target,
+                    task['description']
+                )
                 
                 await self.send_message(
                     recipient=delegation_target,

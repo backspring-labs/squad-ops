@@ -1,0 +1,289 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import asyncpg
+import os
+import json
+from typing import List, Optional, Dict, Any
+from datetime import datetime
+
+app = FastAPI(title="SquadOps Task Management API", version="1.0")
+
+POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://squadops:squadops123@postgres:5432/squadops")
+
+# Global connection pool
+pool = None
+
+@app.on_event("startup")
+async def startup_event():
+    global pool
+    pool = await asyncpg.create_pool(POSTGRES_URL, min_size=1, max_size=10)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global pool
+    if pool:
+        await pool.close()
+
+# Pydantic models
+class ExecutionCycleCreate(BaseModel):
+    ecid: str
+    pid: str
+    run_type: str
+    title: str
+    description: Optional[str] = None
+    initiated_by: str
+
+class ExecutionCycleUpdate(BaseModel):
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+class TaskLogCreate(BaseModel):
+    task_id: str
+    ecid: str
+    agent: str
+    status: str
+    priority: Optional[str] = "MEDIUM"
+    description: Optional[str] = None
+    dependencies: Optional[List[str]] = []
+    delegated_by: Optional[str] = None
+    delegated_to: Optional[str] = None
+
+class TaskLogUpdate(BaseModel):
+    status: Optional[str] = None
+    end_time: Optional[datetime] = None
+    artifacts: Optional[Dict[str, Any]] = None
+    error_log: Optional[str] = None
+
+# GET endpoints for querying tasks and execution cycles
+
+@app.get("/api/v1/tasks/ec/{ecid}")
+async def get_tasks_by_ecid(ecid: str):
+    """Get all tasks for a specific execution cycle"""
+    async with pool.acquire() as conn:
+        tasks = await conn.fetch("""
+            SELECT * FROM agent_task_log 
+            WHERE ecid = $1 
+            ORDER BY created_at ASC
+        """, ecid)
+    return [dict(task) for task in tasks]
+
+
+@app.get("/api/v1/tasks/agent/{agent_name}")
+async def get_tasks_by_agent(agent_name: str, ecid: Optional[str] = None, limit: int = 50):
+    """Get recent tasks for a specific agent, optionally filtered by ECID"""
+    async with pool.acquire() as conn:
+        if ecid:
+            tasks = await conn.fetch("""
+                SELECT * FROM agent_task_log 
+                WHERE agent = $1 AND ecid = $2
+                ORDER BY created_at DESC 
+                LIMIT $3
+            """, agent_name, ecid, limit)
+        else:
+            tasks = await conn.fetch("""
+                SELECT * FROM agent_task_log 
+                WHERE agent = $1 
+                ORDER BY created_at DESC 
+                LIMIT $2
+            """, agent_name, limit)
+    return [dict(task) for task in tasks]
+
+@app.get("/api/v1/tasks/status/{status}")
+async def get_tasks_by_status(status: str):
+    """Get tasks by status"""
+    async with pool.acquire() as conn:
+        tasks = await conn.fetch("""
+            SELECT * FROM agent_task_log 
+            WHERE status = $1 
+            ORDER BY created_at DESC
+        """, status)
+    return [dict(task) for task in tasks]
+
+@app.get("/api/v1/execution-cycles")
+async def get_execution_cycles(run_type: Optional[str] = None):
+    """Get execution cycles, optionally filtered by type"""
+    async with pool.acquire() as conn:
+        if run_type:
+            cycles = await conn.fetch("""
+                SELECT * FROM execution_cycle 
+                WHERE run_type = $1 
+                ORDER BY created_at DESC
+            """, run_type)
+        else:
+            cycles = await conn.fetch("""
+                SELECT * FROM execution_cycle 
+                ORDER BY created_at DESC
+            """)
+    return [dict(cycle) for cycle in cycles]
+
+@app.get("/api/v1/tasks/summary/{ecid}")
+async def get_task_summary(ecid: str):
+    """Get task summary for an execution cycle"""
+    async with pool.acquire() as conn:
+        summary = await conn.fetchrow("""
+            SELECT 
+                COUNT(*) as total_tasks,
+                COUNT(*) FILTER (WHERE status = 'completed') as completed,
+                COUNT(*) FILTER (WHERE status = 'started') as in_progress,
+                COUNT(*) FILTER (WHERE status = 'delegated') as delegated,
+                COUNT(*) FILTER (WHERE status = 'failed') as failed,
+                AVG(duration) as avg_duration
+            FROM agent_task_log 
+            WHERE ecid = $1
+        """, ecid)
+    return dict(summary)
+
+# POST/PUT endpoints for agents to create and update tasks
+
+@app.post("/api/v1/execution-cycles")
+async def create_execution_cycle(cycle: ExecutionCycleCreate):
+    """Create a new execution cycle"""
+    async with pool.acquire() as conn:
+        try:
+            await conn.execute("""
+                INSERT INTO execution_cycle 
+                (ecid, pid, run_type, title, description, initiated_by, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """, cycle.ecid, cycle.pid, cycle.run_type, cycle.title, 
+                cycle.description, cycle.initiated_by, datetime.utcnow())
+            return {"status": "created", "ecid": cycle.ecid}
+        except asyncpg.exceptions.UniqueViolationError:
+            raise HTTPException(status_code=409, detail=f"Execution cycle {cycle.ecid} already exists")
+
+@app.put("/api/v1/execution-cycles/{ecid}")
+async def update_execution_cycle(ecid: str, update: ExecutionCycleUpdate):
+    """Update execution cycle status or notes"""
+    
+    updates = []
+    params = []
+    param_count = 1
+    
+    if update.status:
+        updates.append(f"status = ${param_count}")
+        params.append(update.status)
+        param_count += 1
+    
+    if update.notes:
+        updates.append(f"notes = ${param_count}")
+        params.append(update.notes)
+        param_count += 1
+    
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    params.append(ecid)
+    query = f"UPDATE execution_cycle SET {', '.join(updates)} WHERE ecid = ${param_count}"
+    
+    async with pool.acquire() as conn:
+        result = await conn.execute(query, *params)
+        if result == "UPDATE 0":
+            raise HTTPException(status_code=404, detail=f"Execution cycle {ecid} not found")
+    
+    return {"status": "updated", "ecid": ecid}
+
+@app.post("/api/v1/execution-cycles/{ecid}/complete")
+async def complete_execution_cycle(ecid: str, notes: Optional[str] = None):
+    """Mark execution cycle as completed"""
+    update = ExecutionCycleUpdate(status="completed", notes=notes)
+    return await update_execution_cycle(ecid, update)
+
+@app.post("/api/v1/execution-cycles/{ecid}/fail")
+async def fail_execution_cycle(ecid: str, notes: str):
+    """Mark execution cycle as failed"""
+    update = ExecutionCycleUpdate(status="failed", notes=notes)
+    return await update_execution_cycle(ecid, update)
+
+@app.post("/api/v1/tasks/start")
+async def start_task(task: TaskLogCreate):
+    """Log task start"""
+    async with pool.acquire() as conn:
+        try:
+            await conn.execute("""
+                INSERT INTO agent_task_log 
+                (task_id, ecid, agent, status, priority, description, start_time, 
+                 dependencies, delegated_by, delegated_to, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            """, task.task_id, task.ecid, task.agent, task.status, task.priority, 
+                task.description, datetime.utcnow(), task.dependencies or [], 
+                task.delegated_by, task.delegated_to, datetime.utcnow())
+            return {"status": "started", "task_id": task.task_id}
+        except asyncpg.exceptions.UniqueViolationError:
+            raise HTTPException(status_code=409, detail=f"Task {task.task_id} already exists")
+
+@app.put("/api/v1/tasks/{task_id}")
+async def update_task(task_id: str, update: TaskLogUpdate):
+    """Update task status, completion, or error"""
+    
+    # Build dynamic update query based on provided fields
+    updates = []
+    params = []
+    param_count = 1
+    
+    if update.status:
+        updates.append(f"status = ${param_count}")
+        params.append(update.status)
+        param_count += 1
+    
+    if update.end_time:
+        updates.append(f"end_time = ${param_count}")
+        params.append(update.end_time)
+        param_count += 1
+        updates.append("duration = end_time - start_time")
+    
+    if update.artifacts:
+        updates.append(f"artifacts = ${param_count}")
+        params.append(json.dumps(update.artifacts))
+        param_count += 1
+    
+    if update.error_log:
+        updates.append(f"error_log = ${param_count}")
+        params.append(update.error_log)
+        param_count += 1
+    
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    params.append(task_id)
+    query = f"UPDATE agent_task_log SET {', '.join(updates)} WHERE task_id = ${param_count}"
+    
+    async with pool.acquire() as conn:
+        await conn.execute(query, *params)
+    
+    return {"status": "updated", "task_id": task_id}
+
+class TaskCompleteRequest(BaseModel):
+    task_id: str
+    artifacts: Optional[Dict[str, Any]] = None
+
+@app.post("/api/v1/tasks/complete")
+async def complete_task(request: TaskCompleteRequest):
+    """Mark task as completed with optional artifacts"""
+    update = TaskLogUpdate(
+        status="completed",
+        end_time=datetime.utcnow(),
+        artifacts=request.artifacts
+    )
+    return await update_task(request.task_id, update)
+
+class TaskFailRequest(BaseModel):
+    task_id: str
+    error_log: str
+
+@app.post("/api/v1/tasks/fail")
+async def fail_task(request: TaskFailRequest):
+    """Mark task as failed with error log"""
+    update = TaskLogUpdate(
+        status="failed",
+        end_time=datetime.utcnow(),
+        error_log=request.error_log
+    )
+    return await update_task(request.task_id, update)
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "service": "task-api"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

@@ -11,6 +11,7 @@ from typing import Dict, Any, List
 from base_agent import BaseAgent, AgentMessage
 import sys
 import os
+import aiohttp
 
 # Import specialized components
 from code_generator import CodeGenerator
@@ -452,11 +453,40 @@ class RefactoredDevAgent(BaseAgent):
         try:
             task_payload = message.payload
             task_id = task_payload.get('task_id', 'unknown')
+            ecid = task_payload.get('ecid', 'unknown')
             
             logger.info(f"RefactoredDevAgent received task delegation: {task_id} from {message.sender}")
             
+            # Task already exists (created by Max), just update status to 'in_progress'
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.put(
+                        f"{self.task_api_url}/api/v1/tasks/{task_id}",
+                        json={"status": "in_progress"}
+                    ) as resp:
+                        if resp.status == 200:
+                            logger.info(f"Neo marked task {task_id} as in_progress")
+                        elif resp.status == 404:
+                            # Task doesn't exist, log it
+                            await self.log_task_start(task_id, ecid, 
+                                task_payload.get('description', 'Unknown task'),
+                                task_payload.get('priority', 'MEDIUM'))
+                        else:
+                            logger.warning(f"Failed to update task status: {await resp.text()}")
+            except Exception as e:
+                logger.warning(f"Failed to update task {task_id}: {e}, continuing anyway")
+            
             # Process the delegated task
             result = await self.process_task(task_payload)
+            
+            # Log completion with artifacts
+            artifacts = {
+                'action': result.get('action'),
+                'files_created': result.get('files_created', []),
+                'containers_deployed': result.get('containers_deployed', []),
+                'status': result.get('status', 'unknown')
+            }
+            await self.log_task_completion(task_id, artifacts)
             
             # Send acknowledgment back to sender
             await self.send_message(
@@ -477,12 +507,16 @@ class RefactoredDevAgent(BaseAgent):
         except Exception as e:
             logger.error(f"RefactoredDevAgent failed to handle task delegation: {e}")
             
+            # Log task failure
+            task_id = task_payload.get('task_id', 'unknown')
+            await self.log_task_failure(task_id, str(e))
+            
             # Send error back to sender
             await self.send_message(
                 message.sender,
                 "task_error",
                 {
-                    'task_id': task_payload.get('task_id', 'unknown'),
+                    'task_id': task_id,
                     'error': str(e),
                     'processed_by': self.name
                 }
