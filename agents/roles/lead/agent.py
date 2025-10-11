@@ -410,9 +410,11 @@ class LeadAgent(BaseAgent):
             framework_version = get_framework_version()  # e.g., "0.1.4"
             
             # Extract warm-boot sequence from the current ecid
-            # The ecid is passed in the task (e.g., "ECID-WB-014" -> "014")
+            # The ecid format: "ECID-WB-###-description" -> extract "###"
             current_ecid = getattr(self, 'current_ecid', 'ECID-WB-001')
-            warm_boot_sequence = current_ecid.split("-")[-1] if "-" in current_ecid else "001"
+            ecid_parts = current_ecid.split("-")
+            # For ECID-WB-027-test-harness-validation, get index 2 which is "027"
+            warm_boot_sequence = ecid_parts[2] if len(ecid_parts) > 2 else "001"
             
             app_version = f"{framework_version}.{warm_boot_sequence}"  # e.g., "0.1.4.008"
             

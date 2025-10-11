@@ -238,7 +238,20 @@ class QAAgent(BaseAgent):
         return vulnerabilities
     
     def calculate_security_score(self, vulnerabilities: List[Dict[str, Any]]) -> float:
-        """Calculate security score based on vulnerabilities"""Qa Agent - Qa Role"""Handle security audit requests"""
+        """Calculate security score based on vulnerabilities"""
+        if not vulnerabilities:
+            return 10.0
+        
+        # Calculate score based on vulnerability severity
+        severity_weights = {'critical': 3.0, 'high': 2.0, 'medium': 1.0, 'low': 0.5}
+        total_penalty = sum(severity_weights.get(v.get('severity', 'low'), 0.5) for v in vulnerabilities)
+        
+        # Score from 0-10, where 10 is perfect security
+        score = max(0.0, 10.0 - total_penalty)
+        return round(score, 2)
+    
+    async def handle_security_audit(self, message: AgentMessage):
+        """Handle security audit requests"""
         audit_type = message.payload.get('audit_type', 'general')
         task_id = message.payload.get('task_id')
         
