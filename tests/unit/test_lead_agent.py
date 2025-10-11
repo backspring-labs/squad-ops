@@ -424,4 +424,27 @@ class TestLeadAgent:
         
         with patch.object(agent, 'handle_status_query') as mock_handle:
             await agent.handle_message(status_message)
-            mock_handle.assert_called_once_with(status_message)
+            mock_handle.assert_called_once_with(status_message)    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_escalate_task(self, mock_database):
+        """Test task escalation"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_prd_requirements(self):
+        """Test PRD requirements analysis"""
+        agent = LeadAgent("lead-agent-001")
+        
+        prd_content = """# Test App
+        ## Core Features
+        - Authentication
+        ## Technical Requirements
+        - Python 3.11"""
+        
+        analysis = await agent.analyze_prd_requirements(prd_content)
+        assert isinstance(analysis, dict)
+        assert 'core_features' in analysis
+    

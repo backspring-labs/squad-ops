@@ -224,3 +224,43 @@ class TestQAAgent:
             mock_send.assert_called_once()
             call_args = mock_send.call_args
             assert call_args[0][0] == "lead-agent-001"  # Notify lead agent
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_generate_counterfactual_scenarios(self):
+        """Test counterfactual scenario generation"""
+        agent = QAAgent("qa-agent-001")
+        task = {'task_id': 'task-001', 'base_scenario': {}}
+        scenarios = await agent.generate_counterfactual_scenarios(task)
+        assert isinstance(scenarios, list)
+        assert len(scenarios) > 0
+        assert all('id' in s and 'description' in s for s in scenarios)
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_vulnerabilities(self):
+        """Test vulnerability analysis"""
+        agent = QAAgent("qa-agent-001")
+        test_results = {
+            'test_details': [
+                {'name': 'auth_test', 'status': 'failed', 'scenario_id': 'sc1', 'test_type': 'authentication'},
+                {'name': 'validation_test', 'status': 'passed', 'scenario_id': 'sc2', 'test_type': 'validation'}
+            ]
+        }
+        task = {'task_id': 'task-001'}
+        vulnerabilities = await agent.analyze_vulnerabilities(test_results, task)
+        assert isinstance(vulnerabilities, list)
+        assert len(vulnerabilities) > 0
+    
+    @pytest.mark.unit
+    def test_calculate_security_score(self):
+        """Test security score calculation"""
+        agent = QAAgent("qa-agent-001")
+        vulnerabilities = [
+            {'severity': 'critical'},
+            {'severity': 'high'},
+            {'severity': 'low'}
+        ]
+        score = agent.calculate_security_score(vulnerabilities)
+        assert isinstance(score, float)
+        assert 0.0 <= score <= 10.0
