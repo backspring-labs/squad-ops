@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
 """
 SquadOps Version Management CLI
-Manages agent versions, configurations, and rollbacks
+Manages framework and agent versions, configurations, and rollbacks
 """
 
 import sys
 import json
+import re
 from datetime import datetime
+from pathlib import Path
 from config.version import (
-    AGENT_VERSIONS, CONFIG_VERSIONS, VERSION_HISTORY,
+    SQUADOPS_VERSION, AGENT_VERSIONS, CONFIG_VERSIONS, VERSION_HISTORY,
     get_agent_version, get_agent_config, update_agent_version,
-    get_version_history, rollback_agent
+    get_version_history, rollback_agent, get_framework_version
 )
+
+def show_framework_version():
+    """Show current framework version"""
+    print(f"🚀 SquadOps Framework Version: {get_framework_version()}")
+    print()
 
 def list_agents():
     """List all agents and their current versions"""
-    print("🤖 SquadOps Agent Versions")
+    print(f"🚀 SquadOps Framework v{get_framework_version()}")
+    print()
+    print("🤖 Agent Versions")
     print("=" * 50)
     for agent, version in AGENT_VERSIONS.items():
         config = CONFIG_VERSIONS.get(agent, {})
@@ -61,10 +70,50 @@ def rollback_to_version(agent_name, target_version):
         print(f"❌ Failed to rollback {agent_name} to version {target_version}")
         print("   Version not found in history")
 
+def update_framework_version(new_version, notes=""):
+    """Update the framework version in config/version.py"""
+    version_file = Path("config/version.py")
+    
+    if not version_file.exists():
+        print("❌ config/version.py not found")
+        return False
+    
+    # Read the file
+    content = version_file.read_text()
+    
+    # Update SQUADOPS_VERSION
+    pattern = r'SQUADOPS_VERSION = "[^"]+"'
+    replacement = f'SQUADOPS_VERSION = "{new_version}"'
+    
+    if not re.search(pattern, content):
+        print("❌ Could not find SQUADOPS_VERSION in config/version.py")
+        return False
+    
+    new_content = re.sub(pattern, replacement, content)
+    
+    # Update the status comment
+    status_pattern = r'# Current status: .*'
+    status_replacement = f'# Current status: {new_version} ({notes})' if notes else f'# Current status: {new_version}'
+    new_content = re.sub(status_pattern, status_replacement, new_content)
+    
+    # Write back
+    version_file.write_text(new_content)
+    
+    print(f"✅ Updated framework version to {new_version}")
+    if notes:
+        print(f"   Notes: {notes}")
+    print(f"   Updated: config/version.py")
+    print()
+    print("⚠️  Remember to commit this change:")
+    print(f'   git add config/version.py')
+    print(f'   git commit -m "chore: bump version to {new_version}"')
+    
+    return True
+
 def export_versions():
     """Export current version configuration"""
     config = {
-        "framework_version": "1.0.0",
+        "framework_version": get_framework_version(),
         "agent_versions": AGENT_VERSIONS,
         "config_versions": CONFIG_VERSIONS,
         "export_date": datetime.now().isoformat()
@@ -94,18 +143,37 @@ def import_versions(filename):
 def main():
     if len(sys.argv) < 2:
         print("SquadOps Version Management CLI")
-        print("Usage:")
-        print("  python version_cli.py list                    # List all agents")
-        print("  python version_cli.py show <agent>            # Show agent details")
+        print()
+        print("Framework Version Commands:")
+        print("  python version_cli.py version                       # Show framework version")
+        print("  python version_cli.py bump <version> [notes]        # Update framework version")
+        print()
+        print("Agent Version Commands:")
+        print("  python version_cli.py list                          # List all agents")
+        print("  python version_cli.py show <agent>                  # Show agent details")
         print("  python version_cli.py update <agent> <version> [llm] [config] [notes]")
-        print("  python version_cli.py rollback <agent> <version>")
-        print("  python version_cli.py export                  # Export config")
-        print("  python version_cli.py import <file>           # Import config")
+        print("  python version_cli.py rollback <agent> <version>    # Rollback agent version")
+        print()
+        print("Export/Import Commands:")
+        print("  python version_cli.py export                        # Export config")
+        print("  python version_cli.py import <file>                 # Import config")
         return
     
     command = sys.argv[1].lower()
     
-    if command == "list":
+    if command == "version":
+        show_framework_version()
+    
+    elif command == "bump":
+        if len(sys.argv) < 3:
+            print("❌ Usage: bump <version> [notes]")
+            print("   Example: python version_cli.py bump 0.3.0 'Multi-agent expansion'")
+            return
+        version = sys.argv[2]
+        notes = sys.argv[3] if len(sys.argv) > 3 else ""
+        update_framework_version(version, notes)
+    
+    elif command == "list":
         list_agents()
     
     elif command == "show":
