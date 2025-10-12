@@ -6,7 +6,7 @@ Unified role management system that eliminates folder duplication
 
 import yaml
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,15 +27,22 @@ class RoleDefinition:
 class RoleFactory:
     """Factory for managing roles and generating agent configurations"""
     
-    def __init__(self, registry_file: str = "agents/roles/registry.yaml"):
+    def __init__(self, registry_file: str = "agents/roles/registry.yaml", 
+                 file_reader: Optional[Callable] = None):
         self.registry_file = registry_file
+        self.file_reader = file_reader or self._default_file_reader
         self.roles = self._load_roles()
+    
+    def _default_file_reader(self, path: str) -> str:
+        """Default file reader - can be mocked in tests"""
+        with open(path, 'r') as f:
+            return f.read()
     
     def _load_roles(self) -> Dict[str, RoleDefinition]:
         """Load role definitions from registry"""
         try:
-            with open(self.registry_file, 'r') as f:
-                data = yaml.safe_load(f)
+            content = self.file_reader(self.registry_file)
+            data = yaml.safe_load(content)
             
             roles = {}
             for role_name, role_data in data.get('roles', {}).items():

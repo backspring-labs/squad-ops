@@ -65,13 +65,13 @@ class AgentFactory:
         return agents
     
     @staticmethod
-    def get_available_roles():
+    def get_available_roles(roles_dir: str = "agents/roles"):
         """Get list of available agent roles"""
         import os
-        roles_dir = "agents/roles"
         if os.path.exists(roles_dir):
             return [d for d in os.listdir(roles_dir) 
-                   if os.path.isdir(os.path.join(roles_dir, d))]
+                   if os.path.isdir(os.path.join(roles_dir, d)) 
+                   and not d.startswith('_')]
         return []
     
     @staticmethod

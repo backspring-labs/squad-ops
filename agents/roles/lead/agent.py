@@ -12,6 +12,8 @@ import asyncio
 import json
 import logging
 import time
+import yaml
+from pathlib import Path
 from typing import Dict, Any, List
 from base_agent import BaseAgent, AgentMessage
 
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 class LeadAgent(BaseAgent):
     """Lead Agent - The Governance Role"""
     
-    def __init__(self, identity: str):
+    def __init__(self, identity: str, instances_file: str = "agents/instances/instances.yaml"):
         super().__init__(
             name=identity,
             agent_type="governance",
@@ -28,6 +30,8 @@ class LeadAgent(BaseAgent):
         )
         self.task_state_log = []
         self.approval_queue = []
+        self.instances_file = instances_file
+        self._role_to_agent_cache = None
         self.communication_log = []
         # Import configuration
         import sys
@@ -252,25 +256,101 @@ class LeadAgent(BaseAgent):
             'reason': 'Premium consultation required'
         })
     
+    def _load_role_to_agent_mapping(self) -> Dict[str, str]:
+        """
+        Load role-to-agent mapping from instances.yaml.
+        Returns dict mapping role -> agent_id for enabled agents.
+        Caches result for performance.
+        """
+        if self._role_to_agent_cache is not None:
+            return self._role_to_agent_cache
+        
+        try:
+            instances_path = Path(self.instances_file)
+            if not instances_path.exists():
+                logger.warning(f"Instances file not found: {self.instances_file}, using defaults")
+                return self._get_default_role_mapping()
+            
+            with open(instances_path, 'r') as f:
+                data = yaml.safe_load(f)
+            
+            # Build role -> agent_id mapping from enabled instances
+            role_to_agent = {}
+            for instance in data.get('instances', []):
+                if instance.get('enabled', False):
+                    role = instance.get('role')
+                    agent_id = instance.get('id')
+                    if role and agent_id:
+                        # If multiple agents have same role, keep first (TODO: add load balancing)
+                        if role not in role_to_agent:
+                            role_to_agent[role] = agent_id
+            
+            self._role_to_agent_cache = role_to_agent
+            logger.info(f"Loaded role-to-agent mapping: {role_to_agent}")
+            return role_to_agent
+            
+        except Exception as e:
+            logger.error(f"Failed to load instances.yaml: {e}, using defaults")
+            return self._get_default_role_mapping()
+    
+    def _get_default_role_mapping(self) -> Dict[str, str]:
+        """Fallback role-to-agent mapping if instances.yaml can't be loaded"""
+        return {
+            'lead': 'max',
+            'dev': 'neo',
+            'strat': 'nat',
+            'qa': 'eve',
+            'data': 'data',
+            'finance': 'quark',
+            'creative': 'glyph',
+            'comms': 'joi',
+            'curator': 'og',
+            'audit': 'hal'
+        }
+    
     async def determine_delegation_target(self, task_type: str) -> str:
-        """Determine which agent should handle the task"""
-        delegation_map = {
-            'code': 'Neo',
-            'development': 'Neo',
-            'product': 'Nat',
-            'data': 'Data',
-            'security': 'EVE',
-            'financial': 'Quark',
-            'creative': 'Glyph',
-            'analysis': 'Og',
-            'communication': 'Joi'
+        """
+        Determine which agent should handle the task based on role.
+        Returns agent ID (e.g., 'neo') not display name.
+        
+        Task types are mapped to roles, then resolved to agent IDs via instances.yaml
+        """
+        # Map task types to roles
+        task_to_role_map = {
+            'code': 'dev',
+            'development': 'dev',
+            'deployment': 'dev',
+            'archive': 'dev',
+            'build': 'dev',
+            'product': 'strat',
+            'strategy': 'strat',
+            'data': 'data',
+            'analytics': 'data',
+            'security': 'qa',
+            'testing': 'qa',
+            'financial': 'finance',
+            'creative': 'creative',
+            'design': 'creative',
+            'analysis': 'curator',
+            'research': 'curator',
+            'communication': 'comms',
+            'audit': 'audit'
         }
         
-        # Governance tasks should NEVER be delegated - Max handles them directly
+        # Governance tasks should NEVER be delegated
         if task_type.lower() == 'governance':
-            raise ValueError(f"Governance tasks should not be delegated - Max should handle them directly")
+            raise ValueError(f"Governance tasks should not be delegated - handled by lead directly")
         
-        return delegation_map.get(task_type.lower(), 'Neo')
+        # Get role for this task type (default to 'dev' for unknown types)
+        target_role = task_to_role_map.get(task_type.lower(), 'dev')
+        
+        # Load role-to-agent mapping from instances.yaml
+        role_to_agent_map = self._load_role_to_agent_mapping()
+        
+        agent_id = role_to_agent_map.get(target_role, 'neo')
+        logger.debug(f"Task type '{task_type}' → role '{target_role}' → agent '{agent_id}'")
+        
+        return agent_id
     
     async def handle_approval_request(self, message: AgentMessage):
         """Handle approval requests from other agents"""
