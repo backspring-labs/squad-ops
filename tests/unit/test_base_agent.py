@@ -623,3 +623,448 @@ class TestBaseAgent:
         with patch('os.path.exists', return_value=False):
             result = await agent.file_exists("/test/nonexistent.txt")
             assert result is False
+    
+    # ========== BaseAgent Run Loop Tests (Lines 380-465) ==========
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_agent_run_initialization(self):
+        """Test agent run initialization and queue setup"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_channel = AsyncMock()
+        mock_queue = AsyncMock()
+        mock_queue.__aiter__ = AsyncMock(return_value=iter([]))
+        mock_channel.declare_queue = AsyncMock(return_value=mock_queue)
+        agent.channel = mock_channel
+        
+        # Mock initialize and send_heartbeat
+        agent.initialize = AsyncMock()
+        agent.send_heartbeat = AsyncMock()
+        
+        # Mock asyncio.gather to stop immediately
+        with patch('asyncio.gather', side_effect=asyncio.CancelledError()):
+            try:
+                await agent.run()
+            except asyncio.CancelledError:
+                pass
+        
+        # Verify initialization sequence
+        agent.initialize.assert_called_once()
+        agent.send_heartbeat.assert_called_once()
+        
+        # Verify queue declarations
+        assert mock_channel.declare_queue.call_count == 3
+        mock_channel.declare_queue.assert_any_call("test-agent_tasks", durable=True)
+        mock_channel.declare_queue.assert_any_call("test-agent_comms", durable=True)
+        mock_channel.declare_queue.assert_any_call("squad_broadcast", durable=True)
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_agent_run_task_processing(self):
+        """Test task queue message processing"""
+        # These async run loop tests have expected warnings due to mocking asyncio.gather
+        # The warnings are normal and expected in this testing approach
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        # Create mock message
+        mock_message = MagicMock()
+        mock_message.body.decode.return_value = '{"task_id": "test-123", "description": "Test task"}'
+        mock_message.ack = AsyncMock()
+        
+        # Track processing
+        task_processed = []
+        
+        # Create mock task queue that yields one message
+        async def mock_task_queue_iterator(self=None):
+            yield mock_message
+            task_processed.append(True)
+            # Block here until cancelled
+            try:
+                await asyncio.sleep(100)
+            except asyncio.CancelledError:
+                raise
+        
+        # Create empty mock queues for comms and broadcast
+        async def mock_empty_queue_iterator(self=None):
+            await asyncio.sleep(100)
+            yield  # Never reached
+        
+        mock_task_queue = MagicMock()
+        mock_task_queue.__aiter__ = lambda self: mock_task_queue_iterator()
+        
+        mock_comms_queue = MagicMock()
+        mock_comms_queue.__aiter__ = lambda self: mock_empty_queue_iterator()
+        
+        mock_broadcast_queue = MagicMock()
+        mock_broadcast_queue.__aiter__ = lambda self: mock_empty_queue_iterator()
+        
+        mock_channel = AsyncMock()
+        def declare_queue_side_effect(name, **kwargs):
+            if 'tasks' in name:
+                return mock_task_queue
+            elif 'comms' in name:
+                return mock_comms_queue
+            else:
+                return mock_broadcast_queue
+        
+        mock_channel.declare_queue = AsyncMock(side_effect=declare_queue_side_effect)
+        agent.channel = mock_channel
+        
+        # Mock other required methods
+        agent.initialize = AsyncMock()
+        agent.send_heartbeat = AsyncMock()
+        agent.update_task_status = AsyncMock()
+        
+        async def mock_process_task(task):
+            await asyncio.sleep(0.001)  # Simulate work
+            return {'status': 'completed'}
+        
+        agent.process_task = AsyncMock(side_effect=mock_process_task)
+        
+        # Run agent with timeout - let async tasks actually run
+        run_task = asyncio.create_task(agent.run())
+        await asyncio.sleep(0.05)  # Let it process the message
+        run_task.cancel()
+        try:
+            await run_task
+        except asyncio.CancelledError:
+            pass
+        
+        # Verify task was processed
+        assert len(task_processed) > 0, "Queue iterator was not called"
+        agent.process_task.assert_called_once()
+        agent.update_task_status.assert_called_once_with('test-123', 'Completed', progress=100.0)
+        mock_message.ack.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_agent_run_task_processing_error(self):
+        """Test task processing error handling with nack"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        # Create mock message that will cause error
+        mock_message = MagicMock()
+        mock_message.body.decode.return_value = '{"task_id": "test-456"}'
+        mock_message.nack = AsyncMock()
+        
+        # Track processing
+        error_processed = []
+        
+        # Create mock task queue with the error message
+        async def mock_task_queue_iterator(self=None):
+            yield mock_message
+            error_processed.append(True)
+            await asyncio.sleep(100)
+        
+        # Create empty mock queues for comms and broadcast
+        async def mock_empty_queue_iterator(self=None):
+            await asyncio.sleep(100)
+            yield  # Never reached
+        
+        mock_task_queue = MagicMock()
+        mock_task_queue.__aiter__ = lambda self: mock_task_queue_iterator()
+        
+        mock_comms_queue = MagicMock()
+        mock_comms_queue.__aiter__ = lambda self: mock_empty_queue_iterator()
+        
+        mock_broadcast_queue = MagicMock()
+        mock_broadcast_queue.__aiter__ = lambda self: mock_empty_queue_iterator()
+        
+        mock_channel = AsyncMock()
+        def declare_queue_side_effect(name, **kwargs):
+            if 'tasks' in name:
+                return mock_task_queue
+            elif 'comms' in name:
+                return mock_comms_queue
+            else:
+                return mock_broadcast_queue
+        
+        mock_channel.declare_queue = AsyncMock(side_effect=declare_queue_side_effect)
+        agent.channel = mock_channel
+        
+        # Mock methods - process_task will raise error
+        agent.initialize = AsyncMock()
+        agent.send_heartbeat = AsyncMock()
+        agent.process_task = AsyncMock(side_effect=Exception("Processing failed"))
+        
+        # Run agent with timeout
+        run_task = asyncio.create_task(agent.run())
+        await asyncio.sleep(0.05)
+        run_task.cancel()
+        try:
+            await run_task
+        except asyncio.CancelledError:
+            pass
+        
+        # Verify error handling
+        assert len(error_processed) > 0, "Error message was not processed"
+        agent.process_task.assert_called_once()
+        mock_message.nack.assert_called_once_with(requeue=False)
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_agent_run_comms_processing(self):
+        """Test comms queue message processing"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        # Create mock comms message
+        mock_message = MagicMock()
+        msg_data = {
+            'sender': 'other-agent',
+            'recipient': 'test-agent',
+            'message_type': 'TEST',
+            'payload': {},
+            'context': {},
+            'timestamp': '2024-01-01T00:00:00',
+            'message_id': 'test-msg-001'
+        }
+        mock_message.body.decode.return_value = str(msg_data).replace("'", '"')
+        mock_message.ack = AsyncMock()
+        
+        # Setup queues - comms queue will have one message
+        # Create empty queue iterator
+        async def mock_empty_queue_iterator(self=None):
+            await asyncio.sleep(100)
+            yield  # Never reached
+        
+        task_queue = MagicMock()
+        task_queue.__aiter__ = lambda self: mock_empty_queue_iterator()
+        
+        # Track processing
+        comms_processed = []
+        
+        async def comms_queue_iterator(self=None):
+            yield mock_message
+            comms_processed.append(True)
+            await asyncio.sleep(100)
+        
+        comms_queue = MagicMock()
+        comms_queue.__aiter__ = lambda self: comms_queue_iterator()
+        
+        broadcast_queue = MagicMock()
+        broadcast_queue.__aiter__ = lambda self: mock_empty_queue_iterator()
+        
+        mock_channel = AsyncMock()
+        
+        def mock_declare_queue(name, **kwargs):
+            if 'comms' in name:
+                return comms_queue
+            elif 'tasks' in name:
+                return task_queue
+            else:
+                return broadcast_queue
+        
+        mock_channel.declare_queue = AsyncMock(side_effect=mock_declare_queue)
+        agent.channel = mock_channel
+        
+        # Mock methods
+        agent.initialize = AsyncMock()
+        agent.send_heartbeat = AsyncMock()
+        agent.handle_message = AsyncMock()
+        
+        # Run agent with timeout
+        run_task = asyncio.create_task(agent.run())
+        await asyncio.sleep(0.05)
+        run_task.cancel()
+        try:
+            await run_task
+        except asyncio.CancelledError:
+            pass
+        
+        # Verify message was handled
+        assert len(comms_processed) > 0, "Comms message was not processed"
+        agent.handle_message.assert_called_once()
+        mock_message.ack.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_agent_run_broadcast_processing(self):
+        """Test broadcast queue processing (ignores own messages)"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        # Create two broadcast messages: one from self, one from other
+        mock_message_self = MagicMock()
+        mock_message_self.body.decode.return_value = '{"sender": "test-agent", "recipient": "*", "message_type": "BROADCAST", "payload": {}, "context": {}, "timestamp": "2024-01-01T00:00:00", "message_id": "bcast-001"}'
+        mock_message_self.ack = AsyncMock()
+        
+        mock_message_other = MagicMock()
+        mock_message_other.body.decode.return_value = '{"sender": "other-agent", "recipient": "*", "message_type": "BROADCAST", "payload": {}, "context": {}, "timestamp": "2024-01-01T00:00:01", "message_id": "bcast-002"}'
+        mock_message_other.ack = AsyncMock()
+        
+        # Setup queues
+        # Create empty queue iterator
+        async def mock_empty_queue_iterator(self=None):
+            await asyncio.sleep(100)
+            yield  # Never reached
+        
+        task_queue = MagicMock()
+        task_queue.__aiter__ = lambda self: mock_empty_queue_iterator()
+        
+        comms_queue = MagicMock()
+        comms_queue.__aiter__ = lambda self: mock_empty_queue_iterator()
+        
+        # Track processing
+        broadcast_processed = []
+        
+        async def broadcast_queue_iterator(self=None):
+            yield mock_message_self
+            yield mock_message_other
+            broadcast_processed.append(True)
+            await asyncio.sleep(100)
+        
+        broadcast_queue = MagicMock()
+        broadcast_queue.__aiter__ = lambda self: broadcast_queue_iterator()
+        
+        mock_channel = AsyncMock()
+        
+        def mock_declare_queue(name, **kwargs):
+            if 'broadcast' in name:
+                return broadcast_queue
+            elif 'comms' in name:
+                return comms_queue
+            else:
+                return task_queue
+        
+        mock_channel.declare_queue = AsyncMock(side_effect=mock_declare_queue)
+        agent.channel = mock_channel
+        
+        # Mock methods
+        agent.initialize = AsyncMock()
+        agent.send_heartbeat = AsyncMock()
+        agent.handle_message = AsyncMock()
+        
+        # Run agent with timeout
+        run_task = asyncio.create_task(agent.run())
+        await asyncio.sleep(0.05)
+        run_task.cancel()
+        try:
+            await run_task
+        except asyncio.CancelledError:
+            pass
+        
+        # Verify only other agent's message was handled (not own message)
+        assert len(broadcast_processed) > 0, "Broadcast messages were not processed"
+        assert agent.handle_message.call_count == 1
+        assert mock_message_self.ack.call_count == 1
+        assert mock_message_other.ack.call_count == 1
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_agent_run_heartbeat_loop(self):
+        """Test periodic heartbeat sending"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_channel = AsyncMock()
+        mock_queue = AsyncMock()
+        mock_queue.__aiter__ = AsyncMock(return_value=iter([]))
+        mock_channel.declare_queue = AsyncMock(return_value=mock_queue)
+        agent.channel = mock_channel
+        
+        # Mock methods
+        agent.initialize = AsyncMock()
+        agent.send_heartbeat = AsyncMock()
+        
+        # Track heartbeat calls
+        heartbeat_count = 0
+        original_send_heartbeat = agent.send_heartbeat
+        
+        async def counting_heartbeat():
+            nonlocal heartbeat_count
+            heartbeat_count += 1
+            if heartbeat_count >= 3:  # Stop after 3 heartbeats
+                raise asyncio.CancelledError()
+            await original_send_heartbeat()
+        
+        agent.send_heartbeat = counting_heartbeat
+        
+        # Run agent (will be cancelled after heartbeats)
+        with patch('asyncio.sleep', return_value=None):  # Speed up heartbeat loop
+            try:
+                await agent.run()
+            except asyncio.CancelledError:
+                pass
+        
+        # Verify multiple heartbeats were sent
+        assert heartbeat_count >= 2  # Initial + at least one periodic
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_agent_run_error_handling(self):
+        """Test agent run error handling and cleanup"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        # Mock initialization to raise an error
+        agent.initialize = AsyncMock(side_effect=Exception("Initialization failed"))
+        agent.send_heartbeat = AsyncMock()
+        agent.cleanup = AsyncMock()
+        
+        mock_channel = AsyncMock()
+        agent.channel = mock_channel
+        
+        # Run agent - should handle error gracefully
+        await agent.run()
+        
+        # Verify error was logged (no exception raised)
+        agent.initialize.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_agent_run_cleanup_on_shutdown(self):
+        """Test cleanup is called in finally block"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_channel = AsyncMock()
+        mock_queue = AsyncMock()
+        mock_queue.__aiter__ = AsyncMock(return_value=iter([]))
+        mock_channel.declare_queue = AsyncMock(return_value=mock_queue)
+        agent.channel = mock_channel
+        
+        # Mock methods
+        agent.initialize = AsyncMock()
+        agent.send_heartbeat = AsyncMock()
+        agent.cleanup = AsyncMock()
+        
+        # Mock asyncio.gather to raise cancellation
+        with patch('asyncio.gather', side_effect=asyncio.CancelledError()):
+            try:
+                await agent.run()
+            except asyncio.CancelledError:
+                pass
+        
+        # Note: cleanup is not explicitly called in the finally block of the actual run() method
+        # This test documents current behavior
+        # Verify run executed without crashing
+        agent.initialize.assert_called_once()

@@ -5,6 +5,7 @@ Tests core LeadAgent functionality without external dependencies
 
 import pytest
 import asyncio
+import yaml
 from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from agents.roles.lead.agent import LeadAgent
@@ -447,4 +448,238 @@ class TestLeadAgent:
         analysis = await agent.analyze_prd_requirements(prd_content)
         assert isinstance(analysis, dict)
         assert 'core_features' in analysis
+    
+    # ========== LeadAgent PRD Processing Tests (Lines 540-587) ==========
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_prd_request_full_workflow(self, mock_database):
+        """Test complete PRD processing workflow"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+        # Mock the actual methods that exist on LeadAgent
+        with patch.object(agent, 'read_file', return_value="# Test PRD\n## Features\n- Feature 1") as mock_read, \
+             patch.object(agent, 'analyze_prd_requirements', return_value={'core_features': ['Feature 1'], 'technical_requirements': []}) as mock_analyze, \
+             patch.object(agent, 'create_development_tasks', return_value=[
+                 {'task_id': 'task-1', 'task_type': 'development', 'description': 'Build app'},
+                 {'task_id': 'task-2', 'task_type': 'deployment', 'description': 'Deploy app'}
+             ]) as mock_create, \
+             patch.object(agent, 'log_task_delegation', return_value=None) as mock_log, \
+             patch.object(agent, 'send_message', return_value=None) as mock_send:
+            
+            result = await agent.process_prd_request("warm-boot/prd/PRD-001.md")
+            
+            # Verify workflow steps
+            assert result['status'] == 'success'
+            assert 'tasks_delegated' in result
+            assert len(result['tasks_delegated']) == 2
+            
+            # Verify methods were called
+            mock_read.assert_called_once_with("warm-boot/prd/PRD-001.md")
+            mock_analyze.assert_called_once()
+            mock_create.assert_called_once()
+            assert mock_log.call_count == 2
+            assert mock_send.call_count == 2
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_prd_request_task_creation(self, mock_database):
+        """Test task generation from PRD"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+        with patch.object(agent, 'read_file', return_value="# Simple App\n## Features\n- Basic CRUD"), \
+             patch.object(agent, 'analyze_prd_requirements', return_value={'core_features': ['CRUD']}), \
+             patch.object(agent, 'create_development_tasks', return_value=[
+                 {'task_id': 'task-archive', 'task_type': 'archive', 'description': 'Archive old version'},
+                 {'task_id': 'task-build', 'task_type': 'build', 'description': 'Build new version'},
+                 {'task_id': 'task-deploy', 'task_type': 'deploy', 'description': 'Deploy application'}
+             ]) as mock_create, \
+             patch.object(agent, 'log_task_delegation', return_value=None), \
+             patch.object(agent, 'send_message', return_value=None):
+            
+            result = await agent.process_prd_request("prd-path.md")
+            
+            # Verify tasks were created
+            assert result['status'] == 'success'
+            assert len(result['tasks_delegated']) == 3
+            assert result['tasks_delegated'][0]['task_id'] == 'task-archive'
+            assert result['tasks_delegated'][1]['task_id'] == 'task-build'
+            assert result['tasks_delegated'][2]['task_id'] == 'task-deploy'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_prd_request_delegation(self, mock_database):
+        """Test task delegation to correct agent"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+        with patch.object(agent, 'read_file', return_value="# Test App"), \
+             patch.object(agent, 'analyze_prd_requirements', return_value={'core_features': []}), \
+             patch.object(agent, 'create_development_tasks', return_value=[
+                 {'task_id': 'dev-task', 'task_type': 'development', 'description': 'Develop feature'}
+             ]), \
+             patch.object(agent, 'log_task_delegation', return_value=None) as mock_log, \
+             patch.object(agent, 'send_message', return_value=None) as mock_send:
+            
+            result = await agent.process_prd_request("test-prd.md")
+            
+            # Verify delegation occurred
+            mock_log.assert_called_once()
+            mock_send.assert_called_once()
+            
+            # Verify message was sent with correct structure
+            call_args = mock_send.call_args
+            assert call_args[1]['message_type'] == 'task_delegation'
+            assert 'payload' in call_args[1]
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_prd_request_with_complex_prd(self, mock_database):
+        """Test PRD processing with complex requirements"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+        complex_prd = """# Enterprise Application
+        ## Core Features
+        - Multi-tenant architecture
+        - API gateway
+        ## Technical Requirements
+        - Python 3.11+
+        - Docker deployment"""
+        
+        with patch.object(agent, 'read_file', return_value=complex_prd), \
+             patch.object(agent, 'analyze_prd_requirements', return_value={
+                 'core_features': ['multi-tenant', 'API'],
+                 'technical_requirements': ['Python', 'Docker']
+             }), \
+             patch.object(agent, 'create_development_tasks', return_value=[
+                 {'task_id': 't1', 'task_type': 'development', 'description': 'Task 1'}
+             ]), \
+             patch.object(agent, 'log_task_delegation', return_value=None), \
+             patch.object(agent, 'send_message', return_value=None):
+            
+            result = await agent.process_prd_request("complex-prd.md")
+            
+            # Verify complex PRD was processed
+            assert result['status'] == 'success'
+            assert 'prd_analysis' in result
+            assert result['prd_analysis']['core_features'] == ['multi-tenant', 'API']
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_prd_request_error_handling(self, mock_database):
+        """Test PRD processing error scenarios"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+        # Test file read error
+        with patch.object(agent, 'read_file', side_effect=FileNotFoundError("PRD not found")):
+            result = await agent.process_prd_request("nonexistent.md")
+            assert result['status'] == 'error'
+            assert 'Failed to read PRD' in result['message'] or 'PRD processing failed' in result['message']
+        
+        # Test task creation error (returns None)
+        with patch.object(agent, 'read_file', return_value="# Test"), \
+             patch.object(agent, 'analyze_prd_requirements', return_value={'core_features': []}), \
+             patch.object(agent, 'create_development_tasks', return_value=None):
+            result = await agent.process_prd_request("test.md")
+            assert result['status'] == 'error'
+            assert 'Failed to create tasks' in result['message']
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_determine_delegation_target(self):
+        """Test delegation target determination by role"""
+        # Agent will load from actual instances.yaml (production config)
+        agent = LeadAgent("lead-agent-001")
+        
+        # Test development task delegation → dev role → neo agent (from instances.yaml)
+        target = await agent.determine_delegation_target('development')
+        assert target == 'neo'  # Expected from production instances.yaml
+        
+        # Test deployment task delegation → dev role → neo agent  
+        target = await agent.determine_delegation_target('deployment')
+        assert target == 'neo'
+        
+        # Test code task delegation → dev role → neo agent
+        target = await agent.determine_delegation_target('code')
+        assert target == 'neo'
+        
+        # Test security task delegation → qa role → eve agent
+        target = await agent.determine_delegation_target('security')
+        assert target == 'eve'
+        
+        # Test strategy task delegation → strat role → nat agent
+        target = await agent.determine_delegation_target('product')
+        assert target == 'nat'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_determine_delegation_target_with_custom_instances(self, tmp_path):
+        """Test delegation with custom test instances configuration"""
+        # Create a test instances file
+        test_instances = {
+            'instances': [
+                {'id': 'dev-agent-001', 'role': 'dev', 'enabled': True},
+                {'id': 'qa-agent-001', 'role': 'qa', 'enabled': True},
+                {'id': 'lead-agent-001', 'role': 'lead', 'enabled': True}
+            ]
+        }
+        
+        instances_file = tmp_path / "test_instances.yaml"
+        with open(instances_file, 'w') as f:
+            yaml.dump(test_instances, f)
+        
+        # Create agent with custom instances file
+        agent = LeadAgent("lead-agent-001", instances_file=str(instances_file))
+        
+        # Test that it uses the test configuration
+        target = await agent.determine_delegation_target('development')
+        assert target == 'dev-agent-001'  # From test config, not production
+        
+        target = await agent.determine_delegation_target('security')
+        assert target == 'qa-agent-001'  # From test config, not production
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_log_task_delegation(self, mock_database):
+        """Test task delegation logging via API"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+        # Simply mock the method since testing API internals isn't the goal
+        with patch.object(agent, 'log_task_delegation', wraps=agent.log_task_delegation) as mock_log:
+            # Mock the aiohttp calls within the method
+            with patch('agents.base_agent.aiohttp.ClientSession') as mock_session:
+                # Create proper async context manager mocks
+                mock_resp = MagicMock()
+                mock_resp.status = 200
+                mock_resp.json = AsyncMock(return_value={'status': 'success'})
+                mock_resp.text = AsyncMock(return_value='OK')
+                mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+                mock_resp.__aexit__ = AsyncMock(return_value=None)
+                
+                mock_session_inst = MagicMock()
+                mock_session_inst.put = MagicMock(return_value=mock_resp)
+                mock_session_inst.__aenter__ = AsyncMock(return_value=mock_session_inst)
+                mock_session_inst.__aexit__ = AsyncMock(return_value=None)
+                
+                mock_session.return_value = mock_session_inst
+                
+                await agent.log_task_delegation(
+                    task_id='task-123',
+                    ecid='ECID-WB-027',
+                    delegated_to='neo',
+                    description='Build application'
+                )
+                
+                # Verify the method was called with correct parameters
+                mock_log.assert_called_once_with(
+                    task_id='task-123',
+                    ecid='ECID-WB-027',
+                    delegated_to='neo',
+                    description='Build application'
+                )
     

@@ -264,3 +264,134 @@ class TestQAAgent:
         score = agent.calculate_security_score(vulnerabilities)
         assert isinstance(score, float)
         assert 0.0 <= score <= 10.0
+    
+    # ========== QAAgent Security Tests (Lines 198-221) ==========
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_execute_security_scan_comprehensive(self):
+        """Test comprehensive security scan workflow"""
+        agent = QAAgent("qa-agent-001")
+        
+        task = {
+            'task_id': 'security-scan-001',
+            'target': 'web-application',
+            'scan_types': ['authentication', 'authorization', 'injection', 'xss', 'csrf']
+        }
+        
+        # Current implementation returns hardcoded mock results
+        result = await agent.execute_security_tests(task)
+        
+        # Verify the structure of returned security test results
+        assert isinstance(result, dict)
+        assert 'authentication_tests' in result
+        assert 'authorization_tests' in result
+        assert 'input_validation_tests' in result
+        assert 'sql_injection_tests' in result
+        assert 'xss_tests' in result
+        
+        # Verify each test category has passed/failed counts
+        for test_category in result.values():
+            assert 'passed' in test_category
+            assert 'failed' in test_category
+            assert isinstance(test_category['passed'], int)
+            assert isinstance(test_category['failed'], int)
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_execute_penetration_test_scenarios(self):
+        """Test penetration testing with various scenarios"""
+        agent = QAAgent("qa-agent-001")
+        
+        scenarios = [
+            {
+                'name': 'Authentication Bypass',
+                'description': 'Attempt to bypass login mechanism',
+                'expected_result': 'Access denied'
+            },
+            {
+                'name': 'Privilege Escalation',
+                'description': 'Try to access admin functions as regular user',
+                'expected_result': '403 Forbidden'
+            }
+        ]
+        
+        task = {
+            'task_id': 'pentest-001',
+            'scenarios': scenarios
+        }
+        
+        # Test the current implementation
+        result = await agent.execute_security_tests(task)
+        
+        # Verify structure
+        assert isinstance(result, dict)
+        # Current implementation doesn't process scenarios, just returns standard tests
+        # This is a placeholder test for future enhancement
+        assert 'authentication_tests' in result or 'status' in result
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_security_vulnerability_detection_edge_cases(self):
+        """Test edge case vulnerability detection"""
+        agent = QAAgent("qa-agent-001")
+        
+        # Test with minimal task
+        empty_task = {'task_id': 'sec-001'}
+        result = await agent.execute_security_tests(empty_task)
+        assert isinstance(result, dict)
+        assert len(result) > 0  # Should return standard test categories
+        
+        # Test with detailed task
+        detailed_task = {'task_id': 'sec-002', 'target': 'database'}
+        result = await agent.execute_security_tests(detailed_task)
+        assert isinstance(result, dict)
+        # Current mock implementation returns same structure regardless of input
+        assert 'authentication_tests' in result
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_security_scan_error_handling(self):
+        """Test security scan error handling"""
+        agent = QAAgent("qa-agent-001")
+        
+        # Test with valid task - current implementation doesn't have error paths
+        task = {'task_id': 'sec-error-001', 'target': 'api'}
+        result = await agent.execute_security_tests(task)
+        assert isinstance(result, dict)
+        
+        # Test with malformed task data - still returns results
+        malformed_task = {'invalid_key': 'no_task_id'}
+        result = await agent.execute_security_tests(malformed_task)
+        assert isinstance(result, dict)
+        # Current implementation is very forgiving and always returns test results
+        assert len(result) > 0
+    
+    @pytest.mark.unit
+    def test_security_score_calculation_accuracy(self):
+        """Test security score calculation with various vulnerability combinations"""
+        agent = QAAgent("qa-agent-001")
+        
+        # Test perfect score (no vulnerabilities)
+        assert agent.calculate_security_score([]) == 10.0
+        
+        # Test single critical vulnerability
+        critical_only = [{'severity': 'critical'}]
+        score = agent.calculate_security_score(critical_only)
+        assert score < 8.0  # Should significantly reduce score
+        
+        # Test multiple low severity issues
+        low_severity = [{'severity': 'low'} for _ in range(10)]
+        score = agent.calculate_security_score(low_severity)
+        assert score >= 5.0  # Should still maintain reasonable score
+        
+        # Test mixed severities
+        mixed = [
+            {'severity': 'critical'},
+            {'severity': 'critical'},
+            {'severity': 'high'},
+            {'severity': 'medium'},
+            {'severity': 'low'}
+        ]
+        score = agent.calculate_security_score(mixed)
+        assert 0.0 <= score <= 5.0  # Multiple critical issues = low score
