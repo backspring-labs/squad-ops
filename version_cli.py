@@ -51,8 +51,57 @@ def show_agent_details(agent_name):
     print()
 
 def update_version(agent_name, new_version, llm=None, config=None, notes=""):
-    """Update agent version"""
-    update_agent_version(agent_name, new_version, llm, config, notes)
+    """Update agent version in config/version.py"""
+    version_file = Path("config/version.py")
+    
+    if not version_file.exists():
+        print("❌ config/version.py not found")
+        return False
+    
+    # Read the file
+    content = version_file.read_text()
+    agent_key = agent_name.lower()
+    
+    # Update AGENT_VERSIONS
+    pattern = rf'"{agent_key}":\s*"[^"]+"'
+    replacement = f'"{agent_key}": "{new_version}"'
+    
+    if not re.search(pattern, content):
+        print(f"❌ Could not find agent '{agent_key}' in AGENT_VERSIONS")
+        return False
+    
+    new_content = re.sub(pattern, replacement, content)
+    
+    # Update VERSION_HISTORY if notes are provided
+    if notes:
+        # Find the VERSION_HISTORY section and add new entry
+        history_pattern = rf'"{agent_key}":\s*\[\s*(.*?)\s*\]'
+        match = re.search(history_pattern, new_content, re.DOTALL)
+        
+        if match:
+            existing_history = match.group(1).strip()
+            new_entry = f'{{"version": "{new_version}", "date": "{datetime.now().strftime("%Y-%m-%d")}", "llm": "{llm or "unknown"}", "notes": "{notes}"}}'
+            
+            # Remove trailing comma if present to avoid double comma
+            if existing_history and existing_history.endswith(','):
+                existing_history = existing_history[:-1]
+            
+            if existing_history:
+                # Properly format with newlines and indentation
+                updated_history = f'\n        {existing_history},\n        {new_entry}\n    '
+            else:
+                updated_history = f'\n        {new_entry}\n    '
+            
+            new_content = re.sub(history_pattern, f'"{agent_key}": [{updated_history}]', new_content, flags=re.DOTALL)
+        else:
+            # Add new history entry if agent not in VERSION_HISTORY yet
+            history_end_pattern = r'(VERSION_HISTORY = \{.*?)(\n\})'
+            new_entry = f'    "{agent_key}": [\n        {{"version": "{new_version}", "date": "{datetime.now().strftime("%Y-%m-%d")}", "llm": "{llm or "unknown"}", "notes": "{notes}"}}\n    ],\n'
+            new_content = re.sub(history_end_pattern, rf'\1\n{new_entry}\2', new_content, flags=re.DOTALL)
+    
+    # Write back
+    version_file.write_text(new_content)
+    
     print(f"✅ Updated {agent_name} to version {new_version}")
     if llm:
         print(f"   LLM: {llm}")
@@ -60,6 +109,13 @@ def update_version(agent_name, new_version, llm=None, config=None, notes=""):
         print(f"   Config: {config}")
     if notes:
         print(f"   Notes: {notes}")
+    print(f"   Updated: config/version.py")
+    print()
+    print("⚠️  Remember to commit this change:")
+    print(f'   git add config/version.py')
+    print(f'   git commit -m "chore: bump {agent_name} to {new_version}"')
+    
+    return True
 
 def rollback_to_version(agent_name, target_version):
     """Rollback agent to a previous version"""
