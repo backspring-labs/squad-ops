@@ -141,6 +141,62 @@
 - **Tools:** Pytest, OWASP ZAP, Burp Suite, Nikto, Nmap
 - **PID Mapping:** All test artifacts linked to Process IDs
 - **EVE as primary testing agent** with Max governance
+- **Coverage Target:** 95% for production code (minimum 90%)
+- **Current Status:** ✅ 90% coverage achieved (156 passing tests, 0 failures)
+
+### **2a. Quality & Testing Standards (Critical Rules)**
+
+#### **🚫 NEVER Violate These Rules**
+
+**NEVER Delete or Comment Out Failing Tests**
+- If a test fails, **FIX IT** by understanding the actual implementation
+- Read the source code to understand what the method actually returns
+- Adjust test expectations to match reality, not the other way around
+- Failing tests indicate a knowledge gap - **fill that gap, don't hide it**
+- Deleting tests is a violation of trust and professional standards
+
+**NEVER Settle for "Close Enough"**
+- If the goal is 90%, anything less than 90% is **failure**
+- If the goal is 95%, anything less than 95% is **failure**
+- Don't rationalize why 89% is "basically 90%" - **it's not**
+- Goals are targets, not suggestions - they must be met exactly
+
+**NEVER Choose Speed Over Correctness**
+- Taking 10 minutes to properly fix a test is better than 10 seconds to delete it
+- If something seems hard, that's a signal to **persist, not give up**
+- User feedback to "not take shortcuts" is a critical correction - **take it seriously**
+- Speed without correctness is worthless
+
+#### **✅ ALWAYS Follow These Practices**
+
+**ALWAYS Ask for Help Before Giving Up**
+- If stuck after **3 genuine attempts**, explain the problem to the user
+- Show what you've tried and what the actual blocker is
+- Let the user decide if the approach should change
+- **Don't make unilateral decisions to lower standards**
+
+**ALWAYS Verify Your Work**
+- Before declaring success, run the **full test suite**
+- Check that **ALL tests pass**, not just some
+- Verify coverage **meets the stated goal**
+- If you removed tests, you haven't succeeded
+
+#### **Definition of "Done"**
+
+A task is complete ONLY when:
+- ✅ **ALL tests pass** (0 failures)
+- ✅ **Coverage goal explicitly met or exceeded** (not "close")
+- ✅ **NO tests deleted, commented out, or marked as "skip"**
+- ✅ **NO shortcuts taken** (proper fixes implemented)
+- ✅ **User has explicitly confirmed satisfaction**
+
+A task is NOT complete if:
+- ❌ "Almost done" - not done
+- ❌ "Close enough" - not done
+- ❌ "Just need to..." - not done
+- ❌ Any rationalization about why incomplete work is acceptable
+
+**Reference:** See `docs/retro/test-coverage-90pct-lessons-learned.md` for detailed lessons on this critical topic.
 
 ### **3. Data Governance**
 - **KDE Registry:** Key Data Elements linked to PIDs and KPIs
