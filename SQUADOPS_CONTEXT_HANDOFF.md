@@ -15,10 +15,9 @@
 - **📋 End-to-End Workflow**: PRD → Task Planning → Code Generation → Deployment → Tracking
 - **✅ Proven Concept**: AI agents can handle complete software development lifecycle with full traceability
 
-### 📋 **Strategic Roadmaps**
-- **[SQUADOPS_NEXT_PHASE_ROADMAP.md](./SQUADOPS_NEXT_PHASE_ROADMAP.md)** - Original 5-phase implementation plan
-- **[SQUADOPS_EXTENDED_ROADMAP.md](./SQUADOPS_EXTENDED_ROADMAP.md)** - **UPDATED**: Focused 3-phase production roadmap + reconsideration backlog
-- **[SQUADOPS_MVP_ROADMAP.md](./SQUADOPS_MVP_ROADMAP.md)** - **✅ COMPLETED**: MVP achieved with task management system
+### 📋 **Strategic Roadmap**
+- **[SQUADOPS_ROADMAP.md](./SQUADOPS_ROADMAP.md)** - **CURRENT**: Consolidated roadmap with MVP complete, multi-agent expansion phase
+- **Previous roadmaps archived**: See `docs/archive/SQUADOPS_*ROADMAP*.md` for historical planning documents
 
 **✅ COMPLETED: Task Management System** (SIP-024/025):
 - **✅ Phase 1**: Task Management API with execution cycle tracking

@@ -1,0 +1,325 @@
+# 🚀 SquadOps Roadmap
+**Version:** 2.0 | **Date:** January 2025 | **Status:** Post-MVP, Scaling Phase
+
+---
+
+## 🎯 Executive Summary
+
+**Mission**: Build the squad that builds the system. Operate the business that proves the model. Publish the guide that teaches others to do the same.
+
+**Current Status**: 
+- ✅ **MVP Complete** - Task Management System (SIP-024/025) working end-to-end
+- ✅ **90% Test Coverage** - 156 passing tests, production-ready core framework
+- ✅ **Proven Concept** - AI agents successfully building and deploying applications
+- 🎯 **Current Phase** - Multi-agent expansion and capability scaling
+
+---
+
+## 🎉 Major Achievements (Completed)
+
+### ✅ Phase 0: MVP - Task Management System
+**Achievement**: First working end-to-end AI agent collaboration system
+
+**What We Built**:
+- **Task Management API** (SIP-024/025) - Complete API-first architecture
+- **Execution Cycle Tracking** - ECID-based governance and traceability  
+- **Task Lifecycle Management** - started → delegated → in_progress → completed
+- **Max + Neo Collaboration** - PRD analysis → task breakdown → code generation → deployment
+- **HelloSquad Demo** - Working web applications deployed at http://localhost:8080
+- **Version Management** - Dynamic versioning with proper archiving (0.1.4.xxx)
+- **Container Operations** - Real Docker-in-Docker deployment management
+- **Test Framework** - 90% coverage with 156 passing tests, 0 failures
+
+**Historic Value**: First proven example of end-to-end automated software development through AI agent collaboration.
+
+**Documentation**: See `docs/retro/warmboot-run*` for detailed retrospectives
+
+---
+
+## 📋 Current Phase: Multi-Agent Expansion
+
+### Phase 1: Add Remaining 7 Agents (2-3 weeks)
+**Priority**: HIGH | **Focus**: Scale from 2-agent to full 10-agent squad
+
+#### 1.1 Activate Remaining Squad Members
+**Current**: Max (Lead), Neo (Dev) ✅  
+**Add Next**:
+- **EVE (QA/Security)** - Testing, security scanning, counterfactual analysis
+- **Nat (Strategy)** - Product strategy, abductive reasoning, prioritization
+- **Data (Analytics)** - Metrics, monitoring, time-series analysis
+- **HAL (Audit)** - System monitoring, anomaly detection, health checks
+- **Joi (Comms)** - Coordination, empathetic communication, stakeholder management
+
+**Later**:
+- Quark (Finance) - Cost tracking, budget management
+- Glyph (Creative) - Visual design, creative synthesis
+- Og (Research/Curator) - Pattern detection, knowledge curation
+
+**Implementation**:
+- Activate agent stubs with real LLM backends
+- Implement core reasoning styles per agent
+- Add inter-agent communication patterns
+- Test multi-agent task coordination
+
+**Success Metrics**:
+- 7+ agents actively collaborating on tasks
+- Clear role specialization demonstrated
+- Improved quality from EVE testing integration
+- Reduced time-to-deployment with full squad
+
+---
+
+### Phase 2: Core SIP Implementation (3-4 weeks)
+**Priority**: HIGH | **Focus**: Production-grade protocols
+
+#### 2.1 Memory & Context (SIP-003: Paperclip Protocol)
+**Why Critical**: Agents need persistent context across tasks
+
+**Implementation**:
+- Agent memory with "lore" system for role context
+- Task history and learning from previous interactions
+- Context preservation across sessions
+- Memory retrieval for decision-making
+
+#### 2.2 Metrics & Monitoring (SIP-005: Four-Layer Metrics)
+**Why Critical**: Observability for production operations
+
+**Implementation**:
+- **Agent Layer**: Individual agent performance, LLM usage, task completion
+- **Role Layer**: Role-specific effectiveness, specialization metrics
+- **Squad Layer**: Collaboration efficiency, handoff smoothness, rework rate
+- **System Layer**: Infrastructure health, resource utilization, cost tracking
+
+**Integration**: Prometheus + Grafana dashboards
+
+#### 2.3 Tool Registry (SIP-007: Armory Protocol)
+**Why Critical**: Centralized tool management and access
+
+**Implementation**:
+- Centralized tool/service registry
+- Authentication and authorization for tools
+- Tool usage tracking and metrics
+- Tool discovery and documentation
+
+#### 2.4 Credentials Management (SIP-010: Creds & Secrets Lifecycle)
+**Why Critical**: Secure production operations
+
+**Implementation**:
+- Vault integration for secrets management
+- Credential rotation and lifecycle management
+- Secure credential injection to agents
+- Audit logging for credential access
+
+#### 2.5 Pattern-First Development (SIP-012)
+**Why Critical**: Architecture quality and expert escalation
+
+**Implementation**:
+- Architecture pattern library
+- Pattern detection and recommendation
+- Expert escalation for complex decisions
+- Pattern validation and compliance
+
+#### 2.6 Status/Mode Separation
+**Why Critical**: Clear operational status vs LLM backend configuration
+
+**Implementation**:
+- Extend health check API with `llm_mode` and `model_primary` fields
+- Update routing logic to gate on both `status` and `llm_mode`
+- UI indicators for status badges + LLM mode
+- Prevent misrouting tasks to mock agents
+
+---
+
+### Phase 3: Production Deployment (4-5 weeks)
+**Priority**: MEDIUM | **Focus**: Enterprise-grade deployment
+
+#### 3.1 Multi-Application Support
+**Goal**: Prove system scales beyond HelloSquad
+
+**Implementation**:
+- Test with different application types (APIs, dashboards, services)
+- Validate PRD processing for various domains
+- Ensure version management works across applications
+- Test archive system with multiple concurrent apps
+
+#### 3.2 Advanced Infrastructure
+**Add**:
+- **Ollama/vLLM** - Local LLM inference
+- **MinIO** - S3-compatible object storage
+- **Prometheus + Grafana** - Metrics and monitoring
+- **Keycloak** - Authentication and authorization
+- **ELK Stack** - Centralized logging and search
+- **Consul/Vault** - Service discovery and secrets
+
+#### 3.3 Enterprise Features
+**Implement**:
+- CI/CD pipeline for agent updates
+- Circuit breakers for service resilience
+- Rate limiting and quota management
+- Disaster recovery and backup systems
+- Multi-tenancy support
+- Compliance and audit logging
+
+---
+
+## 🔄 Deployment Tiers
+
+### Tier 1: MacBook Air (Current) ✅
+**Status**: COMPLETE  
+**Capabilities**:
+- All 10 agent stubs + mock LLM responses
+- Full infrastructure (RabbitMQ, Postgres, Prefect, Redis, Health Dashboard)
+- Task Management API
+- WarmBoot testing capability
+- Development and testing environment
+
+### Tier 2: Jetson Nano (Next)
+**Status**: PLANNED  
+**Capabilities**:
+- Real LLM inference with Ollama
+- Edge deployment validation
+- ARM64 compatibility
+- Minimal infrastructure footprint
+- Proof of concept for edge computing
+
+### Tier 3: DGX Spark (Production)
+**Status**: FUTURE  
+**Capabilities**:
+- Full production deployment
+- Enterprise features and security
+- Multi-application hosting
+- High availability and scale
+- Real-world business validation
+
+---
+
+## 📊 Success Metrics
+
+### Current Metrics (MVP Achieved)
+- ✅ **Task Management**: Complete API-first architecture
+- ✅ **Test Coverage**: 90% (156 passing tests, 0 failures)
+- ✅ **Agent Collaboration**: Max + Neo working end-to-end
+- ✅ **Application Deployment**: HelloSquad deployed successfully
+- ✅ **Version Management**: Dynamic versioning working
+- ✅ **Infrastructure**: All services healthy and operational
+
+### Phase 1 Targets (Multi-Agent)
+- 🎯 **7+ agents active** with real functionality
+- 🎯 **EVE integration** - Automated testing and quality gates
+- 🎯 **Inter-agent communication** - Complex task coordination
+- 🎯 **Role specialization** - Clear value from each agent type
+
+### Phase 2 Targets (Core SIPs)
+- 🎯 **Memory system** - Context preservation across sessions
+- 🎯 **Metrics dashboard** - Full observability (4 layers)
+- 🎯 **Tool registry** - Centralized tool management
+- 🎯 **Credentials** - Secure production-ready secrets
+- 🎯 **Status/Mode** - Clear operational visibility
+
+### Phase 3 Targets (Production)
+- 🎯 **Multi-application** - 3+ different app types deployed
+- 🎯 **Advanced infrastructure** - Full production stack
+- 🎯 **Enterprise features** - CI/CD, monitoring, security
+- 🎯 **Real-world validation** - Backspring Industries deployment
+
+---
+
+## 🎓 WarmBoot Protocol
+
+**Purpose**: Standardized benchmarking for squad performance after major changes
+
+**Process**:
+1. Define reference application (PRD)
+2. Execute WarmBoot run with ECID tracking
+3. Measure lead time, rework rate, quality metrics
+4. Compare against baseline
+5. Tune squad configuration based on results
+
+**Current Status**: ✅ Working - Run-055 completed successfully
+
+**Next Steps**: Expand test suite, add more complex applications, automate comparison
+
+---
+
+## 📚 Documentation Strategy
+
+### The SquadOps Field Guide
+**Status**: In Progress  
+**Structure**: 16 chapters covering methodology, implementation, and operations
+
+**Key Sections**:
+- SquadOps methodology and philosophy
+- Agent architecture and reasoning styles
+- Protocol implementation guides
+- WarmBoot benchmarking process
+- Deployment tiers and scaling
+- Real-world case studies
+
+**Contribution**: Each agent contributes domain-specific chapters from their perspective
+
+---
+
+## 🚫 Reconsideration Backlog
+
+These SIPs are deferred until specific triggers are met:
+
+**Over-Engineered Process SIPs**: SIP-004, SIP-009, SIP-014, SIP-015, SIP-019  
+**Enterprise-Scale SIPs**: SIP-016, SIP-017, SIP-018  
+**Advanced Technical SIPs**: SIP-006, SIP-013  
+
+**Triggers**: 10+ production deployments, 5+ team members, enterprise customers, 50+ agents
+
+**Rationale**: Focus on core capabilities first, add complexity only when proven necessary
+
+---
+
+## 🎯 Next 30 Days (Immediate Focus)
+
+### Week 1-2: EVE Integration
+- Activate EVE (QA/Security agent)
+- Implement automated testing workflow
+- Add security scanning to deployment pipeline
+- Test EVE + Neo collaboration
+
+### Week 3: Multi-Agent Communication
+- Activate Nat (Strategy) and Data (Analytics)
+- Implement complex task coordination patterns
+- Test 4-agent collaboration (Max, Neo, EVE, Nat)
+- Validate message routing and status tracking
+
+### Week 4: Metrics & Monitoring (SIP-005)
+- Implement 4-layer metrics system
+- Add Prometheus + Grafana integration
+- Create initial dashboards
+- Test metrics collection across agents
+
+---
+
+## 📖 Reference Documentation
+
+- **System Architecture**: `SQUADOPS_CONTEXT_HANDOFF.md`
+- **Build Partner Prompt**: `SQUADOPS_BUILD_PARTNER_PROMPT.md`
+- **Quality Standards**: `.cursorrules` (Critical Rules)
+- **SIP Directory**: `docs/SIPs/*.md`
+- **Retrospectives**: `docs/retro/warmboot-run*.md`
+- **Test Coverage**: `docs/retro/test-coverage-90pct-lessons-learned.md`
+
+---
+
+## 🙏 Acknowledgments
+
+**Key Learnings**:
+- No shortcuts - proper fixes, not workarounds
+- Goals are absolute - 90% means 90%, not 89%
+- Quality over speed - always
+- User feedback is sacred - when corrected, fix completely
+- Document everything - preserve institutional knowledge
+
+**See**: `docs/retro/test-coverage-90pct-lessons-learned.md` for detailed lessons on maintaining quality standards.
+
+---
+
+**Status**: ✅ MVP Complete, Scaling Phase Active  
+**Focus**: Multi-agent expansion, core SIPs, production readiness  
+**Commitment**: Quality over speed, no shortcuts, 95% coverage target
+
