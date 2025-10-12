@@ -2,7 +2,7 @@
 # This file is the single source of truth for the SquadOps framework version
 
 # Framework Version
-SQUADOPS_VERSION = "0.1.4"
+SQUADOPS_VERSION = "0.2.0"
 
 # Agent Versions (individual agent versions)
 AGENT_VERSIONS = {
@@ -85,10 +85,13 @@ def rollback_agent(agent_name, target_version):
     return False
 
 # Version increment rules:
-# 0.1.X - Development phase (current)
-# 0.2.X - Production ready (when 100% agent work + multi-agent + production deployment)
-# 1.0.X - Stable release (when enterprise features + external users)
+# 0.1.X - Development phase (Task Management System)
+# 0.2.X - Test Coverage & Quality milestone (90% coverage, guardrails)
+# 0.3.X - Multi-agent expansion (full 10-agent squad)
+# 0.4.X - Core SIPs implementation (Memory, Metrics, Tools)
+# 0.5.X - Production deployment (enterprise features)
+# 1.0.X - Stable release (external users + Backspring validation)
 
-# Current status: 0.1.4 (WarmBoot run-004)
-# Next increment: 0.1.5 (WarmBoot run-005)
-# Major increment: 0.2.0 (Production ready)
+# Current status: 0.2.0 (90% test coverage, quality guardrails established)
+# Previous: 0.1.4 (Task Management System complete)
+# Next major: 0.3.0 (Multi-agent expansion with EVE, Nat, Data, HAL)
