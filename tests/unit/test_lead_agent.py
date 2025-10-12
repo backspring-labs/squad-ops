@@ -862,3 +862,257 @@ class TestLeadAgent:
             assert 'escalation_level' in result
             mock_escalate.assert_called_once()
     
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_developer_completion(self):
+        """Test SIP-027 Phase 1: Developer completion event handling"""
+        agent = LeadAgent("max")
+        
+        # Mock the generate_warmboot_wrapup method
+        agent.generate_warmboot_wrapup = AsyncMock()
+        
+        # Create developer completion event
+        completion_message = AgentMessage(
+            sender='neo',
+            recipient='max',
+            message_type='task.developer.completed',
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'completed',
+                'tasks_completed': ['build', 'test'],
+                'artifacts': []
+            },
+            context={'ecid': 'ECID-WB-001'},
+            timestamp='2025-01-15T10:00:00Z',
+            message_id='msg-001'
+        )
+        
+        # Handle the completion event
+        await agent.handle_developer_completion(completion_message)
+        
+        # Verify wrap-up was triggered
+        agent.generate_warmboot_wrapup.assert_called_once()
+        call_args = agent.generate_warmboot_wrapup.call_args
+        assert call_args[0][0] == 'ECID-WB-001'  # ecid
+        assert call_args[0][1] == 'test-task-001'  # task_id
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_developer_completion_failed_task(self):
+        """Test that failed tasks don't trigger wrap-up"""
+        agent = LeadAgent("max")
+        
+        # Mock the generate_warmboot_wrapup method
+        agent.generate_warmboot_wrapup = AsyncMock()
+        
+        # Create failed completion event
+        completion_message = AgentMessage(
+            sender='neo',
+            recipient='max',
+            message_type='task.developer.completed',
+            payload={
+                'task_id': 'failed-task',
+                'status': 'failed',
+                'error': 'Build failed'
+            },
+            context={'ecid': 'ECID-WB-002'},
+            timestamp='2025-01-15T10:00:00Z',
+            message_id='msg-002'
+        )
+        
+        # Handle the failed completion event
+        await agent.handle_developer_completion(completion_message)
+        
+        # Verify wrap-up was NOT triggered
+        agent.generate_warmboot_wrapup.assert_not_called()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_collect_telemetry(self):
+        """Test SIP-027 Phase 1: Telemetry collection"""
+        agent = LeadAgent("max")
+        
+        # Mock database connection with proper async context manager
+        from unittest.mock import MagicMock
+        
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[
+            {'task_id': 'task-001', 'agent': 'neo', 'status': 'completed'}
+        ])
+        mock_conn.fetchrow = AsyncMock(return_value={
+            'ecid': 'ECID-WB-001',
+            'pid': 'PID-001',
+            'run_type': 'warmboot',
+            'title': 'Test Run',
+            'created_at': '2025-01-15',
+            'status': 'active'
+        })
+        mock_conn.execute = AsyncMock()
+        
+        # Create mock pool with proper async context manager behavior
+        mock_acquire = MagicMock()
+        mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_acquire.__aexit__ = AsyncMock(return_value=None)
+        
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=mock_acquire)
+        agent.db_pool = mock_pool
+        
+        # Add communication log
+        agent.communication_log = [
+            {'task_id': 'task-001', 'message_type': 'test'}
+        ]
+        
+        # Collect telemetry
+        telemetry = await agent._collect_telemetry('ECID-WB-001', 'task-001')
+        
+        # Verify telemetry structure
+        assert 'database_metrics' in telemetry
+        assert 'rabbitmq_metrics' in telemetry
+        assert 'docker_events' in telemetry
+        assert 'reasoning_logs' in telemetry
+        assert 'collection_timestamp' in telemetry
+        
+        # Verify database metrics
+        assert telemetry['database_metrics']['task_count'] == 1
+        assert len(telemetry['database_metrics']['tasks']) == 1
+        assert telemetry['database_metrics']['execution_cycle']['ecid'] == 'ECID-WB-001'
+        
+        # Verify RabbitMQ metrics
+        assert telemetry['rabbitmq_metrics']['messages_processed'] == 1
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_collect_telemetry_error_handling(self):
+        """Test telemetry collection handles errors gracefully"""
+        agent = LeadAgent("max")
+        
+        # Mock database to raise error
+        agent.db_pool = None  # Will cause error when trying to acquire
+        
+        # Collect telemetry should not crash
+        telemetry = await agent._collect_telemetry('ECID-ERROR', 'task-error')
+        
+        # Should still return structure with error noted
+        assert 'database_metrics' in telemetry
+        assert 'collection_error' in telemetry
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_generate_wrapup_markdown(self):
+        """Test SIP-027 Phase 1: Wrap-up markdown generation"""
+        agent = LeadAgent("max")
+        
+        ecid = 'ECID-WB-055'
+        run_number = '055'
+        task_id = 'test-task-build'
+        
+        completion_payload = {
+            'tasks_completed': ['archive', 'build', 'deploy'],
+            'artifacts': [
+                {'path': 'app.py', 'hash': 'sha256:abc123'}
+            ],
+            'metrics': {
+                'duration_seconds': 120,
+                'tokens_used': 3000,
+                'tests_passed': 5,
+                'tests_failed': 0
+            }
+        }
+        
+        telemetry = {
+            'database_metrics': {
+                'task_count': 3,
+                'execution_cycle': {
+                    'ecid': ecid,
+                    'pid': 'PID-001',
+                    'run_type': 'warmboot',
+                    'title': 'Test WarmBoot',
+                    'status': 'completed'
+                }
+            },
+            'rabbitmq_metrics': {
+                'messages_processed': 10
+            }
+        }
+        
+        # Generate markdown
+        markdown = await agent._generate_wrapup_markdown(
+            ecid, run_number, task_id, completion_payload, telemetry
+        )
+        
+        # Verify markdown content
+        assert isinstance(markdown, str)
+        assert len(markdown) > 100
+        assert 'WarmBoot Run 055' in markdown
+        assert ecid in markdown
+        assert 'Execution Summary' in markdown
+        assert 'Development Activities' in markdown
+        assert 'Database Metrics' in markdown
+        assert 'Communication Metrics' in markdown
+        assert 'Reasoning Traces' in markdown
+        assert 'Infrastructure Status' in markdown
+        assert 'Next Steps' in markdown
+        assert 'SIP-027 Phase 1' in markdown
+        
+        # Verify data is embedded
+        assert 'archive' in markdown
+        assert 'build' in markdown
+        assert 'deploy' in markdown
+        assert 'app.py' in markdown
+        assert '120' in markdown or '120 seconds' in markdown
+        assert '3000' in markdown
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_generate_warmboot_wrapup(self):
+        """Test SIP-027 Phase 1: Full wrap-up generation workflow"""
+        agent = LeadAgent("max")
+        
+        # Mock dependencies
+        agent._collect_telemetry = AsyncMock(return_value={
+            'database_metrics': {'task_count': 2},
+            'rabbitmq_metrics': {'messages_processed': 5}
+        })
+        
+        agent._generate_wrapup_markdown = AsyncMock(return_value='# Test Markdown')
+        
+        agent.execute_command = AsyncMock(return_value={
+            'success': True, 'returncode': 0
+        })
+        
+        agent.write_file = AsyncMock(return_value=True)
+        
+        ecid = 'ECID-WB-042'
+        task_id = 'test-task'
+        completion_payload = {'status': 'completed'}
+        
+        # Generate wrap-up
+        await agent.generate_warmboot_wrapup(ecid, task_id, completion_payload)
+        
+        # Verify methods were called
+        agent._collect_telemetry.assert_called_once_with(ecid, task_id)
+        agent._generate_wrapup_markdown.assert_called_once()
+        agent.execute_command.assert_called_once()
+        agent.write_file.assert_called_once()
+        
+        # Verify file path is correct
+        write_call = agent.write_file.call_args
+        file_path = write_call[0][0]
+        assert '/warm-boot/runs/run-042/' in file_path
+        assert 'warmboot-run042-wrapup.md' in file_path
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_generate_warmboot_wrapup_error_handling(self):
+        """Test wrap-up generation handles errors gracefully"""
+        agent = LeadAgent("max")
+        
+        # Mock telemetry to raise error
+        agent._collect_telemetry = AsyncMock(side_effect=Exception("DB error"))
+        
+        # Generate wrap-up should not crash
+        await agent.generate_warmboot_wrapup('ECID-ERROR', 'task-error', {})
+        
+        # Should log error but not raise
+    

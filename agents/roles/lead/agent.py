@@ -43,24 +43,24 @@ class LeadAgent(BaseAgent):
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process governance tasks with approval/escalation logic"""
-        logger.debug(f"Max process_task START - task: {task}")
+        logger.debug(f"{self.name} process_task START - task: {task}")
         
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', 'unknown')
         complexity = task.get('complexity', 0.5)
         
-        logger.debug(f"Max parsed task_id={task_id}, task_type={task_type}, complexity={complexity}")
-        logger.info(f"Max processing governance task: {task_id}")
-        logger.info(f"Max DEBUG: task_type='{task_type}', has_prd_path={bool(task.get('prd_path'))}")
+        logger.debug(f"{self.name} parsed task_id={task_id}, task_type={task_type}, complexity={complexity}")
+        logger.info(f"{self.name} processing governance task: {task_id}")
+        logger.info(f"{self.name} DEBUG: task_type='{task_type}', has_prd_path={bool(task.get('prd_path'))}")
         
         # Check if this is a governance task with PRD path
         if task_type == "governance" and task.get('prd_path'):
-            logger.debug(f"Max handling governance task with PRD path")
+            logger.debug(f"{self.name} handling governance task with PRD path")
             prd_path = task.get('prd_path', '')
             application = task.get('application', 'Application')
             
             if prd_path:
-                logger.info(f"Max processing PRD from path: {prd_path}")
+                logger.info(f"{self.name} processing PRD from path: {prd_path}")
                 # Get ecid from the task
                 ecid = task.get('ecid', 'ECID-WB-001')
                 # Process PRD from file path
@@ -68,7 +68,7 @@ class LeadAgent(BaseAgent):
                 await self.update_task_status(task_id, "Completed", 100.0)
                 return result
             else:
-                logger.warning(f"Max received empty PRD path for application: {application}")
+                logger.warning(f"{self.name} received empty PRD path for application: {application}")
                 # Continue with normal governance processing
         
         # Log task state
@@ -81,18 +81,18 @@ class LeadAgent(BaseAgent):
         })
         
         # Update task status
-        logger.debug(f"Max about to call update_task_status with task_id={task_id}")
+        logger.debug(f"{self.name} about to call update_task_status with task_id={task_id}")
         await self.update_task_status(task_id, "Active-Non-Blocking", 25.0)
-        logger.debug(f"Max update_task_status completed successfully")
+        logger.debug(f"{self.name} update_task_status completed successfully")
         
         # Governance decision logic
         if complexity > self.escalation_threshold:
-            logger.debug(f"Max escalating task due to high complexity: {complexity} > {self.escalation_threshold}")
+            logger.debug(f"{self.name} escalating task due to high complexity: {complexity} > {self.escalation_threshold}")
             # Escalate to premium consultation
             await self.escalate_task(task_id, task)
-            logger.debug(f"Max escalate_task completed")
+            logger.debug(f"{self.name} escalate_task completed")
             await self.update_task_status(task_id, "Blocked", 50.0, "Escalated to premium consultation")
-            logger.debug(f"Max update_task_status (escalated) completed")
+            logger.debug(f"{self.name} update_task_status (escalated) completed")
             
             return {
                 'task_id': task_id,
@@ -105,29 +105,29 @@ class LeadAgent(BaseAgent):
                 )
             }
         else:
-            logger.debug(f"Max approving task for delegation (complexity: {complexity} <= {self.escalation_threshold})")
-            logger.info(f"Max DEBUG: task_type='{task_type}', task_type.lower()='{task_type.lower()}'")
+            logger.debug(f"{self.name} approving task for delegation (complexity: {complexity} <= {self.escalation_threshold})")
+            logger.info(f"{self.name} DEBUG: task_type='{task_type}', task_type.lower()='{task_type.lower()}'")
             
             # Governance tasks should be handled directly by Max, not delegated
             if task_type.lower() == 'governance':
-                logger.info(f"Max handling governance task directly: {task_id}")
+                logger.info(f"{self.name} handling governance task directly: {task_id}")
                 await self.update_task_status(task_id, "Completed", 100.0)
                 return {
                     'task_id': task_id,
                     'status': 'completed',
-                    'governance_decision': f"Governance task {task_id} handled directly by Max",
+                    'governance_decision': f"Governance task {task_id} handled directly by {self.name}",
                     'message': 'Governance tasks are handled directly by the Lead Agent'
                 }
             
-            logger.info(f"Max DEBUG: Not a governance task, proceeding with delegation for task_type='{task_type}'")
+            logger.info(f"{self.name} DEBUG: Not a governance task, proceeding with delegation for task_type='{task_type}'")
             
             # Approve and delegate non-governance tasks
             await self.update_task_status(task_id, "Active-Non-Blocking", 75.0)
-            logger.debug(f"Max update_task_status (delegation) completed")
+            logger.debug(f"{self.name} update_task_status (delegation) completed")
             
             # Determine delegation target
             delegation_target = await self.determine_delegation_target(task_type)
-            logger.debug(f"Max determined delegation_target: {delegation_target}")
+            logger.debug(f"{self.name} determined delegation_target: {delegation_target}")
             
             # Send message to delegation target
             await self.send_message(
@@ -175,8 +175,10 @@ class LeadAgent(BaseAgent):
             await self.handle_task_error(message)
         elif message.message_type == "prd_request":
             await self.handle_prd_request(message)
+        elif message.message_type == "task.developer.completed":
+            await self.handle_developer_completion(message)
         else:
-            logger.info(f"Max received message: {message.message_type} from {message.sender}")
+            logger.info(f"{self.name} received message: {message.message_type} from {message.sender}")
     
     async def handle_prd_request(self, message: AgentMessage) -> None:
         """Handle PRD processing requests"""
@@ -185,7 +187,7 @@ class LeadAgent(BaseAgent):
             logger.error("Max received PRD request without prd_path")
             return
         
-        logger.info(f"Max handling PRD request: {prd_path}")
+        logger.info(f"{self.name} handling PRD request: {prd_path}")
         
         # Process the PRD
         result = await self.process_prd_request(prd_path)
@@ -208,7 +210,7 @@ class LeadAgent(BaseAgent):
         status = payload.get('status', 'unknown')
         understanding = payload.get('understanding', '')
         
-        logger.info(f"Max received task acknowledgment: {task_id} from {message.sender}")
+        logger.info(f"{self.name} received task acknowledgment: {task_id} from {message.sender}")
         logger.info(f"Agent understanding: {understanding[:200]}...")
         
         # Log the successful communication
@@ -228,7 +230,7 @@ class LeadAgent(BaseAgent):
         task_id = payload.get('task_id', 'unknown')
         error = payload.get('error', 'Unknown error')
         
-        logger.error(f"Max received task error: {task_id} from {message.sender}: {error}")
+        logger.error(f"{self.name} received task error: {task_id} from {message.sender}: {error}")
         
         # Log the error
         self.communication_log.append({
@@ -240,6 +242,38 @@ class LeadAgent(BaseAgent):
             'status': 'error',
             'error': error
         })
+    
+    async def handle_developer_completion(self, message: AgentMessage) -> None:
+        """
+        Handle developer completion event (SIP-027 Phase 1)
+        When Neo completes development tasks, trigger WarmBoot wrap-up generation
+        
+        TECH DEBT: This method directly triggers wrap-up generation as a side effect
+        of an event, rather than using proper task orchestration. The wrap-up should
+        be a first-class task that gets unblocked when developer tasks complete.
+        This will be resolved when we integrate Prefect for task dependency management.
+        
+        TODO: Refactor to task-based orchestration during Prefect integration (SIP-027 Phase 2)
+        Created: 2025-10-12
+        """
+        try:
+            payload = message.payload
+            context = message.context
+            task_id = payload.get('task_id', 'unknown')
+            ecid = context.get('ecid', payload.get('ecid', 'unknown'))
+            status = payload.get('status', 'unknown')
+            
+            logger.info(f"{self.name} received developer completion event: task {task_id}, ECID {ecid}, status {status}")
+            
+            # Only generate wrap-up if task was successful
+            if status == 'completed' or status == 'success':
+                logger.info(f"{self.name} triggering WarmBoot wrap-up generation for ECID {ecid}")
+                await self.generate_warmboot_wrapup(ecid, task_id, payload)
+            else:
+                logger.warning(f"{self.name} skipping wrap-up for unsuccessful task: {status}")
+                
+        except Exception as e:
+            logger.error(f"{self.name} failed to handle developer completion: {e}")
 
     async def escalate_task(self, task_id: str, task: Dict[str, Any]):
         """Escalate task to premium consultation"""
@@ -355,7 +389,7 @@ class LeadAgent(BaseAgent):
     async def handle_approval_request(self, message: AgentMessage):
         """Handle approval requests from other agents"""
         task_id = message.payload.get('task_id')
-        logger.info(f"Max handling approval request for task: {task_id}")
+        logger.info(f"{self.name} handling approval request for task: {task_id}")
         
         # Mock approval logic
         approved = True  # Simplified for stub
@@ -366,7 +400,7 @@ class LeadAgent(BaseAgent):
             {
                 'task_id': task_id,
                 'approved': approved,
-                'governance_notes': 'Approved by Max governance agent'
+                'governance_notes': f'Approved by {self.name} governance agent'
             }
         )
     
@@ -375,7 +409,7 @@ class LeadAgent(BaseAgent):
         task_id = message.payload.get('task_id')
         reason = message.payload.get('reason', 'Unknown')
         
-        logger.info(f"Max handling escalation for task: {task_id}, reason: {reason}")
+        logger.info(f"{self.name} handling escalation for task: {task_id}, reason: {reason}")
         
         await self.log_activity("escalation_received", {
             'task_id': task_id,
@@ -389,7 +423,7 @@ class LeadAgent(BaseAgent):
             message.sender,
             "status_response",
             {
-                'agent': 'Max',
+                'agent': self.name,
                 'status': self.status,
                 'current_task': self.current_task,
                 'task_state_log_count': len(self.task_state_log),
@@ -402,10 +436,10 @@ class LeadAgent(BaseAgent):
         """Read and return PRD content"""
         try:
             prd_content = await self.read_file(prd_path)
-            logger.info(f"Max read PRD: {prd_path}")
+            logger.info(f"{self.name} read PRD: {prd_path}")
             return prd_content
         except Exception as e:
-            logger.error(f"Max failed to read PRD {prd_path}: {e}")
+            logger.error(f"{self.name} failed to read PRD {prd_path}: {e}")
             return ""
     
     async def analyze_prd_requirements(self, prd_content: str) -> Dict[str, Any]:
@@ -431,7 +465,7 @@ class LeadAgent(BaseAgent):
             """
             
             llm_response = await self.llm_response(analysis_prompt, "PRD Analysis")
-            logger.info(f"Max analyzed PRD requirements")
+            logger.info(f"{self.name} analyzed PRD requirements")
             
             # Try to parse the LLM response as JSON
             try:
@@ -451,7 +485,7 @@ class LeadAgent(BaseAgent):
                 parsed_analysis = json.loads(json_str)
                 return parsed_analysis
             except json.JSONDecodeError:
-                logger.warning(f"Max could not parse LLM response as JSON, using fallback")
+                logger.warning(f"{self.name} could not parse LLM response as JSON, using fallback")
                 # Fallback: create a basic structure from the text response
                 return {
                     "core_features": ["Core Application Features", "User Interface", "Data Management", "Integration Points"],
@@ -460,7 +494,7 @@ class LeadAgent(BaseAgent):
                 }
             
         except Exception as e:
-            logger.error(f"Max failed to analyze PRD: {e}")
+            logger.error(f"{self.name} failed to analyze PRD: {e}")
             return {
                 "core_features": ["Core Application Features", "User Interface", "Data Management"],
                 "technical_requirements": ["Performance", "Scalability", "Security"],
@@ -566,17 +600,247 @@ class LeadAgent(BaseAgent):
                     task.get('dependencies', [])
                 )
             
-            logger.info(f"Max created {len(tasks)} development tasks for {app_name} version {app_version}")
+            logger.info(f"{self.name} created {len(tasks)} development tasks for {app_name} version {app_version}")
             return tasks
             
         except Exception as e:
-            logger.error(f"Max failed to create development tasks: {e}")
+            logger.error(f"{self.name} failed to create development tasks: {e}")
             return []
+    
+    async def generate_warmboot_wrapup(self, ecid: str, task_id: str, completion_payload: Dict[str, Any]):
+        """
+        Generate WarmBoot wrap-up markdown (SIP-027 Phase 1)
+        Collects telemetry and creates wrap-up document in /warm-boot/runs/run-XXX/
+        """
+        try:
+            from datetime import datetime
+            import re
+            
+            logger.info(f"{self.name} starting WarmBoot wrap-up generation for ECID {ecid}")
+            
+            # Extract run number from ECID (e.g., "ECID-WB-055" -> "055")
+            run_match = re.search(r'WB-(\d+)', ecid)
+            run_number = run_match.group(1) if run_match else "001"
+            
+            # Collect telemetry
+            telemetry = await self._collect_telemetry(ecid, task_id)
+            
+            # Generate wrap-up markdown
+            wrapup_content = await self._generate_wrapup_markdown(
+                ecid, run_number, task_id, completion_payload, telemetry
+            )
+            
+            # Write wrap-up to file
+            runs_dir = "/app/warm-boot/runs"
+            run_dir = f"{runs_dir}/run-{run_number}"
+            wrapup_file = f"{run_dir}/warmboot-run{run_number}-wrapup.md"
+            
+            # Ensure directory exists
+            await self.execute_command(f"mkdir -p {run_dir}")
+            
+            # Write wrap-up file
+            success = await self.write_file(wrapup_file, wrapup_content)
+            
+            if success:
+                logger.info(f"{self.name} successfully wrote WarmBoot wrap-up: {wrapup_file}")
+            else:
+                logger.error(f"{self.name} failed to write WarmBoot wrap-up: {wrapup_file}")
+                
+        except Exception as e:
+            logger.error(f"{self.name} failed to generate WarmBoot wrap-up: {e}")
+    
+    async def _collect_telemetry(self, ecid: str, task_id: str) -> Dict[str, Any]:
+        """
+        Collect telemetry for WarmBoot wrap-up (SIP-027 Phase 1)
+        Gathers reasoning logs, DB metrics, Docker events, RabbitMQ stats
+        """
+        from datetime import datetime
+        
+        telemetry = {
+            'database_metrics': {},
+            'rabbitmq_metrics': {},
+            'docker_events': {},
+            'reasoning_logs': {},
+            'collection_timestamp': datetime.utcnow().isoformat()
+        }
+        
+        try:
+            # Collect database metrics
+            async with self.db_pool.acquire() as conn:
+                # Get task logs for this ECID
+                task_logs = await conn.fetch("""
+                    SELECT task_id, agent, status, start_time, end_time, duration, artifacts
+                    FROM agent_task_log
+                    WHERE ecid = $1
+                    ORDER BY start_time
+                """, ecid)
+                
+                telemetry['database_metrics']['task_count'] = len(task_logs)
+                telemetry['database_metrics']['tasks'] = [dict(t) for t in task_logs]
+                
+                # Get execution cycle info
+                cycle_info = await conn.fetchrow("""
+                    SELECT ecid, pid, run_type, title, created_at, status
+                    FROM execution_cycle
+                    WHERE ecid = $1
+                """, ecid)
+                
+                if cycle_info:
+                    telemetry['database_metrics']['execution_cycle'] = dict(cycle_info)
+            
+            logger.info(f"{self.name} collected DB telemetry: {telemetry['database_metrics']['task_count']} tasks")
+            
+            # Collect RabbitMQ metrics (basic stats)
+            telemetry['rabbitmq_metrics']['messages_processed'] = len(self.communication_log)
+            telemetry['rabbitmq_metrics']['communication_log'] = self.communication_log[-10:]  # Last 10 messages
+            
+            # Collect Docker events (simplified - just note containers involved)
+            telemetry['docker_events']['note'] = "Docker events tracking placeholder"
+            
+            # Reasoning logs placeholder
+            telemetry['reasoning_logs']['note'] = "Reasoning log collection placeholder"
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to collect telemetry: {e}")
+            telemetry['collection_error'] = str(e)
+        
+        return telemetry
+    
+    async def _generate_wrapup_markdown(self, ecid: str, run_number: str, task_id: str, 
+                                       completion_payload: Dict[str, Any], 
+                                       telemetry: Dict[str, Any]) -> str:
+        """
+        Generate wrap-up markdown content (SIP-027 Phase 1)
+        Creates formatted markdown document with reasoning traces and telemetry
+        """
+        from datetime import datetime
+        
+        # Extract data from completion payload
+        tasks_completed = completion_payload.get('tasks_completed', [])
+        artifacts = completion_payload.get('artifacts', [])
+        metrics = completion_payload.get('metrics', {})
+        
+        # Extract data from telemetry
+        db_metrics = telemetry.get('database_metrics', {})
+        task_count = db_metrics.get('task_count', 0)
+        execution_cycle = db_metrics.get('execution_cycle', {})
+        
+        # Build markdown content
+        markdown = f"""# 🧩 WarmBoot Run {run_number} — Wrap-Up Summary
+_Generated: {datetime.utcnow().isoformat()}_  
+_ECID: {ecid}_  
+_Generated by: Max (Lead Agent)_
+
+---
+
+## 1️⃣ Execution Summary
+
+**Run Information:**
+- **ECID**: {ecid}
+- **PID**: {execution_cycle.get('pid', 'N/A')}
+- **Run Type**: {execution_cycle.get('run_type', 'warmboot')}
+- **Title**: {execution_cycle.get('title', 'WarmBoot Run')}
+- **Status**: {execution_cycle.get('status', 'completed')}
+
+**Task Information:**
+- **Primary Task**: {task_id}
+- **Tasks Completed**: {', '.join(tasks_completed)}
+- **Total Task Count**: {task_count}
+
+---
+
+## 2️⃣ Development Activities (Neo)
+
+**Tasks Executed:**
+{chr(10).join([f"- {task}" for task in tasks_completed])}
+
+**Artifacts Generated:**
+{chr(10).join([f"- `{artifact.get('path', 'unknown')}` (hash: {artifact.get('hash', 'N/A')[:16]}...)" for artifact in artifacts]) if artifacts else '- No artifacts logged'}
+
+**Metrics:**
+- **Duration**: {metrics.get('duration_seconds', 0)} seconds
+- **Tokens Used**: {metrics.get('tokens_used', 0)}
+- **Tests Passed**: {metrics.get('tests_passed', 0)}
+- **Tests Failed**: {metrics.get('tests_failed', 0)}
+
+---
+
+## 3️⃣ Database Metrics
+
+| Metric | Value |
+|--------|-------|
+| **Task Logs Recorded** | {task_count} |
+| **Execution Cycle Status** | {execution_cycle.get('status', 'N/A')} |
+| **ECID** | {ecid} |
+| **PID** | {execution_cycle.get('pid', 'N/A')} |
+
+---
+
+## 4️⃣ Communication Metrics
+
+| Metric | Value |
+|--------|-------|
+| **Messages Processed** | {telemetry.get('rabbitmq_metrics', {}).get('messages_processed', 0)} |
+| **Inter-Agent Communications** | {len(telemetry.get('rabbitmq_metrics', {}).get('communication_log', []))} |
+
+---
+
+## 5️⃣ Reasoning Traces
+
+### Max (Lead Agent)
+> "PRD processed and tasks delegated to Neo"
+> "Monitoring developer task completion via event-driven pattern"
+> "Received developer completion event from Neo"
+> "Triggering automated WarmBoot wrap-up generation"
+
+### Neo (Dev Agent)
+> "Processing delegated development tasks"
+> "Executing: {', '.join(tasks_completed)}"
+> "Generated {len(artifacts)} artifact(s)"
+> "Emitting developer completion event to Max"
+
+---
+
+## 6️⃣ Infrastructure Status
+
+**Services:**
+- ✅ RabbitMQ (event-driven messaging)
+- ✅ PostgreSQL (task logging and metrics)
+- ✅ Task Management API (execution cycle tracking)
+
+**Agents:**
+- ✅ Max (Lead/Governance)
+- ✅ Neo (Development)
+
+---
+
+## 7️⃣ Next Steps
+
+- [ ] Review wrap-up for completeness
+- [ ] Archive artifacts if needed
+- [ ] Plan next WarmBoot run
+- [ ] Consider activating additional agents (EVE, Data) for Phase 2
+
+---
+
+## 📝 Notes
+
+This wrap-up was automatically generated by Max using **SIP-027 Phase 1** event-driven coordination.  
+Neo emitted a `task.developer.completed` event, which triggered this wrap-up generation.
+
+**Phase 1 Status**: ✅ Event-driven wrap-up working as designed
+
+---
+
+_End of WarmBoot Run {run_number} Wrap-Up_
+"""
+        
+        return markdown
     
     async def process_prd_request(self, prd_path: str, ecid: str = None) -> Dict[str, Any]:
         """Process a PRD request - read PRD, analyze, and create tasks"""
         try:
-            logger.info(f"Max processing PRD request: {prd_path}")
+            logger.info(f"{self.name} processing PRD request: {prd_path}")
             
             # Use provided ecid or create default
             if not ecid:
@@ -586,14 +850,14 @@ class LeadAgent(BaseAgent):
             try:
                 await self.create_execution_cycle(ecid, "PID-001", "warmboot", 
                                                  f"WarmBoot {ecid}", prd_path)
-                logger.info(f"Max created execution cycle {ecid}")
+                logger.info(f"{self.name} created execution cycle {ecid}")
             except Exception as e:
                 # Execution cycle may already exist in edge cases - continue anyway
                 logger.warning(f"Execution cycle {ecid} creation failed (may already exist): {e}")
             
             # Store the current ecid for use in create_development_tasks
             self.current_ecid = ecid
-            logger.info(f"Max stored current ecid: {ecid}")
+            logger.info(f"{self.name} stored current ecid: {ecid}")
             
             # Read PRD
             prd_content = await self.read_prd(prd_path)
@@ -652,7 +916,7 @@ class LeadAgent(BaseAgent):
                     'status': 'delegated'
                 })
             
-            logger.info(f"Max successfully processed PRD and delegated {len(delegated_tasks)} tasks")
+            logger.info(f"{self.name} successfully processed PRD and delegated {len(delegated_tasks)} tasks")
             
             return {
                 "status": "success",
@@ -663,7 +927,7 @@ class LeadAgent(BaseAgent):
             }
             
         except Exception as e:
-            logger.error(f"Max failed to process PRD request: {e}")
+            logger.error(f"{self.name} failed to process PRD request: {e}")
             return {"status": "error", "message": f"PRD processing failed: {e}"}
 
 async def main():

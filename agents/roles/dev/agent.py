@@ -465,7 +465,7 @@ class RefactoredDevAgent(BaseAgent):
                         json={"status": "in_progress"}
                     ) as resp:
                         if resp.status == 200:
-                            logger.info(f"Neo marked task {task_id} as in_progress")
+                            logger.info(f"{self.name} marked task {task_id} as in_progress")
                         elif resp.status == 404:
                             # Task doesn't exist, log it
                             await self.log_task_start(task_id, ecid, 
@@ -500,6 +500,9 @@ class RefactoredDevAgent(BaseAgent):
                 }
             )
             
+            # Emit developer completion event (SIP-027 Phase 1)
+            await self._emit_developer_completion_event(task_id, ecid, result)
+            
             # Create documentation if requested
             if task_payload.get('create_documentation', False):
                 await self._create_documentation(task_id, result)
@@ -529,6 +532,75 @@ class RefactoredDevAgent(BaseAgent):
     async def _handle_task_error(self, message: AgentMessage):
         """Handle task error messages"""
         logger.error(f"RefactoredDevAgent received task error from {message.sender}: {message.payload}")
+    
+    async def _emit_developer_completion_event(self, task_id: str, ecid: str, result: Dict[str, Any]):
+        """
+        Emit developer completion event for WarmBoot wrap-up (SIP-027 Phase 1)
+        This signals Max that development tasks are complete and wrap-up should be generated
+        """
+        try:
+            from datetime import datetime
+            import time
+            
+            # Build list of artifacts
+            artifacts = []
+            if 'created_files' in result:
+                for file_path in result['created_files']:
+                    artifacts.append({
+                        'path': file_path,
+                        'hash': f"sha256:placeholder"  # TODO: implement actual hashing
+                    })
+            
+            # Determine tasks completed based on action
+            action = result.get('action', 'unknown')
+            tasks_completed = []
+            if action == 'archive':
+                tasks_completed = ['archive']
+            elif action == 'build':
+                tasks_completed = ['scaffold', 'implement', 'test']
+            elif action == 'deploy':
+                tasks_completed = ['deploy']
+            else:
+                tasks_completed = [action]
+            
+            # Create completion event payload
+            completion_event = {
+                'event_type': 'task.developer.completed',
+                'sender_agent': self.name,
+                'sender_role': 'developer',
+                'ecid': ecid,
+                'timestamp': datetime.utcnow().isoformat(),
+                'payload': {
+                    'task_id': task_id,
+                    'task_group': 'code_generation',
+                    'tasks_completed': tasks_completed,
+                    'artifacts': artifacts,
+                    'metrics': {
+                        'duration_seconds': 0,  # TODO: track actual duration
+                        'tokens_used': 0,  # TODO: track tokens if using LLM
+                        'tests_passed': result.get('tests_passed', 0),
+                        'tests_failed': result.get('tests_failed', 0)
+                    },
+                    'status': result.get('status', 'unknown')
+                }
+            }
+            
+            # Send completion event to Max
+            await self.send_message(
+                recipient='max',
+                message_type='task.developer.completed',
+                payload=completion_event['payload'],
+                context={
+                    'event_type': completion_event['event_type'],
+                    'sender_role': completion_event['sender_role'],
+                    'ecid': ecid
+                }
+            )
+            
+            logger.info(f"{self.name} emitted developer completion event for task {task_id}, ECID {ecid}")
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to emit developer completion event: {e}")
     
     async def _create_documentation(self, task_id: str, result: Dict[str, Any]):
         """Create documentation for the task"""
