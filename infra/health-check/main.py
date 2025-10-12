@@ -8,10 +8,15 @@ import asyncpg
 import redis.asyncio as redis
 import pika
 import json
+import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import os
 import sys
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 sys.path.append('/Users/jladd/Code/squad-ops')
 from config.version import SQUADOPS_VERSION, AGENT_VERSIONS, get_agent_version
 
@@ -361,6 +366,36 @@ class HealthChecker:
             
             connection.close()
             
+            # Insert WarmBoot run into database for persistence and sequence tracking
+            try:
+                async with self.pg_pool.acquire() as conn:
+                    await conn.execute("""
+                        INSERT INTO warmboot_runs 
+                        (run_id, run_name, squad_config, benchmark_target, start_time, status, metrics, scorecard)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        ON CONFLICT (run_id) DO NOTHING
+                    """, 
+                    request.run_id,
+                    request.application or "Unknown",
+                    json.dumps({
+                        "agents": request.agents,
+                        "request_type": request.request_type,
+                        "priority": request.priority,
+                        "prd_path": request.prd_path,
+                        "description": request.description,
+                        "requirements": request.requirements
+                    }),
+                    request.application,
+                    datetime.utcnow(),
+                    "submitted",
+                    json.dumps({}),
+                    json.dumps({})
+                    )
+                    logger.info(f"Recorded WarmBoot run {request.run_id} in database")
+            except Exception as db_error:
+                logger.warning(f"Failed to record WarmBoot run in database: {db_error}")
+                # Don't fail the request if database insert fails
+            
             return {
                 "status": "success",
                 "message": f"WarmBoot request {request.run_id} submitted successfully",
@@ -468,26 +503,47 @@ class HealthChecker:
             return []
     
     async def get_next_run_id(self) -> str:
-        """Get next sequential run ID"""
+        """Get next sequential run ID from database"""
         try:
-            import os
+            # Initialize connections if needed
+            if not self.pg_pool:
+                await self.init_connections()
             
-            runs_dir = "warm-boot/runs/"
-            existing_runs = []
-            
-            if os.path.exists(runs_dir):
-                for item in os.listdir(runs_dir):
-                    if item.startswith("run-") and os.path.isdir(os.path.join(runs_dir, item)):
-                        try:
-                            run_num = int(item.split("-")[1])
-                            existing_runs.append(run_num)
-                        except:
-                            continue
-            
-            next_num = max(existing_runs) + 1 if existing_runs else 1
-            return f"run-{next_num:03d}"
+            # Query database for highest run number
+            async with self.pg_pool.acquire() as conn:
+                result = await conn.fetchval("""
+                    SELECT run_id FROM warmboot_runs 
+                    WHERE run_id LIKE 'run-%'
+                    ORDER BY 
+                        CAST(SUBSTRING(run_id FROM 'run-([0-9]+)') AS INTEGER) DESC 
+                    LIMIT 1
+                """)
+                
+                if result:
+                    # Extract number and increment
+                    run_num = int(result.split("-")[1])
+                    next_num = run_num + 1
+                else:
+                    # Fallback: check filesystem for any existing runs
+                    import os
+                    runs_dir = "warm-boot/runs/"
+                    existing_runs = []
+                    
+                    if os.path.exists(runs_dir):
+                        for item in os.listdir(runs_dir):
+                            if item.startswith("run-") and os.path.isdir(os.path.join(runs_dir, item)):
+                                try:
+                                    run_num = int(item.split("-")[1])
+                                    existing_runs.append(run_num)
+                                except:
+                                    continue
+                    
+                    next_num = max(existing_runs) + 1 if existing_runs else 1
+                
+                return f"run-{next_num:03d}"
             
         except Exception as e:
+            logger.error(f"Error getting next run ID: {e}")
             return "run-001"
     
     async def get_agent_messages(self, since: Optional[str] = None) -> List[Dict[str, Any]]:

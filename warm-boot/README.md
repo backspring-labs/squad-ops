@@ -93,6 +93,19 @@ warm-boot/
 
 ## Usage
 
+### Getting the Next Run ID
+
+The next sequential run ID is tracked in the database and can be retrieved via:
+
+```bash
+# Via API endpoint
+curl http://localhost:8000/warmboot/next-run-id
+
+# Returns: {"run_id": "run-056"}
+```
+
+The WarmBoot submission form automatically populates this field.
+
 ### Starting a New WarmBoot Run
 
 #### For From-Scratch Builds
