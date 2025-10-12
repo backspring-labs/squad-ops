@@ -395,3 +395,197 @@ class TestQAAgent:
         ]
         score = agent.calculate_security_score(mixed)
         assert 0.0 <= score <= 5.0  # Multiple critical issues = low score
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_generate_counterfactual_scenarios(self, mock_database):
+        """Test counterfactual scenario generation"""
+        agent = QAAgent("qa-agent-001")
+        agent.db_pool = mock_database
+        
+        task = {
+            'task_id': 'task-001',
+            'requirements': {
+                'application': 'TestApp',
+                'features': ['login', 'dashboard']
+            }
+        }
+        
+        scenarios = await agent.generate_counterfactual_scenarios(task)
+        
+        assert isinstance(scenarios, list)
+        assert len(scenarios) > 0
+        for scenario in scenarios:
+            assert 'id' in scenario or 'counterfactual' in scenario
+            assert 'expected_outcome' in scenario
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_execute_regression_tests(self, mock_database):
+        """Test regression test execution"""
+        agent = QAAgent("qa-agent-001")
+        agent.db_pool = mock_database
+        
+        # Use the correct structure that the method expects
+        scenarios = [
+            {
+                'id': 'scenario_1',
+                'test_type': 'functional',
+                'counterfactual': 'no_auth',
+                'expected_outcome': 'access_denied',
+                'description': 'Test without auth'
+            },
+            {
+                'id': 'scenario_2',
+                'test_type': 'authentication',
+                'counterfactual': 'weak_password',
+                'expected_outcome': 'rejected',
+                'description': 'Test weak password'
+            }
+        ]
+        
+        task = {'task_id': 'task-001', 'requirements': {'application': 'TestApp'}}
+        
+        result = await agent.execute_regression_tests(scenarios, task)
+        
+        assert isinstance(result, dict)
+        assert 'total_tests' in result
+        assert 'passed' in result
+        assert 'failed' in result
+        assert 'test_details' in result
+        assert result['total_tests'] == 2
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_vulnerabilities(self, mock_database):
+        """Test vulnerability analysis"""
+        agent = QAAgent("qa-agent-001")
+        agent.db_pool = mock_database
+        
+        # Use the structure that execute_regression_tests returns
+        test_results = {
+            'total_tests': 2,
+            'passed': 1,
+            'failed': 1,
+            'test_details': [
+                {
+                    'scenario_id': 'scenario_1',
+                    'test_type': 'xss',
+                    'status': 'failed',
+                    'details': 'XSS vulnerability detected'
+                },
+                {
+                    'scenario_id': 'scenario_2',
+                    'test_type': 'sql_injection',
+                    'status': 'passed',
+                    'details': 'No SQL injection found'
+                }
+            ]
+        }
+        
+        task = {'task_id': 'task-001', 'requirements': {'application': 'TestApp'}}
+        
+        vulnerabilities = await agent.analyze_vulnerabilities(test_results, task)
+        
+        assert isinstance(vulnerabilities, list)
+        # Should identify the failed test as a vulnerability
+        assert len(vulnerabilities) == 1
+        assert vulnerabilities[0]['type'] == 'xss'
+        assert 'severity' in vulnerabilities[0]
+        assert 'description' in vulnerabilities[0]
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_message_unknown_type(self):
+        """Test handle_message with unknown message type"""
+        agent = QAAgent("qa-agent-001")
+        
+        import time
+        message = AgentMessage(
+            sender='test-agent',
+            recipient='qa-agent-001',
+            message_type='unknown_message_type',
+            payload={},
+            context={},
+            timestamp=time.time(),
+            message_id='msg-001'
+        )
+        
+        # Should log but not raise error
+        await agent.handle_message(message)
+        # If no exception raised, test passes
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_task_non_testing_type(self, mock_database):
+        """Test process_task with non-testing task type"""
+        agent = QAAgent("qa-agent-001")
+        agent.db_pool = mock_database
+        
+        task = {
+            'task_id': 'task-999',
+            'type': 'development',  # Not 'testing'
+            'requirements': {'application': 'TestApp'},
+            'complexity': 0.3
+        }
+        
+        with patch.object(agent, 'update_task_status', new=AsyncMock()):
+            result = await agent.process_task(task)
+            
+            # Should still process but might not have all testing results
+            assert isinstance(result, dict)
+            assert result['status'] == 'completed'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_generate_test_report_comprehensive(self, mock_database):
+        """Test comprehensive test report generation"""
+        agent = QAAgent("qa-agent-001")
+        agent.db_pool = mock_database
+        
+        task = {
+            'task_id': 'task-001',
+            'requirements': {
+                'application': 'TestApp',
+                'features': ['feature1', 'feature2']
+            }
+        }
+        
+        report = await agent.generate_test_report(task)
+        
+        assert isinstance(report, dict)
+        # Check for actual keys returned by the method
+        assert 'test_summary' in report
+        assert 'coverage_report' in report
+        assert 'security_assessment' in report
+        assert 'recommendations' in report
+        assert 'next_steps' in report
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_run_regression_tests_full_workflow(self, mock_database):
+        """Test full regression test workflow"""
+        agent = QAAgent("qa-agent-001")
+        agent.db_pool = mock_database
+        
+        task = {
+            'task_id': 'task-001',
+            'requirements': {
+                'application': 'TestApp',
+                'test_types': ['regression']
+            }
+        }
+        
+        result = await agent.run_regression_tests(task)
+        
+        assert isinstance(result, dict)
+        # Check for actual keys in the mock implementation
+        assert 'total_tests' in result
+        assert 'passed' in result
+        assert 'failed' in result
+        assert 'execution_time' in result
+        assert 'coverage' in result
+        assert result['total_tests'] == 45
+        assert result['passed'] == 42
+        assert result['failed'] == 3
+    

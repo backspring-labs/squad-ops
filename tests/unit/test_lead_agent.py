@@ -683,3 +683,182 @@ class TestLeadAgent:
                     description='Build application'
                 )
     
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_task_empty_prd_path(self, mock_database):
+        """Test process_task with governance task but empty PRD path"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+        task = {
+            'task_id': 'task-123',
+            'type': 'governance',
+            'prd_path': '',  # Empty PRD path
+            'application': 'TestApp',
+            'timestamp': '2025-01-01T00:00:00Z',
+            'complexity': 0.3
+        }
+        
+        with patch.object(agent, 'update_task_status', new=AsyncMock()) as mock_update, \
+             patch.object(agent, 'mock_llm_response', new=AsyncMock(return_value='Mock response')):
+            
+            result = await agent.process_task(task)
+            
+            # Should handle governance task directly, not process PRD
+            assert result['status'] == 'completed'
+            assert 'governance_decision' in result
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_development_tasks_error_handling(self, mock_database):
+        """Test create_development_tasks error handling"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+        prd_analysis = {
+            'core_features': ['Feature 1'],
+            'technical_requirements': []
+        }
+        
+        # Force an exception by making get_framework_version fail
+        with patch('config.version.get_framework_version', side_effect=Exception("Version error")):
+            tasks = await agent.create_development_tasks(
+                prd_analysis,
+                app_name='TestApp',
+                ecid='ECID-WB-001'
+            )
+            
+            # Should return empty list on error
+            assert tasks == []
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_read_prd_file_not_found(self):
+        """Test read_prd with non-existent file"""
+        agent = LeadAgent("lead-agent-001")
+        
+        # The method catches exceptions and returns empty string
+        result = await agent.read_prd('/nonexistent/path/prd.md')
+        
+        # Should return empty string after catching the error
+        assert result == ""
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_prd_requirements_error_handling(self):
+        """Test analyze_prd_requirements with LLM error"""
+        agent = LeadAgent("lead-agent-001")
+        
+        with patch.object(agent, 'llm_response', side_effect=Exception("LLM API Error")):
+            # Method catches exceptions and returns fallback analysis
+            result = await agent.analyze_prd_requirements("Test PRD content")
+            
+            # Should return fallback analysis dict with default keys
+            assert isinstance(result, dict)
+            assert 'core_features' in result
+            assert 'technical_requirements' in result
+            assert 'success_criteria' in result
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_prd_request_file_not_found(self, mock_database):
+        """Test process_prd_request with non-existent PRD file"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        
+        with patch.object(agent, 'read_prd', side_effect=FileNotFoundError("PRD not found")):
+            result = await agent.process_prd_request('/nonexistent/prd.md', 'ECID-WB-027')
+            
+            # Should return error status
+            assert result['status'] == 'error'
+            assert 'error' in result or 'message' in result
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_message_unknown_type(self):
+        """Test handle_message with unknown message type"""
+        agent = LeadAgent("lead-agent-001")
+        
+        import time
+        message = AgentMessage(
+            sender='test-agent',
+            recipient='lead-agent-001',
+            message_type='unknown_type',
+            payload={},
+            context={},
+            timestamp=time.time(),
+            message_id='test-msg-001'
+        )
+        
+        # Should log but not raise error
+        await agent.handle_message(message)
+        # If no exception raised, test passes
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_load_role_to_agent_mapping_file_error(self):
+        """Test _load_role_to_agent_mapping with file read error"""
+        # Create agent with non-existent instances file
+        with patch('builtins.open', side_effect=FileNotFoundError("Instances file not found")):
+            agent = LeadAgent("lead-agent-001", instances_file="/nonexistent/instances.yaml")
+            
+            # Should fall back to default mapping
+            mapping = agent._load_role_to_agent_mapping()
+            
+            # Should return default mapping
+            assert isinstance(mapping, dict)
+            assert len(mapping) > 0
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_load_role_to_agent_mapping_yaml_error(self):
+        """Test _load_role_to_agent_mapping with YAML parse error"""
+        with patch('builtins.open', MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value='invalid: yaml: [')))))):
+            agent = LeadAgent("lead-agent-001")
+            
+            # Should fall back to default mapping
+            mapping = agent._load_role_to_agent_mapping()
+            
+            # Should return default mapping
+            assert isinstance(mapping, dict)
+    
+    @pytest.mark.unit
+    def test_get_default_role_mapping(self):
+        """Test _get_default_role_mapping"""
+        agent = LeadAgent("lead-agent-001")
+        
+        mapping = agent._get_default_role_mapping()
+        
+        assert isinstance(mapping, dict)
+        assert 'dev' in mapping
+        assert 'qa' in mapping
+        # Check for roles that actually exist in the default mapping
+        assert len(mapping) > 0
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_task_high_complexity_escalation(self, mock_database):
+        """Test process_task with high complexity for escalation"""
+        agent = LeadAgent("lead-agent-001")
+        agent.db_pool = mock_database
+        agent.escalation_threshold = 0.7
+        
+        task = {
+            'task_id': 'task-999',
+            'type': 'development',
+            'description': 'Complex task',
+            'timestamp': '2025-01-01T00:00:00Z',
+            'complexity': 0.95  # High complexity
+        }
+        
+        with patch.object(agent, 'update_task_status', new=AsyncMock()) as mock_update, \
+             patch.object(agent, 'escalate_task', new=AsyncMock()) as mock_escalate, \
+             patch.object(agent, 'mock_llm_response', new=AsyncMock(return_value='Mock response')):
+            
+            result = await agent.process_task(task)
+            
+            assert result['status'] == 'escalated'
+            assert 'reason' in result
+            assert 'escalation_level' in result
+            mock_escalate.assert_called_once()
+    

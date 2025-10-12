@@ -302,3 +302,319 @@ roles:
             
             # Should handle gracefully and return empty roles
             assert factory.roles == {}
+    
+    @pytest.mark.unit
+    def test_generate_agent_class_template_not_found(self):
+        """Test generating agent class when template file is missing"""
+        test_yaml = """
+roles:
+  lead:
+    display_name: Lead Agent
+    agent_type: governance
+    reasoning_style: governance
+    capabilities: ["task_delegation"]
+    task_types: ["governance"]
+    metrics: {}
+    description: "Lead agent"
+"""
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            with patch('pathlib.Path.exists', return_value=False):
+                with pytest.raises(FileNotFoundError, match="Agent template not found"):
+                    factory.generate_agent_class('lead')
+    
+    @pytest.mark.unit
+    def test_generate_config_template_not_found(self):
+        """Test generating config when template file is missing"""
+        test_yaml = """
+roles:
+  lead:
+    display_name: Lead Agent
+    agent_type: governance
+    reasoning_style: governance
+    capabilities: ["task_delegation"]
+    task_types: ["governance"]
+    metrics: {}
+    description: "Lead agent"
+"""
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            with patch('pathlib.Path.exists', return_value=False):
+                with pytest.raises(FileNotFoundError, match="Config template not found"):
+                    factory.generate_config('lead')
+    
+    @pytest.mark.unit
+    def test_generate_config_non_existent_role(self):
+        """Test generating config for non-existent role"""
+        test_yaml = """
+roles:
+  lead:
+    display_name: Lead Agent
+    agent_type: governance
+    reasoning_style: governance
+    capabilities: ["task_delegation"]
+    task_types: ["governance"]
+    metrics: {}
+    description: "Lead agent"
+"""
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            with pytest.raises(ValueError, match="Role 'non_existent' not found in registry"):
+                factory.generate_config('non_existent')
+    
+    @pytest.mark.unit
+    def test_generate_dockerfile_template_not_found(self):
+        """Test generating Dockerfile when template is missing"""
+        test_yaml = """
+roles:
+  lead:
+    display_name: Lead Agent
+    agent_type: governance
+    reasoning_style: governance
+    capabilities: ["task_delegation"]
+    task_types: ["governance"]
+    metrics: {}
+    description: "Lead agent"
+"""
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            with patch('pathlib.Path.exists', return_value=False):
+                with pytest.raises(FileNotFoundError, match="Dockerfile template not found"):
+                    factory.generate_dockerfile('lead')
+    
+    @pytest.mark.unit
+    def test_dependency_injection_custom_file_reader(self):
+        """Test using custom file reader for dependency injection"""
+        test_yaml = """
+roles:
+  test:
+    display_name: Test Role
+    agent_type: test
+    reasoning_style: test
+    capabilities: []
+    task_types: []
+    metrics: {}
+    description: "Test role"
+"""
+        
+        def mock_file_reader(path):
+            return test_yaml
+        
+        factory = RoleFactory("test_registry.yaml", file_reader=mock_file_reader)
+        
+        assert len(factory.roles) == 1
+        assert 'test' in factory.roles
+        test_role = factory.roles['test']
+        assert test_role.display_name == "Test Role"
+    
+    @pytest.mark.unit
+    def test_empty_yaml_file(self):
+        """Test loading from empty YAML file"""
+        with patch('builtins.open', mock_open(read_data='')):
+            factory = RoleFactory("empty.yaml")
+            
+            # Should handle gracefully
+            assert factory.roles == {}
+    
+    @pytest.mark.unit
+    def test_yaml_with_no_roles_key(self):
+        """Test loading YAML without 'roles' key"""
+        test_yaml = """
+other_config:
+  value: test
+"""
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test.yaml")
+            
+            # Should handle gracefully
+            assert factory.roles == {}
+    
+    @pytest.mark.unit
+    def test_generate_config_with_empty_capabilities(self):
+        """Test generating config with empty capabilities and task_types lists"""
+        test_yaml = """
+roles:
+  minimal:
+    display_name: Minimal Agent
+    agent_type: minimal
+    reasoning_style: logical
+    capabilities: []
+    task_types: []
+    metrics: {}
+    description: "Minimal agent"
+"""
+        
+        template_content = """
+CAPABILITIES = {{CAPABILITIES}}
+TASK_TYPES = {{TASK_TYPES}}
+"""
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            with patch('pathlib.Path.exists', return_value=True), \
+                 patch('builtins.open', mock_open(read_data=template_content)):
+                
+                config_code = factory.generate_config('minimal')
+                
+                # Should generate empty lists properly
+                assert '[\n    \n]' in config_code or '[]' in config_code
+    
+    @pytest.mark.unit
+    def test_create_role_files(self):
+        """Test creating all role files"""
+        test_yaml = """
+roles:
+  test:
+    display_name: Test Agent
+    agent_type: test
+    reasoning_style: logical
+    capabilities: ["testing"]
+    task_types: ["test"]
+    metrics: {}
+    description: "Test agent"
+"""
+        
+        template_content = "test template"
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            with patch('pathlib.Path.mkdir') as mock_mkdir, \
+                 patch('pathlib.Path.exists', return_value=True), \
+                 patch('builtins.open', mock_open(read_data=template_content)) as mock_file, \
+                 patch('shutil.copy') as mock_copy:
+                
+                factory.create_role_files('test', 'output/test')
+                
+                # Verify directory was created
+                mock_mkdir.assert_called()
+                
+                # Verify files were written
+                # Mock open is called multiple times, so we just check it was called
+                assert mock_file.call_count > 0
+    
+    @pytest.mark.unit
+    def test_create_role_files_default_output_dir(self):
+        """Test creating role files with default output directory"""
+        test_yaml = """
+roles:
+  test:
+    display_name: Test Agent
+    agent_type: test
+    reasoning_style: logical
+    capabilities: ["testing"]
+    task_types: ["test"]
+    metrics: {}
+    description: "Test agent"
+"""
+        
+        template_content = "test template"
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            with patch('pathlib.Path.mkdir') as mock_mkdir, \
+                 patch('pathlib.Path.exists', return_value=True), \
+                 patch('builtins.open', mock_open(read_data=template_content)), \
+                 patch('shutil.copy'):
+                
+                factory.create_role_files('test')
+                
+                # Verify mkdir was called with default path
+                mock_mkdir.assert_called()
+    
+    @pytest.mark.unit
+    def test_create_role_files_without_requirements(self):
+        """Test creating role files when requirements.txt doesn't exist"""
+        test_yaml = """
+roles:
+  test:
+    display_name: Test Agent
+    agent_type: test
+    reasoning_style: logical
+    capabilities: ["testing"]
+    task_types: ["test"]
+    metrics: {}
+    description: "Test agent"
+"""
+        
+        template_content = "test template"
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            # Mock Path.exists to return True for templates, False for requirements.txt
+            def mock_exists(self):
+                path_str = str(self)
+                if 'requirements.txt' in path_str:
+                    return False
+                return True  # Templates exist
+            
+            with patch('pathlib.Path.mkdir'), \
+                 patch('pathlib.Path.exists', mock_exists), \
+                 patch('builtins.open', mock_open(read_data=template_content)):
+                
+                # Should not raise an error even if requirements.txt doesn't exist
+                factory.create_role_files('test', 'output/test')
+    
+    @pytest.mark.unit
+    def test_validate_role_registry_success(self):
+        """Test successful role registry validation"""
+        test_yaml = """
+roles:
+  test:
+    display_name: Test Agent
+    agent_type: test
+    reasoning_style: logical
+    capabilities: ["testing"]
+    task_types: ["test"]
+    metrics: {}
+    description: "Test agent"
+"""
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            result = factory.validate_role_registry()
+            assert result is True
+    
+    @pytest.mark.unit
+    def test_validate_role_registry_missing_field(self):
+        """Test role registry validation with missing required field"""
+        test_yaml = """
+roles:
+  incomplete:
+    display_name: Incomplete Agent
+    agent_type: test
+    # Missing reasoning_style, capabilities, task_types
+"""
+        
+        with patch('builtins.open', mock_open(read_data=test_yaml)):
+            factory = RoleFactory("test_registry.yaml")
+            
+            result = factory.validate_role_registry()
+            # Should fail due to missing required fields
+            assert result is False
+    
+    @pytest.mark.unit
+    def test_validate_role_registry_error_handling(self):
+        """Test role registry validation error handling"""
+        def error_file_reader(path):
+            raise Exception("Simulated error")
+        
+        factory = RoleFactory("test_registry.yaml", file_reader=lambda p: "roles: {}")
+        
+        # Replace _load_roles to raise an exception
+        with patch.object(factory, '_load_roles', side_effect=Exception("Test error")):
+            result = factory.validate_role_registry()
+            assert result is False

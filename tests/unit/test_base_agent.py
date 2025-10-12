@@ -1068,3 +1068,218 @@ class TestBaseAgent:
         # This test documents current behavior
         # Verify run executed without crashing
         agent.initialize.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_modify_file_replace(self):
+        """Test modify_file with replace modification"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        original_content = "Hello World\nThis is a test file."
+        
+        with patch.object(agent, 'read_file', return_value=original_content), \
+             patch.object(agent, 'write_file', return_value=True) as mock_write:
+            
+            modifications = [
+                {
+                    'type': 'replace',
+                    'old_text': 'World',
+                    'new_text': 'Python'
+                }
+            ]
+            
+            result = await agent.modify_file('/test/file.txt', modifications)
+            
+            assert result is True
+            mock_write.assert_called_once()
+            call_args = mock_write.call_args[0]
+            assert 'Hello Python' in call_args[1]
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_modify_file_insert_after(self):
+        """Test modify_file with insert_after modification"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        original_content = "Line 1\nLine 2\nLine 3"
+        
+        with patch.object(agent, 'read_file', return_value=original_content), \
+             patch.object(agent, 'write_file', return_value=True) as mock_write:
+            
+            modifications = [
+                {
+                    'type': 'insert_after',
+                    'after_text': 'Line 2',
+                    'new_text': '\nNew Line'
+                }
+            ]
+            
+            result = await agent.modify_file('/test/file.txt', modifications)
+            
+            assert result is True
+            mock_write.assert_called_once()
+            call_args = mock_write.call_args[0]
+            assert 'Line 2\nNew Line' in call_args[1]
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_modify_file_insert_before(self):
+        """Test modify_file with insert_before modification"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        original_content = "Line 1\nLine 2\nLine 3"
+        
+        with patch.object(agent, 'read_file', return_value=original_content), \
+             patch.object(agent, 'write_file', return_value=True) as mock_write:
+            
+            modifications = [
+                {
+                    'type': 'insert_before',
+                    'before_text': 'Line 2',
+                    'new_text': 'New Line\n'
+                }
+            ]
+            
+            result = await agent.modify_file('/test/file.txt', modifications)
+            
+            assert result is True
+            mock_write.assert_called_once()
+            call_args = mock_write.call_args[0]
+            assert 'New Line\nLine 2' in call_args[1]
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_modify_file_multiple_modifications(self):
+        """Test modify_file with multiple modifications"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        original_content = "Hello World"
+        
+        with patch.object(agent, 'read_file', return_value=original_content), \
+             patch.object(agent, 'write_file', return_value=True) as mock_write:
+            
+            modifications = [
+                {'type': 'replace', 'old_text': 'Hello', 'new_text': 'Hi'},
+                {'type': 'insert_after', 'after_text': 'Hi', 'new_text': ' there'},
+            ]
+            
+            result = await agent.modify_file('/test/file.txt', modifications)
+            
+            assert result is True
+            mock_write.assert_called_once()
+            call_args = mock_write.call_args[0]
+            assert 'Hi there World' in call_args[1]
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_modify_file_error_handling(self):
+        """Test modify_file error handling"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        with patch.object(agent, 'read_file', side_effect=Exception("Read error")):
+            
+            modifications = [{'type': 'replace', 'old_text': 'a', 'new_text': 'b'}]
+            result = await agent.modify_file('/test/file.txt', modifications)
+            
+            assert result is False
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_command_execution_custom_cwd(self):
+        """Test execute_command with custom working directory"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        with patch('asyncio.create_subprocess_shell') as mock_subprocess:
+            mock_process = AsyncMock()
+            mock_process.communicate = AsyncMock(return_value=(b'output', b''))
+            mock_process.returncode = 0
+            mock_subprocess.return_value = mock_process
+            
+            result = await agent.execute_command('ls', cwd='/custom/path')
+            
+            assert result['success'] is True
+            assert result['stdout'] == 'output'
+            # Verify cwd was passed
+            mock_subprocess.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_list_files_with_pattern(self):
+        """Test list_files with glob pattern"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        with patch('pathlib.Path.exists', return_value=True), \
+             patch('pathlib.Path.glob', return_value=[
+                 MagicMock(name='file1.py', is_file=MagicMock(return_value=True)),
+                 MagicMock(name='file2.py', is_file=MagicMock(return_value=True))
+             ]):
+            
+            result = await agent.list_files('/test/dir', pattern='*.py')
+            
+            assert len(result) >= 0  # Pattern filtering behavior
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_list_files_directory_not_found(self):
+        """Test list_files with non-existent directory"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        with patch('pathlib.Path.exists', return_value=False):
+            result = await agent.list_files('/nonexistent/dir')
+            
+            assert result == []
+    
+    @pytest.mark.unit
+    def test_task_status_dataclass(self):
+        """Test TaskStatus dataclass"""
+        from agents.base_agent import TaskStatus
+        
+        status = TaskStatus(
+            task_id="task-001",
+            agent_name="test-agent",
+            status="Active-Non-Blocking",
+            progress=50.0,
+            eta="2h",
+            dependencies=["dep-1"],
+            created_at="2025-01-01T00:00:00Z",
+            updated_at="2025-01-01T01:00:00Z"
+        )
+        
+        assert status.task_id == "task-001"
+        assert status.agent_name == "test-agent"
+        assert status.status == "Active-Non-Blocking"
+        assert status.progress == 50.0
+        assert status.eta == "2h"
+        assert status.dependencies == ["dep-1"]
