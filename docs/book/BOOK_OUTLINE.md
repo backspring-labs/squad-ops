@@ -22,20 +22,35 @@
 
 ---
 
-#### Chapter 2: Why Squads — Transparency Without Ego
+#### Chapter 2: Role-Based Coordination at Scale
 **What You'll Learn:**
 - How agent squads surface failures faster than human teams
 - Rolling root cause analysis without blame or politics
-- Instrumentation as a competitive advantage
-- The "failure signals" that make squads anti-fragile
+- The three pillars of squad coordination (Communication, Task Management, Governance)
+- The minimum viable squad: five complementary roles
+- Why transparency without ego enables continuous improvement
 
 **Real Example:** WarmBoot run-006 simulation failure → immediate retro → protocol fix
 
-**Based on:** *"Why Squads Failure Signals"* doc
+**Key Framework:** The coordination loop: Governance → Product Strategy → Development → Quality → Data → back to Governance
 
 ---
 
-#### Chapter 3: The SquadOps Architecture
+#### Chapter 3: Specialized Minds — Designing Agents with Distinct Reasoning Styles
+**What You'll Learn:**
+- Why cognitive diversity prevents monoculture logic
+- Five reasoning modes: Deductive, Inductive, Creative, Procedural, Adversarial
+- How to match LLM models to agent roles and reasoning styles
+- Cognitive interoperability: how unlike minds reason together
+- The human challenge of resource alignment vs. agent flexibility
+
+**Real Example:** Why Max uses llama3.1:8b for governance and Neo uses qwen2.5:7b for code
+
+**Key Insight:** Diversity of reasoning gives squads a mental immune system
+
+---
+
+#### Chapter 4: The SquadOps Architecture
 **What You'll Learn:**
 - Core infrastructure: PostgreSQL, RabbitMQ, Redis, Docker
 - Agent communication patterns (queues, broadcasts, direct messages)
@@ -48,35 +63,50 @@
 
 ---
 
-### **Part II: Building Your First Squad**
+### **Part II: Operational Mechanics**
 
-#### Chapter 4: Day 1 — Max and Neo Deploy HelloSquad
+#### Chapter 5: The SquadOps Architecture
 **What You'll Learn:**
-- Setting up local infrastructure (5 services in docker-compose)
-- Configuring your first two agents (Lead + Dev)
-- Submitting a PRD through the WarmBoot form
-- Watching agents analyze, plan, build, and deploy
+- Core infrastructure: PostgreSQL, RabbitMQ, Redis, Docker
+- Agent communication patterns (queues, broadcasts, direct messages)
+- Task lifecycle management (ECID tracking, delegation, status)
+- Version management and rollback capabilities
 
-**Walkthrough:** Complete Day 1 tutorial with screenshots
+**Real Example:** The complete task-api service with connection pooling
 
-**Outcome:** Running HelloSquad app at http://localhost:8080
+**Code Sample:** Task delegation from LeadAgent to DevAgent
 
 ---
 
-#### Chapter 5: Specialized Minds — Designing Agent Roles
+#### Chapter 6: Infrastructure Setup & Configuration
 **What You'll Learn:**
-- The 10 core SquadOps roles (Lead, Dev, QA, Strategy, Data, etc.)
-- Reasoning style profiles (Governance, Deductive, Inductive, etc.)
-- How to match LLM models to agent personalities
-- Role-specific capabilities and tools
+- Setting up local development environment (5 services in docker-compose)
+- Database schema migrations and initialization
+- RabbitMQ queue topology and routing
+- Redis configuration for caching and session management
+- Docker networking and volume mounts
 
-**Real Example:** Why Max uses llama3.1:8b for governance and Neo uses qwen2.5:7b for code
+**Walkthrough:** Complete infrastructure setup with health checks
 
-**Reference:** Complete role registry with capabilities matrix
+**Outcome:** Fully operational SquadOps environment ready for agents
 
 ---
 
-#### Chapter 6: The WarmBoot Protocol
+#### Chapter 7: Agent Configuration & Deployment
+**What You'll Learn:**
+- Agent instance configuration (instances.yaml)
+- Role-to-agent mapping and specialization
+- LLM model selection and configuration
+- Environment variables and secrets management
+- Agent startup sequences and health monitoring
+
+**Real Example:** Configuring Max (Lead) and Neo (Dev) with proper model assignments
+
+**Reference:** Complete agent configuration guide
+
+---
+
+#### Chapter 8: The WarmBoot Protocol
 **What You'll Learn:**
 - What WarmBoot is (and what it's NOT — it's not SDLC iteration)
 - When to run a WarmBoot (after major config changes, new agents, LLM swaps)
@@ -89,9 +119,37 @@
 
 ---
 
-### **Part III: Production-Grade Practices**
+### **Part III: Building Your First Squad**
 
-#### Chapter 7: Test Coverage That Actually Matters
+#### Chapter 9: Day 1 — Max and Neo Deploy HelloSquad
+**What You'll Learn:**
+- Submitting a PRD through the WarmBoot form
+- Watching agents analyze, plan, build, and deploy
+- Interpreting agent communication logs
+- Troubleshooting common deployment issues
+
+**Walkthrough:** Complete Day 1 tutorial with screenshots
+
+**Outcome:** Running HelloSquad app at http://localhost:8080
+
+---
+
+#### Chapter 10: Specialized Minds — Designing Agent Roles
+**What You'll Learn:**
+- The 10 core SquadOps roles (Lead, Dev, QA, Strategy, Data, etc.)
+- Reasoning style profiles (Governance, Deductive, Inductive, etc.)
+- How to match LLM models to agent personalities
+- Role-specific capabilities and tools
+
+**Real Example:** Why Max uses llama3.1:8b for governance and Neo uses qwen2.5:7b for code
+
+**Reference:** Complete role registry with capabilities matrix
+
+---
+
+### **Part IV: Production-Grade Practices**
+
+#### Chapter 11: Test Coverage That Actually Matters
 **What You'll Learn:**
 - Why 90%+ coverage is achievable (and necessary) for agent systems
 - Unit testing with mocks vs integration testing with Testcontainers
@@ -104,7 +162,7 @@
 
 ---
 
-#### Chapter 8: Quality Guardrails & Protocol Compliance
+#### Chapter 12: Quality Guardrails & Protocol Compliance
 **What You'll Learn:**
 - The "Critical Rules" that prevent shortcuts
 - Definition of "Done" for agent-built systems
@@ -117,7 +175,7 @@
 
 ---
 
-#### Chapter 9: Version Management & Governance
+#### Chapter 13: Version Management & Governance
 **What You'll Learn:**
 - Framework versioning vs agent versioning
 - The version_cli.py tool for controlled updates
@@ -130,7 +188,7 @@
 
 ---
 
-#### Chapter 10: Reference Applications as Test Harnesses
+#### Chapter 14: Reference Applications as Test Harnesses
 **What You'll Learn:**
 - Why HelloSquad is more than a demo
 - Using scoped apps (fitness trackers, to-do apps) as benchmarks
@@ -141,9 +199,9 @@
 
 ---
 
-### **Part IV: Scaling & Advanced Patterns**
+### **Part V: Scaling & Advanced Patterns**
 
-#### Chapter 11: Adding EVE, Nat, Data, and HAL (The Full Squad)
+#### Chapter 15: Adding EVE, Nat, Data, and HAL (The Full Squad)
 **What You'll Learn:**
 - Expanding from 2 agents to 10 (v0.3.0 milestone)
 - Inter-agent coordination patterns
@@ -154,7 +212,7 @@
 
 ---
 
-#### Chapter 12: Memory, Metrics & Continuous Improvement
+#### Chapter 16: Memory, Metrics & Continuous Improvement
 **What You'll Learn:**
 - Agent memory patterns (short-term, long-term, shared context)
 - Metrics that matter (task completion rate, error patterns, latency)
@@ -165,7 +223,7 @@
 
 ---
 
-#### Chapter 13: The SquadOps Console (SOC) & Observability
+#### Chapter 17: The SquadOps Console (SOC) & Observability
 **What You'll Learn:**
 - Real-time health monitoring dashboards
 - Task flow visualization with Mermaid/Gantt
@@ -176,7 +234,7 @@
 
 ---
 
-#### Chapter 14: Advanced Reasoning & Squad Maturity
+#### Chapter 18: Advanced Reasoning & Squad Maturity
 **What You'll Learn:**
 - Phase 2 reasoning modes (Bayesian, Dialectical, Temporal, Meta)
 - SquadOps maturity model (5 levels from MVP to Meta-Squad)
@@ -187,9 +245,9 @@
 
 ---
 
-### **Part V: Production & Beyond**
+### **Part VI: Production & Beyond**
 
-#### Chapter 15: Deploying to Production (Backspring Case Study)
+#### Chapter 19: Deploying to Production (Backspring Case Study)
 **What You'll Learn:**
 - AWS/GCP/Azure deployment patterns
 - Secrets management and compliance
@@ -200,7 +258,7 @@
 
 ---
 
-#### Chapter 16: The Meta-Squad — Squads That Build Squads
+#### Chapter 20: The Meta-Squad — Squads That Build Squads
 **What You'll Learn:**
 - Recursive squad generation
 - Squad-as-a-Service architecture
@@ -211,7 +269,7 @@
 
 ---
 
-#### Chapter 17: Ethics, Governance & Responsible AI Squads
+#### Chapter 21: Ethics, Governance & Responsible AI Squads
 **What You'll Learn:**
 - Human-in-the-loop oversight patterns
 - Auditability and compliance requirements
@@ -273,41 +331,44 @@
 ## 🎯 Book Development Roadmap
 
 ### Phase 1: Foundation Chapters (v0.2.0 validated)
-- [x] Chapters 1-3: Philosophy + Architecture
-- [x] Chapter 4: Day 1 Tutorial (HelloSquad)
-- [x] Chapter 6: WarmBoot Protocol
-- [x] Chapter 7: Test Coverage
-- [x] Chapter 8: Quality Guardrails
-- [x] Chapter 9: Version Management
+- [x] Chapters 1-3: Philosophy + Coordination + Reasoning Diversity
+- [x] Chapter 4: SquadOps Architecture
+- [x] Chapter 5: Infrastructure Setup
+- [x] Chapter 6: Agent Configuration
+- [x] Chapter 7: WarmBoot Protocol
+- [x] Chapter 8: Test Coverage
+- [x] Chapter 9: Quality Guardrails
+- [x] Chapter 10: Version Management
 
 ### Phase 2: Multi-Agent (v0.3.0 milestone)
-- [ ] Chapter 5: All 10 roles documented
-- [ ] Chapter 11: Full squad coordination
-- [ ] Update Chapter 4 with EVE interactions
+- [ ] Chapter 9: Day 1 Tutorial (HelloSquad)
+- [ ] Chapter 10: All 10 roles documented
+- [ ] Chapter 15: Full squad coordination
+- [ ] Update Chapter 9 with EVE interactions
 
 ### Phase 3: Advanced Features (v0.4.0 milestone)
-- [ ] Chapter 12: Memory & Metrics
-- [ ] Chapter 13: SOC & Observability
-- [ ] Chapter 14: Advanced reasoning
+- [ ] Chapter 16: Memory & Metrics
+- [ ] Chapter 17: SOC & Observability
+- [ ] Chapter 18: Advanced reasoning
 
 ### Phase 4: Production (v0.5.0 milestone)
-- [ ] Chapter 15: Backspring case study
+- [ ] Chapter 19: Backspring case study
 - [ ] Real fintech app examples
 - [ ] Production deployment patterns
 
 ### Phase 5: Future Vision (v1.0.0+)
-- [ ] Chapter 16: Meta-Squad
-- [ ] Chapter 17: Ethics & Governance
+- [ ] Chapter 20: Meta-Squad
+- [ ] Chapter 21: Ethics & Governance
 - [ ] Industry validation stories
 
 ---
 
 ## 📊 Target Metrics for Book Success
 
-1. **Readers can deploy HelloSquad in <1 hour** (Chapter 4)
-2. **90% grasp WarmBoot protocol** (Chapter 6)
-3. **Teams achieve 80%+ test coverage** (Chapter 7)
-4. **10+ production deployments by v1.0.0** (Chapter 15)
+1. **Readers can deploy HelloSquad in <1 hour** (Chapter 9)
+2. **90% grasp WarmBoot protocol** (Chapter 8)
+3. **Teams achieve 80%+ test coverage** (Chapter 11)
+4. **10+ production deployments by v1.0.0** (Chapter 19)
 5. **Community contributions to SIPs** (Appendix A)
 
 ---
@@ -330,12 +391,12 @@ SquadOps teaches you to **ship**.
 ## 📝 Writing Status
 
 **Current:** Outline complete, aligned with v0.2.0  
-**Next:** Draft Chapters 1-4 (Foundation + Day 1 tutorial)  
+**Next:** Draft Chapters 1-8 (Foundation + Operational Mechanics)  
 **Timeline:** 
-- Q1 2025: Foundation chapters (1-6)
-- Q2 2025: Production chapters (7-10) + v0.3.0 content
-- Q3 2025: Advanced chapters (11-14) + v0.4.0 content
-- Q4 2025: Production validation (15-17) + v0.5.0 content
+- Q1 2025: Foundation chapters (1-3) + Operational mechanics (4-8)
+- Q2 2025: First squad tutorial (9-10) + Production practices (11-14) + v0.3.0 content
+- Q3 2025: Advanced chapters (15-18) + v0.4.0 content
+- Q4 2025: Production validation (19-21) + v0.5.0 content
 
 ---
 
