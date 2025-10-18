@@ -1,0 +1,59 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+header {
+    background-color: #4CAF50;
+    color: white;
+    text-align: center;
+    padding: 1em;
+}
+
+main {
+    display: flex;
+    justify-content: space-around;
+    padding: 20px;
+}
+
+section {
+    width: 30%;
+}
+
+#activity-feed .feed-item {
+    margin-bottom: 15px;
+    border-left: 4px solid #4CAF50;
+    padding-left: 10px;
+}
+
+canvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+aside pre code {
+    white-space: pre-wrap;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    padding: 10px;
+    overflow-x: auto;
+}
+
+footer {
+    text-align: center;
+    margin-top: 2em;
+    font-size: 0.8em;
+}
+
+@media (max-width: 768px) {
+    main {
+        flex-direction: column;
+    }
+
+    section, aside {
+        width: 100%;
+        padding: 10px;
+    }
+}

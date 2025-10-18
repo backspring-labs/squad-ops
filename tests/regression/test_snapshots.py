@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from agents.roles.lead.agent import LeadAgent
-from agents.roles.dev.agent import RefactoredDevAgent
+from agents.roles.dev.agent import DevAgent
 
 class TestSnapshots:
     """Snapshot tests to prevent regressions"""
@@ -99,7 +99,7 @@ class TestSnapshots:
     def test_agent_health_status_snapshot(self, ensure_snapshot_dir):
         """Test agent health status matches snapshot"""
         max_agent = LeadAgent("max")
-        neo_agent = RefactoredDevAgent("neo")
+        neo_agent = DevAgent("neo")
         
         max_health = max_agent.get_health_status()
         neo_health = neo_agent.get_health_status()

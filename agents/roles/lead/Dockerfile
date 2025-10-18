@@ -8,6 +8,8 @@ ARG AGENT_ROLE=lead
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    gcc \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
@@ -17,6 +19,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy agent files
 COPY agents/base_agent.py .
 COPY agents/roles/${AGENT_ROLE}/agent.py .
+
+# Copy new LLM and contracts modules
+COPY agents/llm ./agents/llm
+COPY agents/contracts ./agents/contracts
 
 # Copy version management
 COPY config ./config

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import asyncio
@@ -1177,6 +1177,37 @@ async def warmboot_form():
 @app.get("/")
 async def root():
     return {"message": "SquadOps Health Check Service", "version": SQUADOPS_VERSION}
+
+# Application routing - proxy to deployed applications
+@app.get("/hello-squad/{path:path}")
+async def proxy_hello_squad(path: str, request: Request):
+    """Proxy requests to HelloSquad application"""
+    try:
+        # Forward request to the HelloSquad container
+        target_url = f"http://squadops-hello-squad:80/{path}"
+        
+        async with aiohttp.ClientSession() as session:
+            # Forward the request
+            async with session.get(target_url) as response:
+                content = await response.read()
+                
+                # Return the response with appropriate headers
+                return Response(
+                    content=content,
+                    status_code=response.status,
+                    headers=dict(response.headers),
+                    media_type=response.headers.get('content-type', 'text/html')
+                )
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={"error": f"HelloSquad application unavailable: {str(e)}"}
+        )
+
+@app.get("/hello-squad/")
+async def proxy_hello_squad_root():
+    """Proxy root request to HelloSquad application"""
+    return await proxy_hello_squad("", None)
 
 if __name__ == "__main__":
     import uvicorn
