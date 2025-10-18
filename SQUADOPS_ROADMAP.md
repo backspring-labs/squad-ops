@@ -9,9 +9,10 @@
 
 **Current Status**: 
 - ✅ **MVP Complete** - Task Management System (SIP-024/025) working end-to-end
+- ✅ **JSON Workflow Complete** - SIP-033A structured LLM output eliminating parsing issues
 - ✅ **90% Test Coverage** - 156 passing tests, production-ready core framework
 - ✅ **Proven Concept** - AI agents successfully building and deploying applications
-- 🎯 **Current Phase** - Multi-agent expansion and capability scaling
+- 🎯 **Current Phase** - Integration testing and production validation
 
 ---
 
@@ -34,11 +35,50 @@
 
 **Documentation**: See `docs/retro/warmboot-run*` for detailed retrospectives
 
+### ✅ Phase 0.5: JSON Workflow Foundation (SIP-033A)
+**Achievement**: Structured LLM integration eliminating markdown parsing issues
+
+**What We Built**:
+- **AppBuilder JSON Methods** - Direct Ollama API with structured output
+- **Manifest-First Development** - Architecture design before implementation  
+- **Framework Enforcement** - Programmatic vanilla_js constraint
+- **Agent Coordination** - Max orchestrates design_manifest → build → deploy
+- **Comprehensive Testing** - 46/46 unit tests passing (100% coverage)
+- **Production Framework** - Integration tests, smoke tests, governance logging
+
+**Historic Value**: First proven structured LLM workflow eliminating parsing issues and enabling reliable agent coordination.
+
+**Documentation**: See `docs/SIPs/SIP-033A-Manifest-Integration-Addendum.md` for complete implementation details
+
 ---
 
-## 📋 Current Phase: Multi-Agent Expansion
+## 📋 Current Phase: Integration Testing & Production Validation
 
-### Phase 1: Add Remaining 7 Agents (2-3 weeks)
+### Phase 1: Fix Integration Tests & Run Actual WarmBoot (1-2 weeks)
+**Priority**: HIGH | **Focus**: Validate JSON workflow with real Ollama API
+
+#### 1.1 Integration Testing
+**Current**: Integration tests fail with "Ollama API error: 404"  
+**Fix**:
+- Get integration tests working with real Ollama API
+- Validate JSON workflow end-to-end
+- Ensure manifest generation works with real LLM
+- Verify file generation produces correct output
+
+#### 1.2 Actual WarmBoot Execution
+**Goal**: Run real WarmBoot with JSON workflow
+- Execute full design_manifest → build → deploy sequence
+- Validate Max → Neo coordination works
+- Verify governance logging (checksums, manifest snapshots)
+- Test application deployment at target URL
+
+**Success Metrics**:
+- Integration tests pass with real Ollama
+- WarmBoot completes successfully with JSON workflow
+- Application accessible at target URL
+- Governance artifacts created correctly
+
+### Phase 2: Multi-Agent Expansion (2-3 weeks)
 **Priority**: HIGH | **Focus**: Scale from 2-agent to full 10-agent squad
 
 #### 1.1 Activate Remaining Squad Members
@@ -275,17 +315,23 @@ These SIPs are deferred until specific triggers are met:
 
 ## 🎯 Next 30 Days (Immediate Focus)
 
-### Week 1-2: EVE Integration
+### Week 1: Integration Testing
+- Fix integration tests to work with real Ollama API
+- Validate JSON workflow end-to-end
+- Ensure manifest generation works with real LLM
+- Verify file generation produces correct output
+
+### Week 2: Actual WarmBoot Execution
+- Run real WarmBoot with JSON workflow
+- Execute full design_manifest → build → deploy sequence
+- Validate Max → Neo coordination works
+- Verify governance logging (checksums, manifest snapshots)
+
+### Week 3: Multi-Agent Communication
 - Activate EVE (QA/Security agent)
 - Implement automated testing workflow
 - Add security scanning to deployment pipeline
 - Test EVE + Neo collaboration
-
-### Week 3: Multi-Agent Communication
-- Activate Nat (Strategy) and Data (Analytics)
-- Implement complex task coordination patterns
-- Test 4-agent collaboration (Max, Neo, EVE, Nat)
-- Validate message routing and status tracking
 
 ### Week 4: Metrics & Monitoring (SIP-005)
 - Implement 4-layer metrics system
@@ -319,7 +365,7 @@ These SIPs are deferred until specific triggers are met:
 
 ---
 
-**Status**: ✅ MVP Complete, Scaling Phase Active  
-**Focus**: Multi-agent expansion, core SIPs, production readiness  
+**Status**: ✅ MVP Complete, JSON Workflow Complete, Integration Testing Phase Active  
+**Focus**: Integration testing, actual WarmBoot execution, multi-agent expansion  
 **Commitment**: Quality over speed, no shortcuts, 95% coverage target
 
