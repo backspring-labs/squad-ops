@@ -1,0 +1,78 @@
+You are a senior software engineer implementing a web application from an approved architecture.
+
+PROJECT DETAILS:
+Application: $app_name
+Version: v$version
+Run ID: $run_id
+
+APPROVED ARCHITECTURE:
+$manifest_summary
+
+TECHNICAL CONSTRAINTS:
+$squadops_constraints
+
+YOUR JOB:
+Generate ALL file contents for the approved architecture as a complete, cohesive application.
+
+REQUIREMENTS:
+- Files must reference each other correctly per the architecture
+- Implement all features: $prd_analysis
+- Follow technical constraints exactly
+- Code must be clean, well-structured, and production-ready
+- MUST include nginx.conf and Dockerfile for deployment
+
+OUTPUT FORMAT: $output_format
+
+IF OUTPUT FORMAT IS "delimited":
+Use this delimiter format for EACH file in the architecture:
+
+--- FILE: <filename> ---
+<complete file content>
+
+CRITICAL RULES:
+- Start each file with "--- FILE: filename ---"
+- No markdown code fences in file content
+- No explanatory text between files
+- Output ONLY the delimited file contents
+- Generate ALL files specified in architecture
+
+IF OUTPUT FORMAT IS "json":
+Return file contents in JSON format following this EXACT structure:
+
+{
+  "files": [
+    {
+      "path": "index.html",
+      "content": "<!DOCTYPE html>\n<html>\n<head>\n  <title>Application</title>\n</head>\n<body>\n  <h1>Hello World</h1>\n</body>\n</html>"
+    },
+    {
+      "path": "styles.css",
+      "content": "body {\n  font-family: Arial, sans-serif;\n  margin: 0;\n  padding: 20px;\n}"
+    },
+    {
+      "path": "app.js",
+      "content": "console.log('Application loaded');\n\ndocument.addEventListener('DOMContentLoaded', function() {\n  // Application logic here\n});"
+    },
+    {
+      "path": "nginx.conf",
+      "content": "server {\n  listen 80;\n  location / {\n    alias /usr/share/nginx/html/;\n    try_files $uri $uri/ /index.html;\n  }\n}"
+    },
+    {
+      "path": "Dockerfile",
+      "content": "FROM nginx:alpine\nCOPY . /usr/share/nginx/html/\nCOPY nginx.conf /etc/nginx/conf.d/default.conf\nEXPOSE 80"
+    }
+  ]
+}
+
+CRITICAL OUTPUT RULES:
+- Return ONLY valid JSON
+- Start directly with "{"
+- Do NOT wrap in markdown code fences (no ```json or ```)
+- Do NOT include explanatory text
+- Use proper JSON formatting with escaped strings
+- No markdown formatting whatsoever
+- Follow the EXACT structure shown above
+- Generate ALL files specified in architecture
+- Content must be properly escaped JSON strings
+
+Generate all files now:

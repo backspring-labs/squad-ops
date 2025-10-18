@@ -8,16 +8,18 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List
-from base_agent import BaseAgent, AgentMessage
+from ...base_agent import BaseAgent, AgentMessage
 import sys
 import os
 import aiohttp
 
 # Import specialized components
-from code_generator import CodeGenerator
-from docker_manager import DockerManager
-from version_manager import VersionManager
-from file_manager import FileManager
+from .app_builder import AppBuilder
+from .docker_manager import DockerManager
+from .version_manager import VersionManager
+from .file_manager import FileManager
+from agents.contracts.task_spec import TaskSpec
+from agents.contracts.build_manifest import BuildManifest
 
 # Add config path
 sys.path.append('/app')
@@ -26,8 +28,8 @@ from config.version import get_framework_version
 
 logger = logging.getLogger(__name__)
 
-class RefactoredDevAgent(BaseAgent):
-    """Refactored Dev Agent using composition with specialized components"""
+class DevAgent(BaseAgent):
+    """Dev Agent using composition with specialized components"""
     
     def __init__(self, identity: str):
         super().__init__(
@@ -37,7 +39,7 @@ class RefactoredDevAgent(BaseAgent):
         )
         
         # Initialize specialized components
-        self.code_generator = CodeGenerator()
+        self.app_builder = AppBuilder(llm_client=self.llm_client)
         self.docker_manager = DockerManager()
         self.version_manager = VersionManager()
         self.file_manager = FileManager()
@@ -46,12 +48,106 @@ class RefactoredDevAgent(BaseAgent):
         self.current_task_requirements = {}
         self.current_run_id = "run-001"
     
+    async def _create_technical_task_spec(self, requirements: Dict[str, Any]) -> TaskSpec:
+        """Neo creates TaskSpec for technical tasks"""
+        logger.info(f"{self.name} creating technical TaskSpec")
+        
+        prompt = f"""
+        You are a senior software engineer creating a TaskSpec for a technical development task.
+        
+        TASK REQUIREMENTS:
+        {requirements}
+        
+        Create a comprehensive TaskSpec that includes:
+        
+        1. PRD_ANALYSIS: Technical analysis of the requirements, architecture considerations, and implementation approach
+        2. FEATURES: Specific technical features and capabilities to implement
+        3. CONSTRAINTS: Technical constraints, performance requirements, security considerations, code quality standards
+        4. SUCCESS_CRITERIA: Measurable technical success criteria
+        
+        Focus on:
+        - Code quality and maintainability
+        - Performance and scalability
+        - Security best practices
+        - Testing and validation requirements
+        - Documentation and deployment considerations
+        
+        Return the TaskSpec in YAML format:
+        
+        app_name: "TechnicalTask"
+        version: "1.0.0"
+        run_id: "{self.current_run_id}"
+        prd_analysis: |
+          Your technical analysis here...
+        features:
+          - technical_feature1
+          - technical_feature2
+        constraints:
+          code_quality: "requirements here"
+          performance: "requirements here"
+          security: "considerations here"
+          testing: "requirements here"
+        success_criteria:
+          - "Technical criterion 1"
+          - "Technical criterion 2"
+        """
+        
+        try:
+            response = await self.llm_client.complete(
+                prompt=prompt,
+                temperature=0.5,  # Lower temp for structured output
+                max_tokens=3000
+            )
+            
+            # Clean and parse YAML response
+            from agents.llm.validators import clean_yaml_response
+            cleaned_response = clean_yaml_response(response)
+            task_spec = TaskSpec.from_yaml(cleaned_response)
+            logger.info(f"{self.name} created technical TaskSpec with {len(task_spec.features)} features")
+            
+            return task_spec
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to create technical TaskSpec: {e}")
+            # Fallback to basic TaskSpec
+            return TaskSpec(
+                app_name="TechnicalTask",
+                version="1.0.0",
+                run_id=self.current_run_id,
+                prd_analysis=f"Technical task - TaskSpec generation failed: {e}",
+                features=[],
+                constraints={},
+                success_criteria=["Task completes successfully"]
+            )
+    
+    def _extract_prd_analysis_from_communication_log(self) -> str:
+        """Extract PRD analysis from communication log for AI-powered code generation"""
+        try:
+            # Look for the most recent PRD analysis from Max
+            for entry in reversed(self.communication_log):
+                if (entry.get('message_type') == 'llm_reasoning' and 
+                    'PRD Analysis' in entry.get('description', '')):
+                    # Extract the full response from the entry
+                    full_response = entry.get('full_response', '')
+                    if full_response:
+                        return full_response
+                    # Fallback to description if full_response not available
+                    return entry.get('description', '')
+            
+            # If no PRD analysis found, return a default message
+            logger.warning("No PRD analysis found in communication log, using default")
+            return "No PRD analysis available - generating generic application"
+            
+        except Exception as e:
+            logger.error(f"Failed to extract PRD analysis: {e}")
+            return "Error extracting PRD analysis - generating generic application"
+    
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process development tasks using specialized components"""
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', task.get('task_type', 'unknown'))
         
-        logger.info(f"RefactoredDevAgent processing {task_type} task: {task_id}")
+        logger.info(f"DevAgent processing {task_type} task: {task_id}")
         
         try:
             # Route to appropriate handler based on task type
@@ -67,7 +163,7 @@ class RefactoredDevAgent(BaseAgent):
                 return await self._handle_generic_task(task)
                 
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to process task {task_id}: {e}")
+            logger.error(f"DevAgent failed to process task {task_id}: {e}")
             return {
                 'task_id': task_id,
                 'status': 'error',
@@ -80,33 +176,32 @@ class RefactoredDevAgent(BaseAgent):
         requirements = task.get('requirements', {})
         action = requirements.get('action', 'unknown')
         
-        logger.info(f"RefactoredDevAgent handling development task: {action}")
+        logger.info(f"DevAgent handling development task: {action}")
         
         # Store requirements for component access
         self.current_task_requirements = requirements
         
         if action == "archive":
             return await self._handle_archive_task(task_id, requirements)
+        elif action == "design_manifest":
+            return await self._handle_design_manifest_task(task_id, requirements)
         elif action == "build":
             return await self._handle_build_task(task_id, requirements)
         elif action == "deploy":
             return await self._handle_deploy_task(task_id, requirements)
         else:
-            return {
-                'task_id': task_id,
-                'status': 'error',
-                'error': f'Unknown development action: {action}'
-            }
+            # Handle technical tasks with Neo's own TaskSpec
+            return await self._handle_technical_task(task_id, requirements)
     
     async def _handle_archive_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
         """Handle archive task using VersionManager"""
         try:
             app_name = requirements.get('application', 'application')
-            app_kebab = self.code_generator.convert_to_kebab_case(app_name)
+            app_kebab = self.app_builder._to_kebab_case(app_name)
             new_version = requirements.get('version', 'unknown')
             source_dir = f"warm-boot/apps/{app_kebab}"
             
-            logger.info(f"RefactoredDevAgent handling archive task: {app_name}")
+            logger.info(f"DevAgent handling archive task: {app_name}")
             
             # Use VersionManager to archive existing version
             archive_result = await self.version_manager.archive_existing_version(
@@ -114,7 +209,7 @@ class RefactoredDevAgent(BaseAgent):
             )
             
             if archive_result['status'] == 'success':
-                logger.info(f"RefactoredDevAgent completed archive task: {task_id}")
+                logger.info(f"DevAgent completed archive task: {task_id}")
                 return {
                     'task_id': task_id,
                     'status': 'completed',
@@ -132,7 +227,7 @@ class RefactoredDevAgent(BaseAgent):
                 }
                 
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to handle archive task: {e}")
+            logger.error(f"DevAgent failed to handle archive task: {e}")
             return {
                 'task_id': task_id,
                 'status': 'error',
@@ -140,13 +235,52 @@ class RefactoredDevAgent(BaseAgent):
                 'action': 'archive'
             }
     
+    async def _handle_design_manifest_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle design manifest task using JSON-based Ollama call"""
+        try:
+            logger.info(f"{self.name} handling design manifest task: {task_id}")
+            
+            # Extract TaskSpec from requirements
+            if 'task_spec' in requirements:
+                task_spec = TaskSpec.from_dict(requirements['task_spec'])
+                logger.info(f"{self.name} using provided TaskSpec with {len(task_spec.features)} features")
+            else:
+                logger.error(f"{self.name} design manifest task missing TaskSpec")
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': 'Design manifest task requires TaskSpec',
+                    'action': 'design_manifest'
+                }
+            
+            # Generate manifest using JSON method
+            manifest = await self.app_builder.generate_manifest_json(task_spec)
+            
+            logger.info(f"{self.name} generated manifest JSON: {manifest.architecture_type} with {len(manifest.files)} files")
+            
+            return {
+                'task_id': task_id,
+                'status': 'completed',
+                'action': 'design_manifest',
+                'manifest': manifest.to_dict(),
+                'architecture_type': manifest.architecture_type,
+                'file_count': len(manifest.files)
+            }
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to handle design manifest task: {e}")
+            return {
+                'task_id': task_id,
+                'status': 'error',
+                'error': str(e),
+                'action': 'design_manifest'
+            }
+    
     async def _handle_build_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle build task using CodeGenerator and FileManager"""
+        """Handle build task using AppBuilder with manifest-first workflow"""
         try:
             app_name = requirements.get('application', 'Application')
             version = requirements.get('version', '1.0.0')
-            app_kebab = self.code_generator.convert_to_kebab_case(app_name)
-            target_directory = requirements.get('target_directory', f'warm-boot/apps/{app_kebab}/')
             features = requirements.get('features', [])
             
             # Store current run_id for use in templates
@@ -154,42 +288,111 @@ class RefactoredDevAgent(BaseAgent):
             if not self.current_run_id.startswith('run-'):
                 self.current_run_id = f"run-{self.current_run_id}"
             
-            logger.info(f"RefactoredDevAgent handling build task: {app_name} v{version}")
+            logger.info(f"{self.name} handling build task: {app_name} v{version}")
             
-            # Create target directory
-            await self.file_manager.create_directory(target_directory)
-            
-            # Generate application files using CodeGenerator
-            files = await self.code_generator.generate_application_files(
-                app_name, version, features, self.current_run_id
-            )
-            
-            # Create all files using FileManager
-            created_files = []
-            for file_info in files:
-                if file_info['type'] == 'create_file':
-                    result = await self.file_manager.create_file(
-                        file_info['file_path'], 
-                        file_info['content'],
-                        file_info.get('directory')
+            # Check if manifest is provided (new JSON workflow)
+            if 'manifest' in requirements:
+                # New JSON workflow: use provided manifest
+                logger.info(f"{self.name} using provided manifest for JSON workflow")
+                manifest = BuildManifest.from_dict(requirements['manifest'])
+                task_spec = requirements.get('task_spec')
+                if task_spec:
+                    task_spec = TaskSpec.from_dict(task_spec)
+                else:
+                    # Create TaskSpec from requirements
+                    task_spec = TaskSpec(
+                        app_name=app_name,
+                        version=version,
+                        run_id=self.current_run_id,
+                        prd_analysis=requirements.get('prd_analysis', 'Application build'),
+                        features=features or [],
+                        constraints={},
+                        success_criteria=["Application deploys successfully"]
                     )
-                    if result['status'] == 'success':
-                        created_files.append(file_info['file_path'])
+                
+                # Generate files using JSON method
+                files = await self.app_builder.generate_files_json(task_spec, manifest)
+                
+                # Create all files
+                created_files = []
+                for file_info in files:
+                    if file_info['type'] == 'create_file':
+                        result = await self.file_manager.create_file(
+                            file_info['file_path'],
+                            file_info['content'],
+                            file_info.get('directory')
+                        )
+                        if result['status'] == 'success':
+                            created_files.append(file_info['file_path'])
+                
+                logger.info(f"{self.name} created {len(created_files)} files using JSON workflow")
+                
+                return {
+                    'task_id': task_id,
+                    'status': 'completed',
+                    'action': 'build',
+                    'app_name': app_name,
+                    'version': version,
+                    'created_files': created_files,
+                    'manifest': manifest.to_dict(),
+                    'target_directory': f'warm-boot/apps/{app_name.lower().replace(" ", "-")}/'
+                }
             
-            logger.info(f"RefactoredDevAgent completed build task: {task_id}")
-            
-            return {
-                'task_id': task_id,
-                'status': 'completed',
-                'action': 'build',
-                'app_name': app_name,
-                'version': version,
-                'created_files': created_files,
-                'target_directory': target_directory
-            }
+            else:
+                # Legacy workflow: generate manifest first (keep for compatibility)
+                logger.info(f"{self.name} using legacy workflow - generating manifest first")
+                
+                # Use Max's TaskSpec if provided, otherwise create fallback
+                if 'task_spec' in requirements:
+                    # Max provided TaskSpec (business requirements)
+                    task_spec = TaskSpec.from_dict(requirements['task_spec'])
+                    logger.info(f"{self.name} using Max's TaskSpec with {len(task_spec.features)} features")
+                else:
+                    # Neo creates fallback TaskSpec (backward compatibility)
+                    task_spec = TaskSpec(
+                        app_name=app_name,
+                        version=version,
+                        run_id=self.current_run_id,
+                        prd_analysis="Team Status Dashboard, Activity Feed, Project Progress Tracking, Interactive Elements, Framework Transparency, Application Lifecycle Management",
+                        features=features or [],
+                        constraints={},
+                        success_criteria=["Application deploys successfully", "All features functional"]
+                    )
+                    logger.info(f"{self.name} created fallback TaskSpec (no Max TaskSpec provided)")
+                
+                # Build application using manifest-first workflow
+                build_result = await self.app_builder.build_from_task_spec(task_spec)
+                
+                # Log manifest for telemetry
+                logger.info(f"{self.name} generated manifest: {build_result['manifest']}")
+                
+                # Create all files
+                created_files = []
+                for file_info in build_result['files']:
+                    if file_info['type'] == 'create_file':
+                        result = await self.file_manager.create_file(
+                            file_info['file_path'], 
+                            file_info['content'],
+                            file_info.get('directory')
+                        )
+                        if result['status'] == 'success':
+                            created_files.append(file_info['file_path'])
+                
+                logger.info(f"{self.name} created {len(created_files)} files using legacy workflow")
+                
+                return {
+                    'task_id': task_id,
+                    'status': 'completed',
+                    'action': 'build',
+                    'app_name': app_name,
+                    'version': version,
+                    'created_files': created_files,
+                    'manifest': build_result['manifest'],
+                    'target_directory': f'warm-boot/apps/{app_name.lower().replace(" ", "-")}/'
+                }
             
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to handle build task: {e}")
+            logger.error(f"DevAgent failed to handle build task: {e}")
             return {
                 'task_id': task_id,
                 'status': 'error',
@@ -197,15 +400,44 @@ class RefactoredDevAgent(BaseAgent):
                 'action': 'build'
             }
     
+    async def _handle_technical_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle technical tasks using Neo's own TaskSpec generation"""
+        try:
+            logger.info(f"{self.name} handling technical task: {task_id}")
+            
+            # Create technical TaskSpec
+            task_spec = await self._create_technical_task_spec(requirements)
+            
+            # Log the technical TaskSpec for telemetry
+            logger.info(f"{self.name} generated technical TaskSpec: {task_spec.to_dict()}")
+            
+            # For now, just log the technical task (future: implement actual technical task execution)
+            return {
+                'task_id': task_id,
+                'status': 'completed',
+                'action': 'technical',
+                'task_spec': task_spec.to_dict(),
+                'message': 'Technical task processed with Neo-generated TaskSpec'
+            }
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to handle technical task: {e}")
+            return {
+                'task_id': task_id,
+                'status': 'error',
+                'error': str(e),
+                'action': 'technical'
+            }
+    
     async def _handle_deploy_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
         """Handle deploy task using DockerManager"""
         try:
             app_name = requirements.get('application', 'Application')
             version = requirements.get('version', '1.0.0')
-            app_kebab = self.code_generator.convert_to_kebab_case(app_name)
-            source = requirements.get('source', f'warm-boot/apps/{app_kebab}/')
+            app_kebab = self.app_builder._to_kebab_case(app_name)
+            source = requirements.get('source_dir', requirements.get('source', f'warm-boot/apps/{app_kebab}/'))
             
-            logger.info(f"RefactoredDevAgent handling deploy task: {app_name} v{version}")
+            logger.info(f"DevAgent handling deploy task: {app_name} v{version}")
             
             # Build Docker image using DockerManager
             build_result = await self.docker_manager.build_image(app_name, version, source)
@@ -222,7 +454,7 @@ class RefactoredDevAgent(BaseAgent):
             deploy_result = await self.docker_manager.deploy_container(app_name, version)
             
             if deploy_result['status'] == 'success':
-                logger.info(f"RefactoredDevAgent completed deploy task: {task_id}")
+                logger.info(f"DevAgent completed deploy task: {task_id}")
                 return {
                     'task_id': task_id,
                     'status': 'completed',
@@ -241,7 +473,7 @@ class RefactoredDevAgent(BaseAgent):
                 }
                 
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to handle deploy task: {e}")
+            logger.error(f"DevAgent failed to handle deploy task: {e}")
             return {
                 'task_id': task_id,
                 'status': 'error',
@@ -282,7 +514,7 @@ class RefactoredDevAgent(BaseAgent):
             }
             
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to handle code generation task: {e}")
+            logger.error(f"DevAgent failed to handle code generation task: {e}")
             return {
                 'task_id': task_id,
                 'status': 'error',
@@ -341,7 +573,7 @@ class RefactoredDevAgent(BaseAgent):
                 }
                 
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to handle Docker task: {e}")
+            logger.error(f"DevAgent failed to handle Docker task: {e}")
             return {
                 'task_id': task_id,
                 'status': 'error',
@@ -402,7 +634,7 @@ class RefactoredDevAgent(BaseAgent):
                 }
                 
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to handle version task: {e}")
+            logger.error(f"DevAgent failed to handle version task: {e}")
             return {
                 'task_id': task_id,
                 'status': 'error',
@@ -415,11 +647,11 @@ class RefactoredDevAgent(BaseAgent):
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', task.get('task_type', 'unknown'))
         
-        logger.info(f"RefactoredDevAgent handling generic task: {task_id} (type: {task_type})")
+        logger.info(f"DevAgent handling generic task: {task_id} (type: {task_type})")
         
         # Reject governance tasks - they should only be handled by Max
         if task_type == "governance":
-            logger.warning(f"RefactoredDevAgent rejecting governance task {task_id} - governance tasks should only go to Max")
+            logger.warning(f"DevAgent rejecting governance task {task_id} - governance tasks should only go to Max")
             return {
                 'task_id': task_id,
                 'status': 'rejected',
@@ -432,12 +664,12 @@ class RefactoredDevAgent(BaseAgent):
             'task_id': task_id,
             'status': 'completed',
             'action': 'generic',
-            'message': 'Generic task processed by RefactoredDevAgent'
+            'message': 'Generic task processed by DevAgent'
         }
     
     async def handle_message(self, message: AgentMessage) -> None:
         """Handle incoming messages"""
-        logger.info(f"RefactoredDevAgent received message: {message.message_type} from {message.sender}")
+        logger.info(f"DevAgent received message: {message.message_type} from {message.sender}")
         
         if message.message_type == "task_delegation":
             await self._handle_task_delegation(message)
@@ -446,7 +678,7 @@ class RefactoredDevAgent(BaseAgent):
         elif message.message_type == "task_error":
             await self._handle_task_error(message)
         else:
-            logger.info(f"RefactoredDevAgent received unknown message type: {message.message_type}")
+            logger.info(f"DevAgent received unknown message type: {message.message_type}")
     
     async def _handle_task_delegation(self, message: AgentMessage):
         """Handle task delegation messages"""
@@ -455,7 +687,7 @@ class RefactoredDevAgent(BaseAgent):
             task_id = task_payload.get('task_id', 'unknown')
             ecid = task_payload.get('ecid', 'unknown')
             
-            logger.info(f"RefactoredDevAgent received task delegation: {task_id} from {message.sender}")
+            logger.info(f"DevAgent received task delegation: {task_id} from {message.sender}")
             
             # Task already exists (created by Max), just update status to 'in_progress'
             try:
@@ -508,7 +740,7 @@ class RefactoredDevAgent(BaseAgent):
                 await self._create_documentation(task_id, result)
             
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to handle task delegation: {e}")
+            logger.error(f"DevAgent failed to handle task delegation: {e}")
             
             # Log task failure
             task_id = task_payload.get('task_id', 'unknown')
@@ -527,11 +759,11 @@ class RefactoredDevAgent(BaseAgent):
     
     async def _handle_task_acknowledgment(self, message: AgentMessage):
         """Handle task acknowledgment messages"""
-        logger.info(f"RefactoredDevAgent received task acknowledgment from {message.sender}")
+        logger.info(f"DevAgent received task acknowledgment from {message.sender}")
     
     async def _handle_task_error(self, message: AgentMessage):
         """Handle task error messages"""
-        logger.error(f"RefactoredDevAgent received task error from {message.sender}: {message.payload}")
+        logger.error(f"DevAgent received task error from {message.sender}: {message.payload}")
     
     async def _emit_developer_completion_event(self, task_id: str, ecid: str, result: Dict[str, Any]):
         """
@@ -616,7 +848,7 @@ class RefactoredDevAgent(BaseAgent):
             # Generate documentation content
             doc_content = f"""# Task Documentation: {task_id}
 
-**Processed by**: {self.name} (RefactoredDevAgent)
+**Processed by**: {self.name} (DevAgent)
 **Timestamp**: {asyncio.get_event_loop().time()}
 **Status**: {result.get('status', 'unknown')}
 
@@ -644,10 +876,10 @@ Each component handles a specific aspect of the development workflow.
             doc_file = f"{task_dir}/task-summary.md"
             await self.file_manager.create_file(doc_file, doc_content)
             
-            logger.info(f"RefactoredDevAgent created documentation: {doc_file}")
+            logger.info(f"DevAgent created documentation: {doc_file}")
             
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to create documentation: {e}")
+            logger.error(f"DevAgent failed to create documentation: {e}")
     
     async def get_component_status(self) -> Dict[str, Any]:
         """Get status of all specialized components"""
@@ -691,17 +923,17 @@ Each component handles a specific aspect of the development workflow.
             }
             
         except Exception as e:
-            logger.error(f"RefactoredDevAgent failed to get component status: {e}")
+            logger.error(f"DevAgent failed to get component status: {e}")
             return {
                 'status': 'error',
                 'error': str(e)
             }
 
 async def main():
-    """Main entry point for RefactoredDevAgent"""
+    """Main entry point for DevAgent"""
     import os
     identity = os.getenv('AGENT_ID', 'refactored_dev_agent')
-    agent = RefactoredDevAgent(identity=identity)
+    agent = DevAgent(identity=identity)
     await agent.run()
 
 if __name__ == "__main__":

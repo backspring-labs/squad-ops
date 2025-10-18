@@ -186,6 +186,145 @@ def mock_deployment_config():
         }
     }
 
+@pytest.fixture
+def sample_task_spec():
+    """Sample TaskSpec for JSON workflow testing"""
+    from agents.contracts.task_spec import TaskSpec
+    return TaskSpec(
+        app_name="TestApp",
+        version="1.0.0",
+        run_id="TEST-001",
+        prd_analysis="Test application for JSON workflow testing",
+        features=["Feature 1", "Feature 2"],
+        constraints={"framework": "vanilla_js"},
+        success_criteria=["Application loads", "No errors"]
+    )
+
+@pytest.fixture
+def sample_build_manifest():
+    """Sample BuildManifest for JSON workflow testing"""
+    from agents.contracts.build_manifest import BuildManifest
+    return BuildManifest(
+        architecture={
+            "type": "spa_web_app",
+            "framework": "vanilla_js",
+            "description": "Test application"
+        },
+        files=[
+            {
+                "path": "index.html",
+                "purpose": "Main page",
+                "dependencies": []
+            },
+            {
+                "path": "app.js",
+                "purpose": "JavaScript logic",
+                "dependencies": ["index.html"]
+            }
+        ],
+        deployment={
+            "container": "nginx:alpine",
+            "port": 80,
+            "environment": "production"
+        }
+    )
+
+@pytest.fixture
+def mock_app_builder():
+    """Mock AppBuilder for testing"""
+    from agents.roles.dev.app_builder import AppBuilder
+    mock_llm_client = MagicMock()
+    app_builder = AppBuilder(mock_llm_client)
+    
+    # Mock the LLM call methods
+    app_builder._call_ollama_json = MagicMock()
+    app_builder.generate_manifest_json = MagicMock()
+    app_builder.generate_files_json = MagicMock()
+    app_builder.build_from_task_spec = MagicMock()
+    
+    return app_builder
+
+@pytest.fixture
+def mock_dev_agent():
+    """Mock DevAgent for testing"""
+    from agents.roles.dev.agent import DevAgent
+    agent = DevAgent("test-dev-agent")
+    
+    # Mock components
+    agent.app_builder = MagicMock()
+    agent.file_manager = MagicMock()
+    agent.docker_manager = MagicMock()
+    
+    return agent
+
+@pytest.fixture
+def mock_lead_agent():
+    """Mock LeadAgent for testing"""
+    from agents.roles.lead.agent import LeadAgent
+    agent = LeadAgent("test-lead-agent")
+    
+    # Mock messaging components
+    agent.send_message = MagicMock()
+    agent.update_task_status = MagicMock()
+    
+    return agent
+
+@pytest.fixture
+def mock_ollama_json_response():
+    """Mock Ollama JSON response for testing"""
+    return {
+        "architecture": {
+            "type": "spa_web_app",
+            "framework": "vanilla_js",
+            "description": "Test application"
+        },
+        "files": [
+            {
+                "path": "index.html",
+                "purpose": "Main HTML page",
+                "dependencies": []
+            },
+            {
+                "path": "app.js",
+                "purpose": "JavaScript application logic",
+                "dependencies": ["index.html"]
+            }
+        ],
+        "deployment": {
+            "container": "nginx:alpine",
+            "port": 80,
+            "environment": "production"
+        }
+    }
+
+@pytest.fixture
+def mock_files_json_response():
+    """Mock files JSON response for testing"""
+    return {
+        "files": [
+            {
+                "path": "index.html",
+                "content": "<!DOCTYPE html>\n<html>\n<head><title>Test App</title></head>\n<body><h1>Hello World</h1></body>\n</html>"
+            },
+            {
+                "path": "app.js",
+                "content": "console.log('Hello from Test App');"
+            },
+            {
+                "path": "styles.css",
+                "content": "body { font-family: Arial, sans-serif; }"
+            },
+            {
+                "path": "nginx.conf",
+                "content": "server {\n    listen 80;\n    location / {\n        root /usr/share/nginx/html;\n        index index.html;\n    }\n}"
+            },
+            {
+                "path": "Dockerfile",
+                "content": "FROM nginx:alpine\nCOPY . /usr/share/nginx/html/\nEXPOSE 80"
+            }
+        ]
+    }
+
 # Pytest configuration
 def pytest_configure(config):
     """Configure pytest with custom markers"""
@@ -204,6 +343,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "slow: mark test as slow running"
     )
+    config.addinivalue_line(
+        "markers", "smoke: mark test as smoke test"
+    )
 
 def pytest_collection_modifyitems(config, items):
     """Modify test collection to add markers based on test location"""
@@ -221,3 +363,7 @@ def pytest_collection_modifyitems(config, items):
         # Mark slow tests
         if "slow" in item.name or "performance" in item.name:
             item.add_marker(pytest.mark.slow)
+        
+        # Mark smoke tests
+        if "smoke" in str(item.fspath):
+            item.add_marker(pytest.mark.smoke)

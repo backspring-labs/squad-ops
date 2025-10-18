@@ -79,6 +79,18 @@ class BaseAgent(ABC):
         self.redis_url = os.getenv('REDIS_URL', 'redis://redis:6379')
         self.task_api_url = os.getenv("TASK_API_URL", "http://task-api:8001")
         
+        # Initialize LLM client
+        self.llm_client = self._initialize_llm_client()
+        
+        # Initialize communication log for telemetry
+        self.communication_log = []
+    
+    def _initialize_llm_client(self):
+        """Initialize LLM client from router"""
+        from agents.llm.router import LLMRouter
+        router = LLMRouter.from_config('config/llm_config.yaml')
+        return router.get_default_client()
+        
     async def initialize(self):
         """Initialize agent connections"""
         try:
@@ -333,19 +345,29 @@ class BaseAgent(ABC):
         return responses.get(self.agent_type.lower(), f"[MOCK RESPONSE] {prompt[:50]}...")
     
     async def llm_response(self, prompt: str, context: str = "") -> str:
-        """Generate LLM response using Ollama or fallback to mock"""
+        """Execute LLM call via configured provider"""
         try:
-            # Check if we should use local LLM
-            use_local_llm = os.getenv('USE_LOCAL_LLM', 'false').lower() == 'true'
-            model_name = os.getenv('AGENT_MODEL', '')
+            response = await self.llm_client.complete(
+                prompt=prompt,
+                temperature=0.7,
+                max_tokens=4000
+            )
             
-            if use_local_llm and model_name:
-                return await self._ollama_response(prompt, context, model_name)
-            else:
-                return await self.mock_llm_response(prompt, context)
+            # Log to communication log for telemetry
+            from datetime import datetime
+            self.communication_log.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'agent': self.name,
+                'message_type': 'llm_reasoning',
+                'description': f"LLM {context}: {response[:500]}...",
+                'ecid': getattr(self, 'current_ecid', None),
+                'full_response': response
+            })
+            
+            return response
         except Exception as e:
-            logger.warning(f"LLM call failed, falling back to mock: {e}")
-            return await self.mock_llm_response(prompt, context)
+            logger.error(f"{self.name} LLM call failed: {e}")
+            raise
     
     async def _ollama_response(self, prompt: str, context: str, model: str) -> str:
         """Generate response using Ollama API"""

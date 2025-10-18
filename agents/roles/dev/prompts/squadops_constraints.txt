@@ -1,0 +1,34 @@
+SQUADOPS PLATFORM REQUIREMENTS:
+
+Framework:
+- MUST use vanilla JavaScript (no React, Vue, Angular, or other frameworks)
+- Pure HTML, CSS, and vanilla JavaScript only
+
+Deployment:
+- Container: nginx:alpine
+- Target subpath: /hello-squad/
+- MUST include nginx.conf for subpath routing configuration
+- Nginx must strip /hello-squad/ prefix for static assets
+- Nginx must redirect root to /hello-squad/
+
+API Integration:
+- Agent Status endpoint: http://localhost:8080/agents/status
+- Health Check endpoint: http://localhost:8080/health
+- Display real framework version from environment variables
+- Show actual agent status from health APIs
+
+Required Files (Minimum):
+- MUST include nginx.conf (for deployment)
+- Standard web app needs: HTML entry point, CSS, JavaScript
+
+Output Format:
+- HTML: Must start with <!DOCTYPE html>
+- HTML: Use relative paths (no base href tags)
+- No markdown code block markers in any file
+- Include footer: "v$version | WarmBoot Run: $run_id"
+
+Quality Standards:
+- Modern, professional design and UX
+- Responsive and accessible
+- Clean, production-ready code
+- Proper error handling

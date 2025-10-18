@@ -1,0 +1,8 @@
+default_provider: "ollama"
+providers:
+  ollama:
+    url: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+    model: "${AGENT_MODEL:-qwen2.5:7b}"
+    timeout: 60
+
+
