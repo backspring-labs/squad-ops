@@ -90,14 +90,19 @@ class TestCoreWorkflows:
         # Mock the database pool to avoid connection issues
         agent.db_pool = mock_database
         
+        # Mock RabbitMQ channel to avoid connection issues
+        agent.channel = AsyncMock()
+        agent.channel.default_exchange = AsyncMock()
+        agent.channel.default_exchange.publish = AsyncMock()
+        
         # Test task processing (this method exists)
         result = await agent.process_task(sample_task)
         assert result is not None
         assert 'status' in result
         
         # Test escalation (this method exists)
-        escalation_result = await agent.escalate_task(sample_task['task_id'], sample_task)
-        assert escalation_result is not None
+        await agent.escalate_task(sample_task['task_id'], sample_task)
+        # escalate_task doesn't return a value, it just logs activity
     
     @pytest.mark.regression
     @pytest.mark.asyncio
@@ -146,20 +151,20 @@ class TestCoreWorkflows:
     
     @pytest.mark.regression
     @pytest.mark.asyncio
-    async def test_governance_decision_workflow(self):
+    async def test_governance_decision_workflow(self, mock_database):
         """Test governance decision making workflow"""
         agent = LeadAgent("test-lead-agent")
         
         # Mock the database pool to avoid connection issues
-        agent.db_pool = AsyncMock()
+        agent.db_pool = mock_database
         
         # Test escalation workflow
-        escalation_result = await agent.escalate_task("test-task-001", {
+        await agent.escalate_task("test-task-001", {
             'task_id': 'test-task-001',
             'complexity': 0.8,
             'priority': 'HIGH'
         })
-        assert escalation_result is not None
+        # escalate_task doesn't return a value, it just logs activity
     
     @pytest.mark.regression
     @pytest.mark.asyncio
@@ -197,12 +202,17 @@ class TestCoreWorkflows:
     
     @pytest.mark.regression
     @pytest.mark.asyncio
-    async def test_concurrent_task_processing(self, sample_task):
+    async def test_concurrent_task_processing(self, sample_task, mock_database):
         """Test concurrent task processing"""
         agent = LeadAgent("test-lead-agent")
         
         # Mock the database pool to avoid connection issues
-        agent.db_pool = AsyncMock()
+        agent.db_pool = mock_database
+        
+        # Mock RabbitMQ channel to avoid connection issues
+        agent.channel = AsyncMock()
+        agent.channel.default_exchange = AsyncMock()
+        agent.channel.default_exchange.publish = AsyncMock()
         
         # Test that process_task can handle concurrent calls
         tasks = [sample_task.copy() for _ in range(3)]
@@ -291,9 +301,9 @@ class TestCoreWorkflows:
         dev_agent = DevAgent("test-dev-agent")
         
         # Mock AppBuilder methods
-        dev_agent.app_builder = MagicMock()
-        dev_agent.file_manager = MagicMock()
-        dev_agent.docker_manager = MagicMock()
+        dev_agent.app_builder = AsyncMock()
+        dev_agent.file_manager = AsyncMock()
+        dev_agent.docker_manager = AsyncMock()
         
         # Test build task with manifest (JSON workflow)
         build_task = {
@@ -310,9 +320,9 @@ class TestCoreWorkflows:
             }
         }
         
-        dev_agent.app_builder.generate_files_json.return_value = [
+        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=[
             {"file_path": "index.html", "content": "<html>Test</html>", "type": "create_file"}
-        ]
+        ])
         
         result = await dev_agent._handle_build_task("build-task-001", build_task["requirements"])
         

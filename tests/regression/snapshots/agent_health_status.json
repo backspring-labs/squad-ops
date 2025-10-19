@@ -1,0 +1,20 @@
+{
+  "max": {
+    "name": "test-lead-agent",
+    "agent_type": "governance",
+    "reasoning_style": "governance",
+    "status": "active",
+    "has_uptime": false,
+    "has_message_queue_size": false,
+    "has_task_history_size": false
+  },
+  "neo": {
+    "name": "test-dev-agent",
+    "agent_type": "code",
+    "reasoning_style": "deductive",
+    "status": "active",
+    "has_uptime": false,
+    "has_message_queue_size": false,
+    "has_task_history_size": false
+  }
+}
