@@ -53,23 +53,23 @@ class MockOllamaResponse:
         return {
             "files": [
                 {
-                    "path": "index.html",
+                    "file_path": "index.html",
                     "content": "<!DOCTYPE html>\n<html>\n<head><title>Test App</title></head>\n<body><h1>Hello World</h1></body>\n</html>"
                 },
                 {
-                    "path": "app.js",
+                    "file_path": "app.js",
                     "content": "console.log('Hello from Test App');"
                 },
                 {
-                    "path": "styles.css", 
+                    "file_path": "styles.css", 
                     "content": "body { font-family: Arial, sans-serif; }"
                 },
                 {
-                    "path": "nginx.conf",
+                    "file_path": "nginx.conf",
                     "content": "server {\n    listen 80;\n    location / {\n        root /usr/share/nginx/html;\n        index index.html;\n    }\n}"
                 },
                 {
-                    "path": "Dockerfile",
+                    "file_path": "Dockerfile",
                     "content": "FROM nginx:alpine\nCOPY . /usr/share/nginx/html/\nEXPOSE 80"
                 }
             ]

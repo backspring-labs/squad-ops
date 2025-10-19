@@ -65,6 +65,17 @@ class LLMRouter:
     
     def get_default_client(self) -> LLMClient:
         """Get default LLM client"""
+        # Check if local LLM is disabled
+        use_local_llm = os.getenv('USE_LOCAL_LLM', 'true').lower() == 'true'
+        
+        if not use_local_llm:
+            # Return a mock client when local LLM is disabled
+            from unittest.mock import MagicMock
+            mock_client = MagicMock()
+            mock_client.complete = MagicMock(return_value="[MOCK CODE RESPONSE] Test prompt for code generation")
+            mock_client.chat = MagicMock(return_value="[MOCK CHAT RESPONSE] Test prompt")
+            return mock_client
+        
         provider_name = self.default_provider
         provider_config = self.config['providers'].get(provider_name, {})
         

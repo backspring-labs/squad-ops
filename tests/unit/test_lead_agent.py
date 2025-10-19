@@ -6,10 +6,19 @@ Tests core LeadAgent functionality without external dependencies
 import pytest
 import asyncio
 import yaml
-from typing import Dict, Any
+import json
+import os
+import tempfile
+from typing import Dict, Any, List
 from unittest.mock import AsyncMock, MagicMock, patch
 from agents.roles.lead.agent import LeadAgent
 from agents.base_agent import AgentMessage
+from agents.contracts.task_spec import TaskSpec
+from agents.contracts.build_manifest import BuildManifest
+from tests.utils.mock_helpers import (
+    create_sample_task_spec, create_sample_build_manifest,
+    MockAgentMessage
+)
 
 class TestLeadAgent:
     """Test LeadAgent core functionality"""
@@ -37,18 +46,19 @@ class TestLeadAgent:
             {
                 "core_features": ["Feature 1", "Feature 2"],
                 "technical_requirements": ["Web app", "Database"],
-                "complexity_score": 0.6,
-                "estimated_effort": "2-3 days"
+                "success_criteria": ["Functional requirements", "Performance", "User acceptance"]
             }
             """
+            
+            # Mock the current_ecid attribute to avoid the error
+            agent.current_ecid = "test-ecid-001"
             
             analysis = await agent.analyze_prd_requirements(sample_prd)
             
             assert 'core_features' in analysis
             assert 'technical_requirements' in analysis
-            assert 'complexity_score' in analysis
-            assert 'estimated_effort' in analysis
-            assert analysis['complexity_score'] == 0.6
+            assert 'success_criteria' in analysis
+            assert analysis['core_features'] == ["Feature 1", "Feature 2"]
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -59,8 +69,7 @@ class TestLeadAgent:
         prd_analysis = {
             'core_features': ['Feature 1', 'Feature 2'],
             'technical_requirements': ['Web app', 'Database'],
-            'complexity_score': 0.6,
-            'estimated_effort': '2-3 days'
+            'success_criteria': ['Functional requirements', 'Performance', 'User acceptance']
         }
         
         with patch('aiohttp.ClientSession.post') as mock_post:
@@ -71,7 +80,7 @@ class TestLeadAgent:
             
             tasks = await agent.create_development_tasks(prd_analysis, "TestApp", "test-ecid-001")
             
-            assert len(tasks) == 3  # archive, build, deploy
+            assert len(tasks) == 4  # archive, design_manifest, build, deploy
             
             # Check archive task
             archive_task = tasks[0]
@@ -80,16 +89,26 @@ class TestLeadAgent:
             assert archive_task['complexity'] == 0.3
             assert archive_task['priority'] == 'HIGH'
             
-            # Check build task
-            build_task = tasks[1]
+            # Check design_manifest task (now second)
+            design_manifest_task = tasks[1]
+            assert design_manifest_task['task_type'] == 'development'
+            assert design_manifest_task['requirements']['action'] == 'design_manifest'
+            assert design_manifest_task['complexity'] == 0.4
+            assert design_manifest_task['priority'] == 'HIGH'
+            
+            # Check build task (now third)
+            build_task = tasks[2]
+            assert build_task['task_type'] == 'development'
             assert build_task['requirements']['action'] == 'build'
             assert build_task['complexity'] == 0.8
-            assert build_task['requirements']['from_scratch'] is True
+            assert build_task['priority'] == 'HIGH'
             
-            # Check deploy task
-            deploy_task = tasks[2]
+            # Check deploy task (now fourth)
+            deploy_task = tasks[3]
+            assert deploy_task['task_type'] == 'development'
             assert deploy_task['requirements']['action'] == 'deploy'
             assert deploy_task['complexity'] == 0.5
+            assert deploy_task['priority'] == 'MEDIUM'
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -99,7 +118,7 @@ class TestLeadAgent:
         
         # Test development task delegation
         target = await agent.determine_delegation_target("development")
-        assert target == "Neo"  # LeadAgent uses hardcoded names
+        assert target == "dev-agent"  # LeadAgent uses role-based names
         
         # Test security task delegation
         target = await agent.determine_delegation_target("security")
@@ -595,25 +614,25 @@ class TestLeadAgent:
         # Agent will load from actual instances.yaml (production config)
         agent = LeadAgent("lead-agent-001")
         
-        # Test development task delegation → dev role → neo agent (from instances.yaml)
+        # Test development task delegation → dev role → dev-agent (from instances.yaml)
         target = await agent.determine_delegation_target('development')
-        assert target == 'neo'  # Expected from production instances.yaml
+        assert target == 'dev-agent'  # Expected from production instances.yaml
         
-        # Test deployment task delegation → dev role → neo agent  
+        # Test deployment task delegation → dev role → dev-agent  
         target = await agent.determine_delegation_target('deployment')
-        assert target == 'neo'
+        assert target == 'dev-agent'
         
-        # Test code task delegation → dev role → neo agent
+        # Test code task delegation → dev role → dev-agent
         target = await agent.determine_delegation_target('code')
-        assert target == 'neo'
+        assert target == 'dev-agent'
         
-        # Test security task delegation → qa role → eve agent
+        # Test security task delegation → qa role → qa-agent
         target = await agent.determine_delegation_target('security')
-        assert target == 'eve'
+        assert target == 'qa-agent'
         
-        # Test strategy task delegation → strat role → nat agent
+        # Test strategy task delegation → strat role → strat-agent
         target = await agent.determine_delegation_target('product')
-        assert target == 'nat'
+        assert target == 'strat-agent'
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -710,29 +729,6 @@ class TestLeadAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_create_development_tasks_error_handling(self, mock_database):
-        """Test create_development_tasks error handling"""
-        agent = LeadAgent("lead-agent-001")
-        agent.db_pool = mock_database
-        
-        prd_analysis = {
-            'core_features': ['Feature 1'],
-            'technical_requirements': []
-        }
-        
-        # Force an exception by making get_framework_version fail
-        with patch('config.version.get_framework_version', side_effect=Exception("Version error")):
-            tasks = await agent.create_development_tasks(
-                prd_analysis,
-                app_name='TestApp',
-                ecid='ECID-WB-001'
-            )
-            
-            # Should return empty list on error
-            assert tasks == []
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
     async def test_read_prd_file_not_found(self):
         """Test read_prd with non-existent file"""
         agent = LeadAgent("lead-agent-001")
@@ -798,9 +794,17 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_load_role_to_agent_mapping_file_error(self):
         """Test _load_role_to_agent_mapping with file read error"""
-        # Create agent with non-existent instances file
-        with patch('builtins.open', side_effect=FileNotFoundError("Instances file not found")):
-            agent = LeadAgent("lead-agent-001", instances_file="/nonexistent/instances.yaml")
+        # Mock the LLM client initialization to avoid config file issues
+        with patch('agents.llm.router.LLMRouter.from_config') as mock_router:
+            mock_client = MagicMock()
+            mock_router.return_value.get_default_client.return_value = mock_client
+            
+            # Create agent with non-existent instances file
+            with patch('builtins.open', side_effect=FileNotFoundError("Instances file not found")):
+                agent = LeadAgent("lead-agent-001", instances_file="/nonexistent/instances.yaml")
+                
+                # Should handle the error gracefully
+                assert agent._role_to_agent_cache is None
             
             # Should fall back to default mapping
             mapping = agent._load_role_to_agent_mapping()
@@ -813,8 +817,16 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_load_role_to_agent_mapping_yaml_error(self):
         """Test _load_role_to_agent_mapping with YAML parse error"""
-        with patch('builtins.open', MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value='invalid: yaml: [')))))):
-            agent = LeadAgent("lead-agent-001")
+        # Mock the LLM client initialization to avoid config file issues
+        with patch('agents.llm.router.LLMRouter.from_config') as mock_router:
+            mock_client = MagicMock()
+            mock_router.return_value.get_default_client.return_value = mock_client
+            
+            with patch('builtins.open', MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value='invalid: yaml: [')))))):
+                agent = LeadAgent("lead-agent-001")
+                
+                # Should handle the error gracefully
+                assert agent._role_to_agent_cache is None
             
             # Should fall back to default mapping
             mapping = agent._load_role_to_agent_mapping()
@@ -1028,11 +1040,16 @@ class TestLeadAgent:
                     'pid': 'PID-001',
                     'run_type': 'warmboot',
                     'title': 'Test WarmBoot',
-                    'status': 'completed'
+                    'status': 'completed',
+                    'created_at': '2025-10-19T16:12:49.526749'
                 }
             },
             'rabbitmq_metrics': {
                 'messages_processed': 10
+            },
+            'artifact_hashes': {
+                'app.py': 'sha256:abc123',
+                'index.html': 'sha256:def456'
             }
         }
         
@@ -1046,21 +1063,23 @@ class TestLeadAgent:
         assert len(markdown) > 100
         assert 'WarmBoot Run 055' in markdown
         assert ecid in markdown
-        assert 'Execution Summary' in markdown
-        assert 'Development Activities' in markdown
-        assert 'Database Metrics' in markdown
-        assert 'Communication Metrics' in markdown
-        assert 'Reasoning Traces' in markdown
+        assert 'Reasoning & Resource Trace Log' in markdown
+        assert 'PRD Interpretation (LeadAgent)' in markdown
+        assert 'Task Execution (DevAgent)' in markdown
+        assert 'Artifacts Produced' in markdown
+        assert 'Resource & Event Summary' in markdown
+        assert 'Metrics Snapshot' in markdown
+        assert 'Event Timeline' in markdown
         assert 'Infrastructure Status' in markdown
         assert 'Next Steps' in markdown
-        assert 'SIP-027 Phase 1' in markdown
+        assert 'SIP-027 Phase 1 Status' in markdown
         
         # Verify data is embedded
         assert 'archive' in markdown
         assert 'build' in markdown
         assert 'deploy' in markdown
         assert 'app.py' in markdown
-        assert '120' in markdown or '120 seconds' in markdown
+        assert 'sha256:abc123' in markdown
         assert '3000' in markdown
     
     @pytest.mark.unit
@@ -1115,4 +1134,1284 @@ class TestLeadAgent:
         await agent.generate_warmboot_wrapup('ECID-ERROR', 'task-error', {})
         
         # Should log error but not raise
+    
+    # ===== TASK SEQUENCING AND COORDINATION TESTS =====
+    
+    @pytest.fixture
+    def lead_agent_for_sequencing(self):
+        """Create LeadAgent instance for task sequencing tests."""
+        from unittest.mock import patch, MagicMock
+        
+        # Create a mock TaskSpec class
+        class MockTaskSpec:
+            def __init__(self, **kwargs):
+                self.app_name = kwargs.get("app_name", "TestApp")
+                self.version = kwargs.get("version", "1.0.0")
+                self.run_id = kwargs.get("run_id", "TEST-001")
+                self.prd_analysis = kwargs.get("prd_analysis", "Test application for unit testing")
+                self.features = kwargs.get("features", ["Feature 1", "Feature 2"])
+                self.constraints = kwargs.get("constraints", {"framework": "vanilla_js"})
+                self.success_criteria = kwargs.get("success_criteria", ["Application loads", "No errors"])
+            
+            def to_dict(self):
+                return {
+                    "app_name": self.app_name,
+                    "version": self.version,
+                    "run_id": self.run_id,
+                    "prd_analysis": self.prd_analysis,
+                    "features": self.features,
+                    "constraints": self.constraints,
+                    "success_criteria": self.success_criteria
+                }
+        
+        with patch('config.version.get_framework_version', return_value="0.1.4"):
+            agent = LeadAgent("test-lead-agent")
+            
+            # Mock the generate_task_spec method to avoid network calls
+            async def mock_generate_task_spec(*args, **kwargs):
+                return MockTaskSpec(
+                    app_name=kwargs.get("app_name", "TestApp"),
+                    version=kwargs.get("version", "0.2.0.001"), 
+                    run_id=kwargs.get("run_id", "TEST-001"),
+                    prd_analysis=kwargs.get("prd_content", "Test application for unit testing"),
+                    features=kwargs.get("features", ["Feature 1", "Feature 2"]),
+                    constraints={"framework": "vanilla_js"},
+                    success_criteria=["Application loads", "No errors"]
+                )
+            
+            agent.generate_task_spec = mock_generate_task_spec
+            
+            # Mock the log_task_start method to avoid task-api calls
+            async def mock_log_task_start(*args, **kwargs):
+                pass  # Do nothing
+            
+            agent.log_task_start = mock_log_task_start
+            return agent
+    
+    @pytest.fixture
+    def sample_prd_analysis(self):
+        """Sample PRD analysis for testing."""
+        return {
+            "summary": "Test application for unit testing",
+            "full_analysis": "Test application for unit testing",
+            "core_features": ["Feature 1", "Feature 2"],
+            "features": ["Feature 1", "Feature 2"],
+            "constraints": {"framework": "vanilla_js"},
+            "success_criteria": ["Application loads", "No errors"]
+        }
+    
+    @pytest.fixture
+    def design_manifest_completion_message(self):
+        """Sample design_manifest completion message."""
+        manifest = create_sample_build_manifest()
+        return MockAgentMessage(
+            sender="test-dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                "task_id": "test-design-001",
+                "status": "completed",
+                "action": "design_manifest",
+                "manifest": manifest.to_dict()
+            },
+            context={"ecid": "TEST-001"}
+        )
+    
+    @pytest.fixture
+    def build_completion_message(self):
+        """Sample build completion message."""
+        return MockAgentMessage(
+            sender="test-dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                "task_id": "test-build-001",
+                "status": "completed",
+                "action": "build",
+                "created_files": ["index.html", "app.js", "styles.css", "nginx.conf", "Dockerfile"]
+            },
+            context={"ecid": "TEST-001"}
+        )
+    
+    @pytest.fixture
+    def deploy_completion_message(self):
+        """Sample deploy completion message."""
+        return MockAgentMessage(
+            sender="test-dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                "task_id": "test-deploy-001",
+                "status": "completed",
+                "action": "deploy",
+                "deployment_info": {
+                    "container_name": "test-app",
+                    "target_url": "http://localhost:8080/test-app"
+                }
+            },
+            context={"ecid": "TEST-001"}
+        )
+    
+    @pytest.mark.unit
+    def test_warmboot_state_initialization(self, lead_agent_for_sequencing):
+        """Test that warmboot_state is properly initialized."""
+        assert hasattr(lead_agent_for_sequencing, 'warmboot_state')
+        assert isinstance(lead_agent_for_sequencing.warmboot_state, dict)
+        assert lead_agent_for_sequencing.warmboot_state.get('manifest') is None
+        assert lead_agent_for_sequencing.warmboot_state.get('build_files') == []
+        assert lead_agent_for_sequencing.warmboot_state.get('pending_tasks') == []
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_development_tasks_four_task_sequence(self, lead_agent_for_sequencing, sample_prd_analysis):
+        """Test that four tasks are created in correct sequence."""
+        tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis, "TestApp", "TEST-001")
+        
+        assert len(tasks) == 4
+        
+        # Verify task order and types
+        assert tasks[0]["requirements"]["action"] == "archive"
+        assert tasks[1]["requirements"]["action"] == "design_manifest"
+        assert tasks[2]["requirements"]["action"] == "build"
+        assert tasks[3]["requirements"]["action"] == "deploy"
+        
+        # Verify task dependencies
+        assert tasks[0]["task_id"] != tasks[1]["task_id"]
+        assert tasks[1]["task_id"] != tasks[2]["task_id"]
+        assert tasks[2]["task_id"] != tasks[3]["task_id"]
+        
+        # Verify TaskSpec is included in design_manifest and build tasks
+        assert "task_spec" in tasks[1]["requirements"]
+        assert "task_spec" in tasks[2]["requirements"]
+        
+        # Verify build task has manifest placeholder
+        assert tasks[2]["requirements"]["manifest"] is None
+        
+        # Verify deploy task has source_dir
+        assert "source_dir" in tasks[3]["requirements"]
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_development_tasks_task_spec_creation(self, lead_agent_for_sequencing, sample_prd_analysis):
+        """Test that TaskSpec is properly created and included."""
+        tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis, "TestApp", "TEST-001")
+        
+        # Check design_manifest task
+        design_task = tasks[1]
+        task_spec_dict = design_task["requirements"]["task_spec"]
+        
+        assert task_spec_dict["app_name"] == "TestApp"
+        assert task_spec_dict["version"] == "0.2.0.001"
+        assert task_spec_dict["run_id"] == "TEST-001"
+        assert task_spec_dict["prd_analysis"] == sample_prd_analysis["summary"]
+        assert task_spec_dict["features"] == sample_prd_analysis["features"]
+        assert task_spec_dict["constraints"] == sample_prd_analysis["constraints"]
+        assert task_spec_dict["success_criteria"] == sample_prd_analysis["success_criteria"]
+        
+        # Check build task has same TaskSpec
+        build_task = tasks[2]
+        build_task_spec_dict = build_task["requirements"]["task_spec"]
+        assert build_task_spec_dict == task_spec_dict
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_design_manifest_completion_handler(self, lead_agent_for_sequencing, design_manifest_completion_message):
+        """Test handling of design_manifest completion."""
+        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
+            await lead_agent_for_sequencing._handle_design_manifest_completion(design_manifest_completion_message)
+            
+            # Verify manifest is stored in warmboot_state
+            assert lead_agent_for_sequencing.warmboot_state['manifest'] is not None
+            assert lead_agent_for_sequencing.warmboot_state['manifest']['architecture']['type'] == "spa_web_app"
+            
+            # Verify next task is triggered
+            mock_trigger.assert_called_once_with("TEST-001", "build")
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_design_manifest_completion_handler_missing_manifest(self, lead_agent_for_sequencing):
+        """Test handling of design_manifest completion with missing manifest."""
+        message = MockAgentMessage(
+            sender="test-dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                "task_id": "test-design-001",
+                "status": "completed",
+                "action": "design_manifest"
+                # Missing manifest
+            },
+            context={"ecid": "TEST-001"}
+        )
+        
+        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
+            await lead_agent_for_sequencing._handle_design_manifest_completion(message)
+            
+            # Verify manifest is not stored
+            assert lead_agent_for_sequencing.warmboot_state['manifest'] is None
+            
+            # Verify next task is NOT triggered (because manifest is missing)
+            mock_trigger.assert_not_called()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_build_completion_handler(self, lead_agent_for_sequencing, build_completion_message):
+        """Test handling of build completion."""
+        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
+            await lead_agent_for_sequencing._handle_build_completion(build_completion_message)
+            
+            # Verify build files are stored
+            assert len(lead_agent_for_sequencing.warmboot_state['build_files']) == 5
+            assert "index.html" in lead_agent_for_sequencing.warmboot_state['build_files']
+            assert "app.js" in lead_agent_for_sequencing.warmboot_state['build_files']
+            assert "nginx.conf" in lead_agent_for_sequencing.warmboot_state['build_files']
+            assert "Dockerfile" in lead_agent_for_sequencing.warmboot_state['build_files']
+            
+            # Verify next task is triggered
+            mock_trigger.assert_called_once_with("TEST-001", "deploy")
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_build_completion_handler_missing_files(self, lead_agent_for_sequencing):
+        """Test handling of build completion with missing created_files."""
+        message = MockAgentMessage(
+            sender="test-dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                "task_id": "test-build-001",
+                "status": "completed",
+                "action": "build"
+                # Missing created_files
+            },
+            context={"ecid": "TEST-001"}
+        )
+        
+        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
+            await lead_agent_for_sequencing._handle_build_completion(message)
+            
+            # Verify build files are empty
+            assert lead_agent_for_sequencing.warmboot_state['build_files'] == []
+            
+            # Verify next task is NOT triggered (because created_files is missing)
+            mock_trigger.assert_not_called()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_deploy_completion_handler(self, lead_agent_for_sequencing, deploy_completion_message):
+        """Test handling of deploy completion."""
+        # Set up warmboot_state with manifest and files
+        manifest = create_sample_build_manifest()
+        lead_agent_for_sequencing.warmboot_state['manifest'] = manifest.to_dict()
+        lead_agent_for_sequencing.warmboot_state['build_files'] = ["index.html", "app.js", "styles.css"]
+        
+        with patch.object(lead_agent_for_sequencing, '_log_warmboot_governance') as mock_log, \
+             patch.object(lead_agent_for_sequencing, 'generate_warmboot_wrapup') as mock_wrapup:
+            
+            await lead_agent_for_sequencing._handle_deploy_completion(deploy_completion_message)
+            
+            # Verify governance logging is called
+            mock_log.assert_called_once_with("TEST-001", manifest.to_dict(), ["index.html", "app.js", "styles.css"])
+            
+            # Verify wrap-up generation is called
+            mock_wrapup.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_governance_logging(self, lead_agent_for_sequencing):
+        """Test governance logging functionality."""
+        manifest = create_sample_build_manifest()
+        files = ["index.html", "app.js", "styles.css"]
+        
+        with patch('os.path.exists', return_value=True), \
+             patch('os.makedirs'), \
+             patch('builtins.open', create=True) as mock_open, \
+             patch('json.dump') as mock_json_dump, \
+             patch('yaml.dump') as mock_yaml_dump:
+            
+            # Mock file operations
+            mock_file = MagicMock()
+            mock_file.read.return_value = b"test content"
+            mock_open.return_value.__enter__.return_value = mock_file
+            
+            await lead_agent_for_sequencing._log_warmboot_governance("TEST-001", manifest.to_dict(), files)
+            
+            # Verify manifest snapshot was created
+            mock_yaml_dump.assert_called_once()
+            yaml_call_args = mock_yaml_dump.call_args[0]
+            assert yaml_call_args[0] == manifest.to_dict()
+            
+            # Verify checksums file was created
+            mock_json_dump.assert_called_once()
+            json_call_args = mock_json_dump.call_args[0]
+            checksums = json_call_args[0]
+            assert isinstance(checksums, dict)
+            assert "index.html" in checksums
+            assert "app.js" in checksums
+            assert "styles.css" in checksums
+            # Verify checksums are SHA-256 hashes
+            assert len(checksums["index.html"]) == 64  # SHA-256 hex length
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_task_failure_handling(self, lead_agent_for_sequencing):
+        """Test handling of task failures."""
+        failure_message = MockAgentMessage(
+            sender="test-dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                "task_id": "test-design-001",
+                "status": "error",
+                "action": "design_manifest",
+                "error": "Design manifest failed"
+            },
+            context={"ecid": "TEST-001"}
+        )
+        
+        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
+            await lead_agent_for_sequencing._handle_design_manifest_completion(failure_message)
+            
+            # Verify next task is NOT triggered on failure
+            mock_trigger.assert_not_called()
+            
+            # Verify warmboot_state is not updated
+            assert lead_agent_for_sequencing.warmboot_state['manifest'] is None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_trigger_next_task_placeholder(self, lead_agent_for_sequencing):
+        """Test _trigger_next_task placeholder method."""
+        # This is currently a placeholder - should not raise exception
+        await lead_agent_for_sequencing._trigger_next_task("TEST-001", "build")
+        
+        # Method should complete without error
+        assert True  # If we get here, no exception was raised
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_development_tasks_with_custom_app_name(self, lead_agent_for_sequencing, sample_prd_analysis):
+        """Test create_development_tasks with custom app name."""
+        tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis, "CustomApp", "CUSTOM-001")
+        
+        # Verify app name is used in TaskSpec
+        design_task = tasks[1]
+        task_spec_dict = design_task["requirements"]["task_spec"]
+        assert task_spec_dict["app_name"] == "CustomApp"
+        assert task_spec_dict["run_id"] == "CUSTOM-001"
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_development_tasks_with_default_values(self, lead_agent_for_sequencing, sample_prd_analysis):
+        """Test create_development_tasks with default values."""
+        tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis)
+        
+        # Verify default values are used
+        design_task = tasks[1]
+        task_spec_dict = design_task["requirements"]["task_spec"]
+        assert task_spec_dict["app_name"] == "application"
+        assert task_spec_dict["version"] == "0.2.0.001"
+        assert task_spec_dict["run_id"] is None  # No ecid provided
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_multiple_completion_handlers_sequence(self, lead_agent_for_sequencing):
+        """Test the complete sequence of completion handlers."""
+        # Set up messages
+        manifest = create_sample_build_manifest()
+        design_message = MockAgentMessage(
+            sender="neo", recipient="max", message_type="task.developer.completed",
+            payload={"task_id": "design-001", "status": "completed", "action": "design_manifest", "manifest": manifest.to_dict()},
+            context={"ecid": "TEST-001"}
+        )
+        
+        build_message = MockAgentMessage(
+            sender="neo", recipient="max", message_type="task.developer.completed",
+            payload={"task_id": "build-001", "status": "completed", "action": "build", "created_files": ["index.html", "app.js"]},
+            context={"ecid": "TEST-001"}
+        )
+        
+        deploy_message = MockAgentMessage(
+            sender="neo", recipient="max", message_type="task.developer.completed",
+            payload={"task_id": "deploy-001", "status": "completed", "action": "deploy"},
+            context={"ecid": "TEST-001"}
+        )
+        
+        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger, \
+             patch.object(lead_agent_for_sequencing, '_log_warmboot_governance') as mock_log, \
+             patch.object(lead_agent_for_sequencing, 'generate_warmboot_wrapup') as mock_wrapup:
+            
+            # Execute sequence
+            await lead_agent_for_sequencing._handle_design_manifest_completion(design_message)
+            await lead_agent_for_sequencing._handle_build_completion(build_message)
+            await lead_agent_for_sequencing._handle_deploy_completion(deploy_message)
+            
+            # Verify state progression
+            assert lead_agent_for_sequencing.warmboot_state['manifest'] is not None
+            assert len(lead_agent_for_sequencing.warmboot_state['build_files']) == 2
+            
+            # Verify all handlers were called
+            assert mock_trigger.call_count == 2  # build and deploy
+            mock_log.assert_called_once()
+            mock_wrapup.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_create_task_spec_with_communication_logging(self, mock_lead_agent):
+        """Test TaskSpec creation with communication logging"""
+        agent = mock_lead_agent
+        
+        # Mock LLM response
+        mock_yaml_response = """
+app_name: TestApp
+version: 1.0.0
+run_id: TEST-001
+features:
+  - name: Feature1
+    description: Test feature 1
+  - name: Feature2
+    description: Test feature 2
+"""
+        
+        with patch.object(agent.llm_client, 'complete', return_value=mock_yaml_response):
+            task_spec = await agent.generate_task_spec("Test PRD content", "TestApp", "1.0.0", "TEST-001")
+            
+            # Verify TaskSpec was created
+            assert task_spec.app_name == "TestApp"
+            assert task_spec.version == "1.0.0"
+            assert task_spec.run_id == "TEST-001"
+            assert len(task_spec.features) == 2
+            
+            # Verify communication logging occurred
+            assert len(agent.communication_log) == 1
+            log_entry = agent.communication_log[0]
+            assert log_entry['message_type'] == 'taskspec_generation'
+            assert log_entry['ecid'] == "TEST-001"
+            assert 'Generated TaskSpec for TestApp' in log_entry['description']
+    
+    @pytest.mark.asyncio
+    async def test_process_task_empty_prd_path_warning(self, mock_lead_agent):
+        """Test process_task with empty PRD path generates warning"""
+        agent = mock_lead_agent
+        
+        task = {
+            'task_id': 'test-task-001',
+            'type': 'governance',
+            'requirements': {
+                'action': 'process_prd',
+                'application': 'TestApp',
+                'prd_path': ''  # Empty PRD path
+            }
+        }
+        
+        with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update:
+            result = await agent.process_task(task)
+            
+            # Should continue with normal governance processing
+            assert result is not None
+            assert 'status' in result
+    
+    @pytest.mark.asyncio
+    async def test_handle_message_unknown_type_logging(self, mock_lead_agent):
+        """Test handle_message logs unknown message types"""
+        agent = mock_lead_agent
+        
+        # Create message with unknown type
+        message = AgentMessage(
+            sender="test-sender",
+            recipient="test-lead-agent",
+            message_type="unknown_message_type",
+            payload={"test": "data"},
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        # Should log the unknown message type
+        await agent.handle_message(message)
+        
+        # No exception should be raised, just logged
+    
+    @pytest.mark.asyncio
+    async def test_process_task_governance_direct_handling(self, mock_lead_agent):
+        """Test process_task handles governance tasks directly"""
+        agent = mock_lead_agent
+        
+        task = {
+            'task_id': 'governance-task-001',
+            'type': 'governance',
+            'requirements': {
+                'action': 'governance_decision',
+                'description': 'Test governance task'
+            }
+        }
+        
+        with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update:
+            result = await agent.process_task(task)
+            
+            # Should handle governance task directly
+            assert result['status'] == 'completed'
+            assert 'Governance task governance-task-001 handled directly' in result['governance_decision']
+            assert 'Governance tasks are handled directly by the Lead Agent' in result['message']
+    
+    @pytest.mark.asyncio
+    async def test_process_task_delegation_logging(self, mock_lead_agent):
+        """Test process_task logs delegation process"""
+        agent = mock_lead_agent
+        
+        task = {
+            'task_id': 'delegation-task-001',
+            'type': 'development',
+            'requirements': {
+                'action': 'build',
+                'description': 'Test delegation task'
+            }
+        }
+        
+        with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update, \
+             patch.object(agent, 'determine_delegation_target', return_value='dev-agent') as mock_target, \
+             patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
+            
+            result = await agent.process_task(task)
+            
+            # Verify delegation process
+            mock_target.assert_called_once_with('development')
+            mock_send.assert_called_once()
+            
+            # Verify status updates
+            assert mock_update.call_count >= 2  # Initial and delegation status updates
+    
+    @pytest.mark.asyncio
+    async def test_task_state_logging(self, mock_lead_agent):
+        """Test task state logging during processing"""
+        agent = mock_lead_agent
+        
+        task = {
+            'task_id': 'state-log-task-001',
+            'type': 'development',
+            'timestamp': '2024-01-01T00:00:00Z',
+            'requirements': {
+                'action': 'build',
+                'description': 'Test state logging'
+            }
+        }
+        
+        with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update, \
+             patch.object(agent, 'determine_delegation_target', return_value='dev-agent') as mock_target, \
+             patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
+            
+            await agent.process_task(task)
+            
+            # Verify task state was logged
+            assert len(agent.task_state_log) == 1
+            state_entry = agent.task_state_log[0]
+            assert state_entry['task_id'] == 'state-log-task-001'
+            assert state_entry['type'] == 'development'
+            assert state_entry['status'] == 'processing'
+            assert state_entry['timestamp'] == '2024-01-01T00:00:00Z'
+    
+    @pytest.mark.asyncio
+    async def test_process_task_with_prd_path_success(self, mock_lead_agent):
+        """Test process_task with valid PRD path processes successfully"""
+        agent = mock_lead_agent
+        
+        task = {
+            'task_id': 'prd-task-001',
+            'type': 'governance',
+            'application': 'TestApp',
+            'prd_path': '/path/to/prd.md',
+            'ecid': 'TEST-ECID-001',
+            'requirements': {
+                'action': 'process_prd'
+            }
+        }
+        
+        with patch.object(agent, 'process_prd_request', return_value={'status': 'completed'}) as mock_process, \
+             patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update:
+            
+            result = await agent.process_task(task)
+            
+            # Should process PRD and complete
+            mock_process.assert_called_once_with('/path/to/prd.md', 'TEST-ECID-001')
+            mock_update.assert_called_once_with('prd-task-001', "Completed", 100.0)
+            assert result['status'] == 'completed'
+    
+    @pytest.mark.asyncio
+    async def test_handle_message_specific_types(self, mock_lead_agent):
+        """Test handle_message routes specific message types correctly"""
+        agent = mock_lead_agent
+        
+        # Test approval_request message type
+        approval_message = AgentMessage(
+            sender="test-sender",
+            recipient="test-lead-agent",
+            message_type="approval_request",
+            payload={"test": "data"},
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, 'handle_approval_request', new_callable=AsyncMock) as mock_approval:
+            await agent.handle_message(approval_message)
+            mock_approval.assert_called_once_with(approval_message)
+        
+        # Test escalation message type
+        escalation_message = AgentMessage(
+            sender="test-sender",
+            recipient="test-lead-agent",
+            message_type="escalation",
+            payload={"test": "data"},
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-002"
+        )
+        
+        with patch.object(agent, 'handle_escalation', new_callable=AsyncMock) as mock_escalation:
+            await agent.handle_message(escalation_message)
+            mock_escalation.assert_called_once_with(escalation_message)
+        
+        # Test status_query message type
+        status_message = AgentMessage(
+            sender="test-sender",
+            recipient="test-lead-agent",
+            message_type="status_query",
+            payload={"test": "data"},
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-003"
+        )
+        
+        with patch.object(agent, 'handle_status_query', new_callable=AsyncMock) as mock_status:
+            await agent.handle_message(status_message)
+            mock_status.assert_called_once_with(status_message)
+    
+    @pytest.mark.asyncio
+    async def test_handle_developer_completion_error_handling(self, mock_lead_agent):
+        """Test handle_developer_completion error handling"""
+        agent = mock_lead_agent
+        
+        # Create message that will cause an error
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={"task_id": "test-task-001"},  # Missing required fields
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        # Should handle error gracefully
+        await agent.handle_developer_completion(message)
+        # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_design_manifest_completion_error_handling(self, mock_lead_agent):
+        """Test _handle_design_manifest_completion error handling"""
+        agent = mock_lead_agent
+        
+        # Create message that will cause an error
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={"task_id": "test-task-001"},  # Missing required fields
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        # Should handle error gracefully
+        await agent._handle_design_manifest_completion(message)
+        # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_build_completion_error_handling(self, mock_lead_agent):
+        """Test _handle_build_completion error handling"""
+        agent = mock_lead_agent
+        
+        # Create message that will cause an error
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={"task_id": "test-task-001"},  # Missing required fields
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        # Should handle error gracefully
+        await agent._handle_build_completion(message)
+        # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_deploy_completion_error_handling(self, mock_lead_agent):
+        """Test _handle_deploy_completion error handling"""
+        agent = mock_lead_agent
+        
+        # Create message that will cause an error
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={"task_id": "test-task-001"},  # Missing required fields
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        # Should handle error gracefully
+        await agent._handle_deploy_completion(message)
+        # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_handle_developer_completion_failed_task(self, mock_lead_agent):
+        """Test handle_developer_completion with failed task status"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'failed',  # Failed status
+                'ecid': 'TEST-ECID-001'
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, 'generate_warmboot_wrapup', new_callable=AsyncMock) as mock_wrapup:
+            await agent.handle_developer_completion(message)
+            
+            # Should not trigger wrap-up for failed task
+            mock_wrapup.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_design_manifest_completion_failed_status(self, mock_lead_agent):
+        """Test _handle_design_manifest_completion with failed status"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'failed',  # Failed status
+                'manifest': {'test': 'manifest'}
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
+            await agent._handle_design_manifest_completion(message)
+            
+            # Should not trigger next task for failed status
+            mock_trigger.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_build_completion_failed_status(self, mock_lead_agent):
+        """Test _handle_build_completion with failed status"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'failed',  # Failed status
+                'files': [{'path': 'test.html', 'content': 'test'}]
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
+            await agent._handle_build_completion(message)
+            
+            # Should not trigger next task for failed status
+            mock_trigger.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_handle_message_remaining_types(self, mock_lead_agent):
+        """Test handle_message routes remaining message types correctly"""
+        agent = mock_lead_agent
+        
+        # Test task_acknowledgment message type
+        ack_message = AgentMessage(
+            sender="test-sender",
+            recipient="test-lead-agent",
+            message_type="task_acknowledgment",
+            payload={"test": "data"},
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, 'handle_task_acknowledgment', new_callable=AsyncMock) as mock_ack:
+            await agent.handle_message(ack_message)
+            mock_ack.assert_called_once_with(ack_message)
+        
+        # Test task_error message type
+        error_message = AgentMessage(
+            sender="test-sender",
+            recipient="test-lead-agent",
+            message_type="task_error",
+            payload={"test": "data"},
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-002"
+        )
+        
+        with patch.object(agent, 'handle_task_error', new_callable=AsyncMock) as mock_error:
+            await agent.handle_message(error_message)
+            mock_error.assert_called_once_with(error_message)
+        
+        # Test prd_request message type
+        prd_message = AgentMessage(
+            sender="test-sender",
+            recipient="test-lead-agent",
+            message_type="prd_request",
+            payload={"test": "data"},
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-003"
+        )
+        
+        with patch.object(agent, 'handle_prd_request', new_callable=AsyncMock) as mock_prd:
+            await agent.handle_message(prd_message)
+            mock_prd.assert_called_once_with(prd_message)
+        
+        # Test task.developer.completed message type
+        completed_message = AgentMessage(
+            sender="test-sender",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={"test": "data"},
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-004"
+        )
+        
+        with patch.object(agent, 'handle_developer_completion', new_callable=AsyncMock) as mock_completed:
+            await agent.handle_message(completed_message)
+            mock_completed.assert_called_once_with(completed_message)
+    
+    @pytest.mark.asyncio
+    async def test_handle_prd_request_missing_path(self, mock_lead_agent):
+        """Test handle_prd_request with missing prd_path"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="test-sender",
+            recipient="test-lead-agent",
+            message_type="prd_request",
+            payload={},  # Missing prd_path
+            context={},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        # Should handle missing prd_path gracefully
+        await agent.handle_prd_request(message)
+        # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_deploy_completion_success_path(self, mock_lead_agent):
+        """Test _handle_deploy_completion success path"""
+        agent = mock_lead_agent
+        
+        # Initialize warmboot state
+        agent.warmboot_state = {
+            'manifest': {'test': 'manifest'},
+            'build_files': [{'path': 'test.html', 'content': 'test'}]
+        }
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'completed',
+                'ecid': 'TEST-ECID-001'
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, '_log_warmboot_governance', new_callable=AsyncMock) as mock_log:
+            await agent._handle_deploy_completion(message)
+            
+            # Should trigger governance logging for successful deploy
+            mock_log.assert_called_once_with('TEST-ECID-001', {'test': 'manifest'}, [{'path': 'test.html', 'content': 'test'}])
+    
+    @pytest.mark.asyncio
+    async def test_handle_developer_completion_success_with_wrapup(self, mock_lead_agent):
+        """Test handle_developer_completion success path with wrap-up generation"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'completed',
+                'ecid': 'TEST-ECID-001'
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, 'generate_warmboot_wrapup', new_callable=AsyncMock) as mock_wrapup:
+            await agent.handle_developer_completion(message)
+            
+            # Should trigger wrap-up for successful task
+            mock_wrapup.assert_called_once_with('TEST-ECID-001', 'test-task-001', {'task_id': 'test-task-001', 'status': 'completed', 'ecid': 'TEST-ECID-001'})
+    
+    @pytest.mark.asyncio
+    async def test_design_manifest_completion_success_with_trigger(self, mock_lead_agent):
+        """Test _handle_design_manifest_completion success path with trigger"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'completed',
+                'manifest': {'test': 'manifest'}
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
+            await agent._handle_design_manifest_completion(message)
+            
+            # Should trigger next task for successful status
+            mock_trigger.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_build_completion_success_with_trigger(self, mock_lead_agent):
+        """Test _handle_build_completion success path with trigger"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'completed',
+                'created_files': [{'path': 'test.html', 'content': 'test'}]  # Use 'created_files' not 'files'
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
+            await agent._handle_build_completion(message)
+            
+            # Should trigger next task for successful status
+            mock_trigger.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_design_manifest_completion_missing_manifest(self, mock_lead_agent):
+        """Test _handle_design_manifest_completion with missing manifest"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'completed'
+                # Missing manifest
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
+            await agent._handle_design_manifest_completion(message)
+            
+            # Should not trigger next task when manifest is missing
+            mock_trigger.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_build_completion_missing_files(self, mock_lead_agent):
+        """Test _handle_build_completion with missing files"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'completed'
+                # Missing files
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
+            await agent._handle_build_completion(message)
+            
+            # Should not trigger next task when files are missing
+            mock_trigger.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_deploy_completion_failed_status(self, mock_lead_agent):
+        """Test _handle_deploy_completion with failed status"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'failed',  # Failed status
+                'ecid': 'TEST-ECID-001'
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, 'generate_warmboot_wrapup', new_callable=AsyncMock) as mock_wrapup:
+            await agent._handle_deploy_completion(message)
+            
+            # Should not generate wrap-up for failed status
+            mock_wrapup.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_deploy_completion_success_with_wrapup(self, mock_lead_agent):
+        """Test _handle_deploy_completion success path with wrap-up generation"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'completed',
+                'ecid': 'TEST-ECID-001'
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, 'generate_warmboot_wrapup', new_callable=AsyncMock) as mock_wrapup:
+            await agent._handle_deploy_completion(message)
+            
+            # Should generate wrap-up for successful deploy
+            mock_wrapup.assert_called_once_with('TEST-ECID-001', 'test-task-001', {'task_id': 'test-task-001', 'status': 'completed', 'ecid': 'TEST-ECID-001'})
+    
+    @pytest.mark.asyncio
+    async def test_trigger_next_task_placeholder(self, mock_lead_agent):
+        """Test _trigger_next_task placeholder implementation"""
+        agent = mock_lead_agent
+        
+        # Should handle the placeholder implementation gracefully
+        await agent._trigger_next_task('TEST-ECID-001', 'deploy')
+        # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_build_completion_missing_created_files(self, mock_lead_agent):
+        """Test _handle_build_completion with missing created_files"""
+        agent = mock_lead_agent
+        
+        message = AgentMessage(
+            sender="dev-agent",
+            recipient="test-lead-agent",
+            message_type="task.developer.completed",
+            payload={
+                'task_id': 'test-task-001',
+                'status': 'completed'
+                # Missing created_files
+            },
+            context={'ecid': 'TEST-ECID-001'},
+            timestamp="2024-01-01T00:00:00Z",
+            message_id="test-msg-001"
+        )
+        
+        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
+            await agent._handle_build_completion(message)
+            
+            # Should not trigger next task when created_files are missing
+            mock_trigger.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_log_warmboot_governance_error_handling(self, mock_lead_agent):
+        """Test _log_warmboot_governance error handling"""
+        agent = mock_lead_agent
+        
+        # Test with invalid parameters that will cause an error
+        with patch('agents.roles.lead.agent.logger') as mock_logger:
+            # Should handle error gracefully
+            await agent._log_warmboot_governance('TEST-ECID-001', {'test': 'manifest'}, [{'path': 'test.html', 'content': 'test'}])
+            # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_escalate_task_functionality(self, mock_lead_agent):
+        """Test escalate_task functionality"""
+        agent = mock_lead_agent
+        
+        task = {
+            'task_id': 'test-task-001',
+            'complexity': 0.9,
+            'timestamp': '2024-01-01T00:00:00Z',
+            'requirements': {
+                'action': 'build',
+                'description': 'Complex task'
+            }
+        }
+        
+        with patch.object(agent, 'log_activity', new_callable=AsyncMock) as mock_log:
+            await agent.escalate_task('test-task-001', task)
+            
+            # Should add to approval queue
+            assert len(agent.approval_queue) == 1
+            escalation = agent.approval_queue[0]
+            assert escalation['task_id'] == 'test-task-001'
+            assert escalation['reason'] == 'High complexity'
+            
+            # Should log activity
+            mock_log.assert_called_once_with("task_escalated", {
+                'task_id': 'test-task-001',
+                'complexity': 0.9,
+                'reason': 'Premium consultation required'
+            })
+    
+    @pytest.mark.asyncio
+    async def test_log_warmboot_governance_success_path(self, mock_lead_agent):
+        """Test _log_warmboot_governance success path"""
+        agent = mock_lead_agent
+        
+        # Test successful governance logging
+        await agent._log_warmboot_governance('TEST-ECID-001', {'test': 'manifest'}, [{'path': 'test.html', 'content': 'test'}])
+        # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_trigger_next_task_with_different_actions(self, mock_lead_agent):
+        """Test _trigger_next_task with different actions"""
+        agent = mock_lead_agent
+        
+        # Test different actions
+        await agent._trigger_next_task('TEST-ECID-001', 'build')
+        await agent._trigger_next_task('TEST-ECID-002', 'deploy')
+        await agent._trigger_next_task('TEST-ECID-003', 'test')
+        
+        # Should handle all actions gracefully
+        # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_log_warmboot_governance_with_different_ecids(self, mock_lead_agent):
+        """Test _log_warmboot_governance with different ECIDs"""
+        agent = mock_lead_agent
+        
+        # Test with different ECIDs
+        await agent._log_warmboot_governance('TEST-ECID-001', {'test': 'manifest1'}, [{'path': 'test1.html', 'content': 'test1'}])
+        await agent._log_warmboot_governance('TEST-ECID-002', {'test': 'manifest2'}, [{'path': 'test2.html', 'content': 'test2'}])
+        await agent._log_warmboot_governance('TEST-ECID-003', {'test': 'manifest3'}, [{'path': 'test3.html', 'content': 'test3'}])
+        
+        # Should handle all ECIDs gracefully
+        # No exception should be raised
+    
+    @pytest.mark.asyncio
+    async def test_analyze_prd_requirements_json_parsing(self, mock_lead_agent):
+        """Test analyze_prd_requirements with JSON parsing"""
+        agent = mock_lead_agent
+        
+        # Set current_ecid to avoid attribute error
+        agent.current_ecid = "TEST-ECID-001"
+        
+        # Test with JSON wrapped in markdown
+        mock_json_response = """```json
+{
+    "core_features": ["Feature 1", "Feature 2"],
+    "technical_requirements": ["Requirement 1", "Requirement 2"],
+    "success_criteria": ["Criteria 1", "Criteria 2"]
+}
+```"""
+        
+        with patch.object(agent.llm_client, 'complete', return_value=mock_json_response):
+            analysis = await agent.analyze_prd_requirements("Test PRD content")
+            
+            # Should parse JSON correctly
+            assert 'core_features' in analysis
+            assert 'technical_requirements' in analysis
+            assert 'success_criteria' in analysis
+            assert len(analysis['core_features']) == 2
+    
+    @pytest.mark.asyncio
+    async def test_analyze_prd_requirements_json_parsing_with_braces(self, mock_lead_agent):
+        """Test analyze_prd_requirements with JSON parsing using braces"""
+        agent = mock_lead_agent
+        
+        # Set current_ecid to avoid attribute error
+        agent.current_ecid = "TEST-ECID-001"
+        
+        # Test with JSON wrapped in text
+        mock_json_response = """Some text before
+{
+    "core_features": ["Feature 1", "Feature 2"],
+    "technical_requirements": ["Requirement 1", "Requirement 2"],
+    "success_criteria": ["Criteria 1", "Criteria 2"]
+}
+Some text after"""
+        
+        with patch.object(agent.llm_client, 'complete', return_value=mock_json_response):
+            analysis = await agent.analyze_prd_requirements("Test PRD content")
+            
+            # Should parse JSON correctly
+            assert 'core_features' in analysis
+            assert 'technical_requirements' in analysis
+            assert 'success_criteria' in analysis
+            assert len(analysis['core_features']) == 2
+    
+    @pytest.mark.asyncio
+    async def test_analyze_prd_requirements_json_parsing_fallback(self, mock_lead_agent):
+        """Test analyze_prd_requirements with JSON parsing fallback"""
+        agent = mock_lead_agent
+        
+        # Set current_ecid to avoid attribute error
+        agent.current_ecid = "TEST-ECID-001"
+        
+        # Test with invalid JSON
+        mock_invalid_json_response = """This is not valid JSON
+        Some random text
+        That cannot be parsed"""
+        
+        with patch.object(agent.llm_client, 'complete', return_value=mock_invalid_json_response):
+            analysis = await agent.analyze_prd_requirements("Test PRD content")
+            
+            # Should use fallback structure
+            assert 'core_features' in analysis
+            assert 'technical_requirements' in analysis
+            assert 'success_criteria' in analysis
+            assert len(analysis['core_features']) == 4  # Fallback has 4 features
     

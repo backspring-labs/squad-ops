@@ -147,17 +147,17 @@ def sample_agent_message():
 def mock_agent_config():
     """Mock agent configuration"""
     return {
-        'max': {
-            'id': 'max',
-            'display_name': 'Max',
+        'lead-agent': {
+            'id': 'lead-agent',
+            'display_name': 'LeadAgent',
             'role': 'lead',
             'model': 'llama3.1:8b',
             'enabled': True,
             'description': 'Task Lead - Governance and coordination'
         },
-        'neo': {
-            'id': 'neo',
-            'display_name': 'Neo',
+        'dev-agent': {
+            'id': 'dev-agent',
+            'display_name': 'DevAgent',
             'role': 'dev',
             'model': 'qwen2.5:7b',
             'enabled': True,
@@ -228,6 +228,18 @@ def sample_build_manifest():
             "environment": "production"
         }
     )
+
+@pytest.fixture
+def app_builder():
+    """Real AppBuilder for integration tests"""
+    from agents.roles.dev.app_builder import AppBuilder
+    from agents.llm.providers.ollama import OllamaClient
+    
+    # Create real Ollama client with local URL
+    llm_client = OllamaClient(url='http://localhost:11434')
+    app_builder = AppBuilder(llm_client)
+    
+    return app_builder
 
 @pytest.fixture
 def mock_app_builder():

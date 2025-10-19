@@ -277,7 +277,7 @@ class DevAgent(BaseAgent):
             }
     
     async def _handle_build_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle build task using AppBuilder with manifest-first workflow"""
+        """Handle build task using AppBuilder with JSON workflow"""
         try:
             app_name = requirements.get('application', 'Application')
             version = requirements.get('version', '1.0.0')
@@ -290,106 +290,60 @@ class DevAgent(BaseAgent):
             
             logger.info(f"{self.name} handling build task: {app_name} v{version}")
             
-            # Check if manifest is provided (new JSON workflow)
-            if 'manifest' in requirements:
-                # New JSON workflow: use provided manifest
-                logger.info(f"{self.name} using provided manifest for JSON workflow")
-                manifest = BuildManifest.from_dict(requirements['manifest'])
-                task_spec = requirements.get('task_spec')
-                if task_spec:
-                    task_spec = TaskSpec.from_dict(task_spec)
-                else:
-                    # Create TaskSpec from requirements
-                    task_spec = TaskSpec(
-                        app_name=app_name,
-                        version=version,
-                        run_id=self.current_run_id,
-                        prd_analysis=requirements.get('prd_analysis', 'Application build'),
-                        features=features or [],
-                        constraints={},
-                        success_criteria=["Application deploys successfully"]
-                    )
-                
-                # Generate files using JSON method
-                files = await self.app_builder.generate_files_json(task_spec, manifest)
-                
-                # Create all files
-                created_files = []
-                for file_info in files:
-                    if file_info['type'] == 'create_file':
-                        result = await self.file_manager.create_file(
-                            file_info['file_path'],
-                            file_info['content'],
-                            file_info.get('directory')
-                        )
-                        if result['status'] == 'success':
-                            created_files.append(file_info['file_path'])
-                
-                logger.info(f"{self.name} created {len(created_files)} files using JSON workflow")
-                
+            # JSON workflow: manifest is required
+            if 'manifest' not in requirements:
                 return {
                     'task_id': task_id,
-                    'status': 'completed',
-                    'action': 'build',
-                    'app_name': app_name,
-                    'version': version,
-                    'created_files': created_files,
-                    'manifest': manifest.to_dict(),
-                    'target_directory': f'warm-boot/apps/{app_name.lower().replace(" ", "-")}/'
+                    'status': 'error',
+                    'error': 'Manifest is required for build task',
+                    'action': 'build'
                 }
             
+            # Use provided manifest for JSON workflow
+            logger.info(f"{self.name} using provided manifest for JSON workflow")
+            manifest = BuildManifest.from_dict(requirements['manifest'])
+            task_spec = requirements.get('task_spec')
+            if task_spec:
+                task_spec = TaskSpec.from_dict(task_spec)
             else:
-                # Legacy workflow: generate manifest first (keep for compatibility)
-                logger.info(f"{self.name} using legacy workflow - generating manifest first")
-                
-                # Use Max's TaskSpec if provided, otherwise create fallback
-                if 'task_spec' in requirements:
-                    # Max provided TaskSpec (business requirements)
-                    task_spec = TaskSpec.from_dict(requirements['task_spec'])
-                    logger.info(f"{self.name} using Max's TaskSpec with {len(task_spec.features)} features")
-                else:
-                    # Neo creates fallback TaskSpec (backward compatibility)
-                    task_spec = TaskSpec(
-                        app_name=app_name,
-                        version=version,
-                        run_id=self.current_run_id,
-                        prd_analysis="Team Status Dashboard, Activity Feed, Project Progress Tracking, Interactive Elements, Framework Transparency, Application Lifecycle Management",
-                        features=features or [],
-                        constraints={},
-                        success_criteria=["Application deploys successfully", "All features functional"]
+                # Create TaskSpec from requirements
+                task_spec = TaskSpec(
+                    app_name=app_name,
+                    version=version,
+                    run_id=self.current_run_id,
+                    prd_analysis=requirements.get('prd_analysis', 'Application build'),
+                    features=features or [],
+                    constraints={},
+                    success_criteria=["Application deploys successfully"]
+                )
+            
+            # Generate files using JSON method
+            files = await self.app_builder.generate_files_json(task_spec, manifest)
+            
+            # Create all files
+            created_files = []
+            for file_info in files:
+                if file_info['type'] == 'create_file':
+                    result = await self.file_manager.create_file(
+                        file_info['file_path'],
+                        file_info['content'],
+                        file_info.get('directory')
                     )
-                    logger.info(f"{self.name} created fallback TaskSpec (no Max TaskSpec provided)")
-                
-                # Build application using manifest-first workflow
-                build_result = await self.app_builder.build_from_task_spec(task_spec)
-                
-                # Log manifest for telemetry
-                logger.info(f"{self.name} generated manifest: {build_result['manifest']}")
-                
-                # Create all files
-                created_files = []
-                for file_info in build_result['files']:
-                    if file_info['type'] == 'create_file':
-                        result = await self.file_manager.create_file(
-                            file_info['file_path'], 
-                            file_info['content'],
-                            file_info.get('directory')
-                        )
-                        if result['status'] == 'success':
-                            created_files.append(file_info['file_path'])
-                
-                logger.info(f"{self.name} created {len(created_files)} files using legacy workflow")
-                
-                return {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'action': 'build',
-                    'app_name': app_name,
-                    'version': version,
-                    'created_files': created_files,
-                    'manifest': build_result['manifest'],
-                    'target_directory': f'warm-boot/apps/{app_name.lower().replace(" ", "-")}/'
-                }
+                    if result['status'] == 'success':
+                        created_files.append(file_info['file_path'])
+            
+            logger.info(f"{self.name} created {len(created_files)} files using JSON workflow")
+            
+            return {
+                'task_id': task_id,
+                'status': 'completed',
+                'action': 'build',
+                'app_name': app_name,
+                'version': version,
+                'created_files': created_files,
+                'manifest': manifest.to_dict(),
+                'target_directory': f'warm-boot/apps/{app_name.lower().replace(" ", "-")}/'
+            }
             
         except Exception as e:
             logger.error(f"DevAgent failed to handle build task: {e}")

@@ -447,11 +447,15 @@ class TestBaseAgent:
             reasoning_style="test"
         )
         
-        with patch.dict('os.environ', {'USE_LOCAL_LLM': 'false'}):
-            response = await agent.llm_response("Test prompt for code generation")
-            
-            assert "[MOCK CODE RESPONSE]" in response
-            assert "Test prompt for code generation" in response
+        # Mock the LLM client directly
+        mock_client = MagicMock()
+        mock_client.complete = AsyncMock(return_value="[MOCK CODE RESPONSE] Test prompt for code generation")
+        agent.llm_client = mock_client
+        
+        response = await agent.llm_response("Test prompt for code generation")
+        
+        assert "[MOCK CODE RESPONSE]" in response
+        assert "Test prompt for code generation" in response
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -463,15 +467,14 @@ class TestBaseAgent:
             reasoning_style="test"
         )
         
-        with patch.dict('os.environ', {'USE_LOCAL_LLM': 'true', 'AGENT_MODEL': 'llama2'}), \
-             patch.object(agent, '_ollama_response') as mock_ollama:
-            
-            mock_ollama.return_value = "Ollama response for test prompt"
-            
-            response = await agent.llm_response("Test prompt", "Test context")
-            
-            assert response == "Ollama response for test prompt"
-            mock_ollama.assert_called_once_with("Test prompt", "Test context", "llama2")
+        # Mock the LLM client to simulate Ollama response
+        mock_client = MagicMock()
+        mock_client.complete = AsyncMock(return_value="Ollama response for test prompt")
+        agent.llm_client = mock_client
+        
+        response = await agent.llm_response("Test prompt", "Test context")
+        
+        assert response == "Ollama response for test prompt"
     
     @pytest.mark.unit
     @pytest.mark.asyncio

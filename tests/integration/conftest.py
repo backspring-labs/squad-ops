@@ -7,15 +7,106 @@ import pytest
 import asyncio
 import os
 import sys
+import time
+import requests
 from typing import AsyncGenerator, Dict, Any
 from testcontainers.postgres import PostgresContainer
 # from testcontainers.rabbitmq import RabbitMQContainer  # TODO: Fix testcontainers version
 from testcontainers.redis import RedisContainer
+from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, '/app')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'agents'))
+
+def load_test_config():
+    """Load integration test configuration from file"""
+    config_file = Path(__file__).parent / 'test_config.env'
+    config = {}
+    
+    if config_file.exists():
+        with open(config_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    config[key] = value
+    else:
+        # Fallback to environment variables
+        config = {
+            'POSTGRES_URL': os.getenv('POSTGRES_URL', 'postgresql://squadops:squadops123@localhost:5432/squadops'),
+            'RABBITMQ_USER': os.getenv('RABBITMQ_USER', 'squadops'),
+            'RABBITMQ_PASSWORD': os.getenv('RABBITMQ_PASSWORD', 'squadops123'),
+            'RABBITMQ_HOST': os.getenv('RABBITMQ_HOST', 'localhost'),
+            'RABBITMQ_PORT': os.getenv('RABBITMQ_PORT', '5672'),
+            'REDIS_URL': os.getenv('REDIS_URL', 'redis://localhost:6379'),
+            'OLLAMA_URL': os.getenv('OLLAMA_URL', 'http://localhost:11434'),
+            'TASK_API_URL': os.getenv('TASK_API_URL', 'http://localhost:8001'),
+            'LOG_LEVEL': os.getenv('LOG_LEVEL', 'INFO'),
+            'USE_LOCAL_LLM': os.getenv('USE_LOCAL_LLM', 'true')
+        }
+    
+    return config
+
+def check_service_health(service_name: str, host: str, port: int, timeout: int = 30) -> bool:
+    """Check if a service is healthy and accepting connections"""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex((host, port))
+            sock.close()
+            if result == 0:
+                print(f"✅ {service_name} is healthy on {host}:{port}")
+                return True
+        except Exception as e:
+            pass
+        time.sleep(1)
+    
+    print(f"❌ {service_name} failed health check on {host}:{port} after {timeout}s")
+    return False
+
+def check_rabbitmq_management(host: str, port: int, timeout: int = 30) -> bool:
+    """Check RabbitMQ management interface"""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get(f"http://{host}:{port}/api/overview", timeout=5)
+            if response.status_code == 200:
+                print(f"✅ RabbitMQ management is healthy on {host}:{port}")
+                return True
+        except Exception as e:
+            pass
+        time.sleep(1)
+    
+    print(f"❌ RabbitMQ management failed health check on {host}:{port} after {timeout}s")
+    return False
+
+@pytest.fixture(scope="session", autouse=True)
+def check_required_services():
+    """Check that all required services are running before integration tests"""
+    print("🔍 Checking required services for integration tests...")
+    
+    # Check PostgreSQL
+    if not check_service_health("PostgreSQL", "localhost", 5432):
+        pytest.skip("PostgreSQL is not running on localhost:5432")
+    
+    # Check Redis
+    if not check_service_health("Redis", "localhost", 6379):
+        pytest.skip("Redis is not running on localhost:6379")
+    
+    # Check RabbitMQ
+    if not check_service_health("RabbitMQ", "localhost", 5672):
+        pytest.skip("RabbitMQ is not running on localhost:5672")
+    
+    # Check RabbitMQ Management (optional but nice to have)
+    check_rabbitmq_management("localhost", 15672, timeout=10)
+    
+    print("✅ All required services are healthy!")
+    yield
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -27,50 +118,59 @@ def event_loop():
 @pytest.fixture(scope="session")
 def postgres_container():
     """PostgreSQL container for integration tests"""
-    with PostgresContainer("postgres:15") as postgres:
-        # Set up database schema
-        postgres.exec_in_container([
-            "psql", "-U", postgres.username, "-d", postgres.dbname, "-c",
-            """
-            CREATE TABLE IF NOT EXISTS execution_cycles (
-                ecid VARCHAR(50) PRIMARY KEY,
-                pid VARCHAR(50),
-                run_type VARCHAR(50),
-                initiated_by VARCHAR(100),
-                prd_path TEXT,
-                status VARCHAR(50),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE IF NOT EXISTS task_status (
-                task_id VARCHAR(100) PRIMARY KEY,
-                agent_name VARCHAR(100),
-                status VARCHAR(50),
-                progress FLOAT DEFAULT 0.0,
-                eta VARCHAR(50),
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE IF NOT EXISTS agent_task_logs (
-                id SERIAL PRIMARY KEY,
-                task_id VARCHAR(100),
-                agent_name VARCHAR(100),
-                task_name VARCHAR(200),
-                task_status VARCHAR(50),
-                start_time TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE IF NOT EXISTS agent_heartbeats (
-                id SERIAL PRIMARY KEY,
-                agent_name VARCHAR(100),
-                status VARCHAR(50),
-                last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                metadata JSONB
-            );
-            """
-        ])
-        yield postgres
+    # Use external PostgreSQL if available, otherwise use testcontainer
+    if check_service_health("PostgreSQL", "localhost", 5432, timeout=5):
+        print("📦 Using external PostgreSQL service")
+        class ExternalPostgres:
+            def get_connection_url(self):
+                return "postgresql://squadops:squadops123@localhost:5432/squadops"
+        yield ExternalPostgres()
+    else:
+        print("📦 Starting PostgreSQL testcontainer")
+        with PostgresContainer("postgres:15") as postgres:
+            # Set up database schema
+            postgres.exec([
+                "psql", "-U", postgres.username, "-d", postgres.dbname, "-c",
+                """
+                CREATE TABLE IF NOT EXISTS execution_cycles (
+                    ecid VARCHAR(50) PRIMARY KEY,
+                    pid VARCHAR(50),
+                    run_type VARCHAR(50),
+                    initiated_by VARCHAR(100),
+                    prd_path TEXT,
+                    status VARCHAR(50),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                
+                CREATE TABLE IF NOT EXISTS task_status (
+                    task_id VARCHAR(100) PRIMARY KEY,
+                    agent_name VARCHAR(100),
+                    status VARCHAR(50),
+                    progress FLOAT DEFAULT 0.0,
+                    eta VARCHAR(50),
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                
+                CREATE TABLE IF NOT EXISTS agent_task_logs (
+                    id SERIAL PRIMARY KEY,
+                    task_id VARCHAR(100),
+                    agent_name VARCHAR(100),
+                    task_name VARCHAR(200),
+                    task_status VARCHAR(50),
+                    start_time TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                
+                CREATE TABLE IF NOT EXISTS agent_heartbeats (
+                    id SERIAL PRIMARY KEY,
+                    agent_name VARCHAR(100),
+                    status VARCHAR(50),
+                    last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    metadata JSONB
+                );
+                """
+            ])
+            yield postgres
 
 @pytest.fixture(scope="session")
 def rabbitmq_container():
@@ -78,34 +178,56 @@ def rabbitmq_container():
     # TODO: Fix testcontainers RabbitMQ import
     # with RabbitMQContainer() as rabbitmq:
     #     yield rabbitmq
-    # Mock RabbitMQ URL for now
+    # Use external RabbitMQ with configuration from file
+    config = load_test_config()
+    
     class MockRabbitMQ:
         def get_connection_url(self):
-            return "amqp://guest:guest@localhost:5672"
+            return f"amqp://{config['RABBITMQ_USER']}:{config['RABBITMQ_PASSWORD']}@{config['RABBITMQ_HOST']}:{config['RABBITMQ_PORT']}"
     yield MockRabbitMQ()
 
 @pytest.fixture(scope="session")
 def redis_container():
     """Redis container for integration tests"""
-    with RedisContainer() as redis:
-        yield redis
+    # Use external Redis if available, otherwise use testcontainer
+    if check_service_health("Redis", "localhost", 6379, timeout=5):
+        print("📦 Using external Redis service")
+        class ExternalRedis:
+            def get_exposed_port(self, port):
+                return port
+            def get_connection_url(self):
+                return "redis://localhost:6379"
+        yield ExternalRedis()
+    else:
+        print("📦 Starting Redis testcontainer")
+        with RedisContainer() as redis:
+            yield redis
 
 @pytest.fixture
-async def integration_config(postgres_container, rabbitmq_container, redis_container) -> Dict[str, str]:
+def integration_config(postgres_container, rabbitmq_container, redis_container) -> Dict[str, str]:
     """Configuration for integration tests using real containers"""
+    config = load_test_config()
+    
+    # Convert postgresql+psycopg2 URL to postgresql for asyncpg compatibility
+    postgres_url = postgres_container.get_connection_url()
+    if postgres_url.startswith('postgresql+psycopg2://'):
+        postgres_url = postgres_url.replace('postgresql+psycopg2://', 'postgresql://')
+    
     return {
-        'database_url': postgres_container.get_connection_url(),
-        'redis_url': redis_container.get_connection_url(),
+        'database_url': postgres_url,
+        'redis_url': f"redis://localhost:{redis_container.get_exposed_port(6379)}",
         'rabbitmq_url': rabbitmq_container.get_connection_url(),
-        'ollama_url': 'http://localhost:11434',  # Mock LLM for integration tests
-        'log_level': 'INFO'
+        'ollama_url': config['OLLAMA_URL'],
+        'task_api_url': config['TASK_API_URL'],
+        'log_level': config['LOG_LEVEL'],
+        'use_local_llm': config['USE_LOCAL_LLM']
     }
 
 @pytest.fixture
 async def clean_database(postgres_container):
     """Clean database state before each test"""
     # Clear all tables
-    postgres_container.exec_in_container([
+    postgres_container.exec([
         "psql", "-U", postgres_container.username, "-d", postgres_container.dbname, "-c",
         """
         TRUNCATE TABLE execution_cycles, task_status, agent_task_logs, agent_heartbeats RESTART IDENTITY CASCADE;
@@ -113,7 +235,7 @@ async def clean_database(postgres_container):
     ])
     yield
     # Clean up after test
-    postgres_container.exec_in_container([
+    postgres_container.exec([
         "psql", "-U", postgres_container.username, "-d", postgres_container.dbname, "-c",
         """
         TRUNCATE TABLE execution_cycles, task_status, agent_task_logs, agent_heartbeats RESTART IDENTITY CASCADE;

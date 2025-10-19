@@ -3,80 +3,80 @@
 
 instances:
   # Lead Role
-  - id: max
-    display_name: Max
+  - id: lead-agent
+    display_name: LeadAgent
     role: lead
     model: llama3.1:8b
     enabled: true
     description: "Task Lead - Governance and coordination"
 
   # Strategy Role  
-  - id: nat
-    display_name: Nat
+  - id: strat-agent
+    display_name: StratAgent
     role: strat
     model: mixtral-8x7b
     enabled: true
     description: "Product Strategy - Abductive reasoning"
 
   # Creative Role
-  - id: glyph
-    display_name: Glyph
+  - id: creative-agent
+    display_name: CreativeAgent
     role: creative
     model: stable-diffusion-xl
     enabled: true
     description: "Creative Design - Visual synthesis"
 
   # Development Role
-  - id: neo
-    display_name: Neo
+  - id: dev-agent
+    display_name: DevAgent
     role: dev
     model: qwen2.5:7b
     enabled: true
     description: "Developer - Deductive reasoning"
 
   # QA Role
-  - id: eve
-    display_name: EVE
+  - id: qa-agent
+    display_name: QAAgent
     role: qa
     model: llama3-70b
     enabled: true
     description: "QA & Security - Counterfactual reasoning"
 
   # Data Role
-  - id: data
-    display_name: Data
+  - id: data-agent
+    display_name: DataAgent
     role: data
     model: mixtral-8x7b
     enabled: true
     description: "Analytics - Inductive reasoning"
 
   # Finance Role
-  - id: quark
-    display_name: Quark
+  - id: finance-agent
+    display_name: FinanceAgent
     role: finance
     model: llama3-8b
     enabled: true
     description: "Finance & Ops - Rule-based reasoning"
 
   # Communications Role
-  - id: joi
-    display_name: Joi
+  - id: comms-agent
+    display_name: CommsAgent
     role: comms
     model: llama3-8b
     enabled: true
     description: "Communications - Empathetic reasoning"
 
   # Curation Role
-  - id: og
-    display_name: Og
+  - id: curator-agent
+    display_name: CuratorAgent
     role: curator
     model: llama3-70b
     enabled: true
     description: "R&D & Curation - Pattern detection"
 
   # Audit Role
-  - id: hal
-    display_name: HAL
+  - id: audit-agent
+    display_name: AuditAgent
     role: audit
     model: llama3-8b
     enabled: true

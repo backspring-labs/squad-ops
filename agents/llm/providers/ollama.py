@@ -76,3 +76,4 @@ class OllamaClient:
                     raise Exception(f"Ollama chat API error {response.status}: {error_text}")
 
 
+

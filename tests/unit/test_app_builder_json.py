@@ -75,7 +75,7 @@ class TestAppBuilderJSON:
         with patch('aiohttp.ClientSession', return_value=mock_session):
             mock_session.post = MagicMock(return_value=mock_response)
             
-            with pytest.raises(json.JSONDecodeError):
+            with pytest.raises(Exception, match="Invalid JSON response from LLM"):
                 await app_builder._call_ollama_json(
                     prompt="Test prompt",
                     model="qwen2.5-coder:7b"
@@ -166,8 +166,8 @@ class TestAppBuilderJSON:
             call_args = mock_call.call_args
             prompt = call_args[0][0]  # First positional argument
             
-            assert "Type: spa_web_app" in prompt
-            assert "Files to generate:" in prompt
+            assert "type: spa_web_app" in prompt
+            assert "files:" in prompt
             assert "SQUADOPS PLATFORM REQUIREMENTS" in prompt
             assert "OUTPUT FORMAT: json" in prompt
     
@@ -179,13 +179,13 @@ class TestAppBuilderJSON:
         # Mock response with missing content field
         mock_response = {
             "files": [
-                {"path": "index.html"},  # Missing content
-                {"path": "app.js", "content": "console.log('test');"}
+                {"file_path": "index.html"},  # Missing content
+                {"file_path": "app.js", "content": "console.log('test');"}
             ]
         }
         
         with patch.object(app_builder, '_call_ollama_json', return_value=mock_response):
-            with pytest.raises(Exception, match="File JSON generation failed"):
+            with pytest.raises(Exception, match="File index.html missing content field"):
                 await app_builder.generate_files_json(sample_task_spec, manifest)
     
     @pytest.mark.asyncio
@@ -205,10 +205,8 @@ class TestAppBuilderJSON:
         manifest = create_sample_build_manifest()
         
         with patch.object(app_builder, '_call_ollama_json', return_value={}):
-            files = await app_builder.generate_files_json(sample_task_spec, manifest)
-            
-            assert isinstance(files, list)
-            assert len(files) == 0
+            with pytest.raises(Exception, match="File generation failed: No 'files' key in LLM response"):
+                await app_builder.generate_files_json(sample_task_spec, manifest)
     
     @pytest.mark.asyncio
     async def test_generate_manifest_json_llm_failure(self, app_builder, sample_task_spec):
@@ -255,3 +253,63 @@ class TestAppBuilderJSON:
         
         assert "OUTPUT FORMAT: $output_format" in prompt
         assert "Return ONLY valid JSON" in prompt  # Template contains both sections
+    
+    @pytest.mark.asyncio
+    async def test_load_prompt_template_exception_handling(self, app_builder):
+        """Test exception handling in _load_prompt method"""
+        # Test with invalid template that causes exception
+        with patch('builtins.open', side_effect=Exception("File read error")):
+            with pytest.raises(Exception, match="File read error"):
+                app_builder._load_prompt("nonexistent.txt")
+    
+    def test_to_kebab_case_conversion(self, app_builder):
+        """Test _to_kebab_case method"""
+        # Test various naming conventions
+        assert app_builder._to_kebab_case("HelloWorld") == "hello-world"
+        assert app_builder._to_kebab_case("hello world") == "hello-world"
+        assert app_builder._to_kebab_case("hello_world") == "hello_world"
+        assert app_builder._to_kebab_case("HelloWorldApp") == "hello-world-app"
+        assert app_builder._to_kebab_case("MyApp123") == "my-app123"
+    
+    @pytest.mark.asyncio
+    async def test_generate_files_json_files_not_list(self, app_builder, sample_task_spec):
+        """Test handling when files is not a list"""
+        manifest = create_sample_build_manifest()
+        
+        with patch.object(app_builder, '_call_ollama_json', return_value={
+            'files': "not a list"
+        }):
+            with pytest.raises(Exception, match="'files' must be a list"):
+                await app_builder.generate_files_json(sample_task_spec, manifest)
+    
+    @pytest.mark.asyncio
+    async def test_generate_files_json_skip_non_dict_files(self, app_builder, sample_task_spec):
+        """Test skipping file data that is not a dictionary"""
+        manifest = create_sample_build_manifest()
+        
+        with patch.object(app_builder, '_call_ollama_json', return_value={
+            'files': [
+                {"file_path": "valid.html", "content": "<html></html>"},
+                "not a dict",  # This should be skipped
+                {"file_path": "another.html", "content": "<html></html>"}
+            ]
+        }):
+            files = await app_builder.generate_files_json(sample_task_spec, manifest)
+            # Should only process the 2 valid dictionaries
+            assert len(files) == 2
+    
+    @pytest.mark.asyncio
+    async def test_generate_files_json_skip_missing_path(self, app_builder, sample_task_spec):
+        """Test skipping file data missing file_path/path"""
+        manifest = create_sample_build_manifest()
+        
+        with patch.object(app_builder, '_call_ollama_json', return_value={
+            'files': [
+                {"file_path": "valid.html", "content": "<html></html>"},
+                {"content": "<html></html>"},  # Missing file_path - should be skipped
+                {"path": "another.html", "content": "<html></html>"}  # Using 'path' instead of 'file_path'
+            ]
+        }):
+            files = await app_builder.generate_files_json(sample_task_spec, manifest)
+            # Should process 2 files (one with file_path, one with path)
+            assert len(files) == 2

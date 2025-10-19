@@ -1,5 +1,5 @@
 """
-Smoke tests for WarmBoot JSON workflow.
+Smoke tests for WarmBoot workflow.
 """
 import pytest
 import subprocess
@@ -9,8 +9,8 @@ import requests
 from typing import Dict, Any
 
 
-class TestWarmBootJSONSmoke:
-    """Smoke tests for WarmBoot JSON workflow."""
+class TestWarmBootSmoke:
+    """Smoke tests for WarmBoot workflow."""
     
     @pytest.fixture
     def infrastructure_available(self):
@@ -97,8 +97,8 @@ class TestWarmBootJSONSmoke:
         raise TimeoutError(f"WarmBoot run {run_id} did not complete within {max_wait} seconds")
     
     @pytest.mark.smoke
-    def test_warmboot_hello_squad_json_workflow(self, infrastructure_available):
-        """Test complete WarmBoot HelloSquad JSON workflow."""
+    def test_warmboot_hello_squad_workflow(self, infrastructure_available):
+        """Test complete WarmBoot HelloSquad workflow."""
         if not infrastructure_available:
             pytest.skip("Full infrastructure not available for smoke test")
         
