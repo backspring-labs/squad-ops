@@ -28,14 +28,54 @@ class LLMRouter:
                 # Expand environment variables in config
                 config = cls._expand_env_vars(config)
         else:
-            # Default config if file doesn't exist
+            # Default config if file doesn't exist - use unified config with fallbacks
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            try:
+                from config.unified_config import get_config
+                unified_config = get_config()
+                llm_config = unified_config.get_llm_config()
+                # Fallbacks in .get() handle missing keys; these are ultimate fallbacks if config fails
+                default_url = llm_config.get('url') if llm_config else None
+                default_model = llm_config.get('model') if llm_config else None
+                default_timeout = llm_config.get('timeout') if llm_config else None
+            except Exception as e:
+                # If unified config fails entirely, fall back to environment vars and hardcoded defaults
+                logger.warning(f"Failed to load unified config, using fallbacks: {e}")
+                default_url = None
+                default_model = None
+                default_timeout = None
+            
+            # Build config with clear logging for fallback usage
+            final_url = default_url or os.getenv('OLLAMA_URL')
+            final_model = default_model or os.getenv('AGENT_MODEL')
+            final_timeout = default_timeout
+            
+            # Log warnings for hardcoded fallbacks, especially model name
+            if not final_url:
+                logger.info("Using default Ollama URL: http://host.docker.internal:11434 (set OLLAMA_URL to override)")
+                final_url = 'http://host.docker.internal:11434'
+            
+            if not final_model:
+                logger.warning(
+                    "⚠️  Using hardcoded default model 'qwen2.5:7b' - ensure this model is available. "
+                    "Set AGENT_MODEL environment variable to override. "
+                    "If this model doesn't exist, LLM calls will fail."
+                )
+                final_model = 'qwen2.5:7b'
+            
+            if not final_timeout:
+                logger.debug("Using default timeout: 60 seconds (set LLM_TIMEOUT to override)")
+                final_timeout = 60
+            
             config = {
                 'default_provider': 'ollama',
                 'providers': {
                     'ollama': {
-                        'url': os.getenv('OLLAMA_URL', 'http://host.docker.internal:11434'),
-                        'model': os.getenv('AGENT_MODEL', 'qwen2.5:7b'),
-                        'timeout': 60
+                        'url': final_url,
+                        'model': final_model,
+                        'timeout': final_timeout
                     }
                 }
             }
@@ -65,8 +105,20 @@ class LLMRouter:
     
     def get_default_client(self) -> LLMClient:
         """Get default LLM client"""
-        # Check if local LLM is disabled
-        use_local_llm = os.getenv('USE_LOCAL_LLM', 'true').lower() == 'true'
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Check if local LLM is disabled - use unified config with fallback
+        try:
+            from config.unified_config import get_config
+            config = get_config()
+            use_local_llm = config.get_use_local_llm()
+        except Exception as e:
+            # Fallback to environment variable if unified config fails
+            logger.warning(f"Failed to load unified config for USE_LOCAL_LLM, using environment variable: {e}")
+            use_local_llm = os.getenv('USE_LOCAL_LLM', 'true').lower() == 'true'
+            if use_local_llm:
+                logger.info("Using default: USE_LOCAL_LLM=true (set USE_LOCAL_LLM=false to disable local LLM)")
         
         if not use_local_llm:
             # Return a mock client when local LLM is disabled

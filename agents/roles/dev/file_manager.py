@@ -26,17 +26,25 @@ class FileManager:
     async def create_file(self, file_path: str, content: str, directory: str = None) -> Dict[str, Any]:
         """Create a file with specified content"""
         try:
-            # Ensure directory exists
+            # Combine directory and file_path to get full path
             if directory:
+                # Ensure directory exists
                 await self._ensure_directory_exists(directory)
+                # Join directory and filename (handle both absolute and relative paths)
+                if os.path.isabs(file_path):
+                    full_path = file_path
+                else:
+                    full_path = os.path.join(directory.rstrip('/'), os.path.basename(file_path))
             else:
-                await self._ensure_directory_exists(os.path.dirname(file_path))
+                # No directory specified, use file_path as-is
+                full_path = file_path
+                await self._ensure_directory_exists(os.path.dirname(full_path) if os.path.dirname(full_path) else '.')
             
-            # Write file content
-            await self._write_file(file_path, content)
+            # Write file content using full path
+            await self._write_file(full_path, content)
             
             # Cache file info
-            self.file_cache[file_path] = {
+            self.file_cache[full_path] = {
                 'content': content,
                 'created_at': asyncio.get_event_loop().time(),
                 'size': len(content)
@@ -45,16 +53,16 @@ class FileManager:
             # Log operation
             self.operation_history.append({
                 'operation': 'create_file',
-                'file_path': file_path,
+                'file_path': full_path,
                 'size': len(content),
                 'timestamp': asyncio.get_event_loop().time()
             })
             
-            logger.info(f"FileManager created file: {file_path} ({len(content)} bytes)")
+            logger.info(f"FileManager created file: {full_path} ({len(content)} bytes)")
             
             return {
                 'status': 'success',
-                'file_path': file_path,
+                'file_path': full_path,
                 'size': len(content),
                 'operation': 'created'
             }
@@ -376,6 +384,11 @@ class FileManager:
     
     async def _ensure_directory_exists(self, dir_path: str):
         """Ensure directory exists, create if it doesn't"""
+        # Skip if directory path is empty
+        if not dir_path or dir_path.strip() == '':
+            logger.warning(f"FileManager skipping directory creation for empty path")
+            return
+        
         if not await self.directory_exists(dir_path):
             await self._execute_command(f"mkdir -p '{dir_path}'")
     

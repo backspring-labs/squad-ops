@@ -7,6 +7,13 @@ import json
 import time
 import requests
 from typing import Dict, Any
+from pathlib import Path
+import sys
+import os
+
+# Add integration test path for agent manager
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'integration'))
+from agent_manager import AgentManager
 
 
 class TestWarmBootSmoke:
@@ -19,20 +26,43 @@ class TestWarmBootSmoke:
             # Check health check service
             response = requests.get('http://localhost:8000/health', timeout=5)
             if response.status_code != 200:
+                print("❌ Health check service not available")
                 return False
             
             # Check Ollama
             ollama_response = requests.get('http://localhost:11434/api/version', timeout=5)
             if ollama_response.status_code != 200:
+                print("❌ Ollama not available")
                 return False
             
             # Check Docker
             result = subprocess.run(['docker', 'ps'], capture_output=True, text=True, timeout=5)
             if result.returncode != 0:
+                print("❌ Docker not available")
                 return False
             
+            # Check agent containers
+            agent_manager = AgentManager()
+            container_info = agent_manager.get_agent_container_info()
+            
+            required_agents = ['max', 'neo']
+            for agent in required_agents:
+                if agent not in container_info:
+                    print(f"❌ Agent {agent} not found in configuration")
+                    return False
+                
+                info = container_info[agent]
+                if not info['running']:
+                    print(f"❌ Agent {agent} ({info['container_name']}) is not running: {info['status']}")
+                    return False
+                else:
+                    print(f"✅ Agent {agent} ({info['container_name']}) is running")
+            
+            print("✅ All infrastructure components are available")
             return True
-        except:
+            
+        except Exception as e:
+            print(f"❌ Infrastructure check failed: {e}")
             return False
     
     def get_next_run_id(self) -> str:
@@ -51,8 +81,8 @@ class TestWarmBootSmoke:
         request_data = {
             "run_id": run_id,
             "application": "HelloSquad",
-            "request_type": "from_scratch",
-            "agents": ["test-lead-agent", "test-dev-agent"],
+            "request_type": "from-scratch",  # Match form format (hyphen)
+            "agents": ["max", "neo"],  # Use real agent IDs (test checks real infrastructure)
             "priority": "HIGH",
             "description": f"Smoke test run {run_id}",
             "requirements": None,
@@ -102,36 +132,99 @@ class TestWarmBootSmoke:
         if not infrastructure_available:
             pytest.skip("Full infrastructure not available for smoke test")
         
-        # Step 1: Get next run ID
-        run_id = self.get_next_run_id()
-        assert run_id.startswith("run-")
-        assert len(run_id) > 5
+        print("🚀 Starting WarmBoot HelloSquad workflow test...")
         
-        # Step 2: Submit WarmBoot request
-        submit_response = self.submit_warmboot_request(run_id)
-        assert submit_response.get('status') == 'submitted'
-        assert submit_response.get('run_id') == run_id
-        
-        # Step 3: Wait for completion
-        final_status = self.wait_for_completion(run_id, max_wait=600)  # 10 minutes max
-        
-        # Step 4: Verify completion
-        assert final_status.get('status') == 'completed'
-        assert final_status.get('run_id') == run_id
-        
-        # Step 5: Verify all 4 tasks executed
-        tasks = final_status.get('tasks', [])
-        task_actions = [task.get('action') for task in tasks]
-        
-        assert 'archive' in task_actions
-        assert 'design_manifest' in task_actions
-        assert 'build' in task_actions
-        assert 'deploy' in task_actions
-        
-        # Step 6: Verify task completion status
-        for task in tasks:
-            assert task.get('status') == 'completed'
-            assert 'completed_at' in task
+        try:
+            # Step 1: Get next run ID
+            print("📋 Step 1: Getting next run ID...")
+            run_id = self.get_next_run_id()
+            assert run_id.startswith("run-")
+            assert len(run_id) > 5
+            print(f"✅ Got run ID: {run_id}")
+            
+            # Step 2: Submit WarmBoot request
+            print("📤 Step 2: Submitting WarmBoot request...")
+            submit_response = self.submit_warmboot_request(run_id)
+            assert submit_response.get('status') == 'success'
+            assert submit_response.get('run_id') == run_id
+            print(f"✅ WarmBoot request submitted successfully")
+            
+            # Step 3: Wait for completion
+            print("⏳ Step 3: Waiting for completion...")
+            final_status = self.wait_for_completion(run_id, max_wait=600)  # 10 minutes max
+            
+            # Step 4: Verify completion
+            print("🔍 Step 4: Verifying completion...")
+            assert final_status.get('status') == 'completed'
+            assert final_status.get('run_id') == run_id
+            print(f"✅ WarmBoot completed successfully")
+            
+            # Step 5: Verify all 4 tasks executed
+            print("📊 Step 5: Verifying task execution...")
+            tasks = final_status.get('tasks', [])
+            task_actions = [task.get('action') for task in tasks]
+            
+            expected_actions = ['archive', 'design_manifest', 'build', 'deploy']
+            missing_actions = [action for action in expected_actions if action not in task_actions]
+            
+            if missing_actions:
+                print(f"❌ Missing task actions: {missing_actions}")
+                print(f"   Found actions: {task_actions}")
+                pytest.fail(f"Missing required task actions: {missing_actions}")
+            
+            print(f"✅ All required tasks executed: {task_actions}")
+            
+            # Step 6: Verify task completion status
+            print("✅ Step 6: Verifying task completion status...")
+            failed_tasks = []
+            for task in tasks:
+                if task.get('status') != 'completed':
+                    failed_tasks.append(f"{task.get('action')}: {task.get('status')}")
+                if 'completed_at' not in task:
+                    failed_tasks.append(f"{task.get('action')}: missing completed_at")
+            
+            if failed_tasks:
+                print(f"❌ Task completion issues: {failed_tasks}")
+                pytest.fail(f"Task completion issues: {failed_tasks}")
+            
+            print("✅ All tasks completed successfully")
+            print("🎉 WarmBoot HelloSquad workflow test passed!")
+            
+        except Exception as e:
+            print(f"❌ WarmBoot test failed: {e}")
+            
+            # Try to get more diagnostic information
+            try:
+                print("🔍 Gathering diagnostic information...")
+                
+                # Check agent container status
+                agent_manager = AgentManager()
+                container_info = agent_manager.get_agent_container_info()
+                print(f"Agent container status: {container_info}")
+                
+                # Check recent logs
+                print("📋 Checking recent agent logs...")
+                for agent_name, info in container_info.items():
+                    if info['running']:
+                        container_name = info['container_name']
+                        try:
+                            result = subprocess.run(
+                                ['docker', 'logs', '--tail', '10', container_name],
+                                capture_output=True,
+                                text=True,
+                                timeout=10
+                            )
+                            if result.stdout:
+                                print(f"Recent logs for {agent_name}:")
+                                print(result.stdout)
+                        except Exception as log_error:
+                            print(f"Could not get logs for {agent_name}: {log_error}")
+                
+            except Exception as diag_error:
+                print(f"Could not gather diagnostics: {diag_error}")
+            
+            # Re-raise the original exception
+            raise
     
     @pytest.mark.smoke
     def test_app_accessible_at_target_url(self, infrastructure_available):
@@ -368,8 +461,8 @@ class TestWarmBootSmoke:
         request_data = {
             "run_id": run_id,
             "application": "TestApp",
-            "request_type": "from_scratch",
-            "agents": ["test-lead-agent", "test-dev-agent"],
+            "request_type": "from-scratch",  # Match form format (hyphen)
+            "agents": ["max", "neo"],  # Use real agent IDs (test checks real infrastructure)
             "priority": "HIGH",
             "description": f"Error handling test run {run_id}",
             "requirements": None,

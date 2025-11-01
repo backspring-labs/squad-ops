@@ -19,15 +19,19 @@ class TestDevAgent:
     """Comprehensive tests for DevAgent covering JSON workflow and all methods."""
     
     @pytest.fixture
-    def dev_agent(self):
+    def dev_agent(self, mock_unified_config):
         """Create DevAgent instance for testing."""
-        agent = DevAgent("test-dev-agent")
-        # Mock the managers to avoid real file system operations
-        agent.file_manager = MockFileManager()
-        agent.docker_manager = MockDockerManager()
-        agent.version_manager = MagicMock()
-        agent.app_builder = MagicMock()
-        return agent
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = DevAgent("test-dev-agent")
+            # Mock the managers to avoid real file system operations
+            agent.file_manager = MockFileManager()
+            agent.docker_manager = MockDockerManager()
+            agent.version_manager = MagicMock()
+            # Make app_builder methods async
+            agent.app_builder = MagicMock()
+            agent.app_builder.generate_manifest_json = AsyncMock()
+            agent.app_builder.generate_files_json = AsyncMock()
+            return agent
     
     # ============================================================================
     # JSON WORKFLOW TESTS (from test_dev_agent_json_handlers.py)
@@ -81,7 +85,12 @@ class TestDevAgent:
         """Test successful design_manifest task handling."""
         # Mock AppBuilder manifest generation
         mock_manifest = create_sample_build_manifest()
+        # Also mock files generation since design_manifest task calls both
+        mock_files = [
+            {"type": "create_file", "file_path": "index.html", "content": "<html></html>", "directory": None}
+        ]
         dev_agent.app_builder.generate_manifest_json = AsyncMock(return_value=mock_manifest)
+        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=mock_files)
         
         result = await dev_agent._handle_design_manifest_task(
             design_manifest_task["task_id"],

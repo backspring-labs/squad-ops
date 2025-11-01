@@ -13,6 +13,7 @@ import json
 import logging
 import time
 import yaml
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List
 from base_agent import BaseAgent, AgentMessage
@@ -507,6 +508,16 @@ class LeadAgent(BaseAgent):
             'reason': 'High complexity'
         })
         
+        # Log to communication log (deprecated log_activity may fail in integration tests)
+        self.communication_log.append({
+            'event': 'task_escalated',
+            'task_id': task_id,
+            'complexity': task.get('complexity'),
+            'reason': 'Premium consultation required',
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+        # Try deprecated log_activity (gracefully handles missing table)
         await self.log_activity("task_escalated", {
             'task_id': task_id,
             'complexity': task.get('complexity'),
@@ -634,6 +645,16 @@ class LeadAgent(BaseAgent):
         
         logger.info(f"{self.name} handling escalation for task: {task_id}, reason: {reason}")
         
+        # Log to communication log (deprecated log_activity may fail in integration tests)
+        self.communication_log.append({
+            'event': 'escalation_received',
+            'task_id': task_id,
+            'from_agent': message.sender,
+            'reason': reason,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+        # Try deprecated log_activity (gracefully handles missing table)
         await self.log_activity("escalation_received", {
             'task_id': task_id,
             'from_agent': message.sender,
@@ -808,6 +829,7 @@ class LeadAgent(BaseAgent):
                         "version": app_version,
                         "framework_version": framework_version,
                         "warm_boot_sequence": warm_boot_sequence,
+                        "target_directory": f"warm-boot/apps/{app_kebab}/",  # Add target_directory for file creation
                         "task_spec": task_spec.to_dict()  # Include Max's TaskSpec
                     },
                     "complexity": 0.4,
@@ -937,30 +959,30 @@ class LeadAgent(BaseAgent):
         }
         
         try:
-            # Collect database metrics
-            async with self.db_pool.acquire() as conn:
-                # Get task logs for this ECID
-                task_logs = await conn.fetch("""
-                    SELECT task_id, agent, status, start_time, end_time, duration, artifacts
-                    FROM agent_task_log
-                    WHERE ecid = $1
-                    ORDER BY start_time
-                """, ecid)
-                
-                telemetry['database_metrics']['task_count'] = len(task_logs)
-                telemetry['database_metrics']['tasks'] = [dict(t) for t in task_logs]
-                
-                # Get execution cycle info
-                cycle_info = await conn.fetchrow("""
-                    SELECT ecid, pid, run_type, title, created_at, status
-                    FROM execution_cycle
-                    WHERE ecid = $1
-                """, ecid)
-                
-                if cycle_info:
-                    telemetry['database_metrics']['execution_cycle'] = dict(cycle_info)
+            # Collect database metrics via Task API (replaces direct DB reads)
+            import aiohttp
             
-            logger.info(f"{self.name} collected DB telemetry: {telemetry['database_metrics']['task_count']} tasks")
+            # Get task logs for this ECID via API
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.task_api_url}/api/v1/tasks/ec/{ecid}") as resp:
+                    if resp.status == 200:
+                        task_logs = await resp.json()
+                        telemetry['database_metrics']['task_count'] = len(task_logs)
+                        telemetry['database_metrics']['tasks'] = task_logs
+                    else:
+                        logger.warning(f"Failed to fetch tasks for ECID {ecid}: {await resp.text()}")
+                        telemetry['database_metrics']['task_count'] = 0
+                        telemetry['database_metrics']['tasks'] = []
+                
+                # Get execution cycle info via API
+                async with session.get(f"{self.task_api_url}/api/v1/execution-cycles/{ecid}") as resp:
+                    if resp.status == 200:
+                        cycle_info = await resp.json()
+                        telemetry['database_metrics']['execution_cycle'] = cycle_info
+                    else:
+                        logger.warning(f"Failed to fetch execution cycle {ecid}: {await resp.text()}")
+            
+            logger.info(f"{self.name} collected telemetry via API: {telemetry['database_metrics']['task_count']} tasks")
             
             # Collect RabbitMQ metrics
             telemetry['rabbitmq_metrics']['messages_processed'] = len(self.communication_log)
@@ -1326,7 +1348,9 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
 async def main():
     """Main entry point for Lead agent"""
     import os
-    identity = os.getenv('AGENT_ID', 'lead_agent')
+    from config.unified_config import get_config
+    config = get_config()
+    identity = config.get_agent_id()
     agent = LeadAgent(identity=identity)
     await agent.run()
 

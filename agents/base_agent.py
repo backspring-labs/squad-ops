@@ -70,14 +70,18 @@ class BaseAgent(ABC):
         self.current_task = None
         self.connection = None
         self.channel = None
-        self.db_pool = None
+        self.db_pool = None  # Deprecated: Keep for legacy reads, will be removed in future
         self.redis_client = None
         
-        # Configuration
-        self.rabbitmq_url = os.getenv('RABBITMQ_URL', 'amqp://squadops:squadops123@rabbitmq:5672/')
-        self.postgres_url = os.getenv('POSTGRES_URL', 'postgresql://squadops:squadops123@postgres:5432/squadops')
-        self.redis_url = os.getenv('REDIS_URL', 'redis://redis:6379')
-        self.task_api_url = os.getenv("TASK_API_URL", "http://task-api:8001")
+        # Initialize unified configuration
+        from config.unified_config import get_config
+        self.config = get_config()
+        
+        # Configuration from unified config manager
+        self.rabbitmq_url = self.config.get_rabbitmq_url()
+        self.postgres_url = self.config.get_postgres_url()
+        self.redis_url = self.config.get_redis_url()
+        self.task_api_url = self.config.get_task_api_url()
         
         # Initialize LLM client
         self.llm_client = self._initialize_llm_client()
@@ -170,22 +174,70 @@ class BaseAgent(ABC):
         logger.info(f"{self.name} broadcasted {message_type}")
     
     async def update_task_status(self, task_id: str, status: str, progress: float = 0.0, eta: str = None):
-        """Update task status in database"""
-        async with self.db_pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO task_status (task_id, agent_name, status, progress, eta, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (task_id) 
-                DO UPDATE SET status = $3, progress = $4, eta = $5, updated_at = $6
-            """, task_id, self.name, status, progress, eta, datetime.utcnow())
+        """Update task status via Task API (replaces direct database writes)"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.task_api_url}/api/v1/task-status",
+                    json={
+                        "task_id": task_id,
+                        "agent_name": self.name,
+                        "status": status,
+                        "progress": progress,
+                        "eta": eta
+                    }
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Failed to update task status: {error_text}")
+                    else:
+                        logger.debug(f"{self.name} updated task status via API: {task_id}")
+                        return await resp.json()
+        except Exception as e:
+            logger.error(f"{self.name} failed to update task status via API: {e}")
+            raise
     
     async def log_activity(self, activity: str, details: Dict[str, Any] = None):
-        """Log agent activity"""
-        async with self.db_pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO agent_task_logs (task_id, agent_name, task_name, task_status, start_time, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6)
-            """, f"{self.name}_{activity}_{int(time.time() * 1000)}", self.name, activity, "completed", datetime.utcnow(), datetime.utcnow())
+        """
+        DEPRECATED: Log agent activity
+        
+        This method writes to deprecated agent_task_logs table.
+        Use Task API endpoints (log_task_start, log_task_completion) instead.
+        
+        Now gracefully handles missing table (for integration tests).
+        """
+        import warnings
+        warnings.warn(
+            f"log_activity() is deprecated for {self.name}. "
+            "Use Task API endpoints (log_task_start, log_task_completion) instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        # Keep legacy implementation but mark as deprecated
+        # Gracefully handle missing table (for integration tests)
+        if self.db_pool:
+            try:
+                async with self.db_pool.acquire() as conn:
+                    await conn.execute("""
+                        INSERT INTO agent_task_logs (task_id, agent_name, task_name, task_status, start_time, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6)
+                    """, f"{self.name}_{activity}_{int(time.time() * 1000)}", self.name, activity, "completed", datetime.utcnow(), datetime.utcnow())
+            except Exception as e:
+                # Gracefully handle missing table (integration tests, etc.)
+                logger.debug(f"{self.name} log_activity failed (table may not exist): {e}")
+                # Still log to communication log as fallback
+                self.communication_log.append({
+                    'activity': activity,
+                    'details': details or {},
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+        else:
+            # No db_pool - just log to communication log
+            self.communication_log.append({
+                'activity': activity,
+                'details': details or {},
+                'timestamp': datetime.utcnow().isoformat()
+            })
     
     async def create_execution_cycle(self, ecid: str, pid: str, run_type: str, 
                                      title: str, description: str = None):
@@ -288,33 +340,28 @@ class BaseAgent(ABC):
                 return await resp.json()
     
     async def send_heartbeat(self):
-        """Send heartbeat to health monitoring system"""
+        """Send heartbeat via Task API (replaces direct database writes)"""
         try:
-            async with self.db_pool.acquire() as conn:
-                await conn.execute("""
-                    INSERT INTO agent_status (agent_name, status, version, tps, last_heartbeat, current_task_id, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    ON CONFLICT (agent_name) 
-                    DO UPDATE SET 
-                        status = $2,
-                        tps = $4,
-                        last_heartbeat = $5,
-                        current_task_id = $6,
-                        updated_at = $7
-                """, 
-                self.name, 
-                self.status, 
-                get_agent_version(self.name), 
-                0,  # Mock TPS for now
-                datetime.utcnow(),
-                self.current_task or None,
-                datetime.utcnow()
-                )
-                
-            logger.debug(f"{self.name} heartbeat sent")
-            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.task_api_url}/api/v1/agent-status",
+                    json={
+                        "agent_name": self.name,
+                        "status": self.status,
+                        "current_task_id": self.current_task or None,
+                        "version": get_agent_version(self.name),
+                        "tps": 0  # Mock TPS for now
+                    }
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Failed to send heartbeat: {error_text}")
+                    else:
+                        logger.debug(f"{self.name} heartbeat sent via API")
+                        return await resp.json()
         except Exception as e:
-            logger.error(f"{self.name} heartbeat failed: {e}")
+            logger.error(f"{self.name} heartbeat failed via API: {e}")
+            raise
     
     @abstractmethod
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:

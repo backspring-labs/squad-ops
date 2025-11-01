@@ -207,7 +207,9 @@ class CreativeAgent(BaseAgent):
 async def main():
     """Main entry point for Creative agent"""
     import os
-    identity = os.getenv('AGENT_ID', 'creative_agent')
+    from config.unified_config import get_config
+    config = get_config()
+    identity = config.get_agent_id()
     agent = CreativeAgent(identity=identity)
     await agent.run()
 

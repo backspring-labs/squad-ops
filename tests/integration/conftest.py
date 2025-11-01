@@ -20,6 +20,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, '/app')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'agents'))
 
+# Import agent manager for container management
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from agent_manager import AgentManager
+
 def load_test_config():
     """Load integration test configuration from file"""
     config_file = Path(__file__).parent / 'test_config.env'
@@ -85,6 +91,59 @@ def check_rabbitmq_management(host: str, port: int, timeout: int = 30) -> bool:
     print(f"❌ RabbitMQ management failed health check on {host}:{port} after {timeout}s")
     return False
 
+def check_agent_containers(agents: list = ['max', 'neo']) -> bool:
+    """Check that agent containers are running and healthy"""
+    print(f"🤖 Checking agent containers: {agents}")
+    
+    manager = AgentManager()
+    
+    # Get container info
+    container_info = manager.get_agent_container_info()
+    
+    all_healthy = True
+    for agent in agents:
+        if agent not in container_info:
+            print(f"❌ Agent {agent} not found in configuration")
+            all_healthy = False
+            continue
+            
+        info = container_info[agent]
+        if not info['running']:
+            print(f"❌ Agent {agent} ({info['container_name']}) is not running: {info['status']}")
+            all_healthy = False
+        else:
+            print(f"✅ Agent {agent} ({info['container_name']}) is running: {info['status']}")
+    
+    return all_healthy
+
+async def ensure_agents_running(agents: list = ['max', 'neo']) -> bool:
+    """Ensure agent containers are running and healthy"""
+    print(f"🚀 Ensuring agents are running: {agents}")
+    
+    manager = AgentManager()
+    
+    # Check if agents need rebuild (code is newer than image)
+    needs_rebuild = []
+    for agent in agents:
+        if await manager.check_code_freshness(agent):
+            print(f"🔄 Agent {agent} needs rebuild (code is newer than image)")
+            needs_rebuild.append(agent)
+    
+    # Rebuild if needed
+    if needs_rebuild:
+        print(f"🔨 Rebuilding agents: {needs_rebuild}")
+        if not await manager.rebuild_agents(needs_rebuild):
+            print(f"❌ Failed to rebuild agents: {needs_rebuild}")
+            return False
+    
+    # Ensure all agents are running
+    if not await manager.ensure_agents_running(agents):
+        print(f"❌ Failed to ensure agents are running: {agents}")
+        return False
+    
+    print(f"✅ All agents are running and healthy: {agents}")
+    return True
+
 @pytest.fixture(scope="session", autouse=True)
 def check_required_services():
     """Check that all required services are running before integration tests"""
@@ -105,6 +164,10 @@ def check_required_services():
     # Check RabbitMQ Management (optional but nice to have)
     check_rabbitmq_management("localhost", 15672, timeout=10)
     
+    # Check agent containers
+    if not check_agent_containers(['max', 'neo']):
+        pytest.skip("Agent containers (Max/Neo) are not running. Run 'docker-compose up -d max neo' to start them.")
+    
     print("✅ All required services are healthy!")
     yield
 
@@ -114,6 +177,27 @@ def event_loop():
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
+@pytest.fixture(scope="session")
+async def ensure_agents_running_fixture():
+    """Ensure agent containers are running and healthy before integration tests"""
+    print("🤖 Ensuring agent containers are running...")
+    
+    success = await ensure_agents_running(['max', 'neo'])
+    if not success:
+        pytest.skip("Failed to ensure agent containers are running. Check Docker and agent configuration.")
+    
+    yield
+    
+    # Optionally stop agents after tests (commented out to keep them running)
+    # print("🛑 Stopping agent containers after tests...")
+    # manager = AgentManager()
+    # await manager.stop_agents(['max', 'neo'])
+
+@pytest.fixture
+def agent_manager():
+    """Provide AgentManager instance for tests"""
+    return AgentManager()
 
 @pytest.fixture(scope="session")
 def postgres_container():

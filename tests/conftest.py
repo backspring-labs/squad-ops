@@ -282,6 +282,93 @@ def mock_lead_agent():
     return agent
 
 @pytest.fixture
+def mock_unified_config():
+    """Mock unified configuration for testing"""
+    mock_config = MagicMock()
+    
+    # Mock infrastructure URLs
+    mock_config.get_rabbitmq_url.return_value = 'amqp://test:test@localhost:5672/'
+    mock_config.get_postgres_url.return_value = 'postgresql://test:test@localhost:5432/squadops'
+    mock_config.get_redis_url.return_value = 'redis://localhost:6379'
+    mock_config.get_task_api_url.return_value = 'http://task-api:8001'
+    
+    # Mock agent config
+    mock_config.get_agent_id.return_value = 'test-agent'
+    mock_config.get_agent_role.return_value = 'test'
+    mock_config.get_agent_display_name.return_value = 'Test Agent'
+    
+    # Mock LLM config
+    mock_config.get_llm_config.return_value = {
+        'url': 'http://localhost:11434',
+        'model': 'test-model',
+        'use_local': True,
+        'timeout': 60
+    }
+    mock_config.get_ollama_url.return_value = 'http://localhost:11434'
+    mock_config.get_agent_model.return_value = 'test-model'
+    mock_config.get_use_local_llm.return_value = True
+    
+    return mock_config
+
+@pytest.fixture
+def mock_task_api():
+    """Mock Task API HTTP responses for testing"""
+    from unittest.mock import AsyncMock
+    
+    class MockResponse:
+        def __init__(self, status=200, json_data=None, text_data=""):
+            self.status = status
+            self._json_data = json_data or {}
+            self._text_data = text_data
+        
+        async def json(self):
+            return self._json_data
+        
+        async def text(self):
+            return self._text_data
+        
+        async def __aenter__(self):
+            return self
+        
+        async def __aexit__(self, *args):
+            return None
+    
+    class MockSession:
+        def __init__(self):
+            self.post_responses = {}
+            self.get_responses = {}
+        
+        def set_post_response(self, url_pattern, status=200, json_data=None):
+            """Set response for POST requests matching pattern"""
+            self.post_responses[url_pattern] = MockResponse(status, json_data)
+        
+        def set_get_response(self, url_pattern, status=200, json_data=None):
+            """Set response for GET requests matching pattern"""
+            self.get_responses[url_pattern] = MockResponse(status, json_data)
+        
+        async def post(self, url, **kwargs):
+            """Mock POST request"""
+            for pattern, response in self.post_responses.items():
+                if pattern in url:
+                    return response
+            return MockResponse(200, {"status": "ok"})
+        
+        async def get(self, url, **kwargs):
+            """Mock GET request"""
+            for pattern, response in self.get_responses.items():
+                if pattern in url:
+                    return response
+            return MockResponse(200, {"status": "ok"})
+        
+        async def __aenter__(self):
+            return self
+        
+        async def __aexit__(self, *args):
+            return None
+    
+    return MockSession()
+
+@pytest.fixture
 def mock_ollama_json_response():
     """Mock Ollama JSON response for testing"""
     return {

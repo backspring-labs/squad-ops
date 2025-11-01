@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from typing import Dict, Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from agents.roles.audit.agent import AuditAgent
 from agents.base_agent import AgentMessage
 
@@ -23,39 +23,42 @@ class TestAuditAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_process_task_monitoring(self, mock_database):
+    async def test_process_task_monitoring(self, mock_database, mock_unified_config):
         """Test process_task for monitoring task"""
-        agent = AuditAgent("audit-agent-001")
-        agent.db_pool = mock_database
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = AuditAgent("audit-agent-001")
+            agent.db_pool = mock_database
+            agent.task_api_url = 'http://task-api:8001'
         
-        task = {
-            'task_id': 'task-001',
-            'type': 'monitoring_audit',
-            'requirements': {
-                'scope': 'system_wide',
-                'monitoring_types': ['activity', 'security', 'performance']
-            },
-            'complexity': 0.7
-        }
-        
-        with patch.object(agent, 'monitor_agent_activities') as mock_monitor, \
-             patch.object(agent, 'perform_audit') as mock_audit, \
-             patch.object(agent, 'detect_anomalies') as mock_anomalies, \
-             patch.object(agent, 'generate_audit_report') as mock_report:
+            task = {
+                'task_id': 'task-001',
+                'type': 'monitoring_audit',
+                'requirements': {
+                    'scope': 'system_wide',
+                    'monitoring_types': ['activity', 'security', 'performance']
+                },
+                'complexity': 0.7
+            }
             
-            mock_monitor.return_value = {'status': 'monitoring'}
-            mock_audit.return_value = {'audit_results': 'clean'}
-            mock_anomalies.return_value = {'anomalies': []}
-            mock_report.return_value = {'report': 'audit_report.pdf'}
+            with patch.object(agent, 'update_task_status', new_callable=AsyncMock), \
+                 patch.object(agent, 'monitor_agent_activities') as mock_monitor, \
+                 patch.object(agent, 'perform_audit') as mock_audit, \
+                 patch.object(agent, 'detect_anomalies') as mock_anomalies, \
+                 patch.object(agent, 'generate_audit_report') as mock_report:
+                
+                mock_monitor.return_value = {'status': 'monitoring'}
+                mock_audit.return_value = {'audit_results': 'clean'}
+                mock_anomalies.return_value = {'anomalies': []}
+                mock_report.return_value = {'report': 'audit_report.pdf'}
+                
+                result = await agent.process_task(task)
             
-            result = await agent.process_task(task)
-            
-            assert result['status'] == 'completed'
-            assert 'audit_results' in result
-            mock_monitor.assert_called_once()
-            mock_audit.assert_called_once_with(task)
-            mock_anomalies.assert_called_once()
-            mock_report.assert_called_once()
+                assert result['status'] == 'completed'
+                assert 'audit_results' in result
+                mock_monitor.assert_called_once()
+                mock_audit.assert_called_once_with(task)
+                mock_anomalies.assert_called_once()
+                mock_report.assert_called_once()
     
     @pytest.mark.unit
     @pytest.mark.asyncio

@@ -250,7 +250,9 @@ class FinanceAgent(BaseAgent):
 async def main():
     """Main entry point for Finance agent"""
     import os
-    identity = os.getenv('AGENT_ID', 'finance_agent')
+    from config.unified_config import get_config
+    config = get_config()
+    identity = config.get_agent_id()
     agent = FinanceAgent(identity=identity)
     await agent.run()
 

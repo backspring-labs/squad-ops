@@ -186,12 +186,33 @@ class MockFileManager:
     def __init__(self):
         self.created_files = {}
         self.create_file_calls = []
+        self.directories = set()  # Track created directories
     
     async def create_file(self, file_path: str, content: str, directory: str = None) -> Dict[str, Any]:
         """Mock create_file method."""
         self.create_file_calls.append({"path": file_path, "content": content, "directory": directory})
         self.created_files[file_path] = content
+        if directory:
+            self.directories.add(directory)
         return {"status": "success", "file_path": file_path}
+    
+    async def directory_exists(self, directory: str) -> bool:
+        """Mock directory_exists method."""
+        return directory in self.directories or any(directory.startswith(d) for d in self.directories)
+    
+    async def list_files(self, directory: str) -> List[str]:
+        """Mock list_files method - returns file paths that were created."""
+        # Return files that were created (simplified - just return created file paths)
+        return list(self.created_files.keys())
+    
+    async def create_directory(self, directory: str) -> Dict[str, Any]:
+        """Mock create_directory method."""
+        self.directories.add(directory)
+        return {"status": "success", "directory": directory}
+    
+    async def get_operation_history(self) -> List[Dict[str, Any]]:
+        """Mock get_operation_history method."""
+        return self.create_file_calls.copy()
     
     def get_created_files(self) -> Dict[str, str]:
         """Get all created files."""

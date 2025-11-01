@@ -274,7 +274,9 @@ class AuditAgent(BaseAgent):
 async def main():
     """Main entry point for Audit agent"""
     import os
-    identity = os.getenv('AGENT_ID', 'audit_agent')
+    from config.unified_config import get_config
+    config = get_config()
+    identity = config.get_agent_id()
     agent = AuditAgent(identity=identity)
     await agent.run()
 

@@ -8,21 +8,30 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List
-from ...base_agent import BaseAgent, AgentMessage
+from base_agent import BaseAgent, AgentMessage
 import sys
 import os
 import aiohttp
 
-# Import specialized components
-from .app_builder import AppBuilder
-from .docker_manager import DockerManager
-from .version_manager import VersionManager
-from .file_manager import FileManager
+# Add config path first
+sys.path.append('/app')
+
+# Import specialized components - use paths that work in both Docker (flattened) and local
+try:
+    # Docker container structure (files flattened to /app/)
+    from app_builder import AppBuilder
+    from docker_manager import DockerManager
+    from version_manager import VersionManager
+    from file_manager import FileManager
+except ImportError:
+    # Local development structure
+    from agents.roles.dev.app_builder import AppBuilder
+    from agents.roles.dev.docker_manager import DockerManager
+    from agents.roles.dev.version_manager import VersionManager
+    from agents.roles.dev.file_manager import FileManager
+
 from agents.contracts.task_spec import TaskSpec
 from agents.contracts.build_manifest import BuildManifest
-
-# Add config path
-sys.path.append('/app')
 from config.deployment_config import get_deployment_config, get_docker_config
 from config.version import get_framework_version
 
@@ -236,7 +245,7 @@ class DevAgent(BaseAgent):
             }
     
     async def _handle_design_manifest_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle design manifest task using JSON-based Ollama call"""
+        """Handle design manifest task - generate manifest AND create initial files"""
         try:
             logger.info(f"{self.name} handling design manifest task: {task_id}")
             
@@ -244,6 +253,20 @@ class DevAgent(BaseAgent):
             if 'task_spec' in requirements:
                 task_spec = TaskSpec.from_dict(requirements['task_spec'])
                 logger.info(f"{self.name} using provided TaskSpec with {len(task_spec.features)} features")
+                
+                # Ensure features are strings (defensive programming)
+                if task_spec.features:
+                    string_features = []
+                    for feature in task_spec.features:
+                        if isinstance(feature, str):
+                            string_features.append(feature)
+                        elif isinstance(feature, dict):
+                            # Extract string from dict if needed
+                            string_features.append(str(feature.get('name', feature.get('description', str(feature)))))
+                        else:
+                            string_features.append(str(feature))
+                    task_spec.features = string_features
+                    logger.info(f"{self.name} normalized features to strings: {task_spec.features}")
             else:
                 logger.error(f"{self.name} design manifest task missing TaskSpec")
                 return {
@@ -255,8 +278,55 @@ class DevAgent(BaseAgent):
             
             # Generate manifest using JSON method
             manifest = await self.app_builder.generate_manifest_json(task_spec)
-            
             logger.info(f"{self.name} generated manifest JSON: {manifest.architecture_type} with {len(manifest.files)} files")
+            
+            # Generate files using JSON method
+            files = await self.app_builder.generate_files_json(task_spec, manifest)
+            
+            # Create all files to ensure directory structure exists
+            created_files = []
+            # Get target_directory from requirements (set by Max)
+            target_directory = requirements.get('target_directory', '')
+            logger.info(f"{self.name} target_directory from requirements: '{target_directory}'")
+            
+            for file_info in files:
+                if file_info['type'] == 'create_file':
+                    # Ensure directory path is valid
+                    # Note: file_info.get('directory') might return None if LLM didn't provide it
+                    directory = file_info.get('directory') or ''
+                    if not directory or directory == '':
+                        # Extract directory from file_path if not provided
+                        file_path = file_info['file_path']
+                        if '/' in file_path:
+                            directory = '/'.join(file_path.split('/')[:-1])
+                        else:
+                            # Use target_directory from requirements (Max sets this)
+                            if target_directory:
+                                directory = target_directory.rstrip('/')
+                            else:
+                                # Fallback to default based on app name
+                                app_name = requirements.get('application', 'application')
+                                directory = f'warm-boot/apps/{app_name.lower().replace(" ", "-")}'
+                    
+                    # Final safety check - ensure directory is never empty
+                    if not directory or directory == '':
+                        # Final fallback - use default
+                        app_name = requirements.get('application', 'application')
+                        directory = f'warm-boot/apps/{app_name.lower().replace(" ", "-")}'
+                        logger.warning(f"{self.name} directory was empty, using fallback: '{directory}'")
+                    
+                    logger.debug(f"{self.name} creating file {file_info['file_path']} with directory: '{directory}' (from target_directory: '{target_directory}')")
+                    result = await self.file_manager.create_file(
+                        file_info['file_path'],
+                        file_info['content'],
+                        directory
+                    )
+                    if result['status'] == 'success':
+                        created_files.append(file_info['file_path'])
+                    else:
+                        logger.warning(f"{self.name} failed to create file {file_info['file_path']}: {result.get('error', 'Unknown error')}")
+            
+            logger.info(f"{self.name} created {len(created_files)} files during design phase")
             
             return {
                 'task_id': task_id,
@@ -264,7 +334,8 @@ class DevAgent(BaseAgent):
                 'action': 'design_manifest',
                 'manifest': manifest.to_dict(),
                 'architecture_type': manifest.architecture_type,
-                'file_count': len(manifest.files)
+                'file_count': len(manifest.files),
+                'created_files': created_files
             }
             
         except Exception as e:
@@ -301,8 +372,15 @@ class DevAgent(BaseAgent):
             
             # Use provided manifest for JSON workflow
             logger.info(f"{self.name} using provided manifest for JSON workflow")
+            if not requirements.get('manifest'):
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': 'Manifest is None or missing in requirements',
+                    'action': 'build'
+                }
             manifest = BuildManifest.from_dict(requirements['manifest'])
-            task_spec = requirements.get('task_spec')
+            task_spec = requirements.get('task_spec') if requirements else None
             if task_spec:
                 task_spec = TaskSpec.from_dict(task_spec)
             else:
@@ -317,22 +395,31 @@ class DevAgent(BaseAgent):
                     success_criteria=["Application deploys successfully"]
                 )
             
-            # Generate files using JSON method
-            files = await self.app_builder.generate_files_json(task_spec, manifest)
+            # Check if files already exist (created by design task)
+            app_dir = f"warm-boot/apps/{app_name.lower().replace(' ', '-')}/"
             
-            # Create all files
-            created_files = []
-            for file_info in files:
-                if file_info['type'] == 'create_file':
-                    result = await self.file_manager.create_file(
-                        file_info['file_path'],
-                        file_info['content'],
-                        file_info.get('directory')
-                    )
-                    if result['status'] == 'success':
-                        created_files.append(file_info['file_path'])
-            
-            logger.info(f"{self.name} created {len(created_files)} files using JSON workflow")
+            # If files don't exist, create them (fallback for robustness)
+            if not await self.file_manager.directory_exists(app_dir):
+                logger.info(f"{self.name} app directory doesn't exist, creating files from manifest")
+                files = await self.app_builder.generate_files_json(task_spec, manifest)
+                
+                created_files = []
+                for file_info in files:
+                    if file_info['type'] == 'create_file':
+                        result = await self.file_manager.create_file(
+                            file_info['file_path'],
+                            file_info['content'],
+                            file_info.get('directory')
+                        )
+                        if result['status'] == 'success':
+                            created_files.append(file_info['file_path'])
+                
+                logger.info(f"{self.name} created {len(created_files)} files during build phase")
+            else:
+                logger.info(f"{self.name} app directory exists, files already created by design task")
+                # Files already exist, just verify they're there
+                created_files = await self.file_manager.list_files(app_dir)
+                logger.info(f"{self.name} verified {len(created_files)} existing files")
             
             return {
                 'task_id': task_id,
@@ -886,7 +973,9 @@ Each component handles a specific aspect of the development workflow.
 async def main():
     """Main entry point for DevAgent"""
     import os
-    identity = os.getenv('AGENT_ID', 'refactored_dev_agent')
+    from config.unified_config import get_config
+    config = get_config()
+    identity = config.get_agent_id()
     agent = DevAgent(identity=identity)
     await agent.run()
 

@@ -326,43 +326,10 @@ class HealthChecker:
                 )
             )
             
-            # Send individual tasks to each agent
-            for agent in request.agents:
-                # Map agent to appropriate task type
-                task_type_map = {
-                    "max": "governance",
-                    "neo": "code",
-                    "nat": "product",
-                    "eve": "security",
-                    "data": "data_analysis",
-                    "quark": "financial",
-                    "joi": "communication",
-                    "og": "pattern_analysis",
-                    "glyph": "creative",
-                    "hal": "audit"
-                }
-                
-                agent_message = {
-                    "task_id": f"{request.run_id}-{agent}-001",
-                    "type": task_type_map.get(agent, "code"),
-                    "run_id": request.run_id,
-                    "application": request.application,
-                    "request_type": request.request_type,
-                    "priority": request.priority,
-                    "description": request.description,
-                    "requirements": request.requirements,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                
-                channel.basic_publish(
-                    exchange='',
-                    routing_key=f'{agent}_tasks',
-                    body=json.dumps(agent_message),
-                    properties=pika.BasicProperties(
-                        content_type='application/json',
-                        delivery_mode=2
-                    )
-                )
+            # NOTE: Max (Lead Agent) handles all task creation and delegation
+            # The health check app only sends the governance task to Max
+            # Max then processes the PRD and creates/delegates proper tasks to other agents
+            # This ensures proper task orchestration through Max's governance layer
             
             connection.close()
             

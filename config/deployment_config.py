@@ -129,6 +129,10 @@ def get_redis_url() -> str:
     """Get Redis connection URL"""
     return f"redis://{INFRASTRUCTURE_CONFIG['redis_host']}:{INFRASTRUCTURE_CONFIG['redis_port']}/{INFRASTRUCTURE_CONFIG['redis_db']}"
 
+def get_task_api_url() -> str:
+    """Get Task Management API URL"""
+    return os.getenv("TASK_API_URL", "http://task-api:8001")
+
 def get_container_name(app_name: str) -> str:
     """Get container name for application"""
     return VERSION_CONFIG["container_name_format"].format(app=app_name.lower().replace("_", "-"))

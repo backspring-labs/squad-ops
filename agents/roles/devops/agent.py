@@ -11,6 +11,7 @@ Premium Consultation: DevOps Engineer - Infrastructure automation and deployment
 import asyncio
 import json
 import logging
+from datetime import datetime
 from typing import Dict, Any
 from base_agent import BaseAgent, AgentMessage
 
@@ -58,10 +59,17 @@ class DevopsAgent(BaseAgent):
         # Update task status
         await self.update_task_status(task_id, "Completed", 100.0)
         
-        # Log activity
+        # Log to communication log (deprecated log_activity may fail in integration tests)
+        self.communication_log.append({
+            'event': 'devops_task_completed',
+            'task_id': task_id,
+            'result': result,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+        # Try deprecated log_activity (gracefully handles missing table)
         await self.log_activity(
             f"Processed devops task: {task_id}",
-            "task_completion",
             {"task_id": task_id, "result": result}
         )
         
@@ -188,7 +196,9 @@ class DevopsAgent(BaseAgent):
 async def main():
     """Main entry point for {{ROLE_NAME.title()}} agent"""
     import os
-    identity = os.getenv('AGENT_ID', 'devops_agent')
+    from config.unified_config import get_config
+    config = get_config()
+    identity = config.get_agent_id()
     agent = DevopsAgent(identity=identity)
     await agent.run()
 

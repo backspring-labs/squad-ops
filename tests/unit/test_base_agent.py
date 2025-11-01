@@ -7,7 +7,7 @@ Tests core agent functionality without external dependencies
 import pytest
 import asyncio
 from typing import Dict, Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from agents.base_agent import BaseAgent, AgentMessage
 
 class ConcreteTestAgent(BaseAgent):
@@ -25,20 +25,24 @@ class TestBaseAgent:
     """Test BaseAgent core functionality"""
     
     @pytest.mark.unit
-    def test_agent_initialization(self):
+    def test_agent_initialization(self, mock_unified_config):
         """Test agent initialization with basic parameters"""
-        agent = ConcreteTestAgent(
-            name="test-agent",
-            agent_type="test",
-            reasoning_style="test"
-        )
-        
-        assert agent.name == "test-agent"
-        assert agent.agent_type == "test"
-        assert agent.reasoning_style == "test"
-        assert agent.status == "online"  # Changed from "initialized"
-        assert agent.current_task is None  # Actual attribute
-        assert agent.connection is None  # Actual attribute
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            assert agent.name == "test-agent"
+            assert agent.agent_type == "test"
+            assert agent.reasoning_style == "test"
+            assert agent.status == "online"  # Changed from "initialized"
+            assert agent.current_task is None  # Actual attribute
+            assert agent.connection is None  # Actual attribute
+            # Verify unified config was loaded
+            assert agent.config is not None
+            assert agent.task_api_url == 'http://task-api:8001'
     
     @pytest.mark.unit
     def test_agent_message_creation(self):
@@ -62,27 +66,28 @@ class TestBaseAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_agent_startup(self, mock_database, mock_redis, mock_rabbitmq):
+    async def test_agent_startup(self, mock_database, mock_redis, mock_rabbitmq, mock_unified_config):
         """Test agent startup sequence"""
-        agent = ConcreteTestAgent(
-            name="test-agent",
-            agent_type="test",
-            reasoning_style="test"
-        )
-        
-        # Mock the actual connections BaseAgent creates
-        async def mock_create_pool(*args, **kwargs):
-            return mock_database
-        
-        with patch('aio_pika.connect_robust', return_value=mock_rabbitmq), \
-             patch('asyncpg.create_pool', side_effect=mock_create_pool), \
-             patch('redis.asyncio.from_url', return_value=mock_redis):
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
             
-            await agent.initialize()  # Actual method name
+            # Mock the actual connections BaseAgent creates
+            async def mock_create_pool(*args, **kwargs):
+                return mock_database
             
-            assert agent.connection is not None
-            assert agent.db_pool is not None
-            assert agent.redis_client is not None
+            with patch('aio_pika.connect_robust', return_value=mock_rabbitmq), \
+                 patch('asyncpg.create_pool', side_effect=mock_create_pool), \
+                 patch('redis.asyncio.from_url', return_value=mock_redis):
+                
+                await agent.initialize()  # Actual method name
+                
+                assert agent.connection is not None
+                assert agent.db_pool is not None  # Still exists for legacy reads
+                assert agent.redis_client is not None
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -154,24 +159,40 @@ class TestBaseAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_update_task_status(self, mock_database):
-        """Test task status updates in database"""
-        agent = ConcreteTestAgent(
-            name="test-agent",
-            agent_type="test",
-            reasoning_style="test"
-        )
-        agent.db_pool = mock_database
-        
-        await agent.update_task_status("task-001", "in_progress", 50.0)
-        
-        # Get the connection from the context manager
-        conn = mock_database.acquire.return_value.conn
-        conn.execute.assert_called_once()
-        call_args = conn.execute.call_args
-        assert "task-001" in str(call_args)
-        assert "in_progress" in str(call_args)
-        assert "50.0" in str(call_args)
+    async def test_update_task_status(self, mock_unified_config):
+        """Test task status updates via Task API"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            agent.task_api_url = 'http://task-api:8001'
+            
+            # Mock HTTP response from Task API
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={"status": "updated", "task_id": "task-001"})
+            mock_response.text = AsyncMock(return_value="")
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+            
+            mock_session = AsyncMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+            mock_session.post = Mock(return_value=mock_response)
+            
+            with patch('aiohttp.ClientSession', return_value=mock_session):
+                await agent.update_task_status("task-001", "in_progress", 50.0)
+            
+            # Verify API was called with correct payload
+            assert mock_session.post.called
+            call_args = mock_session.post.call_args
+            assert call_args[0][0] == 'http://task-api:8001/api/v1/task-status'
+            json_payload = call_args[1]['json']
+            assert json_payload['task_id'] == 'task-001'
+            assert json_payload['status'] == 'in_progress'
+            assert json_payload['progress'] == 50.0
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -246,20 +267,42 @@ class TestBaseAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_send_heartbeat(self, mock_database):
-        """Test heartbeat sending"""
-        agent = ConcreteTestAgent(
-            name="test-agent",
-            agent_type="test",
-            reasoning_style="test"
-        )
-        agent.db_pool = mock_database
-        
-        await agent.send_heartbeat()
-        
-        # Get the connection from the context manager
-        conn = mock_database.acquire.return_value.conn
-        conn.execute.assert_called_once()
+    async def test_send_heartbeat(self, mock_unified_config):
+        """Test heartbeat sending via Task API"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config), \
+             patch('agents.base_agent.get_agent_version', return_value='1.0.0'):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            agent.task_api_url = 'http://task-api:8001'
+            agent.status = 'online'
+            agent.current_task = None
+            
+            # Mock HTTP response from Task API
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={"status": "updated", "agent_name": "test-agent"})
+            mock_response.text = AsyncMock(return_value="")
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+            
+            mock_session = AsyncMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+            mock_session.post = Mock(return_value=mock_response)
+            
+            with patch('aiohttp.ClientSession', return_value=mock_session):
+                await agent.send_heartbeat()
+            
+            # Verify API was called with correct payload
+            assert mock_session.post.called
+            call_args = mock_session.post.call_args
+            assert call_args[0][0] == 'http://task-api:8001/api/v1/agent-status'
+            json_payload = call_args[1]['json']
+            assert json_payload['agent_name'] == 'test-agent'
+            assert json_payload['status'] == 'online'
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -631,40 +674,41 @@ class TestBaseAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_agent_run_initialization(self):
+    async def test_agent_run_initialization(self, mock_unified_config):
         """Test agent run initialization and queue setup"""
-        agent = ConcreteTestAgent(
-            name="test-agent",
-            agent_type="test",
-            reasoning_style="test"
-        )
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
         
-        mock_channel = AsyncMock()
-        mock_queue = AsyncMock()
-        mock_queue.__aiter__ = AsyncMock(return_value=iter([]))
-        mock_channel.declare_queue = AsyncMock(return_value=mock_queue)
-        agent.channel = mock_channel
-        
-        # Mock initialize and send_heartbeat
-        agent.initialize = AsyncMock()
-        agent.send_heartbeat = AsyncMock()
-        
-        # Mock asyncio.gather to stop immediately
-        with patch('asyncio.gather', side_effect=asyncio.CancelledError()):
-            try:
-                await agent.run()
-            except asyncio.CancelledError:
-                pass
-        
-        # Verify initialization sequence
-        agent.initialize.assert_called_once()
-        agent.send_heartbeat.assert_called_once()
-        
-        # Verify queue declarations
-        assert mock_channel.declare_queue.call_count == 3
-        mock_channel.declare_queue.assert_any_call("test-agent_tasks", durable=True)
-        mock_channel.declare_queue.assert_any_call("test-agent_comms", durable=True)
-        mock_channel.declare_queue.assert_any_call("squad_broadcast", durable=True)
+            mock_channel = AsyncMock()
+            mock_queue = AsyncMock()
+            mock_queue.__aiter__ = AsyncMock(return_value=iter([]))
+            mock_channel.declare_queue = AsyncMock(return_value=mock_queue)
+            agent.channel = mock_channel
+            
+            # Mock initialize and send_heartbeat
+            agent.initialize = AsyncMock()
+            agent.send_heartbeat = AsyncMock()
+            
+            # Mock asyncio.gather to stop immediately
+            with patch('asyncio.gather', side_effect=asyncio.CancelledError()):
+                try:
+                    await agent.run()
+                except asyncio.CancelledError:
+                    pass
+            
+            # Verify initialization sequence
+            agent.initialize.assert_called_once()
+            agent.send_heartbeat.assert_called_once()
+            
+            # Verify queue declarations
+            assert mock_channel.declare_queue.call_count == 3
+            mock_channel.declare_queue.assert_any_call("test-agent_tasks", durable=True)
+            mock_channel.declare_queue.assert_any_call("test-agent_comms", durable=True)
+            mock_channel.declare_queue.assert_any_call("squad_broadcast", durable=True)
     
     @pytest.mark.unit
     @pytest.mark.asyncio

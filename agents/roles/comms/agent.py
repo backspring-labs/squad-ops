@@ -241,7 +241,9 @@ class CommsAgent(BaseAgent):
 async def main():
     """Main entry point for Comms agent"""
     import os
-    identity = os.getenv('AGENT_ID', 'comms_agent')
+    from config.unified_config import get_config
+    config = get_config()
+    identity = config.get_agent_id()
     agent = CommsAgent(identity=identity)
     await agent.run()
 

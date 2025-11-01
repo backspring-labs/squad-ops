@@ -289,7 +289,9 @@ class CuratorAgent(BaseAgent):
 async def main():
     """Main entry point for Curator agent"""
     import os
-    identity = os.getenv('AGENT_ID', 'curator_agent')
+    from config.unified_config import get_config
+    config = get_config()
+    identity = config.get_agent_id()
     agent = CuratorAgent(identity=identity)
     await agent.run()
 

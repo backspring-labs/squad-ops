@@ -77,8 +77,11 @@ class AppBuilder:
             }
             
             try:
+                # Get Ollama URL from environment or use default
+                import os
+                ollama_url = os.getenv('OLLAMA_URL', 'http://host.docker.internal:11434')
                 async with session.post(
-                    'http://localhost:11434/api/generate',
+                    f'{ollama_url}/api/generate',
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=120)
                 ) as response:
@@ -200,7 +203,7 @@ class AppBuilder:
                     'type': 'create_file',
                     'file_path': file_path,
                     'content': file_data['content'],
-                    'directory': file_data.get('directory')
+                    'directory': file_data.get('directory') or ''  # Normalize None to empty string
                 })
             
             logger.info(f"AppBuilder generated {len(file_list)} files from JSON response")
