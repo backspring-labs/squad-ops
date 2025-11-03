@@ -29,20 +29,53 @@ async def test_ollama_client_integration():
     client = OllamaClient(url='http://localhost:11434')
     
     # Mock the aiohttp session to avoid actual network calls
-    with patch('aiohttp.ClientSession.post') as mock_post:
-        mock_response = AsyncMock()
-        mock_response.json.return_value = {'response': 'test response'}
-        mock_response.status = 200
-        mock_post.return_value.__aenter__.return_value = mock_response
+    with patch('aiohttp.ClientSession') as mock_session:
+        # Mock for complete method
+        mock_complete_response = AsyncMock()
+        mock_complete_response.status = 200
+        mock_complete_response.json = AsyncMock(return_value={
+            'response': 'test response',
+            'prompt_eval_count': 10,
+            'eval_count': 20
+        })
+        mock_complete_response.__aenter__ = AsyncMock(return_value=mock_complete_response)
+        mock_complete_response.__aexit__ = AsyncMock(return_value=None)
+        
+        # Mock for chat method
+        mock_chat_response = AsyncMock()
+        mock_chat_response.status = 200
+        mock_chat_response.json = AsyncMock(return_value={
+            'message': {
+                'content': 'chat test response'
+            },
+            'prompt_eval_count': 15,
+            'eval_count': 25
+        })
+        mock_chat_response.__aenter__ = AsyncMock(return_value=mock_chat_response)
+        mock_chat_response.__aexit__ = AsyncMock(return_value=None)
+        
+        mock_session_instance = AsyncMock()
+        def mock_post(url, **kwargs):
+            if '/api/chat' in url:
+                return mock_chat_response
+            else:
+                return mock_complete_response
+        
+        mock_session_instance.post = mock_post
+        mock_session_instance.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_instance.__aexit__ = AsyncMock(return_value=None)
+        mock_session.return_value = mock_session_instance
         
         # Test complete method
         response = await client.complete("Say 'test' and nothing else.")
         assert response is not None
         assert len(response) > 0
+        assert response == 'test response'
         
         # Test chat method
         chat_response = await client.chat("Hello", "test context")
         assert chat_response is not None
+        assert chat_response == 'chat test response'
 
 def test_delimited_parsing():
     """Test delimited file format parsing"""

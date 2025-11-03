@@ -20,9 +20,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY agents/base_agent.py .
 COPY agents/roles/${AGENT_ROLE}/agent.py .
 
-# Copy new LLM and contracts modules
+# Copy new LLM, contracts, and telemetry modules
 COPY agents/llm ./agents/llm
 COPY agents/contracts ./agents/contracts
+COPY agents/telemetry ./agents/telemetry
 
 # Copy version management
 COPY config ./config

@@ -4,7 +4,7 @@ LLMClient protocol definition for SquadOps agents.
 Defines the interface that all LLM providers must implement.
 """
 
-from typing import Protocol, List, Dict, Any
+from typing import Protocol, List, Dict, Any, Tuple, Optional
 
 
 class LLMClient(Protocol):
@@ -17,7 +17,12 @@ class LLMClient(Protocol):
         max_tokens: int = 4000,
         **kwargs
     ) -> str:
-        """Generate completion from prompt"""
+        """
+        Generate completion from prompt
+        
+        Returns:
+            str: Generated text response
+        """
         ...
     
     async def chat(
@@ -27,7 +32,22 @@ class LLMClient(Protocol):
         max_tokens: int = 4000,
         **kwargs
     ) -> str:
-        """Generate chat completion"""
+        """
+        Generate chat completion
+        
+        Returns:
+            str: Generated text response
+        """
+        ...
+    
+    def get_token_usage(self) -> Optional[Dict[str, int]]:
+        """
+        Get token usage from the last LLM call (if available)
+        
+        Returns:
+            Dict with keys: 'prompt_tokens', 'completion_tokens', 'total_tokens'
+            Returns None if token usage is not available
+        """
         ...
 
 

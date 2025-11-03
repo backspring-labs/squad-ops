@@ -9,3 +9,10 @@ aiohttp==3.9.1
 aiofiles==23.2.1
 pyyaml==6.0.1
 psutil==5.9.8
+# OpenTelemetry packages
+opentelemetry-api>=1.22.0
+opentelemetry-sdk>=1.22.0
+opentelemetry-instrumentation
+opentelemetry-exporter-otlp-proto-grpc>=1.22.0
+opentelemetry-exporter-prometheus
+opentelemetry-semantic-conventions

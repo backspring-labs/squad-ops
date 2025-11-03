@@ -66,8 +66,8 @@ class LLMRouter:
                 final_model = 'qwen2.5:7b'
             
             if not final_timeout:
-                logger.debug("Using default timeout: 60 seconds (set LLM_TIMEOUT to override)")
-                final_timeout = 60
+                logger.debug("Using default timeout: 180 seconds (set LLM_TIMEOUT to override)")
+                final_timeout = 180
             
             config = {
                 'default_provider': 'ollama',

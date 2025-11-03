@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   rabbitmq:
     image: rabbitmq:3.12-management
@@ -127,6 +126,7 @@ services:
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
       PREFECT_URL: http://prefect-server:4200/api
+      OTEL_COLLECTOR_VERSION: "0.138.0"  # Fallback if Docker API unavailable
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -426,10 +426,66 @@ services:
         condition: service_healthy
     networks:
     - squadnet
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: squadops-otel-collector
+    command: ["--config=/etc/otel-collector/config.yaml"]
+    environment:
+      OTEL_COLLECTOR_VERSION: "0.138.0"  # Set version for health check
+    volumes:
+      - ./infra/otel-collector/config.yaml:/etc/otel-collector/config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8889:8889"   # Prometheus metrics exporter
+      - "13133:13133" # Health check extension
+      - "55679:55679" # zPages extension (diagnostic pages with version info)
+    depends_on:
+      - prometheus
+    networks:
+      - squadnet
+    restart: unless-stopped
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: squadops-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - squadnet
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana:latest
+    container_name: squadops-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - squadnet
+    restart: unless-stopped
 volumes:
   rabbitmq_data: {}
   postgres_data: {}
   redis_data: {}
+  prometheus_data: {}
+  grafana_data: {}
 networks:
   squadnet:
     driver: bridge

@@ -12,6 +12,7 @@ from agents.contracts.build_manifest import BuildManifest
 import logging
 import yaml
 import json
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,9 @@ logger = logging.getLogger(__name__)
 class AppBuilder:
     """Builds application artifacts using JSON-based LLM workflow"""
     
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient = None, agent=None):
         self.llm_client = llm_client
+        self.agent = agent  # Optional agent reference for logging LLM calls (Task 1.1)
     
     def _load_prompt(self, template_name: str, **kwargs) -> str:
         """Load and format prompt template"""
@@ -59,9 +61,47 @@ class AppBuilder:
         name = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', name)
         return name.lower().replace(' ', '-')
     
-    async def _call_ollama_json(self, prompt: str, model: str = "qwen2.5:7b") -> Dict:
-        """Call Ollama with JSON format enforcement"""
+    async def _call_ollama_json(self, prompt: str, model: str = "qwen2.5:7b", context: str = "AppBuilder") -> Dict:
+        """Call Ollama with JSON format enforcement and telemetry logging (Task 1.1)"""
         import aiohttp
+        from datetime import datetime
+        
+        # Create telemetry span for LLM call if agent available (Task 1.1)
+        span_ctx = None
+        if self.agent:
+            span_name = f"llm_call.{context.lower().replace(' ', '_')}"
+            span_ctx = self.agent.create_span(span_name, {
+                'agent.name': self.agent.name,
+                'llm.operation': context,
+                'llm.prompt_length': len(prompt),
+                'llm.model': model,
+                'ecid': getattr(self.agent, 'current_ecid', None)
+            })
+        
+        # Use span context if available, otherwise call directly
+        if span_ctx:
+            with span_ctx:
+                return await self._call_ollama_impl(prompt, model, context, self.agent)
+        else:
+            return await self._call_ollama_impl(prompt, model, context, None)
+    
+    async def _call_ollama_impl(self, prompt: str, model: str, context: str, agent) -> Dict:
+        """Internal implementation of Ollama call with telemetry logging"""
+        import aiohttp
+        from datetime import datetime
+        
+        # Get trace ID if span is active (Task 1.1)
+        trace_id = None
+        if agent:
+            try:
+                from opentelemetry import trace
+                active_span = trace.get_current_span()
+                if active_span and hasattr(active_span, 'get_span_context'):
+                    span_context = active_span.get_span_context()
+                    if span_context and span_context.trace_id:
+                        trace_id = format(span_context.trace_id, '032x')
+            except Exception:
+                pass
         
         async with aiohttp.ClientSession() as session:
             payload = {
@@ -77,17 +117,76 @@ class AppBuilder:
             }
             
             try:
-                # Get Ollama URL from environment or use default
+                # Get Ollama URL and timeout from environment or use defaults
                 import os
                 ollama_url = os.getenv('OLLAMA_URL', 'http://host.docker.internal:11434')
+                # Use LLM_TIMEOUT env var or default to 180s (matching router config)
+                timeout_seconds = int(os.getenv('LLM_TIMEOUT', '180'))
                 async with session.post(
                     f'{ollama_url}/api/generate',
                     json=payload,
-                    timeout=aiohttp.ClientTimeout(total=120)
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
                         response_text = result.get('response', '{}')
+                        
+                        # Extract token usage from Ollama response (Task 1.3)
+                        prompt_tokens = result.get('prompt_eval_count', 0)
+                        completion_tokens = result.get('eval_count', 0)
+                        total_tokens = prompt_tokens + completion_tokens
+                        token_usage = {
+                            'prompt_tokens': prompt_tokens,
+                            'completion_tokens': completion_tokens,
+                            'total_tokens': total_tokens
+                        } if total_tokens > 0 else None
+                        
+                        # Record token usage metric via telemetry client (Task 1.3)
+                        if agent and token_usage:
+                            try:
+                                ecid = getattr(agent, 'current_ecid', None)
+                                labels = {
+                                    'agent': agent.name,
+                                    'operation': context.lower().replace(' ', '_'),
+                                }
+                                if ecid:
+                                    labels['ecid'] = ecid
+                                
+                                agent.record_counter('agent_tokens_used_total', total_tokens, labels)
+                                logger.debug(f"AppBuilder LLM call used {total_tokens} tokens ({prompt_tokens} prompt + {completion_tokens} completion)")
+                            except Exception as e:
+                                logger.debug(f"AppBuilder failed to record token usage metric: {e}")
+                        
+                        # Log to communication log if agent available (Task 1.1)
+                        if agent:
+                            # Try to get trace ID again after response (in case span was created)
+                            if not trace_id:
+                                try:
+                                    from opentelemetry import trace
+                                    active_span = trace.get_current_span()
+                                    if active_span and hasattr(active_span, 'get_span_context'):
+                                        span_context = active_span.get_span_context()
+                                        if span_context and span_context.trace_id:
+                                            trace_id = format(span_context.trace_id, '032x')
+                                except Exception:
+                                    pass
+                            
+                            log_entry = {
+                                'timestamp': datetime.utcnow().isoformat(),
+                                'agent': agent.name,
+                                'message_type': 'llm_reasoning',
+                                'description': f"AppBuilder {context}: {response_text[:500]}...",
+                                'ecid': getattr(agent, 'current_ecid', None),
+                                'prompt': prompt,  # Task 1.1: Capture prompt
+                                'full_response': response_text,
+                                'trace_id': trace_id  # Task 1.1: Link to telemetry trace
+                            }
+                            
+                            # Include token usage in communication log (Task 1.3)
+                            if token_usage:
+                                log_entry['token_usage'] = token_usage
+                            
+                            agent.communication_log.append(log_entry)
                         
                         # Parse JSON response
                         try:
@@ -97,15 +196,33 @@ class AppBuilder:
                             logger.error(f"AppBuilder raw response: {response_text[:500]}...")
                             raise Exception(f"Invalid JSON response from LLM: {e}")
                     else:
-                        raise Exception(f"Ollama API error: {response.status}")
+                        error_text = await response.text()
+                        raise Exception(f"Ollama API error {response.status}: {error_text[:500] if error_text else 'No error details'}")
                         
+            except asyncio.TimeoutError as e:
+                error_msg = f"Ollama API timeout after {timeout_seconds}s: {str(e)}"
+                logger.error(f"AppBuilder {error_msg}")
+                raise Exception(error_msg)
             except aiohttp.ClientError as e:
-                logger.error(f"AppBuilder HTTP error: {e}")
-                raise Exception(f"Network error calling Ollama: {e}")
+                error_msg = f"Network error calling Ollama: {type(e).__name__}: {str(e)}"
+                logger.error(f"AppBuilder HTTP error: {error_msg}")
+                raise Exception(error_msg)
+            except Exception as e:
+                # Re-raise if it's already a formatted Exception
+                error_msg = str(e) if e and len(str(e)) > 0 else f"{type(e).__name__}: {repr(e)}"
+                if "Ollama API" in error_msg or "Network error" in error_msg or "timeout" in error_msg.lower():
+                    # Already formatted, re-raise
+                    raise
+                raise Exception(f"Unexpected error calling Ollama: {error_msg}")
     
     async def generate_manifest_json(self, task_spec: TaskSpec) -> BuildManifest:
         """Generate BuildManifest using JSON-based Ollama call"""
         logger.info(f"AppBuilder generating manifest for {task_spec.app_name}")
+        # Pass context for telemetry logging
+        return await self._generate_manifest_with_context(task_spec, context="manifest_generation")
+    
+    async def _generate_manifest_with_context(self, task_spec: TaskSpec, context: str) -> BuildManifest:
+        """Generate manifest with context for telemetry"""
         
         # Load architect prompt with JSON output format
         architect_prompt = self._load_prompt(
@@ -130,7 +247,7 @@ class AppBuilder:
         
         try:
             # Call Ollama with JSON format enforcement
-            manifest_data = await self._call_ollama_json(prompt)
+            manifest_data = await self._call_ollama_json(prompt, context=context)
             
             # Create BuildManifest from JSON data
             manifest = BuildManifest.from_dict(manifest_data)
@@ -143,13 +260,19 @@ class AppBuilder:
             return manifest
             
         except Exception as e:
-            logger.error(f"AppBuilder failed to generate manifest: {e}")
-            raise Exception(f"Manifest generation failed: {e}")
+            error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
+            logger.error(f"AppBuilder failed to generate manifest: {error_msg}")
+            logger.debug(f"AppBuilder exception details:", exc_info=True)
+            raise Exception(f"Manifest generation failed: {error_msg}")
     
     async def generate_files_json(self, task_spec: TaskSpec, manifest: BuildManifest) -> List[Dict[str, Any]]:
         """Generate application files using JSON-based Ollama call"""
         logger.info(f"AppBuilder generating files for {task_spec.app_name}")
-        
+        # Pass context for telemetry logging
+        return await self._generate_files_with_context(task_spec, manifest, context="file_generation")
+    
+    async def _generate_files_with_context(self, task_spec: TaskSpec, manifest: BuildManifest, context: str) -> List[Dict[str, Any]]:
+        """Generate files with context for telemetry"""
         # Load developer prompt with JSON output format
         developer_prompt = self._load_prompt(
             'developer.txt',
@@ -174,7 +297,7 @@ class AppBuilder:
         
         try:
             # Call Ollama with JSON format enforcement
-            files_data = await self._call_ollama_json(prompt)
+            files_data = await self._call_ollama_json(prompt, context=context)
             
             # Extract files from JSON response
             if 'files' not in files_data:
@@ -210,5 +333,7 @@ class AppBuilder:
             return file_list
             
         except Exception as e:
-            logger.error(f"AppBuilder failed to generate files: {e}")
-            raise Exception(f"File generation failed: {e}")
+            error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
+            logger.error(f"AppBuilder failed to generate files: {error_msg}")
+            logger.debug(f"AppBuilder exception details:", exc_info=True)
+            raise Exception(f"File generation failed: {error_msg}")

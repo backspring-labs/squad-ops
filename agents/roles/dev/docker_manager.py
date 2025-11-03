@@ -28,6 +28,18 @@ class DockerManager:
         try:
             app_kebab = self._convert_to_kebab_case(app_name)
             
+            # Check if source directory exists
+            if not os.path.exists(source_dir):
+                error_msg = f"Source directory does not exist: {source_dir}. Files may not have been generated."
+                logger.error(f"DockerManager: {error_msg}")
+                return {
+                    'status': 'error',
+                    'error': error_msg,
+                    'image_name': app_name,
+                    'version': version,
+                    'source_dir': source_dir
+                }
+            
             # Build Docker image
             build_cmd = f"cd {source_dir} && docker build -t {app_kebab} ."
             await self._execute_command(build_cmd)
@@ -286,7 +298,11 @@ class DockerManager:
             stdout, stderr = await process.communicate()
             
             if process.returncode != 0:
-                raise Exception(f"Command failed: {command}, Error: {stderr.decode()}")
+                stderr_text = stderr.decode().strip() if stderr else 'No error details'
+                # Provide clearer error messages for common issues
+                if "can't cd to" in stderr_text or "No such file or directory" in stderr_text:
+                    raise Exception(f"Directory not found - {stderr_text}. Files may not have been generated successfully.")
+                raise Exception(f"Command failed: {command}, Error: {stderr_text}")
             
             return stdout.decode().strip()
             

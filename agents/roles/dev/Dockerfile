@@ -31,6 +31,7 @@ COPY agents/roles/${AGENT_ROLE}/file_manager.py .
 COPY agents/roles/${AGENT_ROLE}/prompts ./prompts
 COPY agents/llm ./agents/llm
 COPY agents/contracts ./agents/contracts
+COPY agents/telemetry ./agents/telemetry
 COPY config ./config
 
 # Create logs directory

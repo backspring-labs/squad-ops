@@ -17,6 +17,14 @@ import sys
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Reduce verbosity of pika (RabbitMQ client) logging - silence all pika loggers
+pika_loggers = ['pika', 'pika.connection', 'pika.channel', 'pika.adapters', 'pika.adapters.utils', 
+                'pika.adapters.utils.connection_workflow', 'pika.adapters.utils.io_services_utils',
+                'pika.adapters.blocking_connection', 'pika.select_connection']
+for logger_name in pika_loggers:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
+
 sys.path.append('/Users/jladd/Code/squad-ops')
 from config.version import SQUADOPS_VERSION, AGENT_VERSIONS, get_agent_version
 
@@ -210,6 +218,210 @@ class HealthChecker:
                 "status": "offline",
                 "version": "Unknown",
                 "purpose": "Task orchestration and state management",
+                "notes": f"Error: {str(e)}"
+            }
+    
+    async def check_prometheus(self) -> Dict[str, Any]:
+        """Check Prometheus health"""
+        try:
+            prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+            async with aiohttp.ClientSession() as session:
+                # Check health endpoint
+                async with session.get(f"{prometheus_url}/-/healthy", timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        # Try to get version from API
+                        version = "Unknown"
+                        try:
+                            version_url = f"{prometheus_url}/api/v1/status/buildinfo"
+                            async with session.get(version_url, timeout=aiohttp.ClientTimeout(total=5)) as version_response:
+                                if version_response.status == 200:
+                                    version_data = await version_response.json()
+                                    if version_data.get("data", {}).get("version"):
+                                        version = version_data["data"]["version"]
+                        except Exception:
+                            version = "Unknown"
+                        
+                        return {
+                            "component": "Prometheus",
+                            "type": "Metrics Storage",
+                            "status": "online",
+                            "version": version,
+                            "purpose": "Time-series metrics database and query engine",
+                            "notes": "Health endpoint responding"
+                        }
+                    else:
+                        raise Exception(f"HTTP {response.status}")
+        except Exception as e:
+            return {
+                "component": "Prometheus",
+                "type": "Metrics Storage",
+                "status": "offline",
+                "version": "Unknown",
+                "purpose": "Time-series metrics database and query engine",
+                "notes": f"Error: {str(e)}"
+            }
+    
+    async def check_grafana(self) -> Dict[str, Any]:
+        """Check Grafana health"""
+        try:
+            grafana_url = os.getenv("GRAFANA_URL", "http://grafana:3000")
+            async with aiohttp.ClientSession() as session:
+                # Check health endpoint
+                async with session.get(f"{grafana_url}/api/health", timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        health_data = await response.json()
+                        version = health_data.get("version", "Unknown")
+                        status = health_data.get("database", "unknown")
+                        
+                        return {
+                            "component": "Grafana",
+                            "type": "Visualization Platform",
+                            "status": "online" if status == "ok" else "degraded",
+                            "version": version,
+                            "purpose": "Metrics visualization and dashboards",
+                            "notes": f"API responding, database: {status}"
+                        }
+                    else:
+                        raise Exception(f"HTTP {response.status}")
+        except Exception as e:
+            return {
+                "component": "Grafana",
+                "type": "Visualization Platform",
+                "status": "offline",
+                "version": "Unknown",
+                "purpose": "Metrics visualization and dashboards",
+                "notes": f"Error: {str(e)}"
+            }
+    
+    async def check_otel_collector(self) -> Dict[str, Any]:
+        """
+        Check OpenTelemetry Collector health
+        
+        Note: Unlike other services (Prometheus, Grafana, etc.) that expose version via their APIs,
+        the OTel Collector health check endpoint doesn't include version metadata in its response,
+        even with include_metadata: true. Version must come from deployment configuration.
+        This is standard practice - version is a deployment-time concern, not runtime.
+        """
+        try:
+            otel_url = os.getenv("OTEL_COLLECTOR_URL", "http://otel-collector:4318")
+            health_check_url = os.getenv("OTEL_COLLECTOR_HEALTH_URL", "http://otel-collector:13133")
+            
+            version = "Unknown"
+            status = "online"
+            notes = "OTLP endpoint responding"
+            
+            async with aiohttp.ClientSession() as session:
+                # Check health check endpoint for status (if configured)
+                try:
+                    async with session.get(f"{health_check_url}/", timeout=aiohttp.ClientTimeout(total=5)) as health_response:
+                        if health_response.status == 200:
+                            health_data = await health_response.json()
+                            if "Server available" in health_data.get("status", "") or health_data.get("status") == "ready":
+                                status = "online"
+                                notes = "Health check endpoint responding"
+                                # Note: Health check response doesn't include version even with include_metadata: true
+                                # Version must come from deployment config (env var or container metadata)
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    # Health check endpoint not available - will check OTLP endpoint below
+                    logger.debug(f"{health_check_url} health check not available")
+                except Exception as e:
+                    logger.debug(f"Error checking health endpoint: {e}")
+                
+                # Get version from zPages diagnostic endpoint (/debug/servicez)
+                # This is the OpenTelemetry Collector's built-in diagnostic API, similar to other services
+                # This is better than Docker API because it queries the service itself directly
+                zpages_url = os.getenv("OTEL_COLLECTOR_ZPAGES_URL", "http://otel-collector:55679")
+                try:
+                    async with session.get(f"{zpages_url}/debug/servicez", timeout=aiohttp.ClientTimeout(total=5)) as zpages_response:
+                        if zpages_response.status == 200:
+                            html_content = await zpages_response.text()
+                            # Parse version from HTML - zPages /debug/servicez shows version in Build Info table
+                            import re
+                            # Strategy: Extract Build Info section first, then find Version row
+                            # HTML structure: <b>Build Info:</b><table>...<b>Version</b></td><td>|</td><td>0.138.0</td>...
+                            version_match = None
+                            build_info_section = re.search(r'<b>Build Info:</b>.*?</table>', html_content, re.IGNORECASE | re.DOTALL)
+                            if build_info_section:
+                                build_html = build_info_section.group(0)
+                                # Find Version in bold, then capture version number after separator
+                                version_match = re.search(r'<b>Version</b>.*?([0-9]+\.[0-9]+\.[0-9]+)', build_html, re.IGNORECASE | re.DOTALL)
+                                if version_match:
+                                    parsed_version = version_match.group(1).strip()
+                                    # Verify it's a valid version number (X.Y.Z format)
+                                    if re.match(r'^\d+\.\d+\.\d+$', parsed_version):
+                                        version = parsed_version
+                                        logger.debug(f"Got OTel Collector version from zPages: {version}")
+                                    else:
+                                        version_match = None
+                            else:
+                                # Fallback: search entire HTML for Version + version pattern
+                                version_match = re.search(r'<b>Version</b>.*?([0-9]+\.[0-9]+\.[0-9]+)', html_content, re.IGNORECASE | re.DOTALL)
+                                if version_match:
+                                    parsed_version = version_match.group(1).strip()
+                                    if re.match(r'^\d+\.\d+\.\d+$', parsed_version):
+                                        version = parsed_version
+                                        logger.debug(f"Got OTel Collector version from zPages (fallback): {version}")
+                            
+                            # Fall back to environment variable only if version parsing failed
+                            if not version_match or version == "Unknown":
+                                env_version = os.getenv("OTEL_COLLECTOR_VERSION")
+                                if env_version:
+                                    version = env_version
+                                else:
+                                    if version == "Unknown":
+                                        logger.debug("Could not parse version from zPages response")
+                        else:
+                            # zPages unavailable - fall back to environment variable
+                            env_version = os.getenv("OTEL_COLLECTOR_VERSION")
+                            if env_version:
+                                version = env_version
+                            else:
+                                version = "Unknown"
+                                logger.debug(f"zPages endpoint returned HTTP {zpages_response.status}")
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    # zPages endpoint not available - fall back to environment variable
+                    logger.debug(f"Could not query zPages endpoint for OTel Collector version: {e}")
+                    env_version = os.getenv("OTEL_COLLECTOR_VERSION")
+                    if env_version:
+                        version = env_version
+                    else:
+                        version = "Unknown"
+                
+                # Verify OTLP endpoint is responding
+                async with session.post(
+                    f"{otel_url}/v1/metrics",
+                    json={},
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    # Even if it returns 400/405, that means the service is responding
+                    if response.status in [200, 400, 405]:
+                        return {
+                            "component": "OpenTelemetry Collector",
+                            "type": "Telemetry Gateway",
+                            "status": status,
+                            "version": version,
+                            "purpose": "Collect, process, and export telemetry data (OTLP)",
+                            "notes": notes
+                        }
+                    else:
+                        raise Exception(f"HTTP {response.status}")
+        except aiohttp.ClientError:
+            # Try alternative check - see if container is running
+            return {
+                "component": "OpenTelemetry Collector",
+                "type": "Telemetry Gateway",
+                "status": "offline",
+                "version": "Unknown",
+                "purpose": "Collect, process, and export telemetry data (OTLP)",
+                "notes": "Cannot connect to OTLP endpoint - check container status"
+            }
+        except Exception as e:
+            return {
+                "component": "OpenTelemetry Collector",
+                "type": "Telemetry Gateway",
+                "status": "offline",
+                "version": "Unknown",
+                "purpose": "Collect, process, and export telemetry data (OTLP)",
                 "notes": f"Error: {str(e)}"
             }
     
@@ -577,7 +789,10 @@ async def health_infra():
         health_checker.check_rabbitmq(),
         health_checker.check_postgres(),
         health_checker.check_redis(),
-        health_checker.check_prefect()
+        health_checker.check_prefect(),
+        health_checker.check_prometheus(),
+        health_checker.check_grafana(),
+        health_checker.check_otel_collector()
     )
     return infra_checks
 

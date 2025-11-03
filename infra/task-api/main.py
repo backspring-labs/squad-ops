@@ -140,12 +140,15 @@ async def create_execution_cycle(cycle: ExecutionCycleCreate):
     """Create a new execution cycle"""
     async with pool.acquire() as conn:
         try:
+            now = datetime.utcnow()
+            # Note: execution_cycle table only has created_at, not start_time
+            # Use created_at as start_time for duration calculation
             await conn.execute("""
                 INSERT INTO execution_cycle 
                 (ecid, pid, run_type, title, description, initiated_by, created_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
             """, cycle.ecid, cycle.pid, cycle.run_type, cycle.title, 
-                cycle.description, cycle.initiated_by, datetime.utcnow())
+                cycle.description, cycle.initiated_by, now)
             return {"status": "created", "ecid": cycle.ecid}
         except asyncpg.exceptions.UniqueViolationError:
             raise HTTPException(status_code=409, detail=f"Execution cycle {cycle.ecid} already exists")

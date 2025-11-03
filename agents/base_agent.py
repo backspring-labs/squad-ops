@@ -21,6 +21,9 @@ import redis.asyncio as redis
 import aiohttp
 from dataclasses import dataclass, asdict
 
+# Telemetry abstraction - no direct OpenTelemetry imports needed
+# TelemetryClient handles all telemetry backends (OpenTelemetry, AWS, Azure, GCP, Null)
+
 # Import version management
 sys.path.append('/app')
 try:
@@ -88,12 +91,120 @@ class BaseAgent(ABC):
         
         # Initialize communication log for telemetry
         self.communication_log = []
+        
+        # Initialize telemetry client (abstraction layer)
+        self.telemetry_client = self._initialize_telemetry_client()
     
     def _initialize_llm_client(self):
         """Initialize LLM client from router"""
         from agents.llm.router import LLMRouter
         router = LLMRouter.from_config('config/llm_config.yaml')
         return router.get_default_client()
+    
+    def _initialize_telemetry_client(self):
+        """Initialize telemetry client from router (platform-aware)"""
+        # Handle both Docker (flattened) and local (nested) import structures
+        try:
+            # Try local development structure first
+            from agents.telemetry.router import TelemetryRouter
+        except ImportError:
+            try:
+                # Try Docker flattened structure
+                from telemetry.router import TelemetryRouter
+            except ImportError:
+                # Fallback to NullTelemetryClient if telemetry not available
+                logger.warning(f"{self.name}: TelemetryRouter not found, using NullTelemetryClient")
+                try:
+                    from agents.telemetry.providers.null_client import NullTelemetryClient
+                    return NullTelemetryClient({})
+                except ImportError:
+                    try:
+                        from telemetry.providers.null_client import NullTelemetryClient
+                        return NullTelemetryClient({})
+                    except ImportError:
+                        logger.error(f"{self.name}: No telemetry client available")
+                        return None
+        
+        # Get agent version and config for telemetry client
+        try:
+            agent_version = get_agent_version(self.name)
+            agent_config = get_agent_config(self.name)
+        except Exception as e:
+            logger.warning(f"{self.name}: Failed to get agent version/config: {e}")
+            agent_version = "0.3.0"
+            agent_config = {"llm": "unknown"}
+        
+        # Build telemetry config
+        telemetry_config = {
+            'service_name': f"squadops-{self.name.lower()}",
+            'service_version': agent_version,
+            'agent_name': self.name,
+            'agent_type': self.agent_type,
+            'agent_llm': agent_config.get("llm", "unknown"),
+        }
+        
+        # Initialize via router (handles platform selection)
+        telemetry_client = TelemetryRouter.from_config()
+        
+        # Update client config if it's OpenTelemetryClient
+        if hasattr(telemetry_client, 'config'):
+            telemetry_client.config.update(telemetry_config)
+            # Re-initialize with updated config if needed
+            if hasattr(telemetry_client, '_setup_telemetry'):
+                telemetry_client._setup_telemetry()
+        
+        logger.info(f"{self.name}: Telemetry client initialized ({type(telemetry_client).__name__})")
+        return telemetry_client
+    
+    def get_tracer(self, name: str = None):
+        """Get telemetry tracer instance via TelemetryClient"""
+        if name is None:
+            name = f"squadops.{self.name.lower()}"
+        return self.telemetry_client.get_tracer(name) if self.telemetry_client else None
+    
+    def get_meter(self, name: str = None):
+        """Get telemetry meter instance via TelemetryClient"""
+        if name is None:
+            name = f"squadops.{self.name.lower()}"
+        return self.telemetry_client.get_meter(name) if self.telemetry_client else None
+    
+    def create_span(self, span_name: str, attributes: Dict[str, Any] = None, kind: Optional[str] = None):
+        """Create a telemetry span context manager via TelemetryClient"""
+        if not self.telemetry_client:
+            from contextlib import nullcontext
+            return nullcontext()
+        
+        return self.telemetry_client.create_span(span_name, attributes, kind)
+    
+    def record_counter(self, metric_name: str, value: float = 1.0, labels: Dict[str, str] = None):
+        """Record a counter metric via TelemetryClient"""
+        if not self.telemetry_client:
+            return
+        
+        try:
+            self.telemetry_client.record_counter(metric_name, int(value), labels)
+        except Exception as e:
+            logger.debug(f"{self.name}: Failed to record counter {metric_name}: {e}")
+    
+    def record_gauge(self, metric_name: str, value: float, labels: Dict[str, str] = None):
+        """Record a gauge metric via TelemetryClient"""
+        if not self.telemetry_client:
+            return
+        
+        try:
+            self.telemetry_client.record_gauge(metric_name, value, labels)
+        except Exception as e:
+            logger.debug(f"{self.name}: Failed to record gauge {metric_name}: {e}")
+    
+    def record_histogram(self, metric_name: str, value: float, labels: Dict[str, str] = None):
+        """Record a histogram metric via TelemetryClient"""
+        if not self.telemetry_client:
+            return
+        
+        try:
+            self.telemetry_client.record_histogram(metric_name, value, labels)
+        except Exception as e:
+            logger.debug(f"{self.name}: Failed to record histogram {metric_name}: {e}")
         
     async def initialize(self):
         """Initialize agent connections"""
@@ -392,29 +503,99 @@ class BaseAgent(ABC):
         return responses.get(self.agent_type.lower(), f"[MOCK RESPONSE] {prompt[:50]}...")
     
     async def llm_response(self, prompt: str, context: str = "") -> str:
-        """Execute LLM call via configured provider"""
+        """Execute LLM call via configured provider with telemetry span and token tracking (Task 1.3)"""
+        from datetime import datetime
+        
+        # Create telemetry span for LLM call (Task 1.1: Link Ollama logs to telemetry)
+        span_name = f"llm_call.{context.lower().replace(' ', '_')}"
+        span_ctx = self.create_span(span_name, {
+            'agent.name': self.name,
+            'llm.operation': context,
+            'llm.prompt_length': len(prompt),
+            'ecid': getattr(self, 'current_ecid', None)
+        })
+        
+        # Extract trace ID before entering span context (Task 1.1)
+        trace_id = None
         try:
-            response = await self.llm_client.complete(
-                prompt=prompt,
-                temperature=0.7,
-                max_tokens=4000
-            )
-            
-            # Log to communication log for telemetry
-            from datetime import datetime
-            self.communication_log.append({
-                'timestamp': datetime.utcnow().isoformat(),
-                'agent': self.name,
-                'message_type': 'llm_reasoning',
-                'description': f"LLM {context}: {response[:500]}...",
-                'ecid': getattr(self, 'current_ecid', None),
-                'full_response': response
-            })
-            
-            return response
-        except Exception as e:
-            logger.error(f"{self.name} LLM call failed: {e}")
-            raise
+            # Try to get trace ID from current active span if available
+            from opentelemetry import trace
+            current_span = trace.get_current_span()
+            if current_span and hasattr(current_span, 'get_span_context'):
+                span_context = current_span.get_span_context()
+                if span_context and span_context.trace_id:
+                    trace_id = format(span_context.trace_id, '032x')
+        except Exception:
+            pass
+        
+        with span_ctx:
+            try:
+                response = await self.llm_client.complete(
+                    prompt=prompt,
+                    temperature=0.7,
+                    max_tokens=4000
+                )
+                
+                # Try to get trace ID again after span is active (Task 1.1)
+                if not trace_id:
+                    try:
+                        from opentelemetry import trace
+                        active_span = trace.get_current_span()
+                        if active_span and hasattr(active_span, 'get_span_context'):
+                            span_context = active_span.get_span_context()
+                            if span_context and span_context.trace_id:
+                                trace_id = format(span_context.trace_id, '032x')
+                    except Exception:
+                        pass
+                
+                # Track token usage from LLM call (Task 1.3)
+                token_usage = None
+                total_tokens = 0
+                try:
+                    # Try to get token usage from LLM client (if supported)
+                    if hasattr(self.llm_client, 'get_token_usage'):
+                        token_usage = self.llm_client.get_token_usage()
+                        if token_usage:
+                            total_tokens = token_usage.get('total_tokens', 0)
+                            
+                            # Record token usage metric via telemetry client (Task 1.3)
+                            ecid = getattr(self, 'current_ecid', None)
+                            labels = {
+                                'agent': self.name,
+                                'operation': context.lower().replace(' ', '_'),
+                            }
+                            if ecid:
+                                labels['ecid'] = ecid
+                            
+                            self.record_counter('agent_tokens_used_total', total_tokens, labels)
+                            logger.debug(f"{self.name} LLM call used {total_tokens} tokens ({token_usage.get('prompt_tokens', 0)} prompt + {token_usage.get('completion_tokens', 0)} completion)")
+                except Exception as e:
+                    logger.debug(f"{self.name} Failed to track token usage: {e}")
+                
+                # Log to communication log for telemetry with prompt and response (Task 1.1)
+                log_entry = {
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'agent': self.name,
+                    'message_type': 'llm_reasoning',
+                    'description': f"LLM {context}: {response[:500]}...",
+                    'ecid': getattr(self, 'current_ecid', None),
+                    'prompt': prompt,  # Task 1.1: Capture prompt
+                    'full_response': response,
+                    'trace_id': trace_id  # Task 1.1: Link to telemetry trace
+                }
+                
+                # Include token usage in communication log (Task 1.3)
+                if token_usage:
+                    log_entry['token_usage'] = token_usage
+                
+                self.communication_log.append(log_entry)
+                
+                return response
+            except Exception as e:
+                error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
+                logger.error(f"{self.name} LLM call failed: {error_msg}")
+                logger.debug(f"{self.name} LLM call exception details:", exc_info=True)
+                raise
     
     async def _ollama_response(self, prompt: str, context: str, model: str) -> str:
         """Generate response using Ollama API"""
@@ -450,6 +631,33 @@ class BaseAgent(ABC):
         
         try:
             await self.initialize()
+            
+            # Start metrics HTTP server if telemetry client supports it (Task 0.12)
+            self.metrics_server = None
+            if self.telemetry_client and hasattr(self.telemetry_client, 'get_prometheus_reader'):
+                try:
+                    prometheus_reader = self.telemetry_client.get_prometheus_reader()
+                    if prometheus_reader:
+                        # Handle both Docker (flattened) and local (nested) import structures
+                        try:
+                            from agents.telemetry.metrics_server import start_metrics_server
+                        except ImportError:
+                            try:
+                                from telemetry.metrics_server import start_metrics_server
+                            except ImportError:
+                                logger.warning(f"{self.name}: Metrics server module not found")
+                                start_metrics_server = None
+                        
+                        if start_metrics_server:
+                            prometheus_port = int(os.getenv('PROMETHEUS_METRICS_PORT', '8888'))
+                            self.metrics_server = await start_metrics_server(
+                                port=prometheus_port,
+                                meter_provider=getattr(self.telemetry_client, 'meter_provider', None),
+                                prometheus_reader=prometheus_reader
+                            )
+                            logger.info(f"{self.name} started metrics HTTP server on port {prometheus_port}")
+                except Exception as e:
+                    logger.warning(f"{self.name} failed to start metrics server: {e}")
             
             # Send initial heartbeat
             await self.send_heartbeat()
@@ -669,6 +877,14 @@ class BaseAgent(ABC):
 
     async def cleanup(self):
         """Cleanup resources"""
+        # Stop metrics server if running
+        if hasattr(self, 'metrics_server') and self.metrics_server:
+            try:
+                await self.metrics_server.stop()
+                logger.info(f"{self.name} stopped metrics HTTP server")
+            except Exception as e:
+                logger.warning(f"{self.name} error stopping metrics server: {e}")
+        
         if self.connection:
             await self.connection.close()
         if self.db_pool:

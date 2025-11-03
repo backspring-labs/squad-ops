@@ -60,7 +60,8 @@ class TestAppBuilderJSON:
     async def test_call_ollama_json_timeout(self, app_builder):
         """Test Ollama JSON call timeout handling."""
         with patch('aiohttp.ClientSession', return_value=MockAiohttpSession(should_timeout=True)):
-            with pytest.raises(asyncio.TimeoutError):
+            # AppBuilder wraps TimeoutError in Exception
+            with pytest.raises(Exception, match="Ollama API timeout"):
                 await app_builder._call_ollama_json(
                     prompt="Test prompt",
                     model="qwen2.5-coder:7b"

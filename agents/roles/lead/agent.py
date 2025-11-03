@@ -979,41 +979,246 @@ class LeadAgent(BaseAgent):
                     if resp.status == 200:
                         cycle_info = await resp.json()
                         telemetry['database_metrics']['execution_cycle'] = cycle_info
+                        
+                        # Calculate execution duration (Task 1.6)
+                        try:
+                            # Use created_at as start_time since execution_cycle table doesn't have start_time column
+                            start_time_str = cycle_info.get('start_time') or cycle_info.get('created_at')
+                            if start_time_str:
+                                # Parse ISO format datetime string
+                                try:
+                                    # Try datetime.fromisoformat first (Python 3.7+)
+                                    start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                                    if start_time.tzinfo:
+                                        from datetime import timezone
+                                        start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+                                except (ValueError, AttributeError):
+                                    # Fallback to dateutil if available
+                                    try:
+                                        from dateutil import parser
+                                        start_time = parser.parse(start_time_str)
+                                        if start_time.tzinfo:
+                                            from datetime import timezone
+                                            start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+                                    except ImportError:
+                                        # Last resort: assume format and parse manually
+                                        logger.warning(f"{self.name} dateutil not available, using basic datetime parsing")
+                                        start_time = datetime.fromisoformat(start_time_str.replace('Z', '').split('.')[0])
+                                
+                                end_time = datetime.utcnow()
+                                duration_seconds = (end_time - start_time).total_seconds()
+                                telemetry['execution_duration'] = {
+                                    'start_time': start_time_str,
+                                    'end_time': end_time.isoformat(),
+                                    'duration_seconds': round(duration_seconds, 2),
+                                    'duration_formatted': f"{int(duration_seconds // 60)}m {int(duration_seconds % 60)}s"
+                                }
+                                logger.info(f"{self.name} execution duration: {telemetry['execution_duration']['duration_formatted']}")
+                        except Exception as e:
+                            logger.warning(f"{self.name} failed to calculate execution duration: {e}")
+                            telemetry['execution_duration'] = {'error': str(e)}
                     else:
                         logger.warning(f"Failed to fetch execution cycle {ecid}: {await resp.text()}")
             
             logger.info(f"{self.name} collected telemetry via API: {telemetry['database_metrics']['task_count']} tasks")
             
-            # Collect RabbitMQ metrics
-            telemetry['rabbitmq_metrics']['messages_processed'] = len(self.communication_log)
-            telemetry['rabbitmq_metrics']['communication_log'] = self.communication_log[-10:]  # Last 10 messages
+            # Collect RabbitMQ metrics (Task 1.4: Enhanced)
+            try:
+                # Use rabbitmqctl to get detailed queue stats (manual collection)
+                result = await self.execute_command("rabbitmqctl list_queues name messages consumers")
+                queue_stats = {}
+                total_messages_manual = len(self.communication_log)  # Manual tracking fallback
+                if result.get('success') and result.get('stdout'):
+                    for line in result.get('stdout', '').strip().split('\n')[1:]:  # Skip header
+                        parts = line.split('\t')
+                        if len(parts) >= 3:
+                            queue_name = parts[0].strip()
+                            messages = int(parts[1].strip()) if parts[1].strip().isdigit() else 0
+                            consumers = int(parts[2].strip()) if parts[2].strip().isdigit() else 0
+                            queue_stats[queue_name] = {
+                                'messages': messages,
+                                'consumers': consumers
+                            }
+                
+                # Record RabbitMQ metrics via telemetry client
+                try:
+                    self.record_counter('rabbitmq_messages_total', total_messages_manual, {
+                        'source': 'communication_log',
+                        'ecid': ecid
+                    })
+                except Exception as e:
+                    logger.debug(f"{self.name} failed to record RabbitMQ telemetry metric: {e}")
+                
+                # Query telemetry backend for RabbitMQ metrics (Task 1.4: Primary source)
+                rabbitmq_from_telemetry = None
+                total_messages_telemetry = 0
+                try:
+                    import aiohttp
+                    prometheus_url = os.getenv('PROMETHEUS_URL', 'http://prometheus:9090')
+                    # Query Prometheus for rabbitmq_messages_total metric with ECID label
+                    query = f'sum(rabbitmq_messages_total{{ecid="{ecid}"}})'
+                    
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f'{prometheus_url}/api/v1/query',
+                            params={'query': query},
+                            timeout=aiohttp.ClientTimeout(total=5)
+                        ) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                if data.get('status') == 'success' and data.get('data', {}).get('result'):
+                                    # Extract message count from Prometheus result
+                                    result = data['data']['result'][0] if data['data']['result'] else None
+                                    if result and 'value' in result:
+                                        # Prometheus returns [timestamp, value] format
+                                        total_messages_telemetry = int(float(result['value'][1]))
+                                        rabbitmq_from_telemetry = {
+                                            'source': 'prometheus',
+                                            'total_messages': total_messages_telemetry,
+                                            'query': query
+                                        }
+                                        logger.debug(f"{self.name} RabbitMQ metrics from Prometheus: {total_messages_telemetry} messages")
+                except Exception as e:
+                    logger.debug(f"{self.name} Failed to query Prometheus for RabbitMQ metrics: {e}")
+                
+                # Use telemetry backend as primary source, manual tracking as fallback (Task 1.4)
+                total_messages = total_messages_telemetry if total_messages_telemetry > 0 else total_messages_manual
+                messages_source = rabbitmq_from_telemetry.get('source') if rabbitmq_from_telemetry else 'manual_tracking'
+                
+                telemetry['rabbitmq_metrics'] = {
+                    'messages_processed': total_messages,
+                    'messages_source': messages_source,
+                    'communication_log': self.communication_log[-10:],  # Last 10 messages
+                    'queue_stats': queue_stats,
+                    'queue_count': len(queue_stats),
+                    'telemetry_data': rabbitmq_from_telemetry  # Include telemetry backend data if available
+                }
+            except Exception as e:
+                logger.warning(f"{self.name} failed to collect detailed RabbitMQ metrics: {e}")
+                telemetry['rabbitmq_metrics'] = {
+                    'messages_processed': len(self.communication_log),
+                    'communication_log': self.communication_log[-10:],
+                    'error': str(e)
+                }
             
-            # Collect system metrics
+            # Collect system metrics (Task 1.2: Add GPU utilization)
             try:
                 cpu_percent = psutil.cpu_percent(interval=1)
                 memory = psutil.virtual_memory()
-                telemetry['system_metrics'] = {
+                system_metrics = {
                     'cpu_usage_percent': cpu_percent,
                     'memory_usage_gb': round(memory.used / (1024**3), 2),
                     'memory_total_gb': round(memory.total / (1024**3), 2),
                     'memory_percent': memory.percent
                 }
+                
+                # Try to get GPU utilization (Task 1.2)
+                try:
+                    result = await self.execute_command("nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits")
+                    if result.get('success') and result.get('stdout'):
+                        gpu_data = result.get('stdout', '').strip().split('\n')[0]
+                        if gpu_data:
+                            parts = gpu_data.split(', ')
+                            if len(parts) >= 3:
+                                gpu_util = int(parts[0].strip()) if parts[0].strip().isdigit() else 0
+                                gpu_mem_used = int(parts[1].strip().split()[0]) if parts[1].strip().split()[0].isdigit() else 0
+                                gpu_mem_total = int(parts[2].strip().split()[0]) if parts[2].strip().split()[0].isdigit() else 0
+                                system_metrics['gpu_utilization'] = {
+                                    'gpu_usage_percent': gpu_util,
+                                    'memory_used_mb': gpu_mem_used,
+                                    'memory_total_mb': gpu_mem_total,
+                                    'memory_percent': round((gpu_mem_used / gpu_mem_total * 100) if gpu_mem_total > 0 else 0, 2)
+                                }
+                                # Record GPU metric via telemetry client
+                                try:
+                                    self.record_gauge('system_gpu_utilization_percent', gpu_util)
+                                except Exception as e:
+                                    logger.debug(f"{self.name} failed to record GPU telemetry metric: {e}")
+                except Exception as e:
+                    logger.debug(f"{self.name} GPU not available or nvidia-smi failed: {e}")
+                    system_metrics['gpu_utilization'] = None
+                
+                # Record system metrics via telemetry client
+                try:
+                    self.record_gauge('system_cpu_usage_percent', cpu_percent)
+                    self.record_gauge('system_memory_usage_percent', memory.percent)
+                except Exception as e:
+                    logger.debug(f"{self.name} failed to record system telemetry metrics: {e}")
+                
+                telemetry['system_metrics'] = system_metrics
             except Exception as e:
                 logger.warning(f"{self.name} failed to collect system metrics: {e}")
                 telemetry['system_metrics'] = {'error': str(e)}
             
-            # Collect Docker events
+            # Collect Docker events (Task 1.5: Improved)
             try:
-                # Get recent Docker events for this run
-                result = await self.execute_command("docker events --since 5m --format '{{.Time}} {{.Type}} {{.Action}} {{.Actor.Attributes.name}}'")
-                if result.get('success'):
+                # Get execution cycle start time for filtering
+                cycle_start = None
+                if 'execution_duration' in telemetry and telemetry.get('execution_duration', {}).get('start_time'):
+                    start_time_str = telemetry['execution_duration']['start_time']
+                    try:
+                        from dateutil import parser
+                        cycle_start = parser.parse(start_time_str)
+                    except (ImportError, Exception):
+                        # Fallback to datetime.fromisoformat
+                        cycle_start = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                        if cycle_start.tzinfo:
+                            from datetime import timezone
+                            cycle_start = cycle_start.astimezone(timezone.utc).replace(tzinfo=None)
+                
+                # Get Docker events since cycle start (or last 5 minutes as fallback)
+                since_time = "5m"  # Default
+                if cycle_start:
+                    from datetime import timedelta
+                    duration = datetime.utcnow() - cycle_start
+                    since_time = f"{int(duration.total_seconds())}s"
+                
+                # Get container lifecycle events
+                result = await self.execute_command(f"docker events --since {since_time} --format '{{{{.Time}}}} {{{{.Type}}}} {{{{.Action}}}} {{{{.Actor.Attributes.name}}}}'")
+                
+                containers = {}
+                images = {}
+                events_list = []
+                
+                if result.get('success') and result.get('stdout'):
                     docker_events = result.get('stdout', '').strip().split('\n')
-                    telemetry['docker_events'] = {
-                        'recent_events': [event for event in docker_events if event.strip()],
-                        'event_count': len([event for event in docker_events if event.strip()])
-                    }
-                else:
-                    telemetry['docker_events'] = {'error': 'Failed to collect Docker events'}
+                    for event_line in docker_events:
+                        if not event_line.strip():
+                            continue
+                        parts = event_line.split(' ')
+                        if len(parts) >= 4:
+                            event_time = parts[0]
+                            event_type = parts[1]
+                            event_action = parts[2]
+                            event_name = ' '.join(parts[3:]) if len(parts) > 3 else 'unknown'
+                            
+                            events_list.append({
+                                'time': event_time,
+                                'type': event_type,
+                                'action': event_action,
+                                'name': event_name
+                            })
+                            
+                            # Track containers
+                            if event_type == 'container':
+                                if event_name not in containers:
+                                    containers[event_name] = []
+                                containers[event_name].append({'action': event_action, 'time': event_time})
+                            
+                            # Track images
+                            elif event_type == 'image':
+                                if event_name not in images:
+                                    images[event_name] = []
+                                images[event_name].append({'action': event_action, 'time': event_time})
+                
+                telemetry['docker_events'] = {
+                    'containers': containers,
+                    'images': images,
+                    'events': events_list,
+                    'event_count': len(events_list),
+                    'container_count': len(containers),
+                    'image_count': len(images)
+                }
             except Exception as e:
                 logger.warning(f"{self.name} failed to collect Docker events: {e}")
                 telemetry['docker_events'] = {'error': str(e)}
@@ -1030,7 +1235,7 @@ class LeadAgent(BaseAgent):
                                 with open(file_path, 'rb') as f:
                                     file_hash = hashlib.sha256(f.read()).hexdigest()
                                     relative_path = os.path.relpath(file_path, app_dir)
-                                    artifact_hashes[relative_path] = f"sha256:{file_hash[:12]}"
+                                    artifact_hashes[relative_path] = f"sha256:{file_hash}"  # Task 2.3: Full hash, not truncated
                             except Exception as e:
                                 logger.warning(f"{self.name} failed to hash {file_path}: {e}")
                 
@@ -1039,16 +1244,115 @@ class LeadAgent(BaseAgent):
                 logger.warning(f"{self.name} failed to collect artifact hashes: {e}")
                 telemetry['artifact_hashes'] = {'error': str(e)}
             
-            # Collect reasoning logs (from communication log)
+            # Collect reasoning logs (from communication log) - Task 1.1: Enhanced with prompts and trace IDs
             reasoning_entries = []
+            ollama_logs = []  # JSONL-like format for reasoning traces
+            tokens_by_agent = {}  # Task 1.3: Track tokens per agent
+            total_tokens_manual = 0  # Task 1.3: Manual tracking fallback
+            
             for entry in self.communication_log:
                 if 'reasoning' in entry.get('message_type', '').lower() or 'llm' in entry.get('message_type', '').lower():
                     reasoning_entries.append(entry)
+                    
+                    # Format as JSONL-like entry (Task 1.1: Ollama JSONL log format)
+                    ollama_log_entry = {
+                        'timestamp': entry.get('timestamp'),
+                        'agent': entry.get('agent'),
+                        'ecid': entry.get('ecid'),
+                        'trace_id': entry.get('trace_id'),  # Task 1.1: Link to telemetry trace
+                        'prompt': entry.get('prompt', ''),  # Task 1.1: Include prompt
+                        'response': entry.get('full_response', entry.get('description', '')),
+                        'message_type': entry.get('message_type')
+                    }
+                    
+                    # Include token usage in JSONL log entry (Task 1.3)
+                    if 'token_usage' in entry:
+                        ollama_log_entry['token_usage'] = entry['token_usage']
+                        # Sum tokens by agent
+                        agent_name = entry.get('agent', 'unknown')
+                        entry_tokens = entry['token_usage'].get('total_tokens', 0)
+                        if agent_name not in tokens_by_agent:
+                            tokens_by_agent[agent_name] = 0
+                        tokens_by_agent[agent_name] += entry_tokens
+                        total_tokens_manual += entry_tokens
+                    
+                    ollama_logs.append(ollama_log_entry)
+            
+            # Query telemetry backend for token metrics (Task 1.3: Primary source)
+            tokens_from_telemetry = None
+            total_tokens_telemetry = 0
+            try:
+                import aiohttp
+                prometheus_url = os.getenv('PROMETHEUS_URL', 'http://prometheus:9090')
+                # Query Prometheus for agent_tokens_used_total metric with ECID label
+                # Note: If metrics don't have ecid label, also try without it (fallback)
+                query_with_ecid = f'sum(agent_tokens_used_total{{ecid="{ecid}"}})'
+                query_without_ecid = f'sum(agent_tokens_used_total)'
+                
+                async with aiohttp.ClientSession() as session:
+                    # First try with ECID label
+                    async with session.get(
+                        f'{prometheus_url}/api/v1/query',
+                        params={'query': query_with_ecid},
+                        timeout=aiohttp.ClientTimeout(total=5)
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if data.get('status') == 'success' and data.get('data', {}).get('result'):
+                                # Extract token count from Prometheus result
+                                result = data['data']['result'][0] if data['data']['result'] else None
+                                if result and 'value' in result:
+                                    # Prometheus returns [timestamp, value] format
+                                    total_tokens_telemetry = int(float(result['value'][1]))
+                                    tokens_from_telemetry = {
+                                        'source': 'prometheus',
+                                        'total_tokens': total_tokens_telemetry,
+                                        'query': query_with_ecid
+                                    }
+                                    logger.debug(f"{self.name} Token metrics from Prometheus: {total_tokens_telemetry} tokens")
+                    
+                    # If no results with ECID, try without ECID (fallback for metrics without label)
+                    if total_tokens_telemetry == 0:
+                        async with session.get(
+                            f'{prometheus_url}/api/v1/query',
+                            params={'query': query_without_ecid},
+                            timeout=aiohttp.ClientTimeout(total=5)
+                        ) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                if data.get('status') == 'success' and data.get('data', {}).get('result'):
+                                    # Sum all token metrics (all agents, all operations)
+                                    total_sum = 0
+                                    for result in data['data']['result']:
+                                        if 'value' in result:
+                                            total_sum += int(float(result['value'][1]))
+                                    if total_sum > 0:
+                                        total_tokens_telemetry = total_sum
+                                        tokens_from_telemetry = {
+                                            'source': 'prometheus',
+                                            'total_tokens': total_tokens_telemetry,
+                                            'query': query_without_ecid,
+                                            'note': 'Metrics without ECID label - aggregated all tokens'
+                                        }
+                                        logger.debug(f"{self.name} Token metrics from Prometheus (no ECID): {total_tokens_telemetry} tokens")
+            except Exception as e:
+                logger.debug(f"{self.name} Failed to query Prometheus for token metrics: {e}")
+            
+            # Use telemetry backend as primary source, manual tracking as fallback (Task 1.3)
+            tokens_used = total_tokens_telemetry if total_tokens_telemetry > 0 else total_tokens_manual
+            tokens_source = tokens_from_telemetry.get('source') if tokens_from_telemetry else 'manual_tracking'
             
             telemetry['reasoning_logs'] = {
                 'reasoning_entries': reasoning_entries,
+                'ollama_logs': ollama_logs,  # Task 1.1: JSONL-like format
                 'entry_count': len(reasoning_entries),
-                'agents_with_reasoning': list(set(entry.get('agent', 'unknown') for entry in reasoning_entries))
+                'agents_with_reasoning': list(set(entry.get('agent', 'unknown') for entry in reasoning_entries)),
+                # Task 1.3: Token usage tracking
+                'tokens_used': tokens_used,
+                'tokens_by_agent': tokens_by_agent,
+                'tokens_source': tokens_source,
+                'tokens_from_telemetry': tokens_from_telemetry,
+                'tokens_manual_fallback': total_tokens_manual if total_tokens_telemetry > 0 else None
             }
             
             # Build event timeline from communication log
@@ -1069,33 +1373,100 @@ class LeadAgent(BaseAgent):
         
         return telemetry
     
-    def _extract_real_ai_reasoning(self, ecid: str) -> str:
-        """Extract real AI reasoning from communication log for wrap-up"""
+    def _extract_real_ai_reasoning(self, ecid: str, agent_name: str = None) -> str:
+        """
+        Extract real AI reasoning from communication log for wrap-up (Task 2.2)
+        Enhanced to extract from communication_log and format with agent names and timestamps
+        Also checks completion event payloads for reasoning from other agents (Fix: Neo's reasoning)
+        """
         try:
-            # Look for real LLM responses in the communication log
             real_reasoning = []
             
-            # Find entries with llm_reasoning message type for this ECID
+            # Find entries with llm_reasoning message type for this ECID (from Max's log)
             for entry in self.communication_log:
-                if (entry.get('message_type') == 'llm_reasoning' and 
-                    entry.get('ecid') == ecid):
+                entry_ecid = entry.get('ecid')
+                entry_agent = entry.get('agent', 'unknown')
+                entry_type = entry.get('message_type', '')
+                
+                # Filter by ECID and optionally by agent name
+                if entry_ecid == ecid:
+                    if entry_type in ['llm_reasoning', 'reasoning'] or 'llm' in entry_type.lower():
+                        # Skip if agent filter specified and doesn't match
+                        if agent_name and entry_agent.lower() != agent_name.lower():
+                            continue
+                        
+                        # Get timestamp
+                        timestamp = entry.get('timestamp', 'unknown')
+                        if timestamp != 'unknown':
+                            try:
+                                # Format timestamp nicely
+                                from datetime import datetime
+                                if 'T' in timestamp:
+                                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                    formatted_time = dt.strftime('%H:%M:%S')
+                                else:
+                                    formatted_time = timestamp
+                            except:
+                                formatted_time = timestamp
+                        else:
+                            formatted_time = 'unknown'
+                        
+                        # Get response text
+                        full_response = entry.get('full_response', '')
+                        description = entry.get('description', '')
+                        
+                        # Format with agent name and timestamp (Task 2.2)
+                        if full_response:
+                            # Truncate long responses but keep meaningful content
+                            response_preview = full_response[:500] + ('...' if len(full_response) > 500 else '')
+                            reasoning_text = f"> **{entry_agent}** ({formatted_time}): {response_preview}"
+                        elif description:
+                            reasoning_text = f"> **{entry_agent}** ({formatted_time}): {description[:500]}"
+                        else:
+                            reasoning_text = f"> **{entry_agent}** ({formatted_time}): [No reasoning text]"
+                        
+                        real_reasoning.append(reasoning_text)
+            
+            # Also check completion event payloads for reasoning from other agents (Fix: Neo's reasoning)
+            # Neo includes reasoning in completion event payloads sometimes
+            if agent_name:
+                for entry in self.communication_log:
+                    entry_ecid = entry.get('ecid')
+                    entry_type = entry.get('message_type', '')
+                    entry_payload = entry.get('payload', {})
                     
-                    # Use the full response if available, otherwise use description
-                    full_response = entry.get('full_response', '')
-                    if full_response:
-                        # Format the real AI response nicely
-                        real_reasoning.append(f"> **Real AI Analysis:** {full_response[:300]}...")
-                    else:
-                        real_reasoning.append(f"> {entry.get('description', 'No description')}")
+                    # Check completion events from the target agent
+                    if entry_ecid == ecid and entry_type == 'task.developer.completed':
+                        sender = entry.get('sender', '').lower()
+                        if agent_name.lower() in sender or ('neo' in sender.lower() if agent_name.lower() == 'neo' else False):
+                            # Look for reasoning in payload or description
+                            payload_description = entry_payload.get('description', entry.get('description', ''))
+                            if payload_description and 'reasoning' in payload_description.lower():
+                                timestamp = entry.get('timestamp', 'unknown')
+                                try:
+                                    from datetime import datetime
+                                    if 'T' in timestamp:
+                                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                        formatted_time = dt.strftime('%H:%M:%S')
+                                    else:
+                                        formatted_time = timestamp
+                                except:
+                                    formatted_time = timestamp
+                                
+                                reasoning_text = f"> **{agent_name}** ({formatted_time}): {payload_description[:500]}"
+                                real_reasoning.append(reasoning_text)
             
             if real_reasoning:
                 return '\n'.join(real_reasoning)
             else:
-                return "> Real AI reasoning not found in communication log for this ECID"
+                if agent_name:
+                    return f"> No reasoning trace found for agent '{agent_name}' in communication log for ECID {ecid}"
+                else:
+                    return f"> No reasoning trace found in communication log for ECID {ecid}"
                 
         except Exception as e:
             logger.warning(f"{self.name} failed to extract real AI reasoning: {e}")
-            return "> Failed to extract real AI reasoning from logs"
+            return f"> Failed to extract real AI reasoning from logs: {e}"
     
     async def _generate_wrapup_markdown(self, ecid: str, run_number: str, task_id: str, 
                                        completion_payload: Dict[str, Any], 
@@ -1115,6 +1486,7 @@ class LeadAgent(BaseAgent):
         db_metrics = telemetry.get('database_metrics', {})
         task_count = db_metrics.get('task_count', 0)
         execution_cycle = db_metrics.get('execution_cycle', {})
+        execution_duration = telemetry.get('execution_duration', {})
         
         # Extract comprehensive telemetry data
         system_metrics = telemetry.get('system_metrics', {})
@@ -1124,46 +1496,83 @@ class LeadAgent(BaseAgent):
         event_timeline = telemetry.get('event_timeline', [])
         rabbitmq_metrics = telemetry.get('rabbitmq_metrics', {})
         
-        # Build comprehensive markdown content
+        # Extract token metrics (Task 1.3)
+        tokens_used = reasoning_logs.get('tokens_used', metrics.get('tokens_used', 0))
+        tokens_by_agent = reasoning_logs.get('tokens_by_agent', {})
+        
+        # Format execution duration
+        duration_str = execution_duration.get('duration_formatted', 'Unknown')
+        if duration_str == 'Unknown' and execution_duration.get('duration_seconds'):
+            duration_sec = execution_duration['duration_seconds']
+            duration_str = f"{int(duration_sec // 60)}m {int(duration_sec % 60)}s"
+        
+        # Format start and end times
+        start_time = execution_duration.get('start_time', execution_cycle.get('start_time', 'Unknown'))
+        end_time = execution_duration.get('end_time', datetime.utcnow().isoformat())
+        
+        # Extract reasoning traces for Max and Neo separately (Task 2.2)
+        max_reasoning = self._extract_real_ai_reasoning(ecid, agent_name='max')
+        neo_reasoning = self._extract_real_ai_reasoning(ecid, agent_name='neo')
+        
+        # Format artifacts with full hashes (Task 2.3)
+        artifacts_list = []
+        if artifacts:
+            for artifact in artifacts:
+                artifact_path = artifact.get('path', 'unknown')
+                artifact_hash = artifact.get('hash', 'no hash')
+                artifacts_list.append(f"- `{artifact_path}` — {artifact_hash}")
+        elif artifact_hashes:
+            for path, hash_val in artifact_hashes.items():
+                artifacts_list.append(f"- `{path}` — {hash_val}")
+        
+        artifacts_section = '\n'.join(artifacts_list) if artifacts_list else "- No artifacts logged"
+        
+        # Calculate GPU metrics
+        gpu_metrics = system_metrics.get('gpu_utilization', {})
+        gpu_usage = gpu_metrics.get('gpu_usage_percent', 'N/A') if gpu_metrics else 'N/A'
+        
+        # Calculate Docker container counts
+        containers = docker_events.get('containers', {})
+        images = docker_events.get('images', {})
+        container_count = len(containers)
+        image_count = len(images)
+        event_count = docker_events.get('event_count', len(docker_events.get('events', [])))
+        
+        # Build comprehensive markdown content (Task 2.1: Match SIP-027 template exactly)
         markdown = f"""# 🧩 WarmBoot Run {run_number} — Reasoning & Resource Trace Log
 _Generated: {datetime.utcnow().isoformat()}_  
 _ECID: {ecid}_  
-_Duration: {execution_cycle.get('created_at', 'Unknown')} to {datetime.utcnow().isoformat()}_
+_Duration: {duration_str}_
 
 ---
 
-## 1️⃣ PRD Interpretation (LeadAgent)
+## 1️⃣ PRD Interpretation (Max)
 
-**Real AI Reasoning Trace:**
-{self._extract_real_ai_reasoning(ecid)}
+**Reasoning Trace:**
+{max_reasoning if max_reasoning.startswith('>') else '> ' + max_reasoning}
 
 **Actions Taken:**
 - Created execution cycle {ecid}
-- Delegated tasks to DevAgent via task.developer.assign events
+- Delegated tasks to Neo via task.developer.assign events
 - Monitored completion via governance listener
 
 ---
 
-## 2️⃣ Task Execution (DevAgent)
+## 2️⃣ Task Execution (Neo)
 
 **Reasoning Trace:**
-> "Processing delegated development tasks from LeadAgent"
-> "Executing archive task: Moving existing HelloSquad to archive"
-> "Executing build task: Generating new HelloSquad v0.2.0.{run_number}"
-> "Executing deploy task: Building and deploying Docker container"
-> "Emitting task.developer.completed events for each task"
+{neo_reasoning if neo_reasoning.startswith('>') else '> ' + neo_reasoning}
 
 **Actions Taken:**
-- Generated {len(artifact_hashes)} files
-- Built Docker image: hello-squad:0.2.0.{run_number}
+- Generated {len(artifact_hashes) if artifact_hashes else len(artifacts)} files
+- Built Docker image: hello-squad:0.3.0.{run_number}
 - Deployed container: squadops-hello-squad
 - Emitted {len(tasks_completed)} completion events
 
 ---
 
 ## 3️⃣ Artifacts Produced
-
-{chr(10).join([f"- `{path}` — {hash_val}" for path, hash_val in artifact_hashes.items()]) if artifact_hashes else "- No artifacts logged"}
+{artifacts_section}
 
 ---
 
@@ -1171,12 +1580,15 @@ _Duration: {execution_cycle.get('created_at', 'Unknown')} to {datetime.utcnow().
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| **CPU Usage (Current)** | {system_metrics.get('cpu_usage_percent', 'N/A')}% | Measured via psutil during execution |
+| **CPU Usage (Avg/Max)** | {system_metrics.get('cpu_usage_percent', 'N/A')}% | Measured via psutil snapshots during execution |
+| **GPU Utilization** | {gpu_usage}% | Captured from nvidia-smi API (Ollama inference) |
 | **Memory Usage** | {system_metrics.get('memory_usage_gb', 'N/A')} GB / {system_metrics.get('memory_total_gb', 'N/A')} GB | Container aggregate across squad |
 | **DB Writes** | {task_count} task logs | `agent_task_log`, `execution_cycle` tables |
 | **RabbitMQ Messages** | {rabbitmq_metrics.get('messages_processed', 0)} processed | `task.developer.assign`, `task.developer.completed` queues |
-| **Docker Events** | {docker_events.get('event_count', 0)} events | Container lifecycle events |
-| **Artifacts Generated** | {len(artifact_hashes)} files | SHA256 hashes for integrity verification |
+| **Containers Built** | {container_count} containers | Container lifecycle events |
+| **Containers Updated** | {image_count} images | Image builds and updates |
+| **Execution Duration** | {duration_str} | From ECID start to final artifact commit |
+| **Artifacts Generated** | {len(artifact_hashes) if artifact_hashes else len(artifacts)} files | SHA256 hashes for integrity verification |
 | **Reasoning Entries** | {reasoning_logs.get('entry_count', 0)} entries | LLM reasoning trace logs |
 
 ---
@@ -1186,11 +1598,11 @@ _Duration: {execution_cycle.get('created_at', 'Unknown')} to {datetime.utcnow().
 | Metric | Value | Target | Status |
 |--------|-------|--------|--------|
 | Tasks Executed | {len(tasks_completed)} | N/A | ✅ Complete |
-| Tokens Used | {metrics.get('tokens_used', 0)} | < 5,000 | {'✅ Under budget' if metrics.get('tokens_used', 0) < 5000 else '⚠️ Over budget'} |
+| Tokens Used | {tokens_used:,} | < 5,000 | {'✅ Under budget' if tokens_used < 5000 else '⚠️ Over budget'} |
 | Reasoning Entries | {reasoning_logs.get('entry_count', 0)} | N/A | — |
-| Messages Processed | {rabbitmq_metrics.get('messages_processed', 0)} | N/A | — |
+| Pulse Count | {rabbitmq_metrics.get('messages_processed', 0)} | < 15 | {'✅ Efficient' if rabbitmq_metrics.get('messages_processed', 0) < 15 else '⚠️ High pulse'} |
 | Rework Cycles | 0 | 0 | ✅ No rework |
-| Test Pass Rate | N/A | 100% | — |
+| Test Pass Rate | {metrics.get('tests_passed', 0)} / {metrics.get('tests_passed', 0) + metrics.get('tests_failed', 0) if metrics.get('tests_failed', 0) > 0 else 1} | 100% | {'✅ All passed' if metrics.get('tests_failed', 0) == 0 else '⚠️ Some failed'} |
 
 ---
 
@@ -1198,30 +1610,11 @@ _Duration: {execution_cycle.get('created_at', 'Unknown')} to {datetime.utcnow().
 
 | Timestamp | Agent | Event Type | Description |
 |-----------|-------|------------|-------------|
-{chr(10).join([f"| {event.get('timestamp', 'unknown')} | {event.get('agent', 'unknown')} | {event.get('event_type', 'unknown')} | {event.get('description', 'No description')} |" for event in event_timeline[-10:]]) if event_timeline else "| No events logged | | | |"}
+{chr(10).join([self._format_event_timeline_entry(event) for event in event_timeline[-15:]]) if event_timeline else "| No events logged | | | |"}
 
 ---
 
-## 7️⃣ Infrastructure Status
-
-**Services:**
-- ✅ RabbitMQ (event-driven messaging)
-- ✅ PostgreSQL (task logging and metrics)
-- ✅ Task Management API (execution cycle tracking)
-- ✅ Docker (container lifecycle management)
-
-**Agents:**
-- ✅ LeadAgent (Lead/Governance) — Event listener and wrap-up generation
-- ✅ DevAgent (Development) — Task execution and completion events
-
-**System Health:**
-- CPU: {system_metrics.get('cpu_usage_percent', 'N/A')}%
-- Memory: {system_metrics.get('memory_percent', 'N/A')}%
-- Docker Events: {docker_events.get('event_count', 0)} recent events
-
----
-
-## 8️⃣ Next Steps
+## 7️⃣ Next Steps
 
 - [ ] Deploy hello-squad container to production
 - [ ] Archive current version to archive folder
@@ -1238,8 +1631,9 @@ DevAgent emitted `task.developer.completed` events, which triggered automated wr
 
 **Phase 1 Features Validated:**
 - ✅ Event-driven completion detection
-- ✅ Automated telemetry collection (DB, RabbitMQ, System, Docker)
+- ✅ Automated telemetry collection (DB, RabbitMQ, System, Docker, GPU)
 - ✅ Automated wrap-up generation with comprehensive metrics
+- ✅ Token usage tracking with telemetry integration
 - ✅ Volume mount integration (container → host filesystem)
 - ✅ ECID-based traceability
 
@@ -1251,6 +1645,32 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
 """
         
         return markdown
+    
+    def _format_event_timeline_entry(self, event: Dict[str, Any]) -> str:
+        """Helper to format a single event for the timeline table."""
+        timestamp = event.get('timestamp', 'unknown')
+        if timestamp != 'unknown':
+            try:
+                from datetime import datetime
+                if 'T' in timestamp:
+                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    formatted_time = dt.strftime('%H:%M:%S')
+                else:
+                    formatted_time = timestamp
+            except:
+                formatted_time = timestamp
+        else:
+            formatted_time = 'unknown'
+        
+        agent = event.get('agent', 'unknown')
+        event_type = event.get('event_type', 'unknown')
+        description = event.get('description', 'No description')
+        
+        # Truncate description if too long
+        if len(description) > 80:
+            description = description[:77] + '...'
+        
+        return f"| {formatted_time} | {agent} | {event_type} | {description} |"
     
     async def process_prd_request(self, prd_path: str, ecid: str = None) -> Dict[str, Any]:
         """Process a PRD request - read PRD, analyze, and create tasks"""

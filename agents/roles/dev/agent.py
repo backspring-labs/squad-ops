@@ -48,7 +48,7 @@ class DevAgent(BaseAgent):
         )
         
         # Initialize specialized components
-        self.app_builder = AppBuilder(llm_client=self.llm_client)
+        self.app_builder = AppBuilder(llm_client=self.llm_client, agent=self)  # Pass agent for logging (Task 1.1)
         self.docker_manager = DockerManager()
         self.version_manager = VersionManager()
         self.file_manager = FileManager()
@@ -56,6 +56,7 @@ class DevAgent(BaseAgent):
         # Task processing state
         self.current_task_requirements = {}
         self.current_run_id = "run-001"
+        self.task_start_times = {}  # Task 3.1: Track task start times for duration calculation
     
     async def _create_technical_task_spec(self, requirements: Dict[str, Any]) -> TaskSpec:
         """Neo creates TaskSpec for technical tasks"""
@@ -421,6 +422,35 @@ class DevAgent(BaseAgent):
                 created_files = await self.file_manager.list_files(app_dir)
                 logger.info(f"{self.name} verified {len(created_files)} existing files")
             
+            # Build Docker image (only if files were created successfully)
+            if not created_files:
+                error_msg = "No files were created - cannot build Docker image. File generation may have failed."
+                logger.error(f"{self.name} {error_msg}")
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': error_msg,
+                    'action': 'build',
+                    'app_name': app_name,
+                    'version': version
+                }
+            
+            # Build Docker image
+            source_dir = f"warm-boot/apps/{app_name.lower().replace(' ', '-')}/"
+            build_result = await self.docker_manager.build_image(app_name, version, source_dir)
+            
+            if build_result.get('status') != 'success':
+                error_msg = build_result.get('error', 'Docker build failed')
+                logger.error(f"{self.name} Docker build failed: {error_msg}")
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': error_msg,
+                    'action': 'build',
+                    'app_name': app_name,
+                    'version': version
+                }
+            
             return {
                 'task_id': task_id,
                 'status': 'completed',
@@ -429,7 +459,9 @@ class DevAgent(BaseAgent):
                 'version': version,
                 'created_files': created_files,
                 'manifest': manifest.to_dict(),
-                'target_directory': f'warm-boot/apps/{app_name.lower().replace(" ", "-")}/'
+                'target_directory': source_dir,
+                'image': build_result.get('image_name'),
+                'image_version': f"{build_result.get('image_name')}:{version}"
             }
             
         except Exception as e:
@@ -730,6 +762,14 @@ class DevAgent(BaseAgent):
             
             logger.info(f"DevAgent received task delegation: {task_id} from {message.sender}")
             
+            # Set current ECID for AppBuilder token metrics (Fix: Token aggregation)
+            self.current_ecid = ecid
+            logger.debug(f"{self.name} set current_ecid: {ecid}")
+            
+            # Track task start time for duration calculation (Task 3.1)
+            from datetime import datetime
+            self.task_start_times[task_id] = datetime.utcnow()
+            
             # Task already exists (created by Max), just update status to 'in_progress'
             try:
                 async with aiohttp.ClientSession() as session:
@@ -814,14 +854,33 @@ class DevAgent(BaseAgent):
         try:
             from datetime import datetime
             import time
+            import hashlib
+            import os
             
-            # Build list of artifacts
+            # Calculate task duration (Task 3.1)
+            duration_seconds = 0
+            if hasattr(self, 'task_start_times') and task_id in self.task_start_times:
+                start_time = self.task_start_times[task_id]
+                duration_seconds = (datetime.utcnow() - start_time).total_seconds()
+                # Clean up start time after calculation
+                del self.task_start_times[task_id]
+            
+            # Build list of artifacts with actual hashes (Task 3.3)
             artifacts = []
             if 'created_files' in result:
                 for file_path in result['created_files']:
+                    artifact_hash = "sha256:no_hash"
+                    try:
+                        if os.path.exists(file_path):
+                            with open(file_path, 'rb') as f:
+                                file_hash = hashlib.sha256(f.read()).hexdigest()
+                                artifact_hash = f"sha256:{file_hash}"
+                    except Exception as e:
+                        logger.debug(f"{self.name} failed to hash artifact {file_path}: {e}")
+                    
                     artifacts.append({
                         'path': file_path,
-                        'hash': f"sha256:placeholder"  # TODO: implement actual hashing
+                        'hash': artifact_hash  # Task 3.3: Actual SHA256 hash
                     })
             
             # Determine tasks completed based on action
@@ -849,8 +908,8 @@ class DevAgent(BaseAgent):
                     'tasks_completed': tasks_completed,
                     'artifacts': artifacts,
                     'metrics': {
-                        'duration_seconds': 0,  # TODO: track actual duration
-                        'tokens_used': 0,  # TODO: track tokens if using LLM
+                        'duration_seconds': round(duration_seconds, 2),  # Task 3.1: Track actual duration
+                        'tokens_used': self._calculate_total_tokens_used(),  # Task 1.3: Track tokens from communication log
                         'tests_passed': result.get('tests_passed', 0),
                         'tests_failed': result.get('tests_failed', 0)
                     },
@@ -969,6 +1028,20 @@ Each component handles a specific aspect of the development workflow.
                 'status': 'error',
                 'error': str(e)
             }
+    
+    def _calculate_total_tokens_used(self) -> int:
+        """
+        Calculate total tokens used from communication log entries (Task 1.3)
+        
+        Returns:
+            Total number of tokens used across all LLM calls in the communication log
+        """
+        total_tokens = 0
+        for entry in self.communication_log:
+            if 'token_usage' in entry and isinstance(entry['token_usage'], dict):
+                token_usage = entry['token_usage']
+                total_tokens += token_usage.get('total_tokens', 0)
+        return total_tokens
 
 async def main():
     """Main entry point for DevAgent"""
