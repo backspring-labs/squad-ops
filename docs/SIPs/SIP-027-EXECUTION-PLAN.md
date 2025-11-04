@@ -212,7 +212,7 @@
 - **Location**: Lines 150-182 (after LLM config), add new section
 - **Benefits**: Centralized telemetry configuration via platform profiles
 
-#### Task 0.7-0.10: [Already Complete - Docker services, configs, etc. - See TEST_SIP027_RESULTS.md]
+#### Task 0.7-0.10: [Already Complete - Docker services, configs, etc. - See SIP-027-TEST-RESULTS.md]
 
 #### Task 0.12: Set Up HTTP Server to Expose Prometheus Metrics
 - **Files**: 

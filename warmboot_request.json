@@ -1,0 +1,11 @@
+{
+    "run_id": "run-131",
+    "application": "HelloSquad",
+    "request_type": "from-scratch",
+    "agents": ["max", "neo"],
+    "priority": "HIGH",
+    "description": "Build HelloSquad application from scratch based on PRD-001 - Testing refactored router and AppBuilder",
+    "requirements": null,
+    "prd_path": "warm-boot/prd/PRD-001-HelloSquad.md"
+}
+
