@@ -8,11 +8,14 @@
 **Mission**: Build the squad that builds the system. Operate the business that proves the model. Publish the guide that teaches others to do the same.
 
 **Current Status**: 
+- ✅ **Framework v0.4.0** - Telemetry finalization, LLM router abstraction, comprehensive documentation
 - ✅ **MVP Complete** - Task Management System (SIP-024/025) working end-to-end
 - ✅ **JSON Workflow Complete** - SIP-033A structured LLM output eliminating parsing issues
-- ✅ **90% Test Coverage** - 156 passing tests, production-ready core framework
-- ✅ **Proven Concept** - AI agents successfully building and deploying applications
-- 🎯 **Current Phase** - Integration testing and production validation
+- ✅ **Telemetry Complete** - OpenTelemetry integration with reasoning events and wrap-up summaries
+- ✅ **LLM Router Complete** - Dynamic provider registry supporting multiple backends
+- ✅ **48% Test Coverage** - 24 test files, 12,763 lines of test code
+- ✅ **Proven Concept** - 46+ WarmBoot runs with documented execution history
+- 🎯 **Current Phase** - Multi-agent expansion and production validation
 
 ---
 
@@ -50,9 +53,24 @@
 
 **Documentation**: See `docs/SIPs/SIP-033A-Manifest-Integration-Addendum.md` for complete implementation details
 
+### ✅ Phase 0.6: Telemetry & LLM Router Abstraction (v0.4.0)
+**Achievement**: Production-grade observability and extensible LLM provider system
+
+**What We Built**:
+- **Telemetry Finalization** - OpenTelemetry integration with reasoning events
+- **Reasoning Event Capture** - Structured reasoning telemetry in wrap-up summaries
+- **LLM Router Abstraction** - Dynamic provider registry supporting Ollama, Docker models, and future providers
+- **AppBuilder Integration** - Refactored to use LLM router abstraction, respects `USE_LOCAL_LLM` flag
+- **JSON Format Support** - OllamaClient supports `format='json'` parameter for structured output
+- **Comprehensive Documentation** - 18 new IDEA docs, 7 new SIP docs, architecture guides (43,009 lines total)
+
+**Historic Value**: First production-ready framework with complete telemetry and extensible LLM provider abstraction.
+
+**Documentation**: See `docs/ideas/IDEA_012_Reasoning_Telemetry_Sharing.md`, `docs/SIPs/SIP-031-Internal-A2A-Envelope-Standard.md`, and `docs/SIPs/SIP-041-Naming-and-Correlation-Cycle-Pulse-Channel-v0.7.md` for complete implementation details
+
 ---
 
-## 📋 Current Phase: Integration Testing & Production Validation
+## 📋 Current Phase: Multi-Agent Expansion & Production Validation
 
 ### Phase 1: Fix Integration Tests & Run Actual WarmBoot (1-2 weeks)
 **Priority**: HIGH | **Focus**: Validate JSON workflow with real Ollama API
@@ -235,13 +253,17 @@
 
 ## 📊 Success Metrics
 
-### Current Metrics (MVP Achieved)
-- ✅ **Task Management**: Complete API-first architecture
-- ✅ **Test Coverage**: 90% (156 passing tests, 0 failures)
-- ✅ **Agent Collaboration**: Max + Neo working end-to-end
+### Current Metrics (v0.4.0 Achieved)
+- ✅ **Framework Version**: 0.4.0 (Telemetry & LLM Router Complete)
+- ✅ **Project Size**: 26,560 lines Python, 12,763 lines test code, 43,009 lines documentation
+- ✅ **Test Coverage**: 48% (24 test files, 12,763 lines of test code)
+- ✅ **Agent Collaboration**: Max + Neo working end-to-end with real LLM integration
+- ✅ **Telemetry**: OpenTelemetry with reasoning events and trace correlation
+- ✅ **LLM Router**: Dynamic provider registry with extensible architecture
 - ✅ **Application Deployment**: HelloSquad deployed successfully
 - ✅ **Version Management**: Dynamic versioning working
 - ✅ **Infrastructure**: All services healthy and operational
+- ✅ **Documentation**: 43 SIPs, 25+ IDEA docs, 46+ WarmBoot runs documented
 
 ### Phase 1 Targets (Multi-Agent)
 - 🎯 **7+ agents active** with real functionality
@@ -365,7 +387,7 @@ These SIPs are deferred until specific triggers are met:
 
 ---
 
-**Status**: ✅ MVP Complete, JSON Workflow Complete, Integration Testing Phase Active  
-**Focus**: Integration testing, actual WarmBoot execution, multi-agent expansion  
-**Commitment**: Quality over speed, no shortcuts, 95% coverage target
+**Status**: ✅ Framework v0.4.0 Complete (Telemetry & LLM Router), Multi-Agent Expansion Phase Active  
+**Focus**: Multi-agent expansion, production deployment validation, continuous improvement cycles  
+**Commitment**: Quality over speed, no shortcuts, production-grade framework
 

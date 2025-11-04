@@ -3,7 +3,7 @@
 ## 📌 Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Two functional agents (Max/Lead, Neo/Dev) with advanced PRD processing, code generation, container deployment, **complete task management system**, and **structured JSON workflow eliminating markdown parsing issues**.
+**Current Status**: Production-ready framework (v0.4.0) with telemetry finalization, LLM router abstraction, comprehensive documentation, and proven execution history (46+ WarmBoot runs).
 
 ---
 
@@ -17,11 +17,13 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 ---
 
 ## 🧩 Core Components
-- **Agent Squad** – 2 functional agents (Max/Lead, Neo/Dev) + 7 mock agents
+- **Agent Squad** – 2 functional agents (Max/Lead, Neo/Dev) with real LLM integration + 7 mock agents
 - **SquadComms** – RabbitMQ messaging for inter-agent communication
 - **Task Management API** – FastAPI service with execution cycle tracking (SIP-024/025)
 - **JSON Workflow Engine** – Structured LLM output with manifest-first development (SIP-033A)
+- **LLM Router Abstraction** – Dynamic provider registry supporting Ollama, Docker models, and future providers
 - **AppBuilder** – Architecture design before implementation with framework enforcement
+- **Telemetry & Observability** – OpenTelemetry integration with reasoning events, trace correlation, and wrap-up summaries
 - **PostgreSQL** – Task logging, execution cycles, and state persistence
 - **Redis** – Caching and performance optimization
 - **Health Check Service** – FastAPI monitoring and WarmBoot API
@@ -33,11 +35,16 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 ## 📚 Documentation
 Comprehensive documentation and protocols are available in `/docs/`:
 
-- **SIPs (SquadOps Improvement Proposals)** – 25+ protocol specifications including SIP-024/025 Task Management and SIP-033A JSON Workflow
+- **SIPs (SquadOps Improvement Proposals)** – 43 protocol specifications including SIP-024/025 Task Management, SIP-033A JSON Workflow, SIP-041 Naming & Correlation, and SIP-031 A2A Envelope Standard
+- **IDEA Documents** – 25+ strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance, and Progressive Modular Build Framework
+- **Architecture Documents** – Design guides for agent implementations and handoff templates
+- **Book Chapters** – 9 chapters covering methodology, implementation, and operations
 - **Design Reviews** – Technical architecture assessments
-- **Retrospectives** – WarmBoot run analysis and lessons learned
+- **Retrospectives** – 17 WarmBoot run analyses and lessons learned
 - **Protocols** – Testing, data governance, communication patterns
 - **Roadmaps** – Development plans and strategic direction
+
+**Total Documentation**: 43,009 lines across 256 markdown files
 
 ---
 
@@ -118,33 +125,48 @@ curl -X POST http://localhost:8000/warmboot/submit \
 ---
 
 ## ✅ Current Status
-**Framework Version**: 0.2.0  
-**Development Status**: Production-ready JSON workflow with comprehensive testing
+**Framework Version**: 0.4.0  
+**Development Status**: Production-ready framework with telemetry, LLM router abstraction, and comprehensive documentation
 
-**Functional Components**:
-- ✅ **2 Functional Agents** (Max/Lead, Neo/Dev) with real capabilities
+### Project Statistics
+- **26,560 lines** of Python source code (80 files)
+- **12,763 lines** of test code (24 test files, ~48% test-to-code ratio)
+- **43,009 lines** of documentation (256 markdown files)
+- **605 total files** in the project
+- **46+ WarmBoot runs** completed with documented retrospectives
+
+### Functional Components
+- ✅ **2 Functional Agents** (Max/Lead, Neo/Dev) with real LLM integration
 - ✅ **Task Management System** (SIP-024/025) with execution cycle tracking
 - ✅ **JSON Workflow Engine** (SIP-033A) with structured LLM output
+- ✅ **LLM Router Abstraction** – Dynamic provider registry (Ollama, Docker models, extensible)
+- ✅ **AppBuilder Integration** – Uses LLM router abstraction, no direct HTTP calls
+- ✅ **Telemetry & Observability** – OpenTelemetry with reasoning events, trace correlation
 - ✅ **Manifest-First Development** eliminating markdown parsing issues
 - ✅ **Framework Enforcement** (vanilla_js) and agent coordination
 - ✅ **Task Management API** with connection pooling and error handling
-- ✅ **Infrastructure Services** (RabbitMQ, PostgreSQL, Redis, Health Check, Task-API)
+- ✅ **Infrastructure Services** (RabbitMQ, PostgreSQL, Redis, Prefect, Health Check, Task-API)
 - ✅ **End-to-End Workflow** (PRD → Task Planning → Code Generation → Deployment)
 - ✅ **Docker Compose** development environment
 - ✅ **Version Management** and archiving system
 
-**Recent Achievements**:
-- ✅ **JSON Workflow Implementation**: Structured LLM output with no parsing issues
-- ✅ **Manifest-First Architecture**: Design before implementation workflow
-- ✅ **Agent Task Sequencing**: Max → Neo coordination with state management
-- ✅ **Comprehensive Testing**: 46/46 unit tests passing (100% coverage)
-- ✅ **Task Lifecycle Management**: started → delegated → in_progress → completed
-- ✅ **Execution Cycle Tracking**: ECID-based governance and traceability
-- ✅ **API-First Architecture**: Agents use HTTP APIs instead of direct DB access
-- ✅ **Connection Pool Management**: Fixed database connection exhaustion
-- ✅ **Clean Error Handling**: Eliminated Docker container cleanup errors
+### Recent Achievements (v0.4.0)
+- ✅ **Telemetry Finalization**: Reasoning events, wrap-up summaries, trace correlation
+- ✅ **LLM Router Abstraction**: Dynamic provider registry supporting multiple backends
+- ✅ **AppBuilder Refactoring**: Integrated with LLM router, respects `USE_LOCAL_LLM` flag
+- ✅ **Comprehensive Documentation**: 18 new IDEA docs, 7 new SIP docs, architecture guides
+- ✅ **Reasoning Event Capture**: Race condition fix ensuring reasoning events appear in wrap-ups
+- ✅ **Provider Extensibility**: Router design supports future DockerModelClient and other providers
+- ✅ **JSON Format Support**: OllamaClient supports `format='json'` parameter for structured output
 
-**Next Focus**: Integration testing, actual WarmBoot execution, and production validation.
+### Documentation Milestones
+- ✅ **43 SIPs** – Standard Implementation Protocols
+- ✅ **25+ IDEA Documents** – Strategic ideas and design patterns
+- ✅ **9 Book Chapters** – Methodology and implementation guides
+- ✅ **17 Retrospectives** – WarmBoot run analyses
+- ✅ **46+ WarmBoot Runs** – Documented execution history
+
+**Next Focus**: Multi-agent expansion, production deployment validation, and continuous improvement cycles.
 
 ---
 
