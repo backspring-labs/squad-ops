@@ -1,7 +1,7 @@
 # BOOK_CHAPTER_02 | Role-Based Coordination at Scale
 
 When people talk about artificial intelligence transforming work, they often focus on **speed** and **efficiency**.  
-But the real challenge isn't how fast we can automate — it's how long we can do it **without losing coordination or quality**.
+But the real challenge isn’t how fast we can automate — it’s how long we can do it **without losing coordination or quality**.
 
 Every engineering organization faces the same curve: as automation expands, dependencies multiply.  
 Without clear structure, overlapping tasks and silent errors begin to collide.  
@@ -11,8 +11,8 @@ Agent squads were built to counter that spiral through **role-based coordination
 Each role understands its lane, communicates through defined interfaces, and records every dependency as structured data.  
 The result is not just autonomous work, but **auditable collaboration** — a way to expand capability while preserving cohesion and control.
 
-The point of SquadOps isn't to replace humans.  
-It's to create a framework where automation can **scale deliberately**, grounded in measurable outcomes and shared context.
+The point of SquadOps isn’t to replace humans.  
+It’s to create a framework where automation can **scale deliberately**, grounded in measurable outcomes and shared context.
 
 ---
 
@@ -21,8 +21,8 @@ It's to create a framework where automation can **scale deliberately**, grounded
 ![Rosie Overload – Automation Loop Placeholder](images/rosie_overload_placeholder.png)
 
 *Caption:*  
-**Rosie the Robot**, from *The Jetsons (1962)*, was one of television's first depictions of domestic automation fatigue.  
-In her debut episode *"Rosey the Robot,"* she tries to do everything at once — cooking, cleaning, and serving — until the system collapses under its own efficiency.  
+**Rosie the Robot**, from *The Jetsons (1962)*, was one of television’s first depictions of domestic automation fatigue.  
+In her debut episode *“Rosey the Robot,”* she tries to do everything at once — cooking, cleaning, and serving — until the system collapses under its own efficiency.  
 The image endures because it captures a timeless truth: **automation without balance tends toward overload.**
 
 As AI systems scale, the same risk reappears in digital form.  
@@ -36,25 +36,25 @@ SquadOps introduces governance not to *slow* automation, but to give it **rhythm
 Traditional post-mortems often read like soft-focus biographies of missed expectations.  
 Root causes are buried in the language of diplomacy:  
 
-> "Integration challenges" really meant *we didn't test early enough.*  
-> "Team bandwidth" hid *we never automated the obvious.*
+> “Integration challenges” really meant *we didn’t test early enough.*  
+> “Team bandwidth” hid *we never automated the obvious.*
 
-Agent squads don't obscure these truths.  
+Agent squads don’t obscure these truths.  
 Each run produces immutable evidence: timestamps, task IDs, dependency chains,  
 and logs that point — without emotion — to what broke and why.  
 Instead of *assigning blame*, squads assign **probability**.  
 Instead of *defending choices*, they **improve parameters**.
 
-This isn't just about accountability; it's about **acceleration**.  
+This isn’t just about accountability; it’s about **acceleration**.  
 When every misstep is visible, learning becomes continuous rather than episodic.  
-A squad's instrumentation turns failure into forward motion.
+A squad’s instrumentation turns failure into forward motion.
 
 ---
 
 ## **Continuous Root-Cause Analysis**
 
 In a human team, RCA (Root Cause Analysis) is an **event**.  
-In an agent squad, it's a **heartbeat**.  
+In an agent squad, it’s a **heartbeat**.  
 The telemetry of every task — start time, duration, status, outcome — is captured as it happens.  
 The **QA role** can correlate a failing test to a missed requirement within seconds.  
 The **Analytics role** maps those errors against historical patterns.  
@@ -62,9 +62,9 @@ The **Analytics role** maps those errors against historical patterns.
 
 Where humans need a **meeting**, squads need a **query**.
 
-That's what makes the system **anti-fragile**:  
+That’s what makes the system **anti-fragile**:  
 each run automatically generates the evidence needed for its own improvement.  
-Weaknesses aren't hidden; they're **instrumented**.  
+Weaknesses aren’t hidden; they’re **instrumented**.  
 Over time, the logs themselves become a training set for better governance, reasoning, and coordination.
 
 ---
@@ -72,7 +72,7 @@ Over time, the logs themselves become a training set for better governance, reas
 ## **Foundations of Scalable Coordination**
 
 As squads grow in complexity, coordination becomes the core differentiator between a system that scales and one that spirals.  
-Effective coordination isn't a single behavior — it's a *system property* that emerges from structure.  
+Effective coordination isn’t a single behavior — it’s a *system property* that emerges from structure.  
 In SquadOps, that structure rests on three operational pillars and five core roles that form a continuous loop of communication, execution, and validation.
 
 ---
@@ -81,7 +81,7 @@ In SquadOps, that structure rests on three operational pillars and five core rol
 
 | **Pillar** | **Purpose** | **Core Mechanism** | **Outcome** |
 |-------------|-------------|--------------------|--------------|
-| **Communication** | Keeps every role synchronized through structured, low-latency messaging. | Event-driven signals, message queues, and shared context memory. | **Awareness —** the squad always knows what's happening and why. |
+| **Communication** | Keeps every role synchronized through structured, low-latency messaging. | Event-driven signals, message queues, and shared context memory. | **Awareness —** the squad always knows what’s happening and why. |
 | **Task Management** | Translates objectives into trackable units of work with clear ownership and dependencies. | Task IDs, dependency graphs, and checkpoint intervals. | **Accountability —** every task has a source, an owner, and a status. |
 | **Governance & Validation** | Ensures decisions align with objectives and outputs meet standards before acceptance. | Review gates, scoring metrics, WarmBoot validation cycles. | **Assurance —** quality and intent remain consistent as automation scales. |
 
@@ -130,7 +130,7 @@ With these roles in place, a squad gains rhythm — a repeatable cycle of creati
 
 ## **Structured Collaboration as Culture**
 
-Role-based coordination doesn't remove human creativity — it channels it.  
+Role-based coordination doesn’t remove human creativity — it channels it.  
 With clear interfaces between roles, agents and humans alike know when to take initiative and when to hand off.  
 Feedback becomes impersonal but precise: information moves freely because no one owns it emotionally.  
 The system stays in tune because every contributor, human or machine, works from the same rhythm of accountability and transparency.
@@ -158,22 +158,22 @@ What looked like failure was, in truth, the system learning how to govern itself
 ## **Why It Matters**
 
 Every organization eventually confronts the same paradox:  
-you can't improve what you can't see,  
-but you can't see what people or processes quietly conceal.
+you can’t improve what you can’t see,  
+but you can’t see what people or processes quietly conceal.
 
 Agent squads dissolve that paradox.  
 They make every success and failure equally visible — without judgment.  
 In doing so, they create an environment where improvement is inevitable.
 
-But even transparency isn't immunity.  
+But even transparency isn’t immunity.  
 Without *airtight prompts*, validation loops, and governance controls,  
 AI agents can drift just like humans — wandering from their objectives with quiet confidence and flawless syntax.  
-That's why every SquadOps protocol, from WarmBoot to governance checks,  
-exists to verify not only *what* agents produce but *why* they're producing it.  
-It's the discipline that keeps intelligence aligned with intent.
+That’s why every SquadOps protocol, from WarmBoot to governance checks,  
+exists to verify not only *what* agents produce but *why* they’re producing it.  
+It’s the discipline that keeps intelligence aligned with intent.
 
 This is why squads are not just a new way to build software.  
-They're a new way to build **systems that stay true** — to their design, their data, and their purpose.
+They’re a new way to build **systems that stay true** — to their design, their data, and their purpose.
 
 ---
 
@@ -183,8 +183,3 @@ Role-based coordination is how automation scales responsibly.
 Failure is feedback.  
 Structure is stability.  
 And clarity — relentless, measurable, and instrumented — is the foundation that makes every subsequent chapter possible.
-
-
-
-
-

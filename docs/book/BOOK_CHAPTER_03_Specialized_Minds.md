@@ -2,7 +2,7 @@
 
 When every agent in a system thinks the same way, progress stalls.  
 You may gain speed, but you lose depth — every conclusion starts to echo the one before it.  
-That's how teams drift into *monoculture logic*: clean, consistent, and quietly wrong.
+That’s how teams drift into *monoculture logic*: clean, consistent, and quietly wrong.
 
 Human teams have learned this lesson the hard way.  
 Innovation comes not from perfect alignment but from **productive friction** — the tension between competing viewpoints that forces better answers.  
@@ -27,7 +27,7 @@ It becomes not just **intelligent**, but **self-correcting**.
 ## **Reasoning Modes in SquadOps**
 
 Each role in SquadOps embodies a distinct reasoning archetype.  
-These aren't arbitrary traits; they mirror the most reliable modes of human cognition — ensuring no single failure of reasoning can dominate the whole system.
+These aren’t arbitrary traits; they mirror the most reliable modes of human cognition — ensuring no single failure of reasoning can dominate the whole system.
 
 | **Reasoning Mode** | **Primary Function** | **Strength** | **Risk if Unchecked** | **Typical Role Alignment** |
 |--------------------|----------------------|---------------|-----------------------|-----------------------------|
@@ -48,7 +48,7 @@ The strength of a squad lies in its **balanced disagreement**.
 ## **Matching Models to Roles**
 
 Not all models think alike.  
-A reasoning style isn't just a personality trait; it's an architectural feature of the model itself.  
+A reasoning style isn’t just a personality trait; it’s an architectural feature of the model itself.  
 Large generalist models excel at abstraction and creativity but can over-improvise.  
 Smaller, specialized models respond faster and hold tighter boundaries, ideal for procedural reasoning.
 
@@ -68,7 +68,7 @@ In production squads, combinations of these models form **hybrid cognition netwo
 
 Reasoning diversity is powerful — but unmanaged, it can turn into noise.  
 If every agent talks past the others, feedback loops oscillate instead of converge.  
-That's where **role prompts** and **shared context windows** come in.
+That’s where **role prompts** and **shared context windows** come in.
 
 Each role maintains its own reasoning context:  
 - Governance tracks objectives and rules.  
@@ -84,21 +84,21 @@ This is cognitive interoperability — the ability of unlike minds to reason tog
 
 ## **Evolving the Mindset**
 
-Reasoning diversity isn't fixed; it's tuned over time through WarmBoot cycles.  
+Reasoning diversity isn’t fixed; it’s tuned over time through WarmBoot cycles.  
 Each run acts as a controlled experiment in cognitive balance: swapping models, adjusting prompts, refining role definitions.  
 Some cycles improve clarity by giving Governance stricter rules.  
 Others unlock creativity by widening the context available to Strategy.  
 Over time, the squad learns not just how to complete tasks, but how to *think better together.*
 
 This is where SquadOps shifts from process to philosophy:  
-intelligence isn't a static asset — it's a living configuration.  
+intelligence isn’t a static asset — it’s a living configuration.  
 Tuning reasoning becomes as important as writing code.
 
 ---
 
 ## **Adaptive Intelligence — Plugging In the Next Model**
 
-The real power of SquadOps isn't only in coordinating existing agents — it's in how quickly it can **absorb the next generation of intelligence**.  
+The real power of SquadOps isn’t only in coordinating existing agents — it’s in how quickly it can **absorb the next generation of intelligence**.  
 As new models emerge, they can be plugged into specific roles with minimal friction, allowing squads to evolve faster than traditional organizations can retrain teams.  
 
 Each integration is treated as an experiment inside the learning system.  
@@ -110,26 +110,26 @@ The framework measures the impact of every model swap or reasoning style update 
 - Did its compute and licensing costs justify the gain?  
 
 Because every cycle is logged and scored, performance deltas become data, not anecdotes.  
-The result is a **living system** — one that doesn't just perform work, but continuously evaluates the intelligence doing the work.  
+The result is a **living system** — one that doesn’t just perform work, but continuously evaluates the intelligence doing the work.  
 This allows organizations to adopt cutting-edge models at squad speed, not enterprise speed, and to validate their effectiveness with the same rigor they apply to code or infrastructure.
 
 ---
 
 ## **The Human Challenge of Resource Alignment**
 
-In traditional project teams, even the best planning can be undone by a simple truth: **the right person isn't always available when the role is needed most.**  
+In traditional project teams, even the best planning can be undone by a simple truth: **the right person isn’t always available when the role is needed most.**  
 A critical designer may be overbooked.  
 A test engineer may join late in the cycle.  
 A data analyst might arrive just after the decisions have already been made.  
 
 Human squads struggle not because of capability, but because of *timing*.  
 Skill sets are fixed to people; schedules are fixed to calendars.  
-As the pace of iteration accelerates, the mismatch between when a skill is required and when it's accessible becomes the primary source of drag.
+As the pace of iteration accelerates, the mismatch between when a skill is required and when it’s accessible becomes the primary source of drag.
 
 Agent squads invert that constraint.  
-Roles still exist, but they can be filled dynamically — the right reasoning mode, tool, or model can be instantiated the moment it's needed.  
+Roles still exist, but they can be filled dynamically — the right reasoning mode, tool, or model can be instantiated the moment it’s needed.  
 Instead of waiting for a person with the right expertise to free up, the system scales reasoning on demand.  
-This flexibility doesn't replace humans; it **removes the idle gaps between their contributions**, letting every role operate as if the full team were present, all the time.
+This flexibility doesn’t replace humans; it **removes the idle gaps between their contributions**, letting every role operate as if the full team were present, all the time.
 
 ---
 
@@ -138,10 +138,10 @@ This flexibility doesn't replace humans; it **removes the idle gaps between thei
 Diversity of reasoning gives squads a kind of mental immune system.  
 When one mode fails — say, creative exploration outruns validation — others step in to restore balance.  
 This is how agent systems achieve resilience without central micromanagement.  
-They don't just perform tasks; they reason about reasoning itself.  
+They don’t just perform tasks; they reason about reasoning itself.  
 
 And because SquadOps can rapidly integrate new reasoning engines, it can evolve as quickly as the frontier models behind it.  
-The squad doesn't age; it upgrades.
+The squad doesn’t age; it upgrades.
 
 ---
 
@@ -149,14 +149,9 @@ The squad doesn't age; it upgrades.
 
 Homogeneous systems are efficient but brittle.  
 Heterogeneous squads — with specialized minds tuned for different reasoning styles — are slower to start but impossible to stop.  
-In SquadOps, diversity isn't decoration; it's *defense.*  
-It's how intelligence scales without losing its edge.
+In SquadOps, diversity isn’t decoration; it’s *defense.*  
+It’s how intelligence scales without losing its edge.
 
 ---
 
 ✅ **End of Chapter 3**
-
-
-
-
-
