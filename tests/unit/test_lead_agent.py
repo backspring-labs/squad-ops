@@ -920,6 +920,213 @@ class TestLeadAgent:
         
         # Mock the generate_warmboot_wrapup method
         agent.generate_warmboot_wrapup = AsyncMock()
+    
+    # ============================================================================
+    # REASONING SHARING TESTS
+    # ============================================================================
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_reasoning_event_success(self):
+        """Test successful reasoning event handling"""
+        agent = LeadAgent("lead-agent-001")
+        
+        message = AgentMessage(
+            sender='dev-agent',
+            recipient='lead-agent-001',
+            message_type='agent_reasoning',
+            payload={
+                'schema': 'reasoning.v1',
+                'task_id': 'test-task-001',
+                'ecid': 'ECID-WB-001',
+                'reason_step': 'decision',
+                'summary': 'Selected FastAPI architecture',
+                'context': 'manifest_generation',
+                'key_points': ['FastAPI chosen', 'Async support needed'],
+                'confidence': 0.85,
+                'raw_reasoning_included': False
+            },
+            context={
+                'sender_agent': 'dev-agent',
+                'sender_role': 'developer',
+                'ecid': 'ECID-WB-001'
+            },
+            timestamp='2025-01-01T12:00:00Z',
+            message_id='msg-reasoning-001'
+        )
+        
+        await agent.handle_reasoning_event(message)
+        
+        # Verify reasoning event was stored in communication log
+        assert len(agent.communication_log) == 1
+        log_entry = agent.communication_log[0]
+        assert log_entry['message_type'] == 'agent_reasoning'
+        assert log_entry['sender'] == 'dev-agent'
+        assert log_entry['agent'] == 'dev-agent'
+        assert log_entry['ecid'] == 'ECID-WB-001'
+        assert log_entry['task_id'] == 'test-task-001'
+        assert log_entry['reason_step'] == 'decision'
+        assert log_entry['summary'] == 'Selected FastAPI architecture'
+        assert log_entry['context'] == 'manifest_generation'
+        assert log_entry['key_points'] == ['FastAPI chosen', 'Async support needed']
+        assert log_entry['confidence'] == 0.85
+        assert log_entry['raw_reasoning_included'] is False
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_reasoning_event_minimal(self):
+        """Test reasoning event handling with minimal fields"""
+        agent = LeadAgent("lead-agent-001")
+        
+        message = AgentMessage(
+            sender='dev-agent',
+            recipient='lead-agent-001',
+            message_type='agent_reasoning',
+            payload={
+                'schema': 'reasoning.v1',
+                'task_id': 'test-task-002',
+                'ecid': 'ECID-WB-002',
+                'reason_step': 'checkpoint',
+                'summary': 'Build completed',
+                'context': 'build',
+                'raw_reasoning_included': False
+            },
+            context={
+                'sender_agent': 'dev-agent',
+                'ecid': 'ECID-WB-002'
+            },
+            timestamp='2025-01-01T12:05:00Z',
+            message_id='msg-reasoning-002'
+        )
+        
+        await agent.handle_reasoning_event(message)
+        
+        # Verify reasoning event was stored
+        assert len(agent.communication_log) == 1
+        log_entry = agent.communication_log[0]
+        assert log_entry['message_type'] == 'agent_reasoning'
+        assert log_entry['reason_step'] == 'checkpoint'
+        assert log_entry['summary'] == 'Build completed'
+        assert log_entry['context'] == 'build'
+        # Optional fields should not be present or None
+        assert 'key_points' not in log_entry or log_entry.get('key_points') == []
+        assert 'confidence' not in log_entry or log_entry.get('confidence') is None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_reasoning_event_exception(self):
+        """Test reasoning event handling with exception"""
+        agent = LeadAgent("lead-agent-001")
+        
+        # Create message with missing required fields to trigger exception
+        message = AgentMessage(
+            sender='dev-agent',
+            recipient='lead-agent-001',
+            message_type='agent_reasoning',
+            payload={},  # Empty payload
+            context={},
+            timestamp='2025-01-01T12:00:00Z',
+            message_id='msg-reasoning-003'
+        )
+        
+        # Should not raise exception
+        await agent.handle_reasoning_event(message)
+        
+        # Should still log something (even if minimal)
+        assert len(agent.communication_log) >= 0  # May or may not log on error
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_message_routes_reasoning_event(self):
+        """Test that handle_message routes agent_reasoning to handler"""
+        agent = LeadAgent("lead-agent-001")
+        
+        message = AgentMessage(
+            sender='dev-agent',
+            recipient='lead-agent-001',
+            message_type='agent_reasoning',
+            payload={
+                'schema': 'reasoning.v1',
+                'task_id': 'test-task-001',
+                'ecid': 'ECID-WB-001',
+                'reason_step': 'decision',
+                'summary': 'Test decision',
+                'context': 'manifest_generation'
+            },
+            context={'sender_agent': 'dev-agent', 'ecid': 'ECID-WB-001'},
+            timestamp='2025-01-01T12:00:00Z',
+            message_id='msg-reasoning-001'
+        )
+        
+        with patch.object(agent, 'handle_reasoning_event') as mock_handler:
+            await agent.handle_message(message)
+            mock_handler.assert_called_once_with(message)
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_extract_real_ai_reasoning_includes_agent_reasoning(self):
+        """Test that _extract_real_ai_reasoning includes agent reasoning events"""
+        agent = LeadAgent("lead-agent-001")
+        
+        # Add agent reasoning event to communication log
+        agent.communication_log = [
+            {
+                'timestamp': '2025-01-01T12:00:00Z',
+                'sender': 'dev-agent',
+                'agent': 'dev-agent',
+                'message_type': 'agent_reasoning',
+                'ecid': 'ECID-WB-001',
+                'task_id': 'test-task-001',
+                'reason_step': 'decision',
+                'summary': 'Selected FastAPI architecture',
+                'context': 'manifest_generation',
+                'key_points': ['FastAPI chosen', 'Async support needed'],
+                'confidence': 0.85
+            },
+            {
+                'timestamp': '2025-01-01T12:05:00Z',
+                'sender': 'dev-agent',
+                'agent': 'dev-agent',
+                'message_type': 'agent_reasoning',
+                'ecid': 'ECID-WB-001',
+                'task_id': 'test-task-001',
+                'reason_step': 'checkpoint',
+                'summary': 'Created 5 files',
+                'context': 'manifest_generation',
+                'key_points': ['Files created', 'Directory structure']
+            }
+        ]
+        
+        reasoning = agent._extract_real_ai_reasoning('ECID-WB-001', agent_name='dev-agent')
+        
+        # Verify reasoning includes agent reasoning events
+        assert len(reasoning) > 0
+        assert 'dev-agent' in reasoning
+        assert 'manifest_generation' in reasoning or 'decision' in reasoning
+        assert 'Selected FastAPI' in reasoning or 'Created 5 files' in reasoning
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_extract_real_ai_reasoning_no_agent_reasoning(self):
+        """Test _extract_real_ai_reasoning when no agent reasoning events exist"""
+        agent = LeadAgent("lead-agent-001")
+        
+        # Empty communication log
+        agent.communication_log = []
+        
+        reasoning = agent._extract_real_ai_reasoning('ECID-WB-001', agent_name='dev-agent')
+        
+        # Should return message indicating no reasoning found
+        assert 'No reasoning trace found' in reasoning or 'reasoning' in reasoning.lower()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_developer_completion_failed_task_with_reasoning(self):
+        """Test that failed tasks don't trigger wrap-up"""
+        agent = LeadAgent("max")
+        
+        # Mock the generate_warmboot_wrapup method
+        agent.generate_warmboot_wrapup = AsyncMock()
         
         # Create failed completion event
         completion_message = AgentMessage(

@@ -598,32 +598,20 @@ class BaseAgent(ABC):
                 raise
     
     async def _ollama_response(self, prompt: str, context: str, model: str) -> str:
-        """Generate response using Ollama API"""
-        import aiohttp
+        """
+        DEPRECATED: Use llm_response() instead which uses the LLM router abstraction.
         
-        ollama_url = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+        This method is kept for backward compatibility but should not be used.
+        It bypasses the LLM router and makes direct HTTP calls to Ollama.
+        """
+        logger.warning(
+            f"{self.name} is using deprecated _ollama_response(). "
+            "Use llm_response() instead which respects USE_LOCAL_LLM and provider abstraction."
+        )
         
-        # Prepare the full prompt with context
+        # Delegate to llm_response which uses the router
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
-        
-        payload = {
-            "model": model,
-            "prompt": full_prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "max_tokens": 1000
-            }
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(f"{ollama_url}/api/generate", json=payload) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    return result.get('response', 'No response generated')
-                else:
-                    raise Exception(f"Ollama API error: {response.status}")
+        return await self.llm_response(full_prompt, context)
     
     async def run(self):
         """Main agent loop"""

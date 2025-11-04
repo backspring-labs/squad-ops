@@ -60,7 +60,20 @@ class OllamaClient:
     
     async def complete(self, prompt: str, temperature: float = 0.7, 
                       max_tokens: int = 4000, **kwargs) -> str:
-        """Generate completion via Ollama API"""
+        """Generate completion via Ollama API
+        
+        Args:
+            prompt: Input prompt
+            temperature: Sampling temperature (0.0-1.0)
+            max_tokens: Maximum tokens to generate
+            **kwargs: Additional options including:
+                - format: Response format (e.g., 'json' for JSON format)
+                - top_p: Top-p sampling
+                - Other Ollama-specific options
+        """
+        # Extract format from kwargs if present (for JSON format support)
+        response_format = kwargs.pop('format', None)
+        
         payload = {
             'model': self.model,
             'prompt': prompt,
@@ -71,6 +84,10 @@ class OllamaClient:
                 **kwargs
             }
         }
+        
+        # Add format at top level if specified (Ollama API requirement)
+        if response_format:
+            payload['format'] = response_format
         
         try:
             async with aiohttp.ClientSession() as session:

@@ -58,6 +58,88 @@ class DevAgent(BaseAgent):
         self.current_run_id = "run-001"
         self.task_start_times = {}  # Task 3.1: Track task start times for duration calculation
     
+    async def emit_reasoning_event(self, task_id: str, ecid: str, reason_step: str, 
+                                   summary: str, context: str, 
+                                   key_points: List[str] = None, confidence: float = None):
+        """
+        Emit reasoning event to LeadAgent for telemetry wrap-up
+        
+        Includes actual LLM reasoning from communication_log if available.
+        
+        Args:
+            task_id: Task identifier
+            ecid: Execution cycle identifier
+            reason_step: Type of reasoning step ('decision', 'hypothesis', 'checkpoint')
+            summary: Brief summary of reasoning
+            context: Operation context ('manifest_generation', 'build', 'deploy', etc.)
+            key_points: Optional list of key points
+            confidence: Optional confidence level (0.0-1.0)
+        """
+        try:
+            from datetime import datetime
+            
+            # Extract actual LLM reasoning from communication_log for this context
+            llm_reasoning = None
+            for entry in self.communication_log:
+                entry_ecid = entry.get('ecid')
+                entry_type = entry.get('message_type', '')
+                entry_context = entry.get('description', '')
+                
+                # Match by ECID, llm_reasoning type, and context in description
+                if (entry_ecid == ecid and 
+                    entry_type == 'llm_reasoning' and 
+                    context.lower() in entry_context.lower()):
+                    # Found matching LLM reasoning - extract it
+                    llm_reasoning = {
+                        'prompt': entry.get('prompt', '')[:500],  # First 500 chars of prompt
+                        'response': entry.get('full_response', '')[:1000],  # First 1000 chars of response
+                        'token_usage': entry.get('token_usage', {}),
+                        'timestamp': entry.get('timestamp')
+                    }
+                    break  # Use first matching entry
+            
+            reasoning_event = {
+                'schema': 'reasoning.v1',
+                'task_id': task_id,
+                'ecid': ecid,
+                'reason_step': reason_step,
+                'summary': summary,
+                'context': context,
+                'timestamp': datetime.utcnow().isoformat(),
+                'raw_reasoning_included': llm_reasoning is not None
+            }
+            
+            # Add optional fields
+            if key_points:
+                reasoning_event['key_points'] = key_points
+            if confidence is not None:
+                reasoning_event['confidence'] = confidence
+            
+            # Include actual LLM reasoning if found
+            if llm_reasoning:
+                reasoning_event['llm_reasoning'] = llm_reasoning
+                logger.debug(f"{self.name} included LLM reasoning in reasoning event for {context}")
+            
+            # Send reasoning event to LeadAgent
+            await self.send_message(
+                recipient='max',
+                message_type='agent_reasoning',
+                payload=reasoning_event,
+                context={
+                    'sender_agent': self.name,
+                    'sender_role': 'developer',
+                    'ecid': ecid
+                }
+            )
+            
+            if llm_reasoning:
+                logger.info(f"{self.name} emitted reasoning event with LLM reasoning: {reason_step} for {context}")
+            else:
+                logger.debug(f"{self.name} emitted reasoning event (summary only): {reason_step} for {context}")
+            
+        except Exception as e:
+            logger.warning(f"{self.name} failed to emit reasoning event: {e}")
+    
     async def _create_technical_task_spec(self, requirements: Dict[str, Any]) -> TaskSpec:
         """Neo creates TaskSpec for technical tasks"""
         logger.info(f"{self.name} creating technical TaskSpec")
@@ -281,6 +363,22 @@ class DevAgent(BaseAgent):
             manifest = await self.app_builder.generate_manifest_json(task_spec)
             logger.info(f"{self.name} generated manifest JSON: {manifest.architecture_type} with {len(manifest.files)} files")
             
+            # Emit reasoning event about architecture decisions
+            ecid = requirements.get('ecid', getattr(self, 'current_ecid', 'unknown'))
+            await self.emit_reasoning_event(
+                task_id=task_id,
+                ecid=ecid,
+                reason_step='decision',
+                summary=f"Selected {manifest.architecture_type} architecture with {len(manifest.files)} files based on TaskSpec requirements",
+                context='manifest_generation',
+                key_points=[
+                    f"Architecture type: {manifest.architecture_type}",
+                    f"File count: {len(manifest.files)}",
+                    f"Features to implement: {len(task_spec.features)}"
+                ],
+                confidence=0.85
+            )
+            
             # Generate files using JSON method
             files = await self.app_builder.generate_files_json(task_spec, manifest)
             
@@ -328,6 +426,21 @@ class DevAgent(BaseAgent):
                         logger.warning(f"{self.name} failed to create file {file_info['file_path']}: {result.get('error', 'Unknown error')}")
             
             logger.info(f"{self.name} created {len(created_files)} files during design phase")
+            
+            # Emit reasoning event about file creation decisions
+            ecid = requirements.get('ecid', getattr(self, 'current_ecid', 'unknown'))
+            await self.emit_reasoning_event(
+                task_id=task_id,
+                ecid=ecid,
+                reason_step='checkpoint',
+                summary=f"Created {len(created_files)} files with {manifest.architecture_type} structure",
+                context='manifest_generation',
+                key_points=[
+                    f"Files created: {len(created_files)}",
+                    f"Target directory: {target_directory or 'default'}",
+                    f"Architecture pattern: {manifest.architecture_type}"
+                ]
+            )
             
             return {
                 'task_id': task_id,
@@ -437,6 +550,24 @@ class DevAgent(BaseAgent):
             
             # Build Docker image
             source_dir = f"warm-boot/apps/{app_name.lower().replace(' ', '-')}/"
+            
+            # Emit reasoning event about build decisions
+            ecid = requirements.get('ecid', getattr(self, 'current_ecid', 'unknown'))
+            await self.emit_reasoning_event(
+                task_id=task_id,
+                ecid=ecid,
+                reason_step='decision',
+                summary=f"Building Docker image for {app_name} v{version} using {manifest.architecture_type} architecture",
+                context='build',
+                key_points=[
+                    f"Application: {app_name}",
+                    f"Version: {version}",
+                    f"Architecture: {manifest.architecture_type}",
+                    f"Files to containerize: {len(created_files)}"
+                ],
+                confidence=0.90
+            )
+            
             build_result = await self.docker_manager.build_image(app_name, version, source_dir)
             
             if build_result.get('status') != 'success':
@@ -450,6 +581,20 @@ class DevAgent(BaseAgent):
                     'app_name': app_name,
                     'version': version
                 }
+            
+            # Emit reasoning event about successful build
+            await self.emit_reasoning_event(
+                task_id=task_id,
+                ecid=ecid,
+                reason_step='checkpoint',
+                summary=f"Successfully built Docker image {build_result.get('image_name')}:{version}",
+                context='build',
+                key_points=[
+                    f"Image: {build_result.get('image_name')}:{version}",
+                    f"Source directory: {source_dir}",
+                    f"Files included: {len(created_files)}"
+                ]
+            )
             
             return {
                 'task_id': task_id,
@@ -512,6 +657,24 @@ class DevAgent(BaseAgent):
             
             logger.info(f"DevAgent handling deploy task: {app_name} v{version}")
             
+            # Emit reasoning event about deployment strategy
+            ecid = requirements.get('ecid', getattr(self, 'current_ecid', 'unknown'))
+            await self.emit_reasoning_event(
+                task_id=task_id,
+                ecid=ecid,
+                reason_step='decision',
+                summary=f"Deploying {app_name} v{version} with versioning and traceability enabled",
+                context='deploy',
+                key_points=[
+                    f"Application: {app_name}",
+                    f"Version: {version}",
+                    f"Source directory: {source}",
+                    f"Versioning: {requirements.get('versioning', True)}",
+                    f"Traceability: {requirements.get('traceability', True)}"
+                ],
+                confidence=0.95
+            )
+            
             # Build Docker image using DockerManager
             build_result = await self.docker_manager.build_image(app_name, version, source)
             
@@ -527,6 +690,21 @@ class DevAgent(BaseAgent):
             deploy_result = await self.docker_manager.deploy_container(app_name, version)
             
             if deploy_result['status'] == 'success':
+                # Emit reasoning event about successful deployment
+                await self.emit_reasoning_event(
+                    task_id=task_id,
+                    ecid=ecid,
+                    reason_step='checkpoint',
+                    summary=f"Successfully deployed {app_name} v{version} as container {deploy_result.get('container_name', 'unknown')}",
+                    context='deploy',
+                    key_points=[
+                        f"Container: {deploy_result.get('container_name', 'unknown')}",
+                        f"Image: {deploy_result.get('image', 'unknown')}",
+                        f"Version: {version}",
+                        f"Deployment strategy: Docker container with volume mounts"
+                    ]
+                )
+                
                 logger.info(f"DevAgent completed deploy task: {task_id}")
                 return {
                     'task_id': task_id,
@@ -895,6 +1073,9 @@ class DevAgent(BaseAgent):
             else:
                 tasks_completed = [action]
             
+            # Extract reasoning summary from communication log for this task/ecid
+            reasoning_summary = self._extract_reasoning_summary_for_task(ecid, action)
+            
             # Create completion event payload
             completion_event = {
                 'event_type': 'task.developer.completed',
@@ -913,6 +1094,7 @@ class DevAgent(BaseAgent):
                         'tests_passed': result.get('tests_passed', 0),
                         'tests_failed': result.get('tests_failed', 0)
                     },
+                    'reasoning_summary': reasoning_summary,  # Include reasoning summary
                     'status': result.get('status', 'unknown')
                 }
             }
@@ -1042,6 +1224,69 @@ Each component handles a specific aspect of the development workflow.
                 token_usage = entry['token_usage']
                 total_tokens += token_usage.get('total_tokens', 0)
         return total_tokens
+    
+    def _extract_reasoning_summary_for_task(self, ecid: str, action: str) -> Dict[str, Any]:
+        """
+        Extract reasoning summary from communication log for a specific task/action
+        
+        Args:
+            ecid: Execution cycle identifier
+            action: Task action (manifest_generation, build, deploy)
+            
+        Returns:
+            Dictionary with reasoning summary for the task
+        """
+        reasoning_events = []
+        
+        # Map action to context
+        context_map = {
+            'archive': 'archive',
+            'design_manifest': 'manifest_generation',
+            'build': 'build',
+            'deploy': 'deploy'
+        }
+        
+        target_context = context_map.get(action, action)
+        
+        # Find reasoning events in communication log for this ECID and context
+        for entry in self.communication_log:
+            entry_ecid = entry.get('ecid')
+            entry_type = entry.get('message_type', '')
+            
+            # Check for LLM reasoning entries
+            if entry_ecid == ecid and entry_type == 'llm_reasoning':
+                description = entry.get('description', '')
+                # Match context more precisely - check for context word in description
+                # e.g., "AppBuilder build:" or "manifest_generation:" or "deploy:"
+                description_lower = description.lower()
+                context_patterns = [
+                    f"{target_context}:",  # "build:" or "manifest_generation:"
+                    f"appbuilder {target_context}",  # "appbuilder build"
+                    f"{target_context} "  # "build " (space after)
+                ]
+                if any(pattern in description_lower for pattern in context_patterns):
+                    reasoning_events.append({
+                        'timestamp': entry.get('timestamp'),
+                        'summary': description[:200] + ('...' if len(description) > 200 else ''),
+                        'context': target_context
+                    })
+        
+        # Build summary
+        if reasoning_events:
+            return {
+                'context': target_context,
+                'event_count': len(reasoning_events),
+                'key_decisions': [event['summary'] for event in reasoning_events[:3]],  # Top 3
+                'reasoning_available': True
+            }
+        else:
+            return {
+                'context': target_context,
+                'event_count': 0,
+                'key_decisions': [],
+                'reasoning_available': False,
+                'note': 'No reasoning events found for this task'
+            }
 
 async def main():
     """Main entry point for DevAgent"""

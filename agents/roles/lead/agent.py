@@ -194,11 +194,7 @@ class LeadAgent(BaseAgent):
                 'task_id': task_id,
                 'status': 'escalated',
                 'reason': 'High complexity requires premium consultation',
-                'escalation_level': 'strategic_resolution',
-                'mock_response': await self.mock_llm_response(
-                    f"Strategic governance decision for {task_type}",
-                    f"Complexity: {complexity}, Task: {task.get('description', 'N/A')}"
-                )
+                'escalation_level': 'strategic_resolution'
             }
         else:
             logger.debug(f"{self.name} approving task for delegation (complexity: {complexity} <= {self.escalation_threshold})")
@@ -250,11 +246,7 @@ class LeadAgent(BaseAgent):
                 'task_id': task_id,
                 'status': 'approved',
                 'delegation_target': delegation_target,
-                'governance_decision': f"Approved {task_type} for delegation",
-                'mock_response': await self.mock_llm_response(
-                    f"Governance approval for {task_type}",
-                    f"Delegating to {delegation_target}"
-                )
+                'governance_decision': f"Approved {task_type} for delegation"
             }
     
     async def handle_message(self, message: AgentMessage) -> None:
@@ -273,6 +265,8 @@ class LeadAgent(BaseAgent):
             await self.handle_prd_request(message)
         elif message.message_type == "task.developer.completed":
             await self.handle_developer_completion(message)
+        elif message.message_type == "agent_reasoning":
+            await self.handle_reasoning_event(message)
         else:
             logger.info(f"{self.name} received message: {message.message_type} from {message.sender}")
     
@@ -339,6 +333,41 @@ class LeadAgent(BaseAgent):
             'error': error
         })
     
+    async def handle_reasoning_event(self, message: AgentMessage) -> None:
+        """
+        Handle reasoning event from other agents (DevAgent, etc.)
+        Stores reasoning events in communication log for wrap-up generation
+        """
+        try:
+            payload = message.payload
+            context = message.context
+            sender = message.sender
+            
+            # Extract reasoning event data
+            reasoning_data = {
+                'timestamp': message.timestamp,
+                'sender': sender,
+                'agent': context.get('sender_agent', sender),
+                'message_type': 'agent_reasoning',
+                'ecid': payload.get('ecid', context.get('ecid', 'unknown')),
+                'task_id': payload.get('task_id', 'unknown'),
+                'reason_step': payload.get('reason_step', 'unknown'),
+                'summary': payload.get('summary', ''),
+                'context': payload.get('context', 'unknown'),
+                'key_points': payload.get('key_points', []),
+                'confidence': payload.get('confidence'),
+                'schema': payload.get('schema', 'reasoning.v1'),
+                'raw_reasoning_included': payload.get('raw_reasoning_included', False)
+            }
+            
+            # Store in communication log for wrap-up extraction
+            self.communication_log.append(reasoning_data)
+            
+            logger.info(f"{self.name} received reasoning event from {sender}: {payload.get('reason_step', 'unknown')} for {payload.get('context', 'unknown')} (ECID: {payload.get('ecid', 'unknown')})")
+            
+        except Exception as e:
+            logger.warning(f"{self.name} failed to handle reasoning event: {e}")
+    
     async def handle_developer_completion(self, message: AgentMessage) -> None:
         """
         Handle developer completion event (SIP-027 Phase 1)
@@ -363,6 +392,20 @@ class LeadAgent(BaseAgent):
             
             # Only generate wrap-up if task was successful
             if status == 'completed' or status == 'success':
+                # Wait briefly for any pending reasoning events to be processed
+                # This ensures reasoning events sent just before completion are captured
+                await asyncio.sleep(0.5)
+                
+                # Check communication log for reasoning events for this ECID
+                reasoning_count = sum(1 for entry in self.communication_log 
+                                    if entry.get('ecid') == ecid 
+                                    and entry.get('message_type') == 'agent_reasoning')
+                
+                if reasoning_count > 0:
+                    logger.info(f"{self.name} found {reasoning_count} reasoning events for ECID {ecid} before generating wrap-up")
+                else:
+                    logger.debug(f"{self.name} no reasoning events found for ECID {ecid} before generating wrap-up")
+                
                 logger.info(f"{self.name} triggering WarmBoot wrap-up generation for ECID {ecid}")
                 await self.generate_warmboot_wrapup(ecid, task_id, payload)
             else:
@@ -1427,6 +1470,64 @@ class LeadAgent(BaseAgent):
                         
                         real_reasoning.append(reasoning_text)
             
+            # Also check for agent reasoning events (from emit_reasoning_event)
+            for entry in self.communication_log:
+                entry_ecid = entry.get('ecid')
+                entry_agent = entry.get('agent', entry.get('sender', 'unknown'))
+                entry_type = entry.get('message_type', '')
+                
+                # Filter by ECID and optionally by agent name
+                if entry_ecid == ecid and entry_type == 'agent_reasoning':
+                    # Skip if agent filter specified and doesn't match
+                    if agent_name and entry_agent.lower() != agent_name.lower():
+                        continue
+                    
+                    # Get timestamp
+                    timestamp = entry.get('timestamp', 'unknown')
+                    if timestamp != 'unknown':
+                        try:
+                            # Format timestamp nicely
+                            from datetime import datetime
+                            if 'T' in timestamp:
+                                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                formatted_time = dt.strftime('%H:%M:%S')
+                            else:
+                                formatted_time = timestamp
+                        except:
+                            formatted_time = timestamp
+                    else:
+                        formatted_time = 'unknown'
+                    
+                    # Format reasoning event
+                    summary = entry.get('summary', '')
+                    context = entry.get('context', 'unknown')
+                    reason_step = entry.get('reason_step', 'unknown')
+                    key_points = entry.get('key_points', [])
+                    llm_reasoning = entry.get('llm_reasoning', {})
+                    
+                    # Build formatted reasoning text
+                    if summary:
+                        reasoning_text = f"> **{entry_agent}** ({formatted_time}) [{context}/{reason_step}]: {summary}"
+                        if key_points:
+                            reasoning_text += f"\n>   - Key points: {', '.join(key_points[:3])}"
+                        
+                        # Include actual LLM reasoning if available
+                        if llm_reasoning and entry.get('raw_reasoning_included', False):
+                            llm_response = llm_reasoning.get('response', '')
+                            if llm_response:
+                                # Show first 300 chars of actual LLM response
+                                response_preview = llm_response[:300] + ('...' if len(llm_response) > 300 else '')
+                                reasoning_text += f"\n>   - LLM Response: {response_preview}"
+                            
+                            token_usage = llm_reasoning.get('token_usage', {})
+                            if token_usage:
+                                prompt_tokens = token_usage.get('prompt_tokens', 0)
+                                completion_tokens = token_usage.get('completion_tokens', 0)
+                                if prompt_tokens > 0 or completion_tokens > 0:
+                                    reasoning_text += f"\n>   - Tokens: {prompt_tokens} prompt + {completion_tokens} completion = {prompt_tokens + completion_tokens} total"
+                        
+                        real_reasoning.append(reasoning_text)
+            
             # Also check completion event payloads for reasoning from other agents (Fix: Neo's reasoning)
             # Neo includes reasoning in completion event payloads sometimes
             if agent_name:
@@ -1439,9 +1540,9 @@ class LeadAgent(BaseAgent):
                     if entry_ecid == ecid and entry_type == 'task.developer.completed':
                         sender = entry.get('sender', '').lower()
                         if agent_name.lower() in sender or ('neo' in sender.lower() if agent_name.lower() == 'neo' else False):
-                            # Look for reasoning in payload or description
-                            payload_description = entry_payload.get('description', entry.get('description', ''))
-                            if payload_description and 'reasoning' in payload_description.lower():
+                            # Look for reasoning summary in payload
+                            reasoning_summary = entry_payload.get('reasoning_summary', {})
+                            if reasoning_summary and reasoning_summary.get('reasoning_available'):
                                 timestamp = entry.get('timestamp', 'unknown')
                                 try:
                                     from datetime import datetime
@@ -1453,8 +1554,10 @@ class LeadAgent(BaseAgent):
                                 except:
                                     formatted_time = timestamp
                                 
-                                reasoning_text = f"> **{agent_name}** ({formatted_time}): {payload_description[:500]}"
-                                real_reasoning.append(reasoning_text)
+                                key_decisions = reasoning_summary.get('key_decisions', [])
+                                if key_decisions:
+                                    reasoning_text = f"> **{agent_name}** ({formatted_time}): {'; '.join(key_decisions[:2])}"
+                                    real_reasoning.append(reasoning_text)
             
             if real_reasoning:
                 return '\n'.join(real_reasoning)

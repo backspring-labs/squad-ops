@@ -1295,3 +1295,285 @@ class TestDevAgent:
             assert result['task_id'] == 'test-task-001'
             assert result['status'] == 'error'
             assert 'error' in result
+    
+    # ============================================================================
+    # REASONING SHARING TESTS
+    # ============================================================================
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_emit_reasoning_event_success(self, dev_agent):
+        """Test successful reasoning event emission"""
+        dev_agent.send_message = AsyncMock()
+        
+        await dev_agent.emit_reasoning_event(
+            task_id='test-task-001',
+            ecid='ECID-WB-001',
+            reason_step='decision',
+            summary='Selected FastAPI architecture',
+            context='manifest_generation',
+            key_points=['FastAPI chosen', 'Async support needed'],
+            confidence=0.85
+        )
+        
+        # Verify send_message was called
+        dev_agent.send_message.assert_called_once()
+        
+        # Get call arguments - call_args is a call() object
+        call_args = dev_agent.send_message.call_args
+        
+        # Extract keyword arguments (send_message uses keyword args)
+        kw_args = call_args.kwargs
+        
+        # Verify recipient
+        assert kw_args['recipient'] == 'max'
+        
+        # Verify message type
+        assert kw_args['message_type'] == 'agent_reasoning'
+        
+        # Verify payload structure
+        payload = kw_args['payload']
+        assert payload['schema'] == 'reasoning.v1'
+        assert payload['task_id'] == 'test-task-001'
+        assert payload['ecid'] == 'ECID-WB-001'
+        assert payload['reason_step'] == 'decision'
+        assert payload['summary'] == 'Selected FastAPI architecture'
+        assert payload['context'] == 'manifest_generation'
+        assert payload['key_points'] == ['FastAPI chosen', 'Async support needed']
+        assert payload['confidence'] == 0.85
+        assert payload['raw_reasoning_included'] is False
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_emit_reasoning_event_minimal(self, dev_agent):
+        """Test reasoning event emission with minimal fields"""
+        dev_agent.send_message = AsyncMock()
+        
+        await dev_agent.emit_reasoning_event(
+            task_id='test-task-002',
+            ecid='ECID-WB-002',
+            reason_step='checkpoint',
+            summary='Build completed',
+            context='build'
+        )
+        
+        # Verify send_message was called
+        dev_agent.send_message.assert_called_once()
+        call_args = dev_agent.send_message.call_args
+        payload = call_args.kwargs['payload']
+        
+        # Verify required fields
+        assert payload['task_id'] == 'test-task-002'
+        assert payload['ecid'] == 'ECID-WB-002'
+        assert payload['reason_step'] == 'checkpoint'
+        assert payload['summary'] == 'Build completed'
+        assert payload['context'] == 'build'
+        
+        # Verify optional fields are not present
+        assert 'key_points' not in payload or payload.get('key_points') is None
+        assert 'confidence' not in payload or payload.get('confidence') is None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_emit_reasoning_event_exception(self, dev_agent):
+        """Test reasoning event emission with exception handling"""
+        dev_agent.send_message = AsyncMock(side_effect=Exception("Send failed"))
+        
+        # Should not raise exception
+        await dev_agent.emit_reasoning_event(
+            task_id='test-task-003',
+            ecid='ECID-WB-003',
+            reason_step='decision',
+            summary='Test decision',
+            context='test'
+        )
+        
+        # Should have attempted to send
+        dev_agent.send_message.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_design_manifest_emits_reasoning(self, dev_agent, design_manifest_task):
+        """Test that design_manifest task emits reasoning events"""
+        dev_agent.send_message = AsyncMock()
+        dev_agent.current_ecid = 'ECID-WB-001'
+        
+        # Mock AppBuilder
+        mock_manifest = create_sample_build_manifest()
+        mock_files = [
+            {"type": "create_file", "file_path": "index.html", "content": "<html></html>", "directory": None}
+        ]
+        dev_agent.app_builder.generate_manifest_json = AsyncMock(return_value=mock_manifest)
+        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=mock_files)
+        
+        result = await dev_agent._handle_design_manifest_task(
+            design_manifest_task["task_id"],
+            design_manifest_task["requirements"]
+        )
+        
+        # Verify reasoning events were emitted
+        assert dev_agent.send_message.call_count >= 2  # At least architecture decision and file creation
+        
+        # Verify first call is architecture decision
+        first_call = dev_agent.send_message.call_args_list[0]
+        assert first_call.kwargs['recipient'] == 'max'
+        assert first_call.kwargs['message_type'] == 'agent_reasoning'
+        assert first_call.kwargs['payload']['context'] == 'manifest_generation'
+        assert first_call.kwargs['payload']['reason_step'] == 'decision'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_build_task_emits_reasoning(self, dev_agent, build_task_with_manifest):
+        """Test that build task emits reasoning events"""
+        dev_agent.send_message = AsyncMock()
+        dev_agent.current_ecid = 'ECID-WB-001'
+        
+        # Mock file operations
+        mock_files = [
+            {"type": "create_file", "file_path": "app.py", "content": "print('Hello')"}
+        ]
+        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=mock_files)
+        dev_agent.file_manager.directory_exists = AsyncMock(return_value=False)
+        
+        result = await dev_agent._handle_build_task(
+            build_task_with_manifest["task_id"],
+            build_task_with_manifest["requirements"]
+        )
+        
+        # Verify reasoning events were emitted
+        assert dev_agent.send_message.call_count >= 1  # At least build decision
+        
+        # Find build context reasoning event
+        build_call = None
+        for call in dev_agent.send_message.call_args_list:
+            if call.kwargs.get('message_type') == 'agent_reasoning' and call.kwargs['payload'].get('context') == 'build':
+                build_call = call
+                break
+        
+        assert build_call is not None, "Build reasoning event should be emitted"
+        assert build_call.kwargs['payload']['reason_step'] in ['decision', 'checkpoint']
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_deploy_task_emits_reasoning(self, dev_agent, deploy_task):
+        """Test that deploy task emits reasoning events"""
+        dev_agent.send_message = AsyncMock()
+        dev_agent.current_ecid = 'ECID-WB-001'
+        
+        # Mock Docker operations
+        result = await dev_agent._handle_deploy_task(
+            deploy_task["task_id"],
+            deploy_task["requirements"]
+        )
+        
+        # Verify reasoning events were emitted
+        assert dev_agent.send_message.call_count >= 1  # At least deployment decision
+        
+        # Find deploy context reasoning event
+        deploy_call = None
+        for call in dev_agent.send_message.call_args_list:
+            if call.kwargs.get('message_type') == 'agent_reasoning' and call.kwargs['payload'].get('context') == 'deploy':
+                deploy_call = call
+                break
+        
+        assert deploy_call is not None, "Deploy reasoning event should be emitted"
+        assert deploy_call.kwargs['payload']['reason_step'] in ['decision', 'checkpoint']
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_completion_event_includes_reasoning_summary(self, dev_agent):
+        """Test that completion event includes reasoning summary"""
+        dev_agent.send_message = AsyncMock()
+        dev_agent.current_ecid = 'ECID-WB-001'
+        
+        # Add reasoning entries to communication log
+        dev_agent.communication_log = [
+            {
+                'ecid': 'ECID-WB-001',
+                'message_type': 'llm_reasoning',
+                'description': 'AppBuilder manifest_generation: Selected FastAPI architecture',
+                'timestamp': '2025-01-01T12:00:00Z'
+            },
+            {
+                'ecid': 'ECID-WB-001',
+                'message_type': 'llm_reasoning',
+                'description': 'AppBuilder build: Generated 5 files',
+                'timestamp': '2025-01-01T12:05:00Z'
+            }
+        ]
+        
+        result = {
+            'action': 'build',
+            'status': 'completed',
+            'created_files': ['app.py', 'index.html']
+        }
+        
+        await dev_agent._emit_developer_completion_event('test-task-001', 'ECID-WB-001', result)
+        
+        # Verify send_message was called
+        dev_agent.send_message.assert_called_once()
+        call_args = dev_agent.send_message.call_args
+        
+        # Verify it's a completion event
+        assert call_args.kwargs['recipient'] == 'max'
+        assert call_args.kwargs['message_type'] == 'task.developer.completed'
+        
+        # Verify payload includes reasoning_summary
+        payload = call_args.kwargs['payload']
+        assert 'reasoning_summary' in payload
+        reasoning_summary = payload['reasoning_summary']
+        assert reasoning_summary['context'] == 'build'
+        assert reasoning_summary['reasoning_available'] is True
+        assert len(reasoning_summary.get('key_decisions', [])) > 0
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_summary_for_task(self, dev_agent):
+        """Test reasoning summary extraction from communication log"""
+        dev_agent.communication_log = [
+            {
+                'ecid': 'ECID-WB-001',
+                'message_type': 'llm_reasoning',
+                'description': 'AppBuilder manifest_generation: Selected architecture',
+                'timestamp': '2025-01-01T12:00:00Z'
+            },
+            {
+                'ecid': 'ECID-WB-001',
+                'message_type': 'llm_reasoning',
+                'description': 'AppBuilder build: Generated files',
+                'timestamp': '2025-01-01T12:05:00Z'
+            },
+            {
+                'ecid': 'ECID-WB-002',  # Different ECID - should be filtered out
+                'message_type': 'llm_reasoning',
+                'description': 'AppBuilder build: Other task',
+                'timestamp': '2025-01-01T12:10:00Z'
+            },
+            {
+                'ecid': 'ECID-WB-001',
+                'message_type': 'llm_reasoning',
+                'description': 'AppBuilder deploy: Deployed container',
+                'timestamp': '2025-01-01T12:10:00Z'
+            }
+        ]
+        
+        summary = dev_agent._extract_reasoning_summary_for_task('ECID-WB-001', 'build')
+        
+        assert summary['context'] == 'build'
+        assert summary['reasoning_available'] is True
+        assert summary['event_count'] == 1  # Only one build entry for ECID-WB-001 (filtered by ECID and context)
+        assert len(summary['key_decisions']) > 0
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_extract_reasoning_summary_no_events(self, dev_agent):
+        """Test reasoning summary extraction when no events found"""
+        dev_agent.communication_log = []
+        
+        summary = dev_agent._extract_reasoning_summary_for_task('ECID-WB-001', 'build')
+        
+        assert summary['context'] == 'build'
+        assert summary['reasoning_available'] is False
+        assert summary['event_count'] == 0
+        assert len(summary['key_decisions']) == 0
+        assert 'note' in summary

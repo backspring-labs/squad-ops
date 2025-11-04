@@ -2,11 +2,14 @@
 LLM router for selecting and configuring LLM providers.
 
 Routes LLM requests to the appropriate provider based on configuration.
+Supports dynamic provider registration for extensibility (Ollama, Docker models, etc.)
 """
 
 import yaml
 import os
+import importlib
 from pathlib import Path
+from typing import Dict, Type
 from agents.llm.client import LLMClient
 from agents.llm.providers.ollama import OllamaClient
 
@@ -14,9 +17,29 @@ from agents.llm.providers.ollama import OllamaClient
 class LLMRouter:
     """Route LLM requests to configured provider"""
     
+    # Provider registry - maps provider names to client classes
+    _provider_registry: Dict[str, Type[LLMClient]] = {
+        'ollama': OllamaClient,
+        # Future providers can be added here:
+        # 'docker_model': DockerModelClient,
+        # 'openai': OpenAIClient,
+    }
+    
     def __init__(self, config: dict):
         self.config = config
         self.default_provider = config.get('default_provider', 'ollama')
+    
+    @classmethod
+    def register_provider(cls, name: str, client_class: Type[LLMClient]):
+        """Register a new LLM provider dynamically"""
+        cls._provider_registry[name] = client_class
+        logger = importlib.import_module('logging').getLogger(__name__)
+        logger.info(f"Registered LLM provider: {name}")
+    
+    @classmethod
+    def get_available_providers(cls) -> list:
+        """Get list of available provider names"""
+        return list(cls._provider_registry.keys())
     
     @classmethod
     def from_config(cls, config_path: str = 'config/llm_config.yaml'):
@@ -131,7 +154,14 @@ class LLMRouter:
         provider_name = self.default_provider
         provider_config = self.config['providers'].get(provider_name, {})
         
-        if provider_name == 'ollama':
-            return OllamaClient(**provider_config)
-        else:
-            raise ValueError(f"Unknown provider: {provider_name}")
+        # Get provider class from registry
+        provider_class = self._provider_registry.get(provider_name)
+        if not provider_class:
+            available = ', '.join(self._provider_registry.keys())
+            raise ValueError(
+                f"Unknown provider: {provider_name}. "
+                f"Available providers: {available}"
+            )
+        
+        # Instantiate provider with config
+        return provider_class(**provider_config)

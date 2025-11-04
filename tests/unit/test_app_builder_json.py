@@ -42,60 +42,70 @@ class TestAppBuilderJSON:
         return MockOllamaResponse.files_response()
     
     @pytest.mark.asyncio
-    async def test_call_ollama_json_success(self, app_builder, mock_manifest_response):
-        """Test successful Ollama JSON API call."""
-        with patch('aiohttp.ClientSession', return_value=MockAiohttpSession(mock_manifest_response)):
-            result = await app_builder._call_ollama_json(
-                prompt="Test prompt",
-                model="qwen2.5-coder:7b"
-            )
-            
-            assert result == mock_manifest_response
-            assert isinstance(result, dict)
-            assert "architecture" in result
-            assert "files" in result
-            assert "deployment" in result
-    
-    @pytest.mark.asyncio
-    async def test_call_ollama_json_timeout(self, app_builder):
-        """Test Ollama JSON call timeout handling."""
-        with patch('aiohttp.ClientSession', return_value=MockAiohttpSession(should_timeout=True)):
-            # AppBuilder wraps TimeoutError in Exception
-            with pytest.raises(Exception, match="Ollama API timeout"):
-                await app_builder._call_ollama_json(
-                    prompt="Test prompt",
-                    model="qwen2.5-coder:7b"
-                )
-    
-    @pytest.mark.asyncio
-    async def test_call_ollama_json_invalid_json(self, app_builder):
-        """Test handling of invalid JSON response."""
-        mock_session = MockAiohttpSession()
-        mock_response = MockAiohttpResponse(malformed_json=True)
+    async def test_call_llm_json_success(self, app_builder, mock_manifest_response):
+        """Test successful LLM JSON call via router."""
+        # Mock llm_client.complete() to return JSON string
+        json_response = json.dumps(mock_manifest_response)
+        app_builder.llm_client.complete = AsyncMock(return_value=json_response)
+        app_builder.llm_client.get_token_usage = MagicMock(return_value=None)
         
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            mock_session.post = MagicMock(return_value=mock_response)
-            
-            with pytest.raises(Exception, match="Invalid JSON response from LLM"):
-                await app_builder._call_ollama_json(
-                    prompt="Test prompt",
-                    model="qwen2.5-coder:7b"
-                )
+        result = await app_builder._call_llm_json(
+            prompt="Test prompt",
+            context="test_context"
+        )
+        
+        assert result == mock_manifest_response
+        assert isinstance(result, dict)
+        assert "architecture" in result
+        assert "files" in result
+        assert "deployment" in result
+        
+        # Verify format='json' was passed
+        app_builder.llm_client.complete.assert_called_once()
+        call_kwargs = app_builder.llm_client.complete.call_args[1]
+        assert call_kwargs.get('format') == 'json'
     
     @pytest.mark.asyncio
-    async def test_call_ollama_json_connection_error(self, app_builder):
+    async def test_call_llm_json_timeout(self, app_builder):
+        """Test LLM JSON call timeout handling."""
+        # Mock llm_client to raise timeout error
+        app_builder.llm_client.complete = AsyncMock(side_effect=asyncio.TimeoutError("LLM timeout"))
+        
+        with pytest.raises(Exception, match="LLM call failed"):
+            await app_builder._call_llm_json(
+                prompt="Test prompt",
+                context="test_context"
+            )
+    
+    @pytest.mark.asyncio
+    async def test_call_llm_json_invalid_json(self, app_builder):
+        """Test handling of invalid JSON response."""
+        # Mock llm_client to return invalid JSON string
+        app_builder.llm_client.complete = AsyncMock(return_value="not valid json {")
+        app_builder.llm_client.get_token_usage = MagicMock(return_value=None)
+        
+        with pytest.raises(Exception, match="Invalid JSON response from LLM"):
+            await app_builder._call_llm_json(
+                prompt="Test prompt",
+                context="test_context"
+            )
+    
+    @pytest.mark.asyncio
+    async def test_call_llm_json_connection_error(self, app_builder):
         """Test handling of connection errors."""
-        with patch('aiohttp.ClientSession', return_value=MockAiohttpSession(should_raise_exception=True)):
-            with pytest.raises(Exception):  # Should catch and re-raise as generic Exception
-                await app_builder._call_ollama_json(
-                    prompt="Test prompt",
-                    model="qwen2.5-coder:7b"
-                )
+        # Mock llm_client to raise connection error
+        app_builder.llm_client.complete = AsyncMock(side_effect=Exception("Network error"))
+        
+        with pytest.raises(Exception, match="LLM call failed"):
+            await app_builder._call_llm_json(
+                prompt="Test prompt",
+                context="test_context"
+            )
     
     @pytest.mark.asyncio
     async def test_generate_manifest_json_success(self, app_builder, sample_task_spec, mock_manifest_response):
         """Test successful manifest generation via JSON."""
-        with patch.object(app_builder, '_call_ollama_json', return_value=mock_manifest_response):
+        with patch.object(app_builder, '_call_llm_json', return_value=mock_manifest_response):
             manifest = await app_builder.generate_manifest_json(sample_task_spec)
             
         assert isinstance(manifest, BuildManifest)
@@ -111,7 +121,7 @@ class TestAppBuilderJSON:
         mock_response = MockOllamaResponse.manifest_response()
         mock_response["architecture"]["framework"] = "react"
         
-        with patch.object(app_builder, '_call_ollama_json', return_value=mock_response):
+        with patch.object(app_builder, '_call_llm_json', return_value=mock_response):
             manifest = await app_builder.generate_manifest_json(sample_task_spec)
             
             # Verify framework is overridden
@@ -120,12 +130,12 @@ class TestAppBuilderJSON:
     @pytest.mark.asyncio
     async def test_generate_manifest_json_prompt_injection(self, app_builder, sample_task_spec, mock_manifest_response):
         """Test that SquadOps constraints are injected into prompt."""
-        with patch.object(app_builder, '_call_ollama_json', return_value=mock_manifest_response) as mock_call:
+        with patch.object(app_builder, '_call_llm_json', return_value=mock_manifest_response) as mock_call:
             await app_builder.generate_manifest_json(sample_task_spec)
             
             # Verify prompt contains SquadOps constraints
             call_args = mock_call.call_args
-            prompt = call_args[0][0]  # First positional argument
+            prompt = call_args.kwargs.get('prompt') or call_args[0][0]  # Support both kwargs and positional
             
             assert "SQUADOPS PLATFORM REQUIREMENTS" in prompt
             assert "vanilla_js" in prompt
@@ -136,7 +146,7 @@ class TestAppBuilderJSON:
         """Test successful files generation via JSON."""
         manifest = create_sample_build_manifest()
         
-        with patch.object(app_builder, '_call_ollama_json', return_value=mock_files_response):
+        with patch.object(app_builder, '_call_llm_json', return_value=mock_files_response):
             files = await app_builder.generate_files_json(sample_task_spec, manifest)
             
             assert isinstance(files, list)
@@ -160,12 +170,12 @@ class TestAppBuilderJSON:
         """Test that manifest context is injected into developer prompt."""
         manifest = create_sample_build_manifest()
         
-        with patch.object(app_builder, '_call_ollama_json', return_value=mock_files_response) as mock_call:
+        with patch.object(app_builder, '_call_llm_json', return_value=mock_files_response) as mock_call:
             await app_builder.generate_files_json(sample_task_spec, manifest)
             
             # Verify prompt contains manifest summary and SquadOps constraints
             call_args = mock_call.call_args
-            prompt = call_args[0][0]  # First positional argument
+            prompt = call_args.kwargs.get('prompt') or call_args[0][0]  # Support both kwargs and positional
             
             assert "type: spa_web_app" in prompt
             assert "files:" in prompt
@@ -185,7 +195,7 @@ class TestAppBuilderJSON:
             ]
         }
         
-        with patch.object(app_builder, '_call_ollama_json', return_value=mock_response):
+        with patch.object(app_builder, '_call_llm_json', return_value=mock_response):
             with pytest.raises(Exception, match="File index.html missing content field"):
                 await app_builder.generate_files_json(sample_task_spec, manifest)
     
@@ -194,7 +204,7 @@ class TestAppBuilderJSON:
         """Test handling of empty files response."""
         manifest = create_sample_build_manifest()
         
-        with patch.object(app_builder, '_call_ollama_json', return_value={"files": []}):
+        with patch.object(app_builder, '_call_llm_json', return_value={"files": []}):
             files = await app_builder.generate_files_json(sample_task_spec, manifest)
             
             assert isinstance(files, list)
@@ -205,14 +215,14 @@ class TestAppBuilderJSON:
         """Test handling of response missing files key."""
         manifest = create_sample_build_manifest()
         
-        with patch.object(app_builder, '_call_ollama_json', return_value={}):
+        with patch.object(app_builder, '_call_llm_json', return_value={}):
             with pytest.raises(Exception, match="File generation failed: No 'files' key in LLM response"):
                 await app_builder.generate_files_json(sample_task_spec, manifest)
     
     @pytest.mark.asyncio
     async def test_generate_manifest_json_llm_failure(self, app_builder, sample_task_spec):
         """Test handling of LLM call failure during manifest generation."""
-        with patch.object(app_builder, '_call_ollama_json', side_effect=Exception("LLM failure")):
+        with patch.object(app_builder, '_call_llm_json', side_effect=Exception("LLM failure")):
             with pytest.raises(Exception, match="LLM failure"):
                 await app_builder.generate_manifest_json(sample_task_spec)
     
@@ -221,7 +231,7 @@ class TestAppBuilderJSON:
         """Test handling of LLM call failure during files generation."""
         manifest = create_sample_build_manifest()
         
-        with patch.object(app_builder, '_call_ollama_json', side_effect=Exception("LLM failure")):
+        with patch.object(app_builder, '_call_llm_json', side_effect=Exception("LLM failure")):
             with pytest.raises(Exception, match="LLM failure"):
                 await app_builder.generate_files_json(sample_task_spec, manifest)
     
@@ -277,7 +287,7 @@ class TestAppBuilderJSON:
         """Test handling when files is not a list"""
         manifest = create_sample_build_manifest()
         
-        with patch.object(app_builder, '_call_ollama_json', return_value={
+        with patch.object(app_builder, '_call_llm_json', return_value={
             'files': "not a list"
         }):
             with pytest.raises(Exception, match="'files' must be a list"):
@@ -288,7 +298,7 @@ class TestAppBuilderJSON:
         """Test skipping file data that is not a dictionary"""
         manifest = create_sample_build_manifest()
         
-        with patch.object(app_builder, '_call_ollama_json', return_value={
+        with patch.object(app_builder, '_call_llm_json', return_value={
             'files': [
                 {"file_path": "valid.html", "content": "<html></html>"},
                 "not a dict",  # This should be skipped
@@ -304,7 +314,7 @@ class TestAppBuilderJSON:
         """Test skipping file data missing file_path/path"""
         manifest = create_sample_build_manifest()
         
-        with patch.object(app_builder, '_call_ollama_json', return_value={
+        with patch.object(app_builder, '_call_llm_json', return_value={
             'files': [
                 {"file_path": "valid.html", "content": "<html></html>"},
                 {"content": "<html></html>"},  # Missing file_path - should be skipped

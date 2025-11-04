@@ -213,6 +213,85 @@ Test application for SquadOps integration testing
     
     @pytest.mark.integration
     @pytest.mark.asyncio
+    async def test_reasoning_event_flow(self, integration_config, clean_database, clean_rabbitmq, ensure_agents_running_fixture):
+        """Test reasoning event flow from dev agent to lead agent"""
+        from agents.roles.dev.agent import DevAgent
+        
+        lead_agent = LeadAgent("lead-agent-001")
+        dev_agent = DevAgent("dev-agent-001")
+        
+        # Override connection URLs for both agents
+        for agent in [lead_agent, dev_agent]:
+            agent.postgres_url = integration_config['database_url']
+            agent.redis_url = integration_config['redis_url']
+            agent.rabbitmq_url = integration_config['rabbitmq_url']
+            agent.task_api_url = integration_config['task_api_url']
+        
+        # Initialize both agents
+        await lead_agent.initialize()
+        await dev_agent.initialize()
+        
+        try:
+            # Clear communication logs
+            lead_agent.communication_log = []
+            dev_agent.communication_log = []
+            
+            # Create reasoning event message manually to simulate what DevAgent sends
+            reasoning_message = AgentMessage(
+                sender='dev-agent-001',
+                recipient='lead-agent-001',
+                message_type='agent_reasoning',
+                payload={
+                    'schema': 'reasoning.v1',
+                    'task_id': 'test-task-reasoning-001',
+                    'ecid': 'ECID-TEST-001',
+                    'reason_step': 'decision',
+                    'summary': 'Selected FastAPI architecture for async support',
+                    'context': 'manifest_generation',
+                    'key_points': ['FastAPI chosen', 'Async support needed', 'Ecosystem compatibility'],
+                    'confidence': 0.85,
+                    'raw_reasoning_included': False
+                },
+                context={
+                    'sender_agent': 'dev-agent-001',
+                    'sender_role': 'developer',
+                    'ecid': 'ECID-TEST-001'
+                },
+                timestamp='2025-01-01T12:00:00Z',
+                message_id='msg-reasoning-test-001'
+            )
+            
+            # Handle the reasoning event in LeadAgent
+            await lead_agent.handle_message(reasoning_message)
+            
+            # Verify reasoning event was stored in communication log
+            assert len(lead_agent.communication_log) == 1
+            log_entry = lead_agent.communication_log[0]
+            assert log_entry['message_type'] == 'agent_reasoning'
+            assert log_entry['sender'] == 'dev-agent-001'
+            assert log_entry['agent'] == 'dev-agent-001'
+            assert log_entry['ecid'] == 'ECID-TEST-001'
+            assert log_entry['task_id'] == 'test-task-reasoning-001'
+            assert log_entry['reason_step'] == 'decision'
+            assert log_entry['summary'] == 'Selected FastAPI architecture for async support'
+            assert log_entry['context'] == 'manifest_generation'
+            assert log_entry['key_points'] == ['FastAPI chosen', 'Async support needed', 'Ecosystem compatibility']
+            assert log_entry['confidence'] == 0.85
+            
+            # Verify reasoning can be extracted for wrap-up
+            reasoning = lead_agent._extract_real_ai_reasoning('ECID-TEST-001', agent_name='dev-agent-001')
+            assert 'dev-agent-001' in reasoning
+            assert 'manifest_generation' in reasoning or 'decision' in reasoning
+            assert 'FastAPI' in reasoning or 'Selected' in reasoning
+            
+            print(f"✅ Reasoning event flow test passed: reasoning event received and stored")
+            
+        finally:
+            await lead_agent.cleanup()
+            await dev_agent.cleanup()
+    
+    @pytest.mark.integration
+    @pytest.mark.asyncio
     async def test_heartbeat_monitoring(self, integration_config, clean_database, clean_redis, ensure_agents_running_fixture):
         """Test agent heartbeat monitoring via Task API"""
         from config.unified_config import reset_config  # Reset config singleton
