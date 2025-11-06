@@ -266,6 +266,62 @@ class LanceDBAdapter(MemoryProvider):
             logger.error(f"{self.agent_name}: Failed to store memory: {e}")
             raise
     
+    async def count(self, **kw) -> int:
+        """
+        Count memories in LanceDB table.
+        
+        Args:
+            **kw: Optional filters:
+                - tags: List of tags to filter by
+                - ns: Namespace filter
+                - agent: Agent name filter
+        
+        Returns:
+            Number of memories matching filters
+        """
+        if self._table is None:
+            logger.warning(f"{self.agent_name}: LanceDB table not initialized, cannot count memories.")
+            return 0
+        
+        try:
+            # Build metadata filters
+            filters = []
+            ns_filter = kw.get('ns')
+            agent_filter = kw.get('agent')
+            tags_filter = kw.get('tags', [])
+            
+            if ns_filter is not None:
+                filters.append(f"ns == '{ns_filter}'")
+            if agent_filter is not None:
+                filters.append(f"agent == '{agent_filter}'")
+            if tags_filter and isinstance(tags_filter, (list, tuple)) and len(tags_filter) > 0:
+                tag_conditions = " OR ".join([f"'{tag}' IN tags" for tag in tags_filter])
+                if tag_conditions:
+                    filters.append(f"({tag_conditions})")
+            
+            # Build where clause
+            where_clause = " AND ".join(filters) if len(filters) > 0 else None
+            
+            # Get all records (with filters if any) and count
+            if where_clause:
+                # Use search with empty vector and filter to count
+                # Create a dummy embedding for search
+                dummy_embedding = [0.0] * 768
+                results_df = self._table.search(dummy_embedding).where(where_clause).limit(10000).to_pandas()
+                return len(results_df)
+            else:
+                # No filters - count all records
+                # LanceDB doesn't have a direct count method, so we need to read all
+                # For efficiency, we'll use a limit and count
+                # In practice, this should be fast enough for agent memory counts
+                results_df = self._table.to_pandas()
+                return len(results_df)
+            
+        except Exception as e:
+            logger.error(f"{self.agent_name}: Failed to count memories: {e}")
+            logger.debug(f"{self.agent_name}: Count error details:", exc_info=True)
+            return 0
+    
     async def get(self, query: str, k: int = 8, **kw) -> List[dict]:
         """
         Retrieve memories matching query using LanceDB semantic search.

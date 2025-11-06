@@ -1,11 +1,13 @@
 {
-    "run_id": "run-131",
+    "run_id": "run-149",
     "application": "HelloSquad",
     "request_type": "from-scratch",
-    "agents": ["max", "neo"],
+    "agents": [
+        "max",
+        "neo"
+    ],
     "priority": "HIGH",
-    "description": "Build HelloSquad application from scratch based on PRD-001 - Testing refactored router and AppBuilder",
-    "requirements": null,
+    "description": "Testing LanceDB memory system - verify memory recording, retrieval, and promotion",
+    "requirements": "Verify LanceDB memory storage with local embeddings, memory recording during task execution, memory retrieval for context, and memory promotion to Squad Memory Pool",
     "prd_path": "warm-boot/prd/PRD-001-HelloSquad.md"
 }
-

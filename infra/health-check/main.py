@@ -9,8 +9,10 @@ import redis.asyncio as redis
 import pika
 import json
 import logging
+import yaml
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 import os
 import sys
 
@@ -41,6 +43,22 @@ class WarmBootRequest(BaseModel):
     requirements: Optional[str] = None
     prd_path: Optional[str] = None
 
+# Pydantic models for Agent Status
+class AgentStatusCreate(BaseModel):
+    agent_name: str
+    status: str
+    current_task_id: Optional[str] = None
+    version: Optional[str] = None
+    tps: int = 0
+    memory_count: Optional[int] = None
+
+class AgentStatusUpdate(BaseModel):
+    status: Optional[str] = None
+    current_task_id: Optional[str] = None
+    version: Optional[str] = None
+    tps: Optional[int] = None
+    memory_count: Optional[int] = None
+
 # Configuration
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://squadops:squadops123@rabbitmq:5672/")
 POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://squadops:squadops123@postgres:5432/squadops")
@@ -51,6 +69,61 @@ class HealthChecker:
     def __init__(self):
         self.redis_client = None
         self.pg_pool = None
+        self._instances_cache = None
+        self.instances_file = os.getenv('INSTANCES_FILE', 'agents/instances/instances.yaml')
+    
+    def _load_instances(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Load agent instances from instances.yaml.
+        Returns dict mapping agent_id -> {display_name, role, description}
+        Caches result for performance.
+        """
+        if self._instances_cache is not None:
+            return self._instances_cache
+        
+        try:
+            instances_path = Path(self.instances_file)
+            if not instances_path.exists():
+                logger.warning(f"Instances file not found: {self.instances_file}, using defaults")
+                return self._get_default_instances()
+            
+            with open(instances_path, 'r') as f:
+                data = yaml.safe_load(f)
+            
+            # Build agent_id -> instance info mapping
+            instances = {}
+            for instance in data.get('instances', []):
+                if instance.get('enabled', False):
+                    agent_id = instance.get('id')
+                    if agent_id:
+                        instances[agent_id] = {
+                            'display_name': instance.get('display_name', agent_id.title()),
+                            'role': instance.get('role', 'unknown'),
+                            'description': instance.get('description', '')
+                        }
+            
+            self._instances_cache = instances
+            logger.info(f"Loaded {len(instances)} agent instances from {self.instances_file}")
+            return instances
+            
+        except Exception as e:
+            logger.error(f"Failed to load instances.yaml: {e}, using defaults")
+            return self._get_default_instances()
+    
+    def _get_default_instances(self) -> Dict[str, Dict[str, Any]]:
+        """Fallback instances mapping if instances.yaml can't be loaded"""
+        return {
+            'max': {'display_name': 'Max', 'role': 'lead', 'description': 'Task Lead - Governance and coordination'},
+            'neo': {'display_name': 'Neo', 'role': 'dev', 'description': 'Developer - Deductive reasoning'},
+            'strat-agent': {'display_name': 'StratAgent', 'role': 'strat', 'description': 'Product Strategy - Abductive reasoning'},
+            'creative-agent': {'display_name': 'CreativeAgent', 'role': 'creative', 'description': 'Creative Design - Visual synthesis'},
+            'qa-agent': {'display_name': 'QAAgent', 'role': 'qa', 'description': 'QA & Security - Counterfactual reasoning'},
+            'data-agent': {'display_name': 'DataAgent', 'role': 'data', 'description': 'Analytics - Inductive reasoning'},
+            'finance-agent': {'display_name': 'FinanceAgent', 'role': 'finance', 'description': 'Finance & Ops - Rule-based reasoning'},
+            'comms-agent': {'display_name': 'CommsAgent', 'role': 'comms', 'description': 'Communications - Empathetic reasoning'},
+            'curator-agent': {'display_name': 'CuratorAgent', 'role': 'curator', 'description': 'R&D & Curation - Pattern detection'},
+            'audit-agent': {'display_name': 'AuditAgent', 'role': 'audit', 'description': 'Monitoring & Audit - Continuous monitoring'}
+        }
         
     async def init_connections(self):
         """Initialize database connections"""
@@ -431,74 +504,125 @@ class HealthChecker:
             if not self.pg_pool:
                 await self.init_connections()
             
+            # Load instances.yaml to filter out obsolete agents
+            instances = self._load_instances()
+            valid_agent_ids = set(instances.keys())
+            
             async with self.pg_pool.acquire() as conn:
                 rows = await conn.fetch("""
-                    SELECT agent_name, status, version, tps, last_heartbeat, current_task_id
+                    SELECT agent_name, status, version, tps, memory_count, last_heartbeat, current_task_id
                     FROM agent_status
                     ORDER BY agent_name
                 """)
                 
-            agents = []
-            for row in rows:
-                agents.append({
-                    "agent": self._get_display_name(row['agent_name']),
-                    "role": self._get_agent_role(row['agent_name']),
-                    "status": row['status'],
-                    "version": row['version'],
-                    "tps": row['tps'],
-                    "last_heartbeat": row['last_heartbeat'].isoformat() if row['last_heartbeat'] else None,
-                    "current_task": row['current_task_id']
-                })
-            
-            return agents
+                agents = []
+                for row in rows:
+                    # Skip agents not in instances.yaml (obsolete/stale entries)
+                    agent_name = row['agent_name']
+                    if agent_name not in valid_agent_ids:
+                        logger.debug(f"Skipping obsolete agent entry: {agent_name}")
+                        continue
+                    
+                    # Handle memory_count - asyncpg.Record uses dict-like access
+                    memory_count = row['memory_count'] if row['memory_count'] is not None else 0
+                    
+                    # Use config/version.py as source of truth for agent version
+                    # Database version may be stale if agent hasn't sent heartbeat recently
+                    agent_version = get_agent_version(agent_name)
+                    
+                    agents.append({
+                        "agent": self._get_display_name(agent_name),
+                        "role": self._get_agent_role(agent_name),
+                        "status": row['status'],
+                        "version": agent_version,  # Use version from config/version.py
+                        "tps": row['tps'],
+                        "memory_count": memory_count,
+                        "last_heartbeat": row['last_heartbeat'].isoformat() if row['last_heartbeat'] else None,
+                        "current_task": row['current_task_id']
+                    })
+                
+                return agents
         except Exception as e:
-            # Return mock data if database is unavailable - use config versions as fallback
-            return [
-                {"agent": "Max", "role": "Task Lead", "status": "offline", "version": get_agent_version("max"), "tps": 0},
-                {"agent": "Neo", "role": "Developer", "status": "offline", "version": get_agent_version("neo"), "tps": 0},
-                {"agent": "Nat", "role": "Product Strategy", "status": "offline", "version": get_agent_version("nat"), "tps": 0},
-                {"agent": "Joi", "role": "Communications", "status": "offline", "version": get_agent_version("joi"), "tps": 0},
-                {"agent": "Data", "role": "Analytics", "status": "offline", "version": get_agent_version("data"), "tps": 0},
-                {"agent": "EVE", "role": "QA & Security", "status": "offline", "version": get_agent_version("eve"), "tps": 0},
-                {"agent": "Quark", "role": "Finance & Ops", "status": "offline", "version": get_agent_version("quark"), "tps": 0},
-                {"agent": "HAL", "role": "Monitoring", "status": "offline", "version": get_agent_version("hal"), "tps": 0},
-                {"agent": "Og", "role": "R&D & Curation", "status": "offline", "version": get_agent_version("og"), "tps": 0},
-                {"agent": "Glyph", "role": "Creative Design", "status": "offline", "version": get_agent_version("glyph"), "tps": 0}
-            ]
+            logger.error(f"Failed to get agent status from database: {e}", exc_info=True)
+            # Return mock data if database is unavailable - use instances.yaml as fallback
+            instances = self._load_instances()
+            mock_agents = []
+            for agent_id, instance_info in instances.items():
+                mock_agents.append({
+                    "agent": instance_info['display_name'],
+                    "role": instance_info['description'].split(' - ')[0] if ' - ' in instance_info['description'] else instance_info['description'],
+                    "status": "offline",
+                    "version": get_agent_version(agent_id),
+                    "tps": 0,
+                    "memory_count": 0
+                })
+            return mock_agents
     
     def _get_display_name(self, agent_id: str) -> str:
-        """Get agent display name from agent ID"""
-        display_names = {
-            "max": "Max",
-            "neo": "Neo", 
-            "nat": "Nat",
-            "joi": "Joi",
-            "data": "Data",
-            "eve": "EVE",
-            "quark": "Quark",
-            "hal": "HAL",
-            "og": "Og",
-            "glyph": "Glyph"
-        }
-        return display_names.get(agent_id, agent_id.title())
+        """Get agent display name from agent ID using instances.yaml"""
+        instances = self._load_instances()
+        instance = instances.get(agent_id)
+        if instance:
+            return instance['display_name']
+        # Fallback: title case the agent_id
+        return agent_id.title()
     
     def _get_agent_role(self, agent_name: str) -> str:
-        """Get agent role description"""
-        # Map lowercase agent IDs to role descriptions
-        roles = {
-            "max": "Task Lead",
-            "neo": "Developer", 
-            "nat": "Product Strategy",
-            "joi": "Communications",
-            "data": "Analytics",
-            "eve": "QA & Security",
-            "quark": "Finance & Ops",
-            "hal": "Monitoring",
-            "og": "R&D & Curation",
-            "glyph": "Creative Design"
-        }
-        return roles.get(agent_name, "Unknown")
+        """Get agent role description using instances.yaml"""
+        instances = self._load_instances()
+        instance = instances.get(agent_name)
+        if instance:
+            # Use description field from instances.yaml, or map role to description
+            description = instance.get('description', '')
+            if description:
+                # Extract role description from description field (e.g., "Task Lead - Governance..." -> "Task Lead")
+                role_desc = description.split(' - ')[0] if ' - ' in description else description
+                return role_desc
+            # Fallback: map role to description
+            role_to_desc = {
+                'lead': 'Task Lead',
+                'dev': 'Developer',
+                'strat': 'Product Strategy',
+                'creative': 'Creative Design',
+                'qa': 'QA & Security',
+                'data': 'Analytics',
+                'finance': 'Finance & Ops',
+                'comms': 'Communications',
+                'curator': 'R&D & Curation',
+                'audit': 'Monitoring & Audit'
+            }
+            return role_to_desc.get(instance.get('role', ''), 'Unknown')
+        return "Unknown"
     
+    async def update_agent_status_in_db(self, agent_status: Dict[str, Any]) -> Dict[str, Any]:
+        """Update agent status in database"""
+        try:
+            if not self.pg_pool:
+                await self.init_connections()
+            
+            async with self.pg_pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO agent_status 
+                    (agent_name, status, last_heartbeat, current_task_id, version, tps, memory_count, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    ON CONFLICT (agent_name) 
+                    DO UPDATE SET 
+                        status = $2,
+                        last_heartbeat = $3,
+                        current_task_id = $4,
+                        version = $5,
+                        tps = $6,
+                        memory_count = $7,
+                        updated_at = $8
+                """, agent_status['agent_name'], agent_status['status'], datetime.utcnow(),
+                    agent_status.get('current_task_id'), agent_status.get('version'),
+                    agent_status.get('tps', 0), agent_status.get('memory_count', 0) or 0,
+                    datetime.utcnow())
+                return {"status": "updated", "agent_name": agent_status['agent_name']}
+        except Exception as e:
+            logger.error(f"Failed to update agent status: {e}")
+            raise
+
     async def submit_warmboot_request(self, request: WarmBootRequest) -> Dict[str, Any]:
         """Submit WarmBoot request to agents via RabbitMQ"""
         try:
@@ -802,6 +926,111 @@ async def health_agents():
     agents = await health_checker.get_agent_status()
     return agents
 
+@app.post("/health/agents/status")
+async def create_or_update_agent_status(agent_status: AgentStatusCreate):
+    """Create or update agent status (heartbeat endpoint)"""
+    try:
+        result = await health_checker.update_agent_status_in_db({
+            'agent_name': agent_status.agent_name,
+            'status': agent_status.status,
+            'current_task_id': agent_status.current_task_id,
+            'version': agent_status.version,
+            'tps': agent_status.tps,
+            'memory_count': agent_status.memory_count
+        })
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update agent status: {str(e)}")
+
+@app.put("/health/agents/status/{agent_name}")
+async def update_agent_status(agent_name: str, update: AgentStatusUpdate):
+    """Update agent status fields"""
+    try:
+        if not health_checker.pg_pool:
+            await health_checker.init_connections()
+        
+        updates = []
+        params = []
+        param_count = 1
+        
+        if update.status:
+            updates.append(f"status = ${param_count}")
+            params.append(update.status)
+            param_count += 1
+        
+        if update.current_task_id is not None:
+            updates.append(f"current_task_id = ${param_count}")
+            params.append(update.current_task_id)
+            param_count += 1
+        
+        if update.version:
+            updates.append(f"version = ${param_count}")
+            params.append(update.version)
+            param_count += 1
+        
+        if update.tps is not None:
+            updates.append(f"tps = ${param_count}")
+            params.append(update.tps)
+            param_count += 1
+        
+        if update.memory_count is not None:
+            updates.append(f"memory_count = ${param_count}")
+            params.append(update.memory_count)
+            param_count += 1
+        
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        updates.append(f"last_heartbeat = ${param_count}")
+        params.append(datetime.utcnow())
+        param_count += 1
+        updates.append(f"updated_at = ${param_count}")
+        params.append(datetime.utcnow())
+        param_count += 1
+        
+        params.append(agent_name)
+        query = f"UPDATE agent_status SET {', '.join(updates)} WHERE agent_name = ${param_count}"
+        
+        async with health_checker.pg_pool.acquire() as conn:
+            result = await conn.execute(query, *params)
+            if result == "UPDATE 0":
+                raise HTTPException(status_code=404, detail=f"Agent status {agent_name} not found")
+        
+        return {"status": "updated", "agent_name": agent_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update agent status: {str(e)}")
+
+@app.get("/health/agents/status/{agent_name}")
+async def get_agent_status_by_name(agent_name: str):
+    """Get agent status by agent_name"""
+    try:
+        if not health_checker.pg_pool:
+            await health_checker.init_connections()
+        
+        async with health_checker.pg_pool.acquire() as conn:
+            status = await conn.fetchrow("""
+                SELECT * FROM agent_status WHERE agent_name = $1
+            """, agent_name)
+            
+            if not status:
+                raise HTTPException(status_code=404, detail=f"Agent status {agent_name} not found")
+            
+            return {
+                "agent_name": status['agent_name'],
+                "status": status['status'],
+                "version": status['version'],
+                "tps": status['tps'],
+                "memory_count": status.get('memory_count', 0) or 0,
+                "last_heartbeat": status['last_heartbeat'].isoformat() if status['last_heartbeat'] else None,
+                "current_task_id": status['current_task_id']
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get agent status: {str(e)}")
+
 @app.get("/health")
 async def health_dashboard():
     """Get health dashboard HTML"""
@@ -823,11 +1052,12 @@ async def health_dashboard():
                 white-space: nowrap;
                 padding: 8px 12px;
             }}
-            .table th:nth-child(1), .table td:nth-child(1) {{ width: 20%; }}
+            .table th:nth-child(1), .table td:nth-child(1) {{ width: 15%; }}
             .table th:nth-child(2), .table td:nth-child(2) {{ width: 20%; }}
             .table th:nth-child(3), .table td:nth-child(3) {{ width: 15%; }}
             .table th:nth-child(4), .table td:nth-child(4) {{ width: 15%; }}
-            .table th:nth-child(5), .table td:nth-child(5) {{ width: 30%; }}
+            .table th:nth-child(5), .table td:nth-child(5) {{ width: 10%; }}
+            .table th:nth-child(6), .table td:nth-child(6) {{ width: 10%; }}
         </style>
     </head>
     <body>
@@ -885,6 +1115,7 @@ async def health_dashboard():
                                     <th>Status</th>
                                     <th>Version</th>
                                     <th>TPS</th>
+                                    <th>Memories</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -901,6 +1132,7 @@ async def health_dashboard():
                                     <td>{status_icon} {agent['status']}</td>
                                     <td>{agent['version']}</td>
                                     <td>{agent['tps']}</td>
+                                    <td>{agent.get('memory_count', 0)}</td>
                                 </tr>
         """
     
@@ -963,6 +1195,36 @@ async def get_agent_messages(since: Optional[str] = None):
 @app.get("/warmboot/form")
 async def warmboot_form():
     """Get WarmBoot request form HTML"""
+    # Load instances for dynamic agent list
+    instances = health_checker._load_instances()
+    
+
+    # Build agent checkboxes dynamically
+    agent_checkboxes_html = []
+    agents_list = list(instances.items())
+    
+    # Group agents into rows of 3
+    for i in range(0, len(agents_list), 3):
+        row_agents = agents_list[i:i+3]
+        row_class = 'row mt-2' if i > 0 else 'row'
+        row_html = f'                        <div class="{row_class}">\n'
+        for agent_id, instance_info in row_agents:
+            display_name = instance_info['display_name']
+            role = instance_info['role']
+            # Check max and neo by default
+            checked = 'checked' if agent_id in ['max', 'neo'] else ''
+            row_html += f'''                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="agent_{agent_id}" name="agents" value="{agent_id}" {checked}>
+                                    <label class="form-check-label" for="agent_{agent_id}">{display_name} ({role.title()})</label>
+                                </div>
+                            </div>
+'''
+        row_html += '                        </div>'
+        agent_checkboxes_html.append(row_html)
+    
+    agents_section = '\n'.join(agent_checkboxes_html)
+    
     html_content = """
     <!DOCTYPE html>
     <html>
@@ -1056,44 +1318,7 @@ async def warmboot_form():
                     <div class="mb-3">
                         <label for="agents" class="form-label">Agents</label>
                         <div class="row">
-                            <div class="col-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="agent_max" name="agents" value="max" checked>
-                                    <label class="form-check-label" for="agent_max">Max (Lead)</label>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="agent_neo" name="agents" value="neo" checked>
-                                    <label class="form-check-label" for="agent_neo">Neo (Dev)</label>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="agent_eve" name="agents" value="eve">
-                                    <label class="form-check-label" for="agent_eve">EVE (QA)</label>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row mt-2">
-                            <div class="col-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="agent_nat" name="agents" value="nat">
-                                    <label class="form-check-label" for="agent_nat">Nat (Strategy)</label>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="agent_joi" name="agents" value="joi">
-                                    <label class="form-check-label" for="agent_joi">Joi (Comms)</label>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="agent_data" name="agents" value="data">
-                                    <label class="form-check-label" for="agent_data">Data (Analytics)</label>
-                                </div>
-                            </div>
+""" + agents_section + """
                         </div>
                     </div>
                     

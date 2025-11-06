@@ -369,105 +369,10 @@ async def get_task_status(task_id: str):
             raise HTTPException(status_code=404, detail=f"Task status {task_id} not found")
         return dict(status)
 
-# Agent Status Management Endpoints (replaces direct agent_status table writes)
+# Note: Agent status endpoints moved to health-check service
+# Task API focuses on task lifecycle management only
+# Agent heartbeats should use: POST /health/agents/status (health-check service on port 8000)
 
-class AgentStatusCreate(BaseModel):
-    agent_name: str
-    status: str
-    current_task_id: Optional[str] = None
-    version: Optional[str] = None
-    tps: int = 0
-
-class AgentStatusUpdate(BaseModel):
-    status: Optional[str] = None
-    current_task_id: Optional[str] = None
-    version: Optional[str] = None
-    tps: Optional[int] = None
-
-@app.post("/api/v1/agent-status")
-async def create_or_update_agent_status(agent_status: AgentStatusCreate):
-    """Create or update agent status (replaces direct agent_status table writes for heartbeats)"""
-    async with pool.acquire() as conn:
-        try:
-            await conn.execute("""
-                INSERT INTO agent_status 
-                (agent_name, status, last_heartbeat, current_task_id, version, tps, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ON CONFLICT (agent_name) 
-                DO UPDATE SET 
-                    status = $2,
-                    last_heartbeat = $3,
-                    current_task_id = $4,
-                    version = $5,
-                    tps = $6,
-                    updated_at = $7
-            """, agent_status.agent_name, agent_status.status, datetime.utcnow(),
-                agent_status.current_task_id, agent_status.version, agent_status.tps,
-                datetime.utcnow())
-            return {"status": "updated", "agent_name": agent_status.agent_name}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to update agent status: {str(e)}")
-
-@app.put("/api/v1/agent-status/{agent_name}")
-async def update_agent_status(agent_name: str, update: AgentStatusUpdate):
-    """Update agent status fields"""
-    updates = []
-    params = []
-    param_count = 1
-    
-    if update.status:
-        updates.append(f"status = ${param_count}")
-        params.append(update.status)
-        param_count += 1
-    
-    if update.current_task_id is not None:
-        updates.append(f"current_task_id = ${param_count}")
-        params.append(update.current_task_id)
-        param_count += 1
-    
-    if update.version:
-        updates.append(f"version = ${param_count}")
-        params.append(update.version)
-        param_count += 1
-    
-    if update.tps is not None:
-        updates.append(f"tps = ${param_count}")
-        params.append(update.tps)
-        param_count += 1
-    
-    if not updates:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    
-    updates.append(f"last_heartbeat = ${param_count}")
-    params.append(datetime.utcnow())
-    param_count += 1
-    updates.append(f"updated_at = ${param_count}")
-    params.append(datetime.utcnow())
-    param_count += 1
-    
-    params.append(agent_name)
-    query = f"UPDATE agent_status SET {', '.join(updates)} WHERE agent_name = ${param_count}"
-    
-    async with pool.acquire() as conn:
-        result = await conn.execute(query, *params)
-        if result == "UPDATE 0":
-            raise HTTPException(status_code=404, detail=f"Agent status {agent_name} not found")
-    
-    return {"status": "updated", "agent_name": agent_name}
-
-@app.get("/api/v1/agent-status/{agent_name}")
-async def get_agent_status(agent_name: str):
-    """Get agent status by agent_name"""
-    async with pool.acquire() as conn:
-        status = await conn.fetchrow("""
-            SELECT * FROM agent_status 
-            WHERE agent_name = $1
-        """, agent_name)
-        if not status:
-            raise HTTPException(status_code=404, detail=f"Agent status {agent_name} not found")
-        return dict(status)
-
-# Execution Cycle Get by ECID (single cycle)
 
 @app.get("/api/v1/execution-cycles/{ecid}")
 async def get_execution_cycle(ecid: str):

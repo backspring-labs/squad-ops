@@ -377,17 +377,148 @@ class BaseAgent(ABC):
                 memory_item['validator'] = None
             
             # Store memory via appropriate adapter
-            mem_id = await adapter.put(memory_item)
-            if mem_id:
-                storage = "Squad Memory Pool" if ns == "squad" else "LanceDB"
-                logger.info(f"{self.name}: Recorded memory {kind} (ID: {mem_id[:8] if mem_id else 'None'}...) for ECID {ecid} in {storage}")
-            else:
-                logger.warning(f"{self.name}: Failed to record memory {kind} - adapter returned None")
-            return mem_id
+            # Instrument memory operation with telemetry span
+            span_name = f"memory.{'promote' if ns == 'squad' else 'store'}"
+            span_attrs = {
+                'agent.name': self.name,
+                'memory.kind': kind,
+                'memory.namespace': ns,
+                'memory.importance': importance,
+                'ecid': ecid if ecid != 'unknown' else None,
+                'pid': pid if pid != 'unknown' else None,
+                'storage': 'squad_pool' if ns == 'squad' else 'lancedb'
+            }
+            
+            import time
+            start_time = time.time()
+            
+            with self.create_span(span_name, span_attrs):
+                mem_id = await adapter.put(memory_item)
+                latency_ms = (time.time() - start_time) * 1000
+                
+                # Record latency histogram
+                self.record_histogram('memory_operation_latency_ms', latency_ms, {
+                    'operation': 'put',
+                    'namespace': ns,
+                    'agent': self.name
+                })
+                
+                if mem_id:
+                    # Record success metrics
+                    self.record_counter('memory_operations_total', 1, {
+                        'operation': 'put',
+                        'kind': kind,
+                        'namespace': ns,
+                        'agent': self.name,
+                        'status': 'success'
+                    })
+                    
+                    storage = "Squad Memory Pool" if ns == "squad" else "LanceDB"
+                    logger.info(f"{self.name}: Recorded memory {kind} (ID: {mem_id[:8] if mem_id else 'None'}...) for ECID {ecid} in {storage} ({latency_ms:.2f}ms)")
+                else:
+                    # Record failure metrics
+                    self.record_counter('memory_operations_total', 1, {
+                        'operation': 'put',
+                        'kind': kind,
+                        'namespace': ns,
+                        'agent': self.name,
+                        'status': 'failed'
+                    })
+                    logger.warning(f"{self.name}: Failed to record memory {kind} - adapter returned None")
+                
+                return mem_id
             
         except Exception as e:
+            # Record failure telemetry
+            self.record_counter('memory_operations_total', 1, {
+                'operation': 'put',
+                'kind': kind,
+                'namespace': ns,
+                'agent': self.name,
+                'status': 'error'
+            })
             logger.error(f"{self.name}: Failed to record memory: {e}")
             return None
+    
+    async def retrieve_memories(self, query: str = "", k: int = 8, ns: str = "role", **kwargs) -> List[dict]:
+        """
+        Retrieve memories with telemetry instrumentation.
+        
+        Args:
+            query: Search query string
+            k: Maximum number of results
+            ns: Namespace ('role' for agent-level, 'squad' for Squad Memory Pool)
+            **kwargs: Additional filters (tags, agent, pid, ecid, etc.)
+        
+        Returns:
+            List of memory dictionaries
+        """
+        # Select appropriate adapter
+        if ns == "squad":
+            if not self.sql_adapter:
+                logger.debug(f"{self.name}: SQL adapter not initialized, cannot retrieve squad memories")
+                return []
+            adapter = self.sql_adapter
+        else:
+            if not self.memory_provider:
+                logger.debug(f"{self.name}: Memory provider not initialized, cannot retrieve memories")
+                return []
+            adapter = self.memory_provider
+        
+        # Instrument memory retrieval with telemetry span
+        span_name = f"memory.{'retrieve_squad' if ns == 'squad' else 'retrieve'}"
+        span_attrs = {
+            'agent.name': self.name,
+            'memory.namespace': ns,
+            'memory.query_length': len(query),
+            'memory.max_results': k
+        }
+        
+        import time
+        start_time = time.time()
+        
+        try:
+            with self.create_span(span_name, span_attrs):
+                memories = await adapter.get(query, k, **kwargs)
+                latency_ms = (time.time() - start_time) * 1000
+                
+                # Record latency histogram
+                self.record_histogram('memory_operation_latency_ms', latency_ms, {
+                    'operation': 'get',
+                    'namespace': ns,
+                    'agent': self.name
+                })
+                
+                # Record retrieval metrics
+                self.record_counter('memory_operations_total', 1, {
+                    'operation': 'get',
+                    'namespace': ns,
+                    'agent': self.name,
+                    'status': 'success'
+                })
+                
+                # Record results count as gauge
+                self.record_gauge('memory_retrieval_results_count', len(memories), {
+                    'namespace': ns,
+                    'agent': self.name
+                })
+                
+                logger.debug(f"{self.name}: Retrieved {len(memories)} memories from {ns} namespace ({latency_ms:.2f}ms)")
+                return memories
+                
+        except Exception as e:
+            latency_ms = (time.time() - start_time) * 1000
+            
+            # Record error metrics
+            self.record_counter('memory_operations_total', 1, {
+                'operation': 'get',
+                'namespace': ns,
+                'agent': self.name,
+                'status': 'error'
+            })
+            
+            logger.error(f"{self.name}: Failed to retrieve memories: {e}")
+            return []
     
     async def send_message(self, recipient: str, message_type: str, payload: Dict[str, Any], context: Dict[str, Any] = None):
         """Send a message to another agent"""
@@ -601,27 +732,39 @@ class BaseAgent(ABC):
                 return await resp.json()
     
     async def send_heartbeat(self):
-        """Send heartbeat via Task API (replaces direct database writes)"""
+        """Send heartbeat via Health-Check API (agent health management)"""
         try:
+            # Get memory count if memory provider is available
+            memory_count = 0
+            if self.memory_provider and hasattr(self.memory_provider, 'count'):
+                try:
+                    memory_count = await self.memory_provider.count()
+                except Exception as e:
+                    logger.debug(f"{self.name} failed to get memory count: {e}")
+            
+            # Use health-check service URL (defaults to health-check:8000 if HEALTH_CHECK_URL not set)
+            health_check_url = os.getenv('HEALTH_CHECK_URL', 'http://health-check:8000')
+            
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f"{self.task_api_url}/api/v1/agent-status",
+                    f"{health_check_url}/health/agents/status",
                     json={
                         "agent_name": self.name,
                         "status": self.status,
                         "current_task_id": self.current_task or None,
                         "version": get_agent_version(self.name),
-                        "tps": 0  # Mock TPS for now
+                        "tps": 0,  # Mock TPS for now
+                        "memory_count": memory_count
                     }
                 ) as resp:
                     if resp.status != 200:
                         error_text = await resp.text()
                         logger.error(f"Failed to send heartbeat: {error_text}")
                     else:
-                        logger.debug(f"{self.name} heartbeat sent via API")
+                        logger.debug(f"{self.name} heartbeat sent via Health-Check API (memory_count: {memory_count})")
                         return await resp.json()
         except Exception as e:
-            logger.error(f"{self.name} heartbeat failed via API: {e}")
+            logger.error(f"{self.name} heartbeat failed via Health-Check API: {e}")
             raise
     
     @abstractmethod

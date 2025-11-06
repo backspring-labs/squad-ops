@@ -618,25 +618,25 @@ class TestLeadAgent:
         # Agent will load from actual instances.yaml (production config)
         agent = LeadAgent("lead-agent-001")
         
-        # Test development task delegation → dev role → dev-agent (from instances.yaml)
+        # Test development task delegation → dev role → neo (from instances.yaml)
         target = await agent.determine_delegation_target('development')
-        assert target == 'dev-agent'  # Expected from production instances.yaml
+        assert target == 'neo'  # Expected from production instances.yaml (instance name)
         
-        # Test deployment task delegation → dev role → dev-agent  
+        # Test deployment task delegation → dev role → neo  
         target = await agent.determine_delegation_target('deployment')
-        assert target == 'dev-agent'
+        assert target == 'neo'
         
-        # Test code task delegation → dev role → dev-agent
+        # Test code task delegation → dev role → neo
         target = await agent.determine_delegation_target('code')
-        assert target == 'dev-agent'
+        assert target == 'neo'
         
-        # Test security task delegation → qa role → qa-agent
+        # Test security task delegation → qa role → qa-agent (from instances.yaml)
         target = await agent.determine_delegation_target('security')
-        assert target == 'qa-agent'
+        assert target == 'qa-agent'  # Expected from production instances.yaml
         
         # Test strategy task delegation → strat role → strat-agent
         target = await agent.determine_delegation_target('product')
-        assert target == 'strat-agent'
+        assert target == 'strat-agent'  # Expected from production instances.yaml
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1575,15 +1575,39 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_design_manifest_completion_handler(self, lead_agent_for_sequencing, design_manifest_completion_message):
         """Test handling of design_manifest completion."""
-        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
-            await lead_agent_for_sequencing._handle_design_manifest_completion(design_manifest_completion_message)
+        # Mock HTTP call to task API
+        mock_tasks_response = AsyncMock()
+        mock_tasks_response.status = 200
+        mock_tasks_response.json = AsyncMock(return_value=[
+            {
+                'task_id': 'TEST-BUILD-001',
+                'requirements': {'action': 'build', 'manifest': None},
+                'status': 'pending'
+            }
+        ])
+        mock_tasks_response.__aenter__ = AsyncMock(return_value=mock_tasks_response)
+        mock_tasks_response.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('aiohttp.ClientSession') as mock_session_class:
+            mock_session = AsyncMock()
+            mock_session.get = Mock(return_value=mock_tasks_response)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+            mock_session_class.return_value = mock_session
             
-            # Verify manifest is stored in warmboot_state
-            assert lead_agent_for_sequencing.warmboot_state['manifest'] is not None
-            assert lead_agent_for_sequencing.warmboot_state['manifest']['architecture']['type'] == "spa_web_app"
-            
-            # Verify next task is triggered
-            mock_trigger.assert_called_once_with("TEST-001", "build")
+            # Mock send_message to verify delegation
+            with patch.object(lead_agent_for_sequencing, 'send_message', new_callable=AsyncMock) as mock_send:
+                await lead_agent_for_sequencing._handle_design_manifest_completion(design_manifest_completion_message)
+                
+                # Verify manifest is stored in warmboot_state
+                assert lead_agent_for_sequencing.warmboot_state['manifest'] is not None
+                assert lead_agent_for_sequencing.warmboot_state['manifest']['architecture']['type'] == "spa_web_app"
+                
+                # Verify build task was delegated via send_message
+                mock_send.assert_called_once()
+                call_args = mock_send.call_args
+                assert call_args.kwargs['recipient'] == 'neo'  # Delegated to dev agent (neo)
+                assert call_args.kwargs['message_type'] == 'task_delegation'
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1801,17 +1825,42 @@ class TestLeadAgent:
              patch.object(lead_agent_for_sequencing, '_log_warmboot_governance') as mock_log, \
              patch.object(lead_agent_for_sequencing, 'generate_warmboot_wrapup') as mock_wrapup:
             
-            # Execute sequence
-            await lead_agent_for_sequencing._handle_design_manifest_completion(design_message)
-            await lead_agent_for_sequencing._handle_build_completion(build_message)
-            await lead_agent_for_sequencing._handle_deploy_completion(deploy_message)
+            # Mock HTTP call to task API for design manifest completion
+            mock_tasks_response = AsyncMock()
+            mock_tasks_response.status = 200
+            mock_tasks_response.json = AsyncMock(return_value=[
+                {
+                    'task_id': 'TEST-BUILD-001',
+                    'requirements': {'action': 'build', 'manifest': None},
+                    'status': 'pending'
+                }
+            ])
+            mock_tasks_response.__aenter__ = AsyncMock(return_value=mock_tasks_response)
+            mock_tasks_response.__aexit__ = AsyncMock(return_value=None)
+            
+            with patch('aiohttp.ClientSession') as mock_session_class:
+                mock_session = AsyncMock()
+                mock_session.get = Mock(return_value=mock_tasks_response)
+                mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session.__aexit__ = AsyncMock(return_value=None)
+                mock_session_class.return_value = mock_session
+                
+                # Mock send_message for delegation
+                with patch.object(lead_agent_for_sequencing, 'send_message', new_callable=AsyncMock):
+                    # Execute sequence
+                    await lead_agent_for_sequencing._handle_design_manifest_completion(design_message)
+                    await lead_agent_for_sequencing._handle_build_completion(build_message)
+                    await lead_agent_for_sequencing._handle_deploy_completion(deploy_message)
             
             # Verify state progression
             assert lead_agent_for_sequencing.warmboot_state['manifest'] is not None
             assert len(lead_agent_for_sequencing.warmboot_state['build_files']) == 2
             
             # Verify all handlers were called
-            assert mock_trigger.call_count == 2  # build and deploy
+            # design_manifest completion delegates via send_message (not _trigger_next_task)
+            # build completion triggers deploy (1 call)
+            # deploy completion triggers wrapup (no _trigger_next_task call)
+            assert mock_trigger.call_count == 1  # Only deploy is triggered
             mock_log.assert_called_once()
             mock_wrapup.assert_called_once()
     
@@ -2359,11 +2408,31 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
-            await agent._handle_design_manifest_completion(message)
+        # Mock HTTP call to task API
+        mock_tasks_response = AsyncMock()
+        mock_tasks_response.status = 200
+        mock_tasks_response.json = AsyncMock(return_value=[
+            {
+                'task_id': 'TEST-BUILD-001',
+                'requirements': {'action': 'build', 'manifest': None},
+                'status': 'pending'
+            }
+        ])
+        mock_tasks_response.__aenter__ = AsyncMock(return_value=mock_tasks_response)
+        mock_tasks_response.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('aiohttp.ClientSession') as mock_session_class:
+            mock_session = AsyncMock()
+            mock_session.get = Mock(return_value=mock_tasks_response)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+            mock_session_class.return_value = mock_session
             
-            # Should trigger next task for successful status
-            mock_trigger.assert_called_once()
+            with patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
+                await agent._handle_design_manifest_completion(message)
+                
+                # Should delegate build task via send_message
+                mock_send.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_build_completion_success_with_trigger(self, mock_lead_agent):

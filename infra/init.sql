@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS agent_status (
     current_task_id TEXT,
     version TEXT,
     tps INTEGER DEFAULT 0,
+    memory_count INTEGER DEFAULT 0,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

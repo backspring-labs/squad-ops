@@ -4,7 +4,7 @@
 instances:
   # Lead Role
   - id: max
-    display_name: LeadAgent
+    display_name: Max
     role: lead
     model: llama3.1:8b
     enabled: true
@@ -28,7 +28,7 @@ instances:
 
   # Development Role
   - id: neo
-    display_name: DevAgent
+    display_name: Neo
     role: dev
     model: qwen2.5:7b
     enabled: true

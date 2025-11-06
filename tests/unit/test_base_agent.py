@@ -299,7 +299,8 @@ class TestBaseAgent:
             # Verify API was called with correct payload
             assert mock_session.post.called
             call_args = mock_session.post.call_args
-            assert call_args[0][0] == 'http://task-api:8001/api/v1/agent-status'
+            # Heartbeat now goes to health-check service, not task-api
+            assert call_args[0][0] == 'http://task-api:8000/health/agents/status'
             json_payload = call_args[1]['json']
             assert json_payload['agent_name'] == 'test-agent'
             assert json_payload['status'] == 'online'
