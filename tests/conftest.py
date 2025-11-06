@@ -134,8 +134,8 @@ Test application for SquadOps testing
 def sample_agent_message():
     """Sample agent message for testing"""
     return {
-        'sender': 'max',
-        'recipient': 'neo', 
+        'sender': 'lead-agent',
+        'recipient': 'dev-agent', 
         'message_type': 'TASK_ASSIGNMENT',
         'payload': {'task_id': 'test-task-001', 'description': 'Test task'},
         'context': {'priority': 'MEDIUM'},

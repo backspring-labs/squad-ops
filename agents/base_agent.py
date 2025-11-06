@@ -76,6 +76,10 @@ class BaseAgent(ABC):
         self.db_pool = None  # Deprecated: Keep for legacy reads, will be removed in future
         self.redis_client = None
         
+        # Memory providers (SIP-042)
+        self.memory_provider = None  # Mem0Adapter for agent-level memory
+        self.sql_adapter = None  # SqlAdapter for Squad Memory Pool promotion
+        
         # Initialize unified configuration
         from config.unified_config import get_config
         self.config = get_config()
@@ -219,6 +223,9 @@ class BaseAgent(ABC):
             # Connect to Redis
             self.redis_client = redis.from_url(self.redis_url)
             
+            # Initialize memory providers (SIP-042)
+            await self._initialize_memory_providers()
+            
             # Declare queues
             await self._setup_queues()
             
@@ -238,6 +245,149 @@ class BaseAgent(ABC):
         
         # Broadcast queue for squad-wide messages
         await self.channel.declare_queue("squad_broadcast", durable=True)
+    
+    async def _initialize_memory_providers(self):
+        """Initialize memory providers (SIP-042)"""
+        try:
+            from agents.memory.lancedb_adapter import LanceDBAdapter
+            from agents.memory.sql_adapter import SqlAdapter
+            
+            # Initialize LanceDBAdapter for agent-level memory
+            self.memory_provider = LanceDBAdapter(self.name)
+            
+            # Initialize SqlAdapter for Squad Memory Pool promotion
+            if self.db_pool:
+                self.sql_adapter = SqlAdapter(self.db_pool)
+            
+            logger.info(f"{self.name}: Memory providers initialized")
+        except Exception as e:
+            logger.warning(f"{self.name}: Failed to initialize memory providers: {e}")
+            # Continue without memory if initialization fails
+    
+    def _extract_memory_context(self, task: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Extract PID and ECID from task context.
+        Handles various task formats (agent_task_log, message payload, etc.)
+        
+        Args:
+            task: Task dictionary (may be from various sources)
+        
+        Returns:
+            Dictionary with 'pid' and 'ecid' keys
+        """
+        pid = None
+        ecid = None
+        
+        # Try direct keys first
+        if 'pid' in task:
+            pid = task['pid']
+        if 'ecid' in task:
+            ecid = task['ecid']
+        
+        # Try context dict
+        if 'context' in task and isinstance(task['context'], dict):
+            pid = pid or task['context'].get('pid')
+            ecid = ecid or task['context'].get('ecid')
+        
+        # Try payload
+        if 'payload' in task and isinstance(task['payload'], dict):
+            pid = pid or task['payload'].get('pid')
+            ecid = ecid or task['payload'].get('ecid')
+        
+        return {
+            'pid': pid or 'unknown',
+            'ecid': ecid or 'unknown'
+        }
+    
+    async def record_memory(self, kind: str, payload: Any, importance: float = 0.7, ns: str = "role", 
+                           task_context: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        """
+        Record a memory after successful agent action (SIP-042).
+        Agent-level memories go to LanceDB, Squad-level go to PostgreSQL.
+        
+        Args:
+            kind: Type of memory (e.g., 'task_delegation', 'build_success', 'governance_decision')
+            payload: Memory payload (can be dict or object with to_dict() method)
+            importance: Importance score (0.0 to 1.0)
+            ns: Namespace ('role' for agent-level, 'squad' for promoted)
+            task_context: Optional task context dict for extracting PID/ECID
+        
+        Returns:
+            Memory ID if successful, None otherwise
+        """
+        # Agent-level memories use Mem0 (SQLite), Squad-level use SQL adapter
+        if ns == "squad":
+            if not self.sql_adapter:
+                logger.debug(f"{self.name}: SQL adapter not initialized, skipping squad memory recording")
+                return None
+            adapter = self.sql_adapter
+        else:
+            if not self.memory_provider:
+                logger.debug(f"{self.name}: Memory provider not initialized, skipping memory recording")
+                return None
+            adapter = self.memory_provider
+        
+        try:
+            # Extract PID and ECID from context
+            context = task_context or self.current_task or {}
+            context_info = self._extract_memory_context(context)
+            pid = context_info.get('pid', 'unknown')
+            ecid = context_info.get('ecid', 'unknown')
+            
+            # Convert payload to dict if needed
+            if hasattr(payload, 'to_dict'):
+                payload_dict = payload.to_dict()
+            elif isinstance(payload, dict):
+                payload_dict = payload
+            else:
+                payload_dict = {'data': str(payload)}
+            
+            # Create tags
+            tags = [
+                f"pid:{pid}",
+                kind,
+                f"agent:{self.name.lower()}"
+            ]
+            if ecid != 'unknown':
+                tags.append(f"ecid:{ecid}")
+            
+            # Create memory content
+            memory_content = {
+                'action': kind,
+                'result': payload_dict,
+                'timestamp': datetime.utcnow().isoformat(),
+                'ecid': ecid,
+                'pid': pid
+            }
+            
+            # Create memory item
+            memory_item = {
+                'ns': ns,
+                'agent': self.name,
+                'tags': tags,
+                'content': memory_content,
+                'importance': importance,
+                'pid': pid if pid != 'unknown' else None,
+                'ecid': ecid if ecid != 'unknown' else None
+            }
+            
+            # Add status/validator for SQL adapter
+            if ns == "squad":
+                memory_item['status'] = 'pending'
+                memory_item['validator'] = None
+            
+            # Store memory via appropriate adapter
+            mem_id = await adapter.put(memory_item)
+            if mem_id:
+                storage = "Squad Memory Pool" if ns == "squad" else "LanceDB"
+                logger.info(f"{self.name}: Recorded memory {kind} (ID: {mem_id[:8] if mem_id else 'None'}...) for ECID {ecid} in {storage}")
+            else:
+                logger.warning(f"{self.name}: Failed to record memory {kind} - adapter returned None")
+            return mem_id
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Failed to record memory: {e}")
+            return None
     
     async def send_message(self, recipient: str, message_type: str, payload: Dict[str, Any], context: Dict[str, Any] = None):
         """Send a message to another agent"""

@@ -442,6 +442,20 @@ class DevAgent(BaseAgent):
                 ]
             )
             
+            # Record memory for manifest pattern
+            await self.record_memory(
+                kind="manifest_pattern",
+                payload={
+                    'task_id': task_id,
+                    'architecture_type': manifest.architecture_type,
+                    'files_count': len(manifest.files),
+                    'created_files': created_files,
+                    'features': task_spec.features
+                },
+                importance=0.8,
+                task_context={'ecid': ecid, 'pid': requirements.get('pid')}
+            )
+            
             return {
                 'task_id': task_id,
                 'status': 'completed',
@@ -486,14 +500,22 @@ class DevAgent(BaseAgent):
             
             # Use provided manifest for JSON workflow
             logger.info(f"{self.name} using provided manifest for JSON workflow")
+            logger.info(f"{self.name} manifest type: {type(requirements.get('manifest'))}, value: {requirements.get('manifest')}")
             if not requirements.get('manifest'):
+                logger.error(f"{self.name} manifest is None or missing")
                 return {
                     'task_id': task_id,
                     'status': 'error',
                     'error': 'Manifest is None or missing in requirements',
                     'action': 'build'
                 }
-            manifest = BuildManifest.from_dict(requirements['manifest'])
+            try:
+                logger.info(f"{self.name} about to parse manifest...")
+                manifest = BuildManifest.from_dict(requirements['manifest'])
+                logger.info(f"{self.name} parsed manifest: {manifest.architecture_type}")
+            except Exception as e:
+                logger.error(f"{self.name} failed to parse manifest: {e}", exc_info=True)
+                raise
             task_spec = requirements.get('task_spec') if requirements else None
             if task_spec:
                 task_spec = TaskSpec.from_dict(task_spec)
@@ -511,6 +533,7 @@ class DevAgent(BaseAgent):
             
             # Check if files already exist (created by design task)
             app_dir = f"warm-boot/apps/{app_name.lower().replace(' ', '-')}/"
+            logger.debug(f"{self.name} checking app directory: {app_dir}")
             
             # If files don't exist, create them (fallback for robustness)
             if not await self.file_manager.directory_exists(app_dir):
@@ -596,6 +619,21 @@ class DevAgent(BaseAgent):
                 ]
             )
             
+            # Record memory for build success
+            await self.record_memory(
+                kind="build_success",
+                payload={
+                    'task_id': task_id,
+                    'app_name': app_name,
+                    'version': version,
+                    'image': build_result.get('image_name'),
+                    'created_files_count': len(created_files),
+                    'architecture_type': manifest.architecture_type
+                },
+                importance=0.8,
+                task_context={'ecid': ecid, 'pid': requirements.get('pid')}
+            )
+            
             return {
                 'task_id': task_id,
                 'status': 'completed',
@@ -610,7 +648,7 @@ class DevAgent(BaseAgent):
             }
             
         except Exception as e:
-            logger.error(f"DevAgent failed to handle build task: {e}")
+            logger.error(f"DevAgent failed to handle build task: {e}", exc_info=True)
             return {
                 'task_id': task_id,
                 'status': 'error',
@@ -706,6 +744,21 @@ class DevAgent(BaseAgent):
                 )
                 
                 logger.info(f"DevAgent completed deploy task: {task_id}")
+                
+                # Record memory for deployment success
+                await self.record_memory(
+                    kind="deployment_success",
+                    payload={
+                        'task_id': task_id,
+                        'app_name': app_name,
+                        'version': version,
+                        'container_name': deploy_result['container_name'],
+                        'image': deploy_result['image']
+                    },
+                    importance=0.9,
+                    task_context={'ecid': ecid, 'pid': requirements.get('pid')}
+                )
+                
                 return {
                     'task_id': task_id,
                     'status': 'completed',

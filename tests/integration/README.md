@@ -260,6 +260,36 @@ Tests automatically verify that:
 4. **Agent Health** - Tests ensure agents are running and healthy
 5. **State Management** - Tests clean up state between runs
 
+## 🚨 CRITICAL: NO MOCKS IN INTEGRATION TESTS
+
+**Integration tests MUST use real services. Mocks are FORBIDDEN.**
+
+### Validation
+Before committing integration test changes, run:
+```bash
+python3 tests/integration/validate_integration_tests.py
+```
+
+This validator will **FAIL** if any integration test uses:
+- `unittest.mock`
+- `MagicMock`, `AsyncMock`
+- `@patch` decorators
+- Any mocking of core components
+
+### Why This Matters
+- Mocked integration tests provide **false confidence**
+- They won't catch real integration issues (like missing packages)
+- They violate "No deceptive simulations" principle
+- They violate "Quality over speed" principle
+
+### What To Use Instead
+- **Real PostgreSQL**: `asyncpg.create_pool(connection_url)`
+- **Real adapters**: `SqlAdapter(db_pool)`, `Mem0Adapter(agent_name)`
+- **Real agents**: `LeadAgent()`, `DevAgent()` with real connections
+- **Real services**: No mocks, no patches, real integration
+
+See `tests/integration/VALIDATION.md` for detailed validation checklist.
+
 ## Continuous Integration
 
 For CI/CD pipelines:

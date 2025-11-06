@@ -190,6 +190,8 @@ services:
       AGENT_MODEL: llama3.1:8b
       USE_LOCAL_LLM: "true"
       OLLAMA_URL: http://host.docker.internal:11434
+      # Note: Mem0 1.0.0 may require OPENAI_API_KEY env var even when using Ollama
+      # Per MEM0-LOCAL-EMBEDDINGS-GUIDE.md - guide may be for different Mem0 version
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -266,6 +268,8 @@ services:
       AGENT_MODEL: qwen2.5:7b
       USE_LOCAL_LLM: "true"
       OLLAMA_URL: http://host.docker.internal:11434
+      # Note: Mem0 1.0.0 may require OPENAI_API_KEY env var even when using Ollama
+      # Per MEM0-LOCAL-EMBEDDINGS-GUIDE.md - guide may be for different Mem0 version
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379

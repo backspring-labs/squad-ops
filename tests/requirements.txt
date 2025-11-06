@@ -17,6 +17,12 @@ httpx>=0.24.0
 pytest-postgresql>=5.0.0
 pytest-redis>=3.0.0
 
+# Memory system dependencies (for integration tests)
+lancedb>=0.8.2
+pyarrow>=14.0.0
+pandas>=2.0.0
+sentence-transformers>=2.7.0
+
 # Integration testing with real services
 testcontainers>=3.7.0
 testcontainers[postgres]>=3.7.0

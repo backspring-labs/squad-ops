@@ -3,12 +3,17 @@ uvicorn==0.24.0
 aio-pika==9.3.1
 asyncpg==0.29.0
 redis==5.0.1
-pydantic==2.5.0
+pydantic>=2.7.3
 python-dotenv==1.0.0
 aiohttp==3.9.1
 aiofiles==23.2.1
 pyyaml==6.0.1
 psutil==5.9.8
+# Memory system (SIP-042)
+lancedb==0.8.2  # Memory system (SIP-042)
+sentence-transformers>=2.7.0  # Local embeddings fallback
+pyarrow>=14.0.0  # Required for LanceDB
+pandas>=2.0.0  # Required for LanceDB DataFrame operations
 # OpenTelemetry packages
 opentelemetry-api>=1.22.0
 opentelemetry-sdk>=1.22.0

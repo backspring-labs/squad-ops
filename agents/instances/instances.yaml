@@ -3,7 +3,7 @@
 
 instances:
   # Lead Role
-  - id: lead-agent
+  - id: max
     display_name: LeadAgent
     role: lead
     model: llama3.1:8b
@@ -27,7 +27,7 @@ instances:
     description: "Creative Design - Visual synthesis"
 
   # Development Role
-  - id: dev-agent
+  - id: neo
     display_name: DevAgent
     role: dev
     model: qwen2.5:7b

@@ -100,27 +100,27 @@ class TestSnapshots:
     @pytest.mark.regression
     def test_agent_health_status_snapshot(self, ensure_snapshot_dir):
         """Test agent health status matches snapshot"""
-        max_agent = LeadAgent("test-lead-agent")
-        neo_agent = DevAgent("test-dev-agent")
+        lead_agent = LeadAgent("test-lead-agent")
+        dev_agent = DevAgent("test-dev-agent")
         
         # Use existing methods instead of non-existent get_health_status
-        max_health = {
-            'name': max_agent.name,
-            'agent_type': max_agent.agent_type,
-            'reasoning_style': max_agent.reasoning_style,
+        lead_health = {
+            'name': lead_agent.name,
+            'agent_type': lead_agent.agent_type,
+            'reasoning_style': lead_agent.reasoning_style,
             'status': 'active'
         }
-        neo_health = {
-            'name': neo_agent.name,
-            'agent_type': neo_agent.agent_type,
-            'reasoning_style': neo_agent.reasoning_style,
+        dev_health = {
+            'name': dev_agent.name,
+            'agent_type': dev_agent.agent_type,
+            'reasoning_style': dev_agent.reasoning_style,
             'status': 'active'
         }
         
         # Normalize health status for comparison
         normalized_health = {
-            'max': self._normalize_health_status(max_health),
-            'neo': self._normalize_health_status(neo_health)
+            'lead-agent': self._normalize_health_status(lead_health),
+            'dev-agent': self._normalize_health_status(dev_health)
         }
         
         snapshot_file = ensure_snapshot_dir / "agent_health_status.json"
@@ -134,6 +134,16 @@ class TestSnapshots:
         # Load and compare with snapshot
         with open(snapshot_file, 'r') as f:
             snapshot_data = json.load(f)
+        
+        # Migrate old snapshot format if needed (backward compatibility)
+        if 'max' in snapshot_data or 'neo' in snapshot_data:
+            snapshot_data = {
+                'lead-agent': snapshot_data.get('max', snapshot_data.get('lead-agent', {})),
+                'dev-agent': snapshot_data.get('neo', snapshot_data.get('dev-agent', {}))
+            }
+            # Update snapshot file with new format
+            with open(snapshot_file, 'w') as f:
+                json.dump(snapshot_data, f, indent=2)
         
         assert normalized_health == snapshot_data, \
             f"Agent health status changed. Expected: {snapshot_data}, Got: {normalized_health}"

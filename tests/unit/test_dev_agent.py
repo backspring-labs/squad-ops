@@ -1326,7 +1326,7 @@ class TestDevAgent:
         kw_args = call_args.kwargs
         
         # Verify recipient
-        assert kw_args['recipient'] == 'max'
+        assert kw_args['recipient'] == 'lead-agent'
         
         # Verify message type
         assert kw_args['message_type'] == 'agent_reasoning'
@@ -1416,7 +1416,7 @@ class TestDevAgent:
         
         # Verify first call is architecture decision
         first_call = dev_agent.send_message.call_args_list[0]
-        assert first_call.kwargs['recipient'] == 'max'
+        assert first_call.kwargs['recipient'] == 'lead-agent'
         assert first_call.kwargs['message_type'] == 'agent_reasoning'
         assert first_call.kwargs['payload']['context'] == 'manifest_generation'
         assert first_call.kwargs['payload']['reason_step'] == 'decision'
@@ -1515,7 +1515,7 @@ class TestDevAgent:
         call_args = dev_agent.send_message.call_args
         
         # Verify it's a completion event
-        assert call_args.kwargs['recipient'] == 'max'
+        assert call_args.kwargs['recipient'] == 'lead-agent'
         assert call_args.kwargs['message_type'] == 'task.developer.completed'
         
         # Verify payload includes reasoning_summary

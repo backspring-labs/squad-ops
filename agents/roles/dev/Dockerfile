@@ -32,10 +32,12 @@ COPY agents/roles/${AGENT_ROLE}/prompts ./prompts
 COPY agents/llm ./agents/llm
 COPY agents/contracts ./agents/contracts
 COPY agents/telemetry ./agents/telemetry
+COPY agents/memory ./agents/memory
+COPY agents/instances ./agents/instances
 COPY config ./config
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Create logs and memory database directories
+RUN mkdir -p /app/logs /app/data/memory_db
 
 # Expose health check port
 EXPOSE 8000

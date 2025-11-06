@@ -20,16 +20,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY agents/base_agent.py .
 COPY agents/roles/${AGENT_ROLE}/agent.py .
 
-# Copy new LLM, contracts, and telemetry modules
+# Copy new LLM, contracts, telemetry, and memory modules
 COPY agents/llm ./agents/llm
 COPY agents/contracts ./agents/contracts
 COPY agents/telemetry ./agents/telemetry
+COPY agents/memory ./agents/memory
+COPY agents/instances ./agents/instances
 
 # Copy version management
 COPY config ./config
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Create logs and memory database directories
+RUN mkdir -p /app/logs /app/data/memory_db
 
 # Expose health check port
 EXPOSE 8000

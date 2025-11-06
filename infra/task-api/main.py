@@ -486,6 +486,91 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "task-api"}
 
+# Memory Promotion Endpoints (SIP-042)
+
+class MemoryPromoteRequest(BaseModel):
+    memory_id: str
+    validator: str
+    agent_name: str
+    auto_promote: bool = False
+
+@app.post("/api/v1/memory/promote")
+async def promote_memory(request: MemoryPromoteRequest):
+    """Promote a memory from Mem0 to Squad Memory Pool"""
+    try:
+        from agents.memory.mem0_adapter import Mem0Adapter
+        from agents.memory.sql_adapter import SqlAdapter
+        from agents.memory.promotion import PromotionService
+        
+        # Initialize adapters
+        mem0_adapter = Mem0Adapter(request.agent_name)
+        sql_adapter = SqlAdapter(pool)
+        
+        # Create promotion service
+        promotion_service = PromotionService(mem0_adapter, sql_adapter, pool)
+        
+        # Promote memory
+        promoted_id = await promotion_service.promote_memory(
+            request.memory_id,
+            request.validator,
+            request.agent_name,
+            request.auto_promote
+        )
+        
+        if promoted_id:
+            return {"status": "promoted", "memory_id": promoted_id, "original_id": request.memory_id}
+        else:
+            raise HTTPException(status_code=400, detail="Memory promotion failed or criteria not met")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to promote memory: {str(e)}")
+
+@app.get("/api/v1/memory/promoted")
+async def get_promoted_memories(agent: Optional[str] = None, 
+                               pid: Optional[str] = None,
+                               ecid: Optional[str] = None,
+                               limit: int = 50):
+    """Get promoted memories from Squad Memory Pool"""
+    try:
+        from agents.memory.sql_adapter import SqlAdapter
+        
+        sql_adapter = SqlAdapter(pool)
+        
+        kwargs = {'status': 'validated'}
+        if agent:
+            kwargs['agent'] = agent
+        if pid:
+            kwargs['pid'] = pid
+        if ecid:
+            kwargs['ecid'] = ecid
+        
+        memories = await sql_adapter.get("", k=limit, **kwargs)
+        return {"memories": memories, "count": len(memories)}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve promoted memories: {str(e)}")
+
+@app.get("/api/v1/memory/{mem_id}")
+async def get_memory(mem_id: str):
+    """Get memory details by ID"""
+    try:
+        from agents.memory.sql_adapter import SqlAdapter
+        
+        sql_adapter = SqlAdapter(pool)
+        
+        # Try to get from Squad Memory Pool first
+        memories = await sql_adapter.get("", k=1, mem_ids=[mem_id])
+        
+        if memories:
+            return memories[0]
+        else:
+            raise HTTPException(status_code=404, detail=f"Memory {mem_id} not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve memory: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

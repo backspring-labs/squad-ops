@@ -15,7 +15,7 @@ import time
 import yaml
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from base_agent import BaseAgent, AgentMessage
 from agents.contracts.task_spec import TaskSpec
 
@@ -149,6 +149,12 @@ class LeadAgent(BaseAgent):
         logger.info(f"{self.name} processing governance task: {task_id}")
         logger.info(f"{self.name} DEBUG: task_type='{task_type}', has_prd_path={bool(task.get('prd_path'))}")
         
+        # Load relevant memories for WarmBoot context (SIP-042)
+        ecid = task.get('ecid') or task.get('context', {}).get('ecid')
+        pid = task.get('pid') or task.get('context', {}).get('pid')
+        if ecid or pid:
+            await self._load_warmboot_memories(ecid, pid)
+        
         # Check if this is a governance task with PRD path
         if task_type == "governance" and task.get('prd_path'):
             logger.debug(f"{self.name} handling governance task with PRD path")
@@ -241,6 +247,20 @@ class LeadAgent(BaseAgent):
             )
             
             await self.update_task_status(task_id, "Completed", 100.0)
+            
+            # Record memory for task delegation
+            await self.record_memory(
+                kind="task_delegation",
+                payload={
+                    'task_id': task_id,
+                    'task_type': task_type,
+                    'delegated_to': delegation_target,
+                    'decision': 'approved',
+                    'complexity': complexity
+                },
+                importance=0.7,
+                task_context=task
+            )
             
             return {
                 'task_id': task_id,
@@ -432,8 +452,8 @@ class LeadAgent(BaseAgent):
                 
                 logger.info(f"{self.name} stored manifest for ECID {ecid}: {manifest.get('architecture', {}).get('type', 'unknown')} with {len(manifest.get('files', []))} files")
                 
-                # Trigger next task in sequence (build)
-                await self._trigger_next_task(ecid, 'build')
+                # Find and delegate the build task with the manifest
+                await self._delegate_build_task_with_manifest(ecid, manifest)
             else:
                 logger.warning(f"{self.name} design manifest task failed or missing manifest: {status}")
                 
@@ -484,6 +504,19 @@ class LeadAgent(BaseAgent):
                 # Generate wrap-up
                 await self.generate_warmboot_wrapup(ecid, task_id, payload)
                 
+                # Record memory for WarmBoot completion
+                await self.record_memory(
+                    kind="warmboot_completion",
+                    payload={
+                        'ecid': ecid,
+                        'task_id': task_id,
+                        'manifest': self.warmboot_state.get('manifest', {}),
+                        'build_files_count': len(self.warmboot_state.get('build_files', []))
+                    },
+                    importance=0.9,
+                    task_context={'ecid': ecid, 'pid': payload.get('pid')}
+                )
+                
                 logger.info(f"{self.name} completed three-task sequence for ECID {ecid}")
             else:
                 logger.warning(f"{self.name} deploy task failed: {status}")
@@ -510,6 +543,86 @@ class LeadAgent(BaseAgent):
             
         except Exception as e:
             logger.error(f"{self.name} failed to trigger next task: {e}")
+    
+    async def _delegate_build_task_with_manifest(self, ecid: str, manifest: Dict[str, Any]) -> None:
+        """Find the pending build task for this ECID and delegate it with the manifest"""
+        try:
+            # Find the build task in the database or task queue
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                # Query tasks API for pending build task with this ECID
+                async with session.get(
+                    f"{self.task_api_url}/api/v1/tasks",
+                    params={"ecid": ecid, "status": "pending"}
+                ) as resp:
+                    if resp.status == 200:
+                        tasks = await resp.json()
+                        build_task = None
+                        for task in tasks:
+                            if task.get('requirements', {}).get('action') == 'build':
+                                build_task = task
+                                break
+                        
+                        if build_task:
+                            # Update task with manifest
+                            build_task['requirements']['manifest'] = manifest
+                            
+                            # Delegate to Neo
+                            delegation_target = await self.determine_delegation_target('development')
+                            
+                            await self.send_message(
+                                recipient=delegation_target,
+                                message_type="task_delegation",
+                                payload=build_task,
+                                context={
+                                    'delegated_by': self.name,
+                                    'delegation_reason': f"Build task with manifest from design completion",
+                                    'ecid': ecid
+                                }
+                            )
+                            
+                            logger.info(f"{self.name} delegated build task {build_task['task_id']} with manifest to {delegation_target}")
+                        else:
+                            logger.warning(f"{self.name} no pending build task found for ECID {ecid}")
+                    else:
+                        logger.warning(f"{self.name} failed to query tasks API: {resp.status}")
+                        
+        except Exception as e:
+            logger.error(f"{self.name} failed to delegate build task with manifest: {e}", exc_info=True)
+
+    async def _load_warmboot_memories(self, ecid: Optional[str] = None, pid: Optional[str] = None):
+        """
+        Load relevant memories for WarmBoot context (SIP-042).
+        Pre-loads agent memories from Mem0 and Squad Memory Pool.
+        
+        Args:
+            ecid: Optional execution cycle ID
+            pid: Optional process ID
+        """
+        try:
+            if not self.sql_adapter:
+                return
+            
+            # Load from Squad Memory Pool
+            kwargs = {'status': 'validated'}
+            if ecid:
+                kwargs['ecid'] = ecid
+            if pid:
+                kwargs['pid'] = pid
+            
+            memories = await self.sql_adapter.get("", k=20, **kwargs)
+            
+            if memories:
+                logger.info(f"{self.name}: Loaded {len(memories)} memories for WarmBoot context (ECID: {ecid}, PID: {pid})")
+                # Store in agent context for use during task processing
+                if not hasattr(self, 'warmboot_memories'):
+                    self.warmboot_memories = []
+                self.warmboot_memories = memories
+            else:
+                logger.debug(f"{self.name}: No memories found for ECID: {ecid}, PID: {pid}")
+                
+        except Exception as e:
+            logger.warning(f"{self.name}: Failed to load WarmBoot memories: {e}")
 
     async def _log_warmboot_governance(self, run_id: str, manifest: Dict, files: List[str]) -> None:
         """Log governance information for WarmBoot run"""
@@ -559,6 +672,19 @@ class LeadAgent(BaseAgent):
             'reason': 'Premium consultation required',
             'timestamp': datetime.utcnow().isoformat()
         })
+        
+        # Record memory for governance decision (escalation)
+        await self.record_memory(
+            kind="governance_decision",
+            payload={
+                'task_id': task_id,
+                'decision_type': 'escalation',
+                'complexity': task.get('complexity'),
+                'reason': 'Premium consultation required'
+            },
+            importance=0.8,
+            task_context=task
+        )
         
         # Try deprecated log_activity (gracefully handles missing table)
         await self.log_activity("task_escalated", {
@@ -1826,6 +1952,16 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
             # Delegate tasks to Neo
             delegated_tasks = []
             for task in tasks:
+                # For build tasks, inject manifest from warmboot_state if available
+                if task.get('requirements', {}).get('action') == 'build':
+                    if task['requirements'].get('manifest') is None and self.warmboot_state.get('manifest'):
+                        task['requirements']['manifest'] = self.warmboot_state['manifest']
+                        logger.info(f"{self.name} injected manifest into build task {task['task_id']}")
+                    elif task['requirements'].get('manifest') is None:
+                        # Build task without manifest - skip for now, will be delegated after design manifest completes
+                        logger.info(f"{self.name} skipping build task {task['task_id']} - manifest not yet available")
+                        continue
+                
                 delegation_target = await self.determine_delegation_target(task["task_type"])
                 
                 # Log task delegation
@@ -1846,6 +1982,20 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
                         'prd_path': prd_path,
                         'prd_analysis': prd_analysis
                     }
+                )
+                
+                # Record memory for task delegation (SIP-042)
+                await self.record_memory(
+                    kind="task_delegation",
+                    payload={
+                        'task_id': task['task_id'],
+                        'task_type': task.get('task_type', 'unknown'),
+                        'delegated_to': delegation_target,
+                        'decision': 'approved',
+                        'ecid': ecid
+                    },
+                    importance=0.7,
+                    task_context={'ecid': ecid, 'pid': task.get('pid', 'unknown')}
                 )
                 
                 delegated_tasks.append({

@@ -19,7 +19,7 @@ class TestGPUDetection:
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
-            agent = LeadAgent('test-max')
+            agent = LeadAgent('test-lead-agent')
             
             # Mock nvidia-smi output
             mock_execute_result = {
@@ -75,7 +75,7 @@ Performance: Utilization = 45%, Memory = 8192 MiB / 24576 MiB
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
-            agent = LeadAgent('test-max')
+            agent = LeadAgent('test-lead-agent')
             
             # Mock nvidia-smi failure
             mock_execute_result = {
@@ -127,29 +127,29 @@ class TestReasoningExtraction:
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
-            agent = LeadAgent('test-max')
+            agent = LeadAgent('test-lead-agent')
             
             # Populate communication log with reasoning entries
             agent.communication_log = [
                 {
                     'timestamp': '2024-01-01T12:00:00Z',
-                    'agent': 'max',
+                    'agent': 'lead-agent',
                     'ecid': 'ECID-WB-001',
                     'message_type': 'llm_reasoning',
-                    'full_response': 'This is Max reasoning about the PRD',
+                    'full_response': 'This is Lead Agent reasoning about the PRD',
                     'description': 'PRD Analysis'
                 },
                 {
                     'timestamp': '2024-01-01T12:05:00Z',
-                    'agent': 'neo',
+                    'agent': 'dev-agent',
                     'ecid': 'ECID-WB-001',
                     'message_type': 'llm_reasoning',
-                    'full_response': 'This is Neo reasoning about file generation',
+                    'full_response': 'This is Dev Agent reasoning about file generation',
                     'description': 'File Generation'
                 },
                 {
                     'timestamp': '2024-01-01T12:10:00Z',
-                    'agent': 'max',
+                    'agent': 'lead-agent',
                     'ecid': 'ECID-WB-002',  # Different ECID
                     'message_type': 'llm_reasoning',
                     'full_response': 'Different ECID reasoning'
@@ -159,11 +159,11 @@ class TestReasoningExtraction:
             # Extract reasoning for ECID-WB-001
             reasoning = agent._extract_real_ai_reasoning('ECID-WB-001')
             
-            # Should contain reasoning from both max and neo for this ECID
+            # Should contain reasoning from both lead-agent and dev-agent for this ECID
             assert reasoning is not None
             assert len(reasoning) > 0
-            assert 'Max' in reasoning or 'max' in reasoning.lower()
-            assert 'Neo' in reasoning or 'neo' in reasoning.lower()
+            assert 'lead-agent' in reasoning.lower() or 'Lead Agent' in reasoning
+            assert 'dev-agent' in reasoning.lower() or 'Dev Agent' in reasoning
     
     @pytest.mark.unit
     def test_extract_real_ai_reasoning_filtered_by_agent(self, mock_unified_config):
@@ -171,33 +171,33 @@ class TestReasoningExtraction:
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
-            agent = LeadAgent('test-max')
+            agent = LeadAgent('test-lead-agent')
             
             # Populate communication log
             agent.communication_log = [
                 {
                     'timestamp': '2024-01-01T12:00:00Z',
-                    'agent': 'max',
+                    'agent': 'lead-agent',
                     'ecid': 'ECID-WB-001',
                     'message_type': 'llm_reasoning',
-                    'full_response': 'Max reasoning'
+                    'full_response': 'Lead Agent reasoning'
                 },
                 {
                     'timestamp': '2024-01-01T12:05:00Z',
-                    'agent': 'neo',
+                    'agent': 'dev-agent',
                     'ecid': 'ECID-WB-001',
                     'message_type': 'llm_reasoning',
-                    'full_response': 'Neo reasoning'
+                    'full_response': 'Dev Agent reasoning'
                 }
             ]
             
-            # Extract reasoning for neo only
-            reasoning = agent._extract_real_ai_reasoning('ECID-WB-001', agent_name='neo')
+            # Extract reasoning for dev-agent only
+            reasoning = agent._extract_real_ai_reasoning('ECID-WB-001', agent_name='dev-agent')
             
-            # Should only contain neo's reasoning
+            # Should only contain dev-agent's reasoning
             assert reasoning is not None
-            assert 'Neo' in reasoning or 'neo' in reasoning.lower()
-            # Should not contain max's reasoning (or if it does, should be filtered)
+            assert 'Dev Agent' in reasoning or 'dev-agent' in reasoning.lower()
+            # Should not contain lead-agent's reasoning (or if it does, should be filtered)
     
     @pytest.mark.unit
     def test_extract_real_ai_reasoning_no_entries(self, mock_unified_config):
@@ -205,7 +205,7 @@ class TestReasoningExtraction:
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
-            agent = LeadAgent('test-max')
+            agent = LeadAgent('test-lead-agent')
             agent.communication_log = []
             
             # Extract reasoning for non-existent ECID
@@ -226,7 +226,7 @@ class TestExecutionDuration:
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
-            agent = LeadAgent('test-max')
+            agent = LeadAgent('test-lead-agent')
             
             # Mock Task API to return execution cycle with created_at
             mock_session = AsyncMock()

@@ -53,7 +53,7 @@ class TestTokenTracking:
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             from agents.roles.dev.agent import DevAgent
             
-            agent = DevAgent('test-neo')
+            agent = DevAgent('test-dev-agent')
             
             # Populate communication log with entries that have token usage
             agent.communication_log = [
@@ -125,18 +125,18 @@ class TestTokenTracking:
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
-            agent = LeadAgent('test-max')
+            agent = LeadAgent('test-lead-agent')
             
             # Populate communication log with token usage
             agent.communication_log = [
                 {
                     'message_type': 'llm_reasoning',
-                    'agent': 'test-max',
+                    'agent': 'test-lead-agent',
                     'token_usage': {'total_tokens': 100, 'prompt_tokens': 50, 'completion_tokens': 50}
                 },
                 {
                     'message_type': 'llm_reasoning',
-                    'agent': 'test-neo',
+                    'agent': 'test-dev-agent',
                     'token_usage': {'total_tokens': 75, 'prompt_tokens': 30, 'completion_tokens': 45}
                 },
                 {
@@ -190,8 +190,8 @@ class TestTokenTracking:
             
             # Should have tokens by agent
             assert 'tokens_by_agent' in reasoning_logs
-            assert reasoning_logs['tokens_by_agent']['test-max'] == 100
-            assert reasoning_logs['tokens_by_agent']['test-neo'] == 75
+            assert reasoning_logs['tokens_by_agent']['test-lead-agent'] == 100
+            assert reasoning_logs['tokens_by_agent']['test-dev-agent'] == 75
             
             # Should have tokens_source
             assert 'tokens_source' in reasoning_logs
@@ -204,9 +204,9 @@ class TestTokenTracking:
             
             # Verify token usage is included in JSONL logs
             for log_entry in ollama_logs:
-                if log_entry['agent'] == 'test-max':
+                if log_entry['agent'] == 'test-lead-agent':
                     assert 'token_usage' in log_entry
                     assert log_entry['token_usage']['total_tokens'] == 100
-                elif log_entry['agent'] == 'test-neo':
+                elif log_entry['agent'] == 'test-dev-agent':
                     assert 'token_usage' in log_entry
                     assert log_entry['token_usage']['total_tokens'] == 75
