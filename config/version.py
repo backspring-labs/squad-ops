@@ -11,8 +11,8 @@ SQUADOPS_VERSION = "0.5.0"
 
 # Agent Versions (individual agent versions)
 AGENT_VERSIONS = {
-    "max": "0.3.0",  # Real agent with local LLM
-    "neo": "0.3.0",  # Real agent with file modification capabilities
+    "max": "0.5.0",  # Real agent with local LLM
+    "neo": "0.5.0",  # Real agent with file modification capabilities
     "nat": "0.0.0",  # Mock agent
     "joi": "0.0.0",  # Mock agent
     "data": "0.0.0", # Mock agent
@@ -42,12 +42,14 @@ VERSION_HISTORY = {
     "max": [
         {"version": "0.1.0", "date": "2025-10-05", "llm": "llama3.1:8b", "notes": "Real agent with local LLM integration"},
         {"version": "0.2.0", "date": "2025-10-11", "llm": "llama3.1:8b", "notes": "Test coverage validation + WarmBoot run-055"},
-        {"version": "0.3.0", "date": "2025-11-01", "llm": "llama3.1:8b", "notes": "Run-110: Added target_directory to task requirements, production-grade task orchestration"}
+        {"version": "0.3.0", "date": "2025-11-01", "llm": "llama3.1:8b", "notes": "Run-110: Added target_directory to task requirements, production-grade task orchestration"},
+        {"version": "0.5.0", "date": "2025-11-05", "llm": "llama3.1:8b", "notes": "v0.5.0 memory integration - LanceDB semantic memory, task delegation memory recording, manifest workflow improvements"}
     ],
     "neo": [
         {"version": "0.1.0", "date": "2025-10-05", "llm": "qwen2.5:7b", "notes": "Real agent with file modification capabilities"},
         {"version": "0.2.0", "date": "2025-10-11", "llm": "qwen2.5:7b", "notes": "Test coverage validation + WarmBoot run-055"},
-        {"version": "0.3.0", "date": "2025-11-01", "llm": "qwen2.5:7b", "notes": "Run-110: Fixed FileManager path combination, proper target_directory usage, production-grade file generation"}
+        {"version": "0.3.0", "date": "2025-11-01", "llm": "qwen2.5:7b", "notes": "Run-110: Fixed FileManager path combination, proper target_directory usage, production-grade file generation"},
+        {"version": "0.5.0", "date": "2025-11-05", "llm": "qwen2.5:7b", "notes": "v0.5.0 memory integration - LanceDB semantic memory, build/deploy success memory recording, manifest-based workflow"}
     ]
 }
 
