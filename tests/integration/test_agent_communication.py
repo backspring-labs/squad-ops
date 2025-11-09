@@ -366,11 +366,12 @@ Test application for SquadOps integration testing
         ]
         
         for task_type, expected_target in test_cases:
-            target = await lead_agent.determine_delegation_target(task_type)
+            result = await lead_agent.task_delegator.determine_target(task_type)
+            target = result.get('target_agent', 'dev-agent')
             assert target == expected_target, f"Expected {expected_target} for {task_type}, got {target}"
         
         # Test governance task (should raise error)
         with pytest.raises(ValueError, match="Governance tasks should not be delegated"):
-            await lead_agent.determine_delegation_target('governance')
+            await lead_agent.task_delegator.determine_target('governance')
 
 

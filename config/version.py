@@ -103,6 +103,6 @@ def rollback_agent(agent_name, target_version):
 # 0.5.X - Production deployment (enterprise features)
 # 1.0.X - Stable release (external users + Backspring validation)
 
-# Current status: 0.5.1 (Fixed agent heartbeat health-check URL, added Grafana dashboard provisioning, memory counts now visible on health dashboard)
+# Current status: 0.5.1 (Refactored LeadAgent: Extracted capabilities (build requirements, task creation, completion handling, WarmBoot memory) - Reduced from 1293 to 791 lines (38.8% reduction))
 # Previous: 0.1.4 (Task Management System complete)
 # Next major: 0.3.0 (Multi-agent expansion with EVE, Nat, Data, HAL)

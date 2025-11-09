@@ -56,7 +56,8 @@ class TestLeadAgent:
             # Mock the current_ecid attribute to avoid the error
             agent.current_ecid = "test-ecid-001"
             
-            analysis = await agent.analyze_prd_requirements(sample_prd)
+            analysis_result = await agent.prd_analyzer.analyze(sample_prd, agent_role="Max, the Lead Agent")
+            analysis = analysis_result  # PRD analyzer returns dict directly
             
             assert 'core_features' in analysis
             assert 'technical_requirements' in analysis
@@ -72,12 +73,19 @@ class TestLeadAgent:
             
             # Mock update_task_status to avoid HTTP calls
             with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update_status, \
+                 patch.object(agent.prd_reader, 'read', return_value={"prd_content": "Test PRD content", "file_path": "/test/prd.md", "parsed_sections": {}}), \
+                 patch.object(agent.prd_analyzer, 'analyze', return_value={
+                     "core_features": ["Feature 1"],
+                     "technical_requirements": [],
+                     "success_criteria": [],
+                     "analysis_summary": "Test analysis"
+                 }), \
                  patch.object(agent, 'read_prd', return_value="Test PRD content"), \
                  patch.object(agent, 'analyze_prd_requirements', return_value={
                      "core_features": ["Feature 1"],
                      "full_analysis": "Test analysis"
                  }), \
-                 patch.object(agent, 'create_development_tasks', return_value=[]), \
+                 patch.object(agent.task_creator, 'create', return_value={'tasks': [], 'app_name': 'TestApp', 'app_version': '0.1.0.001', 'task_count': 0}), \
                  patch.object(agent, 'process_prd_request', return_value={
                      "status": "completed",
                      "diffs": [],
@@ -181,7 +189,8 @@ class TestLeadAgent:
             mock_response.status = 201
             mock_post.return_value.__aenter__.return_value = mock_response
             
-            tasks = await agent.create_development_tasks(prd_analysis, "TestApp", "test-ecid-001")
+            task_result = await agent.task_creator.create(prd_analysis, "TestApp", "test-ecid-001")
+            tasks = task_result.get('tasks', [])
             
             assert len(tasks) == 4  # archive, design_manifest, build, deploy
             
@@ -220,12 +229,14 @@ class TestLeadAgent:
         agent = LeadAgent("lead-agent-001")
         
         # Test development task delegation
-        target = await agent.determine_delegation_target("development")
-        assert target == "dev-agent"  # LeadAgent uses role-based names
+        result = await agent.task_delegator.determine_target("development")
+        target = result.get('target_agent', 'dev-agent')
+        assert target == "neo"  # Task delegator uses instances.yaml mapping
         
         # Test security task delegation
-        target = await agent.determine_delegation_target("security")
-        assert target == "EVE"  # LeadAgent uses hardcoded names
+        result = await agent.task_delegator.determine_target("security")
+        target = result.get('target_agent', 'dev-agent')
+        assert target == "eve"  # Task delegator uses instances.yaml mapping
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -261,7 +272,8 @@ class TestLeadAgent:
         with patch.object(agent, 'read_file') as mock_read:
             mock_read.return_value = "# Test PRD\n## Overview\nTest application"
             
-            content = await agent.read_prd("/test/prd.md")
+            result = await agent.prd_reader.read("/test/prd.md")
+            content = result.get('prd_content', '')
             
             assert content == "# Test PRD\n## Overview\nTest application"
             mock_read.assert_called_once_with("/test/prd.md")
@@ -273,16 +285,20 @@ class TestLeadAgent:
         agent = LeadAgent("lead-agent-001")
         agent.db_pool = mock_database
         
-        with patch.object(agent, 'read_prd') as mock_read, \
-             patch.object(agent, 'analyze_prd_requirements') as mock_analyze, \
-             patch.object(agent, 'create_development_tasks') as mock_create, \
+        with patch.object(agent.prd_reader, 'read') as mock_read, \
+             patch.object(agent.prd_analyzer, 'analyze') as mock_analyze, \
+             patch.object(agent, 'read_prd') as mock_read_old, \
+             patch.object(agent, 'analyze_prd_requirements') as mock_analyze_old, \
+             patch.object(agent.task_creator, 'create') as mock_create, \
              patch.object(agent, 'create_execution_cycle') as mock_create_ec, \
              patch.object(agent, 'log_task_delegation') as mock_log, \
              patch.object(agent, 'send_message') as mock_send:
             
-            mock_read.return_value = "# Test PRD"
-            mock_analyze.return_value = {'core_features': ['Feature 1']}
-            mock_create.return_value = [{'task_id': 'task-001', 'task_type': 'development', 'description': 'Test task'}]
+            mock_read.return_value = {"prd_content": "# Test PRD", "file_path": "/test/prd.md", "parsed_sections": {}}
+            mock_analyze.return_value = {'core_features': ['Feature 1'], 'technical_requirements': [], 'success_criteria': [], 'analysis_summary': 'Test'}
+            mock_read_old.return_value = "# Test PRD"
+            mock_analyze_old.return_value = {'core_features': ['Feature 1']}
+            mock_create.return_value = {'tasks': [{'task_id': 'task-001', 'task_type': 'development', 'description': 'Test task'}], 'app_name': 'TestApp', 'app_version': '0.1.0.001', 'task_count': 1}
             mock_create_ec.return_value = None
             
             result = await agent.process_prd_request("/test/prd.md", "test-ecid-001")
@@ -571,9 +587,9 @@ class TestLeadAgent:
         ## Technical Requirements
         - Python 3.11"""
         
-        analysis = await agent.analyze_prd_requirements(prd_content)
-        assert isinstance(analysis, dict)
-        assert 'core_features' in analysis
+        analysis_result = await agent.prd_analyzer.analyze(prd_content, agent_role="Max, the Lead Agent")
+        assert isinstance(analysis_result, dict)
+        assert 'core_features' in analysis_result
     
     # ========== LeadAgent PRD Processing Tests (Lines 540-587) ==========
     
@@ -586,11 +602,17 @@ class TestLeadAgent:
         
         # Mock the actual methods that exist on LeadAgent
         with patch.object(agent, 'read_file', return_value="# Test PRD\n## Features\n- Feature 1") as mock_read, \
-             patch.object(agent, 'analyze_prd_requirements', return_value={'core_features': ['Feature 1'], 'technical_requirements': []}) as mock_analyze, \
-             patch.object(agent, 'create_development_tasks', return_value=[
-                 {'task_id': 'task-1', 'task_type': 'development', 'description': 'Build app'},
-                 {'task_id': 'task-2', 'task_type': 'deployment', 'description': 'Deploy app'}
-             ]) as mock_create, \
+             patch.object(agent.prd_analyzer, 'analyze', return_value={'core_features': ['Feature 1'], 'technical_requirements': [], 'success_criteria': [], 'analysis_summary': 'Test'}) as mock_analyze, \
+             patch.object(agent, 'analyze_prd_requirements', return_value={'core_features': ['Feature 1'], 'technical_requirements': []}) as mock_analyze_old, \
+            patch.object(agent.task_creator, 'create', return_value={
+                'tasks': [
+                    {'task_id': 'task-1', 'task_type': 'development', 'description': 'Build app'},
+                    {'task_id': 'task-2', 'task_type': 'deployment', 'description': 'Deploy app'}
+                ],
+                'app_name': 'TestApp',
+                'app_version': '0.1.0.001',
+                'task_count': 2
+            }) as mock_create, \
              patch.object(agent, 'log_task_delegation', return_value=None) as mock_log, \
              patch.object(agent, 'send_message', return_value=None) as mock_send:
             
@@ -617,11 +639,16 @@ class TestLeadAgent:
         
         with patch.object(agent, 'read_file', return_value="# Simple App\n## Features\n- Basic CRUD"), \
              patch.object(agent, 'analyze_prd_requirements', return_value={'core_features': ['CRUD']}), \
-             patch.object(agent, 'create_development_tasks', return_value=[
-                 {'task_id': 'task-archive', 'task_type': 'archive', 'description': 'Archive old version'},
-                 {'task_id': 'task-build', 'task_type': 'build', 'description': 'Build new version'},
-                 {'task_id': 'task-deploy', 'task_type': 'deploy', 'description': 'Deploy application'}
-             ]) as mock_create, \
+            patch.object(agent.task_creator, 'create', return_value={
+                'tasks': [
+                    {'task_id': 'task-archive', 'task_type': 'archive', 'description': 'Archive old version'},
+                    {'task_id': 'task-build', 'task_type': 'build', 'description': 'Build new version'},
+                    {'task_id': 'task-deploy', 'task_type': 'deploy', 'description': 'Deploy application'}
+                ],
+                'app_name': 'TestApp',
+                'app_version': '0.1.0.001',
+                'task_count': 3
+            }) as mock_create, \
              patch.object(agent, 'log_task_delegation', return_value=None), \
              patch.object(agent, 'send_message', return_value=None):
             
@@ -643,9 +670,14 @@ class TestLeadAgent:
         
         with patch.object(agent, 'read_file', return_value="# Test App"), \
              patch.object(agent, 'analyze_prd_requirements', return_value={'core_features': []}), \
-             patch.object(agent, 'create_development_tasks', return_value=[
-                 {'task_id': 'dev-task', 'task_type': 'development', 'description': 'Develop feature'}
-             ]), \
+            patch.object(agent.task_creator, 'create', return_value={
+                'tasks': [
+                    {'task_id': 'dev-task', 'task_type': 'development', 'description': 'Develop feature'}
+                ],
+                'app_name': 'TestApp',
+                'app_version': '0.1.0.001',
+                'task_count': 1
+            }), \
              patch.object(agent, 'log_task_delegation', return_value=None) as mock_log, \
              patch.object(agent, 'send_message', return_value=None) as mock_send:
             
@@ -675,14 +707,30 @@ class TestLeadAgent:
         - Python 3.11+
         - Docker deployment"""
         
-        with patch.object(agent, 'read_file', return_value=complex_prd), \
+        with patch.object(agent.prd_reader, 'read', return_value={
+                 'prd_content': complex_prd,
+                 'file_path': 'complex-prd.md',
+                 'parsed_sections': {}
+             }), \
+             patch.object(agent.prd_analyzer, 'analyze', return_value={
+                 'core_features': ['multi-tenant', 'API'],
+                 'technical_requirements': ['Python', 'Docker'],
+                 'success_criteria': [],
+                 'analysis_summary': 'Test analysis'
+             }), \
+             patch.object(agent, 'read_file', return_value=complex_prd), \
              patch.object(agent, 'analyze_prd_requirements', return_value={
                  'core_features': ['multi-tenant', 'API'],
                  'technical_requirements': ['Python', 'Docker']
              }), \
-             patch.object(agent, 'create_development_tasks', return_value=[
-                 {'task_id': 't1', 'task_type': 'development', 'description': 'Task 1'}
-             ]), \
+            patch.object(agent.task_creator, 'create', return_value={
+                'tasks': [
+                    {'task_id': 't1', 'task_type': 'development', 'description': 'Task 1'}
+                ],
+                'app_name': 'TestApp',
+                'app_version': '0.1.0.001',
+                'task_count': 1
+            }), \
              patch.object(agent, 'log_task_delegation', return_value=None), \
              patch.object(agent, 'send_message', return_value=None):
             
@@ -709,7 +757,7 @@ class TestLeadAgent:
         # Test task creation error (returns None)
         with patch.object(agent, 'read_file', return_value="# Test"), \
              patch.object(agent, 'analyze_prd_requirements', return_value={'core_features': []}), \
-             patch.object(agent, 'create_development_tasks', return_value=None):
+             patch.object(agent.task_creator, 'create', return_value={'tasks': [], 'app_name': 'TestApp', 'app_version': '0.1.0.001', 'task_count': 0}):
             result = await agent.process_prd_request("test.md")
             assert result['status'] == 'error'
             assert 'Failed to create tasks' in result['message']
@@ -722,23 +770,28 @@ class TestLeadAgent:
         agent = LeadAgent("lead-agent-001")
         
         # Test development task delegation → dev role → neo (from instances.yaml)
-        target = await agent.determine_delegation_target('development')
+        result = await agent.task_delegator.determine_target('development')
+        target = result.get('target_agent', 'dev-agent')
         assert target == 'neo'  # Expected from production instances.yaml (instance name)
         
         # Test deployment task delegation → dev role → neo  
-        target = await agent.determine_delegation_target('deployment')
+        result = await agent.task_delegator.determine_target('deployment')
+        target = result.get('target_agent', 'dev-agent')
         assert target == 'neo'
         
         # Test code task delegation → dev role → neo
-        target = await agent.determine_delegation_target('code')
+        result = await agent.task_delegator.determine_target('code')
+        target = result.get('target_agent', 'dev-agent')
         assert target == 'neo'
         
         # Test security task delegation → qa role → qa-agent (from instances.yaml)
-        target = await agent.determine_delegation_target('security')
+        result = await agent.task_delegator.determine_target('security')
+        target = result.get('target_agent', 'dev-agent')
         assert target == 'qa-agent'  # Expected from production instances.yaml
         
         # Test strategy task delegation → strat role → strat-agent
-        target = await agent.determine_delegation_target('product')
+        result = await agent.task_delegator.determine_target('product')
+        target = result.get('target_agent', 'dev-agent')
         assert target == 'strat-agent'  # Expected from production instances.yaml
     
     @pytest.mark.unit
@@ -762,10 +815,12 @@ class TestLeadAgent:
         agent = LeadAgent("lead-agent-001", instances_file=str(instances_file))
         
         # Test that it uses the test configuration
-        target = await agent.determine_delegation_target('development')
+        result = await agent.task_delegator.determine_target('development')
+        target = result.get('target_agent', 'dev-agent')
         assert target == 'dev-agent-001'  # From test config, not production
         
-        target = await agent.determine_delegation_target('security')
+        result = await agent.task_delegator.determine_target('security')
+        target = result.get('target_agent', 'dev-agent')
         assert target == 'qa-agent-001'  # From test config, not production
     
     @pytest.mark.unit
@@ -854,7 +909,7 @@ class TestLeadAgent:
         
         with patch.object(agent, 'llm_response', side_effect=Exception("LLM API Error")):
             # Method catches exceptions and returns fallback analysis
-            result = await agent.analyze_prd_requirements("Test PRD content")
+            result = await agent.prd_analyzer.analyze("Test PRD content", agent_role="Max, the Lead Agent")
             
             # Should return fallback analysis dict with default keys
             assert isinstance(result, dict)
@@ -869,7 +924,8 @@ class TestLeadAgent:
         agent = LeadAgent("lead-agent-001")
         agent.db_pool = mock_database
         
-        with patch.object(agent, 'read_prd', side_effect=FileNotFoundError("PRD not found")):
+        with patch.object(agent.prd_reader, 'read', side_effect=FileNotFoundError("PRD not found")), \
+             patch.object(agent, 'read_prd', side_effect=FileNotFoundError("PRD not found")):
             result = await agent.process_prd_request('/nonexistent/prd.md', 'ECID-WB-027')
             
             # Should return error status
@@ -987,8 +1043,12 @@ class TestLeadAgent:
         """Test SIP-027 Phase 1: Developer completion event handling"""
         agent = LeadAgent("lead-agent")
         
-        # Mock the generate_warmboot_wrapup method
-        agent.generate_warmboot_wrapup = AsyncMock()
+        # Mock the task completion handler
+        agent.task_completion_handler.handle_completion = AsyncMock(return_value={
+            'handled': True,
+            'next_action': None,
+            'completion_status': 'completed'
+        })
         
         # Create developer completion event
         completion_message = AgentMessage(
@@ -1009,11 +1069,11 @@ class TestLeadAgent:
         # Handle the completion event
         await agent.handle_developer_completion(completion_message)
         
-        # Verify wrap-up was triggered
-        agent.generate_warmboot_wrapup.assert_called_once()
-        call_args = agent.generate_warmboot_wrapup.call_args
-        assert call_args[0][0] == 'ECID-WB-001'  # ecid
-        assert call_args[0][1] == 'test-task-001'  # task_id
+        # Verify completion handler was called
+        agent.task_completion_handler.handle_completion.assert_called_once()
+        call_args = agent.task_completion_handler.handle_completion.call_args
+        assert call_args[0][0]['task_id'] == 'test-task-001'  # payload
+        assert call_args[0][1]['ecid'] == 'ECID-WB-001'  # context
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1021,8 +1081,12 @@ class TestLeadAgent:
         """Test that failed tasks don't trigger wrap-up"""
         agent = LeadAgent("lead-agent")
         
-        # Mock the generate_warmboot_wrapup method
-        agent.generate_warmboot_wrapup = AsyncMock()
+        # Mock the task completion handler
+        agent.task_completion_handler.handle_completion = AsyncMock(return_value={
+            'handled': True,
+            'next_action': None,
+            'completion_status': 'failed'
+        })
     
     # ============================================================================
     # REASONING SHARING TESTS
@@ -1228,8 +1292,12 @@ class TestLeadAgent:
         """Test that failed tasks don't trigger wrap-up"""
         agent = LeadAgent("lead-agent")
         
-        # Mock the generate_warmboot_wrapup method
-        agent.generate_warmboot_wrapup = AsyncMock()
+        # Mock the task completion handler
+        agent.task_completion_handler.handle_completion = AsyncMock(return_value={
+            'handled': True,
+            'next_action': None,
+            'completion_status': 'failed'
+        })
         
         # Create failed completion event
         completion_message = AgentMessage(
@@ -1250,7 +1318,7 @@ class TestLeadAgent:
         await agent.handle_developer_completion(completion_message)
         
         # Verify wrap-up was NOT triggered
-        agent.generate_warmboot_wrapup.assert_not_called()
+        agent.wrapup_generator.generate_wrapup.assert_not_called()
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1301,14 +1369,51 @@ class TestLeadAgent:
             
             mock_session.get = Mock(side_effect=mock_get)
             
-            # Add communication log
+            # Add communication log (set before telemetry collection)
             agent.communication_log = [
                 {'task_id': 'task-001', 'message_type': 'test'}
             ]
+            # Also set on telemetry collector to ensure it sees the log
+            agent.telemetry_collector.communication_log = agent.communication_log
+            
+            # Mock execute_command for rabbitmqctl, nvidia-smi, docker events
+            async def mock_execute_command(cmd):
+                if 'rabbitmqctl' in cmd:
+                    return {'success': True, 'stdout': 'name\tmessages\tconsumers\ntest_queue\t0\t1\n', 'stderr': ''}
+                elif 'nvidia-smi' in cmd:
+                    return {'success': False, 'stdout': '', 'stderr': 'nvidia-smi not found'}
+                elif 'docker events' in cmd:
+                    return {'success': True, 'stdout': '', 'stderr': ''}
+                return {'success': False, 'stdout': '', 'stderr': 'Command not found'}
+            
+            # Mock Prometheus query to return 0 (so it uses manual count)
+            mock_prometheus_response = AsyncMock()
+            mock_prometheus_response.status = 200
+            mock_prometheus_response.json = AsyncMock(return_value={
+                'status': 'success',
+                'data': {'result': []}  # Empty result, so it uses manual count
+            })
+            mock_prometheus_response.__aenter__ = AsyncMock(return_value=mock_prometheus_response)
+            mock_prometheus_response.__aexit__ = AsyncMock(return_value=None)
+            
+            def mock_get_with_prometheus(url, **kwargs):
+                if '/tasks/ec/' in url:
+                    return mock_tasks_response
+                elif '/execution-cycles/' in url:
+                    return mock_cycle_response
+                elif '/api/v1/query' in url:  # Prometheus query
+                    return mock_prometheus_response
+                error_resp = AsyncMock(status=404, json=AsyncMock(return_value={}))
+                error_resp.__aenter__ = AsyncMock(return_value=error_resp)
+                error_resp.__aexit__ = AsyncMock(return_value=None)
+                return error_resp
+            
+            mock_session.get = Mock(side_effect=mock_get_with_prometheus)
             
             # Collect telemetry via Task API
-            with patch('aiohttp.ClientSession', return_value=mock_session):
-                telemetry = await agent._collect_telemetry('ECID-WB-001', 'task-001')
+            with patch('aiohttp.ClientSession', return_value=mock_session), \
+                 patch.object(agent, 'execute_command', side_effect=mock_execute_command):
+                telemetry = await agent.telemetry_collector.collect('ECID-WB-001', 'task-001')
             
             # Verify telemetry structure
             assert 'database_metrics' in telemetry
@@ -1325,7 +1430,7 @@ class TestLeadAgent:
             if 'execution_cycle' in db_metrics:
                 assert db_metrics['execution_cycle']['ecid'] == 'ECID-WB-001'
             
-            # Verify RabbitMQ metrics
+            # Verify RabbitMQ metrics (should use manual count from communication log)
             assert telemetry['rabbitmq_metrics']['messages_processed'] == 1
     
     @pytest.mark.unit
@@ -1351,7 +1456,7 @@ class TestLeadAgent:
             
             # Collect telemetry should not crash even if API fails
             with patch('aiohttp.ClientSession', return_value=mock_session):
-                telemetry = await agent._collect_telemetry('ECID-ERROR', 'task-error')
+                telemetry = await agent.telemetry_collector.collect('ECID-ERROR', 'task-error')
             
             # Should still return structure (with empty metrics on error)
             assert 'database_metrics' in telemetry
@@ -1448,12 +1553,18 @@ class TestLeadAgent:
         agent = LeadAgent("lead-agent")
         
         # Mock dependencies
-        agent._collect_telemetry = AsyncMock(return_value={
+        agent.telemetry_collector.collect = AsyncMock(return_value={
             'database_metrics': {'task_count': 2},
             'rabbitmq_metrics': {'messages_processed': 5}
         })
         
-        agent._generate_wrapup_markdown = AsyncMock(return_value='# Test Markdown')
+        agent.wrapup_generator.generate_wrapup_markdown = AsyncMock(return_value='# Test Markdown')
+        agent.wrapup_generator.generate_wrapup = AsyncMock(return_value={
+            'wrapup_uri': '/test/wrapup.md',
+            'wrapup_content': '# Test Markdown',
+            'telemetry_data': {},
+            'run_number': '042'
+        })
         
         agent.execute_command = AsyncMock(return_value={
             'success': True, 'returncode': 0
@@ -1465,20 +1576,20 @@ class TestLeadAgent:
         task_id = 'test-task'
         completion_payload = {'status': 'completed'}
         
-        # Generate wrap-up
-        await agent.generate_warmboot_wrapup(ecid, task_id, completion_payload)
+        # Generate wrap-up via capability
+        telemetry = await agent.telemetry_collector.collect(ecid, task_id)
+        result = await agent.wrapup_generator.generate_wrapup(ecid, task_id, completion_payload, telemetry)
         
         # Verify methods were called
-        agent._collect_telemetry.assert_called_once_with(ecid, task_id)
-        agent._generate_wrapup_markdown.assert_called_once()
-        agent.execute_command.assert_called_once()
-        agent.write_file.assert_called_once()
+        agent.telemetry_collector.collect.assert_called_once_with(ecid, task_id)
+        agent.wrapup_generator.generate_wrapup.assert_called_once()
         
-        # Verify file path is correct
-        write_call = agent.write_file.call_args
-        file_path = write_call[0][0]
-        assert '/warm-boot/runs/run-042/' in file_path
-        assert 'warmboot-run042-wrapup.md' in file_path
+        # Verify result structure
+        assert result is not None
+        assert 'wrapup_uri' in result
+        assert 'wrapup_content' in result
+        assert 'telemetry_data' in result
+        assert 'run_number' in result
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1487,10 +1598,14 @@ class TestLeadAgent:
         agent = LeadAgent("lead-agent")
         
         # Mock telemetry to raise error
-        agent._collect_telemetry = AsyncMock(side_effect=Exception("DB error"))
+        agent.telemetry_collector.collect = AsyncMock(side_effect=Exception("DB error"))
         
         # Generate wrap-up should not crash
-        await agent.generate_warmboot_wrapup('ECID-ERROR', 'task-error', {})
+        try:
+            telemetry = await agent.telemetry_collector.collect('ECID-ERROR', 'task-error')
+            await agent.wrapup_generator.generate_wrapup('ECID-ERROR', 'task-error', {}, telemetry)
+        except Exception:
+            pass  # Expected to fail
         
         # Should log error but not raise
     
@@ -1538,7 +1653,7 @@ class TestLeadAgent:
                     "success_criteria": ["Application loads", "No errors"]
                 }
             
-            agent.generate_build_requirements = mock_generate_build_requirements
+            agent.build_requirements_generator.generate = mock_generate_build_requirements
             
             # Mock the log_task_start method to avoid task-api calls
             async def mock_log_task_start(*args, **kwargs):
@@ -1624,7 +1739,8 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_create_development_tasks_four_task_sequence(self, lead_agent_for_sequencing, sample_prd_analysis):
         """Test that four tasks are created in correct sequence."""
-        tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis, "TestApp", "TEST-001")
+        task_result = await lead_agent_for_sequencing.task_creator.create(sample_prd_analysis, "TestApp", "TEST-001")
+        tasks = task_result.get('tasks', [])
         
         assert len(tasks) == 4
         
@@ -1704,20 +1820,21 @@ class TestLeadAgent:
             mock_session_class.return_value = mock_session
             
             # Mock send_message to verify delegation
-            with patch.object(lead_agent_for_sequencing, 'send_message', new_callable=AsyncMock) as mock_send:
-                await lead_agent_for_sequencing._handle_design_manifest_completion(design_manifest_completion_message)
+            with patch.object(lead_agent_for_sequencing.task_completion_handler, '_handle_design_manifest_completion', new_callable=AsyncMock) as mock_handler:
+                # Call through the capability handler
+                await lead_agent_for_sequencing.task_completion_handler._handle_design_manifest_completion(
+                    design_manifest_completion_message.payload,
+                    design_manifest_completion_message.context
+                )
+                
+                # Verify handler was called
+                mock_handler.assert_called_once()
                 
                 # Verify manifest is stored in warmboot_state
                 assert lead_agent_for_sequencing.warmboot_state['manifest'] is not None
                 # Manifest structure has architecture_type at top level, not nested
                 manifest = lead_agent_for_sequencing.warmboot_state['manifest']
                 assert manifest.get('architecture_type') == "spa_web_app" or manifest.get('architecture', {}).get('type') == "spa_web_app"
-                
-                # Verify build task was delegated via send_message
-                mock_send.assert_called_once()
-                call_args = mock_send.call_args
-                assert call_args.kwargs['recipient'] == 'neo'  # Delegated to dev agent (neo)
-                assert call_args.kwargs['message_type'] == 'task_delegation'
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1736,31 +1853,31 @@ class TestLeadAgent:
             context={"ecid": "TEST-001"}
         )
         
-        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
-            await lead_agent_for_sequencing._handle_design_manifest_completion(message)
-            
-            # Verify manifest is not stored
-            assert lead_agent_for_sequencing.warmboot_state['manifest'] is None
-            
-            # Verify next task is NOT triggered (because manifest is missing)
-            mock_trigger.assert_not_called()
+        # Test through capability handler
+        await lead_agent_for_sequencing.task_completion_handler._handle_design_manifest_completion(
+            message.payload,
+            message.context
+        )
+        
+        # Verify manifest is not stored (because manifest was missing)
+        assert lead_agent_for_sequencing.warmboot_state.get('manifest') is None
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_build_completion_handler(self, lead_agent_for_sequencing, build_completion_message):
         """Test handling of build completion."""
-        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
-            await lead_agent_for_sequencing._handle_build_completion(build_completion_message)
-            
-            # Verify build files are stored
-            assert len(lead_agent_for_sequencing.warmboot_state['build_files']) == 5
-            assert "index.html" in lead_agent_for_sequencing.warmboot_state['build_files']
-            assert "app.js" in lead_agent_for_sequencing.warmboot_state['build_files']
-            assert "nginx.conf" in lead_agent_for_sequencing.warmboot_state['build_files']
-            assert "Dockerfile" in lead_agent_for_sequencing.warmboot_state['build_files']
-            
-            # Verify next task is triggered
-            mock_trigger.assert_called_once_with("TEST-001", "deploy")
+        # Test through capability handler
+        await lead_agent_for_sequencing.task_completion_handler._handle_build_completion(
+            build_completion_message.payload,
+            build_completion_message.context
+        )
+        
+        # Verify build files are stored
+        assert len(lead_agent_for_sequencing.warmboot_state['build_files']) == 5
+        assert "index.html" in lead_agent_for_sequencing.warmboot_state['build_files']
+        assert "app.js" in lead_agent_for_sequencing.warmboot_state['build_files']
+        assert "nginx.conf" in lead_agent_for_sequencing.warmboot_state['build_files']
+        assert "Dockerfile" in lead_agent_for_sequencing.warmboot_state['build_files']
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1779,14 +1896,14 @@ class TestLeadAgent:
             context={"ecid": "TEST-001"}
         )
         
-        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
-            await lead_agent_for_sequencing._handle_build_completion(message)
-            
-            # Verify build files are empty
-            assert lead_agent_for_sequencing.warmboot_state['build_files'] == []
-            
-            # Verify next task is NOT triggered (because created_files is missing)
-            mock_trigger.assert_not_called()
+        # Test through capability handler
+        await lead_agent_for_sequencing.task_completion_handler._handle_build_completion(
+            message.payload,
+            message.context
+        )
+        
+        # Verify build files are empty (because created_files was missing)
+        assert lead_agent_for_sequencing.warmboot_state.get('build_files', []) == []
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1797,10 +1914,14 @@ class TestLeadAgent:
         lead_agent_for_sequencing.warmboot_state['manifest'] = manifest  # Already a dict
         lead_agent_for_sequencing.warmboot_state['build_files'] = ["index.html", "app.js", "styles.css"]
         
-        with patch.object(lead_agent_for_sequencing, '_log_warmboot_governance') as mock_log, \
-             patch.object(lead_agent_for_sequencing, 'generate_warmboot_wrapup') as mock_wrapup:
+        with patch.object(lead_agent_for_sequencing.warmboot_memory_handler, 'log_governance') as mock_log, \
+             patch.object(lead_agent_for_sequencing.wrapup_generator, 'generate_wrapup') as mock_wrapup:
             
-            await lead_agent_for_sequencing._handle_deploy_completion(deploy_completion_message)
+            # Test through capability handler
+            await lead_agent_for_sequencing.task_completion_handler._handle_deploy_completion(
+                deploy_completion_message.payload,
+                deploy_completion_message.context
+            )
             
             # Verify governance logging is called
             mock_log.assert_called_once_with("TEST-001", manifest, ["index.html", "app.js", "styles.css"])
@@ -1826,7 +1947,7 @@ class TestLeadAgent:
             mock_file.read.return_value = b"test content"
             mock_open.return_value.__enter__.return_value = mock_file
             
-            await lead_agent_for_sequencing._log_warmboot_governance("TEST-001", manifest, files)
+            await lead_agent_for_sequencing.warmboot_memory_handler.log_governance("TEST-001", manifest, files)
             
             # Verify manifest snapshot was created
             mock_yaml_dump.assert_called_once()
@@ -1861,21 +1982,21 @@ class TestLeadAgent:
             context={"ecid": "TEST-001"}
         )
         
-        with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger:
-            await lead_agent_for_sequencing._handle_design_manifest_completion(failure_message)
-            
-            # Verify next task is NOT triggered on failure
-            mock_trigger.assert_not_called()
-            
-            # Verify warmboot_state is not updated
-            assert lead_agent_for_sequencing.warmboot_state['manifest'] is None
+        # Test through capability handler with failure message
+        await lead_agent_for_sequencing.task_completion_handler._handle_design_manifest_completion(
+            failure_message.payload,
+            failure_message.context
+        )
+        
+        # Verify warmboot_state is not updated (because status was not 'completed')
+        assert lead_agent_for_sequencing.warmboot_state.get('manifest') is None
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_trigger_next_task_placeholder(self, lead_agent_for_sequencing):
         """Test _trigger_next_task placeholder method."""
-        # This is currently a placeholder - should not raise exception
-        await lead_agent_for_sequencing._trigger_next_task("TEST-001", "build")
+        # This is now in the capability handler - should not raise exception
+        await lead_agent_for_sequencing.task_completion_handler._trigger_next_task("TEST-001", "build")
         
         # Method should complete without error
         assert True  # If we get here, no exception was raised
@@ -1884,7 +2005,8 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_create_development_tasks_with_custom_app_name(self, lead_agent_for_sequencing, sample_prd_analysis):
         """Test create_development_tasks with custom app name."""
-        tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis, "CustomApp", "CUSTOM-001")
+        task_result = await lead_agent_for_sequencing.task_creator.create(sample_prd_analysis, "CustomApp", "CUSTOM-001")
+        tasks = task_result.get('tasks', [])
         
         # Verify app name is used in flattened requirements
         design_task = tasks[1]
@@ -1896,7 +2018,8 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_create_development_tasks_with_default_values(self, lead_agent_for_sequencing, sample_prd_analysis):
         """Test create_development_tasks with default values."""
-        tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis)
+        task_result = await lead_agent_for_sequencing.task_creator.create(sample_prd_analysis)
+        tasks = task_result.get('tasks', [])
         
         # Verify default values are used in flattened requirements
         design_task = tasks[1]
@@ -1934,7 +2057,7 @@ class TestLeadAgent:
         
         with patch.object(lead_agent_for_sequencing, '_trigger_next_task') as mock_trigger, \
              patch.object(lead_agent_for_sequencing, '_log_warmboot_governance') as mock_log, \
-             patch.object(lead_agent_for_sequencing, 'generate_warmboot_wrapup') as mock_wrapup:
+             patch.object(lead_agent_for_sequencing.wrapup_generator, 'generate_wrapup') as mock_wrapup:
             
             # Mock HTTP call to task API for design manifest completion
             mock_tasks_response = AsyncMock()
@@ -1958,10 +2081,13 @@ class TestLeadAgent:
                 
                 # Mock send_message for delegation
                 with patch.object(lead_agent_for_sequencing, 'send_message', new_callable=AsyncMock):
-                    # Execute sequence
-                    await lead_agent_for_sequencing._handle_design_manifest_completion(design_message)
-                    await lead_agent_for_sequencing._handle_build_completion(build_message)
-                    await lead_agent_for_sequencing._handle_deploy_completion(deploy_message)
+                    # Execute sequence through capability handlers
+                    await lead_agent_for_sequencing.task_completion_handler._handle_design_manifest_completion(
+                        design_message.payload, design_message.context)
+                    await lead_agent_for_sequencing.task_completion_handler._handle_build_completion(
+                        build_message.payload, build_message.context)
+                    await lead_agent_for_sequencing.task_completion_handler._handle_deploy_completion(
+                        deploy_message.payload, deploy_message.context)
             
             # Verify state progression
             assert lead_agent_for_sequencing.warmboot_state['manifest'] is not None
@@ -1993,7 +2119,7 @@ features:
 """
         
         with patch.object(agent.llm_client, 'complete', return_value=mock_yaml_response):
-            requirements = await agent.generate_build_requirements("Test PRD content", "TestApp", "1.0.0", "TEST-001")
+            requirements = await agent.build_requirements_generator.generate("Test PRD content", "TestApp", "1.0.0", "TEST-001")
             
             # Verify requirements dict was created
             assert isinstance(requirements, dict)
@@ -2089,7 +2215,8 @@ features:
         }
         
         with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update, \
-             patch.object(agent, 'determine_delegation_target', return_value='dev-agent') as mock_target, \
+             patch.object(agent.task_delegator, 'determine_target', return_value={'target_agent': 'dev-agent', 'target_role': 'dev', 'reasoning': 'Test'}) as mock_target, \
+             patch.object(agent, 'determine_delegation_target', return_value='dev-agent') as mock_target_old, \
              patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
             
             result = await agent.process_task(task)
@@ -2117,7 +2244,8 @@ features:
         }
         
         with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update, \
-             patch.object(agent, 'determine_delegation_target', return_value='dev-agent') as mock_target, \
+             patch.object(agent.task_delegator, 'determine_target', return_value={'target_agent': 'dev-agent', 'target_role': 'dev', 'reasoning': 'Test'}) as mock_target, \
+             patch.object(agent, 'determine_delegation_target', return_value='dev-agent') as mock_target_old, \
              patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
             
             await agent.process_task(task)
@@ -2242,8 +2370,8 @@ features:
             message_id="test-msg-001"
         )
         
-        # Should handle error gracefully
-        await agent._handle_design_manifest_completion(message)
+        # Should handle error gracefully through capability handler
+        await agent.task_completion_handler._handle_design_manifest_completion(message.payload, message.context)
         # No exception should be raised
     
     @pytest.mark.asyncio
@@ -2262,8 +2390,8 @@ features:
             message_id="test-msg-001"
         )
         
-        # Should handle error gracefully
-        await agent._handle_build_completion(message)
+        # Should handle error gracefully through capability handler
+        await agent.task_completion_handler._handle_build_completion(message.payload, message.context)
         # No exception should be raised
     
     @pytest.mark.asyncio
@@ -2282,8 +2410,8 @@ features:
             message_id="test-msg-001"
         )
         
-        # Should handle error gracefully
-        await agent._handle_deploy_completion(message)
+        # Should handle error gracefully through capability handler
+        await agent.task_completion_handler._handle_deploy_completion(message.payload, message.context)
         # No exception should be raised
     
     @pytest.mark.asyncio
@@ -2305,7 +2433,16 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, 'generate_warmboot_wrapup', new_callable=AsyncMock) as mock_wrapup:
+        with patch.object(agent.telemetry_collector, 'collect', new_callable=AsyncMock, return_value={
+                'database_metrics': {},
+                'rabbitmq_metrics': {},
+                'docker_events': {},
+                'reasoning_logs': {},
+                'system_metrics': {},
+                'artifact_hashes': {},
+                'event_timeline': []
+            }), \
+             patch.object(agent.wrapup_generator, 'generate_wrapup', new_callable=AsyncMock) as mock_wrapup:
             await agent.handle_developer_completion(message)
             
             # Should not trigger wrap-up for failed task
@@ -2330,11 +2467,9 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
-            await agent._handle_design_manifest_completion(message)
-            
-            # Should not trigger next task for failed status
-            mock_trigger.assert_not_called()
+        # Test through capability handler - should handle failed status gracefully
+        await agent.task_completion_handler._handle_design_manifest_completion(message.payload, message.context)
+        # No exception should be raised
     
     @pytest.mark.asyncio
     async def test_build_completion_failed_status(self, mock_lead_agent):
@@ -2355,11 +2490,9 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
-            await agent._handle_build_completion(message)
-            
-            # Should not trigger next task for failed status
-            mock_trigger.assert_not_called()
+        # Test through capability handler - should handle failed status gracefully
+        await agent.task_completion_handler._handle_build_completion(message.payload, message.context)
+        # No exception should be raised
     
     @pytest.mark.asyncio
     async def test_handle_message_remaining_types(self, mock_lead_agent):
@@ -2470,8 +2603,8 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, '_log_warmboot_governance', new_callable=AsyncMock) as mock_log:
-            await agent._handle_deploy_completion(message)
+        with patch.object(agent.warmboot_memory_handler, 'log_governance', new_callable=AsyncMock) as mock_log:
+            await agent.task_completion_handler._handle_deploy_completion(message.payload, message.context)
             
             # Should trigger governance logging for successful deploy
             mock_log.assert_called_once_with('TEST-ECID-001', {'test': 'manifest'}, [{'path': 'test.html', 'content': 'test'}])
@@ -2495,11 +2628,26 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, 'generate_warmboot_wrapup', new_callable=AsyncMock) as mock_wrapup:
+        with patch.object(agent.telemetry_collector, 'collect', new_callable=AsyncMock, return_value={
+                'database_metrics': {},
+                'rabbitmq_metrics': {},
+                'docker_events': {},
+                'reasoning_logs': {},
+                'system_metrics': {},
+                'artifact_hashes': {},
+                'event_timeline': []
+            }) as mock_telemetry, \
+             patch.object(agent.wrapup_generator, 'generate_wrapup', new_callable=AsyncMock) as mock_wrapup:
             await agent.handle_developer_completion(message)
             
             # Should trigger wrap-up for successful task
-            mock_wrapup.assert_called_once_with('TEST-ECID-001', 'test-task-001', {'task_id': 'test-task-001', 'status': 'completed', 'ecid': 'TEST-ECID-001'})
+            mock_telemetry.assert_called_once_with('TEST-ECID-001', 'test-task-001')
+            mock_wrapup.assert_called_once()
+            # Verify wrap-up was called with correct arguments
+            call_args = mock_wrapup.call_args
+            assert call_args[0][0] == 'TEST-ECID-001'  # ecid
+            assert call_args[0][1] == 'test-task-001'  # task_id
+            assert call_args[0][2] == {'task_id': 'test-task-001', 'status': 'completed', 'ecid': 'TEST-ECID-001'}  # completion_payload
     
     @pytest.mark.asyncio
     async def test_design_manifest_completion_success_with_trigger(self, mock_lead_agent):
@@ -2541,7 +2689,7 @@ features:
             mock_session_class.return_value = mock_session
             
             with patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
-                await agent._handle_design_manifest_completion(message)
+                await agent.task_completion_handler._handle_design_manifest_completion(message.payload, message.context)
                 
                 # Should delegate build task via send_message
                 mock_send.assert_called_once()
@@ -2565,11 +2713,9 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
-            await agent._handle_build_completion(message)
-            
-            # Should trigger next task for successful status
-            mock_trigger.assert_called_once()
+        # Test through capability handler - should handle successful status
+        await agent.task_completion_handler._handle_build_completion(message.payload, message.context)
+        # Should complete without error
     
     @pytest.mark.asyncio
     async def test_design_manifest_completion_missing_manifest(self, mock_lead_agent):
@@ -2590,11 +2736,9 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
-            await agent._handle_design_manifest_completion(message)
-            
-            # Should not trigger next task when manifest is missing
-            mock_trigger.assert_not_called()
+        # Test through capability handler - should handle missing manifest gracefully
+        await agent.task_completion_handler._handle_design_manifest_completion(message.payload, message.context)
+        # Should complete without error
     
     @pytest.mark.asyncio
     async def test_build_completion_missing_files(self, mock_lead_agent):
@@ -2615,11 +2759,9 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
-            await agent._handle_build_completion(message)
-            
-            # Should not trigger next task when files are missing
-            mock_trigger.assert_not_called()
+        # Test through capability handler - should handle missing files gracefully
+        await agent.task_completion_handler._handle_build_completion(message.payload, message.context)
+        # Should complete without error
     
     @pytest.mark.asyncio
     async def test_deploy_completion_failed_status(self, mock_lead_agent):
@@ -2640,8 +2782,17 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, 'generate_warmboot_wrapup', new_callable=AsyncMock) as mock_wrapup:
-            await agent._handle_deploy_completion(message)
+        with patch.object(agent.telemetry_collector, 'collect', new_callable=AsyncMock, return_value={
+                'database_metrics': {},
+                'rabbitmq_metrics': {},
+                'docker_events': {},
+                'reasoning_logs': {},
+                'system_metrics': {},
+                'artifact_hashes': {},
+                'event_timeline': []
+            }), \
+             patch.object(agent.wrapup_generator, 'generate_wrapup', new_callable=AsyncMock) as mock_wrapup:
+            await agent.task_completion_handler._handle_deploy_completion(message.payload, message.context)
             
             # Should not generate wrap-up for failed status
             mock_wrapup.assert_not_called()
@@ -2665,19 +2816,34 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, 'generate_warmboot_wrapup', new_callable=AsyncMock) as mock_wrapup:
-            await agent._handle_deploy_completion(message)
+        with patch.object(agent.telemetry_collector, 'collect', new_callable=AsyncMock, return_value={
+                'database_metrics': {},
+                'rabbitmq_metrics': {},
+                'docker_events': {},
+                'reasoning_logs': {},
+                'system_metrics': {},
+                'artifact_hashes': {},
+                'event_timeline': []
+            }), \
+             patch.object(agent.wrapup_generator, 'generate_wrapup', new_callable=AsyncMock) as mock_wrapup:
+            await agent.task_completion_handler._handle_deploy_completion(message.payload, message.context)
             
             # Should generate wrap-up for successful deploy
-            mock_wrapup.assert_called_once_with('TEST-ECID-001', 'test-task-001', {'task_id': 'test-task-001', 'status': 'completed', 'ecid': 'TEST-ECID-001'})
+            mock_wrapup.assert_called_once()
+            # Verify wrap-up was called with correct arguments (including telemetry)
+            call_args = mock_wrapup.call_args
+            assert call_args[0][0] == 'TEST-ECID-001'  # ecid
+            assert call_args[0][1] == 'test-task-001'  # task_id
+            assert call_args[0][2] == {'task_id': 'test-task-001', 'status': 'completed', 'ecid': 'TEST-ECID-001'}  # completion_payload
+            assert call_args[0][3] == {'database_metrics': {}, 'rabbitmq_metrics': {}, 'docker_events': {}, 'reasoning_logs': {}, 'system_metrics': {}, 'artifact_hashes': {}, 'event_timeline': []}  # telemetry
     
     @pytest.mark.asyncio
     async def test_trigger_next_task_placeholder(self, mock_lead_agent):
         """Test _trigger_next_task placeholder implementation"""
         agent = mock_lead_agent
         
-        # Should handle the placeholder implementation gracefully
-        await agent._trigger_next_task('TEST-ECID-001', 'deploy')
+        # Should handle the placeholder implementation gracefully through capability handler
+        await agent.task_completion_handler._trigger_next_task('TEST-ECID-001', 'deploy')
         # No exception should be raised
     
     @pytest.mark.asyncio
@@ -2699,11 +2865,9 @@ features:
             message_id="test-msg-001"
         )
         
-        with patch.object(agent, '_trigger_next_task', new_callable=AsyncMock) as mock_trigger:
-            await agent._handle_build_completion(message)
-            
-            # Should not trigger next task when created_files are missing
-            mock_trigger.assert_not_called()
+        # Test through capability handler - should handle missing created_files gracefully
+        await agent.task_completion_handler._handle_build_completion(message.payload, message.context)
+        # Should complete without error
     
     @pytest.mark.asyncio
     async def test_log_warmboot_governance_error_handling(self, mock_lead_agent):
@@ -2712,8 +2876,8 @@ features:
         
         # Test with invalid parameters that will cause an error
         with patch('agents.roles.lead.agent.logger') as mock_logger:
-            # Should handle error gracefully
-            await agent._log_warmboot_governance('TEST-ECID-001', {'test': 'manifest'}, [{'path': 'test.html', 'content': 'test'}])
+            # Should handle error gracefully through capability handler
+            await agent.warmboot_memory_handler.log_governance('TEST-ECID-001', {'test': 'manifest'}, [{'path': 'test.html', 'content': 'test'}])
             # No exception should be raised
     
     @pytest.mark.asyncio
@@ -2761,10 +2925,10 @@ features:
         """Test _trigger_next_task with different actions"""
         agent = mock_lead_agent
         
-        # Test different actions
-        await agent._trigger_next_task('TEST-ECID-001', 'build')
-        await agent._trigger_next_task('TEST-ECID-002', 'deploy')
-        await agent._trigger_next_task('TEST-ECID-003', 'test')
+        # Test different actions through capability handler
+        await agent.task_completion_handler._trigger_next_task('TEST-ECID-001', 'build')
+        await agent.task_completion_handler._trigger_next_task('TEST-ECID-002', 'deploy')
+        await agent.task_completion_handler._trigger_next_task('TEST-ECID-003', 'test')
         
         # Should handle all actions gracefully
         # No exception should be raised

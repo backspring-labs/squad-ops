@@ -3,6 +3,6 @@ body {
   margin: 0;
   padding: 20px;
 }
-header h1 {
+div#app {
   text-align: center;
 }

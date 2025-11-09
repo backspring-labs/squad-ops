@@ -187,7 +187,7 @@ class TestTokenTracking:
             
             # Mock Prometheus query (should fail gracefully)
             with patch('aiohttp.ClientSession', return_value=mock_session):
-                telemetry = await agent._collect_telemetry('ECID-WB-001', 'task-001')
+                telemetry = await agent.telemetry_collector.collect('ECID-WB-001', 'task-001')
             
             # Verify token metrics in telemetry
             assert 'reasoning_logs' in telemetry

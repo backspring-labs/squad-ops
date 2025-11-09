@@ -882,7 +882,95 @@ class BaseAgent(ABC):
                 'task_id': task.get('task_id', 'unknown')
             }
     
-    @abstractmethod
+    async def handle_task_acknowledgment(self, message: AgentMessage) -> None:
+        """Handle task acknowledgment from delegated agents"""
+        payload = message.payload
+        task_id = payload.get('task_id', 'unknown')
+        status = payload.get('status', 'unknown')
+        understanding = payload.get('understanding', '')
+        
+        logger.info(f"{self.name} received task acknowledgment: {task_id} from {message.sender}")
+        logger.info(f"Agent understanding: {understanding[:200]}...")
+        
+        # Log the successful communication
+        self.communication_log.append({
+            'task_id': task_id,
+            'from_agent': message.sender,
+            'to_agent': self.name,
+            'message_type': 'task_acknowledgment',
+            'timestamp': message.timestamp,
+            'status': 'success',
+            'understanding': understanding
+        })
+
+    async def handle_task_error(self, message: AgentMessage) -> None:
+        """Handle task error from delegated agents"""
+        payload = message.payload
+        task_id = payload.get('task_id', 'unknown')
+        error = payload.get('error', 'Unknown error')
+        
+        logger.error(f"{self.name} received task error: {task_id} from {message.sender}: {error}")
+        
+        # Log the error
+        self.communication_log.append({
+            'task_id': task_id,
+            'from_agent': message.sender,
+            'to_agent': self.name,
+            'message_type': 'task_error',
+            'timestamp': message.timestamp,
+            'status': 'error',
+            'error': error
+        })
+    
+    async def handle_reasoning_event(self, message: AgentMessage) -> None:
+        """
+        Handle reasoning event from other agents (DevAgent, etc.)
+        Stores reasoning events in communication log for wrap-up generation
+        """
+        try:
+            payload = message.payload
+            context = message.context
+            sender = message.sender
+            
+            # Extract reasoning event data
+            reasoning_data = {
+                'timestamp': message.timestamp,
+                'sender': sender,
+                'agent': context.get('sender_agent', sender),
+                'message_type': 'agent_reasoning',
+                'ecid': payload.get('ecid', context.get('ecid', 'unknown')),
+                'task_id': payload.get('task_id', 'unknown'),
+                'reason_step': payload.get('reason_step', 'unknown'),
+                'summary': payload.get('summary', ''),
+                'context': payload.get('context', 'unknown'),
+                'key_points': payload.get('key_points', []),
+                'confidence': payload.get('confidence'),
+                'schema': payload.get('schema', 'reasoning.v1'),
+                'raw_reasoning_included': payload.get('raw_reasoning_included', False)
+            }
+            
+            # Store in communication log for wrap-up extraction
+            self.communication_log.append(reasoning_data)
+            
+            logger.info(f"{self.name} received reasoning event from {sender}: {payload.get('reason_step', 'unknown')} for {payload.get('context', 'unknown')} (ECID: {payload.get('ecid', 'unknown')})")
+            
+        except Exception as e:
+            logger.warning(f"{self.name} failed to handle reasoning event: {e}")
+    
+    async def handle_status_query(self, message: AgentMessage) -> None:
+        """Handle status queries"""
+        await self.send_message(
+            message.sender,
+            "status_response",
+            {
+                'agent': self.name,
+                'status': self.status,
+                'current_task': self.current_task,
+                'task_state_log_count': len(getattr(self, 'task_state_log', [])),
+                'approval_queue_count': len(getattr(self, 'approval_queue', []))
+            }
+        )
+    
     async def handle_message(self, message: AgentMessage) -> None:
         """Handle incoming messages - must be implemented by each agent"""
         pass

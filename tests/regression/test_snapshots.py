@@ -44,7 +44,7 @@ class TestSnapshots:
             }
             """
             
-            result = await agent.analyze_prd_requirements(sample_prd)
+            result = await agent.prd_analyzer.analyze(sample_prd, agent_role="Max, the Lead Agent")
             
             # Normalize result for comparison
             normalized_result = self._normalize_analysis_result(result)
@@ -77,7 +77,8 @@ class TestSnapshots:
             'estimated_effort': '3-4 days'
         }
         
-        tasks = await agent.create_development_tasks(prd_analysis, "TestApp", "test-ecid-001")
+        task_result = await agent.task_creator.create(prd_analysis, "TestApp", "test-ecid-001")
+        tasks = task_result.get('tasks', [])
         
         # Normalize tasks for comparison
         normalized_tasks = self._normalize_tasks(tasks)

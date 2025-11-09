@@ -229,4 +229,113 @@ capabilities:
         - deployment_status
         - deployment_uri
         - version
+  
+  # PRD capabilities
+  - name: prd.read
+    capability_version: 1.0.0
+    description: "Read and parse PRD files"
+    result:
+      keys:
+        - prd_content
+        - file_path
+        - parsed_sections
+  
+  - name: prd.analyze
+    capability_version: 1.0.0
+    description: "Analyze PRD and extract requirements"
+    result:
+      keys:
+        - core_features
+        - technical_requirements
+        - success_criteria
+        - analysis_summary
+  
+  # Telemetry capabilities
+  - name: telemetry.collect
+    capability_version: 1.0.0
+    description: "Collect comprehensive telemetry data"
+    result:
+      keys:
+        - database_metrics
+        - rabbitmq_metrics
+        - docker_events
+        - reasoning_logs
+        - system_metrics
+        - artifact_hashes
+        - event_timeline
+        - execution_duration
+  
+  # Task delegation capabilities
+  - name: task.delegate
+    capability_version: 1.0.0
+    description: "Delegate tasks to other agents"
+    result:
+      keys:
+        - task_id
+        - target_agent
+        - delegation_status
+        - delegation_time
+  
+  - name: task.determine_target
+    capability_version: 1.0.0
+    description: "Determine which agent should handle a task"
+    result:
+      keys:
+        - target_agent
+        - target_role
+        - reasoning
+  
+  - name: task.create
+    capability_version: 1.0.0
+    description: "Create development tasks from PRD analysis"
+    result:
+      keys:
+        - tasks
+        - app_name
+        - app_version
+        - task_count
+  
+  # Build capabilities
+  - name: build.requirements.generate
+    capability_version: 1.0.0
+    description: "Generate build requirements from PRD content"
+    result:
+      keys:
+        - app_name
+        - version
+        - run_id
+        - prd_analysis
+        - features
+        - constraints
+        - success_criteria
+  
+  # Task completion capabilities
+  - name: task.completion.handle
+    capability_version: 1.0.0
+    description: "Handle task completion events and orchestrate next steps"
+    result:
+      keys:
+        - handled
+        - next_action
+        - completion_status
+  
+  # WarmBoot capabilities
+  - name: warmboot.wrapup
+    capability_version: 1.0.0
+    description: "Generate WarmBoot wrap-up reports"
+    result:
+      keys:
+        - wrapup_uri
+        - wrapup_content
+        - telemetry_data
+        - run_number
+  
+  - name: warmboot.memory
+    capability_version: 1.0.0
+    description: "Load and manage WarmBoot memories and governance logging"
+    result:
+      keys:
+        - memories_loaded
+        - governance_logged
+        - memory_count
 

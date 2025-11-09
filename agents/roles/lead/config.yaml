@@ -10,6 +10,26 @@ implements:
     min_version: 1.0.0
   - capability: validate.warmboot
     min_version: 1.0.0
+  - capability: prd.read
+    min_version: 1.0.0
+  - capability: prd.analyze
+    min_version: 1.0.0
+  - capability: telemetry.collect
+    min_version: 1.0.0
+  - capability: task.delegate
+    min_version: 1.0.0
+  - capability: task.determine_target
+    min_version: 1.0.0
+  - capability: task.create
+    min_version: 1.0.0
+  - capability: build.requirements.generate
+    min_version: 1.0.0
+  - capability: task.completion.handle
+    min_version: 1.0.0
+  - capability: warmboot.wrapup
+    min_version: 1.0.0
+  - capability: warmboot.memory
+    min_version: 1.0.0
 constraints:
   repo_allow: ["squad_ops/*"]
   max_runtime_s: 3600

@@ -58,7 +58,7 @@ Performance: Utilization = 45%, Memory = 8192 MiB / 24576 MiB
                 mock_session_instance.__aexit__ = AsyncMock(return_value=None)
                 mock_session.return_value = mock_session_instance
                 
-                telemetry = await agent._collect_telemetry('ECID-WB-001', 'task-001')
+                telemetry = await agent.telemetry_collector.collect('ECID-WB-001', 'task-001')
                 
                 # Verify GPU metrics
                 assert 'system_metrics' in telemetry
@@ -111,7 +111,7 @@ Performance: Utilization = 45%, Memory = 8192 MiB / 24576 MiB
                 mock_session_instance.__aexit__ = AsyncMock(return_value=None)
                 mock_session.return_value = mock_session_instance
                 
-                telemetry = await agent._collect_telemetry('ECID-WB-001', 'task-001')
+                telemetry = await agent.telemetry_collector.collect('ECID-WB-001', 'task-001')
                 
                 # Should not crash, GPU metrics may be missing or show N/A
                 assert 'system_metrics' in telemetry
@@ -262,7 +262,7 @@ class TestExecutionDuration:
             })
             
             with patch('aiohttp.ClientSession', return_value=mock_session):
-                telemetry = await agent._collect_telemetry('ECID-WB-001', 'task-001')
+                telemetry = await agent.telemetry_collector.collect('ECID-WB-001', 'task-001')
                 
                 # Verify execution duration is calculated
                 # Note: duration calculation happens in wrap-up generation, not in telemetry collection
