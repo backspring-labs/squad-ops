@@ -7,15 +7,10 @@ from typing import Dict, Any, List
 import aiohttp
 import asyncio
 
-# Legacy imports (for backward compatibility during migration)
-try:
-    from agents.contracts.task_spec import TaskSpec
-    from agents.contracts.build_manifest import BuildManifest, FileSpec
-except ImportError:
-    # Old contracts removed, use dicts instead
-    TaskSpec = None
-    BuildManifest = None
-    FileSpec = None
+# TaskSpec and BuildManifest removed - using dict-based requirements instead
+TaskSpec = None
+BuildManifest = None
+FileSpec = None
 
 # New SIP-046 imports
 from agents.specs.agent_request import AgentRequest
