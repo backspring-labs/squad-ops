@@ -188,29 +188,27 @@ def mock_deployment_config():
 
 @pytest.fixture
 def sample_task_spec():
-    """Sample TaskSpec for JSON workflow testing"""
-    from agents.contracts.task_spec import TaskSpec
-    return TaskSpec(
-        app_name="TestApp",
-        version="1.0.0",
-        run_id="TEST-001",
-        prd_analysis="Test application for JSON workflow testing",
-        features=["Feature 1", "Feature 2"],
-        constraints={"framework": "vanilla_js"},
-        success_criteria=["Application loads", "No errors"]
-    )
+    """Sample task requirements dict for JSON workflow testing (TaskSpec removed)"""
+    return {
+        "app_name": "TestApp",
+        "version": "1.0.0",
+        "run_id": "TEST-001",
+        "prd_analysis": "Test application for JSON workflow testing",
+        "features": ["Feature 1", "Feature 2"],
+        "constraints": {"framework": "vanilla_js"},
+        "success_criteria": ["Application loads", "No errors"]
+    }
 
 @pytest.fixture
 def sample_build_manifest():
-    """Sample BuildManifest for JSON workflow testing"""
-    from agents.contracts.build_manifest import BuildManifest
-    return BuildManifest(
-        architecture={
+    """Sample build manifest dict for JSON workflow testing (BuildManifest removed)"""
+    return {
+        "architecture": {
             "type": "spa_web_app",
             "framework": "vanilla_js",
             "description": "Test application"
         },
-        files=[
+        "files": [
             {
                 "path": "index.html",
                 "purpose": "Main page",
@@ -222,12 +220,12 @@ def sample_build_manifest():
                 "dependencies": ["index.html"]
             }
         ],
-        deployment={
+        "deployment": {
             "container": "nginx:alpine",
             "port": 80,
             "environment": "production"
         }
-    )
+    }
 
 @pytest.fixture
 def app_builder():
