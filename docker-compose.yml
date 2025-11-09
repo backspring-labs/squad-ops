@@ -197,6 +197,7 @@ services:
       REDIS_URL: redis://redis:6379
     volumes:
       - ./warm-boot:/app/warm-boot
+      - max_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -277,6 +278,7 @@ services:
       - ./warm-boot:/app/warm-boot
       - ./docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
+      - neo_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -490,6 +492,8 @@ volumes:
   redis_data: {}
   prometheus_data: {}
   grafana_data: {}
+  max_memory_data: {}
+  neo_memory_data: {}
 networks:
   squadnet:
     driver: bridge

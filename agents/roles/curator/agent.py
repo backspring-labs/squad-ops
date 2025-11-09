@@ -5,7 +5,12 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List
+from datetime import datetime
 from base_agent import BaseAgent, AgentMessage
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.validator import SchemaValidator
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +20,105 @@ class CuratorAgent(BaseAgent):
     def __init__(self, identity: str):
         super().__init__(
             name=identity,
-            agent_type="pattern",
+            agent_type="research_curator",
             reasoning_style="pattern_detection"
         )
         self.knowledge_graph = {}
         self.pattern_library = {}
         self.trend_analysis = {}
         self.learning_history = []
+        
+        # Initialize schema validator
+        base_path = Path(__file__).parent.parent.parent.parent
+        self.validator = SchemaValidator(base_path)
+    
+    async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
+        """Handle agent request using capability-based routing"""
+        started_at = datetime.utcnow()
+        
+        try:
+            # Validate request
+            is_valid, error_msg = self.validator.validate_request(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="VALIDATION_ERROR",
+                    error_message=error_msg or "Request validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate constraints
+            is_valid, error_msg = self._validate_constraints(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="POLICY_VIOLATION",
+                    error_message=error_msg or "Constraint validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Generate idempotency key
+            idempotency_key = request.generate_idempotency_key(self.name)
+            
+            # Route to capability handler
+            action = request.action
+            if action == "research.curation":
+                result = await self._handle_research_curation(request)
+            elif action == "research.trend_analysis":
+                result = await self._handle_trend_analysis(request)
+            else:
+                return AgentResponse.failure(
+                    error_code="UNKNOWN_CAPABILITY",
+                    error_message=f"Unknown capability: {action}",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate result keys
+            is_valid, error_msg = self.validator.validate_result_keys(action, result)
+            if not is_valid:
+                logger.warning(f"{self.name}: Result validation warning: {error_msg}")
+            
+            # Create success response
+            ended_at = datetime.utcnow()
+            return AgentResponse.success(
+                result=result,
+                idempotency_key=idempotency_key,
+                timing=Timing.create(started_at, ended_at)
+            )
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Error handling request: {e}", exc_info=True)
+            return AgentResponse.failure(
+                error_code="INTERNAL_ERROR",
+                error_message=str(e),
+                retryable=True,
+                timing=Timing.create(started_at)
+            )
+    
+    async def _handle_research_curation(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle research.curation capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing research curation logic to new capability format
+        return {
+            'curated_content': [],
+            'knowledge_base_uri': f'/knowledge/{task_id}',
+            'insights': []
+        }
+    
+    async def _handle_trend_analysis(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle research.trend_analysis capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing trend analysis logic to new capability format
+        return {
+            'trends': [],
+            'patterns': [],
+            'predictions': []
+        }
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process pattern detection tasks using continuous learning"""

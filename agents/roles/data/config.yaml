@@ -1,0 +1,17 @@
+agent_id: data
+role: data
+spec_version: 1.0.0
+implements:
+  - capability: data.analysis
+    min_version: 1.0.0
+  - capability: data.modeling
+    min_version: 1.0.0
+constraints:
+  repo_allow: ["squad_ops/*"]
+  max_runtime_s: 1800
+  network_allow: ["git-read", "api-calls", "data-sources"]
+defaults:
+  model: ollama:mixtral-8x7b
+  image: squadops/data:latest
+  max_concurrency: 1
+

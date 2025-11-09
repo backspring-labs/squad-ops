@@ -637,19 +637,26 @@ class HealthChecker:
             connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
             channel = connection.channel()
             
-            # Send to Max (lead agent) first
+            # Send to Max (lead agent) using new SIP-046 AgentRequest format
+            # Use validate.warmboot capability for WarmBoot requests
             max_message = {
-                "task_id": f"{ecid}-main",
-                "type": "governance",
-                "ecid": ecid,
-                "application": request.application,
-                "request_type": request.request_type,
-                "agents": request.agents,
-                "priority": request.priority,
-                "description": request.description,
-                "requirements": request.requirements,
-                "prd_path": request.prd_path,
-                "timestamp": datetime.utcnow().isoformat()
+                "action": "validate.warmboot",
+                "payload": {
+                    "task_id": f"{ecid}-main",
+                    "application": request.application,
+                    "request_type": request.request_type,
+                    "agents": request.agents,
+                    "priority": request.priority,
+                    "description": request.description,
+                    "requirements": request.requirements,
+                    "prd_path": request.prd_path
+                },
+                "metadata": {
+                    "pid": f"PID-{request.run_id.replace('run-', '')}",
+                    "ecid": ecid,
+                    "tags": ["warmboot", request.request_type]
+                },
+                "request_id": f"{ecid}-main-{int(datetime.utcnow().timestamp())}"
             }
             
             channel.basic_publish(
@@ -814,9 +821,10 @@ class HealthChecker:
             
             # Query database for highest run number
             async with self.pg_pool.acquire() as conn:
+                # Try to get the highest numeric run ID from database
                 result = await conn.fetchval("""
                     SELECT run_id FROM warmboot_runs 
-                    WHERE run_id LIKE 'run-%'
+                    WHERE run_id ~ '^run-[0-9]+$'
                     ORDER BY 
                         CAST(SUBSTRING(run_id FROM 'run-([0-9]+)') AS INTEGER) DESC 
                     LIMIT 1
@@ -824,24 +832,35 @@ class HealthChecker:
                 
                 if result:
                     # Extract number and increment
-                    run_num = int(result.split("-")[1])
-                    next_num = run_num + 1
+                    try:
+                        run_num = int(result.split("-")[1])
+                        next_num = run_num + 1
+                        logger.info(f"Found highest run ID in database: {result}, next will be: run-{next_num:03d}")
+                        return f"run-{next_num:03d}"
+                    except (ValueError, IndexError) as e:
+                        logger.warning(f"Failed to parse run ID from database: {result}, error: {e}")
+                        # Fall through to filesystem check
+                
+                # Fallback: check filesystem for any existing runs
+                import os
+                runs_dir = "warm-boot/runs/"
+                existing_runs = []
+                
+                if os.path.exists(runs_dir):
+                    for item in os.listdir(runs_dir):
+                        if item.startswith("run-") and os.path.isdir(os.path.join(runs_dir, item)):
+                            try:
+                                run_num = int(item.split("-")[1])
+                                existing_runs.append(run_num)
+                            except:
+                                continue
+                
+                if existing_runs:
+                    next_num = max(existing_runs) + 1
+                    logger.info(f"Found highest run ID in filesystem: run-{max(existing_runs)}, next will be: run-{next_num:03d}")
                 else:
-                    # Fallback: check filesystem for any existing runs
-                    import os
-                    runs_dir = "warm-boot/runs/"
-                    existing_runs = []
-                    
-                    if os.path.exists(runs_dir):
-                        for item in os.listdir(runs_dir):
-                            if item.startswith("run-") and os.path.isdir(os.path.join(runs_dir, item)):
-                                try:
-                                    run_num = int(item.split("-")[1])
-                                    existing_runs.append(run_num)
-                                except:
-                                    continue
-                    
-                    next_num = max(existing_runs) + 1 if existing_runs else 1
+                    next_num = 1
+                    logger.info("No existing runs found, starting with run-001")
                 
                 return f"run-{next_num:03d}"
             

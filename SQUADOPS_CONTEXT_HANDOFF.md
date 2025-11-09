@@ -127,6 +127,14 @@
 - **Agent Coordination**: Max → Neo task sequencing with state management
 - **Governance Logging**: Checksums, manifest snapshots, audit trails
 
+### **Capability System (SIP-046)**
+- **Capability Catalog**: YAML-based capability definitions in `agents/capabilities/catalog.yaml`
+- **Agent Configs**: YAML-based agent configuration in `agents/roles/<role>/config.yaml`
+- **Capability Bindings**: Capability-to-agent mappings in `agents/capability_bindings.yaml`
+- **AgentRequest/Response**: Structured request/response envelopes with validation
+- **Schema Validation**: JSON schema validation for requests and responses
+- **Constraint Enforcement**: Repository, runtime, and network constraints per agent
+
 ### **Optional/Advanced**
 - **Prometheus + Grafana:** Metrics collection and visualization
 - **ELK Stack:** Centralized logging and searchable ops data

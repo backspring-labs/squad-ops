@@ -7,10 +7,11 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from typing import Dict, Any
 
 from agents.roles.dev.agent import DevAgent
-from agents.contracts.task_spec import TaskSpec
-from agents.contracts.build_manifest import BuildManifest
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse
 from tests.utils.mock_helpers import (
-    create_sample_task_spec, create_sample_build_manifest,
+    create_sample_build_artifact_request,
+    create_sample_agent_response,
     MockFileManager, MockDockerManager, MockOllamaResponse
 )
 
@@ -39,29 +40,38 @@ class TestDevAgent:
     
     @pytest.fixture
     def design_manifest_task(self):
-        """Sample design_manifest task."""
-        task_spec = create_sample_task_spec()
+        """Sample design_manifest task with flattened requirements."""
         return {
             "task_id": "test-design-001",
             "type": "development",
             "requirements": {
                 "action": "design_manifest",
-                "task_spec": task_spec.to_dict()
+                "app_name": "TestApp",
+                "version": "1.0.0",
+                "run_id": "TEST-001",
+                "prd_analysis": "Test application",
+                "features": ["Feature 1", "Feature 2"],
+                "constraints": {"framework": "vanilla_js"},
+                "success_criteria": ["Application loads"]
             }
         }
     
     @pytest.fixture
     def build_task_with_manifest(self):
-        """Sample build task with manifest."""
-        task_spec = create_sample_task_spec()
-        manifest = create_sample_build_manifest()
+        """Sample build task with manifest and flattened requirements."""
         return {
             "task_id": "test-build-001",
             "type": "development",
             "requirements": {
                 "action": "build",
-                "task_spec": task_spec.to_dict(),
-                "manifest": manifest.to_dict()  # Pass as dict, DevAgent converts to BuildManifest
+                "app_name": "TestApp",
+                "version": "1.0.0",
+                "run_id": "TEST-001",
+                "manifest": {
+                    "architecture_type": "spa_web_app",
+                    "framework": "vanilla_js",
+                    "files": []
+                }
             }
         }
     
@@ -81,10 +91,58 @@ class TestDevAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_handle_agent_request_build_artifact(self, dev_agent):
+        """Test handle_agent_request for build.artifact capability"""
+        request = create_sample_build_artifact_request(task_id="test-001")
+        
+        # Mock AppBuilder methods
+        dev_agent.app_builder.generate_manifest_json = AsyncMock(return_value={
+            "architecture_type": "spa_web_app",
+            "framework": "vanilla_js",
+            "files": []
+        })
+        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=[
+            {"type": "create_file", "file_path": "index.html", "content": "<html></html>", "directory": None}
+        ])
+        
+        response = await dev_agent.handle_agent_request(request)
+        
+        assert isinstance(response, AgentResponse)
+        assert response.status == "ok"
+        assert "artifact_uri" in response.result
+        assert "commit" in response.result
+        assert "files_generated" in response.result
+        assert "manifest_uri" in response.result
+        assert response.idempotency_key is not None
+        assert response.timing is not None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_unknown_capability(self, dev_agent):
+        """Test handle_agent_request with unknown capability"""
+        request = AgentRequest(
+            action="test.run",  # Valid format but not in Dev's capabilities
+            payload={},
+            metadata={"pid": "PID-001", "ecid": "ECID-001"}
+        )
+        
+        response = await dev_agent.handle_agent_request(request)
+        
+        assert isinstance(response, AgentResponse)
+        assert response.status == "error"
+        assert response.error is not None
+        assert response.error.code == "UNKNOWN_CAPABILITY"
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_handle_design_manifest_task_success(self, dev_agent, design_manifest_task):
-        """Test successful design_manifest task handling."""
+        """Test successful design_manifest task handling (legacy)."""
         # Mock AppBuilder manifest generation
-        mock_manifest = create_sample_build_manifest()
+        mock_manifest = {
+            "architecture_type": "spa_web_app",
+            "framework": "vanilla_js",
+            "files": []
+        }
         # Also mock files generation since design_manifest task calls both
         mock_files = [
             {"type": "create_file", "file_path": "index.html", "content": "<html></html>", "directory": None}
@@ -105,32 +163,41 @@ class TestDevAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_handle_design_manifest_task_missing_taskspec(self, dev_agent):
-        """Test design_manifest task with missing TaskSpec."""
+    async def test_handle_design_manifest_task_missing_requirements(self, dev_agent):
+        """Test design_manifest task with missing build requirements."""
         requirements = {
             "action": "design_manifest"
-            # Missing task_spec
+            # Missing app_name, features, etc. (will use defaults)
         }
+        
+        # Mock AppBuilder to handle missing requirements gracefully
+        dev_agent.app_builder.generate_manifest_json = AsyncMock(return_value={
+            "architecture_type": "spa_web_app",
+            "framework": "vanilla_js",
+            "files": []
+        })
+        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=[])
+        dev_agent.file_manager.create_file = AsyncMock(return_value=True)
+        dev_agent.file_manager.directory_exists = AsyncMock(return_value=False)
         
         result = await dev_agent._handle_design_manifest_task("test-001", requirements)
         
-        assert result["status"] == "error"
-        assert "taskspec" in result["error"].lower()
+        # Should succeed with default values
+        assert result["status"] == "completed"
     
     @pytest.mark.asyncio
     async def test_handle_design_manifest_task_exception(self, dev_agent):
         """Test _handle_design_manifest_task exception handling"""
         task_id = 'test-task-001'
         requirements = {
-            'task_spec': {
-                'app_name': 'TestApp',
-                'version': '1.0.0',
-                'run_id': 'test-run',
-                'prd_analysis': 'Test analysis',
-                'features': ['feature1'],
-                'constraints': {},
-                'success_criteria': ['Task completes']
-            }
+            # Flattened requirements (no task_spec)
+            'app_name': 'TestApp',
+            'version': '1.0.0',
+            'run_id': 'test-run',
+            'prd_analysis': 'Test analysis',
+            'features': ['feature1'],
+            'constraints': {},
+            'success_criteria': ['Task completes']
         }
         
         # Mock app_builder to raise exception
@@ -483,23 +550,24 @@ class TestDevAgent:
             "complexity": 0.5
         }
         
-        # Mock TaskSpec creation
-        mock_task_spec = TaskSpec(
-            app_name="TechnicalTask",
-            version="1.0.0",
-            run_id="test-run",
-            prd_analysis="Technical task analysis",
-            features=["feature1"],
-            constraints={},
-            success_criteria=["Task completes"]
-        )
+        # Mock technical requirements creation
+        mock_requirements = {
+            "app_name": "TechnicalTask",
+            "version": "1.0.0",
+            "run_id": "test-run",
+            "prd_analysis": "Technical task analysis",
+            "features": ["feature1"],
+            "constraints": {},
+            "success_criteria": ["Task completes"]
+        }
         
-        with patch.object(dev_agent, '_create_technical_task_spec', return_value=mock_task_spec):
+        with patch.object(dev_agent, '_create_technical_requirements', return_value=mock_requirements):
             result = await dev_agent._handle_technical_task(task_id, requirements)
         
         assert result["status"] == "completed"
         assert result["task_id"] == task_id
         assert "technical task" in result["message"].lower()
+        assert "requirements" in result
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -511,18 +579,18 @@ class TestDevAgent:
             "complexity": 0.5
         }
         
-        # Mock TaskSpec creation to fail
-        with patch.object(dev_agent, '_create_technical_task_spec', side_effect=Exception("TaskSpec failed")):
+        # Mock technical requirements creation to fail
+        with patch.object(dev_agent, '_create_technical_requirements', side_effect=Exception("Requirements failed")):
             result = await dev_agent._handle_technical_task(task_id, requirements)
         
         assert result["status"] == "error"
         assert result["task_id"] == task_id
-        assert "TaskSpec failed" in result["error"]
+        assert "Requirements failed" in result["error"]
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_create_technical_task_spec_success(self, dev_agent):
-        """Test successful TaskSpec creation."""
+    async def test_create_technical_requirements_success_legacy(self, dev_agent):
+        """Test successful technical requirements creation (legacy test name)."""
         requirements = {
             "description": "Test technical task",
             "complexity": 0.5
@@ -545,29 +613,31 @@ class TestDevAgent:
         # Mock the LLM client to avoid network calls
         dev_agent.llm_client.complete = AsyncMock(return_value=mock_yaml_response)
         
-        task_spec = await dev_agent._create_technical_task_spec(requirements)
+        tech_requirements = await dev_agent._create_technical_requirements(requirements)
         
-        assert isinstance(task_spec, TaskSpec)
-        assert task_spec.app_name == "TechnicalTask"
-        assert task_spec.version == "1.0.0"
-        assert len(task_spec.features) == 2
+        assert isinstance(tech_requirements, dict)
+        assert tech_requirements.get("app_name") == "TechnicalTask"
+        assert tech_requirements.get("version") == "1.0.0"
+        assert len(tech_requirements.get("features", [])) == 2
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_create_technical_task_spec_fallback(self, dev_agent):
-        """Test TaskSpec creation with fallback."""
+    async def test_create_technical_requirements_fallback_legacy(self, dev_agent):
+        """Test technical requirements creation with fallback (legacy test name)."""
         requirements = {
             "description": "Test technical task",
             "complexity": 0.5
         }
         
-        # Mock LLM response to fail
-        with patch.object(dev_agent, 'llm_response', side_effect=Exception("LLM failed")):
-            task_spec = await dev_agent._create_technical_task_spec(requirements)
+        # Mock LLM client to fail
+        dev_agent.llm_client = AsyncMock()
+        dev_agent.llm_client.complete.side_effect = Exception("LLM failed")
         
-        assert isinstance(task_spec, TaskSpec)
-        assert task_spec.app_name == "TechnicalTask"  # Fallback name
-        assert "Technical task" in task_spec.prd_analysis
+        tech_requirements = await dev_agent._create_technical_requirements(requirements)
+        
+        assert isinstance(tech_requirements, dict)
+        assert tech_requirements.get("app_name") == "TechnicalTask"  # Fallback name
+        assert "Technical task" in tech_requirements.get("prd_analysis", "")
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -719,7 +789,7 @@ class TestDevAgent:
         agent = DevAgent("test-dev-agent")
         
         assert agent.name == "test-dev-agent"
-        assert agent.agent_type == "code"
+        assert agent.agent_type == "developer"
         assert agent.reasoning_style == "deductive"
         assert hasattr(agent, 'app_builder')
         assert hasattr(agent, 'docker_manager')
@@ -1067,17 +1137,16 @@ class TestDevAgent:
         }
         
         # Mock technical task handling
-        with patch.object(dev_agent, '_create_technical_task_spec') as mock_create_spec:
-            mock_task_spec = MagicMock()
-            mock_task_spec.to_dict.return_value = {'app_name': 'TechnicalTask', 'features': []}
-            mock_create_spec.return_value = mock_task_spec
+        with patch.object(dev_agent, '_create_technical_requirements') as mock_create_requirements:
+            mock_requirements = {'app_name': 'TechnicalTask', 'features': []}
+            mock_create_requirements.return_value = mock_requirements
             
             result = await dev_agent._handle_technical_task(task_id, requirements)
             
             assert result['task_id'] == 'test-task-001'
             assert result['status'] == 'completed'
             assert result['action'] == 'technical'
-            assert 'task_spec' in result
+            assert 'requirements' in result
     
     @pytest.mark.asyncio
     async def test_handle_technical_task_exception(self, dev_agent):
@@ -1090,8 +1159,8 @@ class TestDevAgent:
         }
         
         # Mock technical task handling to raise exception
-        with patch.object(dev_agent, '_create_technical_task_spec') as mock_create_spec:
-            mock_create_spec.side_effect = Exception("Technical task failed")
+        with patch.object(dev_agent, '_create_technical_requirements') as mock_create_requirements:
+            mock_create_requirements.side_effect = Exception("Technical task failed")
             
             result = await dev_agent._handle_technical_task(task_id, requirements)
             
@@ -1101,9 +1170,9 @@ class TestDevAgent:
             assert 'error' in result
     
     @pytest.mark.asyncio
-    async def test_create_technical_task_spec_success(self, dev_agent):
-        """Test _create_technical_task_spec success path"""
-        task_spec = {
+    async def test_create_technical_requirements_success(self, dev_agent):
+        """Test _create_technical_requirements success path"""
+        requirements = {
             'technical_type': 'database',
             'action': 'create_table',
             'specification': 'CREATE TABLE test (id INT)'
@@ -1126,19 +1195,18 @@ class TestDevAgent:
           - Data validation works
         """
         
-        result = await dev_agent._create_technical_task_spec(task_spec)
+        result = await dev_agent._create_technical_requirements(requirements)
         
-        # Should return a TaskSpec object
-        assert hasattr(result, 'app_name')
-        assert hasattr(result, 'version')
-        assert hasattr(result, 'features')
-        assert result.app_name == 'DatabaseTask'
-        assert len(result.features) == 2
+        # Should return a dict (requirements)
+        assert isinstance(result, dict)
+        assert result.get('app_name') == 'DatabaseTask'
+        assert result.get('version') == '1.0.0'
+        assert len(result.get('features', [])) == 2
     
     @pytest.mark.asyncio
-    async def test_create_technical_task_spec_exception(self, dev_agent):
-        """Test _create_technical_task_spec exception handling"""
-        task_spec = {
+    async def test_create_technical_requirements_exception(self, dev_agent):
+        """Test _create_technical_requirements exception handling"""
+        requirements = {
             'technical_type': 'database',
             'action': 'create_table',
             'specification': 'CREATE TABLE test (id INT)'
@@ -1148,17 +1216,18 @@ class TestDevAgent:
         dev_agent.llm_client = AsyncMock()
         dev_agent.llm_client.complete.side_effect = Exception("LLM call failed")
         
-        result = await dev_agent._create_technical_task_spec(task_spec)
+        result = await dev_agent._create_technical_requirements(requirements)
         
-        # Should return a TaskSpec object (fallback)
-        assert hasattr(result, 'app_name')
-        assert hasattr(result, 'version')
-        assert hasattr(result, 'features')
+        # Should return a dict (fallback requirements)
+        assert isinstance(result, dict)
+        assert result.get('app_name') == 'TechnicalTask'
+        assert result.get('version') == '1.0.0'
+        assert isinstance(result.get('features'), list)
     
     @pytest.mark.asyncio
-    async def test_create_technical_task_spec_fallback(self, dev_agent):
-        """Test _create_technical_task_spec fallback when LLM fails"""
-        task_spec = {
+    async def test_create_technical_requirements_fallback(self, dev_agent):
+        """Test _create_technical_requirements fallback when LLM fails"""
+        requirements = {
             'technical_type': 'database',
             'action': 'create_table',
             'specification': 'CREATE TABLE test (id INT)'
@@ -1168,12 +1237,13 @@ class TestDevAgent:
         dev_agent.llm_client = AsyncMock()
         dev_agent.llm_client.complete.return_value = None
         
-        result = await dev_agent._create_technical_task_spec(task_spec)
+        result = await dev_agent._create_technical_requirements(requirements)
         
-        # Should return a TaskSpec object (fallback)
-        assert hasattr(result, 'app_name')
-        assert hasattr(result, 'version')
-        assert hasattr(result, 'features')
+        # Should return a dict (fallback requirements)
+        assert isinstance(result, dict)
+        assert result.get('app_name') == 'TechnicalTask'
+        assert result.get('version') == '1.0.0'
+        assert isinstance(result.get('features'), list)
     
     @pytest.mark.asyncio
     async def test_process_task_code_generation_type(self, dev_agent):
@@ -1399,7 +1469,11 @@ class TestDevAgent:
         dev_agent.current_ecid = 'ECID-WB-001'
         
         # Mock AppBuilder
-        mock_manifest = create_sample_build_manifest()
+        mock_manifest = {
+            "architecture_type": "spa_web_app",
+            "framework": "vanilla_js",
+            "files": []
+        }
         mock_files = [
             {"type": "create_file", "file_path": "index.html", "content": "<html></html>", "directory": None}
         ]

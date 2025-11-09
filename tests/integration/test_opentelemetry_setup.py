@@ -19,6 +19,15 @@ class TestOpenTelemetrySetup:
     def test_base_agent_has_telemetry_attributes(self):
         """Test that BaseAgent has telemetry attributes after initialization"""
         class TestAgent(BaseAgent):
+            async def handle_agent_request(self, request):
+                from agents.specs.agent_response import AgentResponse, Timing
+                from datetime import datetime
+                return AgentResponse.success(
+                    result={},
+                    idempotency_key="test-key",
+                    timing=Timing.create(datetime.utcnow())
+                )
+            
             async def process_task(self, task):
                 return {}
             
@@ -42,6 +51,15 @@ class TestOpenTelemetrySetup:
     def test_telemetry_helper_methods_exist(self):
         """Test that all telemetry helper methods exist and are callable"""
         class TestAgent(BaseAgent):
+            async def handle_agent_request(self, request):
+                from agents.specs.agent_response import AgentResponse, Timing
+                from datetime import datetime
+                return AgentResponse.success(
+                    result={},
+                    idempotency_key="test-key",
+                    timing=Timing.create(datetime.utcnow())
+                )
+            
             async def process_task(self, task):
                 return {}
             
@@ -61,6 +79,15 @@ class TestOpenTelemetrySetup:
     def test_create_span_context_manager(self):
         """Test that create_span returns a context manager"""
         class TestAgent(BaseAgent):
+            async def handle_agent_request(self, request):
+                from agents.specs.agent_response import AgentResponse, Timing
+                from datetime import datetime
+                return AgentResponse.success(
+                    result={},
+                    idempotency_key="test-key",
+                    timing=Timing.create(datetime.utcnow())
+                )
+            
             async def process_task(self, task):
                 return {}
             
@@ -77,6 +104,15 @@ class TestOpenTelemetrySetup:
     def test_record_metrics_no_error(self):
         """Test that recording metrics doesn't raise errors (graceful degradation)"""
         class TestAgent(BaseAgent):
+            async def handle_agent_request(self, request):
+                from agents.specs.agent_response import AgentResponse, Timing
+                from datetime import datetime
+                return AgentResponse.success(
+                    result={},
+                    idempotency_key="test-key",
+                    timing=Timing.create(datetime.utcnow())
+                )
+            
             async def process_task(self, task):
                 return {}
             

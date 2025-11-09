@@ -82,25 +82,101 @@ curl http://localhost:11434/api/version
 
 ## Running Tests
 
-### Run All Integration Tests
+### Quick Start
+
 ```bash
+# Recommended: Use the test runner script
 cd /Users/jladd/squad-ops
+./tests/integration/run_all.sh
+
+# Or use pytest directly
+python3 -m pytest tests/integration/ -v
+```
+
+### Service Health Check
+
+Before running tests, verify all services are healthy:
+
+```bash
+python3 tests/integration/check_services.py --verbose
+```
+
+### Run All Integration Tests
+
+```bash
+# Using the test runner script (recommended)
+./tests/integration/run_all.sh
+
+# Using pytest directly
 python3 -m pytest tests/integration/ -v
 ```
 
 ### Run Specific Test Categories
+
 ```bash
 # Agent communication tests only
-python3 -m pytest tests/integration/test_agent_communication.py -v
+./tests/integration/run_all.sh test_agent_communication.py
 
 # Workflow tests only
-python3 -m pytest tests/integration/test_workflow.py -v
+./tests/integration/run_all.sh test_workflow.py
+
+# Memory integration tests only
+./tests/integration/run_all.sh test_memory_integration.py
 ```
+
+### Run Tests by Marker
+
+```bash
+# PostgreSQL-dependent tests
+python3 -m pytest tests/integration/ -v -m service_postgres
+
+# RabbitMQ-dependent tests
+python3 -m pytest tests/integration/ -v -m service_rabbitmq
+
+# Ollama-dependent tests
+python3 -m pytest tests/integration/ -v -m service_ollama
+
+# Agent container-dependent tests
+python3 -m pytest tests/integration/ -v -m agent_containers
+```
+
+For detailed execution instructions, see [EXECUTION_GUIDE.md](EXECUTION_GUIDE.md).
 
 ### Run with Coverage
 ```bash
 python3 -m pytest tests/integration/ --cov=agents --cov-report=html
 ```
+
+## Test Execution Strategy
+
+### Test Categories and Markers
+
+Tests are organized by service dependencies:
+
+- `@pytest.mark.service_postgres` - Requires PostgreSQL
+- `@pytest.mark.service_rabbitmq` - Requires RabbitMQ
+- `@pytest.mark.service_redis` - Requires Redis
+- `@pytest.mark.service_ollama` - Requires Ollama (optional)
+- `@pytest.mark.agent_containers` - Requires agent containers (Max/Neo)
+
+### Retry Logic
+
+Network-dependent tests use retry logic for transient failures:
+
+```python
+from tests.integration.conftest import retry_on_network_error
+
+@retry_on_network_error(max_retries=3, delay=1.0, backoff=2.0)
+async def test_network_dependent():
+    # Test code here
+```
+
+### Test Isolation
+
+Tests automatically clean up state between runs:
+- Database state (via `clean_database` fixture)
+- RabbitMQ queues (via `clean_rabbitmq` fixture)
+- Redis cache (via `clean_redis` fixture)
 
 ## Test Configuration
 

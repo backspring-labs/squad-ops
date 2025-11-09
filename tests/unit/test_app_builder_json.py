@@ -8,8 +8,6 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from typing import Dict, Any
 
 from agents.roles.dev.app_builder import AppBuilder
-from agents.contracts.task_spec import TaskSpec
-from agents.contracts.build_manifest import BuildManifest
 from tests.utils.mock_helpers import (
     MockOllamaResponse, MockAiohttpSession, MockAiohttpResponse, create_sample_task_spec,
     create_sample_build_manifest, mock_ollama_json_call
@@ -28,7 +26,7 @@ class TestAppBuilderJSON:
     
     @pytest.fixture
     def sample_task_spec(self):
-        """Sample TaskSpec for testing."""
+        """Sample requirements dict for testing."""
         return create_sample_task_spec()
     
     @pytest.fixture
@@ -108,11 +106,16 @@ class TestAppBuilderJSON:
         with patch.object(app_builder, '_call_llm_json', return_value=mock_manifest_response):
             manifest = await app_builder.generate_manifest_json(sample_task_spec)
             
-        assert isinstance(manifest, BuildManifest)
-        assert manifest.architecture_type == "spa_web_app"
-        assert manifest.framework == "vanilla_js"
-        assert len(manifest.files) == 3
-        assert manifest.deployment["container"] == "nginx:alpine"
+        assert isinstance(manifest, dict)
+        # Handle both old and new manifest structures
+        arch_type = manifest.get("architecture_type") or manifest.get("architecture", {}).get("type")
+        framework = manifest.get("framework") or manifest.get("architecture", {}).get("framework")
+        assert arch_type == "spa_web_app"
+        assert framework == "vanilla_js"
+        files = manifest.get("files", [])
+        assert len(files) == 3
+        deployment = manifest.get("deployment", {})
+        assert deployment.get("container") == "nginx:alpine"
     
     @pytest.mark.asyncio
     async def test_generate_manifest_json_framework_override(self, app_builder, sample_task_spec):
@@ -125,7 +128,8 @@ class TestAppBuilderJSON:
             manifest = await app_builder.generate_manifest_json(sample_task_spec)
             
             # Verify framework is overridden
-            assert manifest.framework == "vanilla_js"
+            framework = manifest.get("framework") or manifest.get("architecture", {}).get("framework")
+            assert framework == "vanilla_js"
     
     @pytest.mark.asyncio
     async def test_generate_manifest_json_prompt_injection(self, app_builder, sample_task_spec, mock_manifest_response):

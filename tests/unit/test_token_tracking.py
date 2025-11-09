@@ -79,6 +79,15 @@ class TestTokenTracking:
                 async def process_task(self, task):
                     return {}
                 
+                async def handle_agent_request(self, request):
+                    from agents.specs.agent_response import AgentResponse, Timing
+                    from datetime import datetime
+                    return AgentResponse.success(
+                        result={},
+                        idempotency_key='test-key',
+                        timing=Timing.create(datetime.utcnow())
+                    )
+                
                 async def handle_message(self, message):
                     pass
             

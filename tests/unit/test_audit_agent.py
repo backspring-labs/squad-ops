@@ -14,7 +14,7 @@ class TestAuditAgent:
         agent = AuditAgent("audit-agent-001")
         
         assert agent.name == "audit-agent-001"
-        assert agent.agent_type == "monitoring"
+        assert agent.agent_type == "auditor"
         assert agent.reasoning_style == "monitoring_audit"
         assert agent.secure_logs == {}
         assert agent.agent_activity == {}

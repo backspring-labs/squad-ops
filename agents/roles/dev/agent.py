@@ -30,8 +30,10 @@ except ImportError:
     from agents.roles.dev.version_manager import VersionManager
     from agents.roles.dev.file_manager import FileManager
 
-from agents.contracts.task_spec import TaskSpec
-from agents.contracts.build_manifest import BuildManifest
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.validator import SchemaValidator
+from datetime import datetime
 from config.deployment_config import get_deployment_config, get_docker_config
 from config.version import get_framework_version
 
@@ -43,11 +45,16 @@ class DevAgent(BaseAgent):
     def __init__(self, identity: str):
         super().__init__(
             name=identity,
-            agent_type="code",
+            agent_type="developer",
             reasoning_style="deductive"
         )
         
         # Initialize specialized components
+        
+        # Initialize schema validator
+        from pathlib import Path
+        base_path = Path(__file__).parent.parent.parent.parent
+        self.validator = SchemaValidator(base_path)
         self.app_builder = AppBuilder(llm_client=self.llm_client, agent=self)  # Pass agent for logging (Task 1.1)
         self.docker_manager = DockerManager()
         self.version_manager = VersionManager()
@@ -140,17 +147,17 @@ class DevAgent(BaseAgent):
         except Exception as e:
             logger.warning(f"{self.name} failed to emit reasoning event: {e}")
     
-    async def _create_technical_task_spec(self, requirements: Dict[str, Any]) -> TaskSpec:
-        """Neo creates TaskSpec for technical tasks"""
-        logger.info(f"{self.name} creating technical TaskSpec")
+    async def _create_technical_requirements(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """Neo creates technical requirements for technical tasks"""
+        logger.info(f"{self.name} creating technical requirements")
         
         prompt = f"""
-        You are a senior software engineer creating a TaskSpec for a technical development task.
+        You are a senior software engineer creating technical requirements for a development task.
         
         TASK REQUIREMENTS:
         {requirements}
         
-        Create a comprehensive TaskSpec that includes:
+        Create comprehensive technical requirements that include:
         
         1. PRD_ANALYSIS: Technical analysis of the requirements, architecture considerations, and implementation approach
         2. FEATURES: Specific technical features and capabilities to implement
@@ -164,7 +171,7 @@ class DevAgent(BaseAgent):
         - Testing and validation requirements
         - Documentation and deployment considerations
         
-        Return the TaskSpec in YAML format:
+        Return the requirements in YAML format:
         
         app_name: "TechnicalTask"
         version: "1.0.0"
@@ -193,24 +200,27 @@ class DevAgent(BaseAgent):
             
             # Clean and parse YAML response
             from agents.llm.validators import clean_yaml_response
+            import yaml
             cleaned_response = clean_yaml_response(response)
-            task_spec = TaskSpec.from_yaml(cleaned_response)
-            logger.info(f"{self.name} created technical TaskSpec with {len(task_spec.features)} features")
+            tech_requirements = yaml.safe_load(cleaned_response)
+            if not isinstance(tech_requirements, dict):
+                tech_requirements = {}
+            logger.info(f"{self.name} created technical requirements with {len(tech_requirements.get('features', []))} features")
             
-            return task_spec
+            return tech_requirements
             
         except Exception as e:
-            logger.error(f"{self.name} failed to create technical TaskSpec: {e}")
-            # Fallback to basic TaskSpec
-            return TaskSpec(
-                app_name="TechnicalTask",
-                version="1.0.0",
-                run_id=self.current_run_id,
-                prd_analysis=f"Technical task - TaskSpec generation failed: {e}",
-                features=[],
-                constraints={},
-                success_criteria=["Task completes successfully"]
-            )
+            logger.error(f"{self.name} failed to create technical requirements: {e}")
+            # Fallback to basic requirements dict
+            return {
+                "app_name": "TechnicalTask",
+                "version": "1.0.0",
+                "run_id": self.current_run_id,
+                "prd_analysis": f"Technical task - Requirements generation failed: {e}",
+                "features": [],
+                "constraints": {},
+                "success_criteria": ["Task completes successfully"]
+            }
     
     def _extract_prd_analysis_from_communication_log(self) -> str:
         """Extract PRD analysis from communication log for AI-powered code generation"""
@@ -234,8 +244,85 @@ class DevAgent(BaseAgent):
             logger.error(f"Failed to extract PRD analysis: {e}")
             return "Error extracting PRD analysis - generating generic application"
     
+    async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
+        """Handle agent request using capability-based routing"""
+        started_at = datetime.utcnow()
+        
+        try:
+            # Validate request
+            is_valid, error_msg = self.validator.validate_request(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="VALIDATION_ERROR",
+                    error_message=error_msg or "Request validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate constraints
+            is_valid, error_msg = self._validate_constraints(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="POLICY_VIOLATION",
+                    error_message=error_msg or "Constraint validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Generate idempotency key
+            idempotency_key = request.generate_idempotency_key(self.name)
+            
+            # Route to capability handler
+            action = request.action
+            if action == "build.artifact":
+                result = await self._handle_build_artifact(request)
+            else:
+                return AgentResponse.failure(
+                    error_code="UNKNOWN_CAPABILITY",
+                    error_message=f"Unknown capability: {action}",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate result keys
+            is_valid, error_msg = self.validator.validate_result_keys(action, result)
+            if not is_valid:
+                logger.warning(f"{self.name}: Result validation warning: {error_msg}")
+            
+            # Create success response
+            ended_at = datetime.utcnow()
+            return AgentResponse.success(
+                result=result,
+                idempotency_key=idempotency_key,
+                timing=Timing.create(started_at, ended_at)
+            )
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Error handling request: {e}", exc_info=True)
+            return AgentResponse.failure(
+                error_code="INTERNAL_ERROR",
+                error_message=str(e),
+                retryable=True,
+                timing=Timing.create(started_at)
+            )
+    
+    async def _handle_build_artifact(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle build.artifact capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing build logic to new capability format
+        # This would call the existing build methods
+        # For now, return basic structure
+        return {
+            'artifact_uri': f'/artifacts/{task_id}',
+            'commit': 'unknown',
+            'files_generated': [],
+            'manifest_uri': f'/manifests/{task_id}'
+        }
+    
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process development tasks using specialized components"""
+        """Process development tasks using specialized components - DEPRECATED: Use handle_agent_request instead"""
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', task.get('task_type', 'unknown'))
         
@@ -282,7 +369,7 @@ class DevAgent(BaseAgent):
         elif action == "deploy":
             return await self._handle_deploy_task(task_id, requirements)
         else:
-            # Handle technical tasks with Neo's own TaskSpec
+            # Handle technical tasks with Neo's own requirements
             return await self._handle_technical_task(task_id, requirements)
     
     async def _handle_archive_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
@@ -332,36 +419,38 @@ class DevAgent(BaseAgent):
         try:
             logger.info(f"{self.name} handling design manifest task: {task_id}")
             
-            # Extract TaskSpec from requirements
-            if 'task_spec' in requirements:
-                task_spec = TaskSpec.from_dict(requirements['task_spec'])
-                logger.info(f"{self.name} using provided TaskSpec with {len(task_spec.features)} features")
-                
-                # Ensure features are strings (defensive programming)
-                if task_spec.features:
-                    string_features = []
-                    for feature in task_spec.features:
-                        if isinstance(feature, str):
-                            string_features.append(feature)
-                        elif isinstance(feature, dict):
-                            # Extract string from dict if needed
-                            string_features.append(str(feature.get('name', feature.get('description', str(feature)))))
-                        else:
-                            string_features.append(str(feature))
-                    task_spec.features = string_features
-                    logger.info(f"{self.name} normalized features to strings: {task_spec.features}")
-            else:
-                logger.error(f"{self.name} design manifest task missing TaskSpec")
-                return {
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': 'Design manifest task requires TaskSpec',
-                    'action': 'design_manifest'
-                }
+            # Read build requirements directly from requirements dict
+            # Ensure features are strings (defensive programming)
+            features = requirements.get('features', [])
+            if features:
+                string_features = []
+                for feature in features:
+                    if isinstance(feature, str):
+                        string_features.append(feature)
+                    elif isinstance(feature, dict):
+                        # Extract string from dict if needed
+                        string_features.append(str(feature.get('name', feature.get('description', str(feature)))))
+                    else:
+                        string_features.append(str(feature))
+                features = string_features
+                logger.info(f"{self.name} normalized features to strings: {features}")
+            
+            # Build requirements dict from flattened requirements
+            build_requirements = {
+                'app_name': requirements.get('app_name', requirements.get('application', 'Application')),
+                'version': requirements.get('version', '1.0.0'),
+                'run_id': requirements.get('run_id', requirements.get('ecid', 'unknown')),
+                'prd_analysis': requirements.get('prd_analysis', ''),
+                'features': features,
+                'constraints': requirements.get('constraints', {}),
+                'success_criteria': requirements.get('success_criteria', [])
+            }
+            
+            logger.info(f"{self.name} using build requirements with {len(features)} features")
             
             # Generate manifest using JSON method
-            manifest = await self.app_builder.generate_manifest_json(task_spec)
-            logger.info(f"{self.name} generated manifest JSON: {manifest.architecture_type} with {len(manifest.files)} files")
+            manifest = await self.app_builder.generate_manifest_json(build_requirements)
+            logger.info(f"{self.name} generated manifest JSON: {manifest.get('architecture_type', 'unknown')} with {len(manifest.get('files', []))} files")
             
             # Emit reasoning event about architecture decisions
             ecid = requirements.get('ecid', getattr(self, 'current_ecid', 'unknown'))
@@ -369,18 +458,18 @@ class DevAgent(BaseAgent):
                 task_id=task_id,
                 ecid=ecid,
                 reason_step='decision',
-                summary=f"Selected {manifest.architecture_type} architecture with {len(manifest.files)} files based on TaskSpec requirements",
+                summary=f"Selected {manifest.get('architecture_type', 'unknown')} architecture with {len(manifest.get('files', []))} files based on build requirements",
                 context='manifest_generation',
                 key_points=[
-                    f"Architecture type: {manifest.architecture_type}",
-                    f"File count: {len(manifest.files)}",
-                    f"Features to implement: {len(task_spec.features)}"
+                    f"Architecture type: {manifest.get('architecture_type', 'unknown')}",
+                    f"File count: {len(manifest.get('files', []))}",
+                    f"Features to implement: {len(features)}"
                 ],
                 confidence=0.85
             )
             
             # Generate files using JSON method
-            files = await self.app_builder.generate_files_json(task_spec, manifest)
+            files = await self.app_builder.generate_files_json(build_requirements, manifest)
             
             # Create all files to ensure directory structure exists
             created_files = []
@@ -433,12 +522,12 @@ class DevAgent(BaseAgent):
                 task_id=task_id,
                 ecid=ecid,
                 reason_step='checkpoint',
-                summary=f"Created {len(created_files)} files with {manifest.architecture_type} structure",
+                summary=f"Created {len(created_files)} files with {manifest.get('architecture_type', 'unknown')} structure",
                 context='manifest_generation',
                 key_points=[
                     f"Files created: {len(created_files)}",
                     f"Target directory: {target_directory or 'default'}",
-                    f"Architecture pattern: {manifest.architecture_type}"
+                    f"Architecture pattern: {manifest.get('architecture_type', 'unknown')}"
                 ]
             )
             
@@ -447,10 +536,10 @@ class DevAgent(BaseAgent):
                 kind="manifest_pattern",
                 payload={
                     'task_id': task_id,
-                    'architecture_type': manifest.architecture_type,
-                    'files_count': len(manifest.files),
+                    'architecture_type': manifest.get('architecture_type', 'unknown'),
+                    'files_count': len(manifest.get('files', [])),
                     'created_files': created_files,
-                    'features': task_spec.features
+                    'features': build_requirements.get('features', [])
                 },
                 importance=0.8,
                 task_context={'ecid': ecid, 'pid': requirements.get('pid')}
@@ -460,9 +549,9 @@ class DevAgent(BaseAgent):
                 'task_id': task_id,
                 'status': 'completed',
                 'action': 'design_manifest',
-                'manifest': manifest.to_dict(),
-                'architecture_type': manifest.architecture_type,
-                'file_count': len(manifest.files),
+                'manifest': manifest if isinstance(manifest, dict) else manifest.to_dict() if hasattr(manifest, 'to_dict') else {},
+                'architecture_type': manifest.get('architecture_type', 'unknown') if isinstance(manifest, dict) else getattr(manifest, 'architecture_type', 'unknown'),
+                'file_count': len(manifest.get('files', [])) if isinstance(manifest, dict) else len(getattr(manifest, 'files', [])),
                 'created_files': created_files
             }
             
@@ -511,25 +600,23 @@ class DevAgent(BaseAgent):
                 }
             try:
                 logger.info(f"{self.name} about to parse manifest...")
-                manifest = BuildManifest.from_dict(requirements['manifest'])
-                logger.info(f"{self.name} parsed manifest: {manifest.architecture_type}")
+                manifest = requirements.get('manifest', {})
+                if not isinstance(manifest, dict):
+                    manifest = manifest.to_dict() if hasattr(manifest, 'to_dict') else {}
+                logger.info(f"{self.name} parsed manifest: {manifest.get('architecture_type', 'unknown')}")
             except Exception as e:
                 logger.error(f"{self.name} failed to parse manifest: {e}", exc_info=True)
                 raise
-            task_spec = requirements.get('task_spec') if requirements else None
-            if task_spec:
-                task_spec = TaskSpec.from_dict(task_spec)
-            else:
-                # Create TaskSpec from requirements
-                task_spec = TaskSpec(
-                    app_name=app_name,
-                    version=version,
-                    run_id=self.current_run_id,
-                    prd_analysis=requirements.get('prd_analysis', 'Application build'),
-                    features=features or [],
-                    constraints={},
-                    success_criteria=["Application deploys successfully"]
-                )
+            # Build requirements dict from flattened requirements
+            build_requirements = {
+                'app_name': requirements.get('app_name', app_name),
+                'version': version,
+                'run_id': requirements.get('run_id', self.current_run_id),
+                'prd_analysis': requirements.get('prd_analysis', 'Application build'),
+                'features': features or [],
+                'constraints': requirements.get('constraints', {}),
+                'success_criteria': requirements.get('success_criteria', ["Application deploys successfully"])
+            }
             
             # Check if files already exist (created by design task)
             app_dir = f"warm-boot/apps/{app_name.lower().replace(' ', '-')}/"
@@ -538,7 +625,7 @@ class DevAgent(BaseAgent):
             # If files don't exist, create them (fallback for robustness)
             if not await self.file_manager.directory_exists(app_dir):
                 logger.info(f"{self.name} app directory doesn't exist, creating files from manifest")
-                files = await self.app_builder.generate_files_json(task_spec, manifest)
+                files = await self.app_builder.generate_files_json(build_requirements, manifest)
                 
                 created_files = []
                 for file_info in files:
@@ -580,12 +667,12 @@ class DevAgent(BaseAgent):
                 task_id=task_id,
                 ecid=ecid,
                 reason_step='decision',
-                summary=f"Building Docker image for {app_name} v{version} using {manifest.architecture_type} architecture",
+                summary=f"Building Docker image for {app_name} v{version} using {manifest.get('architecture_type', 'unknown') if isinstance(manifest, dict) else getattr(manifest, 'architecture_type', 'unknown')} architecture",
                 context='build',
                 key_points=[
                     f"Application: {app_name}",
                     f"Version: {version}",
-                    f"Architecture: {manifest.architecture_type}",
+                    f"Architecture: {manifest.get('architecture_type', 'unknown') if isinstance(manifest, dict) else getattr(manifest, 'architecture_type', 'unknown')}",
                     f"Files to containerize: {len(created_files)}"
                 ],
                 confidence=0.90
@@ -628,7 +715,7 @@ class DevAgent(BaseAgent):
                     'version': version,
                     'image': build_result.get('image_name'),
                     'created_files_count': len(created_files),
-                    'architecture_type': manifest.architecture_type
+                    'architecture_type': manifest.get('architecture_type', 'unknown')
                 },
                 importance=0.8,
                 task_context={'ecid': ecid, 'pid': requirements.get('pid')}
@@ -641,7 +728,7 @@ class DevAgent(BaseAgent):
                 'app_name': app_name,
                 'version': version,
                 'created_files': created_files,
-                'manifest': manifest.to_dict(),
+                'manifest': manifest if isinstance(manifest, dict) else manifest.to_dict() if hasattr(manifest, 'to_dict') else {},
                 'target_directory': source_dir,
                 'image': build_result.get('image_name'),
                 'image_version': f"{build_result.get('image_name')}:{version}"
@@ -657,23 +744,23 @@ class DevAgent(BaseAgent):
             }
     
     async def _handle_technical_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle technical tasks using Neo's own TaskSpec generation"""
+        """Handle technical tasks using Neo's own requirements generation"""
         try:
             logger.info(f"{self.name} handling technical task: {task_id}")
             
-            # Create technical TaskSpec
-            task_spec = await self._create_technical_task_spec(requirements)
+            # Create technical requirements
+            tech_requirements = await self._create_technical_requirements(requirements)
             
-            # Log the technical TaskSpec for telemetry
-            logger.info(f"{self.name} generated technical TaskSpec: {task_spec.to_dict()}")
+            # Log the technical requirements for telemetry
+            logger.info(f"{self.name} generated technical requirements: {tech_requirements}")
             
             # For now, just log the technical task (future: implement actual technical task execution)
             return {
                 'task_id': task_id,
                 'status': 'completed',
                 'action': 'technical',
-                'task_spec': task_spec.to_dict(),
-                'message': 'Technical task processed with Neo-generated TaskSpec'
+                'requirements': tech_requirements,
+                'message': 'Technical task processed with Neo-generated requirements'
             }
             
         except Exception as e:

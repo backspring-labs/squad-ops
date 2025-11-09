@@ -137,27 +137,52 @@ async def test_put_memory(temp_db_path, mock_lancedb_available):
     mock_df_instance = MagicMock()
     mock_pd.DataFrame = MagicMock(return_value=mock_df_instance)
     
-    # Mock embedding generation
-    with patch.object(adapter, '_generate_embedding', return_value=[0.1] * 768):
-        memory_item = {
-            'ns': 'role',
-            'agent': 'TestAgent',
-            'tags': ['test', 'memory'],
-            'content': {'action': 'test_action', 'result': {'status': 'success'}},
-            'importance': 0.8,
-            'pid': 'PID-001',
-            'ecid': 'ECID-001'
-        }
-        
-        mem_id = await adapter.put(memory_item)
-        
-        assert mem_id is not None
-        assert len(mem_id) == 16  # SHA256 hex digest first 16 chars
-        mock_table.add.assert_called_once()
-        # Verify PyArrow Table.from_pydict was called at least once (called during table creation and put)
-        import agents.memory.lancedb_adapter as adapter_module
-        if hasattr(adapter_module, 'pa'):
-            assert adapter_module.pa.Table.from_pydict.call_count >= 1
+    # Get mock_pa from sys.modules (it was patched there by the fixture)
+    # But don't modify sys.modules - only modify the adapter module
+    import sys
+    mock_pa = sys.modules.get('pyarrow')
+    if mock_pa is None or not isinstance(mock_pa, MagicMock):
+        # If not available, create a new mock
+        mock_pa = MagicMock()
+        mock_pa.Table = MagicMock()
+        mock_pa.Table.from_pydict = MagicMock(return_value=MagicMock())
+    
+    # Ensure pa module is properly mocked in the adapter module
+    # Always use the mock, even if pa is already imported
+    # Store original to restore later
+    original_pa = getattr(adapter_module, 'pa', None)
+    adapter_module.pa = mock_pa
+    # Ensure the mock is set up correctly
+    adapter_module.pa.Table.from_pydict = MagicMock(return_value=MagicMock())
+    
+    try:
+        # Mock embedding generation
+        # Patch pa.Table.from_pydict to bypass schema validation
+        with patch.object(adapter_module.pa.Table, 'from_pydict', return_value=MagicMock()) as mock_from_pydict:
+            with patch.object(adapter, '_generate_embedding', return_value=[0.1] * 768):
+                memory_item = {
+                    'ns': 'role',
+                    'agent': 'TestAgent',
+                    'tags': ['test', 'memory'],
+                    'content': {'action': 'test_action', 'result': {'status': 'success'}},
+                    'importance': 0.8,
+                    'pid': 'PID-001',
+                    'ecid': 'ECID-001'
+                }
+                
+                mem_id = await adapter.put(memory_item)
+                
+                assert mem_id is not None
+                assert len(mem_id) == 16  # SHA256 hex digest first 16 chars
+                mock_table.add.assert_called_once()
+                # Verify PyArrow Table.from_pydict was called at least once
+                assert mock_from_pydict.call_count >= 1
+    finally:
+        # Restore original pa module to avoid polluting other tests
+        if original_pa is not None:
+            adapter_module.pa = original_pa
+        elif hasattr(adapter_module, 'pa'):
+            delattr(adapter_module, 'pa')
 
 
 @pytest.mark.asyncio

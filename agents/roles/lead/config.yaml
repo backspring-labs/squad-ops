@@ -1,0 +1,21 @@
+agent_id: max
+role: lead
+spec_version: 1.0.0
+implements:
+  - capability: governance.task_coordination
+    min_version: 1.0.0
+  - capability: governance.approval
+    min_version: 1.0.0
+  - capability: governance.escalation
+    min_version: 1.0.0
+  - capability: validate.warmboot
+    min_version: 1.0.0
+constraints:
+  repo_allow: ["squad_ops/*"]
+  max_runtime_s: 3600
+  network_allow: ["git-read", "package-cache", "api-calls"]
+defaults:
+  model: ollama:llama3.1:8b
+  image: squadops/max:latest
+  max_concurrency: 1
+

@@ -5,7 +5,12 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List
+from datetime import datetime
 from base_agent import BaseAgent, AgentMessage
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.validator import SchemaValidator
+from pathlib import Path
 import time
 
 logger = logging.getLogger(__name__)
@@ -16,13 +21,105 @@ class AuditAgent(BaseAgent):
     def __init__(self, identity: str):
         super().__init__(
             name=identity,
-            agent_type="monitoring",
+            agent_type="auditor",
             reasoning_style="monitoring_audit"
         )
         self.secure_logs = {}
         self.agent_activity = {}
         self.anomaly_detection = {}
         self.audit_trail = []
+        
+        # Initialize schema validator
+        base_path = Path(__file__).parent.parent.parent.parent
+        self.validator = SchemaValidator(base_path)
+    
+    async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
+        """Handle agent request using capability-based routing"""
+        started_at = datetime.utcnow()
+        
+        try:
+            # Validate request
+            is_valid, error_msg = self.validator.validate_request(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="VALIDATION_ERROR",
+                    error_message=error_msg or "Request validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate constraints
+            is_valid, error_msg = self._validate_constraints(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="POLICY_VIOLATION",
+                    error_message=error_msg or "Constraint validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Generate idempotency key
+            idempotency_key = request.generate_idempotency_key(self.name)
+            
+            # Route to capability handler
+            action = request.action
+            if action == "audit.monitoring":
+                result = await self._handle_monitoring(request)
+            elif action == "audit.compliance_tracking":
+                result = await self._handle_compliance_tracking(request)
+            else:
+                return AgentResponse.failure(
+                    error_code="UNKNOWN_CAPABILITY",
+                    error_message=f"Unknown capability: {action}",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate result keys
+            is_valid, error_msg = self.validator.validate_result_keys(action, result)
+            if not is_valid:
+                logger.warning(f"{self.name}: Result validation warning: {error_msg}")
+            
+            # Create success response
+            ended_at = datetime.utcnow()
+            return AgentResponse.success(
+                result=result,
+                idempotency_key=idempotency_key,
+                timing=Timing.create(started_at, ended_at)
+            )
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Error handling request: {e}", exc_info=True)
+            return AgentResponse.failure(
+                error_code="INTERNAL_ERROR",
+                error_message=str(e),
+                retryable=True,
+                timing=Timing.create(started_at)
+            )
+    
+    async def _handle_monitoring(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle audit.monitoring capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing monitoring logic to new capability format
+        return {
+            'health_status': 'healthy',
+            'metrics': {},
+            'alerts': []
+        }
+    
+    async def _handle_compliance_tracking(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle audit.compliance_tracking capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing compliance tracking logic to new capability format
+        return {
+            'compliance_status': 'compliant',
+            'audit_trail': [],
+            'violations': []
+        }
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process monitoring and audit tasks"""

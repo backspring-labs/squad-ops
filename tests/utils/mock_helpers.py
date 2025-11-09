@@ -7,8 +7,19 @@ from typing import Dict, Any, List
 import aiohttp
 import asyncio
 
-from agents.contracts.task_spec import TaskSpec
-from agents.contracts.build_manifest import BuildManifest, FileSpec
+# Legacy imports (for backward compatibility during migration)
+try:
+    from agents.contracts.task_spec import TaskSpec
+    from agents.contracts.build_manifest import BuildManifest, FileSpec
+except ImportError:
+    # Old contracts removed, use dicts instead
+    TaskSpec = None
+    BuildManifest = None
+    FileSpec = None
+
+# New SIP-046 imports
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
 
 
 class MockOllamaResponse:
@@ -142,42 +153,42 @@ class MockAiohttpResponse:
         return 200
 
 
-def create_sample_task_spec() -> TaskSpec:
-    """Create a sample TaskSpec for testing."""
-    return TaskSpec(
-        app_name="TestApp",
-        version="1.0.0", 
-        run_id="TEST-001",
-        prd_analysis="Test application for unit testing",
-        features=["Feature 1", "Feature 2"],
-        constraints={"framework": "vanilla_js"},
-        success_criteria=["Application loads", "No errors"]
-    )
+def create_sample_task_spec() -> Dict[str, Any]:
+    """Create a sample requirements dict for testing (replaces TaskSpec)."""
+    return {
+        "app_name": "TestApp",
+        "version": "1.0.0", 
+        "run_id": "TEST-001",
+        "prd_analysis": "Test application for unit testing",
+        "features": ["Feature 1", "Feature 2"],
+        "constraints": {"framework": "vanilla_js"},
+        "success_criteria": ["Application loads", "No errors"]
+    }
 
 
-def create_sample_build_manifest() -> BuildManifest:
-    """Create a sample BuildManifest for testing."""
-    return BuildManifest(
-        architecture_type="spa_web_app",
-        framework="vanilla_js",
-        files=[
-            FileSpec(
-                path="index.html",
-                purpose="Main page",
-                dependencies=[]
-            ),
-            FileSpec(
-                path="app.js",
-                purpose="JavaScript logic",
-                dependencies=["index.html"]
-            )
+def create_sample_build_manifest() -> Dict[str, Any]:
+    """Create a sample manifest dict for testing (replaces BuildManifest)."""
+    return {
+        "architecture_type": "spa_web_app",
+        "framework": "vanilla_js",
+        "files": [
+            {
+                "path": "index.html",
+                "purpose": "Main page",
+                "dependencies": []
+            },
+            {
+                "path": "app.js",
+                "purpose": "JavaScript logic",
+                "dependencies": ["index.html"]
+            }
         ],
-        deployment={
+        "deployment": {
             "container": "nginx:alpine",
             "port": 80,
             "environment": "production"
         }
-    )
+    }
 
 
 class MockFileManager:
@@ -273,3 +284,75 @@ def mock_ollama_json_call(response_data: Dict[str, Any] = None,
         mock.return_value = response_data or MockOllamaResponse.manifest_response()
     
     return mock
+
+
+# ============================================================================
+# SIP-046 Helper Functions (AgentRequest/AgentResponse)
+# ============================================================================
+
+def create_sample_agent_request(action: str = "build.artifact", 
+                               payload: Dict[str, Any] = None,
+                               metadata: Dict[str, Any] = None) -> AgentRequest:
+    """Create a sample AgentRequest for testing."""
+    if payload is None:
+        payload = {"task_id": "test-001", "project": "test-project"}
+    
+    if metadata is None:
+        metadata = {"pid": "PID-001", "ecid": "ECID-001", "tags": ["test"]}
+    
+    return AgentRequest(
+        action=action,
+        payload=payload,
+        metadata=metadata
+    )
+
+
+def create_sample_agent_response(status: str = "ok",
+                                 result: Dict[str, Any] = None,
+                                 error: Error = None,
+                                 idempotency_key: str = "test-key-001") -> AgentResponse:
+    """Create a sample AgentResponse for testing."""
+    if result is None:
+        result = {"status": "success", "data": "test"}
+    
+    if status == "ok":
+        return AgentResponse.success(
+            result=result,
+            idempotency_key=idempotency_key
+        )
+    else:
+        if error is None:
+            error = Error(code="TEST_ERROR", message="Test error", retryable=False)
+        return AgentResponse.failure(
+            error_code=error.code,
+            error_message=error.message,
+            retryable=error.retryable,
+            idempotency_key=idempotency_key
+        )
+
+
+def create_sample_build_artifact_request(task_id: str = "test-001") -> AgentRequest:
+    """Create a sample build.artifact request."""
+    return create_sample_agent_request(
+        action="build.artifact",
+        payload={"task_id": task_id, "project": "test-project"},
+        metadata={"pid": "PID-001", "ecid": "ECID-001"}
+    )
+
+
+def create_sample_test_run_request(task_id: str = "test-001") -> AgentRequest:
+    """Create a sample test.run request."""
+    return create_sample_agent_request(
+        action="test.run",
+        payload={"task_id": task_id, "test_suite": "unit"},
+        metadata={"pid": "PID-001", "ecid": "ECID-001"}
+    )
+
+
+def create_sample_validate_warmboot_request(ecid: str = "ECID-001") -> AgentRequest:
+    """Create a sample validate.warmboot request."""
+    return create_sample_agent_request(
+        action="validate.warmboot",
+        payload={"run_id": "run-001"},
+        metadata={"pid": "PID-001", "ecid": ecid}
+    )

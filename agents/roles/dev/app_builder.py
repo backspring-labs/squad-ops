@@ -7,8 +7,6 @@ Uses structured JSON output from LLMs for manifest and file generation.
 from pathlib import Path
 from typing import List, Dict, Any
 from agents.llm.client import LLMClient
-from agents.contracts.task_spec import TaskSpec
-from agents.contracts.build_manifest import BuildManifest
 import logging
 import yaml
 import json
@@ -173,31 +171,31 @@ class AppBuilder:
             raise Exception(f"LLM call failed: {error_msg}")
     
     
-    async def generate_manifest_json(self, task_spec: TaskSpec) -> BuildManifest:
+    async def generate_manifest_json(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
         """Generate BuildManifest using JSON-based LLM call via router"""
-        logger.info(f"AppBuilder generating manifest for {task_spec.app_name}")
+        logger.info(f"AppBuilder generating manifest for {requirements.get('app_name', 'unknown')}")
         # Pass context for telemetry logging
-        return await self._generate_manifest_with_context(task_spec, context="manifest_generation")
+        return await self._generate_manifest_with_context(requirements, context="manifest_generation")
     
-    async def _generate_manifest_with_context(self, task_spec: TaskSpec, context: str) -> BuildManifest:
+    async def _generate_manifest_with_context(self, requirements: Dict[str, Any], context: str) -> Dict[str, Any]:
         """Generate manifest with context for telemetry"""
         
         # Load architect prompt with JSON output format
         architect_prompt = self._load_prompt(
             'architect.txt',
-            app_name=task_spec.app_name,
-            version=task_spec.version,
-            prd_analysis=task_spec.prd_analysis,
-            features=', '.join(task_spec.features) if task_spec.features else 'General web application',
-            constraints=yaml.dump(task_spec.constraints) if task_spec.constraints else 'None',
+            app_name=requirements.get('app_name', 'unknown'),
+            version=requirements.get('version', '1.0.0'),
+            prd_analysis=requirements.get('prd_analysis', ''),
+            features=', '.join(requirements.get('features', [])) if requirements.get('features') else 'General web application',
+            constraints=yaml.dump(requirements.get('constraints', {})) if requirements.get('constraints') else 'None',
             output_format='json'
         )
         
         # Load SquadOps constraints
         constraints = self._load_prompt(
             'squadops_constraints.txt',
-            version=task_spec.version,
-            run_id=task_spec.run_id
+            version=requirements.get('version', '1.0.0'),
+            run_id=requirements.get('run_id', 'unknown')
         )
         
         # Inject constraints into architect prompt
@@ -207,15 +205,12 @@ class AppBuilder:
             # Call LLM via router with JSON format enforcement
             manifest_data = await self._call_llm_json(prompt, context=context)
             
-            # Create BuildManifest from JSON data
-            manifest = BuildManifest.from_dict(manifest_data)
-            
             # ENFORCE FRAMEWORK CONSTRAINT: Always set to vanilla_js (SquadOps standard)
-            logger.info(f"AppBuilder parsed manifest: {manifest.architecture_type}, LLM framework: {manifest.framework}")
-            manifest.framework = "vanilla_js"  # Always override - no LLM choice
-            logger.info(f"AppBuilder final manifest: {manifest.architecture_type}, framework: {manifest.framework} (SquadOps standard)")
+            logger.info(f"AppBuilder parsed manifest: {manifest_data.get('architecture_type', 'unknown')}, LLM framework: {manifest_data.get('framework', 'unknown')}")
+            manifest_data['framework'] = "vanilla_js"  # Always override - no LLM choice
+            logger.info(f"AppBuilder final manifest: {manifest_data.get('architecture_type', 'unknown')}, framework: {manifest_data.get('framework', 'vanilla_js')} (SquadOps standard)")
             
-            return manifest
+            return manifest_data
             
         except Exception as e:
             error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
@@ -223,31 +218,31 @@ class AppBuilder:
             logger.debug(f"AppBuilder exception details:", exc_info=True)
             raise Exception(f"Manifest generation failed: {error_msg}")
     
-    async def generate_files_json(self, task_spec: TaskSpec, manifest: BuildManifest) -> List[Dict[str, Any]]:
+    async def generate_files_json(self, requirements: Dict[str, Any], manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate application files using JSON-based LLM call via router"""
-        logger.info(f"AppBuilder generating files for {task_spec.app_name}")
+        logger.info(f"AppBuilder generating files for {requirements.get('app_name', 'unknown')}")
         # Pass context for telemetry logging
-        return await self._generate_files_with_context(task_spec, manifest, context="file_generation")
+        return await self._generate_files_with_context(requirements, manifest, context="file_generation")
     
-    async def _generate_files_with_context(self, task_spec: TaskSpec, manifest: BuildManifest, context: str) -> List[Dict[str, Any]]:
+    async def _generate_files_with_context(self, requirements: Dict[str, Any], manifest: Dict[str, Any], context: str) -> List[Dict[str, Any]]:
         """Generate files with context for telemetry"""
         # Load developer prompt with JSON output format
         developer_prompt = self._load_prompt(
             'developer.txt',
-            app_name=task_spec.app_name,
-            version=task_spec.version,
-            prd_analysis=task_spec.prd_analysis,
-            features=', '.join(task_spec.features) if task_spec.features else 'General web application',
-            constraints=yaml.dump(task_spec.constraints) if task_spec.constraints else 'None',
-            manifest_summary=yaml.dump(manifest.to_dict()),
+            app_name=requirements.get('app_name', 'unknown'),
+            version=requirements.get('version', '1.0.0'),
+            prd_analysis=requirements.get('prd_analysis', ''),
+            features=', '.join(requirements.get('features', [])) if requirements.get('features') else 'General web application',
+            constraints=yaml.dump(requirements.get('constraints', {})) if requirements.get('constraints') else 'None',
+            manifest_summary=yaml.dump(manifest),
             output_format='json'
         )
         
         # Load SquadOps constraints
         constraints = self._load_prompt(
             'squadops_constraints.txt',
-            version=task_spec.version,
-            run_id=task_spec.run_id
+            version=requirements.get('version', '1.0.0'),
+            run_id=requirements.get('run_id', 'unknown')
         )
         
         # Inject constraints into developer prompt

@@ -5,7 +5,12 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List
+from datetime import datetime
 from base_agent import BaseAgent, AgentMessage
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.validator import SchemaValidator
+from pathlib import Path
 import time
 
 logger = logging.getLogger(__name__)
@@ -16,12 +21,104 @@ class DataAgent(BaseAgent):
     def __init__(self, identity: str):
         super().__init__(
             name=identity,
-            agent_type="data",
+            agent_type="data_analyst",
             reasoning_style="inductive"
         )
         self.time_series_cache = {}
         self.batch_queue = []
         self.patterns_discovered = {}
+        
+        # Initialize schema validator
+        base_path = Path(__file__).parent.parent.parent.parent
+        self.validator = SchemaValidator(base_path)
+    
+    async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
+        """Handle agent request using capability-based routing"""
+        started_at = datetime.utcnow()
+        
+        try:
+            # Validate request
+            is_valid, error_msg = self.validator.validate_request(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="VALIDATION_ERROR",
+                    error_message=error_msg or "Request validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate constraints
+            is_valid, error_msg = self._validate_constraints(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="POLICY_VIOLATION",
+                    error_message=error_msg or "Constraint validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Generate idempotency key
+            idempotency_key = request.generate_idempotency_key(self.name)
+            
+            # Route to capability handler
+            action = request.action
+            if action == "data.analysis":
+                result = await self._handle_data_analysis(request)
+            elif action == "data.modeling":
+                result = await self._handle_data_modeling(request)
+            else:
+                return AgentResponse.failure(
+                    error_code="UNKNOWN_CAPABILITY",
+                    error_message=f"Unknown capability: {action}",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate result keys
+            is_valid, error_msg = self.validator.validate_result_keys(action, result)
+            if not is_valid:
+                logger.warning(f"{self.name}: Result validation warning: {error_msg}")
+            
+            # Create success response
+            ended_at = datetime.utcnow()
+            return AgentResponse.success(
+                result=result,
+                idempotency_key=idempotency_key,
+                timing=Timing.create(started_at, ended_at)
+            )
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Error handling request: {e}", exc_info=True)
+            return AgentResponse.failure(
+                error_code="INTERNAL_ERROR",
+                error_message=str(e),
+                retryable=True,
+                timing=Timing.create(started_at)
+            )
+    
+    async def _handle_data_analysis(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle data.analysis capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing data analysis logic to new capability format
+        return {
+            'insights': [],
+            'metrics': {},
+            'visualization_uri': f'/visualizations/{task_id}'
+        }
+    
+    async def _handle_data_modeling(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle data.modeling capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing data modeling logic to new capability format
+        return {
+            'model_uri': f'/models/{task_id}',
+            'accuracy': 0.0,
+            'predictions': []
+        }
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process data tasks using inductive reasoning and batch processing"""

@@ -20,3 +20,6 @@ opentelemetry-instrumentation
 opentelemetry-exporter-otlp-proto-grpc>=1.22.0
 opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions
+# SIP-046: Agent specs and validation
+jsonschema>=4.20.0
+pyyaml>=6.0

@@ -5,7 +5,12 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List
+from datetime import datetime
 from base_agent import BaseAgent, AgentMessage
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.validator import SchemaValidator
+from pathlib import Path
 from collections import deque
 import heapq
 
@@ -17,12 +22,104 @@ class StratAgent(BaseAgent):
     def __init__(self, identity: str):
         super().__init__(
             name=identity,
-            agent_type="product",
+            agent_type="strategy",
             reasoning_style="abductive"
         )
         self.priority_queue = []
         self.opportunity_cache = {}
         self.hypothesis_space = {}
+        
+        # Initialize schema validator
+        base_path = Path(__file__).parent.parent.parent.parent
+        self.validator = SchemaValidator(base_path)
+    
+    async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
+        """Handle agent request using capability-based routing"""
+        started_at = datetime.utcnow()
+        
+        try:
+            # Validate request
+            is_valid, error_msg = self.validator.validate_request(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="VALIDATION_ERROR",
+                    error_message=error_msg or "Request validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate constraints
+            is_valid, error_msg = self._validate_constraints(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="POLICY_VIOLATION",
+                    error_message=error_msg or "Constraint validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Generate idempotency key
+            idempotency_key = request.generate_idempotency_key(self.name)
+            
+            # Route to capability handler
+            action = request.action
+            if action == "strategy.market_analysis":
+                result = await self._handle_market_analysis(request)
+            elif action == "strategy.product_planning":
+                result = await self._handle_product_planning(request)
+            else:
+                return AgentResponse.failure(
+                    error_code="UNKNOWN_CAPABILITY",
+                    error_message=f"Unknown capability: {action}",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate result keys
+            is_valid, error_msg = self.validator.validate_result_keys(action, result)
+            if not is_valid:
+                logger.warning(f"{self.name}: Result validation warning: {error_msg}")
+            
+            # Create success response
+            ended_at = datetime.utcnow()
+            return AgentResponse.success(
+                result=result,
+                idempotency_key=idempotency_key,
+                timing=Timing.create(started_at, ended_at)
+            )
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Error handling request: {e}", exc_info=True)
+            return AgentResponse.failure(
+                error_code="INTERNAL_ERROR",
+                error_message=str(e),
+                retryable=True,
+                timing=Timing.create(started_at)
+            )
+    
+    async def _handle_market_analysis(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle strategy.market_analysis capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing market analysis logic to new capability format
+        return {
+            'analysis_report': f'/reports/market-analysis/{task_id}',
+            'insights': [],
+            'recommendations': []
+        }
+    
+    async def _handle_product_planning(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle strategy.product_planning capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing product planning logic to new capability format
+        return {
+            'roadmap': {},
+            'priorities': [],
+            'timeline': {}
+        }
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process product tasks using abductive reasoning and opportunistic approach"""

@@ -1,0 +1,19 @@
+agent_id: eve
+role: qa
+spec_version: 1.0.0
+implements:
+  - capability: test.run
+    min_version: 1.0.0
+  - capability: qa.security_audit
+    min_version: 1.0.0
+  - capability: qa.compliance_check
+    min_version: 1.0.0
+constraints:
+  repo_allow: ["squad_ops/*", "warm-boot/*"]
+  max_runtime_s: 2400
+  network_allow: ["git-read", "package-cache", "security-scans"]
+defaults:
+  model: ollama:llama3-70b
+  image: squadops/eve:latest
+  max_concurrency: 1
+

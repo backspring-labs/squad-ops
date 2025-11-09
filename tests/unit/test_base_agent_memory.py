@@ -13,6 +13,16 @@ class MemoryTestAgent(BaseAgent):
     async def process_task(self, task):
         return {'status': 'completed'}
     
+    async def handle_agent_request(self, request):
+        """Required abstract method"""
+        from agents.specs.agent_response import AgentResponse, Timing
+        from datetime import datetime
+        return AgentResponse.success(
+            result={'status': 'completed'},
+            idempotency_key='test-key',
+            timing=Timing.create(datetime.utcnow())
+        )
+    
     async def handle_message(self, message):
         """Required abstract method"""
         return {'status': 'handled'}

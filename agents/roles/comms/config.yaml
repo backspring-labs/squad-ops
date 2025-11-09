@@ -1,0 +1,17 @@
+agent_id: joi
+role: comms
+spec_version: 1.0.0
+implements:
+  - capability: comms.documentation
+    min_version: 1.0.0
+  - capability: comms.stakeholder_update
+    min_version: 1.0.0
+constraints:
+  repo_allow: ["squad_ops/*"]
+  max_runtime_s: 900
+  network_allow: ["git-read", "api-calls"]
+defaults:
+  model: ollama:llama3-8b
+  image: squadops/joi:latest
+  max_concurrency: 1
+

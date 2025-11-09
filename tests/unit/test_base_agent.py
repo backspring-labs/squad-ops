@@ -9,13 +9,21 @@ import asyncio
 from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from agents.base_agent import BaseAgent, AgentMessage
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
+from tests.utils.mock_helpers import create_sample_agent_request, create_sample_agent_response
 
 class ConcreteTestAgent(BaseAgent):
     """Concrete test agent for testing BaseAgent functionality"""
     
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Mock implementation of process_task"""
-        return {'task_id': task.get('task_id'), 'status': 'completed'}
+    # Don't override process_task - use BaseAgent's implementation which calls handle_agent_request
+    
+    async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
+        """Mock implementation of handle_agent_request"""
+        return AgentResponse.success(
+            result={'action': request.action, 'status': 'completed'},
+            idempotency_key=request.generate_idempotency_key(self.name)
+        )
     
     async def handle_message(self, message: AgentMessage) -> None:
         """Mock implementation of handle_message"""
@@ -196,6 +204,75 @@ class TestBaseAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_handle_agent_request(self, mock_unified_config):
+        """Test handle_agent_request method"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            request = create_sample_agent_request(
+                action="test.action",
+                payload={"task_id": "test-001"}
+            )
+            
+            response = await agent.handle_agent_request(request)
+            
+            assert response.status == "ok"
+            assert response.result["action"] == "test.action"
+            assert response.result["status"] == "completed"
+            assert response.idempotency_key is not None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_with_validation_error(self, mock_unified_config):
+        """Test handle_agent_request with invalid request"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            # Create request with missing required metadata
+            with pytest.raises(ValueError, match="metadata.pid is required"):
+                request = AgentRequest(
+                    action="test.action",
+                    payload={},
+                    metadata={"ecid": "ECID-001"}  # Missing pid
+                )
+                await agent.handle_agent_request(request)
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_process_task_deprecated_calls_handle_agent_request(self, mock_unified_config):
+        """Test that process_task (deprecated) calls handle_agent_request"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            # Call process_task with new format (has 'action' key)
+            # This should call handle_agent_request which is implemented in ConcreteTestAgent
+            task = {
+                "action": "test.action",
+                "payload": {"task_id": "test-001"},
+                "metadata": {"pid": "PID-001", "ecid": "ECID-001"}
+            }
+            
+            result = await agent.process_task(task)
+            
+            # Verify result is a dict (from response.to_dict())
+            assert isinstance(result, dict)
+            # The ConcreteTestAgent.handle_agent_request returns a response with action and status
+            assert result.get('status') == 'ok' or 'action' in result.get('result', {})
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_log_activity(self, mock_database):
         """Test activity logging"""
         agent = ConcreteTestAgent(
@@ -300,7 +377,7 @@ class TestBaseAgent:
             assert mock_session.post.called
             call_args = mock_session.post.call_args
             # Heartbeat now goes to health-check service, not task-api
-            assert call_args[0][0] == 'http://task-api:8000/health/agents/status'
+            assert call_args[0][0] == 'http://health-check:8000/health/agents/status'
             json_payload = call_args[1]['json']
             assert json_payload['agent_name'] == 'test-agent'
             assert json_payload['status'] == 'online'

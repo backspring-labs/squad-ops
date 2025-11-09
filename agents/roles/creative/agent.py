@@ -4,7 +4,12 @@
 import asyncio
 import logging
 from typing import Dict, Any
+from datetime import datetime
 from base_agent import BaseAgent
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.validator import SchemaValidator
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,12 +21,104 @@ class CreativeAgent(BaseAgent):
     def __init__(self, identity: str):
         super().__init__(
             name=identity,
-            agent_type="creative",
+            agent_type="creative_designer",
             reasoning_style="iterative"
         )
         self.visual_assets = {}
         self.creative_queue = asyncio.Queue()
         self.inspiration_library = {}
+        
+        # Initialize schema validator
+        base_path = Path(__file__).parent.parent.parent.parent
+        self.validator = SchemaValidator(base_path)
+    
+    async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
+        """Handle agent request using capability-based routing"""
+        started_at = datetime.utcnow()
+        
+        try:
+            # Validate request
+            is_valid, error_msg = self.validator.validate_request(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="VALIDATION_ERROR",
+                    error_message=error_msg or "Request validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate constraints
+            is_valid, error_msg = self._validate_constraints(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="POLICY_VIOLATION",
+                    error_message=error_msg or "Constraint validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Generate idempotency key
+            idempotency_key = request.generate_idempotency_key(self.name)
+            
+            # Route to capability handler
+            action = request.action
+            if action == "creative.visual_design":
+                result = await self._handle_visual_design(request)
+            elif action == "creative.ux_design":
+                result = await self._handle_ux_design(request)
+            else:
+                return AgentResponse.failure(
+                    error_code="UNKNOWN_CAPABILITY",
+                    error_message=f"Unknown capability: {action}",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate result keys
+            is_valid, error_msg = self.validator.validate_result_keys(action, result)
+            if not is_valid:
+                logger.warning(f"{self.name}: Result validation warning: {error_msg}")
+            
+            # Create success response
+            ended_at = datetime.utcnow()
+            return AgentResponse.success(
+                result=result,
+                idempotency_key=idempotency_key,
+                timing=Timing.create(started_at, ended_at)
+            )
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Error handling request: {e}", exc_info=True)
+            return AgentResponse.failure(
+                error_code="INTERNAL_ERROR",
+                error_message=str(e),
+                retryable=True,
+                timing=Timing.create(started_at)
+            )
+    
+    async def _handle_visual_design(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle creative.visual_design capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing visual design logic to new capability format
+        return {
+            'design_uri': f'/designs/{task_id}',
+            'assets': [],
+            'style_guide': {}
+        }
+    
+    async def _handle_ux_design(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle creative.ux_design capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing UX design logic to new capability format
+        return {
+            'ux_design_uri': f'/ux-designs/{task_id}',
+            'wireframes': [],
+            'user_flows': []
+        }
         
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process creative design tasks"""

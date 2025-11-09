@@ -1,11 +1,5 @@
-console.log('Application loaded');
+console.log('HelloSquad v0.5.1.155 | WarmBoot Run: ECID-WB-155 loaded');
+
 document.addEventListener('DOMContentLoaded', function() {
-  fetch('/health')
-    .then(response => response.json())
-    .then(data => {
-      document.getElementById('app').innerText = `Health Check: ${data.status}`;
-    })
-    .catch(error => {
-      console.error('Error fetching health check:', error);
-    });
+  // Application logic here
 });

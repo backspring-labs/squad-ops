@@ -1,0 +1,49 @@
+bindings:
+  # Development capabilities
+  build.artifact: neo
+  
+  # Testing capabilities
+  test.run: eve
+  
+  # Governance capabilities
+  validate.warmboot: max
+  governance.task_coordination: max
+  governance.approval: max
+  governance.escalation: max
+  
+  # Strategy capabilities
+  strategy.market_analysis: nat
+  strategy.product_planning: nat
+  
+  # QA capabilities
+  qa.security_audit: eve
+  qa.compliance_check: eve
+  
+  # Data capabilities
+  data.analysis: data
+  data.modeling: data
+  
+  # Finance capabilities
+  finance.analysis: quark
+  finance.budget_planning: quark
+  
+  # Communications capabilities
+  comms.documentation: joi
+  comms.stakeholder_update: joi
+  
+  # Research capabilities
+  research.curation: og
+  research.trend_analysis: og
+  
+  # Creative capabilities
+  creative.visual_design: glyph
+  creative.ux_design: glyph
+  
+  # Audit capabilities
+  audit.monitoring: hal
+  audit.compliance_tracking: hal
+  
+  # DevOps capabilities
+  devops.infrastructure: devops-agent
+  devops.deployment: devops-agent
+

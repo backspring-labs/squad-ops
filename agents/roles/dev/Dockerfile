@@ -30,7 +30,8 @@ COPY agents/roles/${AGENT_ROLE}/version_manager.py .
 COPY agents/roles/${AGENT_ROLE}/file_manager.py .
 COPY agents/roles/${AGENT_ROLE}/prompts ./prompts
 COPY agents/llm ./agents/llm
-COPY agents/contracts ./agents/contracts
+COPY agents/specs ./agents/specs
+COPY agents/capabilities ./agents/capabilities
 COPY agents/telemetry ./agents/telemetry
 COPY agents/memory ./agents/memory
 COPY agents/instances ./agents/instances

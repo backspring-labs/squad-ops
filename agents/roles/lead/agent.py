@@ -17,7 +17,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from base_agent import BaseAgent, AgentMessage
-from agents.contracts.task_spec import TaskSpec
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.validator import SchemaValidator
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +51,179 @@ class LeadAgent(BaseAgent):
         from config.agent_config import get_complexity_threshold
         
         self.escalation_threshold = get_complexity_threshold("escalation")
+        
+        # Initialize schema validator
+        from pathlib import Path
+        # In container, agent.py is at /app/agent.py, so base_path should be /app
+        # In development, __file__ is at agents/roles/lead/agent.py, so go up 3 levels
+        if Path('/app').exists():
+            base_path = Path('/app')
+        else:
+            base_path = Path(__file__).parent.parent.parent.parent
+        self.validator = SchemaValidator(base_path)
     
-    async def generate_task_spec(self, prd_content: str, app_name: str, version: str, run_id: str, features: List[str] = None) -> TaskSpec:
-        """Generate TaskSpec from PRD analysis using LLM"""
-        logger.info(f"{self.name} generating TaskSpec for {app_name} v{version}")
+    async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
+        """Handle agent request using capability-based routing"""
+        started_at = datetime.utcnow()
+        
+        try:
+            # Validate request
+            is_valid, error_msg = self.validator.validate_request(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="VALIDATION_ERROR",
+                    error_message=error_msg or "Request validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate constraints
+            is_valid, error_msg = self._validate_constraints(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="POLICY_VIOLATION",
+                    error_message=error_msg or "Constraint validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Generate idempotency key
+            idempotency_key = request.generate_idempotency_key(self.name)
+            
+            # Route to capability handler
+            action = request.action
+            if action == "validate.warmboot":
+                result = await self._handle_validate_warmboot(request)
+            elif action == "governance.task_coordination":
+                result = await self._handle_task_coordination(request)
+            elif action == "governance.approval":
+                result = await self._handle_approval(request)
+            elif action == "governance.escalation":
+                result = await self._handle_escalation(request)
+            else:
+                return AgentResponse.failure(
+                    error_code="UNKNOWN_CAPABILITY",
+                    error_message=f"Unknown capability: {action}",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate result keys
+            is_valid, error_msg = self.validator.validate_result_keys(action, result)
+            if not is_valid:
+                logger.warning(f"{self.name}: Result validation warning: {error_msg}")
+            
+            # Create success response
+            ended_at = datetime.utcnow()
+            return AgentResponse.success(
+                result=result,
+                idempotency_key=idempotency_key,
+                timing=Timing.create(started_at, ended_at)
+            )
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Error handling request: {e}", exc_info=True)
+            return AgentResponse.failure(
+                error_code="INTERNAL_ERROR",
+                error_message=str(e),
+                retryable=True,
+                timing=Timing.create(started_at)
+            )
+    
+    async def _handle_validate_warmboot(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle validate.warmboot capability - processes WarmBoot requests"""
+        payload = request.payload
+        ecid = request.metadata.get('ecid', 'unknown')
+        pid = request.metadata.get('pid', 'unknown')
+        
+        # Convert AgentRequest to old task format for compatibility with existing process_task logic
+        # This allows us to reuse the existing WarmBoot processing code
+        task = {
+            'task_id': payload.get('task_id', f"{ecid}-main"),
+            'type': 'governance',
+            'ecid': ecid,
+            'pid': pid,
+            'application': payload.get('application'),
+            'request_type': payload.get('request_type'),
+            'agents': payload.get('agents', []),
+            'priority': payload.get('priority', 'MEDIUM'),
+            'description': payload.get('description'),
+            'requirements': payload.get('requirements'),
+            'prd_path': payload.get('prd_path')
+        }
+        
+        # Process the WarmBoot request using existing logic
+        result = await self.process_task(task)
+        
+        # Convert result to validate.warmboot capability format
+        # The process_task result will have task completion info
+        # We need to extract the wrap-up info if available
+        return {
+            'match': result.get('status') == 'completed',
+            'diffs': result.get('diffs', []),
+            'wrap_up_uri': result.get('wrap_up_uri', f'/warm-boot/runs/{ecid}/wrap-up.md'),
+            'metrics': result.get('metrics', {})
+        }
+    
+    async def _handle_task_coordination(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle governance.task_coordination capability"""
+        payload = request.payload
+        task_type = payload.get('type', 'unknown')
+        
+        # Determine delegation target
+        delegation_target = await self.determine_delegation_target(task_type)
+        
+        # Delegate task
+        await self.send_message(
+            recipient=delegation_target,
+            message_type="task_delegation",
+            payload=payload,
+            context=request.metadata
+        )
+        
+        return {
+            'tasks_created': 1,
+            'tasks_delegated': 1,
+            'coordination_log': f"Delegated {task_type} to {delegation_target}"
+        }
+    
+    async def _handle_approval(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle governance.approval capability"""
+        payload = request.payload
+        complexity = payload.get('complexity', 0.5)
+        
+        if complexity > self.escalation_threshold:
+            return {
+                'approved': False,
+                'decision': 'escalated',
+                'approval_time': 0.0
+            }
+        
+        return {
+            'approved': True,
+            'decision': 'approved',
+            'approval_time': 0.5
+        }
+    
+    async def _handle_escalation(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle governance.escalation capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        await self.escalate_task(task_id, payload)
+        
+        return {
+            'escalated': True,
+            'resolution': 'escalated_to_premium',
+            'escalation_time': 1.0
+        }
+    
+    async def generate_build_requirements(self, prd_content: str, app_name: str, version: str, run_id: str, features: List[str] = None) -> Dict[str, Any]:
+        """Generate build requirements from PRD analysis using LLM"""
+        logger.info(f"{self.name} generating build requirements for {app_name} v{version}")
         
         prompt = f"""
-        You are a senior product manager analyzing a PRD to create a detailed TaskSpec for development.
+        You are a senior product manager analyzing a PRD to create detailed build requirements for development.
         
         APPLICATION: {app_name}
         VERSION: {version}
@@ -65,7 +233,7 @@ class LeadAgent(BaseAgent):
         PRD CONTENT:
         {prd_content}
         
-        Create a comprehensive TaskSpec that includes:
+        Create comprehensive build requirements that include:
         
         1. PRD_ANALYSIS: Your detailed analysis of the requirements, user needs, and technical considerations
         2. FEATURES: Specific feature list derived from the PRD
@@ -79,7 +247,7 @@ class LeadAgent(BaseAgent):
         - Do NOT include explanatory text
         - Use proper YAML indentation
         
-        Return the TaskSpec in this exact format:
+        Return the requirements in this exact format:
         
         app_name: "{app_name}"
         version: "{version}"
@@ -107,40 +275,58 @@ class LeadAgent(BaseAgent):
             
             # Clean and parse YAML response
             from agents.llm.validators import clean_yaml_response
+            import yaml
             cleaned_response = clean_yaml_response(response)
-            task_spec = TaskSpec.from_yaml(cleaned_response)
-            logger.info(f"{self.name} generated TaskSpec with {len(task_spec.features)} features")
+            requirements = yaml.safe_load(cleaned_response)
+            if not isinstance(requirements, dict):
+                requirements = {}
             
-            # Log the TaskSpec generation for telemetry
+            # Ensure required fields exist
+            requirements.setdefault('app_name', app_name)
+            requirements.setdefault('version', version)
+            requirements.setdefault('run_id', run_id)
+            requirements.setdefault('features', features or [])
+            requirements.setdefault('constraints', {})
+            requirements.setdefault('success_criteria', ["Application deploys successfully"])
+            
+            logger.info(f"{self.name} generated build requirements with {len(requirements.get('features', []))} features")
+            
+            # Log the requirements generation for telemetry
             from datetime import datetime
             self.communication_log.append({
                 'timestamp': datetime.utcnow().isoformat(),
                 'agent': self.name,
-                'message_type': 'taskspec_generation',
-                'description': f"Generated TaskSpec for {app_name}: {response[:500]}...",
+                'message_type': 'build_requirements_generation',
+                'description': f"Generated build requirements for {app_name}: {response[:500]}...",
                 'ecid': run_id,
                 'full_response': response
             })
             
-            return task_spec
+            return requirements
             
         except Exception as e:
-            logger.error(f"{self.name} failed to generate TaskSpec: {e}")
-            # Fallback to basic TaskSpec
-            return TaskSpec(
-                app_name=app_name,
-                version=version,
-                run_id=run_id,
-                prd_analysis=f"Basic analysis for {app_name} - TaskSpec generation failed: {e}",
-                features=features or [],
-                constraints={},
-                success_criteria=["Application deploys successfully"]
-            )
+            logger.error(f"{self.name} failed to generate build requirements: {e}")
+            # Fallback to basic requirements dict
+            return {
+                'app_name': app_name,
+                'version': version,
+                'run_id': run_id,
+                'prd_analysis': f"Basic analysis for {app_name} - Build requirements generation failed: {e}",
+                'features': features or [],
+                'constraints': {},
+                'success_criteria': ["Application deploys successfully"]
+            }
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process governance tasks with approval/escalation logic"""
         logger.debug(f"{self.name} process_task START - task: {task}")
         
+        # Check if this is a new SIP-046 AgentRequest format
+        if 'action' in task:
+            # Let BaseAgent handle the conversion to AgentRequest
+            return await super().process_task(task)
+        
+        # Old format handling
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', 'unknown')
         complexity = task.get('complexity', 0.5)
@@ -407,8 +593,17 @@ class LeadAgent(BaseAgent):
             task_id = payload.get('task_id', 'unknown')
             ecid = context.get('ecid', payload.get('ecid', 'unknown'))
             status = payload.get('status', 'unknown')
+            action = payload.get('action', 'unknown')
             
-            logger.info(f"{self.name} received developer completion event: task {task_id}, ECID {ecid}, status {status}")
+            logger.info(f"{self.name} received developer completion event: task {task_id}, ECID {ecid}, status {status}, action {action}")
+            
+            # Route to specific completion handlers based on action
+            if action == 'design_manifest':
+                await self._handle_design_manifest_completion(message)
+            elif action == 'build':
+                await self._handle_build_completion(message)
+            elif action == 'deploy':
+                await self._handle_deploy_completion(message)
             
             # Only generate wrap-up if task was successful
             if status == 'completed' or status == 'success':
@@ -959,12 +1154,15 @@ class LeadAgent(BaseAgent):
             
             app_version = f"{framework_version}.{warm_boot_sequence}"  # e.g., "0.1.4.008"
             
-            # Generate TaskSpec for the build task
-            task_spec = await self.generate_task_spec(
+            # Use provided ecid or fall back to current_ecid for run_id
+            run_id = ecid if ecid else current_ecid
+            
+            # Generate build requirements from PRD analysis
+            build_requirements = await self.generate_build_requirements(
                 prd_content=prd_analysis.get("full_analysis", "Team Status Dashboard with activity feed and project progress tracking"),
                 app_name=app_name,
                 version=app_version,
-                run_id=ecid,
+                run_id=run_id,
                 features=prd_analysis.get("core_features", [])
             )
             
@@ -998,8 +1196,14 @@ class LeadAgent(BaseAgent):
                         "version": app_version,
                         "framework_version": framework_version,
                         "warm_boot_sequence": warm_boot_sequence,
-                        "target_directory": f"warm-boot/apps/{app_kebab}/",  # Add target_directory for file creation
-                        "task_spec": task_spec.to_dict()  # Include Max's TaskSpec
+                        "target_directory": f"warm-boot/apps/{app_kebab}/",
+                        # Flatten build requirements directly into requirements
+                        "app_name": build_requirements.get("app_name", app_name),
+                        "run_id": build_requirements.get("run_id", ecid),
+                        "prd_analysis": build_requirements.get("prd_analysis", ""),
+                        "features": build_requirements.get("features", []),
+                        "constraints": build_requirements.get("constraints", {}),
+                        "success_criteria": build_requirements.get("success_criteria", [])
                     },
                     "complexity": 0.4,
                     "priority": "HIGH"
@@ -1019,8 +1223,12 @@ class LeadAgent(BaseAgent):
                         "technical_requirements": prd_analysis.get("technical_requirements", []),
                         "target_directory": f"warm-boot/apps/{app_kebab}/",
                         "from_scratch": True,
-                        "task_spec": task_spec.to_dict(),  # Include Max's TaskSpec
-                        "prd_analysis": prd_analysis.get("full_analysis", "Team Status Dashboard with activity feed and project progress tracking"),
+                        # Flatten build requirements directly into requirements
+                        "app_name": build_requirements.get("app_name", app_name),
+                        "run_id": build_requirements.get("run_id", ecid),
+                        "prd_analysis": build_requirements.get("prd_analysis", prd_analysis.get("full_analysis", "")),
+                        "constraints": build_requirements.get("constraints", {}),
+                        "success_criteria": build_requirements.get("success_criteria", []),
                         "manifest": None  # Will be populated by design_manifest completion handler
                     },
                     "complexity": 0.8,
@@ -1935,9 +2143,7 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
             
             # Extract app name from PRD path or content
             app_name = "Application"  # Default fallback
-            if "hellosquad" in prd_path.lower():
-                app_name = "HelloSquad"
-            elif "prd-" in prd_path.lower():
+            if "prd-" in prd_path.lower():
                 # Extract app name from PRD filename (e.g., "PRD-001-HelloSquad.md" -> "HelloSquad")
                 import re
                 match = re.search(r'PRD-\d+-(.+)\.md', prd_path)

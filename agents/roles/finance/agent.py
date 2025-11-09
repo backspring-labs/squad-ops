@@ -5,7 +5,12 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List
+from datetime import datetime
 from base_agent import BaseAgent, AgentMessage
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.validator import SchemaValidator
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +20,105 @@ class FinanceAgent(BaseAgent):
     def __init__(self, identity: str):
         super().__init__(
             name=identity,
-            agent_type="financial",
+            agent_type="financial_analyst",
             reasoning_style="rule-based"
         )
         self.ledger = []
         self.rules_engine = {}
         self.constraints = {}
         self.financial_models = {}
+        
+        # Initialize schema validator
+        base_path = Path(__file__).parent.parent.parent.parent
+        self.validator = SchemaValidator(base_path)
+    
+    async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
+        """Handle agent request using capability-based routing"""
+        started_at = datetime.utcnow()
+        
+        try:
+            # Validate request
+            is_valid, error_msg = self.validator.validate_request(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="VALIDATION_ERROR",
+                    error_message=error_msg or "Request validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate constraints
+            is_valid, error_msg = self._validate_constraints(request)
+            if not is_valid:
+                return AgentResponse.failure(
+                    error_code="POLICY_VIOLATION",
+                    error_message=error_msg or "Constraint validation failed",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Generate idempotency key
+            idempotency_key = request.generate_idempotency_key(self.name)
+            
+            # Route to capability handler
+            action = request.action
+            if action == "finance.analysis":
+                result = await self._handle_finance_analysis(request)
+            elif action == "finance.budget_planning":
+                result = await self._handle_budget_planning(request)
+            else:
+                return AgentResponse.failure(
+                    error_code="UNKNOWN_CAPABILITY",
+                    error_message=f"Unknown capability: {action}",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            # Validate result keys
+            is_valid, error_msg = self.validator.validate_result_keys(action, result)
+            if not is_valid:
+                logger.warning(f"{self.name}: Result validation warning: {error_msg}")
+            
+            # Create success response
+            ended_at = datetime.utcnow()
+            return AgentResponse.success(
+                result=result,
+                idempotency_key=idempotency_key,
+                timing=Timing.create(started_at, ended_at)
+            )
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Error handling request: {e}", exc_info=True)
+            return AgentResponse.failure(
+                error_code="INTERNAL_ERROR",
+                error_message=str(e),
+                retryable=True,
+                timing=Timing.create(started_at)
+            )
+    
+    async def _handle_finance_analysis(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle finance.analysis capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing finance analysis logic to new capability format
+        return {
+            'financial_report': f'/reports/finance/{task_id}',
+            'cost_breakdown': {},
+            'recommendations': []
+        }
+    
+    async def _handle_budget_planning(self, request: AgentRequest) -> Dict[str, Any]:
+        """Handle finance.budget_planning capability"""
+        payload = request.payload
+        task_id = payload.get('task_id', 'unknown')
+        
+        # Map existing budget planning logic to new capability format
+        return {
+            'budget_plan': {},
+            'forecast': {},
+            'cost_optimization': []
+        }
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process financial tasks using rule-based reasoning"""

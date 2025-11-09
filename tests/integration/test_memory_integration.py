@@ -304,6 +304,15 @@ async def test_memory_provider_agent_integration(postgres_container, clean_datab
     
     # Create a test agent subclass
     class TestAgent(BaseAgent):
+        async def handle_agent_request(self, request):
+            from agents.specs.agent_response import AgentResponse, Timing
+            from datetime import datetime
+            return AgentResponse.success(
+                result={'status': 'completed'},
+                idempotency_key="test-key",
+                timing=Timing.create(datetime.utcnow())
+            )
+        
         async def process_task(self, task):
             return {'status': 'completed'}
         

@@ -14,7 +14,11 @@ import aiofiles
 import subprocess
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents.specs.agent_request import AgentRequest
+    from agents.specs.agent_response import AgentResponse
 import aio_pika
 import asyncpg
 import redis.asyncio as redis
@@ -98,6 +102,9 @@ class BaseAgent(ABC):
         
         # Initialize telemetry client (abstraction layer)
         self.telemetry_client = self._initialize_telemetry_client()
+        
+        # Initialize capability system (SIP-046)
+        self._load_capability_config()
     
     def _initialize_llm_client(self):
         """Initialize LLM client from router"""
@@ -654,24 +661,36 @@ class BaseAgent(ABC):
                              priority: str = "MEDIUM", dependencies: List[str] = None,
                              delegated_by: str = None, delegated_to: str = None):
         """Log task start via API"""
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{self.task_api_url}/api/v1/tasks/start",
-                json={
-                    "task_id": task_id,
-                    "ecid": ecid,
-                    "agent": self.name,
-                    "status": "started",
-                    "priority": priority,
-                    "description": description,
-                    "dependencies": dependencies or [],
-                    "delegated_by": delegated_by,
-                    "delegated_to": delegated_to
-                }
-            ) as resp:
-                if resp.status != 200:
-                    logger.error(f"Failed to log task start: {await resp.text()}")
-                return await resp.json()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.task_api_url}/api/v1/tasks/start",
+                    json={
+                        "task_id": task_id,
+                        "ecid": ecid,
+                        "agent": self.name,
+                        "status": "started",
+                        "priority": priority,
+                        "description": description,
+                        "dependencies": dependencies or [],
+                        "delegated_by": delegated_by,
+                        "delegated_to": delegated_to
+                    }
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Failed to log task start: {error_text}")
+                        # Return None instead of raising - allow task creation to continue
+                        return None
+                    try:
+                        return await resp.json()
+                    except Exception as e:
+                        logger.warning(f"Failed to parse task start response: {e}")
+                        return None
+        except Exception as e:
+            # If Task API is unavailable, log warning but don't fail
+            logger.warning(f"Task API unavailable for log_task_start: {e}")
+            return None
 
     async def log_task_delegation(self, task_id: str, ecid: str, delegated_to: str, 
                                   description: str):
@@ -767,10 +786,101 @@ class BaseAgent(ABC):
             logger.error(f"{self.name} heartbeat failed via Health-Check API: {e}")
             raise
     
+    def _load_capability_config(self):
+        """Load capability configuration from config.yaml"""
+        try:
+            from agents.capabilities.loader import CapabilityLoader
+            from pathlib import Path
+            
+            # Determine role from agent_type (e.g., "governance" -> "lead")
+            role_map = {
+                "governance": "lead",
+                "developer": "dev",
+                "strategy": "strat",
+                "quality_assurance": "qa",
+                "data_analyst": "data",
+                "financial_analyst": "finance",
+                "communications": "comms",
+                "research_curator": "curator",
+                "creative_designer": "creative",
+                "auditor": "audit",
+                "devops": "devops"
+            }
+            
+            role = role_map.get(self.agent_type, self.agent_type)
+            
+            # Load capability config
+            base_path = Path(__file__).parent.parent.parent
+            loader = CapabilityLoader(base_path)
+            self.capability_config = loader.load_agent_config(role)
+            self.capability_loader = loader
+            self.implemented_capabilities = loader.get_agent_capabilities(role) if self.capability_config else []
+            
+            logger.info(f"{self.name}: Loaded capability config for role {role}, implements {len(self.implemented_capabilities)} capabilities")
+            
+        except Exception as e:
+            logger.warning(f"{self.name}: Failed to load capability config: {e}")
+            self.capability_config = None
+            self.capability_loader = None
+            self.implemented_capabilities = []
+    
+    def _validate_constraints(self, request: 'AgentRequest') -> tuple[bool, Optional[str]]:
+        """Validate request against agent constraints"""
+        if not self.capability_config:
+            return True, None  # No constraints if config not loaded
+        
+        constraints = self.capability_config.constraints
+        
+        # Validate repo_allow
+        if 'repo_allow' in constraints:
+            repo_allow = constraints['repo_allow']
+            payload_repo = request.payload.get('repo', request.payload.get('project', ''))
+            if repo_allow and not any(repo_allow_pattern in payload_repo for repo_allow_pattern in repo_allow):
+                return False, f"Repository not allowed: {payload_repo}"
+        
+        # Validate max_runtime_s (will be checked during execution)
+        # Validate network_allow (will be checked during execution)
+        
+        return True, None
+    
     @abstractmethod
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a task - must be implemented by each agent"""
+    async def handle_agent_request(self, request: 'AgentRequest') -> 'AgentResponse':
+        """Handle agent request - must be implemented by each agent"""
         pass
+    
+    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a task - DEPRECATED: Use handle_agent_request instead"""
+        # Convert old task format to AgentRequest for compatibility
+        try:
+            from agents.specs.agent_request import AgentRequest
+            from agents.specs.agent_response import AgentResponse
+            
+            # Try to convert task to AgentRequest
+            if 'action' in task:
+                request = AgentRequest.from_dict(task)
+                response = await self.handle_agent_request(request)
+                return response.to_dict()
+            else:
+                # Fallback for old format
+                logger.warning(f"{self.name}: Received old format task, converting...")
+                # Create minimal AgentRequest from old task
+                request = AgentRequest(
+                    action=task.get('type', 'unknown'),
+                    payload=task,
+                    metadata={
+                        'pid': task.get('pid', 'unknown'),
+                        'ecid': task.get('ecid', 'unknown')
+                    }
+                )
+                response = await self.handle_agent_request(request)
+                return response.to_dict()
+        except Exception as e:
+            logger.error(f"{self.name}: Failed to process task: {e}", exc_info=True)
+            return {
+                'status': 'error',
+                'error': str(e),
+                'task_id': task.get('task_id', 'unknown')
+            }
     
     @abstractmethod
     async def handle_message(self, message: AgentMessage) -> None:

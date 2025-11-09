@@ -22,7 +22,8 @@ COPY agents/roles/${AGENT_ROLE}/agent.py .
 
 # Copy new LLM, contracts, telemetry, and memory modules
 COPY agents/llm ./agents/llm
-COPY agents/contracts ./agents/contracts
+COPY agents/specs ./agents/specs
+COPY agents/capabilities ./agents/capabilities
 COPY agents/telemetry ./agents/telemetry
 COPY agents/memory ./agents/memory
 COPY agents/instances ./agents/instances

@@ -72,8 +72,8 @@ class LanceDBAdapter(MemoryProvider):
                 self._table = self._db.open_table(self._table_name)
                 logger.info(f"{self.agent_name}: Opened existing LanceDB table: {self._table_name}")
             except Exception as e:
-                # Table doesn't exist, create it
-                logger.info(f"{self.agent_name}: Table doesn't exist ({e}), creating new LanceDB table: {self._table_name}")
+                # Table doesn't exist, create it (expected on first startup)
+                logger.debug(f"{self.agent_name}: Table doesn't exist, creating new LanceDB table: {self._table_name}")
                 self._create_table()
                 # Verify table was created
                 if self._table is None:

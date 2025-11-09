@@ -4,6 +4,9 @@ from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from agents.roles.qa.agent import QAAgent
 from agents.base_agent import AgentMessage
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse
+from tests.utils.mock_helpers import create_sample_test_run_request, create_sample_agent_response
 
 class TestQAAgent:
     """Test QAAgent core functionality"""
@@ -14,12 +17,74 @@ class TestQAAgent:
         agent = QAAgent("qa-agent-001")
         
         assert agent.name == "qa-agent-001"
-        assert agent.agent_type == "testing"
+        assert agent.agent_type == "quality_assurance"  # Updated to match new agent_type
         assert agent.reasoning_style == "counterfactual"
         assert agent.state_machine == {}
         assert agent.test_suites == {}
         assert agent.security_protocols == {}
         assert agent.regression_tests == {}
+        assert agent.validator is not None  # SchemaValidator should be initialized
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_test_run(self, mock_unified_config):
+        """Test handle_agent_request for test.run capability"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = QAAgent("qa-agent-001")
+            
+            request = create_sample_test_run_request(task_id="test-001")
+            
+            response = await agent.handle_agent_request(request)
+            
+            assert isinstance(response, AgentResponse)
+            assert response.status == "ok"
+            assert "passed" in response.result
+            assert "failed" in response.result
+            assert "report_uri" in response.result
+            assert response.idempotency_key is not None
+            assert response.timing is not None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_security_audit(self, mock_unified_config):
+        """Test handle_agent_request for qa.security_audit capability"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = QAAgent("qa-agent-001")
+            
+            request = AgentRequest(
+                action="qa.security_audit",
+                payload={"task_id": "test-001"},
+                metadata={"pid": "PID-001", "ecid": "ECID-001"}
+            )
+            
+            response = await agent.handle_agent_request(request)
+            
+            assert isinstance(response, AgentResponse)
+            assert response.status == "ok"
+            assert "vulnerabilities_found" in response.result
+            assert "security_score" in response.result
+            assert "audit_report" in response.result
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_unknown_capability(self, mock_unified_config):
+        """Test handle_agent_request with unknown capability"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = QAAgent("qa-agent-001")
+            
+            # Use a valid action format but not implemented by QA agent
+            request = AgentRequest(
+                action="build.artifact",  # Valid format but not in QA's capabilities
+                payload={},
+                metadata={"pid": "PID-001", "ecid": "ECID-001"}
+            )
+            
+            response = await agent.handle_agent_request(request)
+            
+            assert isinstance(response, AgentResponse)
+            assert response.status == "error"
+            assert response.error is not None
+            assert response.error.code == "UNKNOWN_CAPABILITY"
     
     @pytest.mark.unit
     @pytest.mark.asyncio

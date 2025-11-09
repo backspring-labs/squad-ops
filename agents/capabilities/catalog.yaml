@@ -1,0 +1,232 @@
+catalog_version: 1.0.0
+capabilities:
+  # Development capabilities
+  - name: build.artifact
+    capability_version: 1.0.0
+    description: "Build application artifacts from specifications"
+    result:
+      keys:
+        - artifact_uri
+        - commit
+        - files_generated
+        - manifest_uri
+  
+  - name: test.run
+    capability_version: 1.0.0
+    description: "Execute test suite and generate reports"
+    result:
+      keys:
+        - passed
+        - failed
+        - report_uri
+        - coverage_percentage
+  
+  - name: validate.warmboot
+    capability_version: 1.0.0
+    description: "Validate WarmBoot execution and generate wrap-up"
+    result:
+      keys:
+        - match
+        - diffs
+        - wrap_up_uri
+        - metrics
+  
+  # Governance capabilities
+  - name: governance.task_coordination
+    capability_version: 1.0.0
+    description: "Coordinate and delegate tasks across squad"
+    result:
+      keys:
+        - tasks_created
+        - tasks_delegated
+        - coordination_log
+  
+  - name: governance.approval
+    capability_version: 1.0.0
+    description: "Process approval requests and decisions"
+    result:
+      keys:
+        - approved
+        - decision
+        - approval_time
+  
+  - name: governance.escalation
+    capability_version: 1.0.0
+    description: "Handle escalation requests"
+    result:
+      keys:
+        - escalated
+        - resolution
+        - escalation_time
+  
+  # Strategy capabilities
+  - name: strategy.market_analysis
+    capability_version: 1.0.0
+    description: "Analyze market conditions and trends"
+    result:
+      keys:
+        - analysis_report
+        - insights
+        - recommendations
+  
+  - name: strategy.product_planning
+    capability_version: 1.0.0
+    description: "Create product plans and roadmaps"
+    result:
+      keys:
+        - roadmap
+        - priorities
+        - timeline
+  
+  # QA capabilities
+  - name: qa.security_audit
+    capability_version: 1.0.0
+    description: "Perform security audits and vulnerability scans"
+    result:
+      keys:
+        - vulnerabilities_found
+        - security_score
+        - audit_report
+  
+  - name: qa.compliance_check
+    capability_version: 1.0.0
+    description: "Check compliance with standards and policies"
+    result:
+      keys:
+        - compliant
+        - violations
+        - compliance_score
+  
+  # Data capabilities
+  - name: data.analysis
+    capability_version: 1.0.0
+    description: "Perform data analysis and generate insights"
+    result:
+      keys:
+        - insights
+        - metrics
+        - visualization_uri
+  
+  - name: data.modeling
+    capability_version: 1.0.0
+    description: "Create statistical models and predictions"
+    result:
+      keys:
+        - model_uri
+        - accuracy
+        - predictions
+  
+  # Finance capabilities
+  - name: finance.analysis
+    capability_version: 1.0.0
+    description: "Perform financial analysis and reporting"
+    result:
+      keys:
+        - financial_report
+        - cost_breakdown
+        - recommendations
+  
+  - name: finance.budget_planning
+    capability_version: 1.0.0
+    description: "Create budget plans and forecasts"
+    result:
+      keys:
+        - budget_plan
+        - forecast
+        - cost_optimization
+  
+  # Communications capabilities
+  - name: comms.documentation
+    capability_version: 1.0.0
+    description: "Create documentation and written content"
+    result:
+      keys:
+        - documentation_uri
+        - content
+        - format
+  
+  - name: comms.stakeholder_update
+    capability_version: 1.0.0
+    description: "Generate stakeholder updates and communications"
+    result:
+      keys:
+        - update_content
+        - recipients
+        - delivery_status
+  
+  # Research capabilities
+  - name: research.curation
+    capability_version: 1.0.0
+    description: "Curate research content and knowledge"
+    result:
+      keys:
+        - curated_content
+        - knowledge_base_uri
+        - insights
+  
+  - name: research.trend_analysis
+    capability_version: 1.0.0
+    description: "Analyze trends and patterns"
+    result:
+      keys:
+        - trends
+        - patterns
+        - predictions
+  
+  # Creative capabilities
+  - name: creative.visual_design
+    capability_version: 1.0.0
+    description: "Create visual designs and assets"
+    result:
+      keys:
+        - design_uri
+        - assets
+        - style_guide
+  
+  - name: creative.ux_design
+    capability_version: 1.0.0
+    description: "Design user experience and interfaces"
+    result:
+      keys:
+        - ux_design_uri
+        - wireframes
+        - user_flows
+  
+  # Audit capabilities
+  - name: audit.monitoring
+    capability_version: 1.0.0
+    description: "Monitor system health and performance"
+    result:
+      keys:
+        - health_status
+        - metrics
+        - alerts
+  
+  - name: audit.compliance_tracking
+    capability_version: 1.0.0
+    description: "Track compliance and audit trails"
+    result:
+      keys:
+        - compliance_status
+        - audit_trail
+        - violations
+  
+  # DevOps capabilities
+  - name: devops.infrastructure
+    capability_version: 1.0.0
+    description: "Manage infrastructure and deployment"
+    result:
+      keys:
+        - infrastructure_status
+        - deployment_uri
+        - configuration
+  
+  - name: devops.deployment
+    capability_version: 1.0.0
+    description: "Execute deployments and releases"
+    result:
+      keys:
+        - deployment_status
+        - deployment_uri
+        - version
+

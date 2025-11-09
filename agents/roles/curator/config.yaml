@@ -1,0 +1,17 @@
+agent_id: og
+role: curator
+spec_version: 1.0.0
+implements:
+  - capability: research.curation
+    min_version: 1.0.0
+  - capability: research.trend_analysis
+    min_version: 1.0.0
+constraints:
+  repo_allow: ["squad_ops/*"]
+  max_runtime_s: 2400
+  network_allow: ["git-read", "api-calls", "research-sources"]
+defaults:
+  model: ollama:llama3-70b
+  image: squadops/og:latest
+  max_concurrency: 1
+

@@ -1,0 +1,17 @@
+agent_id: glyph
+role: creative
+spec_version: 1.0.0
+implements:
+  - capability: creative.visual_design
+    min_version: 1.0.0
+  - capability: creative.ux_design
+    min_version: 1.0.0
+constraints:
+  repo_allow: ["squad_ops/*"]
+  max_runtime_s: 1800
+  network_allow: ["git-read", "api-calls"]
+defaults:
+  model: ollama:stable-diffusion-xl
+  image: squadops/glyph:latest
+  max_concurrency: 1
+

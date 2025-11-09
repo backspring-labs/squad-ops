@@ -1,0 +1,15 @@
+agent_id: neo
+role: dev
+spec_version: 1.0.0
+implements:
+  - capability: build.artifact
+    min_version: 1.0.0
+constraints:
+  repo_allow: ["squad_ops/*", "warm-boot/*"]
+  max_runtime_s: 1200
+  network_allow: ["git-read", "package-cache", "docker-api"]
+defaults:
+  model: ollama:qwen2.5:7b
+  image: squadops/neo:latest
+  max_concurrency: 1
+

@@ -1,0 +1,12 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+}
+header, footer {
+  text-align: center;
+}
+main {
+  display: flex;
+  justify-content: space-around;
+}

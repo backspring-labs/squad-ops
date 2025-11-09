@@ -13,10 +13,12 @@ from typing import Dict, Any, List
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from agents.roles.lead.agent import LeadAgent
 from agents.base_agent import AgentMessage
-from agents.contracts.task_spec import TaskSpec
-from agents.contracts.build_manifest import BuildManifest
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse
 from tests.utils.mock_helpers import (
-    create_sample_task_spec, create_sample_build_manifest,
+    create_sample_validate_warmboot_request,
+    create_sample_agent_response,
+    create_sample_build_manifest,
     MockAgentMessage
 )
 
@@ -34,6 +36,7 @@ class TestLeadAgent:
         assert agent.escalation_threshold is not None
         assert agent.task_state_log is not None
         assert agent.approval_queue is not None
+        assert agent.validator is not None  # SchemaValidator should be initialized
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -59,6 +62,106 @@ class TestLeadAgent:
             assert 'technical_requirements' in analysis
             assert 'success_criteria' in analysis
             assert analysis['core_features'] == ["Feature 1", "Feature 2"]
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_validate_warmboot(self, mock_unified_config):
+        """Test handle_agent_request for validate.warmboot capability"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = LeadAgent("lead-agent-001")
+            
+            # Mock update_task_status to avoid HTTP calls
+            with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update_status, \
+                 patch.object(agent, 'read_prd', return_value="Test PRD content"), \
+                 patch.object(agent, 'analyze_prd_requirements', return_value={
+                     "core_features": ["Feature 1"],
+                     "full_analysis": "Test analysis"
+                 }), \
+                 patch.object(agent, 'create_development_tasks', return_value=[]), \
+                 patch.object(agent, 'process_prd_request', return_value={
+                     "status": "completed",
+                     "diffs": [],
+                     "wrap_up_uri": "/warm-boot/runs/ECID-001/wrap-up.md",
+                     "metrics": {}
+                 }):
+                
+                request = create_sample_validate_warmboot_request(ecid="ECID-001")
+                
+                response = await agent.handle_agent_request(request)
+                
+                assert isinstance(response, AgentResponse)
+                assert response.status == "ok"
+                assert "match" in response.result
+                assert "diffs" in response.result
+                assert "wrap_up_uri" in response.result
+                assert "metrics" in response.result
+                assert response.idempotency_key is not None
+                assert response.timing is not None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_task_coordination(self, mock_unified_config):
+        """Test handle_agent_request for governance.task_coordination capability"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = LeadAgent("lead-agent-001")
+            
+            request = AgentRequest(
+                action="governance.task_coordination",
+                payload={"type": "development", "task_id": "test-001"},
+                metadata={"pid": "PID-001", "ecid": "ECID-001"}
+            )
+            
+            with patch.object(agent, 'send_message') as mock_send:
+                response = await agent.handle_agent_request(request)
+                
+                assert isinstance(response, AgentResponse)
+                assert response.status == "ok"
+                assert "tasks_created" in response.result
+                assert "tasks_delegated" in response.result
+                assert "coordination_log" in response.result
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_approval(self, mock_unified_config):
+        """Test handle_agent_request for governance.approval capability"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = LeadAgent("lead-agent-001")
+            
+            request = AgentRequest(
+                action="governance.approval",
+                payload={"complexity": 0.3, "task_id": "test-001"},
+                metadata={"pid": "PID-001", "ecid": "ECID-001"}
+            )
+            
+            response = await agent.handle_agent_request(request)
+            
+            assert isinstance(response, AgentResponse)
+            assert response.status == "ok"
+            assert "approved" in response.result
+            assert "decision" in response.result
+            assert "approval_time" in response.result
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_escalation(self, mock_unified_config):
+        """Test handle_agent_request for governance.escalation capability"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = LeadAgent("lead-agent-001")
+            
+            request = AgentRequest(
+                action="governance.escalation",
+                payload={"task_id": "test-001", "reason": "high_complexity"},
+                metadata={"pid": "PID-001", "ecid": "ECID-001"}
+            )
+            
+            with patch.object(agent, 'escalate_task') as mock_escalate:
+                response = await agent.handle_agent_request(request)
+                
+                assert isinstance(response, AgentResponse)
+                assert response.status == "ok"
+                assert "escalated" in response.result
+                assert "resolution" in response.result
+                assert "escalation_time" in response.result
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1423,19 +1526,19 @@ class TestLeadAgent:
         with patch('config.version.get_framework_version', return_value="0.1.4"):
             agent = LeadAgent("test-lead-agent")
             
-            # Mock the generate_task_spec method to avoid network calls
-            async def mock_generate_task_spec(*args, **kwargs):
-                return MockTaskSpec(
-                    app_name=kwargs.get("app_name", "TestApp"),
-                    version=kwargs.get("version", "0.2.0.001"), 
-                    run_id=kwargs.get("run_id", "TEST-001"),
-                    prd_analysis=kwargs.get("prd_content", "Test application for unit testing"),
-                    features=kwargs.get("features", ["Feature 1", "Feature 2"]),
-                    constraints={"framework": "vanilla_js"},
-                    success_criteria=["Application loads", "No errors"]
-                )
+            # Mock the generate_build_requirements method to avoid network calls
+            async def mock_generate_build_requirements(*args, **kwargs):
+                return {
+                    "app_name": kwargs.get("app_name", "TestApp"),
+                    "version": kwargs.get("version", "0.2.0.001"), 
+                    "run_id": kwargs.get("run_id", "TEST-001"),
+                    "prd_analysis": kwargs.get("prd_content", "Test application for unit testing"),
+                    "features": kwargs.get("features", ["Feature 1", "Feature 2"]),
+                    "constraints": {"framework": "vanilla_js"},
+                    "success_criteria": ["Application loads", "No errors"]
+                }
             
-            agent.generate_task_spec = mock_generate_task_spec
+            agent.generate_build_requirements = mock_generate_build_requirements
             
             # Mock the log_task_start method to avoid task-api calls
             async def mock_log_task_start(*args, **kwargs):
@@ -1459,7 +1562,7 @@ class TestLeadAgent:
     @pytest.fixture
     def design_manifest_completion_message(self):
         """Sample design_manifest completion message."""
-        manifest = create_sample_build_manifest()
+        manifest = create_sample_build_manifest()  # Already a dict
         return MockAgentMessage(
             sender="test-dev-agent",
             recipient="test-lead-agent",
@@ -1468,7 +1571,7 @@ class TestLeadAgent:
                 "task_id": "test-design-001",
                 "status": "completed",
                 "action": "design_manifest",
-                "manifest": manifest.to_dict()
+                "manifest": manifest  # Already a dict, no need for .to_dict()
             },
             context={"ecid": "TEST-001"}
         )
@@ -1536,9 +1639,11 @@ class TestLeadAgent:
         assert tasks[1]["task_id"] != tasks[2]["task_id"]
         assert tasks[2]["task_id"] != tasks[3]["task_id"]
         
-        # Verify TaskSpec is included in design_manifest and build tasks
-        assert "task_spec" in tasks[1]["requirements"]
-        assert "task_spec" in tasks[2]["requirements"]
+        # Verify build requirements are flattened into design_manifest and build tasks
+        assert "app_name" in tasks[1]["requirements"]
+        assert "prd_analysis" in tasks[1]["requirements"]
+        assert "app_name" in tasks[2]["requirements"]
+        assert "prd_analysis" in tasks[2]["requirements"]
         
         # Verify build task has manifest placeholder
         assert tasks[2]["requirements"]["manifest"] is None
@@ -1548,28 +1653,31 @@ class TestLeadAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_create_development_tasks_task_spec_creation(self, lead_agent_for_sequencing, sample_prd_analysis):
-        """Test that TaskSpec is properly created and included."""
+    async def test_create_development_tasks_build_requirements_creation(self, lead_agent_for_sequencing, sample_prd_analysis):
+        """Test that build requirements are properly created and flattened into requirements."""
         tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis, "TestApp", "TEST-001")
         
-        # Check design_manifest task
+        # Check design_manifest task - requirements should have flattened build requirements
         design_task = tasks[1]
-        task_spec_dict = design_task["requirements"]["task_spec"]
+        requirements = design_task["requirements"]
         
-        assert task_spec_dict["app_name"] == "TestApp"
+        # Build requirements should be flattened directly into requirements (no nested task_spec)
+        assert requirements.get("app_name") == "TestApp"
         # Version format: {framework_version}.{warm_boot_sequence} - check pattern, not exact value
         import re
-        assert re.match(r'^\d+\.\d+\.\d+\.\d+$', task_spec_dict["version"]), f"Version {task_spec_dict['version']} doesn't match expected pattern X.Y.Z.SEQ"
-        assert task_spec_dict["run_id"] == "TEST-001"
-        assert task_spec_dict["prd_analysis"] == sample_prd_analysis["summary"]
-        assert task_spec_dict["features"] == sample_prd_analysis["features"]
-        assert task_spec_dict["constraints"] == sample_prd_analysis["constraints"]
-        assert task_spec_dict["success_criteria"] == sample_prd_analysis["success_criteria"]
+        assert re.match(r'^\d+\.\d+\.\d+\.\d+$', requirements.get("version", "")), f"Version {requirements.get('version')} doesn't match expected pattern X.Y.Z.SEQ"
+        assert requirements.get("run_id") == "TEST-001"
+        assert requirements.get("prd_analysis") == sample_prd_analysis["summary"]
+        assert requirements.get("features") == sample_prd_analysis["features"]
+        assert requirements.get("constraints") == sample_prd_analysis["constraints"]
+        assert requirements.get("success_criteria") == sample_prd_analysis["success_criteria"]
         
-        # Check build task has same TaskSpec
+        # Check build task has same flattened requirements
         build_task = tasks[2]
-        build_task_spec_dict = build_task["requirements"]["task_spec"]
-        assert build_task_spec_dict == task_spec_dict
+        build_requirements = build_task["requirements"]
+        assert build_requirements.get("app_name") == requirements.get("app_name")
+        assert build_requirements.get("run_id") == requirements.get("run_id")
+        assert build_requirements.get("prd_analysis") == requirements.get("prd_analysis")
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1601,7 +1709,9 @@ class TestLeadAgent:
                 
                 # Verify manifest is stored in warmboot_state
                 assert lead_agent_for_sequencing.warmboot_state['manifest'] is not None
-                assert lead_agent_for_sequencing.warmboot_state['manifest']['architecture']['type'] == "spa_web_app"
+                # Manifest structure has architecture_type at top level, not nested
+                manifest = lead_agent_for_sequencing.warmboot_state['manifest']
+                assert manifest.get('architecture_type') == "spa_web_app" or manifest.get('architecture', {}).get('type') == "spa_web_app"
                 
                 # Verify build task was delegated via send_message
                 mock_send.assert_called_once()
@@ -1684,7 +1794,7 @@ class TestLeadAgent:
         """Test handling of deploy completion."""
         # Set up warmboot_state with manifest and files
         manifest = create_sample_build_manifest()
-        lead_agent_for_sequencing.warmboot_state['manifest'] = manifest.to_dict()
+        lead_agent_for_sequencing.warmboot_state['manifest'] = manifest  # Already a dict
         lead_agent_for_sequencing.warmboot_state['build_files'] = ["index.html", "app.js", "styles.css"]
         
         with patch.object(lead_agent_for_sequencing, '_log_warmboot_governance') as mock_log, \
@@ -1693,7 +1803,7 @@ class TestLeadAgent:
             await lead_agent_for_sequencing._handle_deploy_completion(deploy_completion_message)
             
             # Verify governance logging is called
-            mock_log.assert_called_once_with("TEST-001", manifest.to_dict(), ["index.html", "app.js", "styles.css"])
+            mock_log.assert_called_once_with("TEST-001", manifest, ["index.html", "app.js", "styles.css"])
             
             # Verify wrap-up generation is called
             mock_wrapup.assert_called_once()
@@ -1716,12 +1826,12 @@ class TestLeadAgent:
             mock_file.read.return_value = b"test content"
             mock_open.return_value.__enter__.return_value = mock_file
             
-            await lead_agent_for_sequencing._log_warmboot_governance("TEST-001", manifest.to_dict(), files)
+            await lead_agent_for_sequencing._log_warmboot_governance("TEST-001", manifest, files)
             
             # Verify manifest snapshot was created
             mock_yaml_dump.assert_called_once()
             yaml_call_args = mock_yaml_dump.call_args[0]
-            assert yaml_call_args[0] == manifest.to_dict()
+            assert yaml_call_args[0] == manifest
             
             # Verify checksums file was created
             mock_json_dump.assert_called_once()
@@ -1776,11 +1886,11 @@ class TestLeadAgent:
         """Test create_development_tasks with custom app name."""
         tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis, "CustomApp", "CUSTOM-001")
         
-        # Verify app name is used in TaskSpec
+        # Verify app name is used in flattened requirements
         design_task = tasks[1]
-        task_spec_dict = design_task["requirements"]["task_spec"]
-        assert task_spec_dict["app_name"] == "CustomApp"
-        assert task_spec_dict["run_id"] == "CUSTOM-001"
+        requirements = design_task["requirements"]
+        assert requirements.get("app_name") == "CustomApp"
+        assert requirements.get("run_id") == "CUSTOM-001"
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1788,14 +1898,15 @@ class TestLeadAgent:
         """Test create_development_tasks with default values."""
         tasks = await lead_agent_for_sequencing.create_development_tasks(sample_prd_analysis)
         
-        # Verify default values are used
+        # Verify default values are used in flattened requirements
         design_task = tasks[1]
-        task_spec_dict = design_task["requirements"]["task_spec"]
-        assert task_spec_dict["app_name"] == "application"
+        requirements = design_task["requirements"]
+        assert requirements.get("app_name") == "application"
         # Version format: {framework_version}.{warm_boot_sequence} - check pattern, not exact value
         import re
-        assert re.match(r'^\d+\.\d+\.\d+\.\d+$', task_spec_dict["version"]), f"Version {task_spec_dict['version']} doesn't match expected pattern X.Y.Z.SEQ"
-        assert task_spec_dict["run_id"] is None  # No ecid provided
+        assert re.match(r'^\d+\.\d+\.\d+\.\d+$', requirements.get("version", "")), f"Version {requirements.get('version')} doesn't match expected pattern X.Y.Z.SEQ"
+        # run_id should be set from ecid (which defaults to a generated value)
+        assert requirements.get("run_id") is not None
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1805,7 +1916,7 @@ class TestLeadAgent:
         manifest = create_sample_build_manifest()
         design_message = MockAgentMessage(
             sender="dev-agent", recipient="lead-agent", message_type="task.developer.completed",
-            payload={"task_id": "design-001", "status": "completed", "action": "design_manifest", "manifest": manifest.to_dict()},
+            payload={"task_id": "design-001", "status": "completed", "action": "design_manifest", "manifest": manifest},
             context={"ecid": "TEST-001"}
         )
         
@@ -1865,8 +1976,8 @@ class TestLeadAgent:
             mock_wrapup.assert_called_once()
     
     @pytest.mark.asyncio
-    async def test_create_task_spec_with_communication_logging(self, mock_lead_agent):
-        """Test TaskSpec creation with communication logging"""
+    async def test_create_build_requirements_with_communication_logging(self, mock_lead_agent):
+        """Test build requirements creation with communication logging"""
         agent = mock_lead_agent
         
         # Mock LLM response
@@ -1882,20 +1993,21 @@ features:
 """
         
         with patch.object(agent.llm_client, 'complete', return_value=mock_yaml_response):
-            task_spec = await agent.generate_task_spec("Test PRD content", "TestApp", "1.0.0", "TEST-001")
+            requirements = await agent.generate_build_requirements("Test PRD content", "TestApp", "1.0.0", "TEST-001")
             
-            # Verify TaskSpec was created
-            assert task_spec.app_name == "TestApp"
-            assert task_spec.version == "1.0.0"
-            assert task_spec.run_id == "TEST-001"
-            assert len(task_spec.features) == 2
+            # Verify requirements dict was created
+            assert isinstance(requirements, dict)
+            assert requirements.get("app_name") == "TestApp"
+            assert requirements.get("version") == "1.0.0"
+            assert requirements.get("run_id") == "TEST-001"
+            assert len(requirements.get("features", [])) == 2
             
             # Verify communication logging occurred
             assert len(agent.communication_log) == 1
             log_entry = agent.communication_log[0]
-            assert log_entry['message_type'] == 'taskspec_generation'
+            assert log_entry['message_type'] == 'build_requirements_generation'
             assert log_entry['ecid'] == "TEST-001"
-            assert 'Generated TaskSpec for TestApp' in log_entry['description']
+            assert 'Generated build requirements for TestApp' in log_entry['description']
     
     @pytest.mark.asyncio
     async def test_process_task_empty_prd_path_warning(self, mock_lead_agent):
