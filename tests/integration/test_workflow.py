@@ -14,12 +14,69 @@ import os
 import tempfile
 from typing import Dict, Any
 
-from agents.roles.dev.app_builder import AppBuilder
+from agents.tools.app_builder import AppBuilder
+from agents.skills.dev.architect_prompt import ArchitectPrompt
+from agents.skills.dev.developer_prompt import DeveloperPrompt
+from agents.skills.dev.squadops_constraints import SquadOpsConstraints
 from tests.integration.conftest import retry_on_network_error
 
 
 class TestWorkflowIntegration:
     """Integration tests for SquadOps workflow with real Ollama."""
+    
+    def _generate_manifest_prompt(self, task_spec):
+        """Helper to generate manifest prompt using Skills."""
+        import yaml
+        import re
+        
+        architect_skill = ArchitectPrompt()
+        constraints_skill = SquadOpsConstraints()
+        
+        app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', task_spec.get('app_name', 'application')).lower().replace(' ', '-')
+        constraints = constraints_skill.load(
+            version=task_spec.get('version', '1.0.0'),
+            run_id=task_spec.get('run_id', 'unknown'),
+            app_name_kebab=app_name_kebab
+        )
+        prompt = architect_skill.load(
+            app_name=task_spec.get('app_name', 'unknown'),
+            version=task_spec.get('version', '1.0.0'),
+            prd_analysis=task_spec.get('prd_analysis', ''),
+            features=', '.join(task_spec.get('features', [])) if task_spec.get('features') else 'General web application',
+            constraints=yaml.dump(task_spec.get('constraints', {})) if task_spec.get('constraints') else 'None',
+            squadops_constraints=constraints,
+            output_format='json'
+        )
+        return prompt, task_spec
+    
+    def _generate_files_prompt(self, task_spec, manifest):
+        """Helper to generate files prompt using Skills."""
+        import yaml
+        import re
+        
+        developer_skill = DeveloperPrompt()
+        constraints_skill = SquadOpsConstraints()
+        
+        app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', task_spec.get('app_name', 'application')).lower().replace(' ', '-')
+        constraints = constraints_skill.load(
+            version=task_spec.get('version', '1.0.0'),
+            run_id=task_spec.get('run_id', 'unknown'),
+            app_name_kebab=app_name_kebab
+        )
+        prompt = developer_skill.load(
+            app_name=task_spec.get('app_name', 'unknown'),
+            app_name_kebab=app_name_kebab,
+            version=task_spec.get('version', '1.0.0'),
+            run_id=task_spec.get('run_id', 'unknown'),
+            prd_analysis=task_spec.get('prd_analysis', ''),
+            features=', '.join(task_spec.get('features', [])) if task_spec.get('features') else 'General web application',
+            constraints=yaml.dump(task_spec.get('constraints', {})) if task_spec.get('constraints') else 'None',
+            manifest_summary=yaml.dump(manifest),
+            output_format='json',
+            squadops_constraints=constraints
+        )
+        prompt = prompt.replace('$squadops_constraints', constraints)
+        return prompt, task_spec, manifest
     
     @pytest.fixture
     def sample_task_spec(self):
@@ -61,8 +118,9 @@ class TestWorkflowIntegration:
         if not ollama_available:
             pytest.skip("Ollama not available for integration test")
         
-        # Step 1: Generate manifest via JSON
-        manifest = await app_builder.generate_manifest_json(sample_task_spec)
+        # Step 1: Generate manifest via JSON (using Skills)
+        manifest_prompt, task_spec = self._generate_manifest_prompt(sample_task_spec)
+        manifest = await app_builder.generate_manifest_json(manifest_prompt, sample_task_spec)
         
         assert isinstance(manifest, dict)
         # Handle both old and new manifest structures
@@ -73,8 +131,9 @@ class TestWorkflowIntegration:
         assert len(manifest.get("files", [])) > 0
         assert manifest.get("deployment", {}).get("container") == "nginx:alpine"
         
-        # Step 2: Generate files via JSON
-        files = await app_builder.generate_files_json(sample_task_spec, manifest)
+        # Step 2: Generate files via JSON (using Skills)
+        files_prompt, task_spec, manifest = self._generate_files_prompt(sample_task_spec, manifest)
+        files = await app_builder.generate_files_json(files_prompt, sample_task_spec, manifest)
         
         assert isinstance(files, list)
         assert len(files) > 0
@@ -120,7 +179,8 @@ class TestWorkflowIntegration:
         if not ollama_available:
             pytest.skip("Ollama not available for integration test")
         
-        manifest = await app_builder.generate_manifest_json(sample_task_spec)
+        manifest_prompt, task_spec = self._generate_manifest_prompt(sample_task_spec)
+        manifest = await app_builder.generate_manifest_json(manifest_prompt, sample_task_spec)
         
         # Verify manifest structure
         assert isinstance(manifest, dict)
@@ -161,11 +221,13 @@ class TestWorkflowIntegration:
         if not ollama_available:
             pytest.skip("Ollama not available for integration test")
         
-        # First generate manifest
-        manifest = await app_builder.generate_manifest_json(sample_task_spec)
+        # First generate manifest (using Skills)
+        manifest_prompt, task_spec = self._generate_manifest_prompt(sample_task_spec)
+        manifest = await app_builder.generate_manifest_json(manifest_prompt, sample_task_spec)
         
-        # Then generate files
-        files = await app_builder.generate_files_json(sample_task_spec, manifest)
+        # Then generate files (using Skills)
+        files_prompt, task_spec, manifest = self._generate_files_prompt(sample_task_spec, manifest)
+        files = await app_builder.generate_files_json(files_prompt, sample_task_spec, manifest)
         
         # Verify JSON structure
         assert isinstance(files, list)
@@ -210,9 +272,11 @@ class TestWorkflowIntegration:
             pytest.skip("Ollama not available for integration test")
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Generate manifest and files
-            manifest = await app_builder.generate_manifest_json(sample_task_spec)
-            files = await app_builder.generate_files_json(sample_task_spec, manifest)
+            # Generate manifest and files (using Skills)
+            manifest_prompt, task_spec = self._generate_manifest_prompt(sample_task_spec)
+            manifest = await app_builder.generate_manifest_json(manifest_prompt, sample_task_spec)
+            files_prompt, task_spec, manifest = self._generate_files_prompt(sample_task_spec, manifest)
+            files = await app_builder.generate_files_json(files_prompt, sample_task_spec, manifest)
             
             # Create temporary files to simulate governance logging
             manifest_file = os.path.join(temp_dir, "manifest.yaml")
@@ -289,12 +353,14 @@ class TestWorkflowIntegration:
             pytest.skip("Ollama not available for integration test")
         
         # Test with default model
-        manifest = await app_builder.generate_manifest_json(sample_task_spec)
+        manifest_prompt, task_spec = self._generate_manifest_prompt(sample_task_spec)
+        manifest = await app_builder.generate_manifest_json(manifest_prompt, sample_task_spec)
         assert isinstance(manifest, dict), "Manifest should be a dict"
         
-        # Test with alternative model if available
+        # Test with alternative model if available (using Skills)
         try:
-            manifest_alt = await app_builder.generate_manifest_json(sample_task_spec)
+            manifest_prompt_alt, task_spec = self._generate_manifest_prompt(sample_task_spec)
+            manifest_alt = await app_builder.generate_manifest_json(manifest_prompt_alt, sample_task_spec)
             assert isinstance(manifest_alt, dict), "Manifest should be a dict"
         except Exception as e:
             # If alternative model fails, that's okay for integration test
@@ -329,11 +395,13 @@ class TestWorkflowIntegration:
             ]
         }
         
-        # Should handle large TaskSpec without issues
-        manifest = await app_builder.generate_manifest_json(large_task_spec)
+        # Should handle large TaskSpec without issues (using Skills)
+        manifest_prompt, task_spec = self._generate_manifest_prompt(large_task_spec)
+        manifest = await app_builder.generate_manifest_json(manifest_prompt, large_task_spec)
         assert isinstance(manifest, dict)
         assert len(manifest.get("files", [])) >= 3
         
-        files = await app_builder.generate_files_json(large_task_spec, manifest)
+        files_prompt, task_spec, manifest = self._generate_files_prompt(large_task_spec, manifest)
+        files = await app_builder.generate_files_json(files_prompt, large_task_spec, manifest)
         assert isinstance(files, list)
         assert len(files) >= 4

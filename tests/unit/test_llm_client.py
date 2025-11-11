@@ -293,7 +293,7 @@ async def test_ollama_client_format_parameter():
 @pytest.mark.asyncio
 async def test_app_builder_uses_router():
     """Test that AppBuilder uses LLM router properly"""
-    from agents.roles.dev.app_builder import AppBuilder
+    from agents.tools.app_builder import AppBuilder
     from unittest.mock import MagicMock, AsyncMock, patch
     import json
     
@@ -326,7 +326,7 @@ async def test_app_builder_uses_router():
 @pytest.mark.asyncio
 async def test_app_builder_respects_use_local_llm():
     """Test that AppBuilder respects USE_LOCAL_LLM setting via router"""
-    from agents.roles.dev.app_builder import AppBuilder
+    from agents.tools.app_builder import AppBuilder
     from agents.llm.router import LLMRouter
     from unittest.mock import patch
     import os

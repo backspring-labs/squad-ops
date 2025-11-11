@@ -55,7 +55,7 @@ Return file contents in JSON format following this EXACT structure:
     },
     {
       "path": "nginx.conf",
-      "content": "server {\n  listen 80;\n  location / {\n    alias /usr/share/nginx/html/;\n    try_files $uri $uri/ /index.html;\n  }\n}"
+      "content": "server {\n  listen 80;\n  server_name localhost;\n\n  location /$app_name_kebab/ {\n    alias /usr/share/nginx/html/;\n    try_files $uri $uri/ /index.html;\n  }\n\n  location = /$app_name_kebab {\n    return 301 /$app_name_kebab/;\n  }\n\n  location = / {\n    return 301 /$app_name_kebab/;\n  }\n}"
     },
     {
       "path": "Dockerfile",

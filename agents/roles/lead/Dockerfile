@@ -27,6 +27,8 @@ COPY agents/capabilities ./agents/capabilities
 COPY agents/telemetry ./agents/telemetry
 COPY agents/memory ./agents/memory
 COPY agents/instances ./agents/instances
+# Copy skills directory for capability imports (capabilities use agents.skills.*)
+COPY agents/skills ./agents/skills
 
 # Copy version management
 COPY config ./config

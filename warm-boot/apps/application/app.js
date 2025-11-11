@@ -1,27 +1,25 @@
-const activityFeed = document.getElementById('activity-feed');
-const projectProgress = document.getElementById('project-progress');
+console.log('Application loaded');
+document.addEventListener('DOMContentLoaded', function() {
+  fetch('/application/agents/status')
+    .then(response => response.json())
+    .then(data => displayActivityFeed(data))
+    .catch(error => console.error('Error fetching data:', error));
+});
 
-async function fetchActivity() {
-  try {
-    const response = await fetch('/api/activity');
-    if (!response.ok) throw new Error(response.statusText);
-    const data = await response.json();
-    activityFeed.innerHTML = JSON.stringify(data, null, 2);
-  } catch (error) {
-    console.error('Failed to fetch activity:', error);
-  }
+function displayActivityFeed(activities) {
+  const activityFeed = document.getElementById('activity-feed');
+  activities.forEach(activity => {
+    const div = document.createElement('div');
+    div.textContent = `User: ${activity.user}, Action: ${activity.action}, Time: ${new Date(activity.timestamp).toLocaleString()}`;
+    activityFeed.appendChild(div);
+  });
 }
 
-async function fetchProjectProgress() {
-  try {
-    const response = await fetch('/api/progress');
-    if (!response.ok) throw new Error(response.statusText);
-    const data = await response.json();
-    projectProgress.innerHTML = JSON.stringify(data, null, 2);
-  } catch (error) {
-    console.error('Failed to fetch project progress:', error);
+window.addEventListener('hashchange', function() {
+  if (window.location.hash === '#/health') {
+    fetch('/application/health')
+      .then(response => response.text())
+      .then(data => document.body.textContent = data)
+      .catch(error => console.error('Error fetching health check:', error));
   }
-}
-
-fetchActivity();
-fetchProjectProgress();
+});

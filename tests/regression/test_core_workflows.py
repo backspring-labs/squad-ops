@@ -9,7 +9,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from agents.roles.lead.agent import LeadAgent
 from agents.roles.dev.agent import DevAgent
-from agents.roles.dev.app_builder import AppBuilder
+from agents.tools.app_builder import AppBuilder
 # TaskSpec and BuildManifest removed - using dict-based requirements instead
 
 class TestCoreWorkflows:

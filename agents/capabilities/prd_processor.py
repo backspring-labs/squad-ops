@@ -113,6 +113,12 @@ class PRDAnalyzer:
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
         self.communication_log = agent.communication_log if hasattr(agent, 'communication_log') else []
         self.current_ecid = agent.current_ecid if hasattr(agent, 'current_ecid') else None
+        
+        # Import Skill (reasoning pattern)
+        from agents.skills.lead.prd_analysis_prompt import PRDAnalysisPrompt
+        
+        # Initialize Skill
+        self.prd_analysis_prompt_skill = PRDAnalysisPrompt()
     
     async def analyze(self, prd_content: str, agent_role: str = "Lead Agent") -> Dict[str, Any]:
         """
@@ -128,24 +134,11 @@ class PRDAnalyzer:
             Dictionary containing core_features, technical_requirements, success_criteria, and analysis_summary
         """
         try:
-            analysis_prompt = f"""
-            You are {agent_role} responsible for analyzing Product Requirements Documents (PRDs) and extracting requirements.
-            
-            Please analyze the following PRD and extract:
-            1. **Core Features**: List the main features that need to be built
-            2. **Technical Requirements**: Identify technical constraints and requirements
-            3. **Success Criteria**: What defines success for this project
-            
-            PRD Content:
-            {prd_content}
-            
-            Respond with a structured analysis in JSON format:
-            {{
-                "core_features": ["feature1", "feature2", ...],
-                "technical_requirements": ["req1", "req2", ...],
-                "success_criteria": ["criteria1", "criteria2", ...]
-            }}
-            """
+            # Compose Skills: Load prompt using Skill
+            analysis_prompt = self.prd_analysis_prompt_skill.load(
+                agent_role=agent_role,
+                prd_content=prd_content
+            )
             
             logger.info(f"{self.name} making LLM call for PRD analysis...")
             llm_response = await self.agent.llm_response(analysis_prompt, "PRD Analysis")

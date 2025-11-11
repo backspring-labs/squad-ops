@@ -31,6 +31,12 @@ class BuildRequirementsGenerator:
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
         self.llm_client = agent_instance.llm_client if hasattr(agent_instance, 'llm_client') else None
         self.communication_log = agent_instance.communication_log if hasattr(agent_instance, 'communication_log') else []
+        
+        # Import Skill (reasoning pattern)
+        from agents.skills.lead.build_requirements_prompt import BuildRequirementsPrompt
+        
+        # Initialize Skill
+        self.build_requirements_prompt_skill = BuildRequirementsPrompt()
     
     async def generate(self, prd_content: str, app_name: str, version: str, run_id: str, features: List[str] = None) -> Dict[str, Any]:
         """
@@ -57,49 +63,14 @@ class BuildRequirementsGenerator:
         """
         logger.info(f"{self.name} generating build requirements for {app_name} v{version}")
         
-        prompt = f"""
-        You are a senior product manager analyzing a PRD to create detailed build requirements for development.
-        
-        APPLICATION: {app_name}
-        VERSION: {version}
-        RUN ID: {run_id}
-        FEATURES: {', '.join(features) if features else 'General web application'}
-        
-        PRD CONTENT:
-        {prd_content}
-        
-        Create comprehensive build requirements that include:
-        
-        1. PRD_ANALYSIS: Your detailed analysis of the requirements, user needs, and technical considerations
-        2. FEATURES: Specific feature list derived from the PRD
-        3. CONSTRAINTS: Technical constraints, performance requirements, security considerations
-        4. SUCCESS_CRITERIA: Measurable success criteria for the application
-        
-        CRITICAL OUTPUT RULES:
-        - Return ONLY valid YAML
-        - Start directly with "app_name:"
-        - Do NOT wrap in markdown code fences
-        - Do NOT include explanatory text
-        - Use proper YAML indentation
-        
-        Return the requirements in this exact format:
-        
-        app_name: "{app_name}"
-        version: "{version}"
-        run_id: "{run_id}"
-        prd_analysis: |
-          Your detailed analysis here...
-        features:
-          - feature1
-          - feature2
-        constraints:
-          technical: "constraints here"
-          performance: "requirements here"
-          security: "considerations here"
-        success_criteria:
-          - "Criterion 1"
-          - "Criterion 2"
-        """
+        # Compose Skills: Load prompt using Skill
+        prompt = self.build_requirements_prompt_skill.load(
+            app_name=app_name,
+            version=version,
+            run_id=run_id,
+            features=features or [],
+            prd_content=prd_content
+        )
         
         try:
             if not self.llm_client:

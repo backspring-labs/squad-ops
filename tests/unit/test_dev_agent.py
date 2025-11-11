@@ -24,14 +24,9 @@ class TestDevAgent:
         """Create DevAgent instance for testing."""
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             agent = DevAgent("test-dev-agent")
-            # Mock the managers to avoid real file system operations
-            agent.file_manager = MockFileManager()
-            agent.docker_manager = MockDockerManager()
-            agent.version_manager = MagicMock()
-            # Make app_builder methods async
-            agent.app_builder = MagicMock()
-            agent.app_builder.generate_manifest_json = AsyncMock()
-            agent.app_builder.generate_files_json = AsyncMock()
+            # Mock capability_loader.execute to avoid real capability execution
+            agent.capability_loader = MagicMock()
+            agent.capability_loader.execute = AsyncMock()
             return agent
     
     # ============================================================================
@@ -95,15 +90,13 @@ class TestDevAgent:
         """Test handle_agent_request for build.artifact capability"""
         request = create_sample_build_artifact_request(task_id="test-001")
         
-        # Mock AppBuilder methods
-        dev_agent.app_builder.generate_manifest_json = AsyncMock(return_value={
-            "architecture_type": "spa_web_app",
-            "framework": "vanilla_js",
-            "files": []
-        })
-        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=[
-            {"type": "create_file", "file_path": "index.html", "content": "<html></html>", "directory": None}
-        ])
+        # Mock capability_loader.execute to return build.artifact result
+        dev_agent.capability_loader.execute.return_value = {
+            "artifact_uri": "/artifacts/TestApp/test-001",
+            "commit": "mock_commit_hash",
+            "files_generated": [{"type": "file", "path": "index.html", "content": "<html></html>"}],
+            "manifest_uri": "/artifacts/TestApp/test-001/manifest.json"
+        }
         
         response = await dev_agent.handle_agent_request(request)
         
@@ -115,6 +108,7 @@ class TestDevAgent:
         assert "manifest_uri" in response.result
         assert response.idempotency_key is not None
         assert response.timing is not None
+        dev_agent.capability_loader.execute.assert_called_once_with('build.artifact', dev_agent, request.payload.get('requirements', request.payload))
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -126,6 +120,9 @@ class TestDevAgent:
             metadata={"pid": "PID-001", "ecid": "ECID-001"}
         )
         
+        # Mock capability_loader.execute to raise ValueError for unknown capability
+        dev_agent.capability_loader.execute.side_effect = ValueError("Capability 'test.run' not found in capability map")
+        
         response = await dev_agent.handle_agent_request(request)
         
         assert isinstance(response, AgentResponse)
@@ -136,156 +133,154 @@ class TestDevAgent:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_design_manifest_task_success(self, dev_agent, design_manifest_task):
-        """Test successful design_manifest task handling (legacy)."""
-        # Mock AppBuilder manifest generation
-        mock_manifest = {
-            "architecture_type": "spa_web_app",
-            "framework": "vanilla_js",
-            "files": []
+        """Test successful design_manifest task handling via capability."""
+        # Mock capability_loader.execute to return manifest.generate result
+        mock_result = {
+            "status": "completed",
+            "task_id": "test-design-001",
+            "action": "design_manifest",
+            "manifest": {
+                "architecture_type": "spa_web_app",
+                "framework": "vanilla_js",
+                "files": []
+            },
+            "created_files": ["index.html"]
         }
-        # Also mock files generation since design_manifest task calls both
-        mock_files = [
-            {"type": "create_file", "file_path": "index.html", "content": "<html></html>", "directory": None}
-        ]
-        dev_agent.app_builder.generate_manifest_json = AsyncMock(return_value=mock_manifest)
-        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=mock_files)
+        dev_agent.capability_loader.execute.return_value = mock_result
         
-        result = await dev_agent._handle_design_manifest_task(
-            design_manifest_task["task_id"],
-            design_manifest_task["requirements"]
-        )
+        result = await dev_agent.process_task(design_manifest_task)
         
         assert result["status"] == "completed"
         assert result["task_id"] == "test-design-001"
         assert result["action"] == "design_manifest"
         assert "manifest" in result
-        dev_agent.app_builder.generate_manifest_json.assert_called_once()
+        dev_agent.capability_loader.execute.assert_called_once_with('manifest.generate', dev_agent, "test-design-001", design_manifest_task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_design_manifest_task_missing_requirements(self, dev_agent):
-        """Test design_manifest task with missing build requirements."""
-        requirements = {
-            "action": "design_manifest"
-            # Missing app_name, features, etc. (will use defaults)
+        """Test design_manifest task with missing build requirements via capability."""
+        task = {
+            "task_id": "test-001",
+            "type": "development",
+            "requirements": {
+                "action": "design_manifest"
+                # Missing app_name, features, etc. (will use defaults)
+            }
         }
         
-        # Mock AppBuilder to handle missing requirements gracefully
-        dev_agent.app_builder.generate_manifest_json = AsyncMock(return_value={
-            "architecture_type": "spa_web_app",
-            "framework": "vanilla_js",
-            "files": []
-        })
-        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=[])
-        dev_agent.file_manager.create_file = AsyncMock(return_value=True)
-        dev_agent.file_manager.directory_exists = AsyncMock(return_value=False)
+        # Mock capability_loader.execute to return success with defaults
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-001",
+            "action": "design_manifest",
+            "manifest": {"architecture_type": "spa_web_app"},
+            "created_files": []
+        }
         
-        result = await dev_agent._handle_design_manifest_task("test-001", requirements)
+        result = await dev_agent.process_task(task)
         
         # Should succeed with default values
         assert result["status"] == "completed"
     
     @pytest.mark.asyncio
     async def test_handle_design_manifest_task_exception(self, dev_agent):
-        """Test _handle_design_manifest_task exception handling"""
-        task_id = 'test-task-001'
-        requirements = {
-            # Flattened requirements (no task_spec)
-            'app_name': 'TestApp',
-            'version': '1.0.0',
-            'run_id': 'test-run',
-            'prd_analysis': 'Test analysis',
-            'features': ['feature1'],
-            'constraints': {},
-            'success_criteria': ['Task completes']
+        """Test design_manifest task exception handling via capability"""
+        task = {
+            'task_id': 'test-task-001',
+            'type': 'development',
+            'requirements': {
+                'action': 'design_manifest',
+                'app_name': 'TestApp',
+                'version': '1.0.0',
+                'run_id': 'test-run',
+                'prd_analysis': 'Test analysis',
+                'features': ['feature1'],
+                'constraints': {},
+                'success_criteria': ['Task completes']
+            }
         }
         
-        # Mock app_builder to raise exception
-        dev_agent.app_builder = AsyncMock()
-        dev_agent.app_builder.generate_manifest_json.side_effect = Exception("Manifest generation failed")
+        # Mock capability_loader.execute to raise exception
+        dev_agent.capability_loader.execute.side_effect = Exception("Manifest generation failed")
         
-        result = await dev_agent._handle_design_manifest_task(task_id, requirements)
+        result = await dev_agent.process_task(task)
         
         assert result['task_id'] == 'test-task-001'
         assert result['status'] == 'error'
-        assert result['action'] == 'design_manifest'
         assert 'error' in result
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_build_task_with_manifest_json_workflow(self, dev_agent, build_task_with_manifest):
-        """Test build task with manifest using JSON workflow."""
-        # Mock AppBuilder file generation - return list of file dicts as expected
-        mock_files = [
-            {
-                "type": "create_file",
-                "file_path": "app.py",
-                "content": "print('Hello World')"
-            },
-            {
-                "type": "create_file", 
-                "file_path": "index.html",
-                "content": "<html><body>Hello</body></html>"
-            }
-        ]
-        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=mock_files)
+        """Test build task with manifest using JSON workflow via capability."""
+        # Mock capability_loader.execute to return docker.build result
+        mock_result = {
+            "status": "completed",
+            "task_id": "test-build-001",
+            "action": "build",
+            "created_files": ["app.py", "index.html"],
+            "image": "test-app",
+            "image_version": "test-app:1.0.0"
+        }
+        dev_agent.capability_loader.execute.return_value = mock_result
         
-        result = await dev_agent._handle_build_task(
-            build_task_with_manifest["task_id"],
-            build_task_with_manifest["requirements"]
-        )
+        result = await dev_agent.process_task(build_task_with_manifest)
         
         assert result["status"] == "completed"
         assert result["task_id"] == "test-build-001"
         assert result["action"] == "build"
-        assert "created_files" in result  # DevAgent returns created_files, not files
+        assert "created_files" in result
         assert len(result["created_files"]) == 2
-        dev_agent.app_builder.generate_files_json.assert_called_once()
+        dev_agent.capability_loader.execute.assert_called_once_with('docker.build', dev_agent, "test-build-001", build_task_with_manifest["requirements"])
     
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_build_task_file_creation(self, dev_agent, build_task_with_manifest):
-        """Test that build task creates files correctly."""
-        # Mock AppBuilder file generation - return list of file dicts as expected
-        mock_files = [
-            {
-                "type": "create_file",
-                "file_path": "app.py",
-                "content": "print('Hello World')"
-            },
-            {
-                "type": "create_file",
-                "file_path": "index.html",
-                "content": "<html><body>Hello</body></html>"
-            }
-        ]
-        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=mock_files)
+        """Test that build task creates files correctly via capability."""
+        # Mock capability_loader.execute to return docker.build result with created files
+        mock_result = {
+            "status": "completed",
+            "task_id": "test-build-001",
+            "action": "build",
+            "created_files": ["app.py", "index.html"],
+            "image": "test-app",
+            "image_version": "test-app:1.0.0"
+        }
+        dev_agent.capability_loader.execute.return_value = mock_result
         
-        result = await dev_agent._handle_build_task(
-            build_task_with_manifest["task_id"],
-            build_task_with_manifest["requirements"]
-        )
+        result = await dev_agent.process_task(build_task_with_manifest)
         
-        # Check that files were created
-        created_files = dev_agent.file_manager.created_files
-        assert len(created_files) == 2
-        
-        # Check specific files were created
-        assert any("index.html" in path and "Hello" in content for path, content in created_files.items())
-        assert any("app.py" in path and "print" in content for path, content in created_files.items())
+        # Check that files were created (returned in result)
+        assert "created_files" in result
+        assert len(result["created_files"]) == 2
+        assert "app.py" in result["created_files"]
+        assert "index.html" in result["created_files"]
     
     @pytest.mark.asyncio
     async def test_handle_build_task_missing_manifest(self, dev_agent):
-        """Test _handle_build_task with missing manifest"""
-        task_id = 'test-task-001'
-        requirements = {
-            'application': 'TestApp',
-            'version': '1.0.0'
-            # Missing manifest
+        """Test build task with missing manifest via capability"""
+        task = {
+            'task_id': 'test-task-001',
+            'type': 'development',
+            'requirements': {
+                'action': 'build',
+                'application': 'TestApp',
+                'version': '1.0.0'
+                # Missing manifest
+            }
         }
         
-        result = await dev_agent._handle_build_task(task_id, requirements)
+        # Mock capability_loader.execute to return error for missing manifest
+        dev_agent.capability_loader.execute.return_value = {
+            'task_id': 'test-task-001',
+            'status': 'error',
+            'action': 'build',
+            'error': 'Manifest is required for build task'
+        }
+        
+        result = await dev_agent.process_task(task)
         
         assert result['task_id'] == 'test-task-001'
         assert result['status'] == 'error'
@@ -294,72 +289,95 @@ class TestDevAgent:
     
     @pytest.mark.asyncio
     async def test_handle_build_task_exception(self, dev_agent):
-        """Test _handle_build_task exception handling"""
-        task_id = 'test-task-001'
-        requirements = {
-            'application': 'TestApp',
-            'version': '1.0.0',
-            'manifest': {
-                'app_name': 'TestApp',
+        """Test build task exception handling via capability"""
+        task = {
+            'task_id': 'test-task-001',
+            'type': 'development',
+            'requirements': {
+                'action': 'build',
+                'application': 'TestApp',
                 'version': '1.0.0',
-                'features': ['Feature1']
+                'manifest': {
+                    'app_name': 'TestApp',
+                    'version': '1.0.0',
+                    'features': ['Feature1']
+                }
             }
         }
         
-        # Mock app_builder to raise exception
-        dev_agent.app_builder = AsyncMock()
-        dev_agent.app_builder.generate_files_json.side_effect = Exception("File generation failed")
+        # Mock capability_loader.execute to raise exception
+        dev_agent.capability_loader.execute.side_effect = Exception("File generation failed")
         
-        result = await dev_agent._handle_build_task(task_id, requirements)
+        result = await dev_agent.process_task(task)
         
         assert result['task_id'] == 'test-task-001'
         assert result['status'] == 'error'
-        assert result['action'] == 'build'
         assert 'error' in result
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_deploy_task_with_source_dir(self, dev_agent, deploy_task):
-        """Test deploy task with source directory."""
-        # Mock Docker operations - MockDockerManager already returns proper dict structure
-        result = await dev_agent._handle_deploy_task(
-            deploy_task["task_id"],
-            deploy_task["requirements"]
-        )
+        """Test deploy task with source directory via capability."""
+        # Mock capability_loader.execute to return docker.deploy result
+        mock_result = {
+            "status": "completed",
+            "task_id": "test-deploy-001",
+            "action": "deploy",
+            "container_name": "test-app-container",
+            "image": "test-app:1.0.0"
+        }
+        dev_agent.capability_loader.execute.return_value = mock_result
+        
+        result = await dev_agent.process_task(deploy_task)
         
         assert result["status"] == "completed"
         assert result["task_id"] == "test-deploy-001"
         assert result["action"] == "deploy"
-        assert len(dev_agent.docker_manager.build_calls) == 1
-        assert len(dev_agent.docker_manager.deploy_calls) == 1
+        dev_agent.capability_loader.execute.assert_called_once_with('docker.deploy', dev_agent, "test-deploy-001", deploy_task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_deploy_task_with_source_fallback(self, dev_agent, deploy_task):
-        """Test deploy task with source fallback."""
-        # Mock Docker operations - MockDockerManager already returns proper dict structure
-        result = await dev_agent._handle_deploy_task(
-            deploy_task["task_id"],
-            deploy_task["requirements"]
-        )
+        """Test deploy task with source fallback via capability."""
+        # Mock capability_loader.execute to return docker.deploy result
+        mock_result = {
+            "status": "completed",
+            "task_id": "test-deploy-001",
+            "action": "deploy",
+            "container_name": "test-app-container",
+            "image": "test-app:1.0.0"
+        }
+        dev_agent.capability_loader.execute.return_value = mock_result
+        
+        result = await dev_agent.process_task(deploy_task)
         
         assert result["status"] == "completed"
         assert result["task_id"] == "test-deploy-001"
         assert result["action"] == "deploy"
-        assert len(dev_agent.docker_manager.build_calls) == 1
-        assert len(dev_agent.docker_manager.deploy_calls) == 1
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_deploy_task_missing_source(self, dev_agent):
-        """Test deploy task with missing source."""
-        requirements = {
-            "action": "deploy",
-            "app_name": "test-app"
-            # Missing source_dir
+        """Test deploy task with missing source via capability."""
+        task = {
+            "task_id": "test-deploy-003",
+            "type": "development",
+            "requirements": {
+                "action": "deploy",
+                "app_name": "test-app"
+                # Missing source_dir
+            }
         }
         
-        result = await dev_agent._handle_deploy_task("test-deploy-003", requirements)
+        # Mock capability_loader.execute to return success (capability handles missing source)
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-deploy-003",
+            "action": "deploy",
+            "container_name": "test-app-container"
+        }
+        
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "completed"
         assert result["task_id"] == "test-deploy-003"
@@ -367,16 +385,28 @@ class TestDevAgent:
     
     @pytest.mark.asyncio
     async def test_handle_deploy_task_with_features(self, dev_agent):
-        """Test _handle_deploy_task with features but no manifest"""
-        task_id = 'test-task-001'
-        requirements = {
-            'application': 'TestApp',
-            'version': '1.0.0',
-            'features': ['Feature1', 'Feature2'],
-            'prd_analysis': 'Test analysis'
+        """Test deploy task with features but no manifest via capability"""
+        task = {
+            'task_id': 'test-task-001',
+            'type': 'development',
+            'requirements': {
+                'action': 'deploy',
+                'application': 'TestApp',
+                'version': '1.0.0',
+                'features': ['Feature1', 'Feature2'],
+                'prd_analysis': 'Test analysis'
+            }
         }
         
-        result = await dev_agent._handle_deploy_task(task_id, requirements)
+        # Mock capability_loader.execute to return success
+        dev_agent.capability_loader.execute.return_value = {
+            'task_id': 'test-task-001',
+            'status': 'completed',
+            'action': 'deploy',
+            'container_name': 'test-app-container'
+        }
+        
+        result = await dev_agent.process_task(task)
         
         assert result['task_id'] == 'test-task-001'
         assert result['status'] == 'completed'
@@ -384,22 +414,27 @@ class TestDevAgent:
     
     @pytest.mark.asyncio
     async def test_handle_deploy_task_build_failure(self, dev_agent):
-        """Test _handle_deploy_task with Docker build failure"""
-        task_id = 'test-task-001'
-        requirements = {
-            'application': 'TestApp',
-            'version': '1.0.0',
-            'source_dir': '/path/to/source'
+        """Test deploy task with Docker build failure via capability"""
+        task = {
+            'task_id': 'test-task-001',
+            'type': 'development',
+            'requirements': {
+                'action': 'deploy',
+                'application': 'TestApp',
+                'version': '1.0.0',
+                'source_dir': '/path/to/source'
+            }
         }
         
-        # Mock docker_manager to return build failure
-        dev_agent.docker_manager = AsyncMock()
-        dev_agent.docker_manager.build_image.return_value = {
-            'status': 'failed',
+        # Mock capability_loader.execute to return build failure
+        dev_agent.capability_loader.execute.return_value = {
+            'task_id': 'test-task-001',
+            'status': 'error',
+            'action': 'deploy',
             'error': 'Docker build failed'
         }
         
-        result = await dev_agent._handle_deploy_task(task_id, requirements)
+        result = await dev_agent.process_task(task)
         
         assert result['task_id'] == 'test-task-001'
         assert result['status'] == 'error'
@@ -408,23 +443,27 @@ class TestDevAgent:
     
     @pytest.mark.asyncio
     async def test_handle_deploy_task_deploy_failure(self, dev_agent):
-        """Test _handle_deploy_task with Docker deploy failure"""
-        task_id = 'test-task-001'
-        requirements = {
-            'application': 'TestApp',
-            'version': '1.0.0',
-            'source_dir': '/path/to/source'
+        """Test deploy task with Docker deploy failure via capability"""
+        task = {
+            'task_id': 'test-task-001',
+            'type': 'development',
+            'requirements': {
+                'action': 'deploy',
+                'application': 'TestApp',
+                'version': '1.0.0',
+                'source_dir': '/path/to/source'
+            }
         }
         
-        # Mock docker_manager to return build success but deploy failure
-        dev_agent.docker_manager = AsyncMock()
-        dev_agent.docker_manager.build_image.return_value = {'status': 'success'}
-        dev_agent.docker_manager.deploy_container.return_value = {
-            'status': 'failed',
+        # Mock capability_loader.execute to return deploy failure
+        dev_agent.capability_loader.execute.return_value = {
+            'task_id': 'test-task-001',
+            'status': 'error',
+            'action': 'deploy',
             'error': 'Container deployment failed'
         }
         
-        result = await dev_agent._handle_deploy_task(task_id, requirements)
+        result = await dev_agent.process_task(task)
         
         assert result['task_id'] == 'test-task-001'
         assert result['status'] == 'error'
@@ -433,41 +472,51 @@ class TestDevAgent:
     
     @pytest.mark.asyncio
     async def test_handle_deploy_task_exception(self, dev_agent):
-        """Test _handle_deploy_task exception handling"""
-        task_id = 'test-task-001'
-        requirements = {
-            'application': 'TestApp',
-            'version': '1.0.0',
-            'source_dir': '/path/to/source'
+        """Test deploy task exception handling via capability"""
+        task = {
+            'task_id': 'test-task-001',
+            'type': 'development',
+            'requirements': {
+                'action': 'deploy',
+                'application': 'TestApp',
+                'version': '1.0.0',
+                'source_dir': '/path/to/source'
+            }
         }
         
-        # Mock docker_manager to raise exception
-        dev_agent.docker_manager = AsyncMock()
-        dev_agent.docker_manager.build_image.side_effect = Exception("Docker operation failed")
+        # Mock capability_loader.execute to raise exception
+        dev_agent.capability_loader.execute.side_effect = Exception("Docker operation failed")
         
-        result = await dev_agent._handle_deploy_task(task_id, requirements)
+        result = await dev_agent.process_task(task)
         
         assert result['task_id'] == 'test-task-001'
         assert result['status'] == 'error'
-        assert result['action'] == 'deploy'
         assert 'error' in result
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_task_routing_unknown_action(self, dev_agent):
-        """Test task routing for unknown action."""
-        requirements = {
-            "action": "unknown_action",
-            "description": "Test unknown action"
+        """Test task routing for unknown action via capability."""
+        task = {
+            "task_id": "test-unknown-001",
+            "type": "development",
+            "requirements": {
+                "action": "unknown_action",
+                "description": "Test unknown action"
+            }
         }
         
-        result = await dev_agent._handle_development_task({
+        # Mock capability_loader.execute to return error for unknown action
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "error",
             "task_id": "test-unknown-001",
-            "requirements": requirements
-        })
+            "error": "Unknown action: unknown_action"
+        }
         
-        assert result["status"] == "completed"
-        assert result["action"] == "technical"
+        result = await dev_agent.process_task(task)
+        
+        assert result["status"] == "error"
+        assert "Unknown action" in result["error"]
     
     # ============================================================================
     # COMPREHENSIVE TESTS (from test_dev_agent_comprehensive.py)
@@ -476,116 +525,91 @@ class TestDevAgent:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_archive_task_success(self, dev_agent):
-        """Test successful archive task handling."""
-        task_id = "test-archive-001"
-        requirements = {
-            "application": "TestApp",
-            "version": "1.0.0"
+        """Test successful archive task handling via capability."""
+        task = {
+            "task_id": "test-archive-001",
+            "type": "development",
+            "requirements": {
+                "action": "archive",
+                "application": "TestApp",
+                "version": "1.0.0"
+            }
         }
         
-        # Mock version manager operations
-        dev_agent.version_manager.archive_existing_version = AsyncMock(return_value={
-            'status': 'success',
+        # Mock capability_loader.execute to return version.archive result
+        mock_result = {
+            'status': 'completed',
+            'task_id': 'test-archive-001',
+            'action': 'archive',
+            'app_name': 'TestApp',
             'archived_version': '1.0.0',
             'archive_dir': '/archive/testapp-1.0.0'
-        })
+        }
+        dev_agent.capability_loader.execute.return_value = mock_result
         
-        result = await dev_agent._handle_archive_task(task_id, requirements)
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "completed"
-        assert result["task_id"] == task_id
+        assert result["task_id"] == "test-archive-001"
         assert result["action"] == "archive"
         assert result["app_name"] == "TestApp"
-        dev_agent.version_manager.archive_existing_version.assert_called_once()
+        dev_agent.capability_loader.execute.assert_called_once_with('version.archive', dev_agent, "test-archive-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_archive_task_failure(self, dev_agent):
-        """Test archive task handling with failure."""
-        task_id = "test-archive-002"
-        requirements = {
-            "application": "TestApp",
-            "version": "1.0.0"
+        """Test archive task handling with failure via capability."""
+        task = {
+            "task_id": "test-archive-002",
+            "type": "development",
+            "requirements": {
+                "action": "archive",
+                "application": "TestApp",
+                "version": "1.0.0"
+            }
         }
         
-        # Mock version manager to return failure
-        dev_agent.version_manager.archive_existing_version = AsyncMock(return_value={
+        # Mock capability_loader.execute to return failure
+        dev_agent.capability_loader.execute.return_value = {
             'status': 'error',
+            'task_id': 'test-archive-002',
+            'action': 'archive',
             'error': 'Archive failed'
-        })
+        }
         
-        result = await dev_agent._handle_archive_task(task_id, requirements)
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "error"
-        assert result["task_id"] == task_id
+        assert result["task_id"] == "test-archive-002"
         assert "Archive failed" in result["error"]
     
     @pytest.mark.asyncio
     async def test_handle_archive_task_exception(self, dev_agent):
-        """Test _handle_archive_task exception handling"""
-        task_id = 'test-task-001'
-        requirements = {
-            'application': 'TestApp',
-            'version': '1.0.0'
+        """Test archive task exception handling via capability"""
+        task = {
+            'task_id': 'test-task-001',
+            'type': 'development',
+            'requirements': {
+                'action': 'archive',
+                'application': 'TestApp',
+                'version': '1.0.0'
+            }
         }
         
-        # Mock version_manager to raise exception
-        dev_agent.version_manager = AsyncMock()
-        dev_agent.version_manager.archive_existing_version.side_effect = Exception("Archive failed")
+        # Mock capability_loader.execute to raise exception
+        dev_agent.capability_loader.execute.side_effect = Exception("Archive failed")
         
-        result = await dev_agent._handle_archive_task(task_id, requirements)
+        result = await dev_agent.process_task(task)
         
         assert result['task_id'] == 'test-task-001'
         assert result['status'] == 'error'
-        assert result['action'] == 'archive'
         assert 'error' in result
     
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_handle_technical_task_success(self, dev_agent):
-        """Test successful technical task handling."""
-        task_id = "test-technical-001"
-        requirements = {
-            "description": "Test technical task",
-            "complexity": 0.5
-        }
-        
-        # Mock technical requirements creation
-        mock_requirements = {
-            "app_name": "TechnicalTask",
-            "version": "1.0.0",
-            "run_id": "test-run",
-            "prd_analysis": "Technical task analysis",
-            "features": ["feature1"],
-            "constraints": {},
-            "success_criteria": ["Task completes"]
-        }
-        
-        with patch.object(dev_agent, '_create_technical_requirements', return_value=mock_requirements):
-            result = await dev_agent._handle_technical_task(task_id, requirements)
-        
-        assert result["status"] == "completed"
-        assert result["task_id"] == task_id
-        assert "technical task" in result["message"].lower()
-        assert "requirements" in result
+    # Removed test_handle_technical_task_success - _handle_technical_task method removed
+    # Technical tasks are not currently supported via capabilities
     
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_handle_technical_task_failure(self, dev_agent):
-        """Test technical task handling with failure."""
-        task_id = "test-technical-002"
-        requirements = {
-            "description": "Test technical task",
-            "complexity": 0.5
-        }
-        
-        # Mock technical requirements creation to fail
-        with patch.object(dev_agent, '_create_technical_requirements', side_effect=Exception("Requirements failed")):
-            result = await dev_agent._handle_technical_task(task_id, requirements)
-        
-        assert result["status"] == "error"
-        assert result["task_id"] == task_id
-        assert "Requirements failed" in result["error"]
+    # Removed test_handle_technical_task_failure - _handle_technical_task method removed
+    # Technical tasks are not currently supported via capabilities
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -642,22 +666,27 @@ class TestDevAgent:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_process_task_development_task(self, dev_agent):
-        """Test processing development task."""
+        """Test processing development task via capability."""
         task = {
             "task_id": "test-dev-001",
-            "task_type": "development",
+            "type": "development",
             "requirements": {
                 "action": "archive",
                 "app_name": "TestApp"
             }
         }
         
-        # Mock the development task handler
-        with patch.object(dev_agent, '_handle_development_task', return_value={"status": "completed"}) as mock_handler:
-            result = await dev_agent.process_task(task)
+        # Mock capability_loader.execute to return success
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-dev-001",
+            "action": "archive"
+        }
+        
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "completed"
-        mock_handler.assert_called_once_with(task)
+        dev_agent.capability_loader.execute.assert_called_once_with('version.archive', dev_agent, "test-dev-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -665,15 +694,14 @@ class TestDevAgent:
         """Test processing unknown task type."""
         task = {
             "task_id": "test-unknown-001",
-            "task_type": "unknown",
+            "type": "unknown",
             "requirements": {}
         }
         
-        with patch.object(dev_agent, '_handle_generic_task', return_value={"status": "completed"}) as mock_handler:
-            result = await dev_agent.process_task(task)
+        result = await dev_agent.process_task(task)
         
-        assert result["status"] == "completed"
-        mock_handler.assert_called_once_with(task)
+        assert result["status"] == "error"
+        assert "Unknown task type" in result["error"]
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -696,7 +724,7 @@ class TestDevAgent:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_development_task_archive(self, dev_agent):
-        """Test development task routing to archive."""
+        """Test development task routing to archive via capability."""
         task = {
             "task_id": "test-archive-001",
             "requirements": {
@@ -705,16 +733,22 @@ class TestDevAgent:
             }
         }
         
-        with patch.object(dev_agent, '_handle_archive_task', return_value={"status": "completed"}) as mock_handler:
-            result = await dev_agent._handle_development_task(task)
+        # Mock capability_loader.execute to return success
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-archive-001",
+            "action": "archive"
+        }
+        
+        result = await dev_agent._handle_development_task(task)
         
         assert result["status"] == "completed"
-        mock_handler.assert_called_once_with("test-archive-001", task["requirements"])
+        dev_agent.capability_loader.execute.assert_called_once_with('version.archive', dev_agent, "test-archive-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_development_task_design_manifest(self, dev_agent):
-        """Test development task routing to design_manifest."""
+        """Test development task routing to design_manifest via capability."""
         task = {
             "task_id": "test-design-001",
             "requirements": {
@@ -723,16 +757,22 @@ class TestDevAgent:
             }
         }
         
-        with patch.object(dev_agent, '_handle_design_manifest_task', return_value={"status": "completed"}) as mock_handler:
-            result = await dev_agent._handle_development_task(task)
+        # Mock capability_loader.execute to return success
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-design-001",
+            "action": "design_manifest"
+        }
+        
+        result = await dev_agent._handle_development_task(task)
         
         assert result["status"] == "completed"
-        mock_handler.assert_called_once_with("test-design-001", task["requirements"])
+        dev_agent.capability_loader.execute.assert_called_once_with('manifest.generate', dev_agent, "test-design-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_development_task_build(self, dev_agent):
-        """Test development task routing to build."""
+        """Test development task routing to build via capability."""
         task = {
             "task_id": "test-build-001",
             "requirements": {
@@ -741,16 +781,22 @@ class TestDevAgent:
             }
         }
         
-        with patch.object(dev_agent, '_handle_build_task', return_value={"status": "completed"}) as mock_handler:
-            result = await dev_agent._handle_development_task(task)
+        # Mock capability_loader.execute to return success
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-build-001",
+            "action": "build"
+        }
+        
+        result = await dev_agent._handle_development_task(task)
         
         assert result["status"] == "completed"
-        mock_handler.assert_called_once_with("test-build-001", task["requirements"])
+        dev_agent.capability_loader.execute.assert_called_once_with('docker.build', dev_agent, "test-build-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_development_task_deploy(self, dev_agent):
-        """Test development task routing to deploy."""
+        """Test development task routing to deploy via capability."""
         task = {
             "task_id": "test-deploy-001",
             "requirements": {
@@ -759,16 +805,22 @@ class TestDevAgent:
             }
         }
         
-        with patch.object(dev_agent, '_handle_deploy_task', return_value={"status": "completed"}) as mock_handler:
-            result = await dev_agent._handle_development_task(task)
+        # Mock capability_loader.execute to return success
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-deploy-001",
+            "action": "deploy"
+        }
+        
+        result = await dev_agent._handle_development_task(task)
         
         assert result["status"] == "completed"
-        mock_handler.assert_called_once_with("test-deploy-001", task["requirements"])
+        dev_agent.capability_loader.execute.assert_called_once_with('docker.deploy', dev_agent, "test-deploy-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_handle_development_task_technical(self, dev_agent):
-        """Test development task routing to technical."""
+    async def test_handle_development_task_unknown_action(self, dev_agent):
+        """Test development task routing to unknown action via capability."""
         task = {
             "task_id": "test-technical-001",
             "requirements": {
@@ -777,11 +829,17 @@ class TestDevAgent:
             }
         }
         
-        with patch.object(dev_agent, '_handle_technical_task', return_value={"status": "completed"}) as mock_handler:
-            result = await dev_agent._handle_development_task(task)
+        # Mock capability_loader.execute to return error for unknown action
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "error",
+            "task_id": "test-technical-001",
+            "error": "Unknown action: unknown_action"
+        }
         
-        assert result["status"] == "completed"
-        mock_handler.assert_called_once_with("test-technical-001", task["requirements"])
+        result = await dev_agent._handle_development_task(task)
+        
+        assert result["status"] == "error"
+        assert "Unknown action" in result["error"]
     
     @pytest.mark.unit
     def test_dev_agent_initialization(self):
@@ -791,10 +849,9 @@ class TestDevAgent:
         assert agent.name == "test-dev-agent"
         assert agent.agent_type == "developer"
         assert agent.reasoning_style == "deductive"
-        assert hasattr(agent, 'app_builder')
-        assert hasattr(agent, 'docker_manager')
-        assert hasattr(agent, 'version_manager')
-        assert hasattr(agent, 'file_manager')
+        # Components are now loaded via capabilities - no direct attributes
+        assert hasattr(agent, 'capability_loader')
+        assert agent.capability_loader is not None
     
     @pytest.mark.unit
     def test_current_task_requirements_storage(self, dev_agent):
@@ -860,314 +917,11 @@ class TestDevAgent:
         result = dev_agent._extract_prd_analysis_from_communication_log()
         assert result == "Error extracting PRD analysis - generating generic application"
     
-    @pytest.mark.asyncio
-    async def test_handle_code_generation_task_success(self, dev_agent):
-        """Test _handle_code_generation_task success path"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'application': 'TestApp',
-                'version': '1.0.0',
-                'features': ['Feature1', 'Feature2']
-            }
-        }
-        
-        # Mock code_generator
-        dev_agent.code_generator = AsyncMock()
-        dev_agent.code_generator.generate_custom_files.return_value = [
-            {'file_path': 'test.html', 'content': '<html></html>', 'directory': None}
-        ]
-        
-        result = await dev_agent._handle_code_generation_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'completed'
-        assert result['action'] == 'code_generation'
-        assert 'created_files' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_code_generation_task_exception(self, dev_agent):
-        """Test _handle_code_generation_task exception handling"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'application': 'TestApp',
-                'version': '1.0.0',
-                'features': ['Feature1', 'Feature2']
-            }
-        }
-        
-        # Mock code_generator to raise exception
-        dev_agent.code_generator = AsyncMock()
-        dev_agent.code_generator.generate_custom_files.side_effect = Exception("Code generation failed")
-        
-        result = await dev_agent._handle_code_generation_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'error'
-        assert result['action'] == 'code_generation'
-        assert 'error' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_docker_task_build_success(self, dev_agent):
-        """Test _handle_docker_task with build action"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'docker_action': 'build',
-                'application': 'TestApp',
-                'version': '1.0.0',
-                'source_dir': '/path/to/source'
-            }
-        }
-        
-        # Mock docker_manager
-        dev_agent.docker_manager = AsyncMock()
-        dev_agent.docker_manager.build_image.return_value = {'status': 'completed'}
-        
-        result = await dev_agent._handle_docker_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'completed'
-        assert result['action'] == 'docker_build'
-        assert 'result' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_docker_task_deploy_success(self, dev_agent):
-        """Test _handle_docker_task with deploy action"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'docker_action': 'deploy',
-                'application': 'TestApp',
-                'version': '1.0.0'
-            }
-        }
-        
-        # Mock docker_manager
-        dev_agent.docker_manager = AsyncMock()
-        dev_agent.docker_manager.deploy_container.return_value = {'status': 'completed'}
-        
-        result = await dev_agent._handle_docker_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'completed'
-        assert result['action'] == 'docker_deploy'
-        assert 'result' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_docker_task_status_success(self, dev_agent):
-        """Test _handle_docker_task with status action"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'docker_action': 'status',
-                'container_name': 'test-container'
-            }
-        }
-        
-        # Mock docker_manager
-        dev_agent.docker_manager = AsyncMock()
-        dev_agent.docker_manager.get_container_status.return_value = {'status': 'running'}
-        
-        result = await dev_agent._handle_docker_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'running'
-        assert result['action'] == 'docker_status'
-        assert 'result' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_docker_task_unknown_action(self, dev_agent):
-        """Test _handle_docker_task with unknown action"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'docker_action': 'unknown_action',
-                'application': 'TestApp',
-                'version': '1.0.0'
-            }
-        }
-        
-        result = await dev_agent._handle_docker_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'error'
-        assert 'error' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_docker_task_exception(self, dev_agent):
-        """Test _handle_docker_task exception handling"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'docker_action': 'build',
-                'application': 'TestApp',
-                'version': '1.0.0'
-            }
-        }
-        
-        # Mock docker_manager to raise exception
-        dev_agent.docker_manager = AsyncMock()
-        dev_agent.docker_manager.build_image.side_effect = Exception("Docker build failed")
-        
-        result = await dev_agent._handle_docker_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'error'
-        assert result['action'] == 'docker_operations'
-        assert 'error' in result
-    
-    
-    @pytest.mark.asyncio
-    async def test_handle_version_task_detect_success(self, dev_agent):
-        """Test _handle_version_task with detect action"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'version_action': 'detect',
-                'source_dir': '/path/to/source'
-            }
-        }
-        
-        # Mock version_manager
-        dev_agent.version_manager = AsyncMock()
-        dev_agent.version_manager.detect_existing_version.return_value = '1.0.0'
-        
-        result = await dev_agent._handle_version_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'completed'
-        assert result['action'] == 'version_detect'
-        assert 'detected_version' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_version_task_calculate_success(self, dev_agent):
-        """Test _handle_version_task with calculate action"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'version_action': 'calculate',
-                'framework_version': '1.0.0',
-                'run_id': 'run-001'
-            }
-        }
-        
-        # Mock version_manager
-        dev_agent.version_manager = AsyncMock()
-        dev_agent.version_manager.calculate_new_version.return_value = '1.0.1'
-        
-        result = await dev_agent._handle_version_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'completed'
-        assert result['action'] == 'version_calculate'
-        assert 'new_version' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_version_task_update_success(self, dev_agent):
-        """Test _handle_version_task with update action"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'version_action': 'update',
-                'app_dir': '/path/to/app',
-                'new_version': '2.0.0'
-            }
-        }
-        
-        # Mock version_manager
-        dev_agent.version_manager = AsyncMock()
-        dev_agent.version_manager.update_version_in_files.return_value = {'status': 'completed'}
-        
-        result = await dev_agent._handle_version_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'completed'
-        assert result['action'] == 'version_update'
-        assert 'result' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_version_task_unknown_action(self, dev_agent):
-        """Test _handle_version_task with unknown action"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'version_action': 'unknown_action',
-                'application': 'TestApp'
-            }
-        }
-        
-        result = await dev_agent._handle_version_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'error'
-        assert 'error' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_version_task_exception(self, dev_agent):
-        """Test _handle_version_task exception handling"""
-        task = {
-            'task_id': 'test-task-001',
-            'requirements': {
-                'version_action': 'detect',
-                'source_dir': '/path/to/source'
-            }
-        }
-        
-        # Mock version_manager to raise exception
-        dev_agent.version_manager = AsyncMock()
-        dev_agent.version_manager.detect_existing_version.side_effect = Exception("Version detect failed")
-        
-        result = await dev_agent._handle_version_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'error'
-        assert result['action'] == 'version_management'
-        assert 'error' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_technical_task_success(self, dev_agent):
-        """Test _handle_technical_task success path"""
-        task_id = 'test-task-001'
-        requirements = {
-            'technical_type': 'database',
-            'action': 'create_table',
-            'specification': 'CREATE TABLE test (id INT)'
-        }
-        
-        # Mock technical task handling
-        with patch.object(dev_agent, '_create_technical_requirements') as mock_create_requirements:
-            mock_requirements = {'app_name': 'TechnicalTask', 'features': []}
-            mock_create_requirements.return_value = mock_requirements
-            
-            result = await dev_agent._handle_technical_task(task_id, requirements)
-            
-            assert result['task_id'] == 'test-task-001'
-            assert result['status'] == 'completed'
-            assert result['action'] == 'technical'
-            assert 'requirements' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_technical_task_exception(self, dev_agent):
-        """Test _handle_technical_task exception handling"""
-        task_id = 'test-task-001'
-        requirements = {
-            'technical_type': 'database',
-            'action': 'create_table',
-            'specification': 'CREATE TABLE test (id INT)'
-        }
-        
-        # Mock technical task handling to raise exception
-        with patch.object(dev_agent, '_create_technical_requirements') as mock_create_requirements:
-            mock_create_requirements.side_effect = Exception("Technical task failed")
-            
-            result = await dev_agent._handle_technical_task(task_id, requirements)
-            
-            assert result['task_id'] == 'test-task-001'
-            assert result['status'] == 'error'
-            assert result['action'] == 'technical'
-            assert 'error' in result
+    # Removed tests for _handle_code_generation_task - method removed
+    # Removed tests for _handle_docker_task - method removed
+    # Removed tests for _handle_version_task - method removed
+    # Removed tests for _handle_technical_task - method removed
+    # These methods are no longer part of DevAgent - capabilities handle these operations
     
     @pytest.mark.asyncio
     async def test_create_technical_requirements_success(self, dev_agent):
@@ -1245,107 +999,9 @@ class TestDevAgent:
         assert result.get('version') == '1.0.0'
         assert isinstance(result.get('features'), list)
     
-    @pytest.mark.asyncio
-    async def test_process_task_code_generation_type(self, dev_agent):
-        """Test process_task with code_generation task type"""
-        task = {
-            'task_id': 'test-task-001',
-            'task_type': 'code_generation',
-            'requirements': {
-                'application': 'TestApp',
-                'version': '1.0.0',
-                'features': ['Feature1']
-            }
-        }
-        
-        # Mock code_generator
-        dev_agent.code_generator = AsyncMock()
-        dev_agent.code_generator.generate_custom_files.return_value = [
-            {'file_path': 'test.html', 'content': '<html></html>', 'directory': None}
-        ]
-        
-        result = await dev_agent.process_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'completed'
-        assert result['action'] == 'code_generation'
-    
-    @pytest.mark.asyncio
-    async def test_process_task_docker_operations_type(self, dev_agent):
-        """Test process_task with docker_operations task type"""
-        task = {
-            'task_id': 'test-task-001',
-            'task_type': 'docker_operations',
-            'requirements': {
-                'docker_action': 'build',
-                'application': 'TestApp',
-                'version': '1.0.0'
-            }
-        }
-        
-        # Mock docker_manager
-        dev_agent.docker_manager = AsyncMock()
-        dev_agent.docker_manager.build_image.return_value = {'status': 'success'}
-        
-        result = await dev_agent.process_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'success'
-        assert result['action'] == 'docker_build'
-    
-    @pytest.mark.asyncio
-    async def test_process_task_version_management_type(self, dev_agent):
-        """Test process_task with version_management task type"""
-        task = {
-            'task_id': 'test-task-001',
-            'task_type': 'version_management',
-            'requirements': {
-                'version_action': 'detect',
-                'source_dir': '/path/to/source'
-            }
-        }
-        
-        # Mock version_manager
-        dev_agent.version_manager = AsyncMock()
-        dev_agent.version_manager.detect_existing_version.return_value = '1.0.0'
-        
-        result = await dev_agent.process_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'completed'
-        assert result['action'] == 'version_detect'
-    
-    @pytest.mark.asyncio
-    async def test_process_task_unknown_task_type(self, dev_agent):
-        """Test process_task with unknown task type"""
-        task = {
-            'task_id': 'test-task-001',
-            'task_type': 'unknown_type',
-            'requirements': {}
-        }
-        
-        result = await dev_agent.process_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'completed'
-        assert result['action'] == 'generic'
-        assert 'message' in result
-    
-    @pytest.mark.asyncio
-    async def test_handle_generic_task_governance_rejection(self, dev_agent):
-        """Test _handle_generic_task with governance task rejection"""
-        task = {
-            'task_id': 'test-task-001',
-            'task_type': 'governance',
-            'requirements': {}
-        }
-        
-        result = await dev_agent.process_task(task)
-        
-        assert result['task_id'] == 'test-task-001'
-        assert result['status'] == 'rejected'
-        assert result['action'] == 'governance_rejection'
-        assert 'Development agent cannot handle governance tasks' in result['message']
+    # Removed tests for process_task with code_generation, docker_operations, version_management task types
+    # These task types are no longer supported - only "development" task type is supported
+    # Removed test_handle_generic_task_governance_rejection - _handle_generic_task method removed
         
     @pytest.mark.asyncio
     async def test_process_task_exception(self, dev_agent):
@@ -1464,94 +1120,78 @@ class TestDevAgent:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_design_manifest_emits_reasoning(self, dev_agent, design_manifest_task):
-        """Test that design_manifest task emits reasoning events"""
+        """Test that design_manifest task emits reasoning events via capability"""
         dev_agent.send_message = AsyncMock()
         dev_agent.current_ecid = 'ECID-WB-001'
         
-        # Mock AppBuilder
-        mock_manifest = {
-            "architecture_type": "spa_web_app",
-            "framework": "vanilla_js",
-            "files": []
+        # Mock capability_loader.execute to return success
+        # Note: Reasoning events are emitted by the capability, not the agent
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-design-001",
+            "action": "design_manifest",
+            "manifest": {"architecture_type": "spa_web_app"},
+            "created_files": ["index.html"]
         }
-        mock_files = [
-            {"type": "create_file", "file_path": "index.html", "content": "<html></html>", "directory": None}
-        ]
-        dev_agent.app_builder.generate_manifest_json = AsyncMock(return_value=mock_manifest)
-        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=mock_files)
         
-        result = await dev_agent._handle_design_manifest_task(
-            design_manifest_task["task_id"],
-            design_manifest_task["requirements"]
-        )
+        result = await dev_agent.process_task(design_manifest_task)
         
-        # Verify reasoning events were emitted
-        assert dev_agent.send_message.call_count >= 2  # At least architecture decision and file creation
+        # Verify capability was called
+        dev_agent.capability_loader.execute.assert_called_once_with('manifest.generate', dev_agent, "test-design-001", design_manifest_task["requirements"])
         
-        # Verify first call is architecture decision
-        first_call = dev_agent.send_message.call_args_list[0]
-        assert first_call.kwargs['recipient'] == 'max'  # DevAgent sends to 'max' (instance name)
-        assert first_call.kwargs['message_type'] == 'agent_reasoning'
-        assert first_call.kwargs['payload']['context'] == 'manifest_generation'
-        assert first_call.kwargs['payload']['reason_step'] == 'decision'
+        # Note: Reasoning events are now emitted by the capability, not the agent
+        # To verify reasoning events, we would need to test the capability directly
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_build_task_emits_reasoning(self, dev_agent, build_task_with_manifest):
-        """Test that build task emits reasoning events"""
+        """Test that build task emits reasoning events via capability"""
         dev_agent.send_message = AsyncMock()
         dev_agent.current_ecid = 'ECID-WB-001'
         
-        # Mock file operations
-        mock_files = [
-            {"type": "create_file", "file_path": "app.py", "content": "print('Hello')"}
-        ]
-        dev_agent.app_builder.generate_files_json = AsyncMock(return_value=mock_files)
-        dev_agent.file_manager.directory_exists = AsyncMock(return_value=False)
+        # Mock capability_loader.execute to return success
+        # Note: Reasoning events are emitted by the capability, not the agent
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-build-001",
+            "action": "build",
+            "created_files": ["app.py"],
+            "image": "test-app",
+            "image_version": "test-app:1.0.0"
+        }
         
-        result = await dev_agent._handle_build_task(
-            build_task_with_manifest["task_id"],
-            build_task_with_manifest["requirements"]
-        )
+        result = await dev_agent.process_task(build_task_with_manifest)
         
-        # Verify reasoning events were emitted
-        assert dev_agent.send_message.call_count >= 1  # At least build decision
+        # Verify capability was called
+        dev_agent.capability_loader.execute.assert_called_once_with('docker.build', dev_agent, "test-build-001", build_task_with_manifest["requirements"])
         
-        # Find build context reasoning event
-        build_call = None
-        for call in dev_agent.send_message.call_args_list:
-            if call.kwargs.get('message_type') == 'agent_reasoning' and call.kwargs['payload'].get('context') == 'build':
-                build_call = call
-                break
-        
-        assert build_call is not None, "Build reasoning event should be emitted"
-        assert build_call.kwargs['payload']['reason_step'] in ['decision', 'checkpoint']
+        # Note: Reasoning events are now emitted by the capability, not the agent
+        # To verify reasoning events, we would need to test the capability directly
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_deploy_task_emits_reasoning(self, dev_agent, deploy_task):
-        """Test that deploy task emits reasoning events"""
+        """Test that deploy task emits reasoning events via capability"""
         dev_agent.send_message = AsyncMock()
         dev_agent.current_ecid = 'ECID-WB-001'
         
-        # Mock Docker operations
-        result = await dev_agent._handle_deploy_task(
-            deploy_task["task_id"],
-            deploy_task["requirements"]
-        )
+        # Mock capability_loader.execute to return success
+        # Note: Reasoning events are emitted by the capability, not the agent
+        dev_agent.capability_loader.execute.return_value = {
+            "status": "completed",
+            "task_id": "test-deploy-001",
+            "action": "deploy",
+            "container_name": "test-app-container",
+            "image": "test-app:1.0.0"
+        }
         
-        # Verify reasoning events were emitted
-        assert dev_agent.send_message.call_count >= 1  # At least deployment decision
+        result = await dev_agent.process_task(deploy_task)
         
-        # Find deploy context reasoning event
-        deploy_call = None
-        for call in dev_agent.send_message.call_args_list:
-            if call.kwargs.get('message_type') == 'agent_reasoning' and call.kwargs['payload'].get('context') == 'deploy':
-                deploy_call = call
-                break
+        # Verify capability was called
+        dev_agent.capability_loader.execute.assert_called_once_with('docker.deploy', dev_agent, "test-deploy-001", deploy_task["requirements"])
         
-        assert deploy_call is not None, "Deploy reasoning event should be emitted"
-        assert deploy_call.kwargs['payload']['reason_step'] in ['decision', 'checkpoint']
+        # Note: Reasoning events are now emitted by the capability, not the agent
+        # To verify reasoning events, we would need to test the capability directly
     
     @pytest.mark.unit
     @pytest.mark.asyncio

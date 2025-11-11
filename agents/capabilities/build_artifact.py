@@ -27,12 +27,20 @@ class BuildArtifact:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
         
-        # Import AppBuilder and other components
-        from agents.roles.dev.app_builder import AppBuilder
-        from agents.roles.dev.docker_manager import DockerManager
-        from agents.roles.dev.file_manager import FileManager
+        # Import Skills (reasoning patterns)
+        from agents.skills.dev.developer_prompt import DeveloperPrompt
+        from agents.skills.dev.squadops_constraints import SquadOpsConstraints
         
-        # Initialize AppBuilder and other components
+        # Import Tools (integration adapters)
+        from agents.tools.app_builder import AppBuilder
+        from agents.tools.docker_manager import DockerManager
+        from agents.tools.file_manager import FileManager
+        
+        # Initialize Skills
+        self.developer_prompt_skill = DeveloperPrompt()
+        self.squadops_constraints_skill = SquadOpsConstraints()
+        
+        # Initialize Tools
         self.app_builder = AppBuilder(llm_client=agent_instance.llm_client, agent=agent_instance)
         self.docker_manager = DockerManager()
         self.file_manager = FileManager()
@@ -94,7 +102,40 @@ class BuildArtifact:
             created_files = []
             if not await self.file_manager.directory_exists(app_dir):
                 logger.info(f"{self.name} creating files from manifest")
-                files = await self.app_builder.generate_files_json(build_requirements, manifest)
+                
+                # Compose Skills + Tools: Load prompts using Skills, then pass to Tool
+                import yaml
+                import re
+                
+                # Convert app name to kebab-case for nginx subpath
+                app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', build_requirements.get('app_name', 'application')).lower().replace(' ', '-')
+                
+                # Load SquadOps constraints using Skill
+                constraints = self.squadops_constraints_skill.load(
+                    version=build_requirements.get('version', '1.0.0'),
+                    run_id=build_requirements.get('run_id', 'unknown'),
+                    app_name_kebab=app_name_kebab
+                )
+                
+                # Load developer prompt using Skill
+                developer_prompt = self.developer_prompt_skill.load(
+                    app_name=build_requirements.get('app_name', 'unknown'),
+                    app_name_kebab=app_name_kebab,
+                    version=build_requirements.get('version', '1.0.0'),
+                    run_id=build_requirements.get('run_id', 'unknown'),
+                    prd_analysis=build_requirements.get('prd_analysis', ''),
+                    features=', '.join(build_requirements.get('features', [])) if build_requirements.get('features') else 'General web application',
+                    constraints=yaml.dump(build_requirements.get('constraints', {})) if build_requirements.get('constraints') else 'None',
+                    manifest_summary=yaml.dump(manifest),
+                    output_format='json',
+                    squadops_constraints=constraints  # Inject constraints
+                )
+                
+                # Replace $squadops_constraints placeholder if present
+                developer_prompt = developer_prompt.replace('$squadops_constraints', constraints)
+                
+                # Generate files using Tool with prompt from Skill
+                files = await self.app_builder.generate_files_json(developer_prompt, build_requirements, manifest)
                 
                 for file_info in files:
                     if file_info['type'] == 'create_file':

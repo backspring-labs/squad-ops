@@ -7,12 +7,12 @@
 #   python version_cli.py update <agent> <version> [notes]
 
 # Framework Version
-SQUADOPS_VERSION = "0.6.0"
+SQUADOPS_VERSION = "0.6.1"
 
 # Agent Versions (individual agent versions)
 AGENT_VERSIONS = {
-    "max": "0.6.0",  # Real agent with local LLM
-    "neo": "0.5.1",  # Real agent with file modification capabilities
+    "max": "0.6.1",  # Real agent with local LLM
+    "neo": "0.6.1",  # Real agent with file modification capabilities
     "nat": "0.0.0",  # Mock agent
     "joi": "0.0.0",  # Mock agent
     "data": "0.0.0", # Mock agent
@@ -103,6 +103,6 @@ def rollback_agent(agent_name, target_version):
 # 0.5.X - Production deployment (enterprise features)
 # 1.0.X - Stable release (external users + Backspring validation)
 
-# Current status: 0.6.0 (SIP-040 MVP: Capability System & Loader - Agents now use capability loader for dynamic capability resolution and execution)
+# Current status: 0.6.1 (Skills architecture: Extracted prompts into Skills, refactored capabilities to use Skills, updated AppBuilder to accept prompt content from Skills)
 # Previous: 0.1.4 (Task Management System complete)
 # Next major: 0.3.0 (Multi-agent expansion with EVE, Nat, Data, HAL)

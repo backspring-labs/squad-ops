@@ -3,6 +3,9 @@ body {
   margin: 0;
   padding: 20px;
 }
-div#activity-feed {
-  margin-top: 20px;
+dashboard {
+  width: 100%;
+  max-width: 800px;
+  margin: auto;
+  overflow-x: hidden;
 }

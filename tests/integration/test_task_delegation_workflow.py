@@ -107,7 +107,7 @@ async def test_design_manifest_to_build_task_delegation(integration_config, clea
         payload={
             'task_id': 'test-design-task',
             'status': 'completed',
-            'action': 'design_manifest',  # Required for routing to _handle_design_manifest_completion
+            'action': 'design_manifest',  # Required for routing to task.completion.handle capability
             'manifest': test_manifest,
             'created_files': ['index.html', 'app.js']
         },
@@ -122,10 +122,10 @@ async def test_design_manifest_to_build_task_delegation(integration_config, clea
     # Verify Lead Agent stored the manifest
     assert lead_agent.warmboot_state.get('manifest') == test_manifest, "Lead Agent should store manifest"
     
-    # Note: The delegation logic (_delegate_build_task_with_manifest) requires task API access
+    # Note: The delegation logic (via task.completion.handle capability) requires task API access
     # which is not available in this integration test. The key verification is that:
     # 1. The manifest was stored in warmboot_state (verified above)
-    # 2. The _handle_design_manifest_completion handler was called (implicitly verified by manifest storage)
+    # 2. The task.completion.handle capability was called (implicitly verified by manifest storage)
     
     # The actual delegation would happen in a real environment with task API available
     
@@ -186,7 +186,8 @@ async def test_build_task_received_with_manifest(integration_config, clean_datab
         }
     }
     
-    # Use real file_manager and docker_manager - this is an integration test
+    # Use real capabilities (manifest.generate, docker.build) - this is an integration test
+    # Capabilities use file_manager and docker_manager internally as tools
     # If files don't exist, the test will create them
     # If Docker is not available, the test will fail appropriately
     

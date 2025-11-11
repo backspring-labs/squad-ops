@@ -181,9 +181,9 @@ class TestCapabilityLoader:
         mock_agent.llm_client = MagicMock()
         
         # Mock AppBuilder, DockerManager, and FileManager at their import locations
-        with patch('agents.roles.dev.app_builder.AppBuilder') as MockAppBuilder, \
-             patch('agents.roles.dev.docker_manager.DockerManager') as MockDockerManager, \
-             patch('agents.roles.dev.file_manager.FileManager') as MockFileManager:
+        with patch('agents.tools.app_builder.AppBuilder') as MockAppBuilder, \
+             patch('agents.tools.docker_manager.DockerManager') as MockDockerManager, \
+             patch('agents.tools.file_manager.FileManager') as MockFileManager:
             
             # Setup mocks
             mock_app_builder = MagicMock()

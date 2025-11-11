@@ -16,20 +16,6 @@ import aiohttp
 # Add config path first
 sys.path.append('/app')
 
-# Import specialized components - use paths that work in both Docker (flattened) and local
-try:
-    # Docker container structure (files flattened to /app/)
-    from app_builder import AppBuilder
-    from docker_manager import DockerManager
-    from version_manager import VersionManager
-    from file_manager import FileManager
-except ImportError:
-    # Local development structure
-    from agents.roles.dev.app_builder import AppBuilder
-    from agents.roles.dev.docker_manager import DockerManager
-    from agents.roles.dev.version_manager import VersionManager
-    from agents.roles.dev.file_manager import FileManager
-
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Error, Timing
 from agents.specs.validator import SchemaValidator
@@ -49,16 +35,12 @@ class DevAgent(BaseAgent):
             reasoning_style="deductive"
         )
         
-        # Initialize specialized components
-        
         # Initialize schema validator
         from pathlib import Path
         base_path = Path(__file__).parent.parent.parent.parent
         self.validator = SchemaValidator(base_path)
-        self.app_builder = AppBuilder(llm_client=self.llm_client, agent=self)  # Pass agent for logging (Task 1.1)
-        self.docker_manager = DockerManager()
-        self.version_manager = VersionManager()
-        self.file_manager = FileManager()
+        
+        # Components are now loaded via capabilities - no direct instantiation needed
         
         # Task processing state
         self.current_task_requirements = {}
@@ -284,8 +266,19 @@ class DevAgent(BaseAgent):
             
             try:
                 # Execute capability via Loader
-                # build.artifact is now a capability loaded via Loader
-                result = await self.capability_loader.execute(action, self, request.payload.get('requirements', request.payload))
+                # Map action to capability if needed
+                capability_name = action
+                if action == 'build.artifact':
+                    # build.artifact expects requirements dict directly
+                    result = await self.capability_loader.execute(action, self, request.payload.get('requirements', request.payload))
+                elif action in ['manifest.generate', 'docker.build', 'docker.deploy', 'version.archive']:
+                    # These capabilities expect (task_id, requirements) as arguments
+                    task_id = request.payload.get('task_id', 'unknown')
+                    requirements = request.payload.get('requirements', request.payload)
+                    result = await self.capability_loader.execute(action, self, task_id, requirements)
+                else:
+                    # Default: pass payload as-is
+                    result = await self.capability_loader.execute(action, self, request.payload)
             except ValueError as e:
                 # Capability not found in Loader
                 return AgentResponse.failure(
@@ -329,24 +322,29 @@ class DevAgent(BaseAgent):
     # All build logic is in process_task methods, no duplicate code needed
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process development tasks using specialized components - DEPRECATED: Use handle_agent_request instead"""
+        """Process development tasks using capabilities via loader"""
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', task.get('task_type', 'unknown'))
         
         logger.info(f"DevAgent processing {task_type} task: {task_id}")
         
         try:
-            # Route to appropriate handler based on task type
+            # Check if this is a new SIP-046 AgentRequest format
+            if 'action' in task:
+                # Let BaseAgent handle the conversion to AgentRequest
+                return await super().process_task(task)
+            
+            # Old format handling - route to capabilities via loader
             if task_type == "development":
                 return await self._handle_development_task(task)
-            elif task_type == "code_generation":
-                return await self._handle_code_generation_task(task)
-            elif task_type == "docker_operations":
-                return await self._handle_docker_task(task)
-            elif task_type == "version_management":
-                return await self._handle_version_task(task)
             else:
-                return await self._handle_generic_task(task)
+                # Unknown task type - return error
+                logger.warning(f"DevAgent received unknown task type: {task_type}")
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': f'Unknown task type: {task_type}'
+                }
                 
         except Exception as e:
             logger.error(f"DevAgent failed to process task {task_id}: {e}")
@@ -357,7 +355,7 @@ class DevAgent(BaseAgent):
             }
     
     async def _handle_development_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle generic development tasks"""
+        """Handle generic development tasks using capabilities"""
         task_id = task.get('task_id', 'unknown')
         requirements = task.get('requirements', {})
         action = requirements.get('action', 'unknown')
@@ -367,703 +365,64 @@ class DevAgent(BaseAgent):
         # Store requirements for component access
         self.current_task_requirements = requirements
         
-        if action == "archive":
-            return await self._handle_archive_task(task_id, requirements)
-        elif action == "design_manifest":
-            return await self._handle_design_manifest_task(task_id, requirements)
-        elif action == "build":
-            return await self._handle_build_task(task_id, requirements)
-        elif action == "deploy":
-            return await self._handle_deploy_task(task_id, requirements)
-        else:
-            # Handle technical tasks with Neo's own requirements
-            return await self._handle_technical_task(task_id, requirements)
-    
-    async def _handle_archive_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle archive task using VersionManager"""
-        try:
-            app_name = requirements.get('application', 'application')
-            app_kebab = self.app_builder._to_kebab_case(app_name)
-            new_version = requirements.get('version', 'unknown')
-            source_dir = f"warm-boot/apps/{app_kebab}"
-            
-            logger.info(f"DevAgent handling archive task: {app_name}")
-            
-            # Use VersionManager to archive existing version
-            archive_result = await self.version_manager.archive_existing_version(
-                app_name, source_dir, new_version
-            )
-            
-            if archive_result['status'] == 'success':
-                logger.info(f"DevAgent completed archive task: {task_id}")
-                return {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'action': 'archive',
-                    'app_name': app_name,
-                    'archived_version': archive_result['archived_version'],
-                    'archive_dir': archive_result['archive_dir']
-                }
-            else:
-                return {
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': archive_result.get('error', 'Archive failed'),
-                    'action': 'archive'
-                }
-                
-        except Exception as e:
-            logger.error(f"DevAgent failed to handle archive task: {e}")
+        # Route to capabilities via loader
+        if not self.capability_loader:
+            logger.error(f"DevAgent: Capability loader not initialized")
             return {
                 'task_id': task_id,
                 'status': 'error',
-                'error': str(e),
-                'action': 'archive'
+                'error': 'Capability loader not initialized'
             }
-    
-    async def _handle_design_manifest_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle design manifest task - generate manifest AND create initial files"""
-        try:
-            logger.info(f"{self.name} handling design manifest task: {task_id}")
-            
-            # Read build requirements directly from requirements dict
-            # Ensure features are strings (defensive programming)
-            features = requirements.get('features', [])
-            if features:
-                string_features = []
-                for feature in features:
-                    if isinstance(feature, str):
-                        string_features.append(feature)
-                    elif isinstance(feature, dict):
-                        # Extract string from dict if needed
-                        string_features.append(str(feature.get('name', feature.get('description', str(feature)))))
-                    else:
-                        string_features.append(str(feature))
-                features = string_features
-                logger.info(f"{self.name} normalized features to strings: {features}")
-            
-            # Build requirements dict from flattened requirements
-            build_requirements = {
-                'app_name': requirements.get('app_name', requirements.get('application', 'Application')),
-                'version': requirements.get('version', '1.0.0'),
-                'run_id': requirements.get('run_id', requirements.get('ecid', 'unknown')),
-                'prd_analysis': requirements.get('prd_analysis', ''),
-                'features': features,
-                'constraints': requirements.get('constraints', {}),
-                'success_criteria': requirements.get('success_criteria', [])
-            }
-            
-            logger.info(f"{self.name} using build requirements with {len(features)} features")
-            
-            # Generate manifest using JSON method
-            manifest = await self.app_builder.generate_manifest_json(build_requirements)
-            logger.info(f"{self.name} generated manifest JSON: {manifest.get('architecture_type', 'unknown')} with {len(manifest.get('files', []))} files")
-            
-            # Emit reasoning event about architecture decisions
-            ecid = requirements.get('ecid', getattr(self, 'current_ecid', 'unknown'))
-            await self.emit_reasoning_event(
-                task_id=task_id,
-                ecid=ecid,
-                reason_step='decision',
-                summary=f"Selected {manifest.get('architecture_type', 'unknown')} architecture with {len(manifest.get('files', []))} files based on build requirements",
-                context='manifest_generation',
-                key_points=[
-                    f"Architecture type: {manifest.get('architecture_type', 'unknown')}",
-                    f"File count: {len(manifest.get('files', []))}",
-                    f"Features to implement: {len(features)}"
-                ],
-                confidence=0.85
-            )
-            
-            # Generate files using JSON method
-            files = await self.app_builder.generate_files_json(build_requirements, manifest)
-            
-            # Create all files to ensure directory structure exists
-            created_files = []
-            # Get target_directory from requirements (set by Max)
-            target_directory = requirements.get('target_directory', '')
-            logger.info(f"{self.name} target_directory from requirements: '{target_directory}'")
-            
-            for file_info in files:
-                if file_info['type'] == 'create_file':
-                    # Ensure directory path is valid
-                    # Note: file_info.get('directory') might return None if LLM didn't provide it
-                    directory = file_info.get('directory') or ''
-                    if not directory or directory == '':
-                        # Extract directory from file_path if not provided
-                        file_path = file_info['file_path']
-                        if '/' in file_path:
-                            directory = '/'.join(file_path.split('/')[:-1])
-                        else:
-                            # Use target_directory from requirements (Max sets this)
-                            if target_directory:
-                                directory = target_directory.rstrip('/')
-                            else:
-                                # Fallback to default based on app name
-                                app_name = requirements.get('application', 'application')
-                                directory = f'warm-boot/apps/{app_name.lower().replace(" ", "-")}'
-                    
-                    # Final safety check - ensure directory is never empty
-                    if not directory or directory == '':
-                        # Final fallback - use default
-                        app_name = requirements.get('application', 'application')
-                        directory = f'warm-boot/apps/{app_name.lower().replace(" ", "-")}'
-                        logger.warning(f"{self.name} directory was empty, using fallback: '{directory}'")
-                    
-                    logger.debug(f"{self.name} creating file {file_info['file_path']} with directory: '{directory}' (from target_directory: '{target_directory}')")
-                    result = await self.file_manager.create_file(
-                        file_info['file_path'],
-                        file_info['content'],
-                        directory
-                    )
-                    if result['status'] == 'success':
-                        created_files.append(file_info['file_path'])
-                    else:
-                        logger.warning(f"{self.name} failed to create file {file_info['file_path']}: {result.get('error', 'Unknown error')}")
-            
-            logger.info(f"{self.name} created {len(created_files)} files during design phase")
-            
-            # Emit reasoning event about file creation decisions
-            ecid = requirements.get('ecid', getattr(self, 'current_ecid', 'unknown'))
-            await self.emit_reasoning_event(
-                task_id=task_id,
-                ecid=ecid,
-                reason_step='checkpoint',
-                summary=f"Created {len(created_files)} files with {manifest.get('architecture_type', 'unknown')} structure",
-                context='manifest_generation',
-                key_points=[
-                    f"Files created: {len(created_files)}",
-                    f"Target directory: {target_directory or 'default'}",
-                    f"Architecture pattern: {manifest.get('architecture_type', 'unknown')}"
-                ]
-            )
-            
-            # Record memory for manifest pattern
-            await self.record_memory(
-                kind="manifest_pattern",
-                payload={
-                    'task_id': task_id,
-                    'architecture_type': manifest.get('architecture_type', 'unknown'),
-                    'files_count': len(manifest.get('files', [])),
-                    'created_files': created_files,
-                    'features': build_requirements.get('features', [])
-                },
-                importance=0.8,
-                task_context={'ecid': ecid, 'pid': requirements.get('pid')}
-            )
-            
-            return {
-                'task_id': task_id,
-                'status': 'completed',
-                'action': 'design_manifest',
-                'manifest': manifest if isinstance(manifest, dict) else manifest.to_dict() if hasattr(manifest, 'to_dict') else {},
-                'architecture_type': manifest.get('architecture_type', 'unknown') if isinstance(manifest, dict) else getattr(manifest, 'architecture_type', 'unknown'),
-                'file_count': len(manifest.get('files', [])) if isinstance(manifest, dict) else len(getattr(manifest, 'files', [])),
-                'created_files': created_files
-            }
-            
-        except Exception as e:
-            logger.error(f"{self.name} failed to handle design manifest task: {e}")
-            return {
-                'task_id': task_id,
-                'status': 'error',
-                'error': str(e),
-                'action': 'design_manifest'
-            }
-    
-    async def _handle_build_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle build task using AppBuilder with JSON workflow"""
-        try:
-            app_name = requirements.get('application', 'Application')
-            version = requirements.get('version', '1.0.0')
-            features = requirements.get('features', [])
-            
-            # Store current run_id for use in templates
-            self.current_run_id = requirements.get('warm_boot_sequence', '001')
-            if not self.current_run_id.startswith('run-'):
-                self.current_run_id = f"run-{self.current_run_id}"
-            
-            logger.info(f"{self.name} handling build task: {app_name} v{version}")
-            
-            # JSON workflow: manifest is required
-            if 'manifest' not in requirements:
-                return {
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': 'Manifest is required for build task',
-                    'action': 'build'
-                }
-            
-            # Use provided manifest for JSON workflow
-            logger.info(f"{self.name} using provided manifest for JSON workflow")
-            logger.info(f"{self.name} manifest type: {type(requirements.get('manifest'))}, value: {requirements.get('manifest')}")
-            if not requirements.get('manifest'):
-                logger.error(f"{self.name} manifest is None or missing")
-                return {
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': 'Manifest is None or missing in requirements',
-                    'action': 'build'
-                }
-            try:
-                logger.info(f"{self.name} about to parse manifest...")
-                manifest = requirements.get('manifest', {})
-                if not isinstance(manifest, dict):
-                    manifest = manifest.to_dict() if hasattr(manifest, 'to_dict') else {}
-                logger.info(f"{self.name} parsed manifest: {manifest.get('architecture_type', 'unknown')}")
-            except Exception as e:
-                logger.error(f"{self.name} failed to parse manifest: {e}", exc_info=True)
-                raise
-            # Build requirements dict from flattened requirements
-            build_requirements = {
-                'app_name': requirements.get('app_name', app_name),
-                'version': version,
-                'run_id': requirements.get('run_id', self.current_run_id),
-                'prd_analysis': requirements.get('prd_analysis', 'Application build'),
-                'features': features or [],
-                'constraints': requirements.get('constraints', {}),
-                'success_criteria': requirements.get('success_criteria', ["Application deploys successfully"])
-            }
-            
-            # Check if files already exist (created by design task)
-            app_dir = f"warm-boot/apps/{app_name.lower().replace(' ', '-')}/"
-            logger.debug(f"{self.name} checking app directory: {app_dir}")
-            
-            # If files don't exist, create them (fallback for robustness)
-            if not await self.file_manager.directory_exists(app_dir):
-                logger.info(f"{self.name} app directory doesn't exist, creating files from manifest")
-                files = await self.app_builder.generate_files_json(build_requirements, manifest)
-                
-                created_files = []
-                for file_info in files:
-                    if file_info['type'] == 'create_file':
-                        result = await self.file_manager.create_file(
-                            file_info['file_path'],
-                            file_info['content'],
-                            file_info.get('directory')
-                        )
-                        if result['status'] == 'success':
-                            created_files.append(file_info['file_path'])
-                
-                logger.info(f"{self.name} created {len(created_files)} files during build phase")
-            else:
-                logger.info(f"{self.name} app directory exists, files already created by design task")
-                # Files already exist, just verify they're there
-                created_files = await self.file_manager.list_files(app_dir)
-                logger.info(f"{self.name} verified {len(created_files)} existing files")
-            
-            # Build Docker image (only if files were created successfully)
-            if not created_files:
-                error_msg = "No files were created - cannot build Docker image. File generation may have failed."
-                logger.error(f"{self.name} {error_msg}")
-                return {
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': error_msg,
-                    'action': 'build',
-                    'app_name': app_name,
-                    'version': version
-                }
-            
-            # Build Docker image
-            source_dir = f"warm-boot/apps/{app_name.lower().replace(' ', '-')}/"
-            
-            # Emit reasoning event about build decisions
-            ecid = requirements.get('ecid', getattr(self, 'current_ecid', 'unknown'))
-            await self.emit_reasoning_event(
-                task_id=task_id,
-                ecid=ecid,
-                reason_step='decision',
-                summary=f"Building Docker image for {app_name} v{version} using {manifest.get('architecture_type', 'unknown') if isinstance(manifest, dict) else getattr(manifest, 'architecture_type', 'unknown')} architecture",
-                context='build',
-                key_points=[
-                    f"Application: {app_name}",
-                    f"Version: {version}",
-                    f"Architecture: {manifest.get('architecture_type', 'unknown') if isinstance(manifest, dict) else getattr(manifest, 'architecture_type', 'unknown')}",
-                    f"Files to containerize: {len(created_files)}"
-                ],
-                confidence=0.90
-            )
-            
-            build_result = await self.docker_manager.build_image(app_name, version, source_dir)
-            
-            if build_result.get('status') != 'success':
-                error_msg = build_result.get('error', 'Docker build failed')
-                logger.error(f"{self.name} Docker build failed: {error_msg}")
-                return {
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': error_msg,
-                    'action': 'build',
-                    'app_name': app_name,
-                    'version': version
-                }
-            
-            # Emit reasoning event about successful build
-            await self.emit_reasoning_event(
-                task_id=task_id,
-                ecid=ecid,
-                reason_step='checkpoint',
-                summary=f"Successfully built Docker image {build_result.get('image_name')}:{version}",
-                context='build',
-                key_points=[
-                    f"Image: {build_result.get('image_name')}:{version}",
-                    f"Source directory: {source_dir}",
-                    f"Files included: {len(created_files)}"
-                ]
-            )
-            
-            # Record memory for build success
-            await self.record_memory(
-                kind="build_success",
-                payload={
-                    'task_id': task_id,
-                    'app_name': app_name,
-                    'version': version,
-                    'image': build_result.get('image_name'),
-                    'created_files_count': len(created_files),
-                    'architecture_type': manifest.get('architecture_type', 'unknown')
-                },
-                importance=0.8,
-                task_context={'ecid': ecid, 'pid': requirements.get('pid')}
-            )
-            
-            return {
-                'task_id': task_id,
-                'status': 'completed',
-                'action': 'build',
-                'app_name': app_name,
-                'version': version,
-                'created_files': created_files,
-                'manifest': manifest if isinstance(manifest, dict) else manifest.to_dict() if hasattr(manifest, 'to_dict') else {},
-                'target_directory': source_dir,
-                'image': build_result.get('image_name'),
-                'image_version': f"{build_result.get('image_name')}:{version}"
-            }
-            
-        except Exception as e:
-            logger.error(f"DevAgent failed to handle build task: {e}", exc_info=True)
-            return {
-                'task_id': task_id,
-                'status': 'error',
-                'error': str(e),
-                'action': 'build'
-            }
-    
-    async def _handle_technical_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle technical tasks using Neo's own requirements generation"""
-        try:
-            logger.info(f"{self.name} handling technical task: {task_id}")
-            
-            # Create technical requirements
-            tech_requirements = await self._create_technical_requirements(requirements)
-            
-            # Log the technical requirements for telemetry
-            logger.info(f"{self.name} generated technical requirements: {tech_requirements}")
-            
-            # For now, just log the technical task (future: implement actual technical task execution)
-            return {
-                'task_id': task_id,
-                'status': 'completed',
-                'action': 'technical',
-                'requirements': tech_requirements,
-                'message': 'Technical task processed with Neo-generated requirements'
-            }
-            
-        except Exception as e:
-            logger.error(f"{self.name} failed to handle technical task: {e}")
-            return {
-                'task_id': task_id,
-                'status': 'error',
-                'error': str(e),
-                'action': 'technical'
-            }
-    
-    async def _handle_deploy_task(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle deploy task using DockerManager"""
-        try:
-            app_name = requirements.get('application', 'Application')
-            version = requirements.get('version', '1.0.0')
-            app_kebab = self.app_builder._to_kebab_case(app_name)
-            source = requirements.get('source_dir', requirements.get('source', f'warm-boot/apps/{app_kebab}/'))
-            
-            logger.info(f"DevAgent handling deploy task: {app_name} v{version}")
-            
-            # Emit reasoning event about deployment strategy
-            ecid = requirements.get('ecid', getattr(self, 'current_ecid', 'unknown'))
-            await self.emit_reasoning_event(
-                task_id=task_id,
-                ecid=ecid,
-                reason_step='decision',
-                summary=f"Deploying {app_name} v{version} with versioning and traceability enabled",
-                context='deploy',
-                key_points=[
-                    f"Application: {app_name}",
-                    f"Version: {version}",
-                    f"Source directory: {source}",
-                    f"Versioning: {requirements.get('versioning', True)}",
-                    f"Traceability: {requirements.get('traceability', True)}"
-                ],
-                confidence=0.95
-            )
-            
-            # Build Docker image using DockerManager
-            build_result = await self.docker_manager.build_image(app_name, version, source)
-            
-            if build_result['status'] != 'success':
-                return {
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': build_result.get('error', 'Docker build failed'),
-                    'action': 'deploy'
-                }
-            
-            # Deploy container using DockerManager
-            deploy_result = await self.docker_manager.deploy_container(app_name, version)
-            
-            if deploy_result['status'] == 'success':
-                # Emit reasoning event about successful deployment
-                await self.emit_reasoning_event(
-                    task_id=task_id,
-                    ecid=ecid,
-                    reason_step='checkpoint',
-                    summary=f"Successfully deployed {app_name} v{version} as container {deploy_result.get('container_name', 'unknown')}",
-                    context='deploy',
-                    key_points=[
-                        f"Container: {deploy_result.get('container_name', 'unknown')}",
-                        f"Image: {deploy_result.get('image', 'unknown')}",
-                        f"Version: {version}",
-                        f"Deployment strategy: Docker container with volume mounts"
-                    ]
-                )
-                
-                logger.info(f"DevAgent completed deploy task: {task_id}")
-                
-                # Record memory for deployment success
-                await self.record_memory(
-                    kind="deployment_success",
-                    payload={
-                        'task_id': task_id,
-                        'app_name': app_name,
-                        'version': version,
-                        'container_name': deploy_result['container_name'],
-                        'image': deploy_result['image']
-                    },
-                    importance=0.9,
-                    task_context={'ecid': ecid, 'pid': requirements.get('pid')}
-                )
-                
-                return {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'action': 'deploy',
-                    'app_name': app_name,
-                    'version': version,
-                    'container_name': deploy_result['container_name'],
-                    'image': deploy_result['image']
-                }
-            else:
-                return {
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': deploy_result.get('error', 'Container deployment failed'),
-                    'action': 'deploy'
-                }
-                
-        except Exception as e:
-            logger.error(f"DevAgent failed to handle deploy task: {e}")
-            return {
-                'task_id': task_id,
-                'status': 'error',
-                'error': str(e),
-                'action': 'deploy'
-            }
-    
-    async def _handle_code_generation_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle code generation tasks"""
-        task_id = task.get('task_id', 'unknown')
-        requirements = task.get('requirements', {})
         
         try:
-            app_name = requirements.get('application', 'Application')
-            version = requirements.get('version', '1.0.0')
-            features = requirements.get('features', [])
-            
-            # Generate custom files based on requirements
-            custom_files = await self.code_generator.generate_custom_files(app_name, requirements)
-            
-            # Create files using FileManager
-            created_files = []
-            for file_info in custom_files:
-                result = await self.file_manager.create_file(
-                    file_info['file_path'],
-                    file_info['content'],
-                    file_info.get('directory')
-                )
-                if result['status'] == 'success':
-                    created_files.append(file_info['file_path'])
-            
-            return {
-                'task_id': task_id,
-                'status': 'completed',
-                'action': 'code_generation',
-                'app_name': app_name,
-                'created_files': created_files
+            # Map action to capability
+            capability_map = {
+                'archive': 'version.archive',
+                'design_manifest': 'manifest.generate',
+                'build': 'docker.build',
+                'deploy': 'docker.deploy'
             }
             
-        except Exception as e:
-            logger.error(f"DevAgent failed to handle code generation task: {e}")
-            return {
-                'task_id': task_id,
-                'status': 'error',
-                'error': str(e),
-                'action': 'code_generation'
-            }
-    
-    async def _handle_docker_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle Docker-specific tasks"""
-        task_id = task.get('task_id', 'unknown')
-        requirements = task.get('requirements', {})
-        action = requirements.get('docker_action', 'unknown')
-        
-        try:
-            if action == 'build':
-                app_name = requirements.get('application', 'Application')
-                version = requirements.get('version', '1.0.0')
-                source_dir = requirements.get('source_dir', f'warm-boot/apps/{app_name.lower()}/')
-                
-                result = await self.docker_manager.build_image(app_name, version, source_dir)
-                return {
-                    'task_id': task_id,
-                    'status': result['status'],
-                    'action': 'docker_build',
-                    'result': result
-                }
-                
-            elif action == 'deploy':
-                app_name = requirements.get('application', 'Application')
-                version = requirements.get('version', '1.0.0')
-                
-                result = await self.docker_manager.deploy_container(app_name, version)
-                return {
-                    'task_id': task_id,
-                    'status': result['status'],
-                    'action': 'docker_deploy',
-                    'result': result
-                }
-                
-            elif action == 'status':
-                container_name = requirements.get('container_name', '')
-                
-                result = await self.docker_manager.get_container_status(container_name)
-                return {
-                    'task_id': task_id,
-                    'status': result['status'],
-                    'action': 'docker_status',
-                    'result': result
-                }
-                
-            else:
+            capability_name = capability_map.get(action)
+            if not capability_name:
+                # Unknown action - return error
+                logger.warning(f"DevAgent received unknown action: {action}")
                 return {
                     'task_id': task_id,
                     'status': 'error',
-                    'error': f'Unknown Docker action: {action}'
+                    'error': f'Unknown action: {action}'
                 }
-                
-        except Exception as e:
-            logger.error(f"DevAgent failed to handle Docker task: {e}")
+            
+            # Execute capability via loader
+            result = await self.capability_loader.execute(capability_name, self, task_id, requirements)
+            return result
+            
+        except ValueError as e:
+            # Capability not found
+            logger.error(f"DevAgent: Capability not found: {e}")
             return {
                 'task_id': task_id,
                 'status': 'error',
-                'error': str(e),
-                'action': 'docker_operations'
+                'error': f'Capability not found: {e}'
             }
-    
-    async def _handle_version_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle version management tasks"""
-        task_id = task.get('task_id', 'unknown')
-        requirements = task.get('requirements', {})
-        action = requirements.get('version_action', 'unknown')
-        
-        try:
-            if action == 'detect':
-                source_dir = requirements.get('source_dir', '')
-                
-                version = await self.version_manager.detect_existing_version(source_dir)
-                return {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'action': 'version_detect',
-                    'detected_version': version,
-                    'source_dir': source_dir
-                }
-                
-            elif action == 'calculate':
-                framework_version = requirements.get('framework_version', get_framework_version())
-                run_id = requirements.get('run_id', 'run-001')
-                
-                new_version = await self.version_manager.calculate_new_version(framework_version, run_id)
-                return {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'action': 'version_calculate',
-                    'new_version': new_version,
-                    'framework_version': framework_version,
-                    'run_id': run_id
-                }
-                
-            elif action == 'update':
-                app_dir = requirements.get('app_dir', '')
-                new_version = requirements.get('new_version', '1.0.0')
-                
-                result = await self.version_manager.update_version_in_files(app_dir, new_version)
-                return {
-                    'task_id': task_id,
-                    'status': result['status'],
-                    'action': 'version_update',
-                    'result': result
-                }
-                
-            else:
-                return {
-                    'task_id': task_id,
-                    'status': 'error',
-                    'error': f'Unknown version action: {action}'
-                }
-                
         except Exception as e:
-            logger.error(f"DevAgent failed to handle version task: {e}")
+            logger.error(f"DevAgent: Capability execution error: {e}", exc_info=True)
             return {
                 'task_id': task_id,
                 'status': 'error',
-                'error': str(e),
-                'action': 'version_management'
+                'error': str(e)
             }
     
-    async def _handle_generic_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle generic tasks - reject governance tasks as they should only go to Max"""
-        task_id = task.get('task_id', 'unknown')
-        task_type = task.get('type', task.get('task_type', 'unknown'))
-        
-        logger.info(f"DevAgent handling generic task: {task_id} (type: {task_type})")
-        
-        # Reject governance tasks - they should only be handled by Max
-        if task_type == "governance":
-            logger.warning(f"DevAgent rejecting governance task {task_id} - governance tasks should only go to Max")
-            return {
-                'task_id': task_id,
-                'status': 'rejected',
-                'action': 'governance_rejection',
-                'message': 'Development agent cannot handle governance tasks - these should only go to Max (Lead Agent)',
-                'error': 'Incorrect task routing: governance tasks should not be sent to development agents'
-            }
-        
-        return {
-            'task_id': task_id,
-            'status': 'completed',
-            'action': 'generic',
-            'message': 'Generic task processed by DevAgent'
-        }
+    # Removed unused _handle_* methods - replaced by capabilities:
+    # - _handle_archive_task -> version.archive capability
+    # - _handle_design_manifest_task -> manifest.generate capability
+    # - _handle_build_task -> docker.build capability
+    # - _handle_deploy_task -> docker.deploy capability
+    # - _handle_technical_task -> unused
+    # - _handle_code_generation_task -> unused
+    # - _handle_docker_task -> unused
+    # - _handle_version_task -> unused
+    # - _handle_generic_task -> unused
     
     async def handle_message(self, message: AgentMessage) -> None:
         """Handle incoming messages"""
@@ -1268,11 +627,11 @@ class DevAgent(BaseAgent):
         try:
             # Create runs directory if it doesn't exist
             runs_dir = "warm-boot/runs"
-            await self.file_manager.create_directory(runs_dir)
+            # Use write_file from BaseAgent instead of file_manager
+            await self.write_file(f"{runs_dir}/.gitkeep", "")
             
             # Create task-specific directory
             task_dir = f"{runs_dir}/{task_id}"
-            await self.file_manager.create_directory(task_dir)
             
             # Generate documentation content
             doc_content = f"""# Task Documentation: {task_id}
@@ -1290,20 +649,20 @@ class DevAgent(BaseAgent):
 ## Results
 {json.dumps(result, indent=2)}
 
-## Components Used
-- **CodeGenerator**: {result.get('created_files', [])}
-- **DockerManager**: {result.get('container_name', 'N/A')}
-- **VersionManager**: {result.get('archived_version', 'N/A')}
-- **FileManager**: File operations completed
+## Capabilities Used
+- **manifest.generate**: {result.get('created_files', [])}
+- **docker.build**: {result.get('image', 'N/A')}
+- **docker.deploy**: {result.get('container_name', 'N/A')}
+- **version.archive**: {result.get('archived_version', 'N/A')}
 
 ## Notes
-This task was processed using the refactored Dev Agent with specialized components.
-Each component handles a specific aspect of the development workflow.
+This task was processed using the refactored Dev Agent with capabilities.
+Each capability handles a specific aspect of the development workflow.
 """
             
             # Write documentation file
             doc_file = f"{task_dir}/task-summary.md"
-            await self.file_manager.create_file(doc_file, doc_content)
+            await self.write_file(doc_file, doc_content)
             
             logger.info(f"DevAgent created documentation: {doc_file}")
             
@@ -1311,36 +670,30 @@ Each component handles a specific aspect of the development workflow.
             logger.error(f"DevAgent failed to create documentation: {e}")
     
     async def get_component_status(self) -> Dict[str, Any]:
-        """Get status of all specialized components"""
+        """Get status of all capabilities"""
         try:
-            # Get Docker health status
-            docker_health = await self.docker_manager.health_check()
-            
-            # Get file operation history
-            file_history = await self.file_manager.get_operation_history()
-            
             return {
                 'status': 'healthy',
-                'components': {
-                    'code_generator': {
+                'capabilities': {
+                    'manifest.generate': {
                         'status': 'ready',
-                        'templates_loaded': len(self.code_generator.templates),
-                        'generated_files': len(self.code_generator.generated_files)
+                        'description': 'Generate architecture manifests and create initial files'
                     },
-                    'docker_manager': {
-                        'status': docker_health['status'],
-                        'docker_available': docker_health.get('docker_available', False),
-                        'daemon_running': docker_health.get('daemon_running', False)
-                    },
-                    'version_manager': {
+                    'docker.build': {
                         'status': 'ready',
-                        'version_cache': len(self.version_manager.version_cache),
-                        'archive_history': len(self.version_manager.archive_history)
+                        'description': 'Build Docker images from source'
                     },
-                    'file_manager': {
+                    'docker.deploy': {
                         'status': 'ready',
-                        'cached_files': file_history['cached_files'],
-                        'total_operations': file_history['total_operations']
+                        'description': 'Deploy containers'
+                    },
+                    'version.archive': {
+                        'status': 'ready',
+                        'description': 'Archive existing versions'
+                    },
+                    'build.artifact': {
+                        'status': 'ready',
+                        'description': 'Build application artifacts from specifications'
                     }
                 },
                 'agent_info': {

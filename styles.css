@@ -3,14 +3,10 @@ body {
   margin: 0;
   padding: 20px;
 }
-header {
-  background-color: #f8f9fa;
-  padding: 1rem;
+header, footer {
   text-align: center;
 }
 footer {
-  background-color: #343a40;
-  color: white;
-  padding: 1rem;
-  text-align: center;
+  border-top: 1px solid #ccc;
+  padding-top: 10px;
 }

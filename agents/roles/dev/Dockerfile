@@ -23,12 +23,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy agent files
 COPY agents/base_agent.py .
+# Copy agent.py to root for execution (CMD expects it at /app/agent.py)
 COPY agents/roles/${AGENT_ROLE}/agent.py .
-COPY agents/roles/${AGENT_ROLE}/app_builder.py .
-COPY agents/roles/${AGENT_ROLE}/docker_manager.py .
-COPY agents/roles/${AGENT_ROLE}/version_manager.py .
-COPY agents/roles/${AGENT_ROLE}/file_manager.py .
-COPY agents/roles/${AGENT_ROLE}/prompts ./prompts
+# Copy tools directory for capability imports (capabilities use agents.tools.*)
+COPY agents/tools ./agents/tools
+# Copy skills directory for capability imports (capabilities use agents.skills.*)
+COPY agents/skills ./agents/skills
 COPY agents/llm ./agents/llm
 COPY agents/specs ./agents/specs
 COPY agents/capabilities ./agents/capabilities

@@ -230,7 +230,7 @@ def sample_build_manifest():
 @pytest.fixture
 def app_builder():
     """Real AppBuilder for integration tests"""
-    from agents.roles.dev.app_builder import AppBuilder
+    from agents.tools.app_builder import AppBuilder
     from agents.llm.providers.ollama import OllamaClient
     
     # Create real Ollama client with local URL
@@ -242,7 +242,7 @@ def app_builder():
 @pytest.fixture
 def mock_app_builder():
     """Mock AppBuilder for testing"""
-    from agents.roles.dev.app_builder import AppBuilder
+    from agents.tools.app_builder import AppBuilder
     mock_llm_client = MagicMock()
     app_builder = AppBuilder(mock_llm_client)
     

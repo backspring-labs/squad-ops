@@ -1,0 +1,74 @@
+catalog_version: 1.0.0
+skills:
+  # Dev role skills (prompt-based reasoning patterns)
+  - name: dev.architect_prompt
+    skill_version: 1.0.0
+    description: "Architecture reasoning pattern for generating build manifests"
+    owner: "Neo"
+    inputs:
+      - app_name: "Application name"
+      - version: "Application version"
+      - prd_analysis: "PRD analysis content"
+      - features: "List of features"
+      - constraints: "Build constraints"
+      - output_format: "Output format (json or delimited)"
+    outputs:
+      - prompt: "Formatted prompt string for LLM"
+    determinism: "Deterministic - template substitution only"
+    
+  - name: dev.developer_prompt
+    skill_version: 1.0.0
+    description: "Developer reasoning pattern for generating application files"
+    owner: "Neo"
+    inputs:
+      - app_name: "Application name"
+      - app_name_kebab: "Application name in kebab-case"
+      - version: "Application version"
+      - run_id: "Run identifier"
+      - prd_analysis: "PRD analysis content"
+      - features: "List of features"
+      - constraints: "Build constraints"
+      - manifest_summary: "Architecture manifest summary"
+      - output_format: "Output format (json or delimited)"
+    outputs:
+      - prompt: "Formatted prompt string for LLM"
+    determinism: "Deterministic - template substitution only"
+    
+  - name: dev.squadops_constraints
+    skill_version: 1.0.0
+    description: "SquadOps platform constraints and requirements"
+    owner: "Neo"
+    inputs:
+      - version: "Application version"
+      - run_id: "Run identifier"
+      - app_name_kebab: "Application name in kebab-case"
+    outputs:
+      - constraints: "Formatted constraints string"
+    determinism: "Deterministic - template substitution only"
+    
+  # Lead role skills (prompt-based reasoning patterns)
+  - name: lead.prd_analysis_prompt
+    skill_version: 1.0.0
+    description: "PRD analysis reasoning pattern for extracting requirements"
+    owner: "Max"
+    inputs:
+      - agent_role: "Role of the agent performing the analysis"
+      - prd_content: "PRD content to analyze"
+    outputs:
+      - prompt: "Formatted prompt string for LLM"
+    determinism: "Deterministic - template substitution only"
+    
+  - name: lead.build_requirements_prompt
+    skill_version: 1.0.0
+    description: "Build requirements reasoning pattern for generating development requirements"
+    owner: "Max"
+    inputs:
+      - app_name: "Application name"
+      - version: "Application version"
+      - run_id: "Run identifier"
+      - features: "List of features"
+      - prd_content: "PRD content to analyze"
+    outputs:
+      - prompt: "Formatted prompt string for LLM"
+    determinism: "Deterministic - template substitution only"
+

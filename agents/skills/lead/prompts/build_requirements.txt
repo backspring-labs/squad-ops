@@ -1,0 +1,42 @@
+You are a senior product manager analyzing a PRD to create detailed build requirements for development.
+
+APPLICATION: $app_name
+VERSION: $version
+RUN ID: $run_id
+FEATURES: $features
+
+PRD CONTENT:
+$prd_content
+
+Create comprehensive build requirements that include:
+
+1. PRD_ANALYSIS: Your detailed analysis of the requirements, user needs, and technical considerations
+2. FEATURES: Specific feature list derived from the PRD
+3. CONSTRAINTS: Technical constraints, performance requirements, security considerations
+4. SUCCESS_CRITERIA: Measurable success criteria for the application
+
+CRITICAL OUTPUT RULES:
+- Return ONLY valid YAML
+- Start directly with "app_name:"
+- Do NOT wrap in markdown code fences
+- Do NOT include explanatory text
+- Use proper YAML indentation
+
+Return the requirements in this exact format:
+
+app_name: "$app_name"
+version: "$version"
+run_id: "$run_id"
+prd_analysis: |
+  Your detailed analysis here...
+features:
+  - feature1
+  - feature2
+constraints:
+  technical: "constraints here"
+  performance: "requirements here"
+  security: "considerations here"
+success_criteria:
+  - "Criterion 1"
+  - "Criterion 2"
+

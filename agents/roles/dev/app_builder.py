@@ -191,11 +191,15 @@ class AppBuilder:
             output_format='json'
         )
         
-        # Load SquadOps constraints
+        # Convert app name to kebab-case for nginx subpath
+        app_name_kebab = self._to_kebab_case(requirements.get('app_name', 'application'))
+        
+        # Load SquadOps constraints with app name in kebab-case
         constraints = self._load_prompt(
             'squadops_constraints.txt',
             version=requirements.get('version', '1.0.0'),
-            run_id=requirements.get('run_id', 'unknown')
+            run_id=requirements.get('run_id', 'unknown'),
+            app_name_kebab=app_name_kebab
         )
         
         # Inject constraints into architect prompt
@@ -226,10 +230,14 @@ class AppBuilder:
     
     async def _generate_files_with_context(self, requirements: Dict[str, Any], manifest: Dict[str, Any], context: str) -> List[Dict[str, Any]]:
         """Generate files with context for telemetry"""
+        # Convert app name to kebab-case for nginx subpath
+        app_name_kebab = self._to_kebab_case(requirements.get('app_name', 'application'))
+        
         # Load developer prompt with JSON output format
         developer_prompt = self._load_prompt(
             'developer.txt',
             app_name=requirements.get('app_name', 'unknown'),
+            app_name_kebab=app_name_kebab,
             version=requirements.get('version', '1.0.0'),
             prd_analysis=requirements.get('prd_analysis', ''),
             features=', '.join(requirements.get('features', [])) if requirements.get('features') else 'General web application',
@@ -238,11 +246,12 @@ class AppBuilder:
             output_format='json'
         )
         
-        # Load SquadOps constraints
+        # Load SquadOps constraints with app name in kebab-case
         constraints = self._load_prompt(
             'squadops_constraints.txt',
             version=requirements.get('version', '1.0.0'),
-            run_id=requirements.get('run_id', 'unknown')
+            run_id=requirements.get('run_id', 'unknown'),
+            app_name_kebab=app_name_kebab
         )
         
         # Inject constraints into developer prompt
