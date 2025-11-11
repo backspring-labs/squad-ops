@@ -6,3 +6,14 @@ body {
 header h1 {
   text-align: center;
 }
+main {
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+  height: calc(100vh - 80px);
+}
+div {
+  border: 1px solid #ccc;
+  padding: 20px;
+  min-height: 400px;
+}

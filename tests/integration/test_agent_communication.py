@@ -301,8 +301,10 @@ Test application for SquadOps integration testing
             assert log_entry['key_points'] == ['FastAPI chosen', 'Async support needed', 'Ecosystem compatibility']
             assert log_entry['confidence'] == 0.85
             
-            # Verify reasoning can be extracted for wrap-up
-            reasoning = lead_agent._extract_real_ai_reasoning('ECID-TEST-001', agent_name='dev-agent-001')
+            # Verify reasoning can be extracted for wrap-up via WrapupGenerator
+            from agents.capabilities.wrapup_generator import WrapupGenerator
+            wrapup_generator = WrapupGenerator(lead_agent)
+            reasoning = wrapup_generator.extract_real_ai_reasoning('ECID-TEST-001', agent_name='dev-agent-001')
             assert 'dev-agent-001' in reasoning
             assert 'manifest_generation' in reasoning or 'decision' in reasoning
             assert 'FastAPI' in reasoning or 'Selected' in reasoning
@@ -366,12 +368,12 @@ Test application for SquadOps integration testing
         ]
         
         for task_type, expected_target in test_cases:
-            result = await lead_agent.task_delegator.determine_target(task_type)
+            result = await lead_agent.capability_loader.execute('task.determine_target', lead_agent, task_type)
             target = result.get('target_agent', 'dev-agent')
             assert target == expected_target, f"Expected {expected_target} for {task_type}, got {target}"
         
         # Test governance task (should raise error)
         with pytest.raises(ValueError, match="Governance tasks should not be delegated"):
-            await lead_agent.task_delegator.determine_target('governance')
+            await lead_agent.capability_loader.execute('task.determine_target', lead_agent, 'governance')
 
 

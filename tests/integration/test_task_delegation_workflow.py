@@ -62,10 +62,12 @@ async def test_design_manifest_to_build_task_delegation(integration_config, clea
         pytest.skip(f"Failed to initialize LeadAgent: {e}")
     
     try:
-        # Use real task_creator.create - this will call the LLM if available
+        # Use capability loader to execute task.create - this will call the LLM if available
         # If LLM is not available, the test will handle it gracefully
         # Note: This is a real integration test, so we use real LLM calls
-        task_result = await lead_agent.task_creator.create(
+        task_result = await lead_agent.capability_loader.execute(
+            'task.create',
+            lead_agent,
             prd_analysis={'core_features': ['Feature1'], 'technical_requirements': []},
             app_name="TestApp",
             ecid=ecid

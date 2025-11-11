@@ -20,14 +20,7 @@ from base_agent import BaseAgent, AgentMessage
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Error, Timing
 from agents.specs.validator import SchemaValidator
-from agents.capabilities.telemetry_collector import TelemetryCollector
-from agents.capabilities.prd_processor import PRDReader, PRDAnalyzer
-from agents.capabilities.task_delegator import TaskDelegator
-from agents.capabilities.wrapup_generator import WrapupGenerator
-from agents.capabilities.build_requirements_generator import BuildRequirementsGenerator
-from agents.capabilities.task_creator import TaskCreator
-from agents.capabilities.task_completion_handler import TaskCompletionHandler
-from agents.capabilities.warmboot_memory_handler import WarmBootMemoryHandler
+# Capabilities are now loaded via CapabilityLoader - no direct imports needed
 
 logger = logging.getLogger(__name__)
 
@@ -70,18 +63,8 @@ class LeadAgent(BaseAgent):
             base_path = Path(__file__).parent.parent.parent.parent
         self.validator = SchemaValidator(base_path)
         
-        # Initialize capability handlers
-        self.telemetry_collector = TelemetryCollector(self)
-        self.prd_reader = PRDReader(self)
-        self.prd_analyzer = PRDAnalyzer(self)
-        self.task_delegator = TaskDelegator(self)
-        self.wrapup_generator = WrapupGenerator(self)
-        self.build_requirements_generator = BuildRequirementsGenerator(self)
-        self.task_creator = TaskCreator(self)
-        # Link task creator to build requirements generator
-        self.task_creator.set_build_requirements_generator(self.build_requirements_generator)
-        self.task_completion_handler = TaskCompletionHandler(self)
-        self.warmboot_memory_handler = WarmBootMemoryHandler(self)
+        # Capability loader is initialized in BaseAgent._load_capability_config()
+        # Use self.capability_loader to resolve and execute capabilities
     
     async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
         """Handle agent request using capability-based routing"""
@@ -111,21 +94,102 @@ class LeadAgent(BaseAgent):
             # Generate idempotency key
             idempotency_key = request.generate_idempotency_key(self.name)
             
-            # Route to capability handler
+            # Route to capability via Loader
             action = request.action
-            if action == "validate.warmboot":
-                result = await self._handle_validate_warmboot(request)
-            elif action == "governance.task_coordination":
-                result = await self._handle_task_coordination(request)
-            elif action == "governance.approval":
-                result = await self._handle_approval(request)
-            elif action == "governance.escalation":
-                result = await self._handle_escalation(request)
-            else:
+            if not self.capability_loader:
+                return AgentResponse.failure(
+                    error_code="LOADER_NOT_INITIALIZED",
+                    error_message="Capability loader not initialized",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            try:
+                # Execute capability via Loader
+                # Governance capabilities are agent-specific reasoning - handle directly
+                if action == "governance.task_coordination":
+                    # Task coordination uses task delegation capability
+                    task_type = request.payload.get('type', 'unknown')
+                    delegation_result = await self.capability_loader.execute(
+                        'task.determine_target', self, task_type
+                    )
+                    delegation_target = delegation_result.get('target_agent', 'dev-agent')
+                    await self.send_message(
+                        recipient=delegation_target,
+                        message_type="task_delegation",
+                        payload=request.payload,
+                        context=request.metadata
+                    )
+                    result = {
+                        'tasks_created': 1,
+                        'tasks_delegated': 1,
+                        'coordination_log': f"Delegated {task_type} to {delegation_target}"
+                    }
+                elif action == "governance.approval":
+                    # Approval is agent-specific reasoning
+                    complexity = request.payload.get('complexity', 0.5)
+                    if complexity > self.escalation_threshold:
+                        result = {
+                            'approved': False,
+                            'decision': 'escalated',
+                            'approval_time': 0.0
+                        }
+                    else:
+                        result = {
+                            'approved': True,
+                            'decision': 'approved',
+                            'approval_time': 0.5
+                        }
+                elif action == "governance.escalation":
+                    # Escalation is agent-specific reasoning
+                    task_id = request.payload.get('task_id', 'unknown')
+                    await self.escalate_task(task_id, request.payload)
+                    result = {
+                        'escalated': True,
+                        'resolution': 'escalated_to_premium',
+                        'escalation_time': 1.0
+                    }
+                elif action == "validate.warmboot":
+                    # validate.warmboot uses process_task which is handled separately
+                    # Convert AgentRequest to old task format for compatibility
+                    task = {
+                        'task_id': request.payload.get('task_id', f"{request.metadata.get('ecid', 'unknown')}-main"),
+                        'type': 'governance',
+                        'ecid': request.metadata.get('ecid', 'unknown'),
+                        'pid': request.metadata.get('pid', 'unknown'),
+                        'application': request.payload.get('application'),
+                        'request_type': request.payload.get('request_type'),
+                        'agents': request.payload.get('agents', []),
+                        'priority': request.payload.get('priority', 'MEDIUM'),
+                        'description': request.payload.get('description'),
+                        'requirements': request.payload.get('requirements'),
+                        'prd_path': request.payload.get('prd_path')
+                    }
+                    result = await self.process_task(task)
+                    # Convert result to validate.warmboot capability format
+                    result = {
+                        'match': result.get('status') == 'completed',
+                        'diffs': result.get('diffs', []),
+                        'wrap_up_uri': result.get('wrap_up_uri', f'/warm-boot/runs/{request.metadata.get("ecid", "unknown")}/wrap-up.md'),
+                        'metrics': result.get('metrics', {})
+                    }
+                else:
+                    # Try to execute via Loader
+                    result = await self.capability_loader.execute(action, self, request.payload)
+            except ValueError as e:
+                # Capability not found in Loader
                 return AgentResponse.failure(
                     error_code="UNKNOWN_CAPABILITY",
                     error_message=f"Unknown capability: {action}",
                     retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            except Exception as e:
+                logger.error(f"{self.name}: Capability execution error: {e}", exc_info=True)
+                return AgentResponse.failure(
+                    error_code="CAPABILITY_EXECUTION_ERROR",
+                    error_message=str(e),
+                    retryable=True,
                     timing=Timing.create(started_at)
                 )
             
@@ -151,94 +215,8 @@ class LeadAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_validate_warmboot(self, request: AgentRequest) -> Dict[str, Any]:
-        """Handle validate.warmboot capability - processes WarmBoot requests"""
-        payload = request.payload
-        ecid = request.metadata.get('ecid', 'unknown')
-        pid = request.metadata.get('pid', 'unknown')
-        
-        # Convert AgentRequest to old task format for compatibility with existing process_task logic
-        # This allows us to reuse the existing WarmBoot processing code
-        task = {
-            'task_id': payload.get('task_id', f"{ecid}-main"),
-            'type': 'governance',
-            'ecid': ecid,
-            'pid': pid,
-            'application': payload.get('application'),
-            'request_type': payload.get('request_type'),
-            'agents': payload.get('agents', []),
-            'priority': payload.get('priority', 'MEDIUM'),
-            'description': payload.get('description'),
-            'requirements': payload.get('requirements'),
-            'prd_path': payload.get('prd_path')
-        }
-        
-        # Process the WarmBoot request using existing logic
-        result = await self.process_task(task)
-        
-        # Convert result to validate.warmboot capability format
-        # The process_task result will have task completion info
-        # We need to extract the wrap-up info if available
-        return {
-            'match': result.get('status') == 'completed',
-            'diffs': result.get('diffs', []),
-            'wrap_up_uri': result.get('wrap_up_uri', f'/warm-boot/runs/{ecid}/wrap-up.md'),
-            'metrics': result.get('metrics', {})
-        }
-    
-    async def _handle_task_coordination(self, request: AgentRequest) -> Dict[str, Any]:
-        """Handle governance.task_coordination capability"""
-        payload = request.payload
-        task_type = payload.get('type', 'unknown')
-        
-        # Determine delegation target
-        delegation_result = await self.task_delegator.determine_target(task_type)
-        delegation_target = delegation_result.get('target_agent', 'dev-agent')
-        
-        # Delegate task
-        await self.send_message(
-            recipient=delegation_target,
-            message_type="task_delegation",
-            payload=payload,
-            context=request.metadata
-        )
-        
-        return {
-            'tasks_created': 1,
-            'tasks_delegated': 1,
-            'coordination_log': f"Delegated {task_type} to {delegation_target}"
-        }
-    
-    async def _handle_approval(self, request: AgentRequest) -> Dict[str, Any]:
-        """Handle governance.approval capability"""
-        payload = request.payload
-        complexity = payload.get('complexity', 0.5)
-        
-        if complexity > self.escalation_threshold:
-            return {
-                'approved': False,
-                'decision': 'escalated',
-                'approval_time': 0.0
-            }
-        
-        return {
-            'approved': True,
-            'decision': 'approved',
-            'approval_time': 0.5
-        }
-    
-    async def _handle_escalation(self, request: AgentRequest) -> Dict[str, Any]:
-        """Handle governance.escalation capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
-        
-        await self.escalate_task(task_id, payload)
-        
-        return {
-            'escalated': True,
-            'resolution': 'escalated_to_premium',
-            'escalation_time': 1.0
-        }
+    # Handler methods removed - capabilities are now executed via Loader
+    # Duplicate logic has been moved to capability classes
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process governance tasks with approval/escalation logic"""
@@ -258,11 +236,14 @@ class LeadAgent(BaseAgent):
         logger.info(f"{self.name} processing governance task: {task_id}")
         logger.info(f"{self.name} DEBUG: task_type='{task_type}', has_prd_path={bool(task.get('prd_path'))}")
         
-        # Load relevant memories for WarmBoot context (SIP-042)
+        # Load relevant memories for WarmBoot context (SIP-042) via Loader
         ecid = task.get('ecid') or task.get('context', {}).get('ecid')
         pid = task.get('pid') or task.get('context', {}).get('pid')
-        if ecid or pid:
-            await self.warmboot_memory_handler.load_memories(ecid, pid)
+        if (ecid or pid) and self.capability_loader:
+            try:
+                await self.capability_loader.execute('warmboot.memory', self, ecid, pid)
+            except Exception as e:
+                logger.warning(f"{self.name}: Failed to load WarmBoot memories: {e}")
         
         # Check if this is a governance task with PRD path
         if task_type == "governance" and task.get('prd_path'):
@@ -332,9 +313,19 @@ class LeadAgent(BaseAgent):
             await self.update_task_status(task_id, "Active-Non-Blocking", 75.0)
             logger.debug(f"{self.name} update_task_status (delegation) completed")
             
-            # Determine delegation target
-            delegation_result = await self.task_delegator.determine_target(task_type)
-            delegation_target = delegation_result.get('target_agent', 'dev-agent')
+            # Determine delegation target via Loader
+            if not self.capability_loader:
+                logger.error(f"{self.name}: Capability loader not initialized")
+                delegation_target = 'dev-agent'  # Fallback
+            else:
+                try:
+                    delegation_result = await self.capability_loader.execute(
+                        'task.determine_target', self, task_type
+                    )
+                    delegation_target = delegation_result.get('target_agent', 'dev-agent')
+                except Exception as e:
+                    logger.error(f"{self.name}: Failed to determine delegation target: {e}")
+                    delegation_target = 'dev-agent'  # Fallback
             logger.debug(f"{self.name} determined delegation_target: {delegation_target}")
             
             # Send message to delegation target
@@ -503,12 +494,15 @@ class LeadAgent(BaseAgent):
         Handle developer completion event (SIP-027 Phase 1)
         When Neo completes development tasks, trigger WarmBoot wrap-up generation
         
-        Delegates to task.completion.handle capability.
+        Delegates to task.completion.handle capability via Loader.
         """
         try:
             payload = message.payload
             context = message.context
-            await self.task_completion_handler.handle_completion(payload, context)
+            if not self.capability_loader:
+                logger.error(f"{self.name}: Capability loader not initialized")
+                return
+            await self.capability_loader.execute('task.completion.handle', self, payload, context)
         except Exception as e:
             logger.error(f"{self.name} failed to handle developer completion: {e}")
 
@@ -682,14 +676,19 @@ class LeadAgent(BaseAgent):
             self.current_ecid = ecid
             logger.info(f"{self.name} stored current ecid: {ecid}")
             
-            # Read PRD via capability
-            prd_result = await self.prd_reader.read(prd_path)
+            # Read PRD via capability Loader
+            if not self.capability_loader:
+                return {"status": "error", "message": "Capability loader not initialized"}
+            
+            prd_result = await self.capability_loader.execute('prd.read', self, prd_path)
             prd_content = prd_result.get('prd_content', '')
             if not prd_content:
                 return {"status": "error", "message": "Failed to read PRD"}
             
-            # Analyze PRD requirements via capability
-            prd_analysis = await self.prd_analyzer.analyze(prd_content, agent_role="Max, the Lead Agent")
+            # Analyze PRD requirements via capability Loader
+            prd_analysis = await self.capability_loader.execute(
+                'prd.analyze', self, prd_content, agent_role="Max, the Lead Agent"
+            )
             if not prd_analysis:
                 return {"status": "error", "message": "Failed to analyze PRD"}
             
@@ -702,8 +701,10 @@ class LeadAgent(BaseAgent):
                 if match:
                     app_name = match.group(1)
             
-            # Create development tasks via capability
-            task_result = await self.task_creator.create(prd_analysis, app_name, ecid)
+            # Create development tasks via capability Loader
+            task_result = await self.capability_loader.execute(
+                'task.create', self, prd_analysis, app_name, ecid
+            )
             tasks = task_result.get('tasks', [])
             if not tasks:
                 return {"status": "error", "message": "Failed to create tasks"}
@@ -721,7 +722,10 @@ class LeadAgent(BaseAgent):
                         logger.info(f"{self.name} skipping build task {task['task_id']} - manifest not yet available")
                         continue
                 
-                delegation_result = await self.task_delegator.determine_target(task["task_type"])
+                # Determine delegation target via Loader
+                delegation_result = await self.capability_loader.execute(
+                    'task.determine_target', self, task["task_type"]
+                )
                 delegation_target = delegation_result.get('target_agent', 'dev-agent')
                 
                 # Log task delegation

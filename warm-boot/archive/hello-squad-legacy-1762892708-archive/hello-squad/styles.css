@@ -3,6 +3,7 @@ body {
   margin: 0;
   padding: 20px;
 }
-div#activity-feed {
-  margin-top: 20px;
+#app {
+  max-width: 800px;
+  margin: auto;
 }

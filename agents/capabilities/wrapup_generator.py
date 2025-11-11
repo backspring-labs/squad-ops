@@ -68,10 +68,7 @@ class WrapupGenerator:
             run_dir = f"{runs_dir}/run-{run_number}"
             wrapup_file = f"{run_dir}/warmboot-run{run_number}-wrapup.md"
             
-            # Ensure directory exists
-            await self.agent.execute_command(f"mkdir -p {run_dir}")
-            
-            # Write wrap-up file
+            # Write wrap-up file (write_file already ensures directory exists)
             success = await self.agent.write_file(wrapup_file, wrapup_content)
             
             if success:

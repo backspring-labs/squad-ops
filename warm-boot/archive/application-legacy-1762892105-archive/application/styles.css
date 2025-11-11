@@ -3,6 +3,6 @@ body {
   margin: 0;
   padding: 20px;
 }
-div#activity-feed {
-  margin-top: 20px;
+header h1 {
+  text-align: center;
 }

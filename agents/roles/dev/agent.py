@@ -272,15 +272,34 @@ class DevAgent(BaseAgent):
             # Generate idempotency key
             idempotency_key = request.generate_idempotency_key(self.name)
             
-            # Route to capability handler
+            # Route to capability via Loader
             action = request.action
-            if action == "build.artifact":
-                result = await self._handle_build_artifact(request)
-            else:
+            if not self.capability_loader:
+                return AgentResponse.failure(
+                    error_code="LOADER_NOT_INITIALIZED",
+                    error_message="Capability loader not initialized",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            try:
+                # Execute capability via Loader
+                # build.artifact is now a capability loaded via Loader
+                result = await self.capability_loader.execute(action, self, request.payload.get('requirements', request.payload))
+            except ValueError as e:
+                # Capability not found in Loader
                 return AgentResponse.failure(
                     error_code="UNKNOWN_CAPABILITY",
                     error_message=f"Unknown capability: {action}",
                     retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            except Exception as e:
+                logger.error(f"{self.name}: Capability execution error: {e}", exc_info=True)
+                return AgentResponse.failure(
+                    error_code="CAPABILITY_EXECUTION_ERROR",
+                    error_message=str(e),
+                    retryable=True,
                     timing=Timing.create(started_at)
                 )
             
@@ -306,20 +325,8 @@ class DevAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_build_artifact(self, request: AgentRequest) -> Dict[str, Any]:
-        """Handle build.artifact capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
-        
-        # Map existing build logic to new capability format
-        # This would call the existing build methods
-        # For now, return basic structure
-        return {
-            'artifact_uri': f'/artifacts/{task_id}',
-            'commit': 'unknown',
-            'files_generated': [],
-            'manifest_uri': f'/manifests/{task_id}'
-        }
+    # _handle_build_artifact removed - build.artifact is handled via process_task
+    # All build logic is in process_task methods, no duplicate code needed
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process development tasks using specialized components - DEPRECATED: Use handle_agent_request instead"""

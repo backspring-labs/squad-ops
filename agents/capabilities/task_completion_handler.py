@@ -33,11 +33,40 @@ class TaskCompletionHandler:
         self.task_delegator = getattr(agent_instance, 'task_delegator', None)
         self.send_message = agent_instance.send_message if hasattr(agent_instance, 'send_message') else None
         self.communication_log = agent_instance.communication_log if hasattr(agent_instance, 'communication_log') else []
-        self.telemetry_collector = getattr(agent_instance, 'telemetry_collector', None)
-        self.wrapup_generator = getattr(agent_instance, 'wrapup_generator', None)
-        self.warmboot_memory_handler = getattr(agent_instance, 'warmboot_memory_handler', None)
         self.record_memory = agent_instance.record_memory if hasattr(agent_instance, 'record_memory') else None
         self.task_api_url = getattr(agent_instance, 'task_api_url', 'http://task-api:8001')
+        
+        # Load capabilities via capability loader if available
+        capability_loader = getattr(agent_instance, 'capability_loader', None)
+        if capability_loader:
+            # Load telemetry_collector capability
+            try:
+                from agents.capabilities.telemetry_collector import TelemetryCollector
+                self.telemetry_collector = TelemetryCollector(agent_instance)
+            except Exception as e:
+                logger.warning(f"{self.name} failed to load TelemetryCollector: {e}")
+                self.telemetry_collector = None
+            
+            # Load wrapup_generator capability
+            try:
+                from agents.capabilities.wrapup_generator import WrapupGenerator
+                self.wrapup_generator = WrapupGenerator(agent_instance)
+            except Exception as e:
+                logger.warning(f"{self.name} failed to load WrapupGenerator: {e}")
+                self.wrapup_generator = None
+            
+            # Load warmboot_memory_handler capability
+            try:
+                from agents.capabilities.warmboot_memory_handler import WarmBootMemoryHandler
+                self.warmboot_memory_handler = WarmBootMemoryHandler(agent_instance)
+            except Exception as e:
+                logger.warning(f"{self.name} failed to load WarmBootMemoryHandler: {e}")
+                self.warmboot_memory_handler = None
+        else:
+            # Fallback to agent attributes (for backward compatibility)
+            self.telemetry_collector = getattr(agent_instance, 'telemetry_collector', None)
+            self.wrapup_generator = getattr(agent_instance, 'wrapup_generator', None)
+            self.warmboot_memory_handler = getattr(agent_instance, 'warmboot_memory_handler', None)
     
     async def handle_completion(self, message: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """
