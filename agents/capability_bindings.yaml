@@ -31,6 +31,8 @@ bindings:
   # Communications capabilities
   comms.documentation: joi
   comms.stakeholder_update: joi
+  comms.chat: max  # Console chat (MVP: max and neo)
+  comms.chat: neo  # Console chat (MVP: max and neo)
   
   # Research capabilities
   research.curation: og

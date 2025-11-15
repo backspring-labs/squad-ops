@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code and config
 COPY infra/health-check/main.py .
+COPY infra/health-check/templates ./templates
 COPY config ./config
 COPY agents/instances ./agents/instances
 

@@ -138,6 +138,7 @@ curl -X POST http://localhost:8000/warmboot/submit \
 ### Functional Components
 - ✅ **2 Functional Agents** (Max/Lead, Neo/Dev) with real LLM integration
 - ✅ **Task Management System** (SIP-024/025) with execution cycle tracking
+- ✅ **Memory System** (SIP-042) with LanceDB semantic memory
 - ✅ **JSON Workflow Engine** (SIP-033A) with structured LLM output
 - ✅ **LLM Router Abstraction** – Dynamic provider registry (Ollama, Docker models, extensible)
 - ✅ **AppBuilder Integration** – Uses LLM router abstraction, no direct HTTP calls

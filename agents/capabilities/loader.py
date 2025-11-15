@@ -60,6 +60,7 @@ class CapabilityLoader:
         'governance.task_coordination': ('agents.capabilities.governance_task_coordination', 'GovernanceTaskCoordination', 'coordinate'),
         'comms.documentation': ('agents.capabilities.documentation_creator', 'DocumentationCreator', 'create'),
         'comms.reasoning.emit': ('agents.capabilities.reasoning_event_emitter', 'ReasoningEventEmitter', 'emit'),
+        'comms.chat': ('agents.capabilities.comms_chat', 'ChatHandler', 'handle'),
     }
     
     # Mapping from task_type and requirements.action values to capability names
@@ -340,6 +341,11 @@ class CapabilityLoader:
         elif convention == 'payload_and_metadata':
             # Pass payload and metadata (metadata can be None)
             return (payload, metadata)
+        elif capability_name == 'comms.chat':
+            # Special case: extract message and session_id from payload
+            message = payload.get('message', '')
+            session_id = payload.get('session_id', '')
+            return (message, session_id)
         else:  # payload_as_is
             # Pass payload as-is
             return (payload,)

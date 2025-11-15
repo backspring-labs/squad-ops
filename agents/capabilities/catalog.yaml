@@ -154,6 +154,16 @@ capabilities:
         - recipients
         - delivery_status
   
+  - name: comms.chat
+    capability_version: 1.0.0
+    description: "Handle interactive chat messages from console"
+    result:
+      keys:
+        - response_text
+        - agent_name
+        - timestamp
+        - status
+  
   # Research capabilities
   - name: research.curation
     capability_version: 1.0.0

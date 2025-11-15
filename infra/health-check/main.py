@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Form, Request
+from starlette.requests import Request as StarletteRequest
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -7,12 +8,17 @@ import aiohttp
 import asyncpg
 import redis.asyncio as redis
 import pika
+import aio_pika
 import json
 import logging
 import yaml
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
+from dataclasses import dataclass, field
+import uuid
+import random
+import string
 import os
 import sys
 
@@ -31,6 +37,13 @@ sys.path.append('/Users/jladd/Code/squad-ops')
 from config.version import SQUADOPS_VERSION, AGENT_VERSIONS, get_agent_version
 
 app = FastAPI(title="SquadOps Health Check Service", version=SQUADOPS_VERSION)
+
+# Initialize Jinja2 templates
+# In Docker: templates are at /app/templates
+# Locally: use relative path from script location
+import os
+template_dir = "templates" if os.path.exists("templates") else "infra/health-check/templates"
+templates = Jinja2Templates(directory=template_dir)
 
 # Pydantic models for WarmBoot requests
 class WarmBootRequest(BaseModel):
@@ -59,11 +72,361 @@ class AgentStatusUpdate(BaseModel):
     tps: Optional[int] = None
     memory_count: Optional[int] = None
 
+# Agent Gateway: Console Session Management
+@dataclass
+class ConsoleSession:
+    """Console session for Agent Gateway"""
+    session_id: str
+    mode: str  # "idle" | "chat"
+    bound_agent: Optional[str] = None
+    ecid: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    pending_responses: List[Dict[str, Any]] = field(default_factory=list)
+
+# Agent Gateway: In-memory session store
+console_sessions: Dict[str, ConsoleSession] = {}
+
+def create_console_session() -> str:
+    """Create a new console session and return session_id"""
+    session_id = str(uuid.uuid4())
+    console_sessions[session_id] = ConsoleSession(
+        session_id=session_id,
+        mode="idle"
+    )
+    logger.info(f"Agent Gateway: Created new console session: {session_id}")
+    return session_id
+
+def get_console_session(session_id: str) -> Optional[ConsoleSession]:
+    """Get console session by session_id"""
+    return console_sessions.get(session_id)
+
+def update_console_session(session_id: str, **kwargs) -> None:
+    """Update console session fields"""
+    session = console_sessions.get(session_id)
+    if not session:
+        raise ValueError(f"Session {session_id} not found")
+    
+    for key, value in kwargs.items():
+        if hasattr(session, key):
+            setattr(session, key, value)
+    
+    logger.debug(f"Agent Gateway: Updated session {session_id}: {kwargs}")
+
+def generate_console_ecid() -> str:
+    """Generate ECID for console chat session"""
+    timestamp = int(datetime.utcnow().timestamp())
+    random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    return f"ECID-CONSOLE-{timestamp}-{random_suffix}"
+
 # Configuration
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://squadops:squadops123@rabbitmq:5672/")
 POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://squadops:squadops123@postgres:5432/squadops")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 PREFECT_URL = os.getenv("PREFECT_URL", "http://prefect-server:4200/api")
+
+# Agent Gateway: Command Parser
+def parse_command(command: str) -> Dict[str, Any]:
+    """Parse command line into command name and arguments"""
+    command = command.strip()
+    if not command:
+        return {"command": "", "args": []}
+    
+    # Handle quoted strings
+    parts = []
+    current = ""
+    in_quotes = False
+    quote_char = None
+    
+    for char in command:
+        if char in ['"', "'"] and not in_quotes:
+            in_quotes = True
+            quote_char = char
+        elif char == quote_char and in_quotes:
+            in_quotes = False
+            quote_char = None
+        elif char == ' ' and not in_quotes:
+            if current:
+                parts.append(current)
+                current = ""
+        else:
+            current += char
+    
+    if current:
+        parts.append(current)
+    
+    if not parts:
+        return {"command": "", "args": []}
+    
+    return {
+        "command": parts[0].lower(),
+        "args": parts[1:] if len(parts) > 1 else []
+    }
+
+# Agent Gateway: Command Handler
+class CommandHandler:
+    """Handler for console commands"""
+    
+    def __init__(self, health_checker: 'HealthChecker'):
+        self.health_checker = health_checker
+    
+    async def handle_help(self) -> List[str]:
+        """Return list of available commands"""
+        return [
+            "Available commands:",
+            "  help                    - Show this help message",
+            "  agent list              - List all agents",
+            "  agent status            - Show agent status",
+            "  agent info <name>       - Show agent details",
+            "  agent logs <name> <N>   - Show last N log entries for agent",
+            "  chat <name>             - Start chat with agent",
+            "  chat end                - End current chat",
+            "  whoami                  - Show current session info",
+            "  clear                   - Clear console output (client-side)"
+        ]
+    
+    async def handle_agent_list(self) -> List[str]:
+        """Return formatted list of all agents"""
+        try:
+            agents = await self.health_checker.get_agent_status()
+            lines = ["Agents:"]
+            for agent in agents:
+                status_icon = "✅" if agent["status"] == "online" else "❌"
+                lines.append(f"  {status_icon} {agent['agent']} ({agent['role']}) - {agent['status']}")
+            return lines
+        except Exception as e:
+            logger.error(f"Agent Gateway: Failed to get agent list: {e}")
+            return [f"Error: Failed to get agent list: {str(e)}"]
+    
+    async def handle_agent_status(self) -> List[str]:
+        """Return detailed agent status"""
+        try:
+            agents = await self.health_checker.get_agent_status()
+            lines = ["Agent Status:"]
+            for agent in agents:
+                status_icon = "✅" if agent["status"] == "online" else "❌"
+                lines.append(f"  {status_icon} {agent['agent']} ({agent['role']})")
+                lines.append(f"    Status: {agent['status']}")
+                lines.append(f"    Version: {agent['version']}")
+                lines.append(f"    TPS: {agent['tps']}")
+                lines.append(f"    Memories: {agent.get('memory_count', 0)}")
+                lines.append("")
+            return lines
+        except Exception as e:
+            logger.error(f"Agent Gateway: Failed to get agent status: {e}")
+            return [f"Error: Failed to get agent status: {str(e)}"]
+    
+    async def handle_agent_info(self, name: str) -> List[str]:
+        """Return agent details from instances.yaml"""
+        try:
+            instances = self.health_checker._load_instances()
+            agent_id = name.lower()
+            
+            if agent_id not in instances:
+                return [f"Error: Agent '{name}' not found"]
+            
+            instance_info = instances[agent_id]
+            lines = [f"Agent Info: {instance_info['display_name']}"]
+            lines.append(f"  ID: {agent_id}")
+            lines.append(f"  Role: {instance_info['role']}")
+            lines.append(f"  Description: {instance_info.get('description', 'N/A')}")
+            
+            # Try to get status from database
+            try:
+                agent_status = await self.health_checker.get_agent_status()
+                for agent in agent_status:
+                    if agent['agent'].lower() == agent_id:
+                        lines.append(f"  Status: {agent['status']}")
+                        lines.append(f"  Version: {agent['version']}")
+                        break
+            except:
+                pass
+            
+            return lines
+        except Exception as e:
+            logger.error(f"Agent Gateway: Failed to get agent info: {e}")
+            return [f"Error: Failed to get agent info: {str(e)}"]
+    
+    async def handle_agent_logs(self, name: str, n: int = 10) -> List[str]:
+        """Return last N log entries for agent (placeholder for MVP)"""
+        # Placeholder - would need to access agent logs
+        return [
+            f"Agent logs for {name} (last {n} entries):",
+            "  [Log access not yet implemented - MVP placeholder]",
+            "  Future: Query agent container logs or centralized log service"
+        ]
+    
+    async def handle_chat_start(self, session_id: str, agent_name: str) -> Dict[str, Any]:
+        """Start chat session with agent"""
+        try:
+            # Check if agent exists and is online
+            agents = await self.health_checker.get_agent_status()
+            agent_found = False
+            agent_online = False
+            
+            for agent in agents:
+                if agent['agent'].lower() == agent_name.lower():
+                    agent_found = True
+                    agent_online = agent['status'] == 'online'
+                    break
+            
+            if not agent_found:
+                return {
+                    "lines": [f"Error: Agent '{agent_name}' not found"],
+                    "mode": "idle",
+                    "bound_agent": None,
+                    "ecid": None
+                }
+            
+            if not agent_online:
+                return {
+                    "lines": [f"Error: Agent '{agent_name}' is offline"],
+                    "mode": "idle",
+                    "bound_agent": None,
+                    "ecid": None
+                }
+            
+            # Create ECID and update session
+            ecid = generate_console_ecid()
+            update_console_session(session_id, mode="chat", bound_agent=agent_name.lower(), ecid=ecid)
+            
+            logger.info(f"Agent Gateway: Chat started: {agent_name} (session: {session_id}, ecid: {ecid})")
+            
+            return {
+                "lines": [f"Chat started with {agent_name}. Type 'chat end' to exit."],
+                "mode": "chat",
+                "bound_agent": agent_name.lower(),
+                "ecid": ecid
+            }
+        except Exception as e:
+            logger.error(f"Agent Gateway: Failed to start chat: {e}")
+            return {
+                "lines": [f"Error: Failed to start chat: {str(e)}"],
+                "mode": "idle",
+                "bound_agent": None,
+                "ecid": None
+            }
+    
+    async def handle_chat_end(self, session_id: str) -> Dict[str, Any]:
+        """End chat session"""
+        try:
+            session = get_console_session(session_id)
+            if session and session.mode == "chat":
+                agent_name = session.bound_agent
+                update_console_session(session_id, mode="idle", bound_agent=None, ecid=None)
+                logger.info(f"Agent Gateway: Chat ended: {agent_name} (session: {session_id})")
+                return {
+                    "lines": [f"Chat ended with {agent_name}."],
+                    "mode": "idle",
+                    "bound_agent": None,
+                    "ecid": None
+                }
+            else:
+                return {
+                    "lines": ["Not in chat mode."],
+                    "mode": "idle",
+                    "bound_agent": None,
+                    "ecid": None
+                }
+        except Exception as e:
+            logger.error(f"Agent Gateway: Failed to end chat: {e}")
+            return {
+                "lines": [f"Error: Failed to end chat: {str(e)}"],
+                "mode": "idle",
+                "bound_agent": None,
+                "ecid": None
+            }
+    
+    async def handle_whoami(self, session_id: str) -> List[str]:
+        """Return session info"""
+        session = get_console_session(session_id)
+        if not session:
+            return ["Error: Session not found"]
+        
+        lines = [
+            "Session Info:",
+            f"  Session ID: {session.session_id}",
+            f"  Mode: {session.mode}",
+            f"  Bound Agent: {session.bound_agent or 'None'}",
+            f"  ECID: {session.ecid or 'None'}",
+            f"  Created: {session.created_at.isoformat()}"
+        ]
+        return lines
+    
+    async def handle_chat_message(self, session_id: str, message: str) -> Dict[str, Any]:
+        """Send chat message to agent via A2A"""
+        session = get_console_session(session_id)
+        if not session:
+            return {
+                "lines": ["Error: Session not found"],
+                "mode": "idle",
+                "bound_agent": None,
+                "ecid": None
+            }
+        
+        if session.mode != "chat" or not session.bound_agent:
+            return {
+                "lines": ["Error: Not in chat mode. Use 'chat <agent>' to start."],
+                "mode": session.mode,
+                "bound_agent": session.bound_agent,
+                "ecid": session.ecid
+            }
+        
+        try:
+            # Build A2A message and send via RabbitMQ
+            agent_name = session.bound_agent
+            ecid = session.ecid
+            
+            # Build A2A message
+            timestamp = int(datetime.utcnow().timestamp())
+            a2a_message = {
+                "action": "comms.chat",
+                "payload": {
+                    "message": message,
+                    "session_id": session_id
+                },
+                "metadata": {
+                    "pid": f"PID-CONSOLE-{timestamp}",
+                    "ecid": ecid,
+                    "tags": ["console", "chat"],
+                    "response_queue": "console_responses",  # Gateway tells agent where to respond
+                    "correlation_id": session_id              # Gateway uses this to match response
+                },
+                "request_id": f"{ecid}-{timestamp}"
+            }
+            
+            # Send via RabbitMQ to comms queue (not tasks queue)
+            connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
+            channel = connection.channel()
+            
+            routing_key = f"{agent_name}_comms"  # Communication queue
+            channel.basic_publish(
+                exchange='',
+                routing_key=routing_key,
+                body=json.dumps(a2a_message),
+                properties=pika.BasicProperties(
+                    content_type='application/json',
+                    delivery_mode=2  # Make message persistent
+                )
+            )
+            
+            connection.close()
+            
+            logger.info(f"Agent Gateway: Sent chat message to {agent_name} (session: {session_id})")
+            
+            return {
+                "lines": [f"[You → {agent_name}]: {message}"],
+                "mode": session.mode,
+                "bound_agent": session.bound_agent,
+                "ecid": session.ecid
+            }
+        except Exception as e:
+            logger.error(f"Agent Gateway: Failed to send chat message: {e}")
+            return {
+                "lines": [f"Error: Failed to send message: {str(e)}"],
+                "mode": session.mode,
+                "bound_agent": session.bound_agent,
+                "ecid": session.ecid
+            }
 
 class HealthChecker:
     def __init__(self):
@@ -71,6 +434,9 @@ class HealthChecker:
         self.pg_pool = None
         self._instances_cache = None
         self.instances_file = os.getenv('INSTANCES_FILE', 'agents/instances/instances.yaml')
+        self.rabbitmq_connection = None
+        self.rabbitmq_channel = None
+        self.response_queue = None
     
     def _load_instances(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -126,12 +492,82 @@ class HealthChecker:
         }
         
     async def init_connections(self):
-        """Initialize database connections"""
+        """Initialize database connections and RabbitMQ"""
         try:
             self.redis_client = redis.from_url(REDIS_URL)
             self.pg_pool = await asyncpg.create_pool(POSTGRES_URL)
+            
+            # Initialize async RabbitMQ connection for console response consumer
+            self.rabbitmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
+            self.rabbitmq_channel = await self.rabbitmq_connection.channel()
+            
+            # Declare console_responses queue
+            self.response_queue = await self.rabbitmq_channel.declare_queue('console_responses', durable=True)
+            logger.info("Agent Gateway: Declared console_responses queue")
+            
+            # Start consumer task
+            asyncio.create_task(self._consume_responses())
+            
         except Exception as e:
-            print(f"Failed to initialize connections: {e}")
+            logger.error(f"Failed to initialize connections: {e}", exc_info=True)
+    
+    async def _consume_responses(self):
+        """Consume responses from console_responses queue"""
+        try:
+            async for message in self.response_queue:
+                try:
+                    async with message.process():
+                        msg_data = json.loads(message.body.decode())
+                        
+                        # Extract correlation_id from message properties (should match session_id)
+                        correlation_id = message.correlation_id or msg_data.get('metadata', {}).get('correlation_id')
+                        if not correlation_id:
+                            logger.warning("Agent Gateway: Received response without correlation_id")
+                            continue
+                        
+                        # Extract response data
+                        action = msg_data.get('action', '')
+                        payload = msg_data.get('payload', {})
+                        
+                        # For comms.chat.response, extract response fields from AgentResponse structure
+                        if action == 'comms.chat.response':
+                            # AgentResponse structure: {status: 'ok', result: {...}}
+                            if payload.get('status') == 'ok':
+                                result = payload.get('result', {})
+                                response_data = {
+                                    'response_text': result.get('response_text', ''),
+                                    'agent_name': result.get('agent_name', 'unknown'),
+                                    'timestamp': result.get('timestamp', ''),
+                                    'status': result.get('status', 'available')
+                                }
+                            else:
+                                # Error response
+                                error = payload.get('error', {})
+                                response_data = {
+                                    'response_text': f"[Error: {error.get('message', 'Unknown error')}]",
+                                    'agent_name': 'unknown',
+                                    'timestamp': datetime.utcnow().isoformat(),
+                                    'status': 'error'
+                                }
+                        else:
+                            # Generic response handling
+                            response_data = {
+                                'action': action,
+                                'payload': payload
+                            }
+                        
+                        # Get session and append response
+                        session = get_console_session(correlation_id)
+                        if session:
+                            session.pending_responses.append(response_data)
+                            logger.info(f"Agent Gateway: Stored response for session {correlation_id}")
+                        else:
+                            logger.warning(f"Agent Gateway: No session found for correlation_id {correlation_id}")
+                            
+                except Exception as e:
+                    logger.error(f"Agent Gateway: Error processing response message: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Agent Gateway: Error in response consumer: {e}", exc_info=True)
     
     async def check_rabbitmq(self) -> Dict[str, Any]:
         """Check RabbitMQ health"""
@@ -1051,129 +1487,17 @@ async def get_agent_status_by_name(agent_name: str):
         raise HTTPException(status_code=500, detail=f"Failed to get agent status: {str(e)}")
 
 @app.get("/health")
-async def health_dashboard():
+async def health_dashboard(request: StarletteRequest):
     """Get health dashboard HTML"""
     infra_status = await health_infra()
     agent_status = await health_agents()
     
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>SquadOps Health Dashboard</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-        <meta http-equiv="refresh" content="60">
-        <style>
-            .table th, .table td {{
-                white-space: nowrap;
-                padding: 8px 12px;
-            }}
-            .table th:nth-child(1), .table td:nth-child(1) {{ width: 15%; }}
-            .table th:nth-child(2), .table td:nth-child(2) {{ width: 20%; }}
-            .table th:nth-child(3), .table td:nth-child(3) {{ width: 15%; }}
-            .table th:nth-child(4), .table td:nth-child(4) {{ width: 15%; }}
-            .table th:nth-child(5), .table td:nth-child(5) {{ width: 10%; }}
-            .table th:nth-child(6), .table td:nth-child(6) {{ width: 10%; }}
-        </style>
-    </head>
-    <body>
-        <div class="container mt-4">
-            <h1 class="mb-4">🚀 SquadOps Health Dashboard</h1>
-            <p class="text-muted">Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            
-            <div class="row">
-                <div class="col-12">
-                    <h2>Infrastructure Status</h2>
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Component</th>
-                                    <th>Type</th>
-                                    <th>Status</th>
-                                    <th>Version</th>
-                                    <th>Notes</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-    """
-    
-    for component in infra_status:
-        status_icon = "✅" if component["status"] == "online" else "❌"
-        status_class = "table-success" if component["status"] == "online" else "table-danger"
-        
-        html_content += f"""
-                                <tr class="{status_class}">
-                                    <td>{component['component']}</td>
-                                    <td>{component['type']}</td>
-                                    <td>{status_icon} {component['status']}</td>
-                                    <td>{component['version']}</td>
-                                    <td>{component['notes']}</td>
-                                </tr>
-        """
-    
-    html_content += """
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="row mt-4">
-                <div class="col-12">
-                    <h2>Agent Status</h2>
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Agent</th>
-                                    <th>Role</th>
-                                    <th>Status</th>
-                                    <th>Version</th>
-                                    <th>TPS</th>
-                                    <th>Memories</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-    """
-    
-    for agent in agent_status:
-        status_icon = "✅" if agent["status"] == "online" else "❌"
-        status_class = "table-success" if agent["status"] == "online" else "table-danger"
-        
-        html_content += f"""
-                                <tr class="{status_class}">
-                                    <td>{agent['agent']}</td>
-                                    <td>{agent['role']}</td>
-                                    <td>{status_icon} {agent['status']}</td>
-                                    <td>{agent['version']}</td>
-                                    <td>{agent['tps']}</td>
-                                    <td>{agent.get('memory_count', 0)}</td>
-                                </tr>
-        """
-    
-    html_content += """
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="mt-4">
-                <h3>Quick Actions</h3>
-                <a href="/warmboot/form" class="btn btn-success">🚀 Submit WarmBoot Request</a>
-                <a href="/health/infra" class="btn btn-primary">Infrastructure JSON</a>
-                <a href="/health/agents" class="btn btn-secondary">Agents JSON</a>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    
-    return HTMLResponse(content=html_content)
+    return templates.TemplateResponse("health_dashboard.html", {
+        "request": request,
+        "infra_status": infra_status,
+        "agent_status": agent_status,
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    })
 
 @app.post("/warmboot/submit")
 async def submit_warmboot(request: WarmBootRequest):
@@ -1192,6 +1516,234 @@ async def get_available_prds():
     """Get available PRDs from warm-boot/prd/ directory"""
     prds = await health_checker.get_available_prds()
     return JSONResponse(content=prds)
+
+# Agent Gateway: Console Request/Response Models
+class ConsoleCommandRequest(BaseModel):
+    session_id: str
+    command: str
+
+class ConsoleCommandResponse(BaseModel):
+    session_id: str
+    lines: List[str]
+    mode: str
+    bound_agent: Optional[str] = None
+    ecid: Optional[str] = None
+
+@app.post("/console/command")
+async def console_command(request: ConsoleCommandRequest):
+    """Agent Gateway: Handle console command"""
+    try:
+        # Get or create session
+        session = get_console_session(request.session_id)
+        if not session:
+            # Create new session with provided session_id if not found
+            console_sessions[request.session_id] = ConsoleSession(
+                session_id=request.session_id,
+                mode="idle"
+            )
+            session = get_console_session(request.session_id)
+            if not session:
+                raise HTTPException(status_code=500, detail="Failed to create session")
+        
+        # Parse command
+        parsed = parse_command(request.command)
+        cmd = parsed["command"]
+        args = parsed["args"]
+        
+        logger.info(f"Agent Gateway command: {cmd} (session: {request.session_id})")
+        
+        # Initialize command handler
+        handler = CommandHandler(health_checker)
+        
+        # Route command
+        if cmd == "":
+            return ConsoleCommandResponse(
+                session_id=request.session_id,
+                lines=[],
+                mode=session.mode,
+                bound_agent=session.bound_agent,
+                ecid=session.ecid
+            )
+        elif cmd == "help":
+            lines = await handler.handle_help()
+            return ConsoleCommandResponse(
+                session_id=request.session_id,
+                lines=lines,
+                mode=session.mode,
+                bound_agent=session.bound_agent,
+                ecid=session.ecid
+            )
+        elif cmd == "agent":
+            if len(args) == 0:
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=["Error: 'agent' command requires subcommand (list, status, info, logs)"],
+                    mode=session.mode,
+                    bound_agent=session.bound_agent,
+                    ecid=session.ecid
+                )
+            subcmd = args[0].lower()
+            if subcmd == "list":
+                lines = await handler.handle_agent_list()
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=lines,
+                    mode=session.mode,
+                    bound_agent=session.bound_agent,
+                    ecid=session.ecid
+                )
+            elif subcmd == "status":
+                lines = await handler.handle_agent_status()
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=lines,
+                    mode=session.mode,
+                    bound_agent=session.bound_agent,
+                    ecid=session.ecid
+                )
+            elif subcmd == "info":
+                if len(args) < 2:
+                    return ConsoleCommandResponse(
+                        session_id=request.session_id,
+                        lines=["Error: 'agent info' requires agent name"],
+                        mode=session.mode,
+                        bound_agent=session.bound_agent,
+                        ecid=session.ecid
+                    )
+                lines = await handler.handle_agent_info(args[1])
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=lines,
+                    mode=session.mode,
+                    bound_agent=session.bound_agent,
+                    ecid=session.ecid
+                )
+            elif subcmd == "logs":
+                if len(args) < 2:
+                    return ConsoleCommandResponse(
+                        session_id=request.session_id,
+                        lines=["Error: 'agent logs' requires agent name"],
+                        mode=session.mode,
+                        bound_agent=session.bound_agent,
+                        ecid=session.ecid
+                    )
+                n = int(args[2]) if len(args) >= 3 else 10
+                lines = await handler.handle_agent_logs(args[1], n)
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=lines,
+                    mode=session.mode,
+                    bound_agent=session.bound_agent,
+                    ecid=session.ecid
+                )
+            else:
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=[f"Error: Unknown agent subcommand '{subcmd}'. Use 'help' for available commands."],
+                    mode=session.mode,
+                    bound_agent=session.bound_agent,
+                    ecid=session.ecid
+                )
+        elif cmd == "chat":
+            if len(args) == 0:
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=["Error: 'chat' command requires agent name or 'end'"],
+                    mode=session.mode,
+                    bound_agent=session.bound_agent,
+                    ecid=session.ecid
+                )
+            if args[0].lower() == "end":
+                result = await handler.handle_chat_end(request.session_id)
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=result["lines"],
+                    mode=result["mode"],
+                    bound_agent=result["bound_agent"],
+                    ecid=result["ecid"]
+                )
+            else:
+                result = await handler.handle_chat_start(request.session_id, args[0])
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=result["lines"],
+                    mode=result["mode"],
+                    bound_agent=result["bound_agent"],
+                    ecid=result["ecid"]
+                )
+        elif cmd == "whoami":
+            lines = await handler.handle_whoami(request.session_id)
+            session = get_console_session(request.session_id)
+            return ConsoleCommandResponse(
+                session_id=request.session_id,
+                lines=lines,
+                mode=session.mode if session else "idle",
+                bound_agent=session.bound_agent if session else None,
+                ecid=session.ecid if session else None
+            )
+        elif cmd == "clear":
+            # Client-side only command
+            return ConsoleCommandResponse(
+                session_id=request.session_id,
+                lines=["[Console cleared]"],
+                mode=session.mode,
+                bound_agent=session.bound_agent,
+                ecid=session.ecid
+            )
+        else:
+            # Check if in chat mode - treat as message
+            if session.mode == "chat" and session.bound_agent:
+                result = await handler.handle_chat_message(request.session_id, request.command)
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=result["lines"],
+                    mode=result["mode"],
+                    bound_agent=result["bound_agent"],
+                    ecid=result["ecid"]
+                )
+            else:
+                return ConsoleCommandResponse(
+                    session_id=request.session_id,
+                    lines=[f"Error: Unknown command '{cmd}'. Type 'help' for available commands."],
+                    mode=session.mode,
+                    bound_agent=session.bound_agent,
+                    ecid=session.ecid
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Agent Gateway error: {e}", exc_info=True)
+        session = get_console_session(request.session_id)
+        return ConsoleCommandResponse(
+            session_id=request.session_id,
+            lines=[f"Error: {str(e)}"],
+            mode=session.mode if session else "idle",
+            bound_agent=session.bound_agent if session else None,
+            ecid=session.ecid if session else None
+        )
+
+@app.get("/console/session")
+async def create_console_session_endpoint():
+    """Agent Gateway: Create new console session"""
+    session_id = create_console_session()
+    return {"session_id": session_id}
+
+@app.get("/console/responses/{session_id}")
+async def get_console_responses(session_id: str):
+    """Agent Gateway: Get and clear pending responses for session"""
+    session = get_console_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Return responses and clear list
+    responses = session.pending_responses.copy()
+    session.pending_responses.clear()
+    
+    return {
+        "session_id": session_id,
+        "responses": responses,
+        "count": len(responses)
+    }
 
 @app.get("/warmboot/next-run-id")
 async def get_next_run_id():

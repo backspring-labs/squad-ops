@@ -38,6 +38,12 @@ class SchemaValidator:
         if self._request_schema is not None:
             return self._request_schema
         
+        if not self.request_schema_path.exists():
+            logger.warning(f"Request schema not found at {self.request_schema_path}, skipping schema validation")
+            # Return a minimal schema that accepts anything
+            self._request_schema = {"type": "object"}
+            return self._request_schema
+        
         with open(self.request_schema_path, 'r') as f:
             self._request_schema = json.load(f)
         
@@ -46,6 +52,12 @@ class SchemaValidator:
     def _load_response_schema(self) -> Dict[str, Any]:
         """Load response schema"""
         if self._response_schema is not None:
+            return self._response_schema
+        
+        if not self.response_schema_path.exists():
+            logger.warning(f"Response schema not found at {self.response_schema_path}, skipping schema validation")
+            # Return a minimal schema that accepts anything
+            self._response_schema = {"type": "object"}
             return self._response_schema
         
         with open(self.response_schema_path, 'r') as f:

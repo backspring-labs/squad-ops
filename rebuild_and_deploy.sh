@@ -2,8 +2,58 @@
 # Rebuild and deploy SquadOps containers with updated code
 # Ensures all infrastructure (including Ollama) is running first
 # Can be run in background - logs to rebuild_deploy.log
+#
+# Usage:
+#   ./rebuild_and_deploy.sh                    # Rebuild everything (default)
+#   ./rebuild_and_deploy.sh all                # Rebuild everything
+#   ./rebuild_and_deploy.sh health-check        # Rebuild only health-check service
+#   ./rebuild_and_deploy.sh agents              # Rebuild only agent containers
+#   ./rebuild_and_deploy.sh health-check agents # Rebuild health-check and agents
+#   ./rebuild_and_deploy.sh task-api            # Rebuild only task-api
+#
+# Environment variables:
+#   FORCE_REBUILD=1                             # Use --no-cache for full rebuild
 
 set -e
+
+# Parse command-line arguments
+REBUILD_HEALTH_CHECK=false
+REBUILD_AGENTS=false
+REBUILD_TASK_API=false
+REBUILD_ALL=true
+
+if [ $# -gt 0 ]; then
+    REBUILD_ALL=false
+    for arg in "$@"; do
+        case "$arg" in
+            health-check|health_check)
+                REBUILD_HEALTH_CHECK=true
+                ;;
+            agents)
+                REBUILD_AGENTS=true
+                ;;
+            task-api|task_api)
+                REBUILD_TASK_API=true
+                ;;
+            all)
+                REBUILD_ALL=true
+                REBUILD_HEALTH_CHECK=true
+                REBUILD_AGENTS=true
+                REBUILD_TASK_API=true
+                ;;
+            *)
+                echo "Unknown argument: $arg"
+                echo "Usage: $0 [health-check] [agents] [task-api] [all]"
+                exit 1
+                ;;
+        esac
+    done
+else
+    # Default: rebuild everything
+    REBUILD_HEALTH_CHECK=true
+    REBUILD_AGENTS=true
+    REBUILD_TASK_API=true
+fi
 
 # Log file for background execution
 LOG_FILE="rebuild_deploy.log"
@@ -23,6 +73,15 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}🚀 SquadOps Rebuild & Deploy${NC}"
 echo "================================"
+echo -e "${BLUE}Target services:${NC}"
+if [ "$REBUILD_ALL" = true ]; then
+    echo -e "  ${YELLOW}✓${NC} All services (health-check, agents, task-api)"
+else
+    [ "$REBUILD_HEALTH_CHECK" = true ] && echo -e "  ${YELLOW}✓${NC} health-check"
+    [ "$REBUILD_AGENTS" = true ] && echo -e "  ${YELLOW}✓${NC} agents"
+    [ "$REBUILD_TASK_API" = true ] && echo -e "  ${YELLOW}✓${NC} task-api"
+fi
+echo ""
 
 # Function to check if Ollama is running
 check_ollama() {
@@ -79,8 +138,20 @@ fi
 echo ""
 echo -e "${BLUE}📊 Step 2: Ensuring Docker Compose infrastructure is running...${NC}"
 
-echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect, task-api, health-check)..."
-docker-compose up -d rabbitmq postgres redis prefect-server prefect-ui task-api health-check
+# Always start infrastructure services (they're dependencies)
+echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
+docker-compose up -d rabbitmq postgres redis prefect-server prefect-ui
+
+# Conditionally start task-api and health-check if they're being rebuilt
+if [ "$REBUILD_TASK_API" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo "Starting task-api..."
+    docker-compose up -d task-api || true
+fi
+
+if [ "$REBUILD_HEALTH_CHECK" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo "Starting health-check..."
+    docker-compose up -d health-check || true
+fi
 
 echo "⏳ Waiting for infrastructure to be healthy (30 seconds)..."
 sleep 30
@@ -122,43 +193,66 @@ fi
 echo ""
 echo -e "${BLUE}🔨 Step 3: Rebuilding containers with updated code...${NC}"
 
-# Rebuild Task API (has new endpoints)
-echo -e "${YELLOW}📦 Rebuilding task-api (new endpoints added)...${NC}"
-# Use cache for faster rebuilds - only rebuild changed layers
-docker-compose build task-api
-docker-compose up -d task-api
-echo -e "${GREEN}✅ Task API rebuilt and restarted${NC}"
+# Rebuild Task API if requested
+if [ "$REBUILD_TASK_API" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "${YELLOW}📦 Rebuilding task-api...${NC}"
+    if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+        docker-compose build --no-cache task-api || echo -e "${RED}  ⚠️  Build failed for task-api${NC}"
+    else
+        docker-compose build task-api || echo -e "${RED}  ⚠️  Build failed for task-api${NC}"
+    fi
+    docker-compose up -d task-api
+    echo -e "${GREEN}✅ Task API rebuilt and restarted${NC}"
+fi
 
-# Get list of agent services from docker-compose
-AGENTS=$(docker-compose config --services | grep -E "^(max|neo|nat|glyph|eve|data|quark|joi|og|hal)$" || echo "max neo")
+# Rebuild Health Check if requested
+if [ "$REBUILD_HEALTH_CHECK" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "${YELLOW}📦 Rebuilding health-check...${NC}"
+    if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+        docker-compose build --no-cache health-check || echo -e "${RED}  ⚠️  Build failed for health-check${NC}"
+    else
+        docker-compose build health-check || echo -e "${RED}  ⚠️  Build failed for health-check${NC}"
+    fi
+    docker-compose up -d health-check
+    echo -e "${GREEN}✅ Health Check rebuilt and restarted${NC}"
+fi
 
-echo -e "${YELLOW}📦 Rebuilding agent containers (using updated unified config and Task API)...${NC}"
-echo -e "${BLUE}   Using Docker layer cache for faster rebuilds (use FORCE_REBUILD=1 for --no-cache)${NC}"
-for agent in $AGENTS; do
-    if docker-compose config --services | grep -q "^${agent}$"; then
-        echo -e "  🔨 Rebuilding ${agent}..."
-        if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-            docker-compose build --no-cache $agent || echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
-        else
-            docker-compose build $agent || echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
+# Rebuild Agents if requested
+if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
+    # Get list of agent services from docker-compose
+    AGENTS=$(docker-compose config --services | grep -E "^(max|neo|nat|glyph|eve|data|quark|joi|og|hal)$" || echo "max neo")
+
+    echo -e "${YELLOW}📦 Rebuilding agent containers...${NC}"
+    echo -e "${BLUE}   Using Docker layer cache for faster rebuilds (use FORCE_REBUILD=1 for --no-cache)${NC}"
+    for agent in $AGENTS; do
+        if docker-compose config --services | grep -q "^${agent}$"; then
+            echo -e "  🔨 Rebuilding ${agent}..."
+            if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+                docker-compose build --no-cache $agent || echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
+            else
+                docker-compose build $agent || echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
+            fi
         fi
-    fi
-done
+    done
 
-# Step 4: Restart all agent containers
-echo ""
-echo -e "${BLUE}🔄 Step 4: Restarting agent containers...${NC}"
-for agent in $AGENTS; do
-    if docker-compose config --services | grep -q "^${agent}$"; then
-        echo -e "  🔄 Restarting ${agent}..."
-        docker-compose up -d $agent || echo -e "${RED}  ⚠️  Restart failed for ${agent}${NC}"
-    fi
-done
+    # Step 4: Restart all agent containers
+    echo ""
+    echo -e "${BLUE}🔄 Step 4: Restarting agent containers...${NC}"
+    for agent in $AGENTS; do
+        if docker-compose config --services | grep -q "^${agent}$"; then
+            echo -e "  🔄 Restarting ${agent}..."
+            docker-compose up -d $agent || echo -e "${RED}  ⚠️  Restart failed for ${agent}${NC}"
+        fi
+    done
 
-# Step 5: Wait for agents to be healthy
-echo ""
-echo -e "${BLUE}⏳ Step 5: Waiting for agents to be healthy (30 seconds)...${NC}"
-sleep 30
+    # Step 5: Wait for agents to be healthy
+    echo ""
+    echo -e "${BLUE}⏳ Step 5: Waiting for agents to be healthy (30 seconds)...${NC}"
+    sleep 30
+else
+    echo -e "${BLUE}⏳ Step 4: Waiting for services to be healthy (10 seconds)...${NC}"
+    sleep 10
+fi
 
 # Step 6: Verify deployment
 echo ""
@@ -169,6 +263,16 @@ echo ""
 echo -e "${GREEN}🎉 Rebuild and deploy complete!${NC}"
 echo ""
 echo -e "${BLUE}Next steps:${NC}"
-echo -e "  1. Verify agent logs: ${YELLOW}docker-compose logs --tail=50 max neo${NC}"
-echo -e "  2. Check Task API health: ${YELLOW}curl http://localhost:8001/health${NC}"
-echo -e "  3. Run smoke tests: ${YELLOW}python3 -m pytest tests/smoke/ -v${NC}"
+if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "  1. Verify agent logs: ${YELLOW}docker-compose logs --tail=50 max neo${NC}"
+fi
+if [ "$REBUILD_TASK_API" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "  2. Check Task API health: ${YELLOW}curl http://localhost:8001/health${NC}"
+fi
+if [ "$REBUILD_HEALTH_CHECK" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "  3. Check Health Check dashboard: ${YELLOW}curl http://localhost:8000/health${NC}"
+    echo -e "  4. Open Agent Console: ${YELLOW}http://localhost:8000/health${NC} (click 'Agent Console' tab)"
+fi
+if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "  5. Run smoke tests: ${YELLOW}python3 -m pytest tests/smoke/ -v${NC}"
+fi

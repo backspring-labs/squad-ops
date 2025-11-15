@@ -434,6 +434,11 @@ class LanceDBAdapter(MemoryProvider):
                     'content': content,
                     'created_at': str(row.get('created_at', '')) if pd.notna(row.get('created_at')) else ''
                 }
+                
+                # Include distance score if available (LanceDB search returns _distance column)
+                if '_distance' in row and pd.notna(row['_distance']):
+                    memory_dict['_distance'] = float(row['_distance'])
+                
                 results.append(memory_dict)
             
             # Sort by importance (descending)

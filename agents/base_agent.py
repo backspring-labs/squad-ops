@@ -19,6 +19,8 @@ from typing import Dict, Any, Optional, List, TYPE_CHECKING
 if TYPE_CHECKING:
     from agents.specs.agent_request import AgentRequest
     from agents.specs.agent_response import AgentResponse
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse
 import aio_pika
 import asyncpg
 import redis.asyncio as redis
@@ -1149,10 +1151,18 @@ class BaseAgent(ABC):
             
             async def process_tasks():
                 async for message in task_queue:
+                    task_id = None
                     try:
                         logger.debug(f"{self.name} received message: {message.body.decode()}")
                         task_data = json.loads(message.body.decode())
                         logger.debug(f"{self.name} parsed task_data: {task_data}")
+                        
+                        # Set busy status before processing
+                        task_id = task_data.get('task_id', 'unknown')
+                        self.status = "Active-Non-Blocking"
+                        self.current_task = task_id
+                        logger.debug(f"{self.name} set status to Active-Non-Blocking for task {task_id}")
+                        
                         logger.debug(f"{self.name} about to call process_task")
                         result = await self.process_task(task_data)
                         logger.debug(f"{self.name} process_task completed: {result}")
@@ -1160,29 +1170,80 @@ class BaseAgent(ABC):
                         # Update task status
                         logger.debug(f"{self.name} about to call update_task_status")
                         await self.update_task_status(
-                            task_data.get('task_id', 'unknown'),
+                            task_id,
                             'Completed',
                             progress=100.0
                         )
                         logger.debug(f"{self.name} update_task_status completed")
                         
+                        # Clear busy status after successful completion
+                        self.status = "Available"
+                        self.current_task = None
+                        logger.debug(f"{self.name} cleared busy status after task completion")
+                        
                         await message.ack()
-                        logger.info(f"{self.name} completed task: {task_data.get('task_id', 'unknown')}")
+                        logger.info(f"{self.name} completed task: {task_id}")
                         
                     except Exception as e:
                         logger.error(f"{self.name} task processing error: {e}")
+                        # Clear busy status on error
+                        self.status = "Available"
+                        self.current_task = None
+                        logger.debug(f"{self.name} cleared busy status after task error")
                         await message.nack(requeue=False)
             
             async def process_comms():
                 async for message in comms_queue:
                     try:
                         msg_data = json.loads(message.body.decode())
-                        agent_msg = AgentMessage(**msg_data)
-                        await self.handle_message(agent_msg)
+                        
+                        # Check if this is an AgentRequest (capability invocation) or AgentMessage (inter-agent comms)
+                        if 'action' in msg_data:
+                            # AgentRequest format - route to capability system
+                            request = AgentRequest.from_dict(msg_data)
+                            response = await self.handle_agent_request(request)
+                            
+                            # Generic response routing - check for response_queue in metadata
+                            response_queue = msg_data.get('metadata', {}).get('response_queue')
+                            if response_queue:
+                                correlation_id = msg_data.get('metadata', {}).get('correlation_id')
+                                action = msg_data.get('action', 'unknown')
+                                
+                                # Prepare response message
+                                if hasattr(response, 'to_dict'):
+                                    response_payload = response.to_dict()
+                                elif isinstance(response, dict):
+                                    response_payload = {"result": response}
+                                else:
+                                    response_payload = {"result": response}
+                                
+                                response_message = {
+                                    "action": f"{action}.response",
+                                    "payload": response_payload,
+                                    "metadata": {
+                                        "correlation_id": correlation_id,
+                                        "original_action": action,
+                                        "agent_name": self.name
+                                    }
+                                }
+                                
+                                await self.channel.default_exchange.publish(
+                                    aio_pika.Message(
+                                        body=json.dumps(response_message).encode(),
+                                        correlation_id=correlation_id
+                                    ),
+                                    routing_key=response_queue
+                                )
+                                logger.info(f"{self.name} sent response to {response_queue} for {action}")
+                        else:
+                            # AgentMessage format - route to message handlers
+                            agent_msg = AgentMessage(**msg_data)
+                            await self.handle_message(agent_msg)
+                        
                         await message.ack()
                         
                     except Exception as e:
-                        logger.error(f"{self.name} message processing error: {e}")
+                        logger.error(f"{self.name} comms processing error: {e}", exc_info=True)
                         await message.nack(requeue=False)
             
             async def process_broadcasts():

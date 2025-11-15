@@ -55,8 +55,6 @@ class LeadAgent(BaseAgent):
         
         # Initialize schema validator
         from pathlib import Path
-        # In container, agent.py is at /app/agent.py, so base_path should be /app
-        # In development, __file__ is at agents/roles/lead/agent.py, so go up 3 levels
         if Path('/app').exists():
             base_path = Path('/app')
         else:
