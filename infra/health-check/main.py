@@ -526,9 +526,9 @@ class HealthChecker:
                     # Handle memory_count - asyncpg.Record uses dict-like access
                     memory_count = row['memory_count'] if row['memory_count'] is not None else 0
                     
-                    # Use config/version.py as source of truth for agent version
-                    # Database version may be stale if agent hasn't sent heartbeat recently
-                    agent_version = get_agent_version(agent_name)
+                    # Use version from database (reported by agents in heartbeats)
+                    # Fall back to config/version.py if database version is missing
+                    agent_version = row['version'] if row['version'] else get_agent_version(agent_name)
                     
                     agents.append({
                         "agent": self._get_display_name(agent_name),
