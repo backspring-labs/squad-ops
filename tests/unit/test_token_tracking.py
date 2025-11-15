@@ -48,25 +48,25 @@ class TestTokenTracking:
             assert token_usage['total_tokens'] == 30
     
     @pytest.mark.unit
-    def test_dev_agent_calculates_total_tokens(self, mock_unified_config):
-        """Test DevAgent._calculate_total_tokens_used() method"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
-            from agents.roles.dev.agent import DevAgent
-            
-            agent = DevAgent('test-dev-agent')
-            
-            # Populate communication log with entries that have token usage
-            agent.communication_log = [
-                {'message_type': 'llm_reasoning', 'token_usage': {'total_tokens': 100}},
-                {'message_type': 'other', 'no_tokens': True},  # Should be skipped
-                {'message_type': 'llm_reasoning', 'token_usage': {'total_tokens': 50}},
-                {'message_type': 'llm_reasoning', 'token_usage': {'total_tokens': 25}},
-                {'message_type': 'llm_reasoning'},  # No token_usage - should be skipped
-            ]
-            
-            total = agent._calculate_total_tokens_used()
-            
-            assert total == 175  # 100 + 50 + 25
+    def test_task_completion_emitter_calculates_total_tokens(self, mock_unified_config):
+        """Test TaskCompletionEmitter._calculate_total_tokens_used() method"""
+        from agents.capabilities.task_completion_emitter import TaskCompletionEmitter
+        from unittest.mock import Mock
+        
+        # Create a mock agent with communication log
+        mock_agent = Mock()
+        mock_agent.communication_log = [
+            {'message_type': 'llm_reasoning', 'token_usage': {'total_tokens': 100}},
+            {'message_type': 'other', 'no_tokens': True},  # Should be skipped
+            {'message_type': 'llm_reasoning', 'token_usage': {'total_tokens': 50}},
+            {'message_type': 'llm_reasoning', 'token_usage': {'total_tokens': 25}},
+            {'message_type': 'llm_reasoning'},  # No token_usage - should be skipped
+        ]
+        
+        capability = TaskCompletionEmitter(mock_agent)
+        total = capability._calculate_total_tokens_used()
+        
+        assert total == 175  # 100 + 50 + 25
     
     @pytest.mark.unit
     @pytest.mark.asyncio

@@ -24,6 +24,7 @@ COPY agents/roles/${AGENT_ROLE}/agent.py .
 COPY agents/llm ./agents/llm
 COPY agents/specs ./agents/specs
 COPY agents/capabilities ./agents/capabilities
+COPY agents/capability_bindings.yaml ./agents/capability_bindings.yaml
 COPY agents/telemetry ./agents/telemetry
 COPY agents/memory ./agents/memory
 COPY agents/instances ./agents/instances

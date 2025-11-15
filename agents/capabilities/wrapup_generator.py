@@ -7,7 +7,7 @@ Implements warmboot.wrapup capability for generating WarmBoot wrap-up reports.
 import logging
 import re
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -35,23 +35,44 @@ class WrapupGenerator:
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
         self.communication_log = agent.communication_log if hasattr(agent, 'communication_log') else []
     
-    async def generate_wrapup(self, ecid: str, task_id: str, completion_payload: Dict[str, Any], 
-                             telemetry_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_wrapup(self, task: Dict[str, Any] = None, 
+                             ecid: str = None, task_id: str = None, 
+                             completion_payload: Dict[str, Any] = None,
+                             telemetry_data: Dict[str, Any] = None, 
+                             reasoning_events: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Generate WarmBoot wrap-up report.
         
         Implements the warmboot.wrapup capability.
         
+        Accepts either:
+        1. A task dictionary (for generic routing) - extracts all fields from task
+        2. Individual parameters (for backward compatibility)
+        
         Args:
-            ecid: Execution cycle ID
-            task_id: Task ID
-            completion_payload: Completion payload from task
-            telemetry_data: Telemetry data (collected via telemetry.collect capability)
+            task: Task dictionary containing ecid, task_id, completion_payload, telemetry, reasoning_events
+            ecid: Execution cycle ID (extracted from task if not provided)
+            task_id: Task ID (extracted from task if not provided)
+            completion_payload: Completion payload from task (extracted from task if not provided)
+            telemetry_data: Telemetry data (extracted from task.telemetry if not provided)
+            reasoning_events: Optional list of reasoning events (extracted from task.reasoning_events if not provided)
             
         Returns:
             Dictionary containing wrapup_uri, wrapup_content, telemetry_data, and run_number
         """
         try:
+            # Extract parameters from task dictionary if provided (generic routing)
+            if task is not None:
+                ecid = task.get('ecid', ecid or 'unknown')
+                task_id = task.get('task_id', task_id or task.get('original_task_id', 'unknown'))
+                completion_payload = task.get('completion_payload', completion_payload or {})
+                telemetry_data = task.get('telemetry', telemetry_data or {})
+                reasoning_events = task.get('reasoning_events', reasoning_events)
+            
+            # Validate required parameters
+            if not ecid or not task_id:
+                raise ValueError("ecid and task_id are required (either via task dict or individual parameters)")
+            
             logger.info(f"{self.name} starting WarmBoot wrap-up generation for ECID {ecid}")
             
             # Extract run number from ECID (e.g., "ECID-WB-055" -> "055")
@@ -60,7 +81,7 @@ class WrapupGenerator:
             
             # Generate wrap-up markdown
             wrapup_content = await self.generate_wrapup_markdown(
-                ecid, run_number, task_id, completion_payload, telemetry_data
+                ecid, run_number, task_id, completion_payload or {}, telemetry_data or {}, reasoning_events
             )
             
             # Write wrap-up to file
@@ -96,7 +117,8 @@ class WrapupGenerator:
     
     async def generate_wrapup_markdown(self, ecid: str, run_number: str, task_id: str,
                                        completion_payload: Dict[str, Any],
-                                       telemetry: Dict[str, Any]) -> str:
+                                       telemetry: Dict[str, Any], 
+                                       reasoning_events: List[Dict[str, Any]] = None) -> str:
         """
         Generate wrap-up markdown content.
         
@@ -106,6 +128,7 @@ class WrapupGenerator:
             task_id: Task ID
             completion_payload: Completion payload
             telemetry: Telemetry data
+            reasoning_events: Optional list of reasoning events. If not provided, reads from communication_log.
             
         Returns:
             Markdown content string
@@ -143,9 +166,15 @@ class WrapupGenerator:
         start_time = execution_duration.get('start_time', execution_cycle.get('start_time', 'Unknown'))
         end_time = execution_duration.get('end_time', datetime.utcnow().isoformat())
         
-        # Extract reasoning traces for Max and Neo separately
-        max_reasoning = self.extract_real_ai_reasoning(ecid, agent_name='max')
-        neo_reasoning = self.extract_real_ai_reasoning(ecid, agent_name='neo')
+        # Extract reasoning traces - use provided events or fall back to communication log
+        if reasoning_events is not None:
+            # Use provided reasoning events from task payload
+            max_reasoning = self._format_reasoning_events(reasoning_events, agent_name='max')
+            neo_reasoning = self._format_reasoning_events(reasoning_events, agent_name='neo')
+        else:
+            # Fallback to reading from communication log (backward compatibility)
+            max_reasoning = self.extract_real_ai_reasoning(ecid, agent_name='max')
+            neo_reasoning = self.extract_real_ai_reasoning(ecid, agent_name='neo')
         
         # Format artifacts with full hashes
         artifacts_list = []
@@ -278,6 +307,72 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
 """
         
         return markdown
+    
+    def _format_reasoning_events(self, reasoning_events: List[Dict[str, Any]], agent_name: str = None) -> str:
+        """
+        Format reasoning events list into text format.
+        
+        Args:
+            reasoning_events: List of reasoning event dictionaries
+            agent_name: Optional agent name filter
+            
+        Returns:
+            Formatted reasoning trace string (joined with newlines)
+        """
+        formatted_reasoning = []
+        
+        for entry in reasoning_events:
+            entry_agent = entry.get('agent', entry.get('sender', 'unknown'))
+            
+            # Filter by agent name if specified
+            if agent_name and entry_agent.lower() != agent_name.lower():
+                continue
+            
+            # Get timestamp
+            timestamp = entry.get('timestamp', 'unknown')
+            if timestamp != 'unknown':
+                try:
+                    if 'T' in timestamp:
+                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                        formatted_time = dt.strftime('%H:%M:%S')
+                    else:
+                        formatted_time = timestamp
+                except:
+                    formatted_time = timestamp
+            else:
+                formatted_time = 'unknown'
+            
+            # Format reasoning event
+            summary = entry.get('summary', '')
+            context = entry.get('context', 'unknown')
+            reason_step = entry.get('reason_step', 'unknown')
+            key_points = entry.get('key_points', [])
+            llm_reasoning = entry.get('llm_reasoning', {})
+            
+            # Build formatted reasoning text
+            if summary:
+                reasoning_text = f"> **{entry_agent}** ({formatted_time}) [{context}/{reason_step}]: {summary}"
+                if key_points:
+                    reasoning_text += f"\n>   - Key points: {', '.join(key_points[:3])}"
+                
+                # Include actual LLM reasoning if available
+                if llm_reasoning and entry.get('raw_reasoning_included', False):
+                    llm_response = llm_reasoning.get('response', '')
+                    if llm_response:
+                        response_preview = llm_response[:300] + ('...' if len(llm_response) > 300 else '')
+                        reasoning_text += f"\n>   - LLM Response: {response_preview}"
+                    
+                    token_usage = llm_reasoning.get('token_usage', {})
+                    if token_usage:
+                        prompt_tokens = token_usage.get('prompt_tokens', 0)
+                        completion_tokens = token_usage.get('completion_tokens', 0)
+                        if prompt_tokens > 0 or completion_tokens > 0:
+                            reasoning_text += f"\n>   - Tokens: {prompt_tokens} prompt + {completion_tokens} completion = {prompt_tokens + completion_tokens} total"
+                
+                formatted_reasoning.append(reasoning_text)
+        
+        # Join with newlines to match extract_real_ai_reasoning format
+        return '\n'.join(formatted_reasoning) if formatted_reasoning else ''
     
     def extract_real_ai_reasoning(self, ecid: str, agent_name: str = None) -> str:
         """

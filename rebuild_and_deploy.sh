@@ -124,7 +124,8 @@ echo -e "${BLUE}🔨 Step 3: Rebuilding containers with updated code...${NC}"
 
 # Rebuild Task API (has new endpoints)
 echo -e "${YELLOW}📦 Rebuilding task-api (new endpoints added)...${NC}"
-docker-compose build --no-cache task-api
+# Use cache for faster rebuilds - only rebuild changed layers
+docker-compose build task-api
 docker-compose up -d task-api
 echo -e "${GREEN}✅ Task API rebuilt and restarted${NC}"
 
@@ -132,10 +133,15 @@ echo -e "${GREEN}✅ Task API rebuilt and restarted${NC}"
 AGENTS=$(docker-compose config --services | grep -E "^(max|neo|nat|glyph|eve|data|quark|joi|og|hal)$" || echo "max neo")
 
 echo -e "${YELLOW}📦 Rebuilding agent containers (using updated unified config and Task API)...${NC}"
+echo -e "${BLUE}   Using Docker layer cache for faster rebuilds (use FORCE_REBUILD=1 for --no-cache)${NC}"
 for agent in $AGENTS; do
     if docker-compose config --services | grep -q "^${agent}$"; then
         echo -e "  🔨 Rebuilding ${agent}..."
-        docker-compose build --no-cache $agent || echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
+        if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+            docker-compose build --no-cache $agent || echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
+        else
+            docker-compose build $agent || echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
+        fi
     fi
 done
 

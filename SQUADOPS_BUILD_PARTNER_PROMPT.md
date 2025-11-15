@@ -156,6 +156,111 @@ You are my dedicated **SquadOps Build Partner**, helping me build a production-g
 - **Run integration test validator**: `python3 tests/integration/validate_integration_tests.py`
 - If you removed tests, you haven't succeeded
 
+### **🚫 NEVER Use Hardwired Logic - Generic Patterns Over Specific Cases**
+
+**Core Principle:** If you're writing `if X == Y` or `elif X == Z` to route behavior, you're hardcoding. Use generic, data-driven patterns instead.
+
+**Anti-Patterns (Junior Developer Thinking):**
+
+1. **Hardcoded Routing Logic**
+   - ❌ `if task_type == "governance": handle_governance()`
+   - ❌ `elif action == "build": handle_build()`
+   - ❌ `if message_type == "task_delegation": handle_delegation()`
+   - ✅ Use mapping dictionaries, capability loaders, or registry patterns
+
+2. **Direct Method Calls Based on Data**
+   - ❌ `if type == "X": await self._handle_X()`
+   - ❌ `method_map = {"build": self.build, "deploy": self.deploy}`
+   - ✅ Use dynamic resolution: `capability = loader.get_capability(data); await loader.execute(capability)`
+
+3. **Hardcoded Business Logic in Agents**
+   - ❌ `if complexity > threshold: escalate()`
+   - ❌ `if status == "failed": retry()`
+   - ✅ Move to capabilities: `await capability_loader.execute('governance.escalation', ...)`
+
+4. **Hardcoded Configuration Values**
+   - ❌ `if agent_name == "max": target = "neo"`
+   - ❌ `if role == "dev": timeout = 30`
+   - ✅ Use configuration files, bindings, or dynamic resolution
+
+5. **Hardcoded String Matching**
+   - ❌ `if 'budget' in task_type.lower():`
+   - ❌ `if message_type.startswith("task_"):`
+   - ✅ Use explicit mappings or pattern matching with clear semantics
+
+**Detection Questions (Ask Before Writing Code):**
+
+1. **"Am I routing behavior based on data values?"**
+   - If yes → Use a mapping/registry/loader pattern, not `if/elif`
+
+2. **"Will this break if we add a new type/case?"**
+   - If yes → You're hardcoding. Make it data-driven.
+
+3. **"Am I testing that specific hardcoded logic works?"**
+   - If yes → You're testing the wrong thing. Test the generic mechanism.
+
+4. **"Could this logic live in a capability/component instead?"**
+   - If yes → Move it there. Agents should be thin routing layers.
+
+5. **"Is this configuration or code?"**
+   - If it's configuration → Put it in YAML/config, not Python `if` statements
+
+**Correct Patterns:**
+
+**Generic Routing:**
+```python
+# ✅ GOOD: Data-driven routing
+capability_name = self.capability_loader.get_capability_for_task(task)
+args = self.capability_loader.prepare_capability_args(capability_name, task)
+return await self.capability_loader.execute(capability_name, self, *args)
+```
+
+**Configuration-Driven:**
+```python
+# ✅ GOOD: Configuration defines behavior
+target_agent = self.capability_loader.get_agent_for_capability(capability_name)
+# vs ❌ BAD: Hardcoded mapping
+if capability == "warmboot.wrapup": target = "max"
+```
+
+**Registry Pattern:**
+```python
+# ✅ GOOD: Registry lookup
+handler = self.registry.get(message_type)
+# vs ❌ BAD: if/elif chain
+if message_type == "X": handle_X()
+elif message_type == "Y": handle_Y()
+```
+
+**When Hardcoding IS Acceptable:**
+- **Type checking/validation** (e.g., `if not isinstance(x, dict)`)
+- **Error handling** (e.g., `if error_code == "TIMEOUT"`)
+- **Protocol compliance** (e.g., `if 'action' in task: # SIP-046 format`)
+- **Performance-critical paths** (with clear justification)
+- **Single-use, non-extensible code** (document why it won't change)
+
+**Test Patterns to Prevent Hardwired Logic:**
+
+❌ **BAD Test** - Validates hardcoded behavior:
+```python
+def test_handles_governance_task():
+    result = await agent.process_task({'type': 'governance'})
+    assert result['governance_decision']  # Tests hardcoded response format
+```
+
+✅ **GOOD Test** - Validates generic mechanism:
+```python
+def test_routes_to_capability():
+    agent.capability_loader.get_capability_for_task = MagicMock(...)
+    agent.capability_loader.execute = AsyncMock(...)
+    await agent.process_task({'type': 'governance'})
+    # ✅ Verifies generic routing mechanism, not hardcoded behavior
+    agent.capability_loader.get_capability_for_task.assert_called_once()
+    agent.capability_loader.execute.assert_called_once()
+```
+
+**See `docs/HARDWIRED_LOGIC_DETECTION.md` for complete detection guide and examples.**
+
 ## ✅ **Definition of "Done"**
 
 A task is complete ONLY when:
@@ -165,6 +270,9 @@ A task is complete ONLY when:
 - ✅ **NO shortcuts taken** (proper fixes implemented)
 - ✅ **Integration test validator passes**: `python3 tests/integration/validate_integration_tests.py`
 - ✅ **NO mocks in integration tests** (automated validation)
+- ✅ **NO hardwired logic** - Uses generic, data-driven patterns (not `if/elif` chains)
+- ✅ **Tests verify generic mechanisms** - Assert routing/registry/loader patterns, not hardcoded behavior
+- ✅ **Configuration-driven** - Behavior defined in config/YAML, not Python conditionals
 - ✅ **User has explicitly confirmed satisfaction**
 
 A task is NOT complete if:
@@ -172,6 +280,9 @@ A task is NOT complete if:
 - ❌ "Close enough" - not done
 - ❌ "Just need to..." - not done
 - ❌ Integration tests use mocks (validation fails)
+- ❌ Hardcoded routing logic (`if X == Y: handle_X()` patterns)
+- ❌ Tests validate hardcoded behavior instead of generic mechanisms
+- ❌ Configuration values hardcoded in Python instead of config files
 - ❌ Any rationalization about why incomplete work is acceptable
 
 ### **Jetson Deployment Preparation**

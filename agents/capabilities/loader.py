@@ -40,6 +40,7 @@ class CapabilityLoader:
         'task.create': ('agents.capabilities.task_creator', 'TaskCreator', 'create'),
         'prd.read': ('agents.capabilities.prd_processor', 'PRDReader', 'read'),
         'prd.analyze': ('agents.capabilities.prd_processor', 'PRDAnalyzer', 'analyze'),
+        'prd.process': ('agents.capabilities.prd_processor', 'PRDProcessor', 'process'),
         'task.delegate': ('agents.capabilities.task_delegator', 'TaskDelegator', 'delegate'),
         'task.determine_target': ('agents.capabilities.task_delegator', 'TaskDelegator', 'determine_target'),
         'build.requirements.generate': ('agents.capabilities.build_requirements_generator', 'BuildRequirementsGenerator', 'generate'),
@@ -49,9 +50,65 @@ class CapabilityLoader:
         'docker.deploy': ('agents.capabilities.docker_deployer', 'DockerDeployer', 'deploy'),
         'version.archive': ('agents.capabilities.version_archiver', 'VersionArchiver', 'archive'),
         'task.completion.handle': ('agents.capabilities.task_completion_handler', 'TaskCompletionHandler', 'handle_completion'),
+        'task.completion.emit': ('agents.capabilities.task_completion_emitter', 'TaskCompletionEmitter', 'emit'),
         'warmboot.wrapup': ('agents.capabilities.wrapup_generator', 'WrapupGenerator', 'generate_wrapup'),
         'warmboot.memory': ('agents.capabilities.warmboot_memory_handler', 'WarmBootMemoryHandler', 'load_memories'),
+        'validate.warmboot': ('agents.capabilities.warmboot_validator', 'WarmBootValidator', 'validate'),
         'telemetry.collect': ('agents.capabilities.telemetry_collector', 'TelemetryCollector', 'collect'),
+        'governance.approval': ('agents.capabilities.governance_approval', 'GovernanceApproval', 'approve'),
+        'governance.escalation': ('agents.capabilities.governance_escalation', 'GovernanceEscalation', 'escalate'),
+        'governance.task_coordination': ('agents.capabilities.governance_task_coordination', 'GovernanceTaskCoordination', 'coordinate'),
+        'comms.documentation': ('agents.capabilities.documentation_creator', 'DocumentationCreator', 'create'),
+        'comms.reasoning.emit': ('agents.capabilities.reasoning_event_emitter', 'ReasoningEventEmitter', 'emit'),
+    }
+    
+    # Mapping from task_type and requirements.action values to capability names
+    # This allows generic task routing without hardcoded checks in agents
+    TASK_TO_CAPABILITY_MAP = {
+        # task_type mappings
+        'warmboot_wrapup': 'warmboot.wrapup',
+        'governance': 'governance.task_coordination',
+        'governance_prd': 'prd.process',  # PRD processing tasks
+        # requirements.action mappings (for development tasks)
+        'archive': 'version.archive',
+        'design_manifest': 'manifest.generate',
+        'build': 'docker.build',
+        'deploy': 'docker.deploy',
+    }
+    
+    # Capabilities that accept task dictionary as first parameter (for generic routing)
+    # All other capabilities accept (task_id, requirements)
+    TASK_DICT_CAPABILITIES = {
+        'warmboot.wrapup',  # Accepts task dict, extracts ecid, task_id, completion_payload, etc.
+        'prd.process',  # Accepts task dict, extracts prd_path and ecid
+    }
+    
+    # Calling convention metadata for capabilities
+    # Describes how to call each capability from AgentRequest payload
+    CALLING_CONVENTIONS = {
+        # Convention: 'task_dict' - pass full payload as task dict
+        'task_dict': {
+            'warmboot.wrapup',
+            'prd.process',
+        },
+        # Convention: 'requirements_only' - extract requirements from payload
+        'requirements_only': {
+            'build.artifact',
+        },
+        # Convention: 'task_id_requirements' - extract task_id and requirements from payload
+        'task_id_requirements': {
+            'manifest.generate',
+            'docker.build',
+            'docker.deploy',
+            'version.archive',
+        },
+        # Convention: 'payload_and_metadata' - pass payload and metadata (for capabilities that need both)
+        'payload_and_metadata': {
+            'governance.task_coordination',
+            'validate.warmboot',
+        },
+        # Convention: 'payload_as_is' - pass payload as-is (default)
+        # All other capabilities use this convention
     }
     
     def __init__(self, base_path: Optional[Path] = None):
@@ -127,6 +184,12 @@ class CapabilityLoader:
         if self._bindings is not None:
             return self._bindings
         
+        # Return empty dict if file doesn't exist (graceful degradation)
+        if not self.bindings_path.exists():
+            logger.warning(f"Capability bindings file not found: {self.bindings_path}. Using empty bindings.")
+            self._bindings = {}
+            return self._bindings
+        
         try:
             with open(self.bindings_path, 'r') as f:
                 data = yaml.safe_load(f)
@@ -138,7 +201,9 @@ class CapabilityLoader:
             
         except Exception as e:
             logger.error(f"Failed to load capability bindings: {e}")
-            raise
+            # Return empty dict instead of raising (graceful degradation)
+            self._bindings = {}
+            return self._bindings
     
     def get_agent_for_capability(self, capability: str) -> Optional[str]:
         """Resolve capability to agent ID"""
@@ -171,6 +236,113 @@ class CapabilityLoader:
             return []
         
         return [impl['capability'] for impl in config.implements]
+    
+    def get_capability_for_task(self, task: Dict[str, Any]) -> Optional[str]:
+        """
+        Determine capability name for a task based on task_type or requirements.action.
+        
+        Checks in order:
+        1. If task has explicit 'capability' field, use it
+        2. If task has 'prd_path', route to 'prd.process'
+        3. If task_type maps to a capability, use it
+        4. If requirements.action maps to a capability, use it
+        5. Return None if no mapping found
+        
+        Args:
+            task: Task dictionary with 'task_type', 'type', 'capability', 'prd_path', and/or 'requirements' keys
+            
+        Returns:
+            Capability name (e.g., 'docker.build') or None if no mapping found
+        """
+        # Check for explicit capability field first
+        if 'capability' in task and task['capability']:
+            return task['capability']
+        
+        # Check for PRD path - route to prd.process capability
+        if task.get('prd_path'):
+            return 'prd.process'
+        
+        # Check task_type mapping (supports both 'task_type' and 'type' keys)
+        task_type = task.get('task_type') or task.get('type')
+        if task_type and task_type in self.TASK_TO_CAPABILITY_MAP:
+            return self.TASK_TO_CAPABILITY_MAP[task_type]
+        
+        # Check requirements.action mapping
+        requirements = task.get('requirements', {})
+        action = requirements.get('action')
+        if action and action in self.TASK_TO_CAPABILITY_MAP:
+            return self.TASK_TO_CAPABILITY_MAP[action]
+        
+        # No mapping found
+        return None
+    
+    def accepts_task_dict(self, capability_name: str) -> bool:
+        """
+        Check if a capability accepts task dictionary as first parameter.
+        
+        Args:
+            capability_name: Capability name (e.g., 'warmboot.wrapup')
+            
+        Returns:
+            True if capability accepts task dict, False otherwise
+        """
+        return capability_name in self.TASK_DICT_CAPABILITIES
+    
+    def get_calling_convention(self, capability_name: str) -> str:
+        """
+        Get the calling convention for a capability.
+        
+        Args:
+            capability_name: Capability name (e.g., 'docker.build')
+            
+        Returns:
+            Calling convention: 'task_dict', 'requirements_only', 'task_id_requirements', 
+            'payload_and_metadata', or 'payload_as_is'
+        """
+        if capability_name in self.CALLING_CONVENTIONS['task_dict']:
+            return 'task_dict'
+        elif capability_name in self.CALLING_CONVENTIONS['requirements_only']:
+            return 'requirements_only'
+        elif capability_name in self.CALLING_CONVENTIONS['task_id_requirements']:
+            return 'task_id_requirements'
+        elif capability_name in self.CALLING_CONVENTIONS['payload_and_metadata']:
+            return 'payload_and_metadata'
+        else:
+            return 'payload_as_is'
+    
+    def prepare_capability_args(self, capability_name: str, payload: Dict[str, Any], 
+                                metadata: Dict[str, Any] = None) -> tuple:
+        """
+        Prepare arguments for capability execution based on calling convention.
+        
+        Args:
+            capability_name: Capability name (e.g., 'docker.build')
+            payload: Request payload dictionary
+            metadata: Optional request metadata dictionary
+            
+        Returns:
+            Tuple of arguments to pass to capability.execute()
+        """
+        convention = self.get_calling_convention(capability_name)
+        
+        if convention == 'task_dict':
+            # Pass full payload as task dict
+            return (payload,)
+        elif convention == 'requirements_only':
+            # Extract requirements from payload
+            requirements = payload.get('requirements', payload)
+            return (requirements,)
+        elif convention == 'task_id_requirements':
+            # Extract task_id and requirements from payload
+            task_id = payload.get('task_id', 'unknown')
+            requirements = payload.get('requirements', payload)
+            return (task_id, requirements)
+        elif convention == 'payload_and_metadata':
+            # Pass payload and metadata (metadata can be None)
+            return (payload, metadata)
+        else:  # payload_as_is
+            # Pass payload as-is
+            return (payload,)
     
     def resolve(self, capability_name: str) -> Optional[Type]:
         """

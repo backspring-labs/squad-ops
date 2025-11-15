@@ -250,6 +250,17 @@ capabilities:
         - success_criteria
         - analysis_summary
   
+  - name: prd.process
+    capability_version: 1.0.0
+    description: "Process PRD - orchestrates reading, analysis, task creation, and delegation"
+    result:
+      keys:
+        - status
+        - message
+        - prd_path
+        - tasks_delegated
+        - prd_analysis
+  
   # Telemetry capabilities
   - name: telemetry.collect
     capability_version: 1.0.0

@@ -200,3 +200,186 @@ class PRDAnalyzer:
                 "analysis_summary": f"PRD analysis failed with error: {str(e)}"
             }
 
+
+class PRDProcessor:
+    """
+    PRD Processor - Implements prd.process capability
+    
+    Orchestrates the complete PRD processing workflow:
+    - Reads PRD file
+    - Analyzes PRD requirements
+    - Creates development tasks
+    - Delegates tasks to appropriate agents
+    - Handles manifest injection for build tasks
+    """
+    
+    def __init__(self, agent):
+        """
+        Initialize PRDProcessor with agent instance.
+        
+        Args:
+            agent: Agent instance (must have BaseAgent methods/attributes)
+        """
+        self.agent = agent
+        self.name = agent.name if hasattr(agent, 'name') else 'unknown'
+        self.capability_loader = agent.capability_loader if hasattr(agent, 'capability_loader') else None
+    
+    async def process(self, task: Dict[str, Any] = None, prd_path: str = None, ecid: str = None) -> Dict[str, Any]:
+        """
+        Process a PRD request - orchestrates reading, analysis, task creation, and delegation.
+        
+        Implements the prd.process capability.
+        
+        Args:
+            task: Task dictionary (if provided, extracts prd_path and ecid from it)
+            prd_path: Path to PRD file (used if task not provided)
+            ecid: Execution cycle ID (optional, extracted from task or defaults to ECID-WB-001)
+            
+        Returns:
+            Dictionary containing:
+            - status: 'success' or 'error'
+            - message: Status message
+            - prd_path: Path to PRD file
+            - tasks_delegated: List of delegated tasks
+            - prd_analysis: PRD analysis results
+        """
+        try:
+            # Extract parameters from task dict if provided (for generic routing)
+            if task:
+                prd_path = task.get('prd_path') or prd_path
+                ecid = task.get('ecid') or task.get('context', {}).get('ecid') or ecid
+            
+            if not prd_path:
+                return {"status": "error", "message": "PRD path not provided"}
+            
+            logger.info(f"{self.name} processing PRD request: {prd_path}")
+            
+            # Use provided ecid or create default
+            if not ecid:
+                ecid = "ECID-WB-001"
+            
+            # Create execution cycle (Max owns the execution cycle lifecycle)
+            try:
+                await self.agent.create_execution_cycle(ecid, "PID-001", "warmboot", 
+                                                       f"WarmBoot {ecid}", prd_path)
+                logger.info(f"{self.name} created execution cycle {ecid}")
+            except Exception as e:
+                # Execution cycle may already exist in edge cases - continue anyway
+                logger.warning(f"Execution cycle {ecid} creation failed (may already exist): {e}")
+            
+            # Store the current ecid for use in create_development_tasks
+            self.agent.current_ecid = ecid
+            logger.info(f"{self.name} stored current ecid: {ecid}")
+            
+            # Read PRD via capability Loader
+            if not self.capability_loader:
+                return {"status": "error", "message": "Capability loader not initialized"}
+            
+            prd_result = await self.capability_loader.execute('prd.read', self.agent, prd_path)
+            prd_content = prd_result.get('prd_content', '')
+            if not prd_content:
+                return {"status": "error", "message": "Failed to read PRD"}
+            
+            # Analyze PRD requirements via capability Loader
+            prd_analysis = await self.capability_loader.execute(
+                'prd.analyze', self.agent, prd_content, agent_role="Max, the Lead Agent"
+            )
+            if not prd_analysis:
+                return {"status": "error", "message": "Failed to analyze PRD"}
+            
+            # Extract app name from PRD path or content
+            app_name = "Application"  # Default fallback
+            if "prd-" in prd_path.lower():
+                # Extract app name from PRD filename (e.g., "PRD-001-HelloSquad.md" -> "HelloSquad")
+                import re
+                match = re.search(r'PRD-\d+-(.+)\.md', prd_path)
+                if match:
+                    app_name = match.group(1)
+            
+            # Create development tasks via capability Loader
+            task_result = await self.capability_loader.execute(
+                'task.create', self.agent, prd_analysis, app_name, ecid
+            )
+            tasks = task_result.get('tasks', [])
+            if not tasks:
+                return {"status": "error", "message": "Failed to create tasks"}
+            
+            # Delegate tasks to appropriate agents
+            delegated_tasks = []
+            for task in tasks:
+                # For build tasks, inject manifest from warmboot_state if available
+                # Generic check: if task requires manifest and we have one, inject it
+                requirements = task.get('requirements', {})
+                if requirements.get('action') == 'build':
+                    # Check if manifest is needed and available
+                    if requirements.get('manifest') is None:
+                        # Check agent's warmboot_state for manifest
+                        warmboot_state = getattr(self.agent, 'warmboot_state', {})
+                        if warmboot_state.get('manifest'):
+                            requirements['manifest'] = warmboot_state['manifest']
+                            logger.info(f"{self.name} injected manifest into build task {task['task_id']}")
+                        else:
+                            # Build task without manifest - skip for now, will be delegated after design manifest completes
+                            logger.info(f"{self.name} skipping build task {task['task_id']} - manifest not yet available")
+                            continue
+                
+                # Determine delegation target via Loader
+                delegation_result = await self.capability_loader.execute(
+                    'task.determine_target', self.agent, task["task_type"]
+                )
+                delegation_target = delegation_result.get('target_agent', 'dev-agent')
+                
+                # Log task delegation
+                await self.agent.log_task_delegation(
+                    task['task_id'],
+                    ecid,
+                    delegation_target,
+                    task['description']
+                )
+                
+                await self.agent.send_message(
+                    recipient=delegation_target,
+                    message_type="task_delegation",
+                    payload=task,
+                    context={
+                        'delegated_by': self.name,
+                        'delegation_reason': f"PRD-based task: {task['description']}",
+                        'prd_path': prd_path,
+                        'prd_analysis': prd_analysis
+                    }
+                )
+                
+                # Record memory for task delegation (SIP-042)
+                await self.agent.record_memory(
+                    kind="task_delegation",
+                    payload={
+                        'task_id': task['task_id'],
+                        'task_type': task.get('task_type', 'unknown'),
+                        'delegated_to': delegation_target,
+                        'decision': 'approved',
+                        'ecid': ecid
+                    },
+                    importance=0.7,
+                    task_context={'ecid': ecid, 'pid': task.get('pid', 'unknown')}
+                )
+                
+                delegated_tasks.append({
+                    'task_id': task['task_id'],
+                    'delegated_to': delegation_target,
+                    'status': 'delegated'
+                })
+            
+            logger.info(f"{self.name} successfully processed PRD and delegated {len(delegated_tasks)} tasks")
+            
+            return {
+                "status": "success",
+                "message": f"PRD processed and {len(delegated_tasks)} tasks delegated",
+                "prd_path": prd_path,
+                "tasks_delegated": delegated_tasks,
+                "prd_analysis": prd_analysis
+            }
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to process PRD request: {e}", exc_info=True)
+            return {"status": "error", "message": f"PRD processing failed: {e}"}
+

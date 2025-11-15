@@ -118,6 +118,7 @@ class TaskCreator:
                     "task_type": "development",
                     "ecid": ecid,
                     "description": f"Archive any existing {app_name} application to ensure clean slate build for version {app_version}",
+                    "capability": "version.archive",  # Optional: explicit capability (takes precedence over action mapping)
                     "requirements": {
                         "action": "archive",
                         "application": app_name,
@@ -135,6 +136,7 @@ class TaskCreator:
                     "task_type": "development",
                     "ecid": ecid,
                     "description": f"Design architecture manifest for {app_name} application version {app_version}",
+                    "capability": "manifest.generate",  # Optional: explicit capability (takes precedence over action mapping)
                     "requirements": {
                         "action": "design_manifest",
                         "application": app_name,
@@ -158,6 +160,7 @@ class TaskCreator:
                     "task_type": "development",
                     "ecid": ecid,
                     "description": f"Build {app_name} application version {app_version} using JSON workflow",
+                    "capability": "docker.build",  # Optional: explicit capability (takes precedence over action mapping)
                     "requirements": {
                         "action": "build",
                         "application": app_name,
@@ -184,6 +187,7 @@ class TaskCreator:
                     "task_type": "development",
                     "ecid": ecid,
                     "description": f"Deploy {app_name} application version {app_version} with proper versioning",
+                    "capability": "docker.deploy",  # Optional: explicit capability (takes precedence over action mapping)
                     "requirements": {
                         "action": "deploy",
                         "application": app_name,

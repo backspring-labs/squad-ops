@@ -68,12 +68,38 @@ class TaskDelegator:
                 'analysis': 'curator',
                 'research': 'curator',
                 'communication': 'comms',
-                'audit': 'audit'
+                'audit': 'audit',
+                'warmboot_wrapup': None  # Special case - use capability binding
             }
             
             # Governance tasks should NEVER be delegated
             if task_type.lower() == 'governance':
                 raise ValueError(f"Governance tasks should not be delegated - handled by lead directly")
+            
+            # Special handling for warmboot_wrapup - use capability binding
+            if task_type.lower() == 'warmboot_wrapup':
+                capability_loader = getattr(self.agent, 'capability_loader', None)
+                if capability_loader:
+                    try:
+                        agent_id = capability_loader.get_agent_for_capability('warmboot.wrapup')
+                        if agent_id:
+                            logger.debug(f"Task type '{task_type}' → capability 'warmboot.wrapup' → agent '{agent_id}'")
+                            return {
+                                'target_agent': agent_id,
+                                'target_role': None,  # Not role-based
+                                'reasoning': f"Task type '{task_type}' resolved via capability binding to agent '{agent_id}'"
+                            }
+                    except Exception as e:
+                        logger.warning(f"Failed to resolve wrap-up agent via capability binding: {e}")
+                # Fallback to lead role if capability binding fails
+                role_to_agent_map = self._load_role_to_agent_mapping()
+                agent_id = role_to_agent_map.get('lead', 'max')
+                logger.debug(f"Task type '{task_type}' → fallback to lead role → agent '{agent_id}'")
+                return {
+                    'target_agent': agent_id,
+                    'target_role': 'lead',
+                    'reasoning': f"Task type '{task_type}' resolved via fallback to lead role '{agent_id}'"
+                }
             
             # Get role for this task type (default to 'dev' for unknown types)
             target_role = task_to_role_map.get(task_type.lower(), 'dev')

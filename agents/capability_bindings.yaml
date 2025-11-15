@@ -10,6 +10,7 @@ bindings:
   governance.task_coordination: max
   governance.approval: max
   governance.escalation: max
+  warmboot.wrapup: max  # Wrap-up generation (can be different agent in other squads)
   
   # Strategy capabilities
   strategy.market_analysis: nat

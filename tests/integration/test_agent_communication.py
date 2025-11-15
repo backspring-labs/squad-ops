@@ -75,8 +75,14 @@ Test application for SquadOps integration testing
                 import uuid
                 unique_ecid = f"test-ecid-{uuid.uuid4().hex[:8]}"
                 
-                # Process a PRD request with the temporary file
-                result = await lead_agent.process_prd_request(temp_prd_path, unique_ecid)
+                # Process a PRD request via process_task (routes to prd.process capability)
+                task = {
+                    'task_id': f'{unique_ecid}-prd-task',
+                    'prd_path': temp_prd_path,
+                    'ecid': unique_ecid,
+                    'description': f'Process PRD: {temp_prd_path}'
+                }
+                result = await lead_agent.process_task(task)
                 
                 # Verify successful processing
                 # The result might have different structure, check for either 'success' or 'completed'
@@ -102,7 +108,7 @@ Test application for SquadOps integration testing
                     # If tasks_delegated is not in result, check if tasks were created
                     assert 'tasks_created' in result or 'tasks' in result, \
                         f"Unexpected result structure: {result}. " \
-                        f"Troubleshooting: Check LeadAgent.process_prd_request return format and task creation logic."
+                        f"Troubleshooting: Check prd.process capability return format and task creation logic."
                 
                 # Integration test success - agent communication working
                 print(f"✅ Integration test passed: {len(result['tasks_delegated'])} tasks delegated")

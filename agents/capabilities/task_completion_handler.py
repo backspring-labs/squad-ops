@@ -37,8 +37,8 @@ class TaskCompletionHandler:
         self.task_api_url = getattr(agent_instance, 'task_api_url', 'http://task-api:8001')
         
         # Load capabilities via capability loader if available
-        capability_loader = getattr(agent_instance, 'capability_loader', None)
-        if capability_loader:
+        self.capability_loader = getattr(agent_instance, 'capability_loader', None)
+        if self.capability_loader:
             # Load telemetry_collector capability
             try:
                 from agents.capabilities.telemetry_collector import TelemetryCollector
@@ -46,14 +46,6 @@ class TaskCompletionHandler:
             except Exception as e:
                 logger.warning(f"{self.name} failed to load TelemetryCollector: {e}")
                 self.telemetry_collector = None
-            
-            # Load wrapup_generator capability
-            try:
-                from agents.capabilities.wrapup_generator import WrapupGenerator
-                self.wrapup_generator = WrapupGenerator(agent_instance)
-            except Exception as e:
-                logger.warning(f"{self.name} failed to load WrapupGenerator: {e}")
-                self.wrapup_generator = None
             
             # Load warmboot_memory_handler capability
             try:
@@ -65,7 +57,6 @@ class TaskCompletionHandler:
         else:
             # Fallback to agent attributes (for backward compatibility)
             self.telemetry_collector = getattr(agent_instance, 'telemetry_collector', None)
-            self.wrapup_generator = getattr(agent_instance, 'wrapup_generator', None)
             self.warmboot_memory_handler = getattr(agent_instance, 'warmboot_memory_handler', None)
     
     async def handle_completion(self, message: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
@@ -102,21 +93,64 @@ class TaskCompletionHandler:
                 # Wait briefly for any pending reasoning events to be processed
                 await asyncio.sleep(0.5)
                 
-                # Check communication log for reasoning events for this ECID
-                reasoning_count = sum(1 for entry in self.communication_log 
-                                    if entry.get('ecid') == ecid 
-                                    and entry.get('message_type') == 'agent_reasoning')
+                # Extract reasoning events from communication log for this ECID
+                reasoning_events = [
+                    entry for entry in self.communication_log
+                    if entry.get('ecid') == ecid 
+                    and entry.get('message_type') == 'agent_reasoning'
+                ]
                 
-                if reasoning_count > 0:
-                    logger.info(f"{self.name} found {reasoning_count} reasoning events for ECID {ecid} before generating wrap-up")
+                if len(reasoning_events) > 0:
+                    logger.info(f"{self.name} found {len(reasoning_events)} reasoning events for ECID {ecid} before delegating wrap-up")
                 else:
-                    logger.debug(f"{self.name} no reasoning events found for ECID {ecid} before generating wrap-up")
+                    logger.debug(f"{self.name} no reasoning events found for ECID {ecid} before delegating wrap-up")
                 
-                logger.info(f"{self.name} triggering WarmBoot wrap-up generation for ECID {ecid}")
-                # Generate wrap-up via capability (requires telemetry first)
-                if self.telemetry_collector and self.wrapup_generator:
+                logger.info(f"{self.name} delegating WarmBoot wrap-up generation for ECID {ecid}")
+                
+                # Collect telemetry data
+                telemetry = {}
+                if self.telemetry_collector:
                     telemetry = await self.telemetry_collector.collect(ecid, task_id)
-                    await self.wrapup_generator.generate_wrapup(ecid, task_id, message, telemetry)
+                
+                # Create wrap-up task and delegate to agent with warmboot.wrapup capability
+                if self.capability_loader:
+                    try:
+                        # Determine target agent for wrap-up task
+                        delegation_result = await self.capability_loader.execute(
+                            'task.determine_target', self.agent, 'warmboot_wrapup'
+                        )
+                        wrapup_agent = delegation_result.get('target_agent')
+                        
+                        if wrapup_agent:
+                            # Create wrap-up task payload
+                            wrapup_task = {
+                                'type': 'warmboot_wrapup',
+                                'task_id': f"{task_id}-wrapup",
+                                'ecid': ecid,
+                                'original_task_id': task_id,
+                                'completion_payload': message,
+                                'reasoning_events': reasoning_events,
+                                'telemetry': telemetry
+                            }
+                            
+                            # Delegate wrap-up task
+                            await self.agent.send_message(
+                                recipient=wrapup_agent,
+                                message_type='task_delegation',
+                                payload=wrapup_task,
+                                context={
+                                    'ecid': ecid,
+                                    'delegated_by': self.name,
+                                    'task_type': 'warmboot_wrapup'
+                                }
+                            )
+                            logger.info(f"{self.name} delegated wrap-up task to {wrapup_agent} for ECID {ecid}")
+                        else:
+                            logger.warning(f"{self.name} could not determine wrap-up agent, skipping wrap-up generation")
+                    except Exception as e:
+                        logger.error(f"{self.name} failed to delegate wrap-up task: {e}", exc_info=True)
+                else:
+                    logger.warning(f"{self.name} capability_loader not available, cannot delegate wrap-up task")
             else:
                 logger.warning(f"{self.name} skipping wrap-up for unsuccessful task: {status}")
             

@@ -27,6 +27,25 @@ class TestDevAgent:
             # Mock capability_loader.execute to avoid real capability execution
             agent.capability_loader = MagicMock()
             agent.capability_loader.execute = AsyncMock()
+            # Mock get_capability_for_task to return None by default (tests can override)
+            agent.capability_loader.get_capability_for_task = MagicMock(return_value=None)
+            # Mock prepare_capability_args to return appropriate args based on convention
+            def prepare_args_side_effect(name, payload, metadata=None):
+                # Handle both task dicts (from process_task) and payload dicts (from handle_agent_request)
+                if name == 'build.artifact':
+                    return (payload.get('requirements', payload),)
+                elif name in ['manifest.generate', 'docker.build', 'docker.deploy', 'version.archive']:
+                    # Extract task_id and requirements from payload (could be task dict or payload dict)
+                    task_id = payload.get('task_id', 'unknown')
+                    requirements = payload.get('requirements', payload)
+                    return (task_id, requirements)
+                elif name == 'warmboot.wrapup':
+                    return (payload,)
+                else:
+                    return (payload,)
+            agent.capability_loader.prepare_capability_args = MagicMock(side_effect=prepare_args_side_effect)
+            # Mock accepts_task_dict to return False by default (standard capabilities)
+            agent.capability_loader.accepts_task_dict = MagicMock(return_value=False)
             return agent
     
     # ============================================================================
@@ -134,6 +153,8 @@ class TestDevAgent:
     @pytest.mark.asyncio
     async def test_handle_design_manifest_task_success(self, dev_agent, design_manifest_task):
         """Test successful design_manifest task handling via capability."""
+        # Mock get_capability_for_task to return manifest.generate
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'manifest.generate'
         # Mock capability_loader.execute to return manifest.generate result
         mock_result = {
             "status": "completed",
@@ -154,6 +175,9 @@ class TestDevAgent:
         assert result["task_id"] == "test-design-001"
         assert result["action"] == "design_manifest"
         assert "manifest" in result
+        # Verify prepare_capability_args was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('manifest.generate', design_manifest_task)
+        # Verify execute was called with unpacked args
         dev_agent.capability_loader.execute.assert_called_once_with('manifest.generate', dev_agent, "test-design-001", design_manifest_task["requirements"])
     
     @pytest.mark.unit
@@ -169,6 +193,8 @@ class TestDevAgent:
             }
         }
         
+        # Mock get_capability_for_task to return manifest.generate
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'manifest.generate'
         # Mock capability_loader.execute to return success with defaults
         dev_agent.capability_loader.execute.return_value = {
             "status": "completed",
@@ -214,6 +240,8 @@ class TestDevAgent:
     @pytest.mark.asyncio
     async def test_handle_build_task_with_manifest_json_workflow(self, dev_agent, build_task_with_manifest):
         """Test build task with manifest using JSON workflow via capability."""
+        # Mock get_capability_for_task to return docker.build
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.build'
         # Mock capability_loader.execute to return docker.build result
         mock_result = {
             "status": "completed",
@@ -232,6 +260,9 @@ class TestDevAgent:
         assert result["action"] == "build"
         assert "created_files" in result
         assert len(result["created_files"]) == 2
+        # Verify prepare_capability_args was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('docker.build', build_task_with_manifest)
+        # Verify execute was called with unpacked args
         dev_agent.capability_loader.execute.assert_called_once_with('docker.build', dev_agent, "test-build-001", build_task_with_manifest["requirements"])
     
     
@@ -239,6 +270,8 @@ class TestDevAgent:
     @pytest.mark.asyncio
     async def test_handle_build_task_file_creation(self, dev_agent, build_task_with_manifest):
         """Test that build task creates files correctly via capability."""
+        # Mock get_capability_for_task to return docker.build
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.build'
         # Mock capability_loader.execute to return docker.build result with created files
         mock_result = {
             "status": "completed",
@@ -272,6 +305,8 @@ class TestDevAgent:
             }
         }
         
+        # Mock get_capability_for_task to return docker.build
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.build'
         # Mock capability_loader.execute to return error for missing manifest
         dev_agent.capability_loader.execute.return_value = {
             'task_id': 'test-task-001',
@@ -318,6 +353,8 @@ class TestDevAgent:
     @pytest.mark.asyncio
     async def test_handle_deploy_task_with_source_dir(self, dev_agent, deploy_task):
         """Test deploy task with source directory via capability."""
+        # Mock get_capability_for_task to return docker.deploy
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.deploy'
         # Mock capability_loader.execute to return docker.deploy result
         mock_result = {
             "status": "completed",
@@ -333,12 +370,17 @@ class TestDevAgent:
         assert result["status"] == "completed"
         assert result["task_id"] == "test-deploy-001"
         assert result["action"] == "deploy"
+        # Verify prepare_capability_args was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('docker.deploy', deploy_task)
+        # Verify execute was called with unpacked args
         dev_agent.capability_loader.execute.assert_called_once_with('docker.deploy', dev_agent, "test-deploy-001", deploy_task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_deploy_task_with_source_fallback(self, dev_agent, deploy_task):
         """Test deploy task with source fallback via capability."""
+        # Mock get_capability_for_task to return docker.deploy
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.deploy'
         # Mock capability_loader.execute to return docker.deploy result
         mock_result = {
             "status": "completed",
@@ -369,6 +411,8 @@ class TestDevAgent:
             }
         }
         
+        # Mock get_capability_for_task to return docker.deploy
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.deploy'
         # Mock capability_loader.execute to return success (capability handles missing source)
         dev_agent.capability_loader.execute.return_value = {
             "status": "completed",
@@ -398,6 +442,8 @@ class TestDevAgent:
             }
         }
         
+        # Mock get_capability_for_task to return docker.deploy
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.deploy'
         # Mock capability_loader.execute to return success
         dev_agent.capability_loader.execute.return_value = {
             'task_id': 'test-task-001',
@@ -426,6 +472,8 @@ class TestDevAgent:
             }
         }
         
+        # Mock get_capability_for_task to return docker.deploy
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.deploy'
         # Mock capability_loader.execute to return build failure
         dev_agent.capability_loader.execute.return_value = {
             'task_id': 'test-task-001',
@@ -455,6 +503,8 @@ class TestDevAgent:
             }
         }
         
+        # Mock get_capability_for_task to return docker.deploy
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.deploy'
         # Mock capability_loader.execute to return deploy failure
         dev_agent.capability_loader.execute.return_value = {
             'task_id': 'test-task-001',
@@ -506,17 +556,13 @@ class TestDevAgent:
             }
         }
         
-        # Mock capability_loader.execute to return error for unknown action
-        dev_agent.capability_loader.execute.return_value = {
-            "status": "error",
-            "task_id": "test-unknown-001",
-            "error": "Unknown action: unknown_action"
-        }
+        # Mock get_capability_for_task to return None (no mapping for unknown action)
+        dev_agent.capability_loader.get_capability_for_task.return_value = None
         
         result = await dev_agent.process_task(task)
         
         assert result["status"] == "error"
-        assert "Unknown action" in result["error"]
+        assert "No capability mapping" in result["error"]
     
     # ============================================================================
     # COMPREHENSIVE TESTS (from test_dev_agent_comprehensive.py)
@@ -536,6 +582,8 @@ class TestDevAgent:
             }
         }
         
+        # Mock get_capability_for_task to return version.archive
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'version.archive'
         # Mock capability_loader.execute to return version.archive result
         mock_result = {
             'status': 'completed',
@@ -553,6 +601,9 @@ class TestDevAgent:
         assert result["task_id"] == "test-archive-001"
         assert result["action"] == "archive"
         assert result["app_name"] == "TestApp"
+        # Verify prepare_capability_args was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('version.archive', task)
+        # Verify execute was called with unpacked args
         dev_agent.capability_loader.execute.assert_called_once_with('version.archive', dev_agent, "test-archive-001", task["requirements"])
     
     @pytest.mark.unit
@@ -569,6 +620,8 @@ class TestDevAgent:
             }
         }
         
+        # Mock get_capability_for_task to return version.archive
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'version.archive'
         # Mock capability_loader.execute to return failure
         dev_agent.capability_loader.execute.return_value = {
             'status': 'error',
@@ -611,57 +664,9 @@ class TestDevAgent:
     # Removed test_handle_technical_task_failure - _handle_technical_task method removed
     # Technical tasks are not currently supported via capabilities
     
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_create_technical_requirements_success_legacy(self, dev_agent):
-        """Test successful technical requirements creation (legacy test name)."""
-        requirements = {
-            "description": "Test technical task",
-            "complexity": 0.5
-        }
-        
-        # Mock LLM response
-        mock_yaml_response = """
-        app_name: TechnicalTask
-        version: 1.0.0
-        run_id: test-run
-        prd_analysis: Test analysis
-        features:
-          - feature1
-          - feature2
-        constraints: {}
-        success_criteria:
-          - Task completes
-        """
-        
-        # Mock the LLM client to avoid network calls
-        dev_agent.llm_client.complete = AsyncMock(return_value=mock_yaml_response)
-        
-        tech_requirements = await dev_agent._create_technical_requirements(requirements)
-        
-        assert isinstance(tech_requirements, dict)
-        assert tech_requirements.get("app_name") == "TechnicalTask"
-        assert tech_requirements.get("version") == "1.0.0"
-        assert len(tech_requirements.get("features", [])) == 2
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_create_technical_requirements_fallback_legacy(self, dev_agent):
-        """Test technical requirements creation with fallback (legacy test name)."""
-        requirements = {
-            "description": "Test technical task",
-            "complexity": 0.5
-        }
-        
-        # Mock LLM client to fail
-        dev_agent.llm_client = AsyncMock()
-        dev_agent.llm_client.complete.side_effect = Exception("LLM failed")
-        
-        tech_requirements = await dev_agent._create_technical_requirements(requirements)
-        
-        assert isinstance(tech_requirements, dict)
-        assert tech_requirements.get("app_name") == "TechnicalTask"  # Fallback name
-        assert "Technical task" in tech_requirements.get("prd_analysis", "")
+    # Removed tests for _create_technical_requirements - method removed
+    # This functionality is now handled by build.requirements.generate capability
+    # Test the capability directly in test_build_requirements_generator.py or similar
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -676,6 +681,8 @@ class TestDevAgent:
             }
         }
         
+        # Mock get_capability_for_task to return version.archive
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'version.archive'
         # Mock capability_loader.execute to return success
         dev_agent.capability_loader.execute.return_value = {
             "status": "completed",
@@ -686,6 +693,9 @@ class TestDevAgent:
         result = await dev_agent.process_task(task)
         
         assert result["status"] == "completed"
+        # Verify prepare_capability_args was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('version.archive', task)
+        # Verify execute was called with unpacked args
         dev_agent.capability_loader.execute.assert_called_once_with('version.archive', dev_agent, "test-dev-001", task["requirements"])
     
     @pytest.mark.unit
@@ -698,10 +708,13 @@ class TestDevAgent:
             "requirements": {}
         }
         
+        # Mock get_capability_for_task to return None (no mapping)
+        dev_agent.capability_loader.get_capability_for_task.return_value = None
+        
         result = await dev_agent.process_task(task)
         
         assert result["status"] == "error"
-        assert "Unknown task type" in result["error"]
+        assert "No capability mapping" in result["error"]
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -713,26 +726,30 @@ class TestDevAgent:
             "requirements": {}
         }
         
-        # Mock handler to raise exception
-        with patch.object(dev_agent, '_handle_development_task', side_effect=Exception("Handler failed")):
-            result = await dev_agent.process_task(task)
+        # Mock get_capability_for_task to return None (no mapping)
+        dev_agent.capability_loader.get_capability_for_task.return_value = None
+        
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "error"
         assert result["task_id"] == "test-error-001"
-        assert "Handler failed" in result["error"]
+        assert "No capability mapping" in result["error"]
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_handle_development_task_archive(self, dev_agent):
-        """Test development task routing to archive via capability."""
+    async def test_process_task_archive(self, dev_agent):
+        """Test generic task routing to archive via capability."""
         task = {
             "task_id": "test-archive-001",
+            "task_type": "development",
             "requirements": {
                 "action": "archive",
                 "app_name": "TestApp"
             }
         }
         
+        # Mock get_capability_for_task to return capability
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'version.archive'
         # Mock capability_loader.execute to return success
         dev_agent.capability_loader.execute.return_value = {
             "status": "completed",
@@ -740,23 +757,27 @@ class TestDevAgent:
             "action": "archive"
         }
         
-        result = await dev_agent._handle_development_task(task)
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "completed"
+        dev_agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
         dev_agent.capability_loader.execute.assert_called_once_with('version.archive', dev_agent, "test-archive-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_handle_development_task_design_manifest(self, dev_agent):
-        """Test development task routing to design_manifest via capability."""
+    async def test_process_task_design_manifest(self, dev_agent):
+        """Test generic task routing to design_manifest via capability."""
         task = {
             "task_id": "test-design-001",
+            "task_type": "development",
             "requirements": {
                 "action": "design_manifest",
                 "app_name": "TestApp"
             }
         }
         
+        # Mock get_capability_for_task to return capability
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'manifest.generate'
         # Mock capability_loader.execute to return success
         dev_agent.capability_loader.execute.return_value = {
             "status": "completed",
@@ -764,23 +785,30 @@ class TestDevAgent:
             "action": "design_manifest"
         }
         
-        result = await dev_agent._handle_development_task(task)
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "completed"
+        dev_agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
+        # Verify prepare_capability_args was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('manifest.generate', task)
+        # Verify execute was called with unpacked args
         dev_agent.capability_loader.execute.assert_called_once_with('manifest.generate', dev_agent, "test-design-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_handle_development_task_build(self, dev_agent):
-        """Test development task routing to build via capability."""
+    async def test_process_task_build(self, dev_agent):
+        """Test generic task routing to build via capability."""
         task = {
             "task_id": "test-build-001",
+            "task_type": "development",
             "requirements": {
                 "action": "build",
                 "app_name": "TestApp"
             }
         }
         
+        # Mock get_capability_for_task to return capability
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.build'
         # Mock capability_loader.execute to return success
         dev_agent.capability_loader.execute.return_value = {
             "status": "completed",
@@ -788,23 +816,30 @@ class TestDevAgent:
             "action": "build"
         }
         
-        result = await dev_agent._handle_development_task(task)
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "completed"
+        dev_agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
+        # Verify prepare_capability_args was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('docker.build', task)
+        # Verify execute was called with unpacked args
         dev_agent.capability_loader.execute.assert_called_once_with('docker.build', dev_agent, "test-build-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_handle_development_task_deploy(self, dev_agent):
-        """Test development task routing to deploy via capability."""
+    async def test_process_task_deploy(self, dev_agent):
+        """Test generic task routing to deploy via capability."""
         task = {
             "task_id": "test-deploy-001",
+            "task_type": "development",
             "requirements": {
                 "action": "deploy",
                 "app_name": "TestApp"
             }
         }
         
+        # Mock get_capability_for_task to return capability
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.deploy'
         # Mock capability_loader.execute to return success
         dev_agent.capability_loader.execute.return_value = {
             "status": "completed",
@@ -812,34 +847,35 @@ class TestDevAgent:
             "action": "deploy"
         }
         
-        result = await dev_agent._handle_development_task(task)
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "completed"
+        dev_agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
+        # Verify prepare_capability_args was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('docker.deploy', task)
+        # Verify execute was called with unpacked args
         dev_agent.capability_loader.execute.assert_called_once_with('docker.deploy', dev_agent, "test-deploy-001", task["requirements"])
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_handle_development_task_unknown_action(self, dev_agent):
-        """Test development task routing to unknown action via capability."""
+    async def test_process_task_unknown_action(self, dev_agent):
+        """Test generic task routing with unknown action (no capability mapping)."""
         task = {
             "task_id": "test-technical-001",
+            "task_type": "development",
             "requirements": {
                 "action": "unknown_action",
                 "app_name": "TestApp"
             }
         }
         
-        # Mock capability_loader.execute to return error for unknown action
-        dev_agent.capability_loader.execute.return_value = {
-            "status": "error",
-            "task_id": "test-technical-001",
-            "error": "Unknown action: unknown_action"
-        }
+        # Mock get_capability_for_task to return None (no mapping)
+        dev_agent.capability_loader.get_capability_for_task.return_value = None
         
-        result = await dev_agent._handle_development_task(task)
+        result = await dev_agent.process_task(task)
         
         assert result["status"] == "error"
-        assert "Unknown action" in result["error"]
+        assert "No capability mapping" in result["error"]
     
     @pytest.mark.unit
     def test_dev_agent_initialization(self):
@@ -865,57 +901,9 @@ class TestDevAgent:
         assert dev_agent.current_task_requirements["action"] == "build"
         assert dev_agent.current_task_requirements["app_name"] == "TestApp"
     
-    @pytest.mark.asyncio
-    async def test_extract_prd_analysis_from_communication_log_success(self, dev_agent):
-        """Test _extract_prd_analysis_from_communication_log with successful extraction"""
-        # Add PRD analysis to communication log
-        dev_agent.communication_log = [
-            {
-                'message_type': 'llm_reasoning',
-                'description': 'Some other message',
-                'full_response': 'Other response'
-            },
-            {
-                'message_type': 'llm_reasoning',
-                'description': 'PRD Analysis: Test analysis content',
-                'full_response': 'Full PRD analysis response'
-            }
-        ]
-        
-        result = dev_agent._extract_prd_analysis_from_communication_log()
-        assert result == 'Full PRD analysis response'
-    
-    @pytest.mark.asyncio
-    async def test_extract_prd_analysis_from_communication_log_fallback(self, dev_agent):
-        """Test _extract_prd_analysis_from_communication_log with fallback to description"""
-        # Add PRD analysis to communication log without full_response
-        dev_agent.communication_log = [
-            {
-                'message_type': 'llm_reasoning',
-                'description': 'PRD Analysis: Test analysis content'
-            }
-        ]
-        
-        result = dev_agent._extract_prd_analysis_from_communication_log()
-        assert result == 'PRD Analysis: Test analysis content'
-    
-    @pytest.mark.asyncio
-    async def test_extract_prd_analysis_from_communication_log_not_found(self, dev_agent):
-        """Test _extract_prd_analysis_from_communication_log when no PRD analysis found"""
-        # Empty communication log
-        dev_agent.communication_log = []
-        
-        result = dev_agent._extract_prd_analysis_from_communication_log()
-        assert result == "No PRD analysis available - generating generic application"
-    
-    @pytest.mark.asyncio
-    async def test_extract_prd_analysis_from_communication_log_exception(self, dev_agent):
-        """Test _extract_prd_analysis_from_communication_log with exception handling"""
-        # Mock communication_log to raise exception
-        dev_agent.communication_log = None
-        
-        result = dev_agent._extract_prd_analysis_from_communication_log()
-        assert result == "Error extracting PRD analysis - generating generic application"
+    # Removed tests for _extract_prd_analysis_from_communication_log - method removed
+    # PRD analysis is now passed directly via task requirements, not extracted from communication log
+    # Test PRD processing capabilities directly (prd.read, prd.analyze)
     
     # Removed tests for _handle_code_generation_task - method removed
     # Removed tests for _handle_docker_task - method removed
@@ -923,81 +911,9 @@ class TestDevAgent:
     # Removed tests for _handle_technical_task - method removed
     # These methods are no longer part of DevAgent - capabilities handle these operations
     
-    @pytest.mark.asyncio
-    async def test_create_technical_requirements_success(self, dev_agent):
-        """Test _create_technical_requirements success path"""
-        requirements = {
-            'technical_type': 'database',
-            'action': 'create_table',
-            'specification': 'CREATE TABLE test (id INT)'
-        }
-        
-        # Mock LLM client to return valid YAML
-        dev_agent.llm_client = AsyncMock()
-        dev_agent.llm_client.complete.return_value = """
-        app_name: DatabaseTask
-        version: 1.0.0
-        run_id: test-run-001
-        prd_analysis: Database task specification
-        features:
-          - Create table functionality
-          - Data validation
-        constraints:
-          database_type: PostgreSQL
-        success_criteria:
-          - Table created successfully
-          - Data validation works
-        """
-        
-        result = await dev_agent._create_technical_requirements(requirements)
-        
-        # Should return a dict (requirements)
-        assert isinstance(result, dict)
-        assert result.get('app_name') == 'DatabaseTask'
-        assert result.get('version') == '1.0.0'
-        assert len(result.get('features', [])) == 2
-    
-    @pytest.mark.asyncio
-    async def test_create_technical_requirements_exception(self, dev_agent):
-        """Test _create_technical_requirements exception handling"""
-        requirements = {
-            'technical_type': 'database',
-            'action': 'create_table',
-            'specification': 'CREATE TABLE test (id INT)'
-        }
-        
-        # Mock LLM client to raise exception
-        dev_agent.llm_client = AsyncMock()
-        dev_agent.llm_client.complete.side_effect = Exception("LLM call failed")
-        
-        result = await dev_agent._create_technical_requirements(requirements)
-        
-        # Should return a dict (fallback requirements)
-        assert isinstance(result, dict)
-        assert result.get('app_name') == 'TechnicalTask'
-        assert result.get('version') == '1.0.0'
-        assert isinstance(result.get('features'), list)
-    
-    @pytest.mark.asyncio
-    async def test_create_technical_requirements_fallback(self, dev_agent):
-        """Test _create_technical_requirements fallback when LLM fails"""
-        requirements = {
-            'technical_type': 'database',
-            'action': 'create_table',
-            'specification': 'CREATE TABLE test (id INT)'
-        }
-        
-        # Mock LLM client to return None
-        dev_agent.llm_client = AsyncMock()
-        dev_agent.llm_client.complete.return_value = None
-        
-        result = await dev_agent._create_technical_requirements(requirements)
-        
-        # Should return a dict (fallback requirements)
-        assert isinstance(result, dict)
-        assert result.get('app_name') == 'TechnicalTask'
-        assert result.get('version') == '1.0.0'
-        assert isinstance(result.get('features'), list)
+    # Removed tests for _create_technical_requirements - method removed
+    # This functionality is now handled by build.requirements.generate capability
+    # Test the capability directly in test_build_requirements_generator.py or similar
     
     # Removed tests for process_task with code_generation, docker_operations, version_management task types
     # These task types are no longer supported - only "development" task type is supported
@@ -1012,15 +928,14 @@ class TestDevAgent:
             'requirements': {}
         }
         
-        # Mock _handle_development_task to raise exception
-        with patch.object(dev_agent, '_handle_development_task') as mock_handle:
-            mock_handle.side_effect = Exception("Task handling failed")
-            
-            result = await dev_agent.process_task(task)
-            
-            assert result['task_id'] == 'test-task-001'
-            assert result['status'] == 'error'
-            assert 'error' in result
+        # Mock get_capability_for_task to raise exception
+        dev_agent.capability_loader.get_capability_for_task.side_effect = Exception("Capability lookup failed")
+        
+        result = await dev_agent.process_task(task)
+        
+        assert result['task_id'] == 'test-task-001'
+        assert result['status'] == 'error'
+        assert 'error' in result
     
     # ============================================================================
     # REASONING SHARING TESTS
@@ -1028,9 +943,10 @@ class TestDevAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_emit_reasoning_event_success(self, dev_agent):
-        """Test successful reasoning event emission"""
-        dev_agent.send_message = AsyncMock()
+    async def test_emit_reasoning_event_delegates_to_capability(self, dev_agent):
+        """Test that emit_reasoning_event delegates to comms.reasoning.emit capability"""
+        # Mock capability execution
+        dev_agent.capability_loader.execute = AsyncMock()
         
         await dev_agent.emit_reasoning_event(
             task_id='test-task-001',
@@ -1042,88 +958,22 @@ class TestDevAgent:
             confidence=0.85
         )
         
-        # Verify send_message was called
-        dev_agent.send_message.assert_called_once()
-        
-        # Get call arguments - call_args is a call() object
-        call_args = dev_agent.send_message.call_args
-        
-        # Extract keyword arguments (send_message uses keyword args)
-        kw_args = call_args.kwargs
-        
-        # Verify recipient
-        assert kw_args['recipient'] == 'max'  # DevAgent sends to 'max' (instance name)
-        
-        # Verify message type
-        assert kw_args['message_type'] == 'agent_reasoning'
-        
-        # Verify payload structure
-        payload = kw_args['payload']
-        assert payload['schema'] == 'reasoning.v1'
-        assert payload['task_id'] == 'test-task-001'
-        assert payload['ecid'] == 'ECID-WB-001'
-        assert payload['reason_step'] == 'decision'
-        assert payload['summary'] == 'Selected FastAPI architecture'
-        assert payload['context'] == 'manifest_generation'
-        assert payload['key_points'] == ['FastAPI chosen', 'Async support needed']
-        assert payload['confidence'] == 0.85
-        assert payload['raw_reasoning_included'] is False
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_emit_reasoning_event_minimal(self, dev_agent):
-        """Test reasoning event emission with minimal fields"""
-        dev_agent.send_message = AsyncMock()
-        
-        await dev_agent.emit_reasoning_event(
-            task_id='test-task-002',
-            ecid='ECID-WB-002',
-            reason_step='checkpoint',
-            summary='Build completed',
-            context='build'
+        # Verify capability was called with correct arguments
+        dev_agent.capability_loader.execute.assert_called_once_with(
+            'comms.reasoning.emit', dev_agent,
+            'test-task-001', 'ECID-WB-001', 'decision', 'Selected FastAPI architecture',
+            'manifest_generation', ['FastAPI chosen', 'Async support needed'], 0.85
         )
-        
-        # Verify send_message was called
-        dev_agent.send_message.assert_called_once()
-        call_args = dev_agent.send_message.call_args
-        payload = call_args.kwargs['payload']
-        
-        # Verify required fields
-        assert payload['task_id'] == 'test-task-002'
-        assert payload['ecid'] == 'ECID-WB-002'
-        assert payload['reason_step'] == 'checkpoint'
-        assert payload['summary'] == 'Build completed'
-        assert payload['context'] == 'build'
-        
-        # Verify optional fields are not present
-        assert 'key_points' not in payload or payload.get('key_points') is None
-        assert 'confidence' not in payload or payload.get('confidence') is None
     
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_emit_reasoning_event_exception(self, dev_agent):
-        """Test reasoning event emission with exception handling"""
-        dev_agent.send_message = AsyncMock(side_effect=Exception("Send failed"))
-        
-        # Should not raise exception
-        await dev_agent.emit_reasoning_event(
-            task_id='test-task-003',
-            ecid='ECID-WB-003',
-            reason_step='decision',
-            summary='Test decision',
-            context='test'
-        )
-        
-        # Should have attempted to send
-        dev_agent.send_message.assert_called_once()
+    # Note: For detailed testing of reasoning event emission logic, test the
+    # ReasoningEventEmitter capability directly in test_reasoning_event_emitter.py
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_design_manifest_emits_reasoning(self, dev_agent, design_manifest_task):
-        """Test that design_manifest task emits reasoning events via capability"""
-        dev_agent.send_message = AsyncMock()
-        dev_agent.current_ecid = 'ECID-WB-001'
-        
+        """Test that design_manifest task routes to capability (reasoning events handled by capability)"""
+        # Mock get_capability_for_task to return manifest.generate
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'manifest.generate'
         # Mock capability_loader.execute to return success
         # Note: Reasoning events are emitted by the capability, not the agent
         dev_agent.capability_loader.execute.return_value = {
@@ -1137,18 +987,18 @@ class TestDevAgent:
         result = await dev_agent.process_task(design_manifest_task)
         
         # Verify capability was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('manifest.generate', design_manifest_task)
         dev_agent.capability_loader.execute.assert_called_once_with('manifest.generate', dev_agent, "test-design-001", design_manifest_task["requirements"])
         
         # Note: Reasoning events are now emitted by the capability, not the agent
-        # To verify reasoning events, we would need to test the capability directly
+        # To verify reasoning events, test the ReasoningEventEmitter capability directly
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_build_task_emits_reasoning(self, dev_agent, build_task_with_manifest):
-        """Test that build task emits reasoning events via capability"""
-        dev_agent.send_message = AsyncMock()
-        dev_agent.current_ecid = 'ECID-WB-001'
-        
+        """Test that build task routes to capability (reasoning events handled by capability)"""
+        # Mock get_capability_for_task to return docker.build
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.build'
         # Mock capability_loader.execute to return success
         # Note: Reasoning events are emitted by the capability, not the agent
         dev_agent.capability_loader.execute.return_value = {
@@ -1163,18 +1013,18 @@ class TestDevAgent:
         result = await dev_agent.process_task(build_task_with_manifest)
         
         # Verify capability was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('docker.build', build_task_with_manifest)
         dev_agent.capability_loader.execute.assert_called_once_with('docker.build', dev_agent, "test-build-001", build_task_with_manifest["requirements"])
         
         # Note: Reasoning events are now emitted by the capability, not the agent
-        # To verify reasoning events, we would need to test the capability directly
+        # To verify reasoning events, test the ReasoningEventEmitter capability directly
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_deploy_task_emits_reasoning(self, dev_agent, deploy_task):
-        """Test that deploy task emits reasoning events via capability"""
-        dev_agent.send_message = AsyncMock()
-        dev_agent.current_ecid = 'ECID-WB-001'
-        
+        """Test that deploy task routes to capability (reasoning events handled by capability)"""
+        # Mock get_capability_for_task to return docker.deploy
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'docker.deploy'
         # Mock capability_loader.execute to return success
         # Note: Reasoning events are emitted by the capability, not the agent
         dev_agent.capability_loader.execute.return_value = {
@@ -1188,106 +1038,46 @@ class TestDevAgent:
         result = await dev_agent.process_task(deploy_task)
         
         # Verify capability was called
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('docker.deploy', deploy_task)
         dev_agent.capability_loader.execute.assert_called_once_with('docker.deploy', dev_agent, "test-deploy-001", deploy_task["requirements"])
         
         # Note: Reasoning events are now emitted by the capability, not the agent
-        # To verify reasoning events, we would need to test the capability directly
+        # To verify reasoning events, test the ReasoningEventEmitter capability directly
+    
+    # Removed tests for _emit_developer_completion_event and _extract_reasoning_summary_for_task
+    # These methods are now handled by task.completion.emit capability
+    # Test the capability directly in test_task_completion_emitter.py
+    # The capability includes reasoning summary extraction and completion event emission
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_completion_event_includes_reasoning_summary(self, dev_agent):
-        """Test that completion event includes reasoning summary"""
-        dev_agent.send_message = AsyncMock()
-        dev_agent.current_ecid = 'ECID-WB-001'
-        
-        # Add reasoning entries to communication log
-        dev_agent.communication_log = [
-            {
-                'ecid': 'ECID-WB-001',
-                'message_type': 'llm_reasoning',
-                'description': 'AppBuilder manifest_generation: Selected FastAPI architecture',
-                'timestamp': '2025-01-01T12:00:00Z'
-            },
-            {
-                'ecid': 'ECID-WB-001',
-                'message_type': 'llm_reasoning',
-                'description': 'AppBuilder build: Generated 5 files',
-                'timestamp': '2025-01-01T12:05:00Z'
-            }
-        ]
-        
-        result = {
-            'action': 'build',
-            'status': 'completed',
-            'created_files': ['app.py', 'index.html']
+    async def test_process_task_warmboot_wrapup(self, dev_agent):
+        """Test generic task routing to warmboot.wrapup capability with task dict."""
+        task = {
+            "task_id": "test-wrapup-001",
+            "task_type": "warmboot_wrapup",
+            "ecid": "ECID-WB-001",
+            "original_task_id": "test-original-001",
+            "completion_payload": {"status": "completed"},
+            "telemetry": {"duration": 100},
+            "reasoning_events": [{"reason_step": "decision", "summary": "Test"}]
         }
         
-        await dev_agent._emit_developer_completion_event('test-task-001', 'ECID-WB-001', result)
+        # Mock get_capability_for_task to return warmboot.wrapup
+        dev_agent.capability_loader.get_capability_for_task.return_value = 'warmboot.wrapup'
+        # Mock prepare_capability_args to return task dict for warmboot.wrapup
+        dev_agent.capability_loader.prepare_capability_args.return_value = (task,)
+        # Mock capability_loader.execute to return success
+        dev_agent.capability_loader.execute.return_value = {
+            "wrapup_uri": "/warm-boot/runs/run-001/wrapup.md",
+            "wrapup_content": "# Wrap-up",
+            "run_number": "001"
+        }
         
-        # Verify send_message was called
-        dev_agent.send_message.assert_called_once()
-        call_args = dev_agent.send_message.call_args
+        result = await dev_agent.process_task(task)
         
-        # Verify it's a completion event
-        assert call_args.kwargs['recipient'] == 'max'  # DevAgent sends to 'max' (instance name)
-        assert call_args.kwargs['message_type'] == 'task.developer.completed'
-        
-        # Verify payload includes reasoning_summary
-        payload = call_args.kwargs['payload']
-        assert 'reasoning_summary' in payload
-        reasoning_summary = payload['reasoning_summary']
-        assert reasoning_summary['context'] == 'build'
-        assert reasoning_summary['reasoning_available'] is True
-        assert len(reasoning_summary.get('key_decisions', [])) > 0
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_extract_reasoning_summary_for_task(self, dev_agent):
-        """Test reasoning summary extraction from communication log"""
-        dev_agent.communication_log = [
-            {
-                'ecid': 'ECID-WB-001',
-                'message_type': 'llm_reasoning',
-                'description': 'AppBuilder manifest_generation: Selected architecture',
-                'timestamp': '2025-01-01T12:00:00Z'
-            },
-            {
-                'ecid': 'ECID-WB-001',
-                'message_type': 'llm_reasoning',
-                'description': 'AppBuilder build: Generated files',
-                'timestamp': '2025-01-01T12:05:00Z'
-            },
-            {
-                'ecid': 'ECID-WB-002',  # Different ECID - should be filtered out
-                'message_type': 'llm_reasoning',
-                'description': 'AppBuilder build: Other task',
-                'timestamp': '2025-01-01T12:10:00Z'
-            },
-            {
-                'ecid': 'ECID-WB-001',
-                'message_type': 'llm_reasoning',
-                'description': 'AppBuilder deploy: Deployed container',
-                'timestamp': '2025-01-01T12:10:00Z'
-            }
-        ]
-        
-        summary = dev_agent._extract_reasoning_summary_for_task('ECID-WB-001', 'build')
-        
-        assert summary['context'] == 'build'
-        assert summary['reasoning_available'] is True
-        assert summary['event_count'] == 1  # Only one build entry for ECID-WB-001 (filtered by ECID and context)
-        assert len(summary['key_decisions']) > 0
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_extract_reasoning_summary_no_events(self, dev_agent):
-        """Test reasoning summary extraction when no events found"""
-        dev_agent.communication_log = []
-        
-        summary = dev_agent._extract_reasoning_summary_for_task('ECID-WB-001', 'build')
-        
-        assert summary['context'] == 'build'
-        assert summary['reasoning_available'] is False
-        assert summary['event_count'] == 0
-        assert len(summary['key_decisions']) == 0
-        assert 'note' in summary
+        assert result["wrapup_uri"] == "/warm-boot/runs/run-001/wrapup.md"
+        # Verify prepare_capability_args was called with correct arguments
+        dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('warmboot.wrapup', task)
+        # Verify execute was called with task dict (not task_id, requirements)
+        dev_agent.capability_loader.execute.assert_called_once_with('warmboot.wrapup', dev_agent, task)

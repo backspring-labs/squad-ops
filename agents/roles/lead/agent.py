@@ -105,77 +105,10 @@ class LeadAgent(BaseAgent):
                 )
             
             try:
-                # Execute capability via Loader
-                # Governance capabilities are agent-specific reasoning - handle directly
-                if action == "governance.task_coordination":
-                    # Task coordination uses task delegation capability
-                    task_type = request.payload.get('type', 'unknown')
-                    delegation_result = await self.capability_loader.execute(
-                        'task.determine_target', self, task_type
-                    )
-                    delegation_target = delegation_result.get('target_agent', 'dev-agent')
-                    await self.send_message(
-                        recipient=delegation_target,
-                        message_type="task_delegation",
-                        payload=request.payload,
-                        context=request.metadata
-                    )
-                    result = {
-                        'tasks_created': 1,
-                        'tasks_delegated': 1,
-                        'coordination_log': f"Delegated {task_type} to {delegation_target}"
-                    }
-                elif action == "governance.approval":
-                    # Approval is agent-specific reasoning
-                    complexity = request.payload.get('complexity', 0.5)
-                    if complexity > self.escalation_threshold:
-                        result = {
-                            'approved': False,
-                            'decision': 'escalated',
-                            'approval_time': 0.0
-                        }
-                    else:
-                        result = {
-                            'approved': True,
-                            'decision': 'approved',
-                            'approval_time': 0.5
-                        }
-                elif action == "governance.escalation":
-                    # Escalation is agent-specific reasoning
-                    task_id = request.payload.get('task_id', 'unknown')
-                    await self.escalate_task(task_id, request.payload)
-                    result = {
-                        'escalated': True,
-                        'resolution': 'escalated_to_premium',
-                        'escalation_time': 1.0
-                    }
-                elif action == "validate.warmboot":
-                    # validate.warmboot uses process_task which is handled separately
-                    # Convert AgentRequest to old task format for compatibility
-                    task = {
-                        'task_id': request.payload.get('task_id', f"{request.metadata.get('ecid', 'unknown')}-main"),
-                        'type': 'governance',
-                        'ecid': request.metadata.get('ecid', 'unknown'),
-                        'pid': request.metadata.get('pid', 'unknown'),
-                        'application': request.payload.get('application'),
-                        'request_type': request.payload.get('request_type'),
-                        'agents': request.payload.get('agents', []),
-                        'priority': request.payload.get('priority', 'MEDIUM'),
-                        'description': request.payload.get('description'),
-                        'requirements': request.payload.get('requirements'),
-                        'prd_path': request.payload.get('prd_path')
-                    }
-                    result = await self.process_task(task)
-                    # Convert result to validate.warmboot capability format
-                    result = {
-                        'match': result.get('status') == 'completed',
-                        'diffs': result.get('diffs', []),
-                        'wrap_up_uri': result.get('wrap_up_uri', f'/warm-boot/runs/{request.metadata.get("ecid", "unknown")}/wrap-up.md'),
-                        'metrics': result.get('metrics', {})
-                    }
-                else:
-                    # Try to execute via Loader
-                    result = await self.capability_loader.execute(action, self, request.payload)
+                # Execute capability via Loader - fully generic routing
+                # Use calling convention metadata to determine how to call the capability
+                args = self.capability_loader.prepare_capability_args(action, request.payload, request.metadata)
+                result = await self.capability_loader.execute(action, self, *args)
             except ValueError as e:
                 # Capability not found in Loader
                 return AgentResponse.failure(
@@ -219,7 +152,12 @@ class LeadAgent(BaseAgent):
     # Duplicate logic has been moved to capability classes
     
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process governance tasks with approval/escalation logic"""
+        """
+        Process tasks using generic capability routing.
+        
+        Uses CapabilityLoader.get_capability_for_task() to determine capability
+        based on task_type or requirements.action, then executes it generically.
+        """
         logger.debug(f"{self.name} process_task START - task: {task}")
         
         # Check if this is a new SIP-046 AgentRequest format
@@ -227,14 +165,10 @@ class LeadAgent(BaseAgent):
             # Let BaseAgent handle the conversion to AgentRequest
             return await super().process_task(task)
         
-        # Old format handling
         task_id = task.get('task_id', 'unknown')
-        task_type = task.get('type', 'unknown')
-        complexity = task.get('complexity', 0.5)
+        task_type = task.get('task_type') or task.get('type', 'unknown')
         
-        logger.debug(f"{self.name} parsed task_id={task_id}, task_type={task_type}, complexity={complexity}")
-        logger.info(f"{self.name} processing governance task: {task_id}")
-        logger.info(f"{self.name} DEBUG: task_type='{task_type}', has_prd_path={bool(task.get('prd_path'))}")
+        logger.info(f"{self.name} processing {task_type} task: {task_id}")
         
         # Load relevant memories for WarmBoot context (SIP-042) via Loader
         ecid = task.get('ecid') or task.get('context', {}).get('ecid')
@@ -245,129 +179,58 @@ class LeadAgent(BaseAgent):
             except Exception as e:
                 logger.warning(f"{self.name}: Failed to load WarmBoot memories: {e}")
         
-        # Check if this is a governance task with PRD path
-        if task_type == "governance" and task.get('prd_path'):
-            logger.debug(f"{self.name} handling governance task with PRD path")
-            prd_path = task.get('prd_path', '')
-            application = task.get('application', 'Application')
-            
-            if prd_path:
-                logger.info(f"{self.name} processing PRD from path: {prd_path}")
-                # Get ecid from the task
-                ecid = task.get('ecid', 'ECID-WB-001')
-                # Process PRD from file path
-                result = await self.process_prd_request(prd_path, ecid)
-                await self.update_task_status(task_id, "Completed", 100.0)
-                return result
-            else:
-                logger.warning(f"{self.name} received empty PRD path for application: {application}")
-                # Continue with normal governance processing
-        
-        # Log task state
-        self.task_state_log.append({
-            'task_id': task_id,
-            'timestamp': task.get('timestamp'),
-            'type': task_type,
-            'complexity': complexity,
-            'status': 'processing'
-        })
-        
-        # Update task status
-        logger.debug(f"{self.name} about to call update_task_status with task_id={task_id}")
-        await self.update_task_status(task_id, "Active-Non-Blocking", 25.0)
-        logger.debug(f"{self.name} update_task_status completed successfully")
-        
-        # Governance decision logic
-        if complexity > self.escalation_threshold:
-            logger.debug(f"{self.name} escalating task due to high complexity: {complexity} > {self.escalation_threshold}")
-            # Escalate to premium consultation
-            await self.escalate_task(task_id, task)
-            logger.debug(f"{self.name} escalate_task completed")
-            await self.update_task_status(task_id, "Blocked", 50.0, "Escalated to premium consultation")
-            logger.debug(f"{self.name} update_task_status (escalated) completed")
-            
+        # Generic capability routing via loader
+        if not self.capability_loader:
+            logger.error(f"{self.name}: Capability loader not initialized")
             return {
                 'task_id': task_id,
-                'status': 'escalated',
-                'reason': 'High complexity requires premium consultation',
-                'escalation_level': 'strategic_resolution'
+                'status': 'error',
+                'error': 'Capability loader not initialized'
             }
-        else:
-            logger.debug(f"{self.name} approving task for delegation (complexity: {complexity} <= {self.escalation_threshold})")
-            logger.info(f"{self.name} DEBUG: task_type='{task_type}', task_type.lower()='{task_type.lower()}'")
+        
+        # Determine capability from task structure
+        capability_name = self.capability_loader.get_capability_for_task(task)
+        if not capability_name:
+            logger.warning(f"{self.name} received task with no capability mapping: {task_type}")
+            return {
+                'task_id': task_id,
+                'status': 'error',
+                'error': f'No capability mapping found for task type: {task_type}'
+            }
+        
+        logger.info(f"{self.name} routing task {task_id} to capability: {capability_name}")
+        
+        # Update task status to in_progress
+        await self.update_task_status(task_id, "Active-Non-Blocking", 25.0)
+        
+        try:
+            # Generic capability execution - use calling convention metadata
+            # This handles all calling conventions: task_dict, requirements_only, task_id_requirements, payload_as_is
+            args = self.capability_loader.prepare_capability_args(capability_name, task)
+            result = await self.capability_loader.execute(capability_name, self, *args)
             
-            # Governance tasks should be handled directly by Max, not delegated
-            if task_type.lower() == 'governance':
-                logger.info(f"{self.name} handling governance task directly: {task_id}")
-                await self.update_task_status(task_id, "Completed", 100.0)
-                return {
-                    'task_id': task_id,
-                    'status': 'completed',
-                    'governance_decision': f"Governance task {task_id} handled directly by {self.name}",
-                    'message': 'Governance tasks are handled directly by the Lead Agent'
-                }
-            
-            logger.info(f"{self.name} DEBUG: Not a governance task, proceeding with delegation for task_type='{task_type}'")
-            
-            # Approve and delegate non-governance tasks
-            await self.update_task_status(task_id, "Active-Non-Blocking", 75.0)
-            logger.debug(f"{self.name} update_task_status (delegation) completed")
-            
-            # Determine delegation target via Loader
-            if not self.capability_loader:
-                logger.error(f"{self.name}: Capability loader not initialized")
-                delegation_target = 'dev-agent'  # Fallback
-            else:
-                try:
-                    delegation_result = await self.capability_loader.execute(
-                        'task.determine_target', self, task_type
-                    )
-                    delegation_target = delegation_result.get('target_agent', 'dev-agent')
-                except Exception as e:
-                    logger.error(f"{self.name}: Failed to determine delegation target: {e}")
-                    delegation_target = 'dev-agent'  # Fallback
-            logger.debug(f"{self.name} determined delegation_target: {delegation_target}")
-            
-            # Send message to delegation target
-            await self.send_message(
-                recipient=delegation_target,
-                message_type="task_delegation",
-                payload={
-                    'task_id': task_id,
-                    'task_type': task_type,
-                    'description': task.get('description', ''),
-                    'requirements': task.get('requirements', {}),
-                    'complexity': complexity,
-                    'priority': task.get('priority', 'MEDIUM')
-                },
-                context={
-                    'delegated_by': self.name,
-                    'delegation_reason': f"Approved {task_type} for delegation",
-                    'original_task': task
-                }
-            )
-            
+            # Update task status to completed
             await self.update_task_status(task_id, "Completed", 100.0)
             
-            # Record memory for task delegation
-            await self.record_memory(
-                kind="task_delegation",
-                payload={
-                    'task_id': task_id,
-                    'task_type': task_type,
-                    'delegated_to': delegation_target,
-                    'decision': 'approved',
-                    'complexity': complexity
-                },
-                importance=0.7,
-                task_context=task
-            )
-            
+            # Return result (capabilities return their own result format)
+            return result
+                
+        except ValueError as e:
+            # Capability not found
+            logger.error(f"{self.name}: Capability not found: {e}")
+            await self.update_task_status(task_id, "Failed", 0.0, str(e))
             return {
                 'task_id': task_id,
-                'status': 'approved',
-                'delegation_target': delegation_target,
-                'governance_decision': f"Approved {task_type} for delegation"
+                'status': 'error',
+                'error': f'Capability not found: {e}'
+            }
+        except Exception as e:
+            logger.error(f"{self.name}: Capability execution error: {e}", exc_info=True)
+            await self.update_task_status(task_id, "Failed", 0.0, str(e))
+            return {
+                'task_id': task_id,
+                'status': 'error',
+                'error': str(e)
             }
     
     async def handle_message(self, message: AgentMessage) -> None:
@@ -388,20 +251,28 @@ class LeadAgent(BaseAgent):
             await self.handle_developer_completion(message)
         elif message.message_type == "agent_reasoning":
             await self.handle_reasoning_event(message)
+        elif message.message_type == "task_delegation":
+            await self.handle_task_delegation(message)
         else:
             logger.info(f"{self.name} received message: {message.message_type} from {message.sender}")
     
     async def handle_prd_request(self, message: AgentMessage) -> None:
-        """Handle PRD processing requests"""
-        prd_path = message.payload.get('prd_path', '')
-        if not prd_path:
-            logger.error("Max received PRD request without prd_path")
-            return
+        """Handle PRD processing requests - routes to prd.process capability via process_task"""
+        # Convert message payload to task (payload should already contain required fields)
+        # If payload doesn't have task_id, generate one
+        task = message.payload.copy()
+        if 'task_id' not in task:
+            ecid = task.get('ecid') or message.context.get('ecid', 'ECID-WB-001')
+            task['task_id'] = f"{ecid}-prd-{int(__import__('time').time())}"
         
-        logger.info(f"{self.name} handling PRD request: {prd_path}")
+        # Merge context fields into task if needed
+        if 'ecid' not in task:
+            task['ecid'] = message.context.get('ecid', 'ECID-WB-001')
         
-        # Process the PRD
-        result = await self.process_prd_request(prd_path)
+        logger.info(f"{self.name} handling PRD request: task_id={task.get('task_id', 'unknown')}")
+        
+        # Process via generic routing (capability loader will determine capability from task structure)
+        result = await self.process_task(task)
         
         # Send response back to requester
         await self.send_message(
@@ -488,6 +359,44 @@ class LeadAgent(BaseAgent):
             
         except Exception as e:
             logger.warning(f"{self.name} failed to handle reasoning event: {e}")
+    
+    async def handle_task_delegation(self, message: AgentMessage) -> None:
+        """Handle task delegation messages - routes to generic process_task"""
+        try:
+            task_payload = message.payload
+            task_id = task_payload.get('task_id', 'unknown')
+            task_type = task_payload.get('task_type', 'unknown')
+            
+            logger.info(f"{self.name} received task delegation: {task_id} (type: {task_type}) from {message.sender}")
+            
+            # Update task status to in_progress
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.put(
+                        f"{self.task_api_url}/api/v1/tasks/{task_id}",
+                        json={"status": "in_progress"}
+                    ) as resp:
+                        if resp.status == 200:
+                            logger.info(f"{self.name} marked task {task_id} as in_progress")
+                        elif resp.status == 404:
+                            # Task doesn't exist, log it
+                            ecid = task_payload.get('ecid', 'unknown')
+                            await self.log_task_start(task_id, ecid, 
+                                task_payload.get('description', 'Unknown task'),
+                                task_payload.get('priority', 'MEDIUM'))
+                        else:
+                            logger.warning(f"Failed to update task status: {await resp.text()}")
+            except Exception as e:
+                logger.warning(f"Failed to update task {task_id}: {e}, continuing anyway")
+            
+            # Process the delegated task via generic capability routing
+            result = await self.process_task(task_payload)
+            
+            logger.info(f"{self.name} completed delegated task {task_id}: {result.get('status', 'unknown')}")
+            
+        except Exception as e:
+            logger.error(f"{self.name} failed to handle task delegation: {e}", exc_info=True)
     
     async def handle_developer_completion(self, message: AgentMessage) -> None:
         """
@@ -652,135 +561,6 @@ class LeadAgent(BaseAgent):
             }
         )
     
-    
-    
-    async def process_prd_request(self, prd_path: str, ecid: str = None) -> Dict[str, Any]:
-        """Process a PRD request - read PRD, analyze, and create tasks"""
-        try:
-            logger.info(f"{self.name} processing PRD request: {prd_path}")
-            
-            # Use provided ecid or create default
-            if not ecid:
-                ecid = "ECID-WB-001"
-            
-            # Create execution cycle (Max owns the execution cycle lifecycle)
-            try:
-                await self.create_execution_cycle(ecid, "PID-001", "warmboot", 
-                                                 f"WarmBoot {ecid}", prd_path)
-                logger.info(f"{self.name} created execution cycle {ecid}")
-            except Exception as e:
-                # Execution cycle may already exist in edge cases - continue anyway
-                logger.warning(f"Execution cycle {ecid} creation failed (may already exist): {e}")
-            
-            # Store the current ecid for use in create_development_tasks
-            self.current_ecid = ecid
-            logger.info(f"{self.name} stored current ecid: {ecid}")
-            
-            # Read PRD via capability Loader
-            if not self.capability_loader:
-                return {"status": "error", "message": "Capability loader not initialized"}
-            
-            prd_result = await self.capability_loader.execute('prd.read', self, prd_path)
-            prd_content = prd_result.get('prd_content', '')
-            if not prd_content:
-                return {"status": "error", "message": "Failed to read PRD"}
-            
-            # Analyze PRD requirements via capability Loader
-            prd_analysis = await self.capability_loader.execute(
-                'prd.analyze', self, prd_content, agent_role="Max, the Lead Agent"
-            )
-            if not prd_analysis:
-                return {"status": "error", "message": "Failed to analyze PRD"}
-            
-            # Extract app name from PRD path or content
-            app_name = "Application"  # Default fallback
-            if "prd-" in prd_path.lower():
-                # Extract app name from PRD filename (e.g., "PRD-001-HelloSquad.md" -> "HelloSquad")
-                import re
-                match = re.search(r'PRD-\d+-(.+)\.md', prd_path)
-                if match:
-                    app_name = match.group(1)
-            
-            # Create development tasks via capability Loader
-            task_result = await self.capability_loader.execute(
-                'task.create', self, prd_analysis, app_name, ecid
-            )
-            tasks = task_result.get('tasks', [])
-            if not tasks:
-                return {"status": "error", "message": "Failed to create tasks"}
-            
-            # Delegate tasks to Neo
-            delegated_tasks = []
-            for task in tasks:
-                # For build tasks, inject manifest from warmboot_state if available
-                if task.get('requirements', {}).get('action') == 'build':
-                    if task['requirements'].get('manifest') is None and self.warmboot_state.get('manifest'):
-                        task['requirements']['manifest'] = self.warmboot_state['manifest']
-                        logger.info(f"{self.name} injected manifest into build task {task['task_id']}")
-                    elif task['requirements'].get('manifest') is None:
-                        # Build task without manifest - skip for now, will be delegated after design manifest completes
-                        logger.info(f"{self.name} skipping build task {task['task_id']} - manifest not yet available")
-                        continue
-                
-                # Determine delegation target via Loader
-                delegation_result = await self.capability_loader.execute(
-                    'task.determine_target', self, task["task_type"]
-                )
-                delegation_target = delegation_result.get('target_agent', 'dev-agent')
-                
-                # Log task delegation
-                await self.log_task_delegation(
-                    task['task_id'],
-                    ecid,
-                    delegation_target,
-                    task['description']
-                )
-                
-                await self.send_message(
-                    recipient=delegation_target,
-                    message_type="task_delegation",
-                    payload=task,
-                    context={
-                        'delegated_by': self.name,
-                        'delegation_reason': f"PRD-based task: {task['description']}",
-                        'prd_path': prd_path,
-                        'prd_analysis': prd_analysis
-                    }
-                )
-                
-                # Record memory for task delegation (SIP-042)
-                await self.record_memory(
-                    kind="task_delegation",
-                    payload={
-                        'task_id': task['task_id'],
-                        'task_type': task.get('task_type', 'unknown'),
-                        'delegated_to': delegation_target,
-                        'decision': 'approved',
-                        'ecid': ecid
-                    },
-                    importance=0.7,
-                    task_context={'ecid': ecid, 'pid': task.get('pid', 'unknown')}
-                )
-                
-                delegated_tasks.append({
-                    'task_id': task['task_id'],
-                    'delegated_to': delegation_target,
-                    'status': 'delegated'
-                })
-            
-            logger.info(f"{self.name} successfully processed PRD and delegated {len(delegated_tasks)} tasks")
-            
-            return {
-                "status": "success",
-                "message": f"PRD processed and {len(delegated_tasks)} tasks delegated",
-                "prd_path": prd_path,
-                "tasks_delegated": delegated_tasks,
-                "prd_analysis": prd_analysis
-            }
-            
-        except Exception as e:
-            logger.error(f"{self.name} failed to process PRD request: {e}")
-            return {"status": "error", "message": f"PRD processing failed: {e}"}
 
 async def main():
     """Main entry point for Lead agent"""

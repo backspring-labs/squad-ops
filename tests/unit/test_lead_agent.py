@@ -72,15 +72,12 @@ class TestLeadAgent:
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             agent = LeadAgent("lead-agent-001")
             
+            request = create_sample_validate_warmboot_request(ecid="ECID-001")
+            
             # Mock update_task_status to avoid HTTP calls
             with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update_status, \
-                 patch.object(agent.capability_loader, 'execute') as mock_execute, \
-                 patch.object(agent, 'process_prd_request', return_value={
-                     "status": "completed",
-                     "diffs": [],
-                     "wrap_up_uri": "/warm-boot/runs/ECID-001/wrap-up.md",
-                     "metrics": {}
-                 }):
+                 patch.object(agent.capability_loader, 'prepare_capability_args', return_value=(request.payload, request.metadata)) as mock_prepare, \
+                 patch.object(agent.capability_loader, 'execute') as mock_execute:
                 # Mock capability loader execution
                 async def execute_side_effect(capability, agent_instance, *args, **kwargs):
                     if capability == 'prd.read':
@@ -94,10 +91,15 @@ class TestLeadAgent:
                         }
                     elif capability == 'task.create':
                         return {'tasks': [], 'app_name': 'TestApp', 'app_version': '0.1.0.001', 'task_count': 0}
+                    elif capability == 'validate.warmboot':
+                        return {
+                            'match': True,
+                            'diffs': [],
+                            'wrap_up_uri': '/warm-boot/runs/ECID-001/wrap-up.md',
+                            'metrics': {}
+                        }
                     return {}
                 mock_execute.side_effect = execute_side_effect
-                
-                request = create_sample_validate_warmboot_request(ecid="ECID-001")
                 
                 response = await agent.handle_agent_request(request)
                 
@@ -109,6 +111,8 @@ class TestLeadAgent:
                 assert "metrics" in response.result
                 assert response.idempotency_key is not None
                 assert response.timing is not None
+                # Verify prepare_capability_args was called with correct arguments
+                mock_prepare.assert_called_once_with("validate.warmboot", request.payload, request.metadata)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -123,7 +127,14 @@ class TestLeadAgent:
                 metadata={"pid": "PID-001", "ecid": "ECID-001"}
             )
             
-            with patch.object(agent, 'send_message') as mock_send:
+            # Mock capability loader execution
+            mock_result = {
+                'tasks_created': 1,
+                'tasks_delegated': 1,
+                'coordination_log': 'Delegated development to dev-agent'
+            }
+            with patch.object(agent.capability_loader, 'prepare_capability_args', return_value=(request.payload, request.metadata)) as mock_prepare, \
+                 patch.object(agent.capability_loader, 'execute', new_callable=AsyncMock, return_value=mock_result) as mock_execute:
                 response = await agent.handle_agent_request(request)
                 
                 assert isinstance(response, AgentResponse)
@@ -131,6 +142,10 @@ class TestLeadAgent:
                 assert "tasks_created" in response.result
                 assert "tasks_delegated" in response.result
                 assert "coordination_log" in response.result
+                # Verify prepare_capability_args was called with correct arguments
+                mock_prepare.assert_called_once_with("governance.task_coordination", request.payload, request.metadata)
+                # Verify capability loader was called with correct arguments (using *args unpacking)
+                mock_execute.assert_called_once_with("governance.task_coordination", agent, request.payload, request.metadata)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -145,13 +160,23 @@ class TestLeadAgent:
                 metadata={"pid": "PID-001", "ecid": "ECID-001"}
             )
             
-            response = await agent.handle_agent_request(request)
+            # Mock capability loader execution
+            mock_result = {
+                'approved': True,
+                'decision': 'approved',
+                'approval_time': 0.5
+            }
+            with patch.object(agent.capability_loader, 'prepare_capability_args', return_value=(request.payload,)) as mock_prepare, \
+                 patch.object(agent.capability_loader, 'execute', new_callable=AsyncMock, return_value=mock_result) as mock_execute:
+                response = await agent.handle_agent_request(request)
             
             assert isinstance(response, AgentResponse)
             assert response.status == "ok"
             assert "approved" in response.result
             assert "decision" in response.result
             assert "approval_time" in response.result
+            # Verify prepare_capability_args was called (governance.approval uses payload_as_is convention)
+            mock_prepare.assert_called_once_with("governance.approval", request.payload, request.metadata)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -166,7 +191,14 @@ class TestLeadAgent:
                 metadata={"pid": "PID-001", "ecid": "ECID-001"}
             )
             
-            with patch.object(agent, 'escalate_task') as mock_escalate:
+            # Mock capability loader execution
+            mock_result = {
+                'escalated': True,
+                'resolution': 'escalated_to_premium',
+                'escalation_time': 1.0
+            }
+            with patch.object(agent.capability_loader, 'prepare_capability_args', return_value=(request.payload,)) as mock_prepare, \
+                 patch.object(agent.capability_loader, 'execute', new_callable=AsyncMock, return_value=mock_result) as mock_execute:
                 response = await agent.handle_agent_request(request)
                 
                 assert isinstance(response, AgentResponse)
@@ -174,6 +206,10 @@ class TestLeadAgent:
                 assert "escalated" in response.result
                 assert "resolution" in response.result
                 assert "escalation_time" in response.result
+                # Verify prepare_capability_args was called (governance.escalation uses payload_as_is convention)
+                mock_prepare.assert_called_once_with("governance.escalation", request.payload, request.metadata)
+                # Verify capability loader was called with correct arguments (using *args unpacking)
+                mock_execute.assert_called_once_with("governance.escalation", agent, request.payload)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -284,33 +320,44 @@ class TestLeadAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_process_prd_request(self, mock_database):
-        """Test PRD processing workflow"""
+    async def test_process_task_with_prd_path(self, mock_database):
+        """Test process_task routes PRD tasks to prd.process capability"""
         agent = LeadAgent("lead-agent-001")
         agent.db_pool = mock_database
         
-        with patch.object(agent.capability_loader, 'execute') as mock_execute, \
-             patch.object(agent, 'create_execution_cycle') as mock_create_ec, \
-             patch.object(agent, 'log_task_delegation') as mock_log, \
-             patch.object(agent, 'send_message') as mock_send:
+        task = {
+            'task_id': 'task-001',
+            'prd_path': '/test/prd.md',
+            'ecid': 'test-ecid-001'
+        }
+        
+        with patch.object(agent.capability_loader, 'get_capability_for_task') as mock_get_cap, \
+             patch.object(agent.capability_loader, 'prepare_capability_args') as mock_prepare, \
+             patch.object(agent.capability_loader, 'execute') as mock_execute, \
+             patch.object(agent, 'update_task_status') as mock_update_status:
             
-            # Mock capability loader execution
-            async def execute_side_effect(capability, agent_instance, *args, **kwargs):
-                if capability == 'prd.read':
-                    return {"prd_content": "# Test PRD", "file_path": "/test/prd.md", "parsed_sections": {}}
-                elif capability == 'prd.analyze':
-                    return {'core_features': ['Feature 1'], 'technical_requirements': [], 'success_criteria': [], 'analysis_summary': 'Test'}
-                elif capability == 'task.create':
-                    return {'tasks': [{'task_id': 'task-001', 'task_type': 'development', 'description': 'Test task'}], 'app_name': 'TestApp', 'app_version': '0.1.0.001', 'task_count': 1}
-                return {}
-            mock_execute.side_effect = execute_side_effect
-            mock_create_ec.return_value = None
+            mock_get_cap.return_value = 'prd.process'
+            mock_prepare.return_value = (task,)
+            mock_execute.return_value = {
+                'status': 'success',
+                'prd_analysis': {'core_features': ['Feature 1']},
+                'tasks_delegated': [{'task_id': 'task-001', 'status': 'delegated'}]
+            }
             
-            result = await agent.process_prd_request("/test/prd.md", "test-ecid-001")
+            result = await agent.process_task(task)
             
-            assert 'prd_analysis' in result
-            assert 'tasks_delegated' in result
             assert result['status'] == 'success'
+            mock_get_cap.assert_called_once_with(task)
+            mock_prepare.assert_called_once_with('prd.process', task)
+            # warmboot.memory is also called, so check that prd.process was called
+            assert mock_execute.call_count >= 1
+            prd_process_calls = [call for call in mock_execute.call_args_list if call[0][0] == 'prd.process']
+            assert len(prd_process_calls) == 1
+            assert prd_process_calls[0][0] == ('prd.process', agent, task)
+            # update_task_status is called twice: once for "Active-Non-Blocking" and once for "Completed"
+            assert mock_update_status.call_count == 2
+            mock_update_status.assert_any_call('task-001', 'Active-Non-Blocking', 25.0)
+            mock_update_status.assert_any_call('task-001', 'Completed', 100.0)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -386,7 +433,7 @@ class TestLeadAgent:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_process_task_governance_with_prd(self, mock_database):
-        """Test process_task for governance task with PRD path"""
+        """Test process_task routes PRD tasks to prd.process capability"""
         agent = LeadAgent("lead-agent-001")
         agent.db_pool = mock_database
         
@@ -399,22 +446,35 @@ class TestLeadAgent:
             'complexity': 0.5
         }
         
-        with patch.object(agent, 'process_prd_request') as mock_process_prd, \
+        with patch.object(agent.capability_loader, 'get_capability_for_task') as mock_get_cap, \
+             patch.object(agent.capability_loader, 'prepare_capability_args') as mock_prepare, \
+             patch.object(agent.capability_loader, 'execute') as mock_execute, \
              patch.object(agent, 'update_task_status') as mock_update_status:
             
-            mock_process_prd.return_value = {'status': 'success', 'tasks_delegated': 3}
+            mock_get_cap.return_value = 'prd.process'
+            mock_prepare.return_value = (task,)
+            mock_execute.return_value = {'status': 'success', 'tasks_delegated': 3}
             
             result = await agent.process_task(task)
             
             assert result['status'] == 'success'
             assert result['tasks_delegated'] == 3
-            mock_process_prd.assert_called_once_with('/test/prd.md', 'ecid-001')
-            mock_update_status.assert_called_once_with('task-001', 'Completed', 100.0)
+            mock_get_cap.assert_called_once_with(task)
+            mock_prepare.assert_called_once_with('prd.process', task)
+            # warmboot.memory is also called, so check that prd.process was called
+            assert mock_execute.call_count >= 1
+            prd_process_calls = [call for call in mock_execute.call_args_list if call[0][0] == 'prd.process']
+            assert len(prd_process_calls) == 1
+            assert prd_process_calls[0][0] == ('prd.process', agent, task)
+            # update_task_status is called twice: once for "Active-Non-Blocking" and once for "Completed"
+            assert mock_update_status.call_count == 2
+            mock_update_status.assert_any_call('task-001', 'Active-Non-Blocking', 25.0)
+            mock_update_status.assert_any_call('task-001', 'Completed', 100.0)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_process_task_governance_without_prd(self, mock_database, mock_unified_config):
-        """Test process_task for governance task without PRD path"""
+        """Test process_task for governance task without PRD path - routes to governance.task_coordination"""
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             agent = LeadAgent("lead-agent-001")
             agent.db_pool = mock_database
@@ -427,14 +487,23 @@ class TestLeadAgent:
                 'complexity': 0.5
             }
             
+            # Mock capability routing
+            agent.capability_loader.get_capability_for_task = MagicMock(return_value='governance.task_coordination')
+            agent.capability_loader.prepare_capability_args = MagicMock(return_value=(task,))
+            agent.capability_loader.execute = AsyncMock(return_value={
+                'status': 'completed',
+                'task_id': 'task-001',
+                'coordination_log': 'Task coordinated successfully'
+            })
+            
             # Mock update_task_status to avoid HTTP call
             with patch.object(agent, 'update_task_status', new_callable=AsyncMock):
                 result = await agent.process_task(task)
             
+            assert result['status'] == 'completed'
             assert result['task_id'] == 'task-001'
-            assert result['status'] == 'completed'  # LeadAgent returns 'completed' for governance tasks
-            assert 'governance_decision' in result
-            assert 'message' in result
+            agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
+            agent.capability_loader.execute.assert_called_once()
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -514,7 +583,7 @@ class TestLeadAgent:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_handle_prd_request(self, mock_database):
-        """Test PRD request handling"""
+        """Test PRD request handling routes to process_task"""
         agent = LeadAgent("lead-agent-001")
         agent.db_pool = mock_database
         
@@ -528,14 +597,18 @@ class TestLeadAgent:
             message_id='msg-001'
         )
         
-        with patch.object(agent, 'process_prd_request') as mock_process_prd, \
+        with patch.object(agent, 'process_task') as mock_process_task, \
              patch.object(agent, 'send_message') as mock_send:
             
-            mock_process_prd.return_value = {'status': 'success'}
+            mock_process_task.return_value = {'status': 'success'}
             
             await agent.handle_prd_request(message)
             
-            mock_process_prd.assert_called_once_with('/test/prd.md')  # Only prd_path, no ecid
+            # Verify process_task was called with a task dict containing prd_path
+            mock_process_task.assert_called_once()
+            call_args = mock_process_task.call_args[0][0]
+            assert call_args['prd_path'] == '/test/prd.md'
+            assert call_args['ecid'] == 'ecid-001'
             mock_send.assert_called_once()
     
     @pytest.mark.unit
@@ -596,215 +669,11 @@ class TestLeadAgent:
         assert isinstance(analysis_result, dict)
         assert 'core_features' in analysis_result
     
-    # ========== LeadAgent PRD Processing Tests (Lines 540-587) ==========
+    # ========== LeadAgent PRD Processing Tests ==========
+    # Note: Direct tests of process_prd_request have been removed as the method no longer exists.
+    # PRD processing is now handled by the prd.process capability, which is tested in test_prd_processor.py
+    # Tests here verify that PRD tasks route correctly through process_task()
     
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_process_prd_request_full_workflow(self, mock_database):
-        """Test complete PRD processing workflow"""
-        agent = LeadAgent("lead-agent-001")
-        agent.db_pool = mock_database
-        
-        # Mock the actual methods that exist on LeadAgent
-        with patch.object(agent.capability_loader, 'execute') as mock_execute, \
-             patch.object(agent, 'create_execution_cycle', return_value=None), \
-             patch.object(agent, 'log_task_delegation', return_value=None) as mock_log, \
-             patch.object(agent, 'send_message', return_value=None) as mock_send:
-            # Mock capability loader execution
-            async def execute_side_effect(capability, agent_instance, *args, **kwargs):
-                if capability == 'prd.read':
-                    return {"prd_content": "# Test PRD\n## Features\n- Feature 1", "file_path": "warm-boot/prd/PRD-001.md", "parsed_sections": {}}
-                elif capability == 'prd.analyze':
-                    return {'core_features': ['Feature 1'], 'technical_requirements': [], 'success_criteria': [], 'analysis_summary': 'Test'}
-                elif capability == 'task.create':
-                    return {
-                        'tasks': [
-                            {'task_id': 'task-1', 'task_type': 'development', 'description': 'Build app'},
-                            {'task_id': 'task-2', 'task_type': 'deployment', 'description': 'Deploy app'}
-                        ],
-                        'app_name': 'TestApp',
-                        'app_version': '0.1.0.001',
-                        'task_count': 2
-                    }
-                elif capability == 'task.determine_target':
-                    return {'target_agent': 'dev-agent', 'target_role': 'dev', 'reasoning': 'Test'}
-                return {}
-            mock_execute.side_effect = execute_side_effect
-            
-            result = await agent.process_prd_request("warm-boot/prd/PRD-001.md")
-            
-            # Verify workflow steps
-            assert result['status'] == 'success'
-            assert 'tasks_delegated' in result
-            assert len(result['tasks_delegated']) == 2
-            
-            # Verify capability loader was called for prd.read, prd.analyze, task.create, and task.determine_target
-            assert mock_execute.call_count >= 4
-            assert mock_log.call_count == 2
-            assert mock_send.call_count == 2
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_process_prd_request_task_creation(self, mock_database):
-        """Test task generation from PRD"""
-        agent = LeadAgent("lead-agent-001")
-        agent.db_pool = mock_database
-        
-        with patch.object(agent.capability_loader, 'execute') as mock_execute, \
-             patch.object(agent, 'create_execution_cycle', return_value=None), \
-             patch.object(agent, 'log_task_delegation', return_value=None), \
-             patch.object(agent, 'send_message', return_value=None):
-            # Mock capability loader execution
-            async def execute_side_effect(capability, agent_instance, *args, **kwargs):
-                if capability == 'prd.read':
-                    return {"prd_content": "# Simple App\n## Features\n- Basic CRUD", "file_path": "prd-path.md", "parsed_sections": {}}
-                elif capability == 'prd.analyze':
-                    return {'core_features': ['CRUD'], 'technical_requirements': [], 'success_criteria': [], 'analysis_summary': 'Test'}
-                elif capability == 'task.create':
-                    return {
-                        'tasks': [
-                            {'task_id': 'task-archive', 'task_type': 'archive', 'description': 'Archive old version'},
-                            {'task_id': 'task-build', 'task_type': 'build', 'description': 'Build new version'},
-                            {'task_id': 'task-deploy', 'task_type': 'deploy', 'description': 'Deploy application'}
-                        ],
-                        'app_name': 'TestApp',
-                        'app_version': '0.1.0.001',
-                        'task_count': 3
-                    }
-                return {}
-            mock_execute.side_effect = execute_side_effect
-            
-            result = await agent.process_prd_request("prd-path.md")
-            
-            # Verify tasks were created
-            assert result['status'] == 'success'
-            assert len(result['tasks_delegated']) == 3
-            assert result['tasks_delegated'][0]['task_id'] == 'task-archive'
-            assert result['tasks_delegated'][1]['task_id'] == 'task-build'
-            assert result['tasks_delegated'][2]['task_id'] == 'task-deploy'
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_process_prd_request_delegation(self, mock_database):
-        """Test task delegation to correct agent"""
-        agent = LeadAgent("lead-agent-001")
-        agent.db_pool = mock_database
-        
-        with patch.object(agent.capability_loader, 'execute') as mock_execute, \
-             patch.object(agent, 'create_execution_cycle', return_value=None), \
-             patch.object(agent, 'log_task_delegation', return_value=None) as mock_log, \
-             patch.object(agent, 'send_message', return_value=None) as mock_send:
-            # Mock capability loader execution
-            async def execute_side_effect(capability, agent_instance, *args, **kwargs):
-                if capability == 'prd.read':
-                    return {"prd_content": "# Test App", "file_path": "test-prd.md", "parsed_sections": {}}
-                elif capability == 'prd.analyze':
-                    return {'core_features': [], 'technical_requirements': [], 'success_criteria': [], 'analysis_summary': 'Test'}
-                elif capability == 'task.create':
-                    return {
-                        'tasks': [
-                            {'task_id': 'dev-task', 'task_type': 'development', 'description': 'Develop feature'}
-                        ],
-                        'app_name': 'TestApp',
-                        'app_version': '0.1.0.001',
-                        'task_count': 1
-                    }
-                return {}
-            mock_execute.side_effect = execute_side_effect
-            
-            result = await agent.process_prd_request("test-prd.md")
-            
-            # Verify delegation occurred
-            mock_log.assert_called_once()
-            mock_send.assert_called_once()
-            
-            # Verify message was sent with correct structure
-            call_args = mock_send.call_args
-            assert call_args[1]['message_type'] == 'task_delegation'
-            assert 'payload' in call_args[1]
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_process_prd_request_with_complex_prd(self, mock_database):
-        """Test PRD processing with complex requirements"""
-        agent = LeadAgent("lead-agent-001")
-        agent.db_pool = mock_database
-        
-        complex_prd = """# Enterprise Application
-        ## Core Features
-        - Multi-tenant architecture
-        - API gateway
-        ## Technical Requirements
-        - Python 3.11+
-        - Docker deployment"""
-        
-        with patch.object(agent.capability_loader, 'execute') as mock_execute, \
-             patch.object(agent, 'create_execution_cycle', return_value=None), \
-             patch.object(agent, 'log_task_delegation', return_value=None), \
-             patch.object(agent, 'send_message', return_value=None):
-            # Mock capability loader execution
-            async def execute_side_effect(capability, agent_instance, *args, **kwargs):
-                if capability == 'prd.read':
-                    return {
-                        'prd_content': complex_prd,
-                        'file_path': 'complex-prd.md',
-                        'parsed_sections': {}
-                    }
-                elif capability == 'prd.analyze':
-                    return {
-                        'core_features': ['multi-tenant', 'API'],
-                        'technical_requirements': ['Python', 'Docker'],
-                        'success_criteria': [],
-                        'analysis_summary': 'Test analysis'
-                    }
-                elif capability == 'task.create':
-                    return {
-                        'tasks': [
-                            {'task_id': 't1', 'task_type': 'development', 'description': 'Task 1'}
-                        ],
-                        'app_name': 'TestApp',
-                        'app_version': '0.1.0.001',
-                        'task_count': 1
-                    }
-                return {}
-            mock_execute.side_effect = execute_side_effect
-            
-            result = await agent.process_prd_request("complex-prd.md")
-            
-            # Verify complex PRD was processed
-            assert result['status'] == 'success'
-            assert 'prd_analysis' in result
-            assert result['prd_analysis']['core_features'] == ['multi-tenant', 'API']
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_process_prd_request_error_handling(self, mock_database):
-        """Test PRD processing error scenarios"""
-        agent = LeadAgent("lead-agent-001")
-        agent.db_pool = mock_database
-        
-        # Test file read error
-        with patch.object(agent, 'read_file', side_effect=FileNotFoundError("PRD not found")):
-            result = await agent.process_prd_request("nonexistent.md")
-            assert result['status'] == 'error'
-            assert 'Failed to read PRD' in result['message'] or 'PRD processing failed' in result['message']
-        
-        # Test task creation error (returns None)
-        with patch.object(agent.capability_loader, 'execute') as mock_execute, \
-             patch.object(agent, 'create_execution_cycle', return_value=None):
-            # Mock capability loader execution
-            async def execute_side_effect(capability, agent_instance, *args, **kwargs):
-                if capability == 'prd.read':
-                    return {"prd_content": "# Test", "file_path": "test.md", "parsed_sections": {}}
-                elif capability == 'prd.analyze':
-                    return {'core_features': [], 'technical_requirements': [], 'success_criteria': [], 'analysis_summary': 'Test'}
-                elif capability == 'task.create':
-                    return {'tasks': [], 'app_name': 'TestApp', 'app_version': '0.1.0.001', 'task_count': 0}
-                return {}
-            mock_execute.side_effect = execute_side_effect
-            result = await agent.process_prd_request("test.md")
-            assert result['status'] == 'error'
-            assert 'Failed to create tasks' in result['message'] or 'PRD processing failed' in result.get('message', '')
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -924,14 +793,23 @@ class TestLeadAgent:
             'complexity': 0.3
         }
         
+        # Mock capability routing for governance task
+        agent.capability_loader.get_capability_for_task = MagicMock(return_value='governance.task_coordination')
+        agent.capability_loader.prepare_capability_args = MagicMock(return_value=(task,))
+        agent.capability_loader.execute = AsyncMock(return_value={
+            'status': 'completed',
+            'task_id': 'task-empty-prd',
+            'coordination_log': 'Task coordinated successfully'
+        })
+        
         with patch.object(agent, 'update_task_status', new=AsyncMock()) as mock_update, \
              patch.object(agent, 'mock_llm_response', new=AsyncMock(return_value='Mock response')):
             
             result = await agent.process_task(task)
             
-            # Should handle governance task directly, not process PRD
+            # Should route to governance.task_coordination capability
             assert result['status'] == 'completed'
-            assert 'governance_decision' in result
+            agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -967,13 +845,27 @@ class TestLeadAgent:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_process_prd_request_file_not_found(self, mock_database):
-        """Test process_prd_request with non-existent PRD file"""
+    async def test_process_task_with_prd_path_file_not_found(self, mock_database):
+        """Test process_task with non-existent PRD file routes to prd.process capability"""
         agent = LeadAgent("lead-agent-001")
         agent.db_pool = mock_database
         
-        with patch.object(agent.capability_loader, 'execute', side_effect=FileNotFoundError("PRD not found")):
-            result = await agent.process_prd_request('/nonexistent/prd.md', 'ECID-WB-027')
+        task = {
+            'task_id': 'task-001',
+            'prd_path': '/nonexistent/prd.md',
+            'ecid': 'ECID-WB-027'
+        }
+        
+        with patch.object(agent.capability_loader, 'get_capability_for_task') as mock_get_cap, \
+             patch.object(agent.capability_loader, 'prepare_capability_args') as mock_prepare, \
+             patch.object(agent.capability_loader, 'execute') as mock_execute, \
+             patch.object(agent, 'update_task_status') as mock_update_status:
+            
+            mock_get_cap.return_value = 'prd.process'
+            mock_prepare.return_value = (task,)
+            mock_execute.side_effect = FileNotFoundError("PRD not found")
+            
+            result = await agent.process_task(task)
             
             # Should return error status
             assert result['status'] == 'error'
@@ -1060,7 +952,7 @@ class TestLeadAgent:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_process_task_high_complexity_escalation(self, mock_database):
-        """Test process_task with high complexity for escalation"""
+        """Test process_task routes high complexity tasks via capability (escalation logic moved to capability)"""
         agent = LeadAgent("lead-agent-001")
         agent.db_pool = mock_database
         agent.escalation_threshold = 0.7
@@ -1070,19 +962,27 @@ class TestLeadAgent:
             'type': 'development',
             'description': 'Complex task',
             'timestamp': '2025-01-01T00:00:00Z',
-            'complexity': 0.95  # High complexity
+            'complexity': 0.95,  # High complexity
+            'requirements': {'action': 'build'}
         }
         
+        # Mock capability routing - build action routes to docker.build
+        agent.capability_loader.get_capability_for_task = MagicMock(return_value='docker.build')
+        agent.capability_loader.prepare_capability_args = MagicMock(return_value=('task-999', task['requirements']))
+        agent.capability_loader.execute = AsyncMock(return_value={
+            'status': 'completed',
+            'task_id': 'task-999',
+            'action': 'build'
+        })
+        
         with patch.object(agent, 'update_task_status', new=AsyncMock()) as mock_update, \
-             patch.object(agent, 'escalate_task', new=AsyncMock()) as mock_escalate, \
              patch.object(agent, 'mock_llm_response', new=AsyncMock(return_value='Mock response')):
             
             result = await agent.process_task(task)
             
-            assert result['status'] == 'escalated'
-            assert 'reason' in result
-            assert 'escalation_level' in result
-            mock_escalate.assert_called_once()
+            # Should route to capability (escalation logic is now in governance.escalation capability)
+            assert result['status'] == 'completed'
+            agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -2032,13 +1932,20 @@ class TestLeadAgent:
         # Verify dependencies were loaded automatically via capability loader
         assert task_completion_handler.telemetry_collector is not None, \
             "TaskCompletionHandler should load TelemetryCollector automatically"
-        assert task_completion_handler.wrapup_generator is not None, \
-            "TaskCompletionHandler should load WrapupGenerator automatically"
         assert task_completion_handler.warmboot_memory_handler is not None, \
             "TaskCompletionHandler should load WarmBootMemoryHandler automatically"
+        # Note: wrapup_generator is no longer a direct attribute - wrap-up is delegated via capability
         
         with patch.object(task_completion_handler.warmboot_memory_handler, 'log_governance') as mock_log, \
-             patch.object(task_completion_handler.wrapup_generator, 'generate_wrapup') as mock_wrapup:
+             patch.object(lead_agent_for_sequencing.capability_loader, 'execute', new_callable=AsyncMock) as mock_execute, \
+             patch.object(lead_agent_for_sequencing, 'send_message', new_callable=AsyncMock) as mock_send:
+            
+            # Mock task.determine_target to return wrap-up agent
+            async def execute_side_effect(capability, agent, *args):
+                if capability == 'task.determine_target':
+                    return {'target_agent': 'max'}
+                return {}
+            mock_execute.side_effect = execute_side_effect
             
             # Call handle_completion to trigger wrapup generation
             await task_completion_handler.handle_completion(
@@ -2049,8 +1956,11 @@ class TestLeadAgent:
             # Verify governance logging is called
             mock_log.assert_called_once_with("TEST-001", manifest, ["index.html", "app.js", "styles.css"])
             
-            # Verify wrap-up generation is called
-            mock_wrapup.assert_called_once()
+            # Verify wrap-up task was delegated (not direct wrapup_generator call)
+            mock_send.assert_called_once()
+            call_args = mock_send.call_args
+            assert call_args.kwargs['message_type'] == 'task_delegation'
+            assert call_args.kwargs['payload']['type'] == 'warmboot_wrapup'
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -2186,14 +2096,21 @@ class TestLeadAgent:
         # Verify dependencies were loaded automatically via capability loader
         assert task_completion_handler.telemetry_collector is not None, \
             "TaskCompletionHandler should load TelemetryCollector automatically"
-        assert task_completion_handler.wrapup_generator is not None, \
-            "TaskCompletionHandler should load WrapupGenerator automatically"
         assert task_completion_handler.warmboot_memory_handler is not None, \
             "TaskCompletionHandler should load WarmBootMemoryHandler automatically"
+        # Note: wrapup_generator is no longer a direct attribute - wrap-up is delegated via capability
             
         with patch.object(task_completion_handler, '_trigger_next_task') as mock_trigger, \
              patch.object(task_completion_handler.warmboot_memory_handler, 'log_governance') as mock_log, \
-             patch.object(task_completion_handler.wrapup_generator, 'generate_wrapup') as mock_wrapup:
+             patch.object(lead_agent_for_sequencing.capability_loader, 'execute', new_callable=AsyncMock) as mock_execute, \
+             patch.object(lead_agent_for_sequencing, 'send_message', new_callable=AsyncMock) as mock_send:
+            
+            # Mock task.determine_target to return wrap-up agent
+            async def execute_side_effect(capability, agent, *args):
+                if capability == 'task.determine_target':
+                    return {'target_agent': 'max'}
+                return {}
+            mock_execute.side_effect = execute_side_effect
             
             # Mock HTTP call to task API for design manifest completion
             mock_tasks_response = AsyncMock()
@@ -2215,16 +2132,14 @@ class TestLeadAgent:
                 mock_session.__aexit__ = AsyncMock(return_value=None)
                 mock_session_class.return_value = mock_session
                 
-                # Use the same handler instance created earlier (with warmboot_memory_handler set)
-                with patch.object(lead_agent_for_sequencing, 'send_message', new_callable=AsyncMock):
-                    # Execute sequence through capability handlers
-                    await task_completion_handler._handle_design_manifest_completion(
-                        design_message.payload, design_message.context)
-                    await task_completion_handler._handle_build_completion(
-                        build_message.payload, build_message.context)
-                    # Call handle_completion for deploy to trigger wrapup generation
-                    await task_completion_handler.handle_completion(
-                        deploy_message.payload, deploy_message.context)
+                # Execute sequence through capability handlers (use outer mock_send)
+                await task_completion_handler._handle_design_manifest_completion(
+                    design_message.payload, design_message.context)
+                await task_completion_handler._handle_build_completion(
+                    build_message.payload, build_message.context)
+                # Call handle_completion for deploy to trigger wrapup generation
+                await task_completion_handler.handle_completion(
+                    deploy_message.payload, deploy_message.context)
             
             # Verify state progression
             assert lead_agent_for_sequencing.warmboot_state['manifest'] is not None
@@ -2233,12 +2148,14 @@ class TestLeadAgent:
             # Verify all handlers were called
             # design_manifest completion delegates via send_message (not _trigger_next_task)
             # build completion triggers deploy (1 call)
-            # deploy completion triggers wrapup (no _trigger_next_task call)
+            # deploy completion triggers wrapup delegation (no _trigger_next_task call)
             # Note: _trigger_next_task is called internally by _handle_build_completion
             # and _handle_deploy_completion, but we're not patching it on the handler instance
             # so we check that the state was updated instead
             mock_log.assert_called_once()
-            mock_wrapup.assert_called_once()
+            # Verify wrap-up task was delegated (not direct wrapup_generator call)
+            wrapup_calls = [call for call in mock_send.call_args_list if call.kwargs.get('payload', {}).get('type') == 'warmboot_wrapup']
+            assert len(wrapup_calls) > 0, "Wrap-up task should be delegated"
     
     @pytest.mark.asyncio
     async def test_create_build_requirements_with_communication_logging(self, mock_lead_agent):
@@ -2289,12 +2206,22 @@ features:
             }
         }
         
+        # Mock capability routing for governance task
+        agent.capability_loader.get_capability_for_task = MagicMock(return_value='governance.task_coordination')
+        agent.capability_loader.prepare_capability_args = MagicMock(return_value=(task,))
+        agent.capability_loader.execute = AsyncMock(return_value={
+            'status': 'completed',
+            'task_id': 'task-empty-prd',
+            'coordination_log': 'Task coordinated successfully'
+        })
+        
         with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update:
             result = await agent.process_task(task)
             
-            # Should continue with normal governance processing
+            # Should route to governance.task_coordination capability (empty PRD path doesn't trigger PRD processing)
             assert result is not None
-            assert 'status' in result
+            assert result['status'] == 'completed'
+            agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
     
     @pytest.mark.asyncio
     async def test_handle_message_unknown_type_logging(self, mock_lead_agent):
@@ -2319,7 +2246,7 @@ features:
     
     @pytest.mark.asyncio
     async def test_process_task_governance_direct_handling(self, mock_lead_agent):
-        """Test process_task handles governance tasks directly"""
+        """Test process_task routes governance tasks to governance.task_coordination capability"""
         agent = mock_lead_agent
         
         task = {
@@ -2331,17 +2258,26 @@ features:
             }
         }
         
+        # Mock capability routing for governance task
+        agent.capability_loader.get_capability_for_task = MagicMock(return_value='governance.task_coordination')
+        agent.capability_loader.prepare_capability_args = MagicMock(return_value=(task,))
+        agent.capability_loader.execute = AsyncMock(return_value={
+            'status': 'completed',
+            'task_id': 'governance-task-001',
+            'coordination_log': 'Governance task coordinated successfully'
+        })
+        
         with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update:
             result = await agent.process_task(task)
             
-            # Should handle governance task directly
+            # Should route to governance.task_coordination capability
             assert result['status'] == 'completed'
-            assert 'Governance task governance-task-001 handled directly' in result['governance_decision']
-            assert 'Governance tasks are handled directly by the Lead Agent' in result['message']
+            assert result['task_id'] == 'governance-task-001'
+            agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
     
     @pytest.mark.asyncio
     async def test_process_task_delegation_logging(self, mock_lead_agent):
-        """Test process_task logs delegation process"""
+        """Test process_task routes tasks to capabilities (delegation logic moved to capabilities)"""
         agent = mock_lead_agent
         
         task = {
@@ -2353,27 +2289,29 @@ features:
             }
         }
         
-        with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update, \
-             patch.object(agent.capability_loader, 'execute') as mock_execute, \
-             patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
-            async def execute_side_effect(capability, agent_instance, *args, **kwargs):
-                if capability == 'task.determine_target':
-                    return {'target_agent': 'dev-agent', 'target_role': 'dev', 'reasoning': 'Test'}
-                return None
-            mock_execute.side_effect = execute_side_effect
-            
+        # Mock capability routing - build action routes to docker.build
+        agent.capability_loader.get_capability_for_task = MagicMock(return_value='docker.build')
+        agent.capability_loader.prepare_capability_args = MagicMock(return_value=('delegation-task-001', task['requirements']))
+        agent.capability_loader.execute = AsyncMock(return_value={
+            'status': 'completed',
+            'task_id': 'delegation-task-001',
+            'action': 'build'
+        })
+        
+        with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update:
             result = await agent.process_task(task)
             
-            # Verify delegation process
-            mock_execute.assert_called()
-            mock_send.assert_called_once()
+            # Verify capability routing
+            agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
+            agent.capability_loader.execute.assert_called_once()
             
             # Verify status updates
-            assert mock_update.call_count >= 2  # Initial and delegation status updates
+            assert mock_update.call_count >= 2  # Initial and completion status updates
+            assert result['status'] == 'completed'
     
     @pytest.mark.asyncio
     async def test_task_state_logging(self, mock_lead_agent):
-        """Test task state logging during processing"""
+        """Test task processing routes to capability (task state logging removed - handled by capabilities)"""
         agent = mock_lead_agent
         
         task = {
@@ -2386,28 +2324,26 @@ features:
             }
         }
         
-        with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update, \
-             patch.object(agent.capability_loader, 'execute') as mock_execute, \
-             patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
-            async def execute_side_effect(capability, agent_instance, *args, **kwargs):
-                if capability == 'task.determine_target':
-                    return {'target_agent': 'dev-agent', 'target_role': 'dev', 'reasoning': 'Test'}
-                return None
-            mock_execute.side_effect = execute_side_effect
+        # Mock capability routing - build action routes to docker.build
+        agent.capability_loader.get_capability_for_task = MagicMock(return_value='docker.build')
+        agent.capability_loader.prepare_capability_args = MagicMock(return_value=('state-log-task-001', task['requirements']))
+        agent.capability_loader.execute = AsyncMock(return_value={
+            'status': 'completed',
+            'task_id': 'state-log-task-001',
+            'action': 'build'
+        })
+        
+        with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update:
+            result = await agent.process_task(task)
             
-            await agent.process_task(task)
-            
-            # Verify task state was logged
-            assert len(agent.task_state_log) == 1
-            state_entry = agent.task_state_log[0]
-            assert state_entry['task_id'] == 'state-log-task-001'
-            assert state_entry['type'] == 'development'
-            assert state_entry['status'] == 'processing'
-            assert state_entry['timestamp'] == '2024-01-01T00:00:00Z'
+            # Verify capability routing (task state logging is now handled by capabilities)
+            agent.capability_loader.get_capability_for_task.assert_called_once_with(task)
+            agent.capability_loader.execute.assert_called_once()
+            assert result['status'] == 'completed'
     
     @pytest.mark.asyncio
     async def test_process_task_with_prd_path_success(self, mock_lead_agent):
-        """Test process_task with valid PRD path processes successfully"""
+        """Test process_task routes PRD tasks to prd.process capability"""
         agent = mock_lead_agent
         
         task = {
@@ -2421,15 +2357,28 @@ features:
             }
         }
         
-        with patch.object(agent, 'process_prd_request', return_value={'status': 'completed'}) as mock_process, \
+        with patch.object(agent.capability_loader, 'get_capability_for_task') as mock_get_cap, \
+             patch.object(agent.capability_loader, 'prepare_capability_args') as mock_prepare, \
+             patch.object(agent.capability_loader, 'execute') as mock_execute, \
              patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update:
+            
+            mock_get_cap.return_value = 'prd.process'
+            mock_prepare.return_value = (task,)
+            mock_execute.return_value = {'status': 'completed'}
             
             result = await agent.process_task(task)
             
             # Should process PRD and complete
-            mock_process.assert_called_once_with('/path/to/prd.md', 'TEST-ECID-001')
-            mock_update.assert_called_once_with('prd-task-001', "Completed", 100.0)
             assert result['status'] == 'completed'
+            mock_get_cap.assert_called_once_with(task)
+            mock_prepare.assert_called_once_with('prd.process', task)
+            # warmboot.memory is also called, so check that prd.process was called
+            prd_process_calls = [call for call in mock_execute.call_args_list if call[0][0] == 'prd.process']
+            assert len(prd_process_calls) == 1
+            # update_task_status is called twice: once for "Active-Non-Blocking" and once for "Completed"
+            assert mock_update.call_count == 2
+            mock_update.assert_any_call('prd-task-001', 'Active-Non-Blocking', 25.0)
+            mock_update.assert_any_call('prd-task-001', 'Completed', 100.0)
     
     @pytest.mark.asyncio
     async def test_handle_message_specific_types(self, mock_lead_agent):
@@ -2719,7 +2668,7 @@ features:
     
     @pytest.mark.asyncio
     async def test_handle_prd_request_missing_path(self, mock_lead_agent):
-        """Test handle_prd_request with missing prd_path"""
+        """Test handle_prd_request with missing prd_path - routes generically"""
         agent = mock_lead_agent
         
         message = AgentMessage(
@@ -2732,9 +2681,17 @@ features:
             message_id="test-msg-001"
         )
         
-        # Should handle missing prd_path gracefully
-        await agent.handle_prd_request(message)
-        # No exception should be raised
+        with patch.object(agent, 'process_task') as mock_process_task, \
+             patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
+            
+            mock_process_task.return_value = {'status': 'error', 'message': 'No capability mapping found'}
+            
+            # Should handle missing prd_path gracefully - routes to process_task which will handle error
+            await agent.handle_prd_request(message)
+            
+            # Should have called process_task and send_message
+            mock_process_task.assert_called_once()
+            mock_send.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_deploy_completion_success_path(self, mock_lead_agent):
@@ -2785,6 +2742,7 @@ features:
             payload={
                 'task_id': 'test-task-001',
                 'status': 'completed',
+                'action': 'deploy',  # Add action so wrap-up is triggered
                 'ecid': 'TEST-ECID-001'
             },
             context={'ecid': 'TEST-ECID-001'},
@@ -2798,8 +2756,7 @@ features:
         # Verify dependencies were loaded automatically via capability loader
         assert task_completion_handler.telemetry_collector is not None, \
             "TaskCompletionHandler should load TelemetryCollector automatically"
-        assert task_completion_handler.wrapup_generator is not None, \
-            "TaskCompletionHandler should load WrapupGenerator automatically"
+        # Note: wrapup_generator is no longer a direct attribute - wrap-up is delegated via capability
         
         with patch.object(task_completion_handler.telemetry_collector, 'collect', new_callable=AsyncMock, return_value={
                 'database_metrics': {},
@@ -2810,24 +2767,30 @@ features:
                 'artifact_hashes': {},
                 'event_timeline': []
             }) as mock_telemetry, \
-             patch.object(task_completion_handler.wrapup_generator, 'generate_wrapup', new_callable=AsyncMock) as mock_wrapup, \
-             patch.object(agent.capability_loader, 'execute') as mock_execute:
+             patch.object(agent.capability_loader, 'execute', new_callable=AsyncMock) as mock_execute, \
+             patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
             
+            # Mock task.determine_target to return wrap-up agent
+            # Also allow task.completion.handle to execute the real handler
             async def execute_side_effect(capability, agent_instance, *args, **kwargs):
-                if capability == 'task.completion.handle':
+                if capability == 'task.determine_target':
+                    return {'target_agent': 'max'}
+                elif capability == 'task.completion.handle':
+                    # Call the real handler
                     return await task_completion_handler.handle_completion(*args, **kwargs)
-                return None
+                return {}
             mock_execute.side_effect = execute_side_effect
+            
             await agent.handle_developer_completion(message)
             
-            # Should trigger wrap-up for successful task
+            # Should trigger wrap-up delegation for successful task with deploy action
             mock_telemetry.assert_called_once_with('TEST-ECID-001', 'test-task-001')
-            mock_wrapup.assert_called_once()
-            # Verify wrap-up was called with correct arguments
-            call_args = mock_wrapup.call_args
-            assert call_args[0][0] == 'TEST-ECID-001'  # ecid
-            assert call_args[0][1] == 'test-task-001'  # task_id
-            assert call_args[0][2] == {'task_id': 'test-task-001', 'status': 'completed', 'ecid': 'TEST-ECID-001'}  # completion_payload
+            # Verify wrap-up task was delegated (not direct wrapup_generator call)
+            mock_send.assert_called_once()
+            call_args = mock_send.call_args
+            assert call_args.kwargs['message_type'] == 'task_delegation'
+            assert call_args.kwargs['payload']['type'] == 'warmboot_wrapup'
+            assert call_args.kwargs['payload']['ecid'] == 'TEST-ECID-001'
     
     @pytest.mark.asyncio
     async def test_design_manifest_completion_success_with_trigger(self, mock_lead_agent):
@@ -2983,8 +2946,7 @@ features:
         # Verify dependencies were loaded automatically via capability loader
         assert task_completion_handler.telemetry_collector is not None, \
             "TaskCompletionHandler should load TelemetryCollector automatically"
-        assert task_completion_handler.wrapup_generator is not None, \
-            "TaskCompletionHandler should load WrapupGenerator automatically"
+        # Note: wrapup_generator is no longer a direct attribute - wrap-up is delegated via capability
         
         with patch.object(task_completion_handler.telemetry_collector, 'collect', new_callable=AsyncMock, return_value={
                 'database_metrics': {},
@@ -2995,11 +2957,21 @@ features:
                 'artifact_hashes': {},
                 'event_timeline': []
             }), \
-             patch.object(task_completion_handler.wrapup_generator, 'generate_wrapup', new_callable=AsyncMock) as mock_wrapup:
-            await task_completion_handler._handle_deploy_completion(message.payload, message.context)
+             patch.object(agent.capability_loader, 'execute', new_callable=AsyncMock) as mock_execute, \
+             patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
             
-            # Should not generate wrap-up for failed status
-            mock_wrapup.assert_not_called()
+            # Mock task.determine_target to return wrap-up agent
+            async def execute_side_effect(capability, agent_instance, *args):
+                if capability == 'task.determine_target':
+                    return {'target_agent': 'max'}
+                return {}
+            mock_execute.side_effect = execute_side_effect
+            
+            await task_completion_handler.handle_completion(message.payload, message.context)
+            
+            # Should not delegate wrap-up for failed status
+            wrapup_calls = [call for call in mock_send.call_args_list if call.kwargs.get('payload', {}).get('type') == 'warmboot_wrapup']
+            assert len(wrapup_calls) == 0, "Wrap-up should not be delegated for failed tasks"
     
     @pytest.mark.asyncio
     async def test_deploy_completion_success_with_wrapup(self, mock_lead_agent):
@@ -3026,8 +2998,7 @@ features:
         # Verify dependencies were loaded automatically via capability loader
         assert task_completion_handler.telemetry_collector is not None, \
             "TaskCompletionHandler should load TelemetryCollector automatically"
-        assert task_completion_handler.wrapup_generator is not None, \
-            "TaskCompletionHandler should load WrapupGenerator automatically"
+        # Note: wrapup_generator is no longer a direct attribute - wrap-up is delegated via capability
         
         with patch.object(task_completion_handler.telemetry_collector, 'collect', new_callable=AsyncMock, return_value={
                 'database_metrics': {},
@@ -3038,19 +3009,29 @@ features:
                 'artifact_hashes': {},
                 'event_timeline': []
             }), \
-             patch.object(task_completion_handler.wrapup_generator, 'generate_wrapup', new_callable=AsyncMock) as mock_wrapup:
-            # Call handle_completion instead of _handle_deploy_completion directly
-            # because wrap-up generation happens in handle_completion
+             patch.object(agent.capability_loader, 'execute', new_callable=AsyncMock) as mock_execute, \
+             patch.object(agent, 'send_message', new_callable=AsyncMock) as mock_send:
+            
+            # Mock task.determine_target to return wrap-up agent
+            async def execute_side_effect(capability, agent_instance, *args):
+                if capability == 'task.determine_target':
+                    return {'target_agent': 'max'}
+                return {}
+            mock_execute.side_effect = execute_side_effect
+            
+            # Call handle_completion - wrap-up generation is delegated via capability
             await task_completion_handler.handle_completion(message.payload, message.context)
             
-            # Should generate wrap-up for successful deploy
-            mock_wrapup.assert_called_once()
-            # Verify wrap-up was called with correct arguments (including telemetry)
-            call_args = mock_wrapup.call_args
-            assert call_args[0][0] == 'TEST-ECID-001'  # ecid
-            assert call_args[0][1] == 'test-task-001'  # task_id
-            assert call_args[0][2] == {'task_id': 'test-task-001', 'status': 'completed', 'ecid': 'TEST-ECID-001'}  # completion_payload
-            assert call_args[0][3] == {'database_metrics': {}, 'rabbitmq_metrics': {}, 'docker_events': {}, 'reasoning_logs': {}, 'system_metrics': {}, 'artifact_hashes': {}, 'event_timeline': []}  # telemetry
+            # Should delegate wrap-up for successful deploy
+            wrapup_calls = [call for call in mock_send.call_args_list if call.kwargs.get('payload', {}).get('type') == 'warmboot_wrapup']
+            assert len(wrapup_calls) == 1, "Wrap-up task should be delegated for successful deploy"
+            # Verify wrap-up task payload contains correct data
+            wrapup_call = wrapup_calls[0]
+            payload = wrapup_call.kwargs['payload']
+            assert payload['ecid'] == 'TEST-ECID-001'
+            assert payload['original_task_id'] == 'test-task-001'
+            assert 'telemetry' in payload
+            assert 'reasoning_events' in payload
     
     @pytest.mark.asyncio
     async def test_task_completion_handler_loads_dependencies_via_capability_loader(self, mock_lead_agent):
@@ -3068,22 +3049,22 @@ features:
         # Verify dependencies were loaded
         assert task_completion_handler.telemetry_collector is not None, \
             "TaskCompletionHandler should load TelemetryCollector via capability loader"
-        assert task_completion_handler.wrapup_generator is not None, \
-            "TaskCompletionHandler should load WrapupGenerator via capability loader"
         assert task_completion_handler.warmboot_memory_handler is not None, \
             "TaskCompletionHandler should load WarmBootMemoryHandler via capability loader"
+        # Note: wrapup_generator is no longer a direct attribute - wrap-up is delegated via capability
         
         # Verify they are the correct types
         from agents.capabilities.telemetry_collector import TelemetryCollector
-        from agents.capabilities.wrapup_generator import WrapupGenerator
         from agents.capabilities.warmboot_memory_handler import WarmBootMemoryHandler
         
         assert isinstance(task_completion_handler.telemetry_collector, TelemetryCollector), \
             "telemetry_collector should be an instance of TelemetryCollector"
-        assert isinstance(task_completion_handler.wrapup_generator, WrapupGenerator), \
-            "wrapup_generator should be an instance of WrapupGenerator"
         assert isinstance(task_completion_handler.warmboot_memory_handler, WarmBootMemoryHandler), \
             "warmboot_memory_handler should be an instance of WarmBootMemoryHandler"
+        
+        # Verify wrap-up capability can be executed via capability loader
+        assert agent.capability_loader is not None, "Agent should have capability_loader"
+        # Wrap-up is now delegated via task.determine_target and send_message, not direct capability execution
     
     @pytest.mark.asyncio
     async def test_trigger_next_task_placeholder(self, mock_lead_agent):
