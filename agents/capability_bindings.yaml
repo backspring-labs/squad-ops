@@ -12,9 +12,12 @@ bindings:
   governance.escalation: max
   warmboot.wrapup: max  # Wrap-up generation (can be different agent in other squads)
   
-  # Strategy capabilities
-  strategy.market_analysis: nat
-  strategy.product_planning: nat
+  # Product capabilities
+  product.draft_prd_from_prompt: nat
+  product.validate_acceptance_criteria: nat
+  
+  # Communications capabilities (console chat)
+  comms.chat: nat  # Console chat support for Nat
   
   # QA capabilities
   qa.security_audit: eve

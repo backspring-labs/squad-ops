@@ -71,4 +71,54 @@ skills:
     outputs:
       - prompt: "Formatted prompt string for LLM"
     determinism: "Deterministic - template substitution only"
+    
+  # Product domain skills
+  - name: product.format_prd_prompt
+    skill_version: 1.0.0
+    description: "Format prompt for LLM to generate PRD content from requirement/objective using template"
+    domain: product
+    inputs:
+      - requirement: "User requirement/request"
+      - objective: "Objective or goal for the application"
+      - app_name: "Application name"
+      - template_content: "PRD template content with placeholders"
+    outputs:
+      - prompt: "Formatted prompt string for LLM"
+    determinism: "Deterministic - prompt formatting only"
+    
+  - name: product.parse_prd_acceptance_criteria
+    skill_version: 1.0.0
+    description: "Extract acceptance criteria from PRD content"
+    domain: product
+    inputs:
+      - prd_content: "PRD markdown content"
+    outputs:
+      - criteria: "Structured list with criterion_id, description, type, testable"
+    determinism: "Deterministic - parsing logic only"
+    
+  # QA domain skills
+  - name: qa.compare_app_output_to_criteria
+    skill_version: 1.0.0
+    description: "Fetch deployed app HTML, parse content, and compare against acceptance criteria"
+    domain: qa
+    inputs:
+      - app_url: "URL of deployed application"
+      - criteria_list: "List of criteria dictionaries"
+    outputs:
+      - comparison_results: "Dictionary with criteria_met, criteria_unmet, criteria_partial"
+    determinism: "Non-deterministic - requires HTTP fetch"
+    
+  # Shared skills
+  - name: shared.text_match
+    skill_version: 1.0.0
+    description: "Semantic text matching for criteria validation"
+    domain: shared
+    inputs:
+      - text: "Text to search in"
+      - pattern: "Pattern to match against"
+      - threshold: "Minimum similarity score (0.0-1.0)"
+    outputs:
+      - match_score: "Float similarity score (0.0-1.0)"
+      - matched: "Boolean indicating if score > threshold"
+    determinism: "Deterministic - text processing only"
 

@@ -2,16 +2,18 @@ agent_id: nat
 role: strat
 spec_version: 1.0.0
 implements:
-  - capability: strategy.market_analysis
+  - capability: product.draft_prd_from_prompt
     min_version: 1.0.0
-  - capability: strategy.product_planning
+  - capability: product.validate_acceptance_criteria
+    min_version: 1.0.0
+  - capability: comms.chat
     min_version: 1.0.0
 constraints:
   repo_allow: ["squad_ops/*"]
   max_runtime_s: 1800
   network_allow: ["git-read", "api-calls"]
 defaults:
-  model: ollama:mixtral-8x7b
+  model: ollama:llama3.1:8b-instruct-q4_K_M
   image: squadops/nat:latest
   max_concurrency: 1
 

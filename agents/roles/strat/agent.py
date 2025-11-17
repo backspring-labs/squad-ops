@@ -2,17 +2,14 @@
 """Strat Agent - Strat Role"""
 
 import asyncio
-import json
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 from base_agent import BaseAgent, AgentMessage
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
 from pathlib import Path
-from collections import deque
-import heapq
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +22,14 @@ class StratAgent(BaseAgent):
             agent_type="strategy",
             reasoning_style="abductive"
         )
-        self.priority_queue = []
-        self.opportunity_cache = {}
-        self.hypothesis_space = {}
         
-        # Initialize schema validator
-        base_path = Path(__file__).parent.parent.parent.parent
+        # Initialize schema validator using unified path resolver
+        from agents.utils.path_resolver import PathResolver
+        base_path = PathResolver.get_base_path()
         self.validator = SchemaValidator(base_path)
     
     async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
-        """Handle agent request using capability-based routing"""
+        """Handle agent request using generic capability routing"""
         started_at = datetime.utcnow()
         
         try:
@@ -61,17 +56,35 @@ class StratAgent(BaseAgent):
             # Generate idempotency key
             idempotency_key = request.generate_idempotency_key(self.name)
             
-            # Route to capability handler
+            # Route to capability via Loader
             action = request.action
-            if action == "strategy.market_analysis":
-                result = await self._handle_market_analysis(request)
-            elif action == "strategy.product_planning":
-                result = await self._handle_product_planning(request)
-            else:
+            if not self.capability_loader:
+                return AgentResponse.failure(
+                    error_code="LOADER_NOT_INITIALIZED",
+                    error_message="Capability loader not initialized",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            try:
+                # Execute capability via Loader - fully generic routing
+                # Use calling convention metadata to determine how to call the capability
+                args = self.capability_loader.prepare_capability_args(action, request.payload, request.metadata)
+                result = await self.capability_loader.execute(action, self, *args)
+            except ValueError as e:
+                # Capability not found in Loader
                 return AgentResponse.failure(
                     error_code="UNKNOWN_CAPABILITY",
                     error_message=f"Unknown capability: {action}",
                     retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            except Exception as e:
+                logger.error(f"{self.name}: Capability execution error: {e}", exc_info=True)
+                return AgentResponse.failure(
+                    error_code="CAPABILITY_EXECUTION_ERROR",
+                    error_message=str(e),
+                    retryable=True,
                     timing=Timing.create(started_at)
                 )
             
@@ -97,216 +110,91 @@ class StratAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_market_analysis(self, request: AgentRequest) -> Dict[str, Any]:
-        """Handle strategy.market_analysis capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
-        
-        # Map existing market analysis logic to new capability format
-        return {
-            'analysis_report': f'/reports/market-analysis/{task_id}',
-            'insights': [],
-            'recommendations': []
-        }
-    
-    async def _handle_product_planning(self, request: AgentRequest) -> Dict[str, Any]:
-        """Handle strategy.product_planning capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
-        
-        # Map existing product planning logic to new capability format
-        return {
-            'roadmap': {},
-            'priorities': [],
-            'timeline': {}
-        }
-    
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process product tasks using abductive reasoning and opportunistic approach"""
+        """
+        Process tasks using generic capability routing.
+        
+        Uses CapabilityLoader.get_capability_for_task() to determine capability
+        based on task_type or requirements.action, then executes it generically.
+        """
         task_id = task.get('task_id', 'unknown')
-        task_type = task.get('type', 'product')
-        priority = task.get('priority', 5)
+        task_type = task.get('type', task.get('task_type', 'unknown'))
         
-        logger.info(f"Nat processing product task: {task_id}")
+        logger.info(f"{self.name} processing {task_type} task: {task_id}")
         
-        # Add to priority queue
-        heapq.heappush(self.priority_queue, (priority, task_id, task))
-        
-        # Update task status
-        await self.update_task_status(task_id, "Active-Non-Blocking", 15.0)
-        
-        # Generate hypotheses
-        hypotheses = await self.generate_hypotheses(task)
-        
-        # Opportunistic evaluation
-        await self.update_task_status(task_id, "Active-Non-Blocking", 40.0)
-        
-        best_hypothesis = await self.evaluate_hypotheses(hypotheses, task)
-        
-        # Create product strategy
-        await self.update_task_status(task_id, "Active-Non-Blocking", 70.0)
-        
-        strategy = await self.create_product_strategy(best_hypothesis, task)
-        
-        # Validate strategy
-        await self.update_task_status(task_id, "Active-Non-Blocking", 90.0)
-        
-        validation = await self.validate_strategy(strategy, task)
-        
-        await self.update_task_status(task_id, "Completed", 100.0)
-        
-        return {
-            'task_id': task_id,
-            'status': 'completed',
-            'hypotheses': hypotheses,
-            'best_hypothesis': best_hypothesis,
-            'strategy': strategy,
-            'validation': validation,
-            'opportunities': self.opportunity_cache.get(task_id, []),
-            'mock_response': await self.mock_llm_response(
-                f"Product strategy for {task_type}",
-                f"Best hypothesis: {best_hypothesis.get('summary', 'N/A')}"
-            )
-        }
+        try:
+            # Check if this is a new SIP-046 AgentRequest format
+            if 'action' in task:
+                # Let BaseAgent handle the conversion to AgentRequest
+                return await super().process_task(task)
+            
+            # Generic capability routing via loader
+            if not self.capability_loader:
+                logger.error(f"{self.name}: Capability loader not initialized")
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': 'Capability loader not initialized'
+                }
+            
+            # Determine capability from task structure
+            capability_name = self.capability_loader.get_capability_for_task(task)
+            if not capability_name:
+                logger.warning(f"{self.name} received task with no capability mapping: {task_type}")
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': f'No capability mapping found for task type: {task_type}'
+                }
+            
+            logger.info(f"{self.name} routing task {task_id} to capability: {capability_name}")
+            
+            # Update task status to in_progress
+            await self.update_task_status(task_id, "Active-Non-Blocking", 25.0)
+            
+            try:
+                # Generic capability execution - use calling convention metadata
+                # This handles all calling conventions: task_dict, requirements_only, task_id_requirements, payload_as_is
+                args = self.capability_loader.prepare_capability_args(capability_name, task)
+                result = await self.capability_loader.execute(capability_name, self, *args)
+                
+                # Update task status to completed
+                await self.update_task_status(task_id, "Completed", 100.0)
+                
+                # Return result (capabilities return their own result format)
+                return result
+                    
+            except ValueError as e:
+                # Capability not found
+                logger.error(f"{self.name}: Capability not found: {e}")
+                await self.update_task_status(task_id, "Failed", 0.0, str(e))
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': f'Capability not found: {e}'
+                }
+            except Exception as e:
+                logger.error(f"{self.name}: Capability execution error: {e}", exc_info=True)
+                await self.update_task_status(task_id, "Failed", 0.0, str(e))
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': str(e)
+                }
+                
+        except Exception as e:
+            logger.error(f"{self.name}: Error processing task: {e}", exc_info=True)
+            return {
+                'task_id': task_id,
+                'status': 'error',
+                'error': str(e)
+            }
     
     async def handle_message(self, message: AgentMessage) -> None:
-        """Handle product-related messages"""
-        if message.message_type == "strategy_request":
-            await self.handle_strategy_request(message)
-        elif message.message_type == "opportunity_alert":
-            await self.handle_opportunity_alert(message)
-        elif message.message_type == "hypothesis_query":
-            await self.handle_hypothesis_query(message)
-        else:
-            logger.info(f"Nat received message: {message.message_type} from {message.sender}")
-    
-    async def generate_hypotheses(self, task: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Generate hypotheses using abductive reasoning"""
-        task_id = task.get('task_id')
-        observations = task.get('observations', [])
-        
-        hypotheses = []
-        
-        for i, observation in enumerate(observations):
-            hypothesis = {
-                'id': f"hyp_{task_id}_{i}",
-                'observation': observation,
-                'explanation': f"Hypothesis explaining: {observation}",
-                'confidence': 0.7 + (i * 0.1),  # Mock confidence
-                'evidence': [observation],
-                'testable': True
-            }
-            hypotheses.append(hypothesis)
-        
-        # Store in hypothesis space
-        self.hypothesis_space[task_id] = hypotheses
-        
-        return hypotheses
-    
-    async def evaluate_hypotheses(self, hypotheses: List[Dict[str, Any]], task: Dict[str, Any]) -> Dict[str, Any]:
-        """Evaluate hypotheses and select the best one"""
-        if not hypotheses:
-            return {'id': 'default', 'summary': 'No hypotheses generated'}
-        
-        # Find hypothesis with highest confidence
-        best_hypothesis = max(hypotheses, key=lambda h: h['confidence'])
-        
-        return best_hypothesis
-    
-    async def create_product_strategy(self, hypothesis: Dict[str, Any], task: Dict[str, Any]) -> Dict[str, Any]:
-        """Create product strategy based on best hypothesis"""
-        return {
-            'strategy_id': f"strategy_{task.get('task_id')}",
-            'hypothesis_basis': hypothesis['id'],
-            'approach': 'opportunistic',
-            'phases': [
-                {'phase': 'discovery', 'duration': '2 weeks', 'goals': ['Validate hypothesis']},
-                {'phase': 'development', 'duration': '4 weeks', 'goals': ['Build MVP']},
-                {'phase': 'validation', 'duration': '2 weeks', 'goals': ['Test market fit']}
-            ],
-            'success_metrics': ['user_engagement', 'conversion_rate', 'retention'],
-            'risk_mitigation': ['A/B testing', 'gradual rollout', 'feedback loops']
-        }
-    
-    async def validate_strategy(self, strategy: Dict[str, Any], task: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate the product strategy"""
-        return {
-            'valid': True,
-            'feasibility_score': 8.5,
-            'market_alignment': 'high',
-            'resource_requirements': 'moderate',
-            'timeline_realistic': True
-        }
-    
-    async def handle_strategy_request(self, message: AgentMessage):
-        """Handle strategy requests"""
-        context = message.payload.get('context', {})
-        task_id = message.payload.get('task_id')
-        
-        logger.info(f"Nat handling strategy request for task: {task_id}")
-        
-        # Generate strategy based on context
-        strategy = await self.create_product_strategy(
-            {'id': 'requested', 'confidence': 0.8},
-            {'task_id': task_id, 'observations': [context]}
-        )
-        
-        await self.send_message(
-            message.sender,
-            "strategy_response",
-            {
-                'task_id': task_id,
-                'strategy': strategy,
-                'strategist': 'Nat'
-            }
-        )
-    
-    async def handle_opportunity_alert(self, message: AgentMessage):
-        """Handle opportunity alerts"""
-        opportunity = message.payload.get('opportunity', {})
-        task_id = message.payload.get('task_id')
-        
-        logger.info(f"Nat handling opportunity alert for task: {task_id}")
-        
-        # Cache opportunity
-        if task_id not in self.opportunity_cache:
-            self.opportunity_cache[task_id] = []
-        
-        self.opportunity_cache[task_id].append(opportunity)
-        
-        # Evaluate opportunity
-        evaluation = {
-            'opportunity_id': opportunity.get('id'),
-            'priority': opportunity.get('priority', 5),
-            'feasibility': 'high',
-            'recommendation': 'pursue'
-        }
-        
-        await self.send_message(
-            message.sender,
-            "opportunity_evaluation",
-            {
-                'task_id': task_id,
-                'evaluation': evaluation,
-                'evaluator': 'Nat'
-            }
-        )
-    
-    async def handle_hypothesis_query(self, message: AgentMessage):
-        """Handle hypothesis queries"""
-        task_id = message.payload.get('task_id')
-        
-        hypotheses = self.hypothesis_space.get(task_id, [])
-        
-        await self.send_message(
-            message.sender,
-            "hypothesis_response",
-            {
-                'task_id': task_id,
-                'hypotheses': hypotheses,
-                'hypothesis_count': len(hypotheses)
-            }
-        )
+        """Handle generic messages"""
+        logger.info(f"{self.name} received message: {message.message_type} from {message.sender}")
+        # Generic message handling - no business logic, just logging
+        # Business logic should be in capabilities if needed
 
 async def main():
     """Main entry point for Strat agent"""
