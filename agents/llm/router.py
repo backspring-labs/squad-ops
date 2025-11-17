@@ -72,7 +72,7 @@ class LLMRouter:
             
             # Build config with clear logging for fallback usage
             final_url = default_url or os.getenv('OLLAMA_URL')
-            final_model = default_model or os.getenv('AGENT_MODEL')
+            final_model = default_model  # No longer read from AGENT_MODEL env var
             final_timeout = default_timeout
             
             # Log warnings for hardcoded fallbacks, especially model name
@@ -81,12 +81,18 @@ class LLMRouter:
                 final_url = 'http://host.docker.internal:11434'
             
             if not final_model:
-                logger.warning(
-                    "⚠️  Using hardcoded default model 'qwen2.5:7b' - ensure this model is available. "
-                    "Set AGENT_MODEL environment variable to override. "
-                    "If this model doesn't exist, LLM calls will fail."
+                # Fail fast with informative error - no hardcoded fallback
+                raise ValueError(
+                    "❌ LLM model not configured!\n\n"
+                    "💡 To fix:\n"
+                    "  1. Configure model in agent's config.yaml:\n"
+                    "     defaults:\n"
+                    "       model: ollama:<model-name>\n"
+                    "  2. Example: defaults.model: ollama:llama3.1:8b\n"
+                    "  3. Ensure the model is available in Ollama: ollama list\n"
+                    "  4. If model doesn't exist, pull it: ollama pull <model-name>\n\n"
+                    "📖 See agents/roles/<role>/config.yaml for examples"
                 )
-                final_model = 'qwen2.5:7b'
             
             if not final_timeout:
                 logger.debug("Using default timeout: 180 seconds (set LLM_TIMEOUT to override)")

@@ -10,6 +10,7 @@ This directory contains integration tests for the SquadOps framework. These test
 
 - `test_agent_communication.py` - Tests agent-to-agent communication through RabbitMQ
 - `test_workflow.py` - Tests the complete workflow with real Ollama integration
+- `test_agent_model_validation.py` - Validates that all agent model configurations are available and functional in Ollama
 - `conftest.py` - Test configuration and fixtures
 - `agent_manager.py` - Helper for managing agent containers during tests
 - `test_config.env` - Externalized configuration for services
@@ -19,6 +20,7 @@ This directory contains integration tests for the SquadOps framework. These test
 1. **Agent Communication Tests** - Verify agents can communicate via RabbitMQ
 2. **Workflow Integration Tests** - Test complete workflows with real services
 3. **Service Integration Tests** - Verify integration with external services
+4. **Agent Configuration Validation Tests** - Verify agent configurations are valid (model availability, etc.)
 
 **Note:** End-to-end WarmBoot testing is done manually as a smoke test rather than automated integration tests.
 

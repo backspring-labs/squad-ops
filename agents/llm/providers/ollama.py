@@ -43,16 +43,18 @@ class OllamaClient:
                 self.url = 'http://host.docker.internal:11434'
         
         if not self.model:
-            env_model = os.getenv('AGENT_MODEL')
-            if env_model:
-                self.model = env_model
-            else:
-                logger.warning(
-                    "⚠️  Using hardcoded default model 'qwen2.5:7b' - ensure this model is available. "
-                    "Set AGENT_MODEL environment variable to override. "
-                    "If this model doesn't exist, LLM calls will fail."
-                )
-                self.model = 'qwen2.5:7b'
+            # Fail fast with informative error - no hardcoded fallback
+            raise ValueError(
+                "❌ LLM model not configured!\n\n"
+                "💡 To fix:\n"
+                "  1. Configure model in agent's config.yaml:\n"
+                "     defaults:\n"
+                "       model: ollama:<model-name>\n"
+                "  2. Example: defaults.model: ollama:llama3.1:8b\n"
+                "  3. Ensure the model is available in Ollama: ollama list\n"
+                "  4. If model doesn't exist, pull it: ollama pull <model-name>\n\n"
+                "📖 See agents/roles/<role>/config.yaml for examples"
+            )
         
         self.timeout = timeout
         # Track token usage from last call (Task 1.3)

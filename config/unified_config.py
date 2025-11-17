@@ -159,7 +159,7 @@ class SquadOpsConfig:
         """
         llm_config = {
             'url': self._get_env_with_platform_fallback('OLLAMA_URL', 'http://host.docker.internal:11434'),
-            'model': self._get_env_with_platform_fallback('AGENT_MODEL', 'qwen2.5:7b'),
+            'model': None,  # No default - agents must configure model in config.yaml defaults.model
             'use_local': os.getenv('USE_LOCAL_LLM', 'true').lower() == 'true',
             'timeout': int(os.getenv('LLM_TIMEOUT', '60'))
         }

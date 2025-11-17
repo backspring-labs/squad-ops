@@ -187,7 +187,6 @@ services:
       AGENT_ID: max
       AGENT_ROLE: lead
       AGENT_DISPLAY_NAME: Max
-      AGENT_MODEL: llama3.1:8b
       USE_LOCAL_LLM: "true"
       OLLAMA_URL: http://host.docker.internal:11434
       # Note: Mem0 1.0.0 may require OPENAI_API_KEY env var even when using Ollama
@@ -218,7 +217,6 @@ services:
       AGENT_ID: nat
       AGENT_ROLE: strat
       AGENT_DISPLAY_NAME: Nat
-      AGENT_MODEL: mixtral-8x7b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -242,7 +240,6 @@ services:
       AGENT_ID: glyph
       AGENT_ROLE: creative
       AGENT_DISPLAY_NAME: Glyph
-      AGENT_MODEL: stable-diffusion-xl
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -266,7 +263,6 @@ services:
       AGENT_ID: neo
       AGENT_ROLE: dev
       AGENT_DISPLAY_NAME: Neo
-      AGENT_MODEL: qwen2.5:7b
       USE_LOCAL_LLM: "true"
       OLLAMA_URL: http://host.docker.internal:11434
       # Note: Mem0 1.0.0 may require OPENAI_API_KEY env var even when using Ollama
@@ -299,7 +295,6 @@ services:
       AGENT_ID: eve
       AGENT_ROLE: qa
       AGENT_DISPLAY_NAME: EVE
-      AGENT_MODEL: llama3-70b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -323,7 +318,6 @@ services:
       AGENT_ID: data
       AGENT_ROLE: data
       AGENT_DISPLAY_NAME: Data
-      AGENT_MODEL: mixtral-8x7b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -347,7 +341,6 @@ services:
       AGENT_ID: quark
       AGENT_ROLE: finance
       AGENT_DISPLAY_NAME: Quark
-      AGENT_MODEL: llama3-8b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -371,7 +364,6 @@ services:
       AGENT_ID: joi
       AGENT_ROLE: comms
       AGENT_DISPLAY_NAME: Joi
-      AGENT_MODEL: llama3-8b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -395,7 +387,6 @@ services:
       AGENT_ID: og
       AGENT_ROLE: curator
       AGENT_DISPLAY_NAME: Og
-      AGENT_MODEL: llama3-70b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -419,7 +410,6 @@ services:
       AGENT_ID: hal
       AGENT_ROLE: audit
       AGENT_DISPLAY_NAME: HAL
-      AGENT_MODEL: llama3-8b
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
