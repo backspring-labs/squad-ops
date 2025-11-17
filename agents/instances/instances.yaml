@@ -11,8 +11,8 @@ instances:
     description: "Task Lead - Governance and coordination"
 
   # Strategy Role  
-  - id: strat-agent
-    display_name: StratAgent
+  - id: nat
+    display_name: Nat
     role: strat
     model: mixtral-8x7b
     enabled: true
