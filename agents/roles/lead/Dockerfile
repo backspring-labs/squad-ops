@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Set base path environment variable for unified path resolution
+ENV SQUADOPS_BASE_PATH=/app
+
 # Build argument for agent role
 ARG AGENT_ROLE=lead
 
@@ -16,11 +19,7 @@ RUN apt-get update && apt-get install -y \
 COPY agents/roles/${AGENT_ROLE}/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy agent files
-COPY agents/base_agent.py .
-COPY agents/roles/${AGENT_ROLE}/agent.py .
-
-# Copy new LLM, contracts, telemetry, and memory modules
+# Copy entire agents directory structure maintaining paths
 COPY agents/llm ./agents/llm
 COPY agents/specs ./agents/specs
 COPY agents/capabilities ./agents/capabilities
@@ -28,10 +27,15 @@ COPY agents/capability_bindings.yaml ./agents/capability_bindings.yaml
 COPY agents/telemetry ./agents/telemetry
 COPY agents/memory ./agents/memory
 COPY agents/instances ./agents/instances
-# Copy skills directory for capability imports (capabilities use agents.skills.*)
 COPY agents/skills ./agents/skills
+COPY agents/utils ./agents/utils
 
-# Copy version management
+# Copy agent-specific files to root for CMD compatibility
+COPY agents/base_agent.py .
+COPY agents/roles/${AGENT_ROLE}/agent.py .
+COPY agents/roles/${AGENT_ROLE}/config.yaml ./agents/roles/${AGENT_ROLE}/
+
+# Copy config directory
 COPY config ./config
 
 # Create logs and memory database directories
