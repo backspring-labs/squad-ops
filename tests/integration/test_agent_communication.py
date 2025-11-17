@@ -360,10 +360,12 @@ Test application for SquadOps integration testing
         lead_agent = LeadAgent("lead-agent-001")
         
         # Test various task types
-        # Note: Actual agent names are used (e.g., "neo" for dev-agent)
+        # Note: Actual agent names are used (e.g., "neo" for dev-agent, "nat" for strat-agent)
         test_cases = [
             ('development', 'neo'),  # Actual agent name is "neo"
             ('code', 'neo'),
+            ('product', 'nat'),  # Product tasks delegate to nat (strategy agent)
+            ('strategy', 'nat'),  # Strategy tasks delegate to nat
             ('security', 'qa-agent'),
             ('data', 'data-agent'),
             ('financial', 'finance-agent'),

@@ -314,11 +314,12 @@ class TestBaseAgentTelemetryIntegration:
                 async def handle_message(self, message):
                     pass
             
-            agent = TestAgent('test-agent', 'test', 'test')
-            
-            # Should have telemetry_client initialized
-            assert hasattr(agent, 'telemetry_client')
-            assert agent.telemetry_client is not None
+            with patch.object(TestAgent, '_initialize_llm_client', return_value=MagicMock()):
+                agent = TestAgent('test-agent', 'test', 'test')
+                
+                # Should have telemetry_client initialized
+                assert hasattr(agent, 'telemetry_client')
+                assert agent.telemetry_client is not None
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -343,36 +344,37 @@ class TestBaseAgentTelemetryIntegration:
                 async def handle_message(self, message):
                     pass
             
-            agent = TestAgent('test-agent', 'test', 'test')
-            
-            # Mock LLM client
-            mock_llm_client = AsyncMock()
-            mock_llm_client.complete = AsyncMock(return_value='Test response')
-            mock_llm_client.get_token_usage = MagicMock(return_value={
-                'prompt_tokens': 10,
-                'completion_tokens': 20,
-                'total_tokens': 30
-            })
-            agent.llm_client = mock_llm_client
-            
-            # Mock telemetry client
-            mock_telemetry = MagicMock()
-            mock_span = MagicMock()
-            mock_span.__enter__ = MagicMock(return_value=mock_span)
-            mock_span.__exit__ = MagicMock(return_value=None)
-            mock_telemetry.create_span = MagicMock(return_value=mock_span)
-            mock_telemetry.record_counter = MagicMock()
-            agent.telemetry_client = mock_telemetry
-            
-            # Call llm_response
-            response = await agent.llm_response('test prompt', context='test')
-            
-            # Verify telemetry span was created
-            assert mock_telemetry.create_span.called
-            
-            # Verify token counter was recorded
-            assert mock_telemetry.record_counter.called
-            call_args = mock_telemetry.record_counter.call_args
-            assert call_args[0][0] == 'agent_tokens_used_total'
-            assert call_args[0][1] == 30
+            with patch.object(TestAgent, '_initialize_llm_client', return_value=MagicMock()):
+                agent = TestAgent('test-agent', 'test', 'test')
+                
+                # Mock LLM client
+                mock_llm_client = AsyncMock()
+                mock_llm_client.complete = AsyncMock(return_value='Test response')
+                mock_llm_client.get_token_usage = MagicMock(return_value={
+                    'prompt_tokens': 10,
+                    'completion_tokens': 20,
+                    'total_tokens': 30
+                })
+                agent.llm_client = mock_llm_client
+                
+                # Mock telemetry client
+                mock_telemetry = MagicMock()
+                mock_span = MagicMock()
+                mock_span.__enter__ = MagicMock(return_value=mock_span)
+                mock_span.__exit__ = MagicMock(return_value=None)
+                mock_telemetry.create_span = MagicMock(return_value=mock_span)
+                mock_telemetry.record_counter = MagicMock()
+                agent.telemetry_client = mock_telemetry
+                
+                # Call llm_response
+                response = await agent.llm_response('test prompt', context='test')
+                
+                # Verify telemetry span was created
+                assert mock_telemetry.create_span.called
+                
+                # Verify token counter was recorded
+                assert mock_telemetry.record_counter.called
+                call_args = mock_telemetry.record_counter.call_args
+                assert call_args[0][0] == 'agent_tokens_used_total'
+                assert call_args[0][1] == 30
 

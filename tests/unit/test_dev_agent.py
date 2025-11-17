@@ -109,13 +109,20 @@ class TestDevAgent:
         """Test handle_agent_request for build.artifact capability"""
         request = create_sample_build_artifact_request(task_id="test-001")
         
+        # Mock validator and constraint validation
+        dev_agent.validator = MagicMock()
+        dev_agent.validator.validate_request = MagicMock(return_value=(True, None))
+        dev_agent.validator.validate_result_keys = MagicMock(return_value=(True, None))
+        dev_agent._validate_constraints = MagicMock(return_value=(True, None))
+        
         # Mock capability_loader.execute to return build.artifact result
-        dev_agent.capability_loader.execute.return_value = {
+        dev_agent.capability_loader.execute = AsyncMock(return_value={
             "artifact_uri": "/artifacts/TestApp/test-001",
             "commit": "mock_commit_hash",
             "files_generated": [{"type": "file", "path": "index.html", "content": "<html></html>"}],
             "manifest_uri": "/artifacts/TestApp/test-001/manifest.json"
-        }
+        })
+        dev_agent.capability_loader.prepare_capability_args = MagicMock(return_value=(request.payload.get('requirements', request.payload),))
         
         response = await dev_agent.handle_agent_request(request)
         
@@ -139,8 +146,13 @@ class TestDevAgent:
             metadata={"pid": "PID-001", "ecid": "ECID-001"}
         )
         
+        # Mock validator and constraint validation
+        dev_agent.validator = MagicMock()
+        dev_agent.validator.validate_request = MagicMock(return_value=(True, None))
+        dev_agent._validate_constraints = MagicMock(return_value=(True, None))
+        
         # Mock capability_loader.execute to raise ValueError for unknown capability
-        dev_agent.capability_loader.execute.side_effect = ValueError("Capability 'test.run' not found in capability map")
+        dev_agent.capability_loader.prepare_capability_args = MagicMock(side_effect=ValueError("Capability 'test.run' not found in capability map"))
         
         response = await dev_agent.handle_agent_request(request)
         

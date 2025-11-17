@@ -51,8 +51,11 @@ def mock_sql_adapter():
 @pytest.mark.asyncio
 async def test_base_agent_record_memory():
     """Test record_memory method in BaseAgent"""
+    from unittest.mock import MagicMock
+    
     with patch('agents.memory.lancedb_adapter.LanceDBAdapter') as MockLanceDBAdapter, \
-         patch('agents.memory.sql_adapter.SqlAdapter') as MockSqlAdapter:
+         patch('agents.memory.sql_adapter.SqlAdapter') as MockSqlAdapter, \
+         patch.object(MemoryTestAgent, '_initialize_llm_client', return_value=MagicMock()):
         
         mock_lancedb = AsyncMock()
         mock_lancedb.put = AsyncMock(return_value="test-mem-id")
@@ -83,29 +86,32 @@ async def test_base_agent_record_memory():
 @pytest.mark.asyncio
 async def test_base_agent_extract_memory_context():
     """Test _extract_memory_context method"""
-    agent = MemoryTestAgent("TestAgent", "test", "test")
+    from unittest.mock import MagicMock
     
-    # Test with direct keys
-    task1 = {'pid': 'PID-001', 'ecid': 'ECID-001'}
-    context1 = agent._extract_memory_context(task1)
-    assert context1['pid'] == 'PID-001'
-    assert context1['ecid'] == 'ECID-001'
-    
-    # Test with context dict
-    task2 = {'context': {'pid': 'PID-002', 'ecid': 'ECID-002'}}
-    context2 = agent._extract_memory_context(task2)
-    assert context2['pid'] == 'PID-002'
-    assert context2['ecid'] == 'ECID-002'
-    
-    # Test with payload
-    task3 = {'payload': {'pid': 'PID-003', 'ecid': 'ECID-003'}}
-    context3 = agent._extract_memory_context(task3)
-    assert context3['pid'] == 'PID-003'
-    assert context3['ecid'] == 'ECID-003'
-    
-    # Test with missing keys
-    task4 = {}
-    context4 = agent._extract_memory_context(task4)
-    assert context4['pid'] == 'unknown'
-    assert context4['ecid'] == 'unknown'
+    with patch.object(MemoryTestAgent, '_initialize_llm_client', return_value=MagicMock()):
+        agent = MemoryTestAgent("TestAgent", "test", "test")
+        
+        # Test with direct keys
+        task1 = {'pid': 'PID-001', 'ecid': 'ECID-001'}
+        context1 = agent._extract_memory_context(task1)
+        assert context1['pid'] == 'PID-001'
+        assert context1['ecid'] == 'ECID-001'
+        
+        # Test with context dict
+        task2 = {'context': {'pid': 'PID-002', 'ecid': 'ECID-002'}}
+        context2 = agent._extract_memory_context(task2)
+        assert context2['pid'] == 'PID-002'
+        assert context2['ecid'] == 'ECID-002'
+        
+        # Test with payload
+        task3 = {'payload': {'pid': 'PID-003', 'ecid': 'ECID-003'}}
+        context3 = agent._extract_memory_context(task3)
+        assert context3['pid'] == 'PID-003'
+        assert context3['ecid'] == 'ECID-003'
+        
+        # Test with missing keys
+        task4 = {}
+        context4 = agent._extract_memory_context(task4)
+        assert context4['pid'] == 'unknown'
+        assert context4['ecid'] == 'unknown'
 

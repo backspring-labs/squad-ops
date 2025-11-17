@@ -29,6 +29,9 @@ class ConcreteTestAgent(BaseAgent):
         """Mock implementation of handle_message"""
         pass
 
+# Note: LLM initialization mocking is now handled by autouse fixture in conftest.py
+# This fixture is no longer needed as conftest.py provides global mocking for all BaseAgent subclasses
+
 class TestBaseAgent:
     """Test BaseAgent core functionality"""
     
@@ -607,19 +610,15 @@ class TestBaseAgent:
             reasoning_style="test"
         )
         
-        with patch('aiohttp.ClientSession.post') as mock_post:
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.json.return_value = {
-                'response': 'Generated code for test prompt',
-                'done': True
-            }
-            mock_post.return_value.__aenter__.return_value = mock_response
-            
-            response = await agent._ollama_response("Test prompt", "Test context", "llama2")
-            
-            assert response == "Generated code for test prompt"
-            mock_post.assert_called_once()
+        # Mock LLM client with AsyncMock for async methods
+        mock_llm_client = AsyncMock()
+        mock_llm_client.complete = AsyncMock(return_value="Generated code for test prompt")
+        agent.llm_client = mock_llm_client
+        
+        response = await agent._ollama_response("Test prompt", "Test context", "llama2")
+        
+        assert response == "Generated code for test prompt"
+        mock_llm_client.complete.assert_called_once()
     
     @pytest.mark.unit
     @pytest.mark.asyncio

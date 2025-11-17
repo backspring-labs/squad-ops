@@ -10,8 +10,17 @@ def test_llm_provider_configured():
     """Ensure LLM router can provide a client"""
     from agents.llm.router import LLMRouter
     
-    # Test that router can be created and provides a client
-    router = LLMRouter.from_config('config/llm_config.yaml')
+    # Test that router can be created with explicit config (since config.yaml no longer has model)
+    router = LLMRouter({
+        'default_provider': 'ollama',
+        'providers': {
+            'ollama': {
+                'url': 'http://localhost:11434',
+                'model': 'test-model',
+                'timeout': 180
+            }
+        }
+    })
     client = router.get_default_client()
     
     # Client should be created successfully
@@ -25,8 +34,8 @@ async def test_ollama_client_integration():
     from agents.llm.providers.ollama import OllamaClient
     from unittest.mock import patch, AsyncMock
     
-    # Create client with localhost URL
-    client = OllamaClient(url='http://localhost:11434')
+    # Create client with localhost URL and test model
+    client = OllamaClient(url='http://localhost:11434', model='test-model')
     
     # Mock the aiohttp session to avoid actual network calls
     with patch('aiohttp.ClientSession') as mock_session:
@@ -147,11 +156,10 @@ def test_llm_router_default_config():
     from agents.llm.router import LLMRouter
     from unittest.mock import patch
     
-    # Mock file not existing
+    # Mock file not existing - should now fail with ValueError since model is required
     with patch('builtins.open', side_effect=FileNotFoundError):
-        router = LLMRouter.from_config('nonexistent.yaml')
-        assert router.default_provider == 'ollama'
-        assert 'ollama' in router.config['providers']
+        with pytest.raises(ValueError, match="LLM model not configured"):
+            router = LLMRouter.from_config('nonexistent.yaml')
 
 def test_llm_router_expand_env_vars_list():
     """Test environment variable expansion in lists"""

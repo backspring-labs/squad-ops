@@ -15,6 +15,45 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, '/app')  # Match agent imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'agents'))
 
+# IMPORTANT: Patch BaseAgent methods at import time, BEFORE any test modules are imported
+# This ensures patches are active before agent classes are loaded
+# Use patch on the import path to ensure it works even if BaseAgent is already imported elsewhere
+try:
+    from agents.capabilities.loader import AgentConfig
+    
+    # Mock LLM client initialization for all agent tests
+    _mock_llm_client = MagicMock()
+    
+    # Create mock function for _initialize_llm_client that returns the mock client
+    def _mock_initialize_llm_client(self):
+        """Mock _initialize_llm_client to return mock LLM client"""
+        return _mock_llm_client
+    
+    # Mock capability config loading to set minimal config instead of loading from files
+    def _mock_load_capability_config(self):
+        """Mock _load_capability_config to set minimal config"""
+        self.capability_config = AgentConfig(
+            agent_id=getattr(self, 'name', 'test-agent'),
+            role=getattr(self, 'agent_type', 'test'),
+            spec_version='1.0.0',
+            implements=[],
+            constraints={},
+            defaults={'model': 'ollama:test-model'}  # Provide model to prevent LLM init errors
+        )
+        self.capability_loader = MagicMock()
+        self.implemented_capabilities = []
+    
+    # Apply patches on the import path to ensure they work even if BaseAgent is already imported
+    # This patches the methods before any test modules import BaseAgent
+    _base_agent_patch1 = patch('agents.base_agent.BaseAgent._initialize_llm_client', _mock_initialize_llm_client)
+    _base_agent_patch2 = patch('agents.base_agent.BaseAgent._load_capability_config', _mock_load_capability_config)
+    _base_agent_patch1.start()
+    _base_agent_patch2.start()
+except ImportError:
+    # If modules can't be imported (shouldn't happen), patches will be set up in pytest_configure
+    _base_agent_patch1 = None
+    _base_agent_patch2 = None
+
 # Test configuration
 TEST_CONFIG = {
     'database_url': 'postgresql://test:test@localhost:5432/squadops_test',
@@ -233,8 +272,8 @@ def app_builder():
     from agents.tools.app_builder import AppBuilder
     from agents.llm.providers.ollama import OllamaClient
     
-    # Create real Ollama client with local URL
-    llm_client = OllamaClient(url='http://localhost:11434')
+    # Create real Ollama client with local URL and test model
+    llm_client = OllamaClient(url='http://localhost:11434', model='test-model')
     app_builder = AppBuilder(llm_client)
     
     return app_builder
@@ -422,9 +461,9 @@ def mock_files_json_response():
         ]
     }
 
-# Pytest configuration
 def pytest_configure(config):
     """Configure pytest with custom markers"""
+    # Add custom markers
     config.addinivalue_line(
         "markers", "unit: mark test as unit test"
     )
@@ -443,6 +482,17 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "smoke: mark test as smoke test"
     )
+    
+    # Patches are already applied at import time (see top of file)
+    # This hook is just for marker configuration
+
+def pytest_unconfigure(config):
+    """Clean up patches after all tests complete"""
+    # Stop patches if they were created
+    if '_base_agent_patch1' in globals() and _base_agent_patch1:
+        _base_agent_patch1.stop()
+    if '_base_agent_patch2' in globals() and _base_agent_patch2:
+        _base_agent_patch2.stop()
 
 def pytest_collection_modifyitems(config, items):
     """Modify test collection to add markers based on test location"""

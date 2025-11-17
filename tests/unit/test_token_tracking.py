@@ -91,41 +91,42 @@ class TestTokenTracking:
                 async def handle_message(self, message):
                     pass
             
-            agent = TestAgent('test-agent', 'test', 'test')
-            
-            # Mock LLM client with token usage
-            mock_llm_client = AsyncMock()
-            mock_llm_client.complete = AsyncMock(return_value='Test response')
-            mock_llm_client.get_token_usage = MagicMock(return_value={
-                'prompt_tokens': 15,
-                'completion_tokens': 25,
-                'total_tokens': 40
-            })
-            agent.llm_client = mock_llm_client
-            
-            # Mock telemetry client
-            mock_telemetry = MagicMock()
-            mock_telemetry.create_span = MagicMock(return_value=__import__('contextlib').nullcontext())
-            mock_telemetry.record_counter = MagicMock()
-            agent.telemetry_client = mock_telemetry
-            
-            # Call llm_response
-            response = await agent.llm_response('test prompt', context='test')
-            
-            # Verify response
-            assert response == 'Test response'
-            
-            # Verify communication log has token usage
-            assert len(agent.communication_log) > 0
-            last_entry = agent.communication_log[-1]
-            assert 'token_usage' in last_entry
-            assert last_entry['token_usage']['total_tokens'] == 40
-            
-            # Verify telemetry client was called
-            assert mock_telemetry.record_counter.called
-            call_args = mock_telemetry.record_counter.call_args
-            assert call_args[0][0] == 'agent_tokens_used_total'
-            assert call_args[0][1] == 40
+            with patch.object(TestAgent, '_initialize_llm_client', return_value=MagicMock()):
+                agent = TestAgent('test-agent', 'test', 'test')
+                
+                # Mock LLM client with token usage
+                mock_llm_client = AsyncMock()
+                mock_llm_client.complete = AsyncMock(return_value='Test response')
+                mock_llm_client.get_token_usage = MagicMock(return_value={
+                    'prompt_tokens': 15,
+                    'completion_tokens': 25,
+                    'total_tokens': 40
+                })
+                agent.llm_client = mock_llm_client
+                
+                # Mock telemetry client
+                mock_telemetry = MagicMock()
+                mock_telemetry.create_span = MagicMock(return_value=__import__('contextlib').nullcontext())
+                mock_telemetry.record_counter = MagicMock()
+                agent.telemetry_client = mock_telemetry
+                
+                # Call llm_response
+                response = await agent.llm_response('test prompt', context='test')
+                
+                # Verify response
+                assert response == 'Test response'
+                
+                # Verify communication log has token usage
+                assert len(agent.communication_log) > 0
+                last_entry = agent.communication_log[-1]
+                assert 'token_usage' in last_entry
+                assert last_entry['token_usage']['total_tokens'] == 40
+                
+                # Verify telemetry client was called
+                assert mock_telemetry.record_counter.called
+                call_args = mock_telemetry.record_counter.call_args
+                assert call_args[0][0] == 'agent_tokens_used_total'
+                assert call_args[0][1] == 40
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -134,25 +135,26 @@ class TestTokenTracking:
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
-            agent = LeadAgent('test-lead-agent')
-            
-            # Populate communication log with token usage
-            agent.communication_log = [
-                {
-                    'message_type': 'llm_reasoning',
-                    'agent': 'test-lead-agent',
-                    'token_usage': {'total_tokens': 100, 'prompt_tokens': 50, 'completion_tokens': 50}
-                },
-                {
-                    'message_type': 'llm_reasoning',
-                    'agent': 'test-dev-agent',
-                    'token_usage': {'total_tokens': 75, 'prompt_tokens': 30, 'completion_tokens': 45}
-                },
-                {
-                    'message_type': 'other',
-                    'agent': 'test-max'
-                }
-            ]
+            with patch.object(LeadAgent, '_initialize_llm_client', return_value=MagicMock()):
+                agent = LeadAgent('test-lead-agent')
+                
+                # Populate communication log with token usage
+                agent.communication_log = [
+                    {
+                        'message_type': 'llm_reasoning',
+                        'agent': 'test-lead-agent',
+                        'token_usage': {'total_tokens': 100, 'prompt_tokens': 50, 'completion_tokens': 50}
+                    },
+                    {
+                        'message_type': 'llm_reasoning',
+                        'agent': 'test-dev-agent',
+                        'token_usage': {'total_tokens': 75, 'prompt_tokens': 30, 'completion_tokens': 45}
+                    },
+                    {
+                        'message_type': 'other',
+                        'agent': 'test-max'
+                    }
+                ]
             
             # Mock Task API responses
             mock_session = AsyncMock()

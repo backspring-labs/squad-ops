@@ -74,6 +74,12 @@ class TestLeadAgent:
             
             request = create_sample_validate_warmboot_request(ecid="ECID-001")
             
+            # Mock validator and constraint validation
+            agent.validator = MagicMock()
+            agent.validator.validate_request = MagicMock(return_value=(True, None))
+            agent.validator.validate_result_keys = MagicMock(return_value=(True, None))
+            agent._validate_constraints = MagicMock(return_value=(True, None))
+            
             # Mock update_task_status to avoid HTTP calls
             with patch.object(agent, 'update_task_status', new_callable=AsyncMock) as mock_update_status, \
                  patch.object(agent.capability_loader, 'prepare_capability_args', return_value=(request.payload, request.metadata)) as mock_prepare, \
@@ -127,6 +133,12 @@ class TestLeadAgent:
                 metadata={"pid": "PID-001", "ecid": "ECID-001"}
             )
             
+            # Mock validator and constraint validation
+            agent.validator = MagicMock()
+            agent.validator.validate_request = MagicMock(return_value=(True, None))
+            agent.validator.validate_result_keys = MagicMock(return_value=(True, None))
+            agent._validate_constraints = MagicMock(return_value=(True, None))
+            
             # Mock capability loader execution
             mock_result = {
                 'tasks_created': 1,
@@ -160,6 +172,12 @@ class TestLeadAgent:
                 metadata={"pid": "PID-001", "ecid": "ECID-001"}
             )
             
+            # Mock validator and constraint validation
+            agent.validator = MagicMock()
+            agent.validator.validate_request = MagicMock(return_value=(True, None))
+            agent.validator.validate_result_keys = MagicMock(return_value=(True, None))
+            agent._validate_constraints = MagicMock(return_value=(True, None))
+            
             # Mock capability loader execution
             mock_result = {
                 'approved': True,
@@ -190,6 +208,12 @@ class TestLeadAgent:
                 payload={"task_id": "test-001", "reason": "high_complexity"},
                 metadata={"pid": "PID-001", "ecid": "ECID-001"}
             )
+            
+            # Mock validator and constraint validation
+            agent.validator = MagicMock()
+            agent.validator.validate_request = MagicMock(return_value=(True, None))
+            agent.validator.validate_result_keys = MagicMock(return_value=(True, None))
+            agent._validate_constraints = MagicMock(return_value=(True, None))
             
             # Mock capability loader execution
             mock_result = {
@@ -702,10 +726,10 @@ class TestLeadAgent:
         target = result.get('target_agent', 'dev-agent')
         assert target == 'qa-agent'  # Expected from production instances.yaml
         
-        # Test strategy task delegation → strat role → strat-agent
+        # Test strategy task delegation → strat role → nat
         result = await agent.capability_loader.execute('task.determine_target', agent, 'product')
         target = result.get('target_agent', 'dev-agent')
-        assert target == 'strat-agent'  # Expected from production instances.yaml
+        assert target == 'nat'  # Expected from production instances.yaml (updated from strat-agent)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -897,10 +921,7 @@ class TestLeadAgent:
     async def test_load_role_to_agent_mapping_file_error(self):
         """Test _load_role_to_agent_mapping with file read error"""
         # Mock the LLM client initialization to avoid config file issues
-        with patch('agents.llm.router.LLMRouter.from_config') as mock_router:
-            mock_client = MagicMock()
-            mock_router.return_value.get_default_client.return_value = mock_client
-            
+        with patch.object(LeadAgent, '_initialize_llm_client', return_value=MagicMock()):
             # Create agent with non-existent instances file
             with patch('builtins.open', side_effect=FileNotFoundError("Instances file not found")):
                 agent = LeadAgent("lead-agent-001", instances_file="/nonexistent/instances.yaml")
@@ -920,9 +941,7 @@ class TestLeadAgent:
     async def test_load_role_to_agent_mapping_yaml_error(self):
         """Test _load_role_to_agent_mapping with YAML parse error"""
         # Mock the LLM client initialization to avoid config file issues
-        with patch('agents.llm.router.LLMRouter.from_config') as mock_router:
-            mock_client = MagicMock()
-            mock_router.return_value.get_default_client.return_value = mock_client
+        with patch.object(LeadAgent, '_initialize_llm_client', return_value=MagicMock()):
             
             with patch('builtins.open', MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value='invalid: yaml: [')))))):
                 agent = LeadAgent("lead-agent-001")
