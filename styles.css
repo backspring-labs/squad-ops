@@ -3,10 +3,10 @@ body {
   margin: 0;
   padding: 20px;
 }
-header, footer {
-  text-align: center;
+h1 {
+  color: #333;
 }
 footer {
-  border-top: 1px solid #ccc;
-  padding-top: 10px;
+  text-align: center;
+  font-size: 0.8em;
 }
