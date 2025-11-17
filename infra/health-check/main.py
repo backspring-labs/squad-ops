@@ -55,6 +55,7 @@ class WarmBootRequest(BaseModel):
     description: str
     requirements: Optional[str] = None
     prd_path: Optional[str] = None
+    requirements_text: Optional[str] = None
 
 # Pydantic models for Agent Status
 class AgentStatusCreate(BaseModel):
@@ -1075,6 +1076,7 @@ class HealthChecker:
             
             # Send to Max (lead agent) using new SIP-046 AgentRequest format
             # Use validate.warmboot capability for WarmBoot requests
+            # Use requirements_text if provided, otherwise use prd_path
             max_message = {
                 "action": "validate.warmboot",
                 "payload": {
@@ -1085,7 +1087,8 @@ class HealthChecker:
                     "priority": request.priority,
                     "description": request.description,
                     "requirements": request.requirements,
-                    "prd_path": request.prd_path
+                    "prd_path": request.prd_path if not request.requirements_text else None,
+                    "requirements_text": request.requirements_text
                 },
                 "metadata": {
                     "pid": f"PID-{request.run_id.replace('run-', '')}",
@@ -1127,7 +1130,8 @@ class HealthChecker:
                         "agents": request.agents,
                         "request_type": request.request_type,
                         "priority": request.priority,
-                        "prd_path": request.prd_path,
+                        "prd_path": request.prd_path if not request.requirements_text else None,
+                        "requirements_text": request.requirements_text,
                         "description": request.description,
                         "requirements": request.requirements
                     }),

@@ -158,8 +158,130 @@
             <!-- WarmBoot Tab -->
             <div class="tab-pane fade" id="warmboot" role="tabpanel">
                 <div class="mt-4">
-                    <h3>WarmBoot</h3>
-                    <a href="/warmboot/form" class="btn btn-success">🚀 Submit WarmBoot Request</a>
+                    <h3 class="mb-4">🚀 SquadOps WarmBoot Request</h3>
+                    <p class="text-muted">Submit a WarmBoot request directly to agents - no AI scripting, real agent communication only.</p>
+                    
+                    <form id="warmbootForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="run_id" class="form-label">Run ID</label>
+                                    <input type="text" class="form-control" id="run_id" name="run_id" required>
+                                    <div class="form-text">e.g., run-007, feature-auth, bug-fix-001</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="application" class="form-label">Application</label>
+                                    <select class="form-select" id="application" name="application">
+                                        <option value="">Select Application</option>
+                                        <option value="HelloSquad">HelloSquad</option>
+                                        <option value="SquadOps-Framework">SquadOps Framework</option>
+                                        <option value="Health-Check">Health Check Service</option>
+                                        <option value="Custom">Custom Application</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="request_type" class="form-label">Request Type</label>
+                                    <select class="form-select" id="request_type" name="request_type" required>
+                                        <option value="">Select Type</option>
+                                        <option value="from-scratch">From-Scratch Build (archive previous, build new)</option>
+                                        <option value="feature-update">Feature Update (modify existing)</option>
+                                        <option value="bug-fix">Bug Fix (fix existing)</option>
+                                        <option value="refactor">Refactor (improve existing)</option>
+                                        <option value="deployment">Deployment (deploy existing)</option>
+                                        <option value="testing">Testing (test existing)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="priority" class="form-label">Priority</label>
+                                    <select class="form-select" id="priority" name="priority" required>
+                                        <option value="">Select Priority</option>
+                                        <option value="HIGH">High</option>
+                                        <option value="MEDIUM">Medium</option>
+                                        <option value="LOW">Low</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Input Method Selection -->
+                        <div class="mb-3">
+                            <label class="form-label">Input Method</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="input_method" id="input_method_prd" value="prd" checked>
+                                <label class="form-check-label" for="input_method_prd">
+                                    Use PRD
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="input_method" id="input_method_requirements" value="requirements">
+                                <label class="form-check-label" for="input_method_requirements">
+                                    Use Requirements
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- PRD Selection Section -->
+                        <div id="prdSection" class="mb-3">
+                            <label for="prd_select" class="form-label">PRD</label>
+                            <select class="form-select" id="prd_select" name="prd_select">
+                                <option value="">Select PRD</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Requirements Textarea Section -->
+                        <div id="requirementsSection" class="mb-3" style="display: none;">
+                            <label for="requirements_text" class="form-label">Requirements</label>
+                            <textarea class="form-control" id="requirements_text" name="requirements_text" rows="8" placeholder="Enter full requirements for the warm boot..."></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="agents" class="form-label">Agents</label>
+                            <div class="row" id="agentsContainer">
+                                <!-- Agent checkboxes will be populated by JavaScript -->
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="4" required placeholder="Describe what you want the agents to build or accomplish..."></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="requirements" class="form-label">Additional Requirements (Optional)</label>
+                            <textarea class="form-control" id="requirements" name="requirements" rows="3" placeholder="Additional technical requirements, constraints, or specifications..."></textarea>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">Submit WarmBoot Request</button>
+                        </div>
+                    </form>
+                    
+                    <div class="mt-4">
+                        <h4>Live Agent Communication</h4>
+                        <div class="agent-chat-container">
+                            <textarea id="agentChat" class="form-control" rows="15" readonly 
+                                      style="font-family: monospace; font-size: 12px; background-color: #f8f9fa;"
+                                      placeholder="Agent communication will appear here after submitting a WarmBoot request..."></textarea>
+                            <div class="chat-controls mt-2">
+                                <button id="clearChat" class="btn btn-sm btn-outline-secondary">Clear</button>
+                                <span id="chatStatus" class="badge bg-secondary ms-2">Waiting</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="statusContainer" class="status-container mt-4" style="display: none;">
+                        <div id="statusMessage"></div>
+                        <div id="statusDetails" class="mt-2"></div>
+                    </div>
                 </div>
             </div>
             
@@ -535,6 +657,321 @@
             // Don't let promise rejections cause page reload
             return false;
         });
+        
+        // WarmBoot Form JavaScript
+        let warmbootCurrentRunId = null;
+        let warmbootChatRefreshInterval = null;
+        let warmbootLastMessageTime = null;
+        
+        // Initialize WarmBoot form when tab is shown
+        const warmbootTab = document.getElementById('warmboot-tab');
+        if (warmbootTab) {
+            warmbootTab.addEventListener('shown.bs.tab', function(event) {
+                initializeWarmbootForm();
+            });
+        }
+        
+        // Handle input method toggle
+        const inputMethodRadios = document.querySelectorAll('input[name="input_method"]');
+        inputMethodRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                toggleInputMethod();
+            });
+        });
+        
+        function toggleInputMethod() {
+            const selectedMethod = document.querySelector('input[name="input_method"]:checked').value;
+            const prdSection = document.getElementById('prdSection');
+            const requirementsSection = document.getElementById('requirementsSection');
+            const prdSelect = document.getElementById('prd_select');
+            const requirementsText = document.getElementById('requirements_text');
+            
+            if (selectedMethod === 'prd') {
+                prdSection.style.display = 'block';
+                requirementsSection.style.display = 'none';
+                prdSelect.required = true;
+                requirementsText.required = false;
+                requirementsText.value = '';
+            } else {
+                prdSection.style.display = 'none';
+                requirementsSection.style.display = 'block';
+                prdSelect.required = false;
+                prdSelect.value = '';
+                requirementsText.required = true;
+            }
+        }
+        
+        async function initializeWarmbootForm() {
+            // Generate Run ID
+            await generateWarmbootRunId();
+            
+            // Populate PRD dropdown
+            await populateWarmbootPrdDropdown();
+            
+            // Set up agent checkboxes
+            await setupWarmbootAgentCheckboxes();
+            
+            // Set up chat controls
+            setupWarmbootChatControls();
+            
+            // Initialize input method toggle
+            toggleInputMethod();
+        }
+        
+        async function generateWarmbootRunId() {
+            try {
+                const response = await fetch('/warmboot/next-run-id');
+                const result = await response.json();
+                document.getElementById('run_id').value = result.run_id;
+                warmbootCurrentRunId = result.run_id;
+            } catch (error) {
+                console.error('Failed to generate Run ID:', error);
+                document.getElementById('run_id').value = 'run-001';
+                warmbootCurrentRunId = 'run-001';
+            }
+        }
+        
+        async function populateWarmbootPrdDropdown() {
+            try {
+                const response = await fetch('/warmboot/prds');
+                const prds = await response.json();
+                const prdSelect = document.getElementById('prd_select');
+                
+                // Clear existing options except the first one
+                prdSelect.innerHTML = '<option value="">Select PRD</option>';
+                
+                // Add PRD options
+                prds.forEach(prd => {
+                    const option = document.createElement('option');
+                    option.value = prd.file_path;
+                    option.textContent = `${prd.title} (${prd.pid})`;
+                    option.title = prd.description;
+                    prdSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load PRDs:', error);
+            }
+        }
+        
+        async function setupWarmbootAgentCheckboxes() {
+            try {
+                const response = await fetch('/warmboot/agents');
+                const agents = await response.json();
+                const container = document.getElementById('agentsContainer');
+                
+                // Clear container
+                container.innerHTML = '';
+                
+                // Group agents into rows of 3
+                for (let i = 0; i < agents.length; i += 3) {
+                    const row = document.createElement('div');
+                    row.className = i > 0 ? 'row mt-2' : 'row';
+                    
+                    for (let j = i; j < Math.min(i + 3, agents.length); j++) {
+                        const agent = agents[j];
+                        const agentId = agent.agent.toLowerCase();
+                        const displayName = agent.agent;
+                        const role = agent.role || 'unknown';
+                        const checked = agent.status === 'online' || agent.agent === 'Max';
+                        const disabled = agent.agent === 'Max';
+                        
+                        const col = document.createElement('div');
+                        col.className = 'col-md-4';
+                        col.innerHTML = `
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="warmboot_agent_${agentId}" name="agents" value="${agentId}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+                                <label class="form-check-label" for="warmboot_agent_${agentId}">${displayName} (${role.charAt(0).toUpperCase() + role.slice(1)})</label>
+                            </div>
+                        `;
+                        row.appendChild(col);
+                    }
+                    
+                    container.appendChild(row);
+                }
+            } catch (error) {
+                console.error('Failed to load agent status:', error);
+            }
+        }
+        
+        function setupWarmbootChatControls() {
+            const clearChatBtn = document.getElementById('clearChat');
+            if (clearChatBtn) {
+                clearChatBtn.addEventListener('click', function() {
+                    document.getElementById('agentChat').value = '';
+                    warmbootLastMessageTime = null;
+                });
+            }
+        }
+        
+        function startWarmbootChatFeed() {
+            if (warmbootChatRefreshInterval) {
+                clearInterval(warmbootChatRefreshInterval);
+            }
+            
+            const chatStatus = document.getElementById('chatStatus');
+            if (chatStatus) {
+                chatStatus.className = 'badge bg-success ms-2';
+                chatStatus.textContent = 'Live';
+            }
+            
+            warmbootChatRefreshInterval = setInterval(async () => {
+                try {
+                    const sinceParam = warmbootLastMessageTime ? `?since=${warmbootLastMessageTime}` : '';
+                    const response = await fetch(`/warmboot/messages${sinceParam}`);
+                    const messages = await response.json();
+                    
+                    if (messages.length > 0) {
+                        const chatArea = document.getElementById('agentChat');
+                        
+                        messages.forEach(msg => {
+                            const formattedMsg = formatWarmbootMessage(msg);
+                            chatArea.value += formattedMsg + '\n';
+                        });
+                        
+                        // Auto-scroll to bottom
+                        chatArea.scrollTop = chatArea.scrollHeight;
+                        
+                        // Update last message time
+                        warmbootLastMessageTime = messages[messages.length - 1].timestamp;
+                    }
+                } catch (error) {
+                    console.error('Chat feed error:', error);
+                }
+            }, 1000);
+        }
+        
+        function formatWarmbootMessage(msg) {
+            const timestamp = new Date(msg.timestamp).toLocaleTimeString();
+            const icon = getWarmbootMessageIcon(msg.message_type);
+            const direction = msg.sender === 'warmboot-orchestrator' ? '←' : '→';
+            
+            return `[${timestamp}] ${icon} ${msg.message_type}: ${msg.recipient} ${direction} ${msg.sender}\n           "${msg.content}"`;
+        }
+        
+        function getWarmbootMessageIcon(messageType) {
+            const icons = {
+                'WARMBOOT_REQUEST': '🚀',
+                'TASK_ASSIGNMENT': '📋', 
+                'TASK_ACKNOWLEDGED': '✅',
+                'TASK_UPDATE': '🔄',
+                'PROGRESS_UPDATE': '📝',
+                'BUILD_START': '🏗️',
+                'TASK_COMPLETED': '✅',
+                'TASK_FAILED': '❌'
+            };
+            return icons[messageType] || '💬';
+        }
+        
+        // Form submission
+        const warmbootForm = document.getElementById('warmbootForm');
+        if (warmbootForm) {
+            warmbootForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(e.target);
+                const agents = Array.from(document.querySelectorAll('input[name="agents"]:checked')).map(cb => cb.value);
+                const inputMethod = document.querySelector('input[name="input_method"]:checked').value;
+                
+                // Determine prd_path or requirements_text based on input method
+                let prd_path = null;
+                let requirements_text = null;
+                
+                if (inputMethod === 'prd') {
+                    prd_path = document.getElementById('prd_select').value;
+                    if (!prd_path) {
+                        alert('Please select a PRD or switch to Requirements input method.');
+                        return;
+                    }
+                } else {
+                    requirements_text = document.getElementById('requirements_text').value;
+                    if (!requirements_text || requirements_text.trim() === '') {
+                        alert('Please enter requirements.');
+                        return;
+                    }
+                }
+                
+                const requestData = {
+                    run_id: formData.get('run_id'),
+                    application: formData.get('application') || 'Custom',
+                    request_type: formData.get('request_type'),
+                    agents: agents,
+                    priority: formData.get('priority'),
+                    description: formData.get('description'),
+                    requirements: formData.get('requirements') || null,
+                    prd_path: prd_path,
+                    requirements_text: requirements_text
+                };
+                
+                try {
+                    const response = await fetch('/warmboot/submit', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    const statusContainer = document.getElementById('statusContainer');
+                    const statusMessage = document.getElementById('statusMessage');
+                    const statusDetails = document.getElementById('statusDetails');
+                    
+                    if (result.status === 'success') {
+                        statusContainer.className = 'status-container status-success';
+                        statusContainer.style.display = 'block';
+                        statusMessage.innerHTML = '<strong>✅ Success!</strong> ' + result.message;
+                        statusDetails.innerHTML = `
+                            <strong>Run ID:</strong> ${result.run_id}<br>
+                            <strong>Agents Notified:</strong> ${result.agents_notified.join(', ')}<br>
+                            <strong>Timestamp:</strong> ${result.timestamp}<br>
+                            <a href="/warmboot/status/${requestData.run_id}" class="btn btn-sm btn-outline-success mt-2">View Status</a>
+                        `;
+                        
+                        // Start live chat feed
+                        startWarmbootChatFeed();
+                        
+                    } else {
+                        statusContainer.className = 'status-container status-error';
+                        statusContainer.style.display = 'block';
+                        statusMessage.innerHTML = '<strong>❌ Error!</strong> ' + result.message;
+                        statusDetails.innerHTML = `<strong>Timestamp:</strong> ${result.timestamp}`;
+                    }
+                    
+                    statusContainer.scrollIntoView({ behavior: 'smooth' });
+                    
+                } catch (error) {
+                    const statusContainer = document.getElementById('statusContainer');
+                    const statusMessage = document.getElementById('statusMessage');
+                    
+                    statusContainer.className = 'status-container status-error';
+                    statusContainer.style.display = 'block';
+                    statusMessage.innerHTML = '<strong>❌ Network Error!</strong> ' + error.message;
+                    statusContainer.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
+        
+        // Add CSS for status container
+        const style = document.createElement('style');
+        style.textContent = `
+            .status-container {
+                margin-top: 20px;
+                padding: 15px;
+                border-radius: 5px;
+            }
+            .status-success {
+                background-color: #d4edda;
+                border: 1px solid #c3e6cb;
+                color: #155724;
+            }
+            .status-error {
+                background-color: #f8d7da;
+                border: 1px solid #f5c6cb;
+                color: #721c24;
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 </body>
 </html>
