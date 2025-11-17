@@ -53,12 +53,9 @@ class LeadAgent(BaseAgent):
         
         self.escalation_threshold = get_complexity_threshold("escalation")
         
-        # Initialize schema validator
-        from pathlib import Path
-        if Path('/app').exists():
-            base_path = Path('/app')
-        else:
-            base_path = Path(__file__).parent.parent.parent.parent
+        # Initialize schema validator using unified path resolver
+        from agents.utils.path_resolver import PathResolver
+        base_path = PathResolver.get_base_path()
         self.validator = SchemaValidator(base_path)
         
         # Capability loader is initialized in BaseAgent._load_capability_config()

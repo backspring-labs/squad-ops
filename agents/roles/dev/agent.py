@@ -35,10 +35,9 @@ class DevAgent(BaseAgent):
             reasoning_style="deductive"
         )
         
-        # Initialize schema validator
-        # In Docker, agent.py is at /app/agent.py, so base_path is /app
-        from pathlib import Path
-        base_path = Path(__file__).parent  # /app
+        # Initialize schema validator using unified path resolver
+        from agents.utils.path_resolver import PathResolver
+        base_path = PathResolver.get_base_path()
         self.validator = SchemaValidator(base_path)
         
         # Components are now loaded via capabilities - no direct instantiation needed

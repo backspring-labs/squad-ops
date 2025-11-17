@@ -96,7 +96,10 @@ class BaseAgent(ABC):
         self.redis_url = self.config.get_redis_url()
         self.task_api_url = self.config.get_task_api_url()
         
-        # Initialize LLM client
+        # Initialize capability system (SIP-046) - must be before LLM client to get model config
+        self._load_capability_config()
+        
+        # Initialize LLM client (uses model from capability_config if available)
         self.llm_client = self._initialize_llm_client()
         
         # Initialize communication log for telemetry
@@ -104,15 +107,54 @@ class BaseAgent(ABC):
         
         # Initialize telemetry client (abstraction layer)
         self.telemetry_client = self._initialize_telemetry_client()
-        
-        # Initialize capability system (SIP-046)
-        self._load_capability_config()
     
     def _initialize_llm_client(self):
-        """Initialize LLM client from router"""
+        """Initialize LLM client from router, using model from config.yaml if available"""
         from agents.llm.router import LLMRouter
+        
+        # Try to get model from agent's config.yaml defaults.model
+        model_from_config = None
+        if self.capability_config and self.capability_config.defaults:
+            model_config = self.capability_config.defaults.get('model', '')
+            if model_config:
+                # Parse format: "ollama:model-name" -> "model-name"
+                if ':' in model_config:
+                    parts = model_config.split(':', 1)
+                    if len(parts) == 2:
+                        provider, model = parts
+                        if provider.lower() == 'ollama':
+                            model_from_config = model
+                else:
+                    # Direct model name
+                    model_from_config = model_config
+        
+        # Initialize router
         router = LLMRouter.from_config('config/llm_config.yaml')
-        return router.get_default_client()
+        
+        # If we have a model from config.yaml, use it
+        if model_from_config:
+            # Create new client with model from config.yaml
+            from agents.llm.providers.ollama import OllamaClient
+            provider_config = router.config['providers'].get('ollama', {})
+            return OllamaClient(
+                url=provider_config.get('url'),
+                model=model_from_config,
+                timeout=provider_config.get('timeout', 180)
+            )
+        
+        # No model configured - fail with informative error
+        role = getattr(self, 'agent_type', 'unknown')
+        raise ValueError(
+            f"❌ LLM model not configured for agent '{self.name}' (role: {role})!\n\n"
+            f"💡 To fix:\n"
+            f"  1. Configure model in {role}/config.yaml:\n"
+            f"     defaults:\n"
+            f"       model: ollama:<model-name>\n"
+            f"  2. Example: defaults.model: ollama:llama3.1:8b\n"
+            f"  3. Ensure the model is available in Ollama: ollama list\n"
+            f"  4. If model doesn't exist, pull it: ollama pull <model-name>\n\n"
+            f"📖 See agents/roles/{role}/config.yaml for examples"
+        )
     
     def _initialize_telemetry_client(self):
         """Initialize telemetry client from router (platform-aware)"""
@@ -792,7 +834,7 @@ class BaseAgent(ABC):
         """Load capability configuration from config.yaml"""
         try:
             from agents.capabilities.loader import CapabilityLoader
-            from pathlib import Path
+            from agents.utils.path_resolver import PathResolver
             
             # Determine role from agent_type (e.g., "governance" -> "lead")
             role_map = {
@@ -811,8 +853,8 @@ class BaseAgent(ABC):
             
             role = role_map.get(self.agent_type, self.agent_type)
             
-            # Load capability config
-            base_path = Path(__file__).parent.parent.parent
+            # Load capability config using unified path resolver
+            base_path = PathResolver.get_base_path()
             loader = CapabilityLoader(base_path)
             self.capability_config = loader.load_agent_config(role)
             self.capability_loader = loader
@@ -837,7 +879,8 @@ class BaseAgent(ABC):
         if 'repo_allow' in constraints:
             repo_allow = constraints['repo_allow']
             payload_repo = request.payload.get('repo', request.payload.get('project', ''))
-            if repo_allow and not any(repo_allow_pattern in payload_repo for repo_allow_pattern in repo_allow):
+            # Only validate if a repository is actually specified
+            if payload_repo and repo_allow and not any(repo_allow_pattern in payload_repo for repo_allow_pattern in repo_allow):
                 return False, f"Repository not allowed: {payload_repo}"
         
         # Validate max_runtime_s (will be checked during execution)

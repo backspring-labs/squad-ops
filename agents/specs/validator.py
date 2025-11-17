@@ -22,8 +22,12 @@ class SchemaValidator:
     
     def __init__(self, base_path: Optional[Path] = None):
         """Initialize validator with base path"""
+        from agents.utils.path_resolver import PathResolver
+        
         if base_path is None:
-            base_path = Path(__file__).parent.parent.parent
+            base_path = PathResolver.get_base_path()
+        else:
+            base_path = Path(base_path)
         self.base_path = Path(base_path)
         self.specs_path = self.base_path / "agents" / "specs"
         self.request_schema_path = self.specs_path / "request.schema.json"

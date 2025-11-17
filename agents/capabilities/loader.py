@@ -61,6 +61,8 @@ class CapabilityLoader:
         'comms.documentation': ('agents.capabilities.documentation_creator', 'DocumentationCreator', 'create'),
         'comms.reasoning.emit': ('agents.capabilities.reasoning_event_emitter', 'ReasoningEventEmitter', 'emit'),
         'comms.chat': ('agents.capabilities.comms_chat', 'ChatHandler', 'handle'),
+        'product.draft_prd_from_prompt': ('agents.capabilities.product.draft_prd_from_prompt', 'DraftPRDFromPrompt', 'draft'),
+        'product.validate_acceptance_criteria': ('agents.capabilities.product.validate_acceptance_criteria', 'ValidateAcceptanceCriteria', 'validate'),
     }
     
     # Mapping from task_type and requirements.action values to capability names
@@ -114,8 +116,12 @@ class CapabilityLoader:
     
     def __init__(self, base_path: Optional[Path] = None):
         """Initialize loader with base path"""
+        from agents.utils.path_resolver import PathResolver
+        
         if base_path is None:
-            base_path = Path(__file__).parent.parent.parent
+            base_path = PathResolver.get_base_path()
+        else:
+            base_path = Path(base_path)
         self.base_path = Path(base_path)
         self.catalog_path = self.base_path / "agents" / "capabilities" / "catalog.yaml"
         self.bindings_path = self.base_path / "agents" / "capability_bindings.yaml"
