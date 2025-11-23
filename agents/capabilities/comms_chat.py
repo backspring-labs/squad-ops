@@ -259,9 +259,38 @@ class ChatHandler:
             else:
                 logger.debug(f"{self.name} skipping memory retrieval for simple query")
             
-            # Build context for LLM prompt
-            agent_role = getattr(self.agent, 'agent_type', 'agent')
-            agent_reasoning_style = getattr(self.agent, 'reasoning_style', 'standard')
+            # Retrieve role context from memory
+            role_context = None
+            if hasattr(self.agent, 'retrieve_memories'):
+                try:
+                    # Search for role_identity memory
+                    role_memories = await self.agent.retrieve_memories(
+                        query="role identity who am I",
+                        k=5,
+                        ns="role"
+                    )
+                    
+                    # Extract role_context from memory payload
+                    # Memory structure: mem['content']['action'] == 'role_identity'
+                    #                   mem['content']['result']['role_context']
+                    if role_memories:
+                        for mem in role_memories:
+                            content = mem.get('content', {})
+                            if isinstance(content, dict):
+                                action = content.get('action', '')
+                                result = content.get('result', {})
+                                if action == 'role_identity' and isinstance(result, dict):
+                                    role_context = result.get('role_context')
+                                    if role_context:
+                                        logger.debug(f"{self.name}: Retrieved role context from memory")
+                                        break
+                except Exception as e:
+                    logger.debug(f"{self.name}: Failed to retrieve role context from memory: {e}")
+            
+            # Fallback to simple prompt if role context not found
+            if not role_context:
+                agent_role = getattr(self.agent, 'agent_type', 'agent')
+                role_context = f"You are {self.name}, a {agent_role} agent in the SquadOps system.\n\n"
             
             # Format memories for prompt with attribution
             memory_context = ""
@@ -275,10 +304,8 @@ class ChatHandler:
                 memory_context += "Use the format 'Based on Memory X (ID: ...)' when citing memories. "
                 memory_context += "If the memories are not relevant to the question, you may answer without referencing them, but acknowledge that you checked your memories."
             
-            # Create chat prompt with memory context
-            chat_prompt = f"""You are {self.name}, a {agent_role} agent in the SquadOps system.
-
-User message: {message}
+            # Create chat prompt with role context and memory context
+            chat_prompt = f"""{role_context}User message: {message}
 {memory_context}
 
 Please provide a helpful, concise response. Be conversational but professional.

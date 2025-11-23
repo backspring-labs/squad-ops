@@ -17,6 +17,10 @@ class TestPathResolver:
         """Reset PathResolver cache before each test"""
         PathResolver.reset()
     
+    def teardown_method(self):
+        """Reset PathResolver cache after each test to ensure cleanup"""
+        PathResolver.reset()
+    
     def test_env_var_primary(self, tmp_path, monkeypatch):
         """Test that SQUADOPS_BASE_PATH environment variable is used as primary source"""
         # Set environment variable

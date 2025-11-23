@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 from typing import Dict, Any, List
-from base_agent import BaseAgent, AgentMessage
+from agents.base_agent import BaseAgent, AgentMessage
 import sys
 import os
 import aiohttp

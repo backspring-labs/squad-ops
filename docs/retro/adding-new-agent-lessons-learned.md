@@ -150,34 +150,78 @@ implements:
 
 ### 5. Docker Configuration
 
-#### ✅ Dockerfile Setup
-- **Pattern:** Use standardized Dockerfile template with unified path resolution
-- **Required Elements:**
+#### ✅ Build-Time Assembly Approach
+- **Pattern:** Use build script to assemble container-ready packages, then multi-stage Dockerfiles
+- **Benefits:**
+  - ✅ No more forgotten files - Build script determines dependencies automatically
+  - ✅ Deterministic builds - Same input = same output
+  - ✅ Testable - Can inspect `dist/agents/{role}/` before building
+  - ✅ Standard Docker patterns - Multi-stage builds with layer caching
+  - ✅ Cloud compatible - Works with ECR/GCR/ACR
+  - ✅ Edge ready - Minimal final image size
+
+#### ✅ Building Agent Packages
+- **Step 1:** Build agent package using build script:
+  ```bash
+  python scripts/build_agent.py <role>
+  ```
+- **Step 2:** Verify package contents:
+  ```bash
+  ls -la dist/agents/<role>/
+  ```
+- **Step 3:** Build Docker image (build script runs automatically in Dockerfile):
+  ```bash
+  docker build -t squadops/<agent>:latest --build-arg AGENT_ROLE=<role> -f agents/roles/<role>/Dockerfile .
+  ```
+
+#### ✅ Dockerfile Pattern (Multi-Stage Build)
+- **Standard Pattern:**
   ```dockerfile
-  # Set base path explicitly
+  # Stage 1: Build agent package
+  FROM python:3.11-slim as builder
+  WORKDIR /build
+  
+  # Copy source code
+  COPY agents/ ./agents/
+  COPY scripts/build_agent.py ./scripts/
+  COPY config/ ./config/
+  
+  # Build agent package
+  ARG AGENT_ROLE=qa
+  RUN python scripts/build_agent.py ${AGENT_ROLE}
+  
+  # Stage 2: Runtime image
+  FROM python:3.11-slim
+  WORKDIR /app
   ENV SQUADOPS_BASE_PATH=/app
   
-  # Copy agent code
-  COPY agents/roles/${AGENT_ROLE}/ ./agents/roles/${AGENT_ROLE}/
+  # Copy assembled agent package
+  COPY --from=builder /build/dist/agents/${AGENT_ROLE}/ ./
   
-  # Copy shared agent infrastructure
-  COPY agents/base_agent.py ./agents/
-  COPY agents/capabilities/ ./agents/capabilities/
-  COPY agents/skills/ ./agents/skills/
-  COPY agents/utils/ ./agents/utils/
-  COPY agents/specs/ ./agents/specs/
-  COPY agents/llm/ ./agents/llm/
-  COPY agents/memory/ ./agents/memory/
-  COPY agents/telemetry/ ./agents/telemetry/
+  # Install dependencies
+  RUN pip install --no-cache-dir -r requirements.txt
   
-  # Copy config files
-  COPY config/ ./config/
-  COPY agents/capabilities/catalog.yaml ./agents/capabilities/
-  COPY agents/capability_bindings.yaml ./agents/
-  COPY agents/skills/registry.yaml ./agents/skills/
-  COPY agents/instances/instances.yaml ./agents/instances/
-  COPY agents/roles/${AGENT_ROLE}/config.yaml ./agents/roles/${AGENT_ROLE}/
+  # Create required directories
+  RUN mkdir -p /app/logs /app/data/memory_db
+  
+  CMD ["python", "agent.py"]
   ```
+
+#### ✅ Special Cases
+- **Dev Role:** Add Docker CLI installation in Stage 2 (before pip install):
+  ```dockerfile
+  RUN apt-get update && apt-get install -y docker-ce-cli
+  ```
+- **Lead Role:** May need `gcc` and `python3-dev` for some dependencies
+
+#### ✅ Build Script Dependencies
+- **Automatic Resolution:** Build script reads `config.yaml` and resolves:
+  - Required capabilities (from `implements` list)
+  - Required skills (role-specific + shared)
+  - Shared infrastructure (always included)
+  - Config files (capability_bindings.yaml, registry.yaml, etc.)
+- **No Manual COPY Statements:** Build script handles all file copying
+- **Verification:** If container missing files, check `dist/agents/{role}/` to see what was assembled
 
 #### ✅ Verify Path Resolution in Container
 - **Test:** Check logs for path-related errors (e.g., `catalog.yaml not found`)
@@ -185,6 +229,26 @@ implements:
   - Missing `ENV SQUADOPS_BASE_PATH=/app` in Dockerfile
   - Incorrect COPY paths
   - Missing `config.yaml` copy
+
+#### ✅ Agent Metadata Artifacts
+- **Pattern:** Build script automatically generates `manifest.json` and `agent_info.json` metadata artifacts
+- **manifest.json:** Build artifact metadata (what was built)
+  - Includes: `manifest_version`, `role`, `capabilities`, `skills`, `shared_modules`, `resolver_graph`, `files_included`, `build_hash`, `git_commit`, `build_time_utc`, `squadops_version`
+  - **Purpose:** Deterministic build tracking, debugging, RCA
+  - **Location:** `dist/agents/{role}/manifest.json` (build-time), `/app/manifest.json` (runtime)
+- **agent_info.json:** Runtime identity metadata (who is running)
+  - Includes: `agent_info_version`, `role`, `agent_id`, `capabilities`, `skills`, `build_hash`, `container_hash`, `runtime_env`, `startup_time_utc`, `agent_entrypoint`
+  - **Purpose:** Runtime introspection, observability, debugging container drift
+  - **Location:** `dist/agents/{role}/agent_info.json` (build-time), `/app/agent_info.json` (runtime)
+- **Schema Versioning:** Both artifacts include mandatory version fields (`manifest_version: "1.0"`, `agent_info_version: "1.0"`) for future compatibility
+- **Build Hash:** SHA256 hash of all files in `dist` directory (excluding manifest files) - ensures deterministic builds
+  - Propagates through both `manifest.json` and `agent_info.json`
+  - Can be used as Docker LABEL via `--build-arg BUILD_HASH=<hash>` in CI/CD
+- **Structured Logging:** BaseAgent logs `agent_runtime_identity` event with agent_info for observability tools
+- **Docker LABEL:** Dockerfiles support `LABEL squadops.build_hash="${BUILD_HASH}"` for registry-level introspection
+  - CI/CD should extract build_hash from `manifest.json` and pass as `--build-arg BUILD_HASH=<hash>`
+  - Defaults to "unknown" if not provided
+- **Verification:** Check logs for `"Agent runtime identity:"` JSON output after agent startup
 
 ### 6. Agent Registration
 
@@ -223,10 +287,19 @@ implements:
   pyarrow>=14.0.0
   pandas>=2.0.0
   
+  # OpenTelemetry packages (required for telemetry)
+  opentelemetry-api>=1.22.0
+  opentelemetry-sdk>=1.22.0
+  opentelemetry-instrumentation
+  opentelemetry-exporter-otlp-proto-grpc>=1.22.0
+  opentelemetry-exporter-prometheus
+  opentelemetry-semantic-conventions
+  
   # Domain-specific (add as needed)
   beautifulsoup4>=4.12.0  # For HTML parsing
   ```
-- **Verification:** Check Docker logs for `ModuleNotFoundError` - indicates missing dependencies
+- **Critical:** OpenTelemetry packages are **required** - missing them causes `'NoneType' object has no attribute 'create'` errors during telemetry initialization
+- **Verification:** Check Docker logs for `ModuleNotFoundError` or OpenTelemetry initialization errors - indicates missing dependencies
 
 ### 8. Repository Constraints
 
@@ -319,12 +392,30 @@ implements:
 
 **Solution:** Only validate `repo_allow` when `repo`/`project` fields are present in payload
 
-### Pitfall #5: Missing Dependencies
-**Symptom:** `ModuleNotFoundError: No module named 'xxx'` in Docker logs
+### Pitfall #5: Missing Dependencies or Imported Modules
+**Symptom:** `ModuleNotFoundError: No module named 'agents.xxx'` in Docker logs OR `'NoneType' object has no attribute 'create'` error during telemetry initialization
 
-**Root Cause:** Dependency not in `requirements.txt`
+**Root Causes:**
+1. Dependency not in `requirements.txt` (external packages)
+2. Capability not listed in `config.yaml` `implements` list (build script won't copy it)
+3. OpenTelemetry packages missing (common issue - causes telemetry initialization to fail)
 
-**Solution:** Add to `agents/roles/<role>/requirements.txt` and rebuild
+**Solutions:**
+1. **For external packages:** Add missing dependency to `agents/roles/<role>/requirements.txt` and rebuild
+2. **For internal modules:** Add capability to `config.yaml` `implements` list if it's a capability, or ensure it's in shared infrastructure (build script handles this automatically)
+3. **Always include OpenTelemetry packages** - they are required for telemetry system:
+   ```
+   opentelemetry-api>=1.22.0
+   opentelemetry-sdk>=1.22.0
+   opentelemetry-instrumentation
+   opentelemetry-exporter-otlp-proto-grpc>=1.22.0
+   opentelemetry-exporter-prometheus
+   opentelemetry-semantic-conventions
+   ```
+4. **Prevention:** 
+   - Add capabilities to `config.yaml` `implements` list
+   - Verify build script includes module: `python scripts/build_agent.py <role>` then check `dist/agents/<role>/`
+   - If module is missing, it may need to be added to build script's shared infrastructure list
 
 ### Pitfall #6: Agent Not Visible in Health-Check
 **Symptom:** Agent doesn't appear in health-check dashboard
@@ -368,9 +459,12 @@ Use this checklist when adding a new agent:
   - [ ] Do NOT add `AGENT_MODEL` to `docker-compose.yml`
 
 - [ ] **Docker Setup**
-  - [ ] Add `ENV SQUADOPS_BASE_PATH=/app` to Dockerfile
-  - [ ] Copy all required agent files and configs
-  - [ ] Copy `config.yaml` to correct location
+  - [ ] Use multi-stage Dockerfile pattern (build script runs automatically)
+  - [ ] Add `ENV SQUADOPS_BASE_PATH=/app` to Dockerfile Stage 2
+  - [ ] Test build script: `python scripts/build_agent.py <role>`
+  - [ ] Verify package contents: `ls -la dist/agents/<role>/`
+  - [ ] Build Docker image: `docker build -t squadops/<agent>:latest --build-arg AGENT_ROLE=<role> -f agents/roles/<role>/Dockerfile .`
+  - [ ] **Note:** Build script automatically includes all required modules based on `config.yaml` `implements` list
 
 - [ ] **Agent Registration**
   - [ ] Add agent entry to `agents/instances/instances.yaml`
@@ -379,6 +473,7 @@ Use this checklist when adding a new agent:
 
 - [ ] **Dependencies**
   - [ ] Add all required dependencies to `requirements.txt`
+  - [ ] **Include OpenTelemetry packages** (required for telemetry - missing causes NoneType errors)
   - [ ] Include domain-specific dependencies (e.g., beautifulsoup4 for HTML parsing)
 
 - [ ] **Constraints**
@@ -409,8 +504,11 @@ Use this checklist when adding a new agent:
 3. **Model config is single source of truth** - `config.yaml` `defaults.model`, not env vars
 4. **Support console chat** - Add `comms.chat` to `config.yaml` and `capability_bindings.yaml`
 5. **Memory is automatic** - Just add dependencies and use `record_memory()` in capabilities
-6. **Test model configuration** - Verify model exists and works before deploying
-7. **Follow the checklist** - Missing steps cause hard-to-debug issues
+6. **OpenTelemetry packages are required** - Always include in `requirements.txt` or telemetry initialization fails with NoneType errors
+7. **Build script handles module copying** - Add capabilities to `config.yaml` `implements` list, build script automatically includes required modules
+8. **Test model configuration** - Verify model exists and works before deploying
+9. **Follow the checklist** - Missing steps cause hard-to-debug issues
+10. **Test build script output** - Run `python scripts/build_agent.py <role>` and verify `dist/agents/<role>/` contains all required files before building Docker image
 
 ---
 

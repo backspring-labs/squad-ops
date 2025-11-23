@@ -3,10 +3,9 @@ body {
   margin: 0;
   padding: 20px;
 }
-h1 {
-  color: #333;
+header, footer {
+  text-align: center;
 }
 footer {
-  text-align: center;
-  font-size: 0.8em;
+  margin-top: 20px;
 }

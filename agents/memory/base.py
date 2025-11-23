@@ -58,4 +58,26 @@ class MemoryProvider(ABC):
             New memory ID in promoted namespace
         """
         pass
+    
+    @abstractmethod
+    async def put_if_not_exists(self, item: dict) -> Optional[str]:
+        """
+        Store a memory item only if it doesn't already exist (singleton pattern).
+        
+        Uses deterministic ID generation (agent + ns + content hash) to check
+        for existing memories. If a memory with the same ID exists, returns None.
+        Otherwise, stores and returns the memory ID.
+        
+        Args:
+            item: Dictionary containing memory data with keys:
+                - ns: namespace (e.g., 'role', 'squad')
+                - agent: agent name
+                - tags: list of tags
+                - content: memory content (dict)
+                - importance: importance score (float)
+        
+        Returns:
+            Memory ID as string if stored, None if already exists
+        """
+        pass
 

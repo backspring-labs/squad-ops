@@ -60,23 +60,36 @@ capabilities:
         - escalation_time
   
   # QA capabilities
-  - name: qa.security_audit
+  - name: qa.test_design
     capability_version: 1.0.0
-    description: "Perform security audits and vulnerability scans"
+    description: "Design test plans and test cases from requirements/PRDs"
     result:
       keys:
-        - vulnerabilities_found
-        - security_score
-        - audit_report
+        - test_plan_uri
+        - test_cases
+        - coverage_analysis
+        - test_scenarios
   
-  - name: qa.compliance_check
+  - name: qa.test_dev
     capability_version: 1.0.0
-    description: "Check compliance with standards and policies"
+    description: "Develop test code/scripts from test plans"
     result:
       keys:
-        - compliant
-        - violations
-        - compliance_score
+        - test_files_uri
+        - test_code
+        - fixtures_uri
+        - test_framework
+  
+  - name: qa.test_execution
+    capability_version: 1.0.0
+    description: "Execute test suites and generate reports"
+    result:
+      keys:
+        - passed
+        - failed
+        - report_uri
+        - coverage_percentage
+        - execution_log
   
   # Data capabilities
   - name: data.analysis

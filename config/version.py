@@ -7,16 +7,16 @@
 #   python version_cli.py update <agent> <version> [notes]
 
 # Framework Version
-SQUADOPS_VERSION = "0.6.4"
+SQUADOPS_VERSION = "0.6.5"
 
 # Agent Versions (individual agent versions)
 AGENT_VERSIONS = {
-    "max": "0.6.4",  # Real agent with local LLM
-    "neo": "0.6.4",  # Real agent with file modification capabilities
-    "nat": "0.6.3",  # Mock agent
+    "max": "0.6.5",  # Real agent with local LLM
+    "neo": "0.6.5",  # Real agent with file modification capabilities
+    "nat": "0.6.5",  # Mock agent
     "joi": "0.0.0",  # Mock agent
     "data": "0.0.0", # Mock agent
-    "eve": "0.0.0",  # Mock agent
+    "eve": "0.6.5",  # Mock agent
     "quark": "0.0.0", # Mock agent
     "og": "0.0.0",   # Mock agent
     "glyph": "0.0.0", # Mock agent
@@ -103,6 +103,6 @@ def rollback_agent(agent_name, target_version):
 # 0.5.X - Production deployment (enterprise features)
 # 1.0.X - Stable release (external users + Backspring validation)
 
-# Current status: 0.6.4 (Unified path resolver implementation, Nat agent with PRD capabilities, model configuration refactoring (single source of truth))
+# Current status: 0.6.5 (Documentation updates: Docker build process, task adapter improvements, agent status updates)
 # Previous: 0.1.4 (Task Management System complete)
 # Next major: 0.3.0 (Multi-agent expansion with EVE, Nat, Data, HAL)

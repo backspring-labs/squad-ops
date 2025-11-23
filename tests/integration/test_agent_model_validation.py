@@ -33,9 +33,9 @@ def get_agent_model_configs() -> Dict[str, Dict[str, str]]:
     if not roles_path.exists():
         pytest.skip(f"Agent roles directory not found: {roles_path}")
     
-    # Only test these three agents
-    target_roles = {'lead', 'dev', 'strat'}
-    target_agent_ids = {'max', 'neo', 'nat'}
+    # Only test these four agents
+    target_roles = {'lead', 'dev', 'strat', 'qa'}
+    target_agent_ids = {'max', 'neo', 'nat', 'eve'}
     
     agent_configs = {}
     
@@ -129,7 +129,7 @@ async def get_available_ollama_models(ollama_url: str) -> List[str]:
         raise Exception(f"Ollama API timeout after 10s")
 
 
-async def test_model_available(ollama_url: str, model_name: str) -> Tuple[bool, Optional[str]]:
+async def check_model_available(ollama_url: str, model_name: str) -> Tuple[bool, Optional[str]]:
     """
     Test if a model is available and functional by making a simple completion call.
     
@@ -301,7 +301,7 @@ class TestAgentModelValidation:
         failed_models = []
         for agent_id, config in models_to_test.items():
             model_name = config['model']
-            success, error_msg = asyncio.run(test_model_available(ollama_url, model_name))
+            success, error_msg = asyncio.run(check_model_available(ollama_url, model_name))
             
             if not success:
                 failed_models.append({

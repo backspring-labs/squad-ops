@@ -141,7 +141,8 @@ services:
     restart: unless-stopped
   task-api:
     build:
-      context: ./infra/task-api
+      context: .
+      dockerfile: infra/task-api/Dockerfile
     container_name: squadops-task-api
     ports:
     - 8001:8001
@@ -182,6 +183,7 @@ services:
       dockerfile: agents/roles/lead/Dockerfile
       args:
         AGENT_ROLE: lead
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-max
     environment:
       AGENT_ID: max
@@ -212,6 +214,7 @@ services:
       dockerfile: agents/roles/strat/Dockerfile
       args:
         AGENT_ROLE: strat
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-nat
     environment:
       AGENT_ID: nat
@@ -235,6 +238,7 @@ services:
       dockerfile: agents/roles/creative/Dockerfile
       args:
         AGENT_ROLE: creative
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-glyph
     environment:
       AGENT_ID: glyph
@@ -258,6 +262,7 @@ services:
       dockerfile: agents/roles/dev/Dockerfile
       args:
         AGENT_ROLE: dev
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-neo
     environment:
       AGENT_ID: neo
@@ -290,11 +295,14 @@ services:
       dockerfile: agents/roles/qa/Dockerfile
       args:
         AGENT_ROLE: qa
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-eve
     environment:
       AGENT_ID: eve
       AGENT_ROLE: qa
       AGENT_DISPLAY_NAME: EVE
+      USE_LOCAL_LLM: "true"
+      OLLAMA_URL: http://host.docker.internal:11434
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -313,6 +321,7 @@ services:
       dockerfile: agents/roles/data/Dockerfile
       args:
         AGENT_ROLE: data
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-data
     environment:
       AGENT_ID: data
@@ -336,6 +345,7 @@ services:
       dockerfile: agents/roles/finance/Dockerfile
       args:
         AGENT_ROLE: finance
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-quark
     environment:
       AGENT_ID: quark
@@ -359,6 +369,7 @@ services:
       dockerfile: agents/roles/comms/Dockerfile
       args:
         AGENT_ROLE: comms
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-joi
     environment:
       AGENT_ID: joi
@@ -382,6 +393,7 @@ services:
       dockerfile: agents/roles/curator/Dockerfile
       args:
         AGENT_ROLE: curator
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-og
     environment:
       AGENT_ID: og
@@ -405,6 +417,7 @@ services:
       dockerfile: agents/roles/audit/Dockerfile
       args:
         AGENT_ROLE: audit
+        BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-hal
     environment:
       AGENT_ID: hal

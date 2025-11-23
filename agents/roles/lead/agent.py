@@ -16,7 +16,7 @@ import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from base_agent import BaseAgent, AgentMessage
+from agents.base_agent import BaseAgent, AgentMessage
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Error, Timing
 from agents.specs.validator import SchemaValidator

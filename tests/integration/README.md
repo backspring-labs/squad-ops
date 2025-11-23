@@ -11,6 +11,9 @@ This directory contains integration tests for the SquadOps framework. These test
 - `test_agent_communication.py` - Tests agent-to-agent communication through RabbitMQ
 - `test_workflow.py` - Tests the complete workflow with real Ollama integration
 - `test_agent_model_validation.py` - Validates that all agent model configurations are available and functional in Ollama
+- `test_docker_build.py` - Tests Docker build process and metadata artifacts (manifest.json, agent_info.json, build hash)
+- `test_agent_initialization.py` - Tests agent initialization with new metadata flow (agent_info.json loading, role context storage)
+- `test_memory_integration.py` - Tests memory provider integration
 - `conftest.py` - Test configuration and fixtures
 - `agent_manager.py` - Helper for managing agent containers during tests
 - `test_config.env` - Externalized configuration for services
@@ -21,6 +24,8 @@ This directory contains integration tests for the SquadOps framework. These test
 2. **Workflow Integration Tests** - Test complete workflows with real services
 3. **Service Integration Tests** - Verify integration with external services
 4. **Agent Configuration Validation Tests** - Verify agent configurations are valid (model availability, etc.)
+5. **Docker Build Tests** - Verify Docker builds, metadata artifacts, and build hash propagation
+6. **Agent Initialization Tests** - Verify agent initialization with metadata loading and role context storage
 
 **Note:** End-to-end WarmBoot testing is done manually as a smoke test rather than automated integration tests.
 
@@ -240,6 +245,40 @@ Tests automatically verify that:
 - Agent logs don't contain errors
 - Agents can process basic commands
 
+### Metadata Artifacts
+
+Integration tests verify that agent containers include required metadata artifacts:
+
+1. **manifest.json** - Build artifact metadata
+   - Location: `/app/manifest.json` in container
+   - Contains: `manifest_version`, `role`, `capabilities`, `build_hash`, `build_time_utc`, etc.
+   - Verified by: `test_manifest_json_structure()` in `test_docker_build.py`
+
+2. **agent_info.json** - Runtime identity metadata
+   - Location: `/app/agent_info.json` in container
+   - Contains: `agent_info_version`, `role`, `agent_id`, `build_hash`, `runtime_env`, etc.
+   - Verified by: `test_agent_info_json_structure()` in `test_docker_build.py`
+
+3. **Build Hash Propagation** - Ensures build hash matches between build and runtime
+   - Verified by: `test_build_hash_propagation()` in `test_docker_build.py`
+   - Build hash from `manifest.json` must match `agent_info.json` build_hash
+
+### Agent Initialization Flow
+
+Integration tests verify the new agent initialization flow:
+
+1. **Agent Info Loading** - Agents load `agent_info.json` during initialization (backward compatible if missing)
+   - Verified by: `test_agent_loads_agent_info_on_initialize()` in `test_agent_initialization.py`
+
+2. **Memory Provider Initialization** - Agents initialize memory providers (LanceDB, SQL adapter)
+   - Verified by: `test_agent_initialization_with_memory_providers()` in `test_agent_initialization.py`
+
+3. **Role Context Storage** - Agents store role context in memory during initialization
+   - Verified by: `test_agent_stores_role_context()` in `test_agent_initialization.py`
+
+4. **Backward Compatibility** - Initialization works even without `agent_info.json`
+   - Verified by: `test_agent_initialization_backward_compatibility()` in `test_agent_initialization.py`
+
 ## Troubleshooting
 
 ### Common Issues
@@ -297,6 +336,16 @@ Tests automatically verify that:
    - Check that agent code has correct imports
    - Verify Dockerfile copies all necessary files
    - Rebuild containers after code changes
+
+3. **Missing metadata artifacts**
+   - Verify `manifest.json` and `agent_info.json` exist in container: `docker exec squadops-eve ls -la /app/*.json`
+   - Check build script generated artifacts: `ls -la dist/agents/qa/*.json`
+   - Rebuild agent package: `python scripts/build_agent.py qa`
+
+4. **Build hash mismatches**
+   - Verify build hash in `manifest.json` matches `agent_info.json` in running container
+   - Check Docker image label: `docker inspect squadops/eve:test | grep build_hash`
+   - Force rebuild if hash doesn't match: `docker-compose build --no-cache eve`
 
 ### Test Failures
 

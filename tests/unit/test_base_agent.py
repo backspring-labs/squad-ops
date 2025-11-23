@@ -92,7 +92,8 @@ class TestBaseAgent:
             
             with patch('aio_pika.connect_robust', return_value=mock_rabbitmq), \
                  patch('asyncpg.create_pool', side_effect=mock_create_pool), \
-                 patch('redis.asyncio.from_url', return_value=mock_redis):
+                 patch('redis.asyncio.from_url', return_value=mock_redis), \
+                 patch.object(agent, '_store_role_context', new_callable=AsyncMock):
                 
                 await agent.initialize()  # Actual method name
                 
@@ -1407,3 +1408,270 @@ class TestBaseAgent:
         assert status.progress == 50.0
         assert status.eta == "2h"
         assert status.dependencies == ["dep-1"]
+    
+    @pytest.mark.unit
+    def test_load_agent_info_missing_file(self, mock_unified_config):
+        """Test that _load_agent_info handles missing file gracefully"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            # Should return None without exception
+            agent_info = agent._load_agent_info()
+            assert agent_info is None
+    
+    @pytest.mark.unit
+    def test_load_agent_info_from_docker_path(self, mock_unified_config, tmp_path):
+        """Test that _load_agent_info loads from Docker path"""
+        import json
+        from pathlib import Path
+        
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            # Create agent_info.json at Docker path
+            docker_path = Path("/app/agent_info.json")
+            agent_info_data = {
+                "role": "test",
+                "build_hash": "sha256:abc123",
+                "capabilities": ["test.cap"]
+            }
+            
+            with patch('pathlib.Path.exists', return_value=True), \
+                 patch('builtins.open', create=True) as mock_open:
+                mock_file = MagicMock()
+                mock_file.__enter__.return_value.read.return_value = json.dumps(agent_info_data)
+                mock_open.return_value = mock_file
+                
+                agent_info = agent._load_agent_info()
+                assert agent_info is not None
+                assert agent_info['role'] == 'test'
+                assert agent_info['build_hash'] == 'sha256:abc123'
+    
+    @pytest.mark.unit
+    def test_detect_runtime_env(self, mock_unified_config):
+        """Test runtime environment detection"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            runtime_env = agent._detect_runtime_env()
+            
+            assert 'python_version' in runtime_env
+            assert isinstance(runtime_env['python_version'], str)
+            assert 'prefect_version' in runtime_env
+            assert 'cuda_enabled' in runtime_env
+            assert isinstance(runtime_env['cuda_enabled'], bool)
+    
+    @pytest.mark.unit
+    def test_get_container_hash(self, mock_unified_config):
+        """Test container hash detection"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            # Test with HOSTNAME env var
+            with patch.dict('os.environ', {'HOSTNAME': 'test-container-123'}):
+                container_hash = agent._get_container_hash()
+                assert container_hash == 'test-container-123'
+            
+            # Test without HOSTNAME
+            with patch.dict('os.environ', {}, clear=True):
+                with patch('pathlib.Path.exists', return_value=False):
+                    container_hash = agent._get_container_hash()
+                    assert container_hash is None
+    
+    @pytest.mark.unit
+    def test_fill_agent_info(self, mock_unified_config):
+        """Test filling runtime fields in agent_info"""
+        import json
+        
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            agent_info_template = {
+                "role": "test",
+                "agent_id": None,
+                "build_hash": "sha256:abc123",
+                "capabilities": ["test.cap"],
+                "container_hash": None,
+                "runtime_env": None,
+                "startup_time_utc": None
+            }
+            
+            filled_info = agent._fill_agent_info(agent_info_template)
+            
+            assert filled_info['agent_id'] == 'test-agent'
+            assert filled_info['runtime_env'] is not None
+            assert filled_info['startup_time_utc'] is not None
+            assert filled_info['container_hash'] is not None or filled_info['container_hash'] is None  # May be None if not in container
+            assert 'python_version' in filled_info['runtime_env']
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_announce_agent_online(self, mock_unified_config):
+        """Test agent_online announcement"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            agent_info = {
+                "agent_id": "test-agent",
+                "role": "test",
+                "build_hash": "sha256:abc123",
+                "container_hash": "container-123",
+                "capabilities": ["test.cap"]
+            }
+            
+            # Mock broadcast_message
+            agent.broadcast_message = AsyncMock()
+            
+            await agent._announce_agent_online(agent_info)
+            
+            agent.broadcast_message.assert_called_once()
+            call_args = agent.broadcast_message.call_args
+            assert call_args[1]['message_type'] == 'agent_online'
+            assert 'agent_id' in call_args[1]['payload']
+            assert call_args[1]['payload']['build_hash'] == 'sha256:abc123'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_initialize_with_agent_info(self, mock_database, mock_redis, mock_rabbitmq, mock_unified_config, tmp_path):
+        """Test that initialize() loads and processes agent_info.json"""
+        import json
+        from pathlib import Path
+        
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            # Mock agent_info.json exists
+            agent_info_data = {
+                "role": "test",
+                "build_hash": "sha256:abc123",
+                "capabilities": ["test.cap"]
+            }
+            
+            async def mock_create_pool(*args, **kwargs):
+                return mock_database
+            
+            with patch('aio_pika.connect_robust', return_value=mock_rabbitmq), \
+                 patch('asyncpg.create_pool', side_effect=mock_create_pool), \
+                 patch('redis.asyncio.from_url', return_value=mock_redis), \
+                 patch.object(agent, '_store_role_context', new_callable=AsyncMock), \
+                 patch.object(agent, '_load_agent_info', return_value=agent_info_data), \
+                 patch.object(agent, '_announce_agent_online', new_callable=AsyncMock) as mock_announce:
+                
+                await agent.initialize()
+                
+                # Verify agent_info was processed
+                mock_announce.assert_called_once()
+                call_args = mock_announce.call_args[0][0]
+                assert call_args['agent_id'] == 'test-agent'  # Should be filled
+                assert call_args['startup_time_utc'] is not None  # Should be filled
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_initialize_without_agent_info(self, mock_database, mock_redis, mock_rabbitmq, mock_unified_config):
+        """Test that initialize() works without agent_info.json (backward compatibility)"""
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            async def mock_create_pool(*args, **kwargs):
+                return mock_database
+            
+            with patch('aio_pika.connect_robust', return_value=mock_rabbitmq), \
+                 patch('asyncpg.create_pool', side_effect=mock_create_pool), \
+                 patch('redis.asyncio.from_url', return_value=mock_redis), \
+                 patch.object(agent, '_store_role_context', new_callable=AsyncMock), \
+                 patch.object(agent, '_load_agent_info', return_value=None), \
+                 patch.object(agent, '_announce_agent_online', new_callable=AsyncMock) as mock_announce:
+                
+                await agent.initialize()
+                
+                # Should not call announce if agent_info is None
+                mock_announce.assert_not_called()
+                
+                # But should still initialize successfully
+                assert agent.connection is not None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_structured_logging_agent_identity(self, mock_database, mock_redis, mock_rabbitmq, mock_unified_config):
+        """Test that structured logging emits agent_runtime_identity event (Recommended)"""
+        from agents.base_agent import logger
+        
+        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+            agent = ConcreteTestAgent(
+                name="test-agent",
+                agent_type="test",
+                reasoning_style="test"
+            )
+            
+            agent_info_data = {
+                "agent_info_version": "1.0",
+                "role": "test",
+                "agent_id": "test-agent",
+                "build_hash": "sha256:abc123",
+                "capabilities": ["test.cap"]
+            }
+            
+            async def mock_create_pool(*args, **kwargs):
+                return mock_database
+            
+            # Capture log calls
+            log_calls = []
+            original_info = logger.info
+            
+            def capture_log(*args, **kwargs):
+                log_calls.append((args, kwargs))
+                return original_info(*args, **kwargs)
+            
+            with patch('aio_pika.connect_robust', return_value=mock_rabbitmq), \
+                 patch('asyncpg.create_pool', side_effect=mock_create_pool), \
+                 patch('redis.asyncio.from_url', return_value=mock_redis), \
+                 patch.object(agent, '_store_role_context', new_callable=AsyncMock), \
+                 patch.object(agent, '_load_agent_info', return_value=agent_info_data), \
+                 patch.object(agent, '_announce_agent_online', new_callable=AsyncMock), \
+                 patch('agents.base_agent.logger.info', side_effect=capture_log):
+                
+                await agent.initialize()
+                
+                # Find the structured log call
+                structured_log_found = False
+                for args, kwargs in log_calls:
+                    if args and args[0] == "agent_runtime_identity":
+                        structured_log_found = True
+                        assert 'extra' in kwargs
+                        assert 'agent_info' in kwargs['extra']
+                        assert kwargs['extra']['agent_info']['build_hash'] == 'sha256:abc123'
+                        break
+                
+                assert structured_log_found, "Structured agent_runtime_identity log should be emitted"

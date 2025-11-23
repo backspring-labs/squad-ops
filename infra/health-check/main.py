@@ -434,6 +434,7 @@ class HealthChecker:
         self.redis_client = None
         self.pg_pool = None
         self._instances_cache = None
+        self._instances_cache_mtime = None  # Track file modification time for cache invalidation
         self.instances_file = os.getenv('INSTANCES_FILE', 'agents/instances/instances.yaml')
         self.rabbitmq_connection = None
         self.rabbitmq_channel = None
@@ -443,17 +444,21 @@ class HealthChecker:
         """
         Load agent instances from instances.yaml.
         Returns dict mapping agent_id -> {display_name, role, description}
-        Caches result for performance.
+        Caches result for performance, but automatically reloads if file is modified.
         """
-        if self._instances_cache is not None:
-            return self._instances_cache
-        
         try:
             instances_path = Path(self.instances_file)
             if not instances_path.exists():
                 logger.warning(f"Instances file not found: {self.instances_file}, using defaults")
                 return self._get_default_instances()
             
+            # Check if file has been modified since cache was created
+            current_mtime = instances_path.stat().st_mtime
+            if self._instances_cache is not None and self._instances_cache_mtime == current_mtime:
+                # Cache is still valid
+                return self._instances_cache
+            
+            # File is new or has been modified - reload it
             with open(instances_path, 'r') as f:
                 data = yaml.safe_load(f)
             
@@ -469,8 +474,16 @@ class HealthChecker:
                             'description': instance.get('description', '')
                         }
             
+            # Update cache and modification time
+            was_cached = self._instances_cache is not None
             self._instances_cache = instances
-            logger.info(f"Loaded {len(instances)} agent instances from {self.instances_file}")
+            self._instances_cache_mtime = current_mtime
+            
+            if was_cached:
+                logger.info(f"Reloaded {len(instances)} agent instances from {self.instances_file} (file modified)")
+            else:
+                logger.info(f"Loaded {len(instances)} agent instances from {self.instances_file}")
+            
             return instances
             
         except Exception as e:

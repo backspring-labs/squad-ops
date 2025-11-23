@@ -366,7 +366,7 @@ Test application for SquadOps integration testing
             ('code', 'neo'),
             ('product', 'nat'),  # Product tasks delegate to nat (strategy agent)
             ('strategy', 'nat'),  # Strategy tasks delegate to nat
-            ('security', 'qa-agent'),
+            ('security', 'eve'),  # Security tasks delegate to eve (QA agent)
             ('data', 'data-agent'),
             ('financial', 'finance-agent'),
             ('creative', 'creative-agent'),

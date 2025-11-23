@@ -18,10 +18,12 @@ bindings:
   
   # Communications capabilities (console chat)
   comms.chat: nat  # Console chat support for Nat
+  comms.chat: eve  # Console chat support for Eve
   
   # QA capabilities
-  qa.security_audit: eve
-  qa.compliance_check: eve
+  qa.test_design: eve
+  qa.test_dev: eve
+  qa.test_execution: eve
   
   # Data capabilities
   data.analysis: data

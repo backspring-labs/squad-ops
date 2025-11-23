@@ -266,6 +266,37 @@ class LanceDBAdapter(MemoryProvider):
             logger.error(f"{self.agent_name}: Failed to store memory: {e}")
             raise
     
+    async def put_if_not_exists(self, item: dict) -> Optional[str]:
+        """
+        Store a memory item only if it doesn't already exist.
+        
+        Generates deterministic ID and checks for existence before storing.
+        """
+        if self._table is None:
+            logger.error(f"{self.agent_name}: LanceDB table not initialized")
+            raise RuntimeError("LanceDB table not initialized")
+        
+        try:
+            # Generate deterministic ID (same logic as put())
+            ns = item.get('ns', 'role')
+            agent = item.get('agent', self.agent_name)
+            content = item.get('content', {})
+            content_str = json.dumps(content, sort_keys=True)
+            mem_id = hashlib.sha256(f"{agent}:{ns}:{content_str}".encode()).hexdigest()[:16]
+            
+            # Check if memory with this ID already exists
+            existing = await self.get("", k=1, mem_ids=[mem_id])
+            if existing:
+                logger.debug(f"{self.agent_name}: Memory {mem_id} already exists, skipping storage")
+                return None
+            
+            # Memory doesn't exist - store it using existing put() logic
+            return await self.put(item)
+            
+        except Exception as e:
+            logger.error(f"{self.agent_name}: Failed to put_if_not_exists: {e}")
+            raise
+    
     async def count(self, **kw) -> int:
         """
         Count memories in LanceDB table.

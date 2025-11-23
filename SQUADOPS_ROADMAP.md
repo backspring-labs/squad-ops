@@ -1,5 +1,5 @@
 # 🚀 SquadOps Roadmap
-**Version:** 2.0 | **Date:** January 2025 | **Status:** Post-MVP, Scaling Phase
+**Version:** 2.0 | **Date:** November 2025 | **Status:** Post-MVP, Scaling Phase
 
 ---
 

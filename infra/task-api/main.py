@@ -1,30 +1,64 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 import asyncpg
 import os
-import json
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+
+import sys
+from pathlib import Path
+
+# Add parent directory to path to allow importing deps
+sys.path.insert(0, str(Path(__file__).parent))
+
+from agents.tasks.base_adapter import TaskAdapterBase
+from agents.tasks.models import TaskCreate, TaskState, TaskFilters, FlowCreate, FlowUpdate, FlowState
+from agents.tasks.errors import (
+    TaskAdapterError,
+    TaskNotFoundError,
+    TaskConflictError,
+)
+from deps import get_tasks_adapter_dep
 
 app = FastAPI(title="SquadOps Task Management API", version="1.0")
 
 POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://squadops:squadops123@postgres:5432/squadops")
 
-# Global connection pool
+# Global connection pool (for memory endpoints only)
 pool = None
 
 @app.on_event("startup")
 async def startup_event():
     global pool
     pool = await asyncpg.create_pool(POSTGRES_URL, min_size=1, max_size=10)
+    
+    # Initialize tasks adapter
+    try:
+        from agents.tasks.registry import get_tasks_adapter
+        adapter = await get_tasks_adapter()
+        await adapter.initialize()
+    except Exception as e:
+        # Log error but don't fail startup - adapter will be initialized on first use
+        import logging
+        logging.error(f"Failed to initialize tasks adapter during startup: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     global pool
     if pool:
         await pool.close()
+    
+    # Shutdown tasks adapter
+    try:
+        from agents.tasks.registry import get_tasks_adapter
+        adapter = await get_tasks_adapter()
+        await adapter.shutdown()
+    except Exception as e:
+        # Log error but continue shutdown
+        import logging
+        logging.error(f"Error during tasks adapter shutdown: {e}")
 
-# Pydantic models
+# Pydantic models (for backward compatibility with existing API clients)
 class ExecutionCycleCreate(BaseModel):
     ecid: str
     pid: str
@@ -54,235 +88,13 @@ class TaskLogUpdate(BaseModel):
     artifacts: Optional[Dict[str, Any]] = None
     error_log: Optional[str] = None
 
-# GET endpoints for querying tasks and execution cycles
-
-@app.get("/api/v1/tasks/ec/{ecid}")
-async def get_tasks_by_ecid(ecid: str):
-    """Get all tasks for a specific execution cycle"""
-    async with pool.acquire() as conn:
-        tasks = await conn.fetch("""
-            SELECT * FROM agent_task_log 
-            WHERE ecid = $1 
-            ORDER BY created_at ASC
-        """, ecid)
-    return [dict(task) for task in tasks]
-
-
-@app.get("/api/v1/tasks/agent/{agent_name}")
-async def get_tasks_by_agent(agent_name: str, ecid: Optional[str] = None, limit: int = 50):
-    """Get recent tasks for a specific agent, optionally filtered by ECID"""
-    async with pool.acquire() as conn:
-        if ecid:
-            tasks = await conn.fetch("""
-                SELECT * FROM agent_task_log 
-                WHERE agent = $1 AND ecid = $2
-                ORDER BY created_at DESC 
-                LIMIT $3
-            """, agent_name, ecid, limit)
-        else:
-            tasks = await conn.fetch("""
-                SELECT * FROM agent_task_log 
-                WHERE agent = $1 
-                ORDER BY created_at DESC 
-                LIMIT $2
-            """, agent_name, limit)
-    return [dict(task) for task in tasks]
-
-@app.get("/api/v1/tasks/status/{status}")
-async def get_tasks_by_status(status: str):
-    """Get tasks by status"""
-    async with pool.acquire() as conn:
-        tasks = await conn.fetch("""
-            SELECT * FROM agent_task_log 
-            WHERE status = $1 
-            ORDER BY created_at DESC
-        """, status)
-    return [dict(task) for task in tasks]
-
-@app.get("/api/v1/execution-cycles")
-async def get_execution_cycles(run_type: Optional[str] = None):
-    """Get execution cycles, optionally filtered by type"""
-    async with pool.acquire() as conn:
-        if run_type:
-            cycles = await conn.fetch("""
-                SELECT * FROM execution_cycle 
-                WHERE run_type = $1 
-                ORDER BY created_at DESC
-            """, run_type)
-        else:
-            cycles = await conn.fetch("""
-                SELECT * FROM execution_cycle 
-                ORDER BY created_at DESC
-            """)
-    return [dict(cycle) for cycle in cycles]
-
-@app.get("/api/v1/tasks/summary/{ecid}")
-async def get_task_summary(ecid: str):
-    """Get task summary for an execution cycle"""
-    async with pool.acquire() as conn:
-        summary = await conn.fetchrow("""
-            SELECT 
-                COUNT(*) as total_tasks,
-                COUNT(*) FILTER (WHERE status = 'completed') as completed,
-                COUNT(*) FILTER (WHERE status = 'started') as in_progress,
-                COUNT(*) FILTER (WHERE status = 'delegated') as delegated,
-                COUNT(*) FILTER (WHERE status = 'failed') as failed,
-                AVG(duration) as avg_duration
-            FROM agent_task_log 
-            WHERE ecid = $1
-        """, ecid)
-    return dict(summary)
-
-# POST/PUT endpoints for agents to create and update tasks
-
-@app.post("/api/v1/execution-cycles")
-async def create_execution_cycle(cycle: ExecutionCycleCreate):
-    """Create a new execution cycle"""
-    async with pool.acquire() as conn:
-        try:
-            now = datetime.utcnow()
-            # Note: execution_cycle table only has created_at, not start_time
-            # Use created_at as start_time for duration calculation
-            await conn.execute("""
-                INSERT INTO execution_cycle 
-                (ecid, pid, run_type, title, description, initiated_by, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-            """, cycle.ecid, cycle.pid, cycle.run_type, cycle.title, 
-                cycle.description, cycle.initiated_by, now)
-            return {"status": "created", "ecid": cycle.ecid}
-        except asyncpg.exceptions.UniqueViolationError:
-            raise HTTPException(status_code=409, detail=f"Execution cycle {cycle.ecid} already exists")
-
-@app.put("/api/v1/execution-cycles/{ecid}")
-async def update_execution_cycle(ecid: str, update: ExecutionCycleUpdate):
-    """Update execution cycle status or notes"""
-    
-    updates = []
-    params = []
-    param_count = 1
-    
-    if update.status:
-        updates.append(f"status = ${param_count}")
-        params.append(update.status)
-        param_count += 1
-    
-    if update.notes:
-        updates.append(f"notes = ${param_count}")
-        params.append(update.notes)
-        param_count += 1
-    
-    if not updates:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    
-    params.append(ecid)
-    query = f"UPDATE execution_cycle SET {', '.join(updates)} WHERE ecid = ${param_count}"
-    
-    async with pool.acquire() as conn:
-        result = await conn.execute(query, *params)
-        if result == "UPDATE 0":
-            raise HTTPException(status_code=404, detail=f"Execution cycle {ecid} not found")
-    
-    return {"status": "updated", "ecid": ecid}
-
-@app.post("/api/v1/execution-cycles/{ecid}/complete")
-async def complete_execution_cycle(ecid: str, notes: Optional[str] = None):
-    """Mark execution cycle as completed"""
-    update = ExecutionCycleUpdate(status="completed", notes=notes)
-    return await update_execution_cycle(ecid, update)
-
-@app.post("/api/v1/execution-cycles/{ecid}/fail")
-async def fail_execution_cycle(ecid: str, notes: str):
-    """Mark execution cycle as failed"""
-    update = ExecutionCycleUpdate(status="failed", notes=notes)
-    return await update_execution_cycle(ecid, update)
-
-@app.post("/api/v1/tasks/start")
-async def start_task(task: TaskLogCreate):
-    """Log task start"""
-    async with pool.acquire() as conn:
-        try:
-            await conn.execute("""
-                INSERT INTO agent_task_log 
-                (task_id, ecid, agent, status, priority, description, start_time, 
-                 dependencies, delegated_by, delegated_to, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            """, task.task_id, task.ecid, task.agent, task.status, task.priority, 
-                task.description, datetime.utcnow(), task.dependencies or [], 
-                task.delegated_by, task.delegated_to, datetime.utcnow())
-            return {"status": "started", "task_id": task.task_id}
-        except asyncpg.exceptions.UniqueViolationError:
-            raise HTTPException(status_code=409, detail=f"Task {task.task_id} already exists")
-
-@app.put("/api/v1/tasks/{task_id}")
-async def update_task(task_id: str, update: TaskLogUpdate):
-    """Update task status, completion, or error"""
-    
-    # Build dynamic update query based on provided fields
-    updates = []
-    params = []
-    param_count = 1
-    
-    if update.status:
-        updates.append(f"status = ${param_count}")
-        params.append(update.status)
-        param_count += 1
-    
-    if update.end_time:
-        updates.append(f"end_time = ${param_count}")
-        params.append(update.end_time)
-        param_count += 1
-        updates.append("duration = end_time - start_time")
-    
-    if update.artifacts:
-        updates.append(f"artifacts = ${param_count}")
-        params.append(json.dumps(update.artifacts))
-        param_count += 1
-    
-    if update.error_log:
-        updates.append(f"error_log = ${param_count}")
-        params.append(update.error_log)
-        param_count += 1
-    
-    if not updates:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    
-    params.append(task_id)
-    query = f"UPDATE agent_task_log SET {', '.join(updates)} WHERE task_id = ${param_count}"
-    
-    async with pool.acquire() as conn:
-        await conn.execute(query, *params)
-    
-    return {"status": "updated", "task_id": task_id}
-
 class TaskCompleteRequest(BaseModel):
     task_id: str
     artifacts: Optional[Dict[str, Any]] = None
 
-@app.post("/api/v1/tasks/complete")
-async def complete_task(request: TaskCompleteRequest):
-    """Mark task as completed with optional artifacts"""
-    update = TaskLogUpdate(
-        status="completed",
-        end_time=datetime.utcnow(),
-        artifacts=request.artifacts
-    )
-    return await update_task(request.task_id, update)
-
 class TaskFailRequest(BaseModel):
     task_id: str
     error_log: str
-
-@app.post("/api/v1/tasks/fail")
-async def fail_task(request: TaskFailRequest):
-    """Mark task as failed with error log"""
-    update = TaskLogUpdate(
-        status="failed",
-        end_time=datetime.utcnow(),
-        error_log=request.error_log
-    )
-    return await update_task(request.task_id, update)
-
-# Task Status Management Endpoints (replaces direct task_status table writes)
 
 class TaskStatusCreate(BaseModel):
     task_id: str
@@ -296,102 +108,322 @@ class TaskStatusUpdate(BaseModel):
     progress: Optional[float] = None
     eta: Optional[str] = None
 
-@app.post("/api/v1/task-status")
-async def create_or_update_task_status(task_status: TaskStatusCreate):
-    """Create or update task status (replaces direct task_status table writes)"""
-    async with pool.acquire() as conn:
-        try:
-            await conn.execute("""
-                INSERT INTO task_status 
-                (task_id, agent_name, status, progress, eta, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (task_id) 
-                DO UPDATE SET 
-                    agent_name = $2,
-                    status = $3,
-                    progress = $4,
-                    eta = $5,
-                    updated_at = $6
-            """, task_status.task_id, task_status.agent_name, task_status.status,
-                task_status.progress, task_status.eta, datetime.utcnow())
-            return {"status": "updated", "task_id": task_status.task_id}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to update task status: {str(e)}")
+# Helper functions to convert between DTOs and legacy formats
+def task_to_dict(task) -> dict:
+    """Convert Task DTO to legacy dict format"""
+    result = {
+        "task_id": task.task_id,
+        "pid": task.pid,
+        "ecid": task.ecid,
+        "agent": task.agent,
+        "phase": task.phase,
+        "status": task.status,
+        "priority": task.priority,
+        "description": task.description,
+        "start_time": task.start_time.isoformat() if task.start_time else None,
+        "end_time": task.end_time.isoformat() if task.end_time else None,
+        "duration": task.duration,
+        "dependencies": task.dependencies,
+        "error_log": task.error_log,
+        "delegated_by": task.delegated_by,
+        "delegated_to": task.delegated_to,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+    }
+    # Convert artifacts to dict format
+    if task.artifacts:
+        result["artifacts"] = [a.dict() if hasattr(a, 'dict') else a for a in task.artifacts]
+    else:
+        result["artifacts"] = None
+    return result
 
-@app.put("/api/v1/task-status/{task_id}")
-async def update_task_status(task_id: str, update: TaskStatusUpdate):
-    """Update task status fields"""
-    updates = []
-    params = []
-    param_count = 1
-    
-    if update.status:
-        updates.append(f"status = ${param_count}")
-        params.append(update.status)
-        param_count += 1
-    
-    if update.progress is not None:
-        updates.append(f"progress = ${param_count}")
-        params.append(update.progress)
-        param_count += 1
-    
-    if update.eta:
-        updates.append(f"eta = ${param_count}")
-        params.append(update.eta)
-        param_count += 1
-    
-    if not updates:
+def flow_to_dict(flow) -> dict:
+    """Convert FlowRun DTO to legacy dict format"""
+    return {
+        "ecid": flow.ecid,
+        "pid": flow.pid,
+        "run_type": flow.run_type,
+        "title": flow.title,
+        "description": flow.description,
+        "created_at": flow.created_at.isoformat() if flow.created_at else None,
+        "initiated_by": flow.initiated_by,
+        "status": flow.status,
+        "notes": flow.notes,
+    }
+
+def handle_adapter_error(e: Exception) -> HTTPException:
+    """Map TaskAdapterError to appropriate HTTPException"""
+    if isinstance(e, TaskNotFoundError):
+        return HTTPException(status_code=404, detail=str(e))
+    elif isinstance(e, TaskConflictError):
+        return HTTPException(status_code=409, detail=str(e))
+    elif isinstance(e, TaskAdapterError):
+        return HTTPException(status_code=500, detail=str(e))
+    else:
+        return HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+# GET endpoints for querying tasks and execution cycles
+
+@app.get("/api/v1/tasks/ec/{ecid}")
+async def get_tasks_by_ecid(ecid: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Get all tasks for a specific execution cycle"""
+    try:
+        tasks = await adapter.list_tasks_for_ecid(ecid)
+        return [task_to_dict(task) for task in tasks]
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+@app.get("/api/v1/tasks/agent/{agent_name}")
+async def get_tasks_by_agent(
+    agent_name: str, 
+    ecid: Optional[str] = None, 
+    limit: int = 50,
+    adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)
+):
+    """Get recent tasks for a specific agent, optionally filtered by ECID"""
+    try:
+        filters = TaskFilters(agent=agent_name, ecid=ecid, limit=limit)
+        tasks = await adapter.list_tasks(filters)
+        return [task_to_dict(task) for task in tasks]
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+@app.get("/api/v1/tasks/status/{status}")
+async def get_tasks_by_status(status: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Get tasks by status"""
+    try:
+        filters = TaskFilters(status=status)
+        tasks = await adapter.list_tasks(filters)
+        return [task_to_dict(task) for task in tasks]
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+@app.get("/api/v1/execution-cycles")
+async def get_execution_cycles(run_type: Optional[str] = None, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Get execution cycles, optionally filtered by type"""
+    try:
+        flows = await adapter.list_flows(run_type)
+        return [flow_to_dict(flow) for flow in flows]
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+@app.get("/api/v1/tasks/summary/{ecid}")
+async def get_task_summary(ecid: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Get task summary for an execution cycle"""
+    try:
+        summary = await adapter.get_task_summary(ecid)
+        # Convert TaskSummary DTO to dict for backward compatibility
+        return summary.dict()
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+# POST/PUT endpoints for agents to create and update tasks
+
+@app.post("/api/v1/execution-cycles")
+async def create_execution_cycle(cycle: ExecutionCycleCreate, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Create a new execution cycle"""
+    try:
+        flow = await adapter.create_flow(
+            cycle.ecid,
+            cycle.pid,
+            meta={
+                "run_type": cycle.run_type,
+                "title": cycle.title,
+                "description": cycle.description,
+                "initiated_by": cycle.initiated_by,
+            }
+        )
+        return {"status": "created", "ecid": cycle.ecid}
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+@app.put("/api/v1/execution-cycles/{ecid}")
+async def update_execution_cycle(
+    ecid: str, 
+    update: ExecutionCycleUpdate,
+    adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)
+):
+    """Update execution cycle status or notes"""
+    if not update.status and not update.notes:
         raise HTTPException(status_code=400, detail="No fields to update")
     
-    updates.append(f"updated_at = ${param_count}")
-    params.append(datetime.utcnow())
-    param_count += 1
+    try:
+        # Determine state from status
+        state = FlowState.ACTIVE
+        if update.status == "completed":
+            state = FlowState.COMPLETED
+        elif update.status == "failed":
+            state = FlowState.FAILED
+        
+        flow = await adapter.update_flow(
+            ecid,
+            state,
+            meta={
+                "status": update.status,
+                "notes": update.notes,
+            }
+        )
+        return {"status": "updated", "ecid": ecid}
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+@app.post("/api/v1/execution-cycles/{ecid}/complete")
+async def complete_execution_cycle(ecid: str, notes: Optional[str] = None, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Mark execution cycle as completed"""
+    update = ExecutionCycleUpdate(status="completed", notes=notes)
+    return await update_execution_cycle(ecid, update, adapter)
+
+@app.post("/api/v1/execution-cycles/{ecid}/fail")
+async def fail_execution_cycle(ecid: str, notes: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Mark execution cycle as failed"""
+    update = ExecutionCycleUpdate(status="failed", notes=notes)
+    return await update_execution_cycle(ecid, update, adapter)
+
+@app.post("/api/v1/tasks/start")
+async def start_task(task: TaskLogCreate, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Log task start"""
+    try:
+        task_create = TaskCreate(
+            task_id=task.task_id,
+            ecid=task.ecid,
+            agent=task.agent,
+            status=task.status,
+            priority=task.priority,
+            description=task.description,
+            dependencies=task.dependencies or [],
+            delegated_by=task.delegated_by,
+            delegated_to=task.delegated_to,
+        )
+        await adapter.create_task(task_create)
+        return {"status": "started", "task_id": task.task_id}
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+@app.put("/api/v1/tasks/{task_id}")
+async def update_task(
+    task_id: str, 
+    update: TaskLogUpdate,
+    adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)
+):
+    """Update task status, completion, or error"""
+    if not update.status and not update.end_time and not update.artifacts and not update.error_log:
+        raise HTTPException(status_code=400, detail="No fields to update")
     
-    params.append(task_id)
-    query = f"UPDATE task_status SET {', '.join(updates)} WHERE task_id = ${param_count}"
+    try:
+        # Determine state from status
+        state = TaskState.STARTED
+        if update.status:
+            try:
+                state = TaskState(update.status)
+            except ValueError:
+                state = TaskState.STARTED  # Default if status doesn't match enum
+        
+        meta = {}
+        if update.end_time:
+            meta["end_time"] = update.end_time
+        if update.artifacts:
+            meta["artifacts"] = update.artifacts
+        if update.error_log:
+            meta["error_log"] = update.error_log
+        
+        await adapter.update_task_state(task_id, state, meta)
+        return {"status": "updated", "task_id": task_id}
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+@app.post("/api/v1/tasks/complete")
+async def complete_task(request: TaskCompleteRequest, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Mark task as completed with optional artifacts"""
+    update = TaskLogUpdate(
+        status="completed",
+        end_time=datetime.utcnow(),
+        artifacts=request.artifacts
+    )
+    return await update_task(request.task_id, update, adapter)
+
+@app.post("/api/v1/tasks/fail")
+async def fail_task(request: TaskFailRequest, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+    """Mark task as failed with error log"""
+    update = TaskLogUpdate(
+        status="failed",
+        end_time=datetime.utcnow(),
+        error_log=request.error_log
+    )
+    return await update_task(request.task_id, update, adapter)
+
+# Task Status Management Endpoints
+
+@app.post("/api/v1/task-status")
+async def create_or_update_task_status(
+    task_status: TaskStatusCreate,
+    adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)
+):
+    """Create or update task status (replaces direct task_status table writes)"""
+    try:
+        result = await adapter.update_task_status(
+            task_status.task_id,
+            task_status.status,
+            task_status.progress,
+            task_status.eta,
+            task_status.agent_name
+        )
+        return {"status": "updated", "task_id": task_status.task_id}
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
+
+@app.put("/api/v1/task-status/{task_id}")
+async def update_task_status_endpoint(
+    task_id: str, 
+    update: TaskStatusUpdate,
+    adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)
+):
+    """Update task status fields"""
+    if not update.status and update.progress is None and not update.eta:
+        raise HTTPException(status_code=400, detail="No fields to update")
     
-    async with pool.acquire() as conn:
-        result = await conn.execute(query, *params)
-        if result == "UPDATE 0":
+    try:
+        # Get existing status to preserve agent_name
+        existing = await adapter.get_task_status(task_id)
+        if not existing:
             raise HTTPException(status_code=404, detail=f"Task status {task_id} not found")
-    
-    return {"status": "updated", "task_id": task_id}
+        
+        status = update.status or existing.get("status", "")
+        progress = update.progress if update.progress is not None else existing.get("progress", 0.0)
+        eta = update.eta or existing.get("eta")
+        agent_name = existing.get("agent_name", "")
+        
+        await adapter.update_task_status(task_id, status, progress, eta, agent_name)
+        return {"status": "updated", "task_id": task_id}
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
 
 @app.get("/api/v1/task-status/{task_id}")
-async def get_task_status(task_id: str):
+async def get_task_status_endpoint(task_id: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
     """Get task status by task_id"""
-    async with pool.acquire() as conn:
-        status = await conn.fetchrow("""
-            SELECT * FROM task_status 
-            WHERE task_id = $1
-        """, task_id)
+    try:
+        status = await adapter.get_task_status(task_id)
         if not status:
             raise HTTPException(status_code=404, detail=f"Task status {task_id} not found")
-        return dict(status)
-
-# Note: Agent status endpoints moved to health-check service
-# Task API focuses on task lifecycle management only
-# Agent heartbeats should use: POST /health/agents/status (health-check service on port 8000)
-
+        return status
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
 
 @app.get("/api/v1/execution-cycles/{ecid}")
-async def get_execution_cycle(ecid: str):
+async def get_execution_cycle(ecid: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
     """Get a single execution cycle by ECID"""
-    async with pool.acquire() as conn:
-        cycle = await conn.fetchrow("""
-            SELECT * FROM execution_cycle 
-            WHERE ecid = $1
-        """, ecid)
-        if not cycle:
+    try:
+        flow = await adapter.get_flow(ecid)
+        if not flow:
             raise HTTPException(status_code=404, detail=f"Execution cycle {ecid} not found")
-        return dict(cycle)
+        return flow_to_dict(flow)
+    except TaskAdapterError as e:
+        raise handle_adapter_error(e)
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "task-api"}
 
-# Memory Promotion Endpoints (SIP-042)
+# Memory Promotion Endpoints (SIP-042) - unchanged, uses separate pool
 
 class MemoryPromoteRequest(BaseModel):
     memory_id: str

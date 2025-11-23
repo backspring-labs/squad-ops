@@ -35,10 +35,10 @@ instances:
     description: "Developer - Deductive reasoning"
 
   # QA Role
-  - id: qa-agent
-    display_name: QAAgent
+  - id: eve
+    display_name: Eve
     role: qa
-    model: llama3-70b
+    model: qwen2.5:3b-instruct
     enabled: true
     description: "QA & Security - Counterfactual reasoning"
 

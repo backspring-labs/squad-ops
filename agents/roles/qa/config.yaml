@@ -2,18 +2,22 @@ agent_id: eve
 role: qa
 spec_version: 1.0.0
 implements:
+  - capability: qa.test_design
+    min_version: 1.0.0
+  - capability: qa.test_dev
+    min_version: 1.0.0
+  - capability: qa.test_execution
+    min_version: 1.0.0
   - capability: test.run
     min_version: 1.0.0
-  - capability: qa.security_audit
-    min_version: 1.0.0
-  - capability: qa.compliance_check
+  - capability: comms.chat
     min_version: 1.0.0
 constraints:
   repo_allow: ["squad_ops/*", "warm-boot/*"]
   max_runtime_s: 2400
   network_allow: ["git-read", "package-cache", "security-scans"]
 defaults:
-  model: ollama:llama3-70b
+  model: ollama:qwen2.5:3b-instruct
   image: squadops/eve:latest
   max_concurrency: 1
 

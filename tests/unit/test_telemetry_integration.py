@@ -12,6 +12,11 @@ from datetime import datetime
 class TestGPUDetection:
     """Test GPU utilization tracking (Task 1.2)"""
     
+    def setup_method(self):
+        """Reset PathResolver before each test"""
+        from agents.utils.path_resolver import PathResolver
+        PathResolver.reset()
+    
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_gpu_utilization_available(self, mock_unified_config):
@@ -125,6 +130,11 @@ Performance: Utilization = 45%, Memory = 8192 MiB / 24576 MiB
 class TestReasoningExtraction:
     """Test reasoning trace extraction (Task 2.2)"""
     
+    def setup_method(self):
+        """Reset PathResolver before each test"""
+        from agents.utils.path_resolver import PathResolver
+        PathResolver.reset()
+    
     @pytest.mark.unit
     def test_extract_real_ai_reasoning_with_entries(self, mock_unified_config):
         """Test _extract_real_ai_reasoning() with reasoning entries"""
@@ -229,6 +239,11 @@ class TestReasoningExtraction:
 class TestExecutionDuration:
     """Test execution duration calculation (Task 1.6)"""
     
+    def setup_method(self):
+        """Reset PathResolver before each test"""
+        from agents.utils.path_resolver import PathResolver
+        PathResolver.reset()
+    
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_execution_duration_calculation(self, mock_unified_config):
@@ -290,6 +305,11 @@ class TestExecutionDuration:
 
 class TestBaseAgentTelemetryIntegration:
     """Test BaseAgent telemetry integration with TelemetryClient"""
+    
+    def setup_method(self):
+        """Reset PathResolver before each test"""
+        from agents.utils.path_resolver import PathResolver
+        PathResolver.reset()
     
     @pytest.mark.unit
     @pytest.mark.asyncio

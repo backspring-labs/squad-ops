@@ -1,25 +1,29 @@
 # SquadOps Context Handoff Document
-**Version:** 0.2.0 | **Date:** January 2025 | **Status:** 🎉 **TEST COVERAGE MILESTONE** - 90% Coverage + Quality Guardrails Established
+**Version:** 0.6.5 | **Date:** November 2025 | **Status:** 🎉 **DOCKER BUILD & TASK ADAPTER MILESTONE** - Production-Ready Infrastructure
 
 ## 🚀 **CURRENT STATUS UPDATE**
-**HISTORIC MILESTONE**: 90% Test Coverage Achieved + Quality Guardrails Established!
+**FRAMEWORK v0.6.5**: Docker Build Process + Task Adapter Architecture Complete!
 
-### ✅ **What's New Since v0.1.4 - TEST COVERAGE & QUALITY MILESTONE**
-- **🎯 90% Test Coverage**: From 79% to 90% (156 passing tests, +44 new tests)
+### ✅ **What's New Since v0.6.4 - DOCKER BUILD & TASK ADAPTER MILESTONE**
+- **🐳 Docker Build Process**: Multi-stage Dockerfile pattern with build script (`scripts/build_agent.py`) for assembling agent packages
+- **📦 Build Artifacts**: Deterministic builds with manifest.json and agent_info.json metadata, SHA256 build hash tracking
+- **🔌 Task Adapter Architecture**: Pluggable backend system (SQL/Prefect) with DTO purity principle, connection pooling, and test injection support
+- **🤖 Agent Expansion**: Nat (Strategy) v0.6.5 with PRD capabilities, EVE (QA) v0.6.5 with comprehensive testing capabilities
+- **📊 Code Statistics**: ~99K total lines (46K Python, 48K docs) across 171 Python files
+- **🎯 90% Test Coverage**: 156 passing tests with quality guardrails established
 - **🛡️ Quality Guardrails**: Critical rules across all core prompt files
 - **📋 Test Suite Expansion**: BaseAgent run loop, LeadAgent PRD processing, QAAgent security
 - **🏗️ Factory Refactoring**: Dependency injection for testability
 - **📚 Consolidated Roadmap**: Single source of truth (SQUADOPS_ROADMAP.md)
 - **🚫 No Shortcuts**: Documented lessons learned, enforced quality standards
-- **🔄 WarmBoot Validation**: run-055 confirmed agent factory refactors
-- **🔧 Connection Pool Management**: Fixed database connection exhaustion
+- **🔄 WarmBoot Validation**: 163+ WarmBoot runs with documented execution history
+- **🔧 Connection Pool Management**: Production-ready asyncpg connection pool management
 - **🧹 Clean Error Handling**: Eliminated Docker container cleanup errors
 - **📋 End-to-End Workflow**: PRD → Task Planning → Code Generation → Deployment → Tracking
 - **✅ Proven Concept**: AI agents can handle complete software development lifecycle with full traceability
 - **🎉 SIP-033A JSON Workflow**: Structured LLM output eliminating markdown parsing issues
 - **🏗️ Manifest-First Development**: Architecture design before implementation workflow
-- **🤖 Agent Coordination**: Max → Neo task sequencing with state management
-- **📊 Comprehensive Testing**: 46/46 unit tests passing (100% coverage for JSON workflow)
+- **🤖 Agent Coordination**: Max → Neo → Nat → EVE coordination with state management
 
 ### 📋 **Strategic Roadmap**
 - **[SQUADOPS_ROADMAP.md](./SQUADOPS_ROADMAP.md)** - **CURRENT**: Consolidated roadmap with MVP complete, multi-agent expansion phase
@@ -136,9 +140,20 @@
 - **RabbitMQ:** Inter-agent messaging (SquadComms)
 - **Postgres:** Central data store, task logs, governance data, execution cycles
 - **Task Management API:** FastAPI service for task lifecycle management (SIP-024/025)
+- **Task Adapter Architecture:** Pluggable backend system (SQL adapter with PostgreSQL, Prefect adapter stub) with DTO purity, connection pooling, and test injection support
 - **Prefect:** Task orchestration and state management
 - **Redis:** Caching, state sync, pub/sub backbone
 - **Keycloak:** Identity and access management
+
+### **Docker Build System**
+- **Build Script**: `scripts/build_agent.py` reads agent `config.yaml` and resolves dependencies automatically
+- **Multi-Stage Dockerfiles**: Stage 1 assembles agent package using build script, Stage 2 creates minimal runtime image
+- **Build Artifacts**: 
+  - `manifest.json`: Build artifact metadata (capabilities, skills, build hash, git commit)
+  - `agent_info.json`: Runtime identity metadata (agent_id, build_hash, container_hash, startup_time)
+  - Build hash: SHA256 hash of all files for deterministic builds
+- **Benefits**: No forgotten files, deterministic builds, testable, cloud compatible, edge ready
+- **Usage**: `python scripts/build_agent.py <role>` then `docker build -t squadops/<agent>:latest --build-arg AGENT_ROLE=<role> -f agents/roles/<role>/Dockerfile .`
 
 ### **LLM Integration (SIP-033A)**
 - **AppBuilder JSON Methods**: Structured manifest and file generation
@@ -429,26 +444,31 @@ A task is NOT complete if:
 
 ### **Deployment Achievements:**
 - ✅ **Infrastructure Services:** RabbitMQ, PostgreSQL, Redis, Prefect Server, Task-API all online
-- ✅ **10-Agent Squad:** Max, Neo, Nat, Joi, Data, EVE, HAL, Quark, Og, Glyph all deployed and healthy
+- ✅ **10-Agent Squad:** Max (v0.6.5), Neo (v0.6.5), Nat (v0.6.5), EVE (v0.6.5), plus 6 mock agents all deployed and healthy
+- ✅ **Docker Build System:** Multi-stage Dockerfiles with build script for all agents, deterministic builds with build artifacts
+- ✅ **Task Adapter Architecture:** Pluggable backend system with SQL adapter (PostgreSQL) and Prefect adapter stub, DTO purity, connection pooling
 - ✅ **Heartbeat Monitoring:** All agents register status and show as "online" with green checkmarks
 - ✅ **Health Dashboard:** Web interface at http://localhost:8000/health with vertical layout
-- ✅ **Docker Infrastructure:** Complete containerization with individual agent Dockerfiles
+- ✅ **Docker Infrastructure:** Complete containerization with individual agent Dockerfiles using multi-stage builds
 - ✅ **Database Optimization:** PostgreSQL max connections increased to handle all agents
 - ✅ **Task Management API:** FastAPI service with connection pooling and error handling
 - ✅ **Repository:** Private GitHub repo with all code committed and synced
 
-### **🎉 BREAKTHROUGH MILESTONES (SIP-024/025 Implementation):**
-- ✅ **SIP-024/025 Task Management System:** Complete API-first architecture implemented
+### **🎉 BREAKTHROUGH MILESTONES (v0.6.5):**
+- ✅ **Docker Build Process:** Multi-stage Dockerfile pattern with build script, deterministic builds, build artifacts
+- ✅ **Task Adapter Architecture:** Pluggable backend system with DTO purity, connection pooling, test injection support
+- ✅ **Agent Expansion:** Nat (Strategy) v0.6.5 with PRD capabilities, EVE (QA) v0.6.5 with test design/dev/execution
+- ✅ **SIP-024/025 Task Management System:** Complete API-first architecture with task adapter abstraction
 - ✅ **Execution Cycle Tracking:** ECID-based governance and traceability
 - ✅ **Task Lifecycle Management:** started → delegated → in_progress → completed
 - ✅ **Task Management API:** FastAPI service with connection pooling and error handling
 - ✅ **Database Schema Migration:** execution_cycle and agent_task_log tables
-- ✅ **Connection Pool Management:** Fixed database connection exhaustion
+- ✅ **Connection Pool Management:** Production-ready asyncpg connection pool management
 - ✅ **Clean Error Handling:** Eliminated Docker container cleanup errors
 - ✅ **End-to-End Workflow:** PRD → Task Planning → Code Generation → Deployment → Tracking
-- ✅ **Agent Collaboration:** Max and Neo working together seamlessly with full task tracking
+- ✅ **Agent Collaboration:** Max, Neo, Nat, and EVE working together seamlessly with full task tracking
 - ✅ **Production Deployment:** Applications running at http://localhost:8080/hello-squad/
-- ✅ **Version Management:** Dynamic versioning with proper archiving
+- ✅ **Version Management:** Dynamic versioning with proper archiving (framework v0.6.5, agents aligned)
 - ✅ **Container Operations:** Real Docker-in-Docker for deployment management
 - ✅ **Archive System:** Complete version history with proper archiving
 

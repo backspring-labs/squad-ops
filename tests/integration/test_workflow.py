@@ -1,11 +1,13 @@
 """
-Integration tests for SquadOps workflow with real Ollama.
+Integration tests for SquadOps workflow components with real Ollama.
 
-Tests the complete workflow:
+Tests individual workflow components:
 1. Manifest generation via JSON
 2. File generation via JSON  
 3. Content quality validation
 4. Governance artifact creation
+
+Note: End-to-end workflow testing is handled by WarmBoot runs.
 """
 import pytest
 import asyncio
@@ -109,68 +111,6 @@ class TestWorkflowIntegration:
             return asyncio.run(check_ollama())
         except:
             return False
-    
-    @pytest.mark.integration
-    @pytest.mark.asyncio
-    @pytest.mark.service_ollama
-    async def test_end_to_end_workflow(self, app_builder, sample_task_spec, ollama_available):
-        """Test complete SquadOps workflow with real Ollama and retry logic for network issues."""
-        if not ollama_available:
-            pytest.skip("Ollama not available for integration test")
-        
-        # Step 1: Generate manifest via JSON (using Skills)
-        manifest_prompt, task_spec = self._generate_manifest_prompt(sample_task_spec)
-        manifest = await app_builder.generate_manifest_json(manifest_prompt, sample_task_spec)
-        
-        assert isinstance(manifest, dict)
-        # Handle both old and new manifest structures
-        arch_type = manifest.get("architecture_type") or manifest.get("architecture", {}).get("type")
-        framework = manifest.get("framework") or manifest.get("architecture", {}).get("framework")
-        assert arch_type == "spa_web_app"
-        assert framework == "vanilla_js"
-        assert len(manifest.get("files", [])) > 0
-        assert manifest.get("deployment", {}).get("container") == "nginx:alpine"
-        
-        # Step 2: Generate files via JSON (using Skills)
-        files_prompt, task_spec, manifest = self._generate_files_prompt(sample_task_spec, manifest)
-        files = await app_builder.generate_files_json(files_prompt, sample_task_spec, manifest)
-        
-        assert isinstance(files, list)
-        assert len(files) > 0
-        
-        # Step 3: Verify file structure
-        file_paths = [f["file_path"] for f in files]
-        assert any("index.html" in path for path in file_paths)
-        assert any("app.js" in path for path in file_paths)
-        assert any("nginx.conf" in path for path in file_paths)
-        assert any("Dockerfile" in path for path in file_paths)
-        
-        # Step 4: Verify content quality
-        for file_data in files:
-            assert "content" in file_data
-            assert len(file_data["content"]) > 0
-            
-            # Verify no markdown markers in content
-            content = file_data["content"]
-            assert "```" not in content
-            # Allow file delimiters but not YAML frontmatter
-            assert content.count("---") <= 2  # Allow "--- FILE: name ---" markers
-        
-        # Step 5: Verify specific file contents
-        html_file = next(f for f in files if "index.html" in f["file_path"])
-        assert "<!DOCTYPE html>" in html_file["content"]
-        assert "<html" in html_file["content"]  # More flexible HTML tag detection
-        
-        js_file = next(f for f in files if "app.js" in f["file_path"])
-        assert "console.log" in js_file["content"] or "function" in js_file["content"]
-        
-        nginx_file = next(f for f in files if "nginx.conf" in f["file_path"])
-        assert "server {" in nginx_file["content"]
-        assert "listen 80" in nginx_file["content"]
-        
-        dockerfile = next(f for f in files if "Dockerfile" in f["file_path"])
-        assert "FROM nginx:alpine" in dockerfile["content"]
-        assert "EXPOSE 80" in dockerfile["content"]
     
     @pytest.mark.integration
     @pytest.mark.asyncio

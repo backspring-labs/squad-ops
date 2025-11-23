@@ -3,7 +3,12 @@ body {
   margin: 0;
   padding: 20px;
 }
-
-#activity-feed {
-  margin-top: 20px;
+header h1 {
+  color: #333;
+}
+main {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: calc(100vh - 60px);
 }

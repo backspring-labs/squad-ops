@@ -13,6 +13,11 @@ from agents.specs.agent_response import AgentResponse
 class TestStratAgent:
     """Test StratAgent"""
     
+    def setup_method(self):
+        """Reset PathResolver before each test"""
+        from agents.utils.path_resolver import PathResolver
+        PathResolver.reset()
+    
     @pytest.mark.unit
     def test_init(self):
         """Test agent initialization"""

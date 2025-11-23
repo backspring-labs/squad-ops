@@ -3,7 +3,7 @@
 ## 📌 Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.4.0) with telemetry finalization, LLM router abstraction, comprehensive documentation, and proven execution history (46+ WarmBoot runs).
+**Current Status**: Production-ready framework (v0.6.5) with Docker build process, task adapter architecture, comprehensive documentation, and proven execution history (163+ WarmBoot runs).
 
 ---
 
@@ -17,13 +17,15 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 ---
 
 ## 🧩 Core Components
-- **Agent Squad** – 2 functional agents (Max/Lead, Neo/Dev) with real LLM integration + 7 mock agents
+- **Agent Squad** – 4 functional agents (Max/Lead v0.6.5, Neo/Dev v0.6.5, Nat/Strategy v0.6.5, EVE/QA v0.6.5) with real LLM integration + 6 mock agents
 - **SquadComms** – RabbitMQ messaging for inter-agent communication
 - **Task Management API** – FastAPI service with execution cycle tracking (SIP-024/025)
+- **Task Adapter Architecture** – Pluggable backend system (SQL/Prefect) with DTO purity and connection pooling
 - **JSON Workflow Engine** – Structured LLM output with manifest-first development (SIP-033A)
 - **LLM Router Abstraction** – Dynamic provider registry supporting Ollama, Docker models, and future providers
 - **AppBuilder** – Architecture design before implementation with framework enforcement
 - **Telemetry & Observability** – OpenTelemetry integration with reasoning events, trace correlation, and wrap-up summaries
+- **Docker Build System** – Multi-stage builds with build script, deterministic builds, and build artifacts
 - **PostgreSQL** – Task logging, execution cycles, and state persistence
 - **Redis** – Caching and performance optimization
 - **Health Check Service** – FastAPI monitoring and WarmBoot API
@@ -44,7 +46,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 - **Protocols** – Testing, data governance, communication patterns
 - **Roadmaps** – Development plans and strategic direction
 
-**Total Documentation**: 43,009 lines across 256 markdown files
+**Total Documentation**: ~48,741 lines across 246 markdown files
 
 ---
 
@@ -125,22 +127,27 @@ curl -X POST http://localhost:8000/warmboot/submit \
 ---
 
 ## ✅ Current Status
-**Framework Version**: 0.4.0  
-**Development Status**: Production-ready framework with telemetry, LLM router abstraction, and comprehensive documentation
+**Framework Version**: 0.6.5  
+**Development Status**: Production-ready framework with Docker build process, task adapter architecture, and comprehensive documentation
 
 ### Project Statistics
-- **26,560 lines** of Python source code (80 files)
-- **12,763 lines** of test code (24 test files, ~48% test-to-code ratio)
-- **43,009 lines** of documentation (256 markdown files)
-- **605 total files** in the project
-- **46+ WarmBoot runs** completed with documented retrospectives
+- **~46,095 lines** of Python source code (171 files)
+- **~48,741 lines** of documentation (246 markdown files)
+- **~99,942 total lines** across all file types
+- **163+ WarmBoot runs** completed with documented retrospectives
 
 ### Functional Components
-- ✅ **2 Functional Agents** (Max/Lead, Neo/Dev) with real LLM integration
+- ✅ **4 Functional Agents**:
+  - **Max (Lead)** v0.6.5 – Task orchestration with local LLM (llama3.1:8b)
+  - **Neo (Dev)** v0.6.5 – Code generation with file modification capabilities (qwen2.5:7b)
+  - **Nat (Strategy)** v0.6.5 – PRD capabilities and product domain features
+  - **EVE (QA)** v0.6.5 – Test design, development, and execution with counterfactual reasoning
 - ✅ **Task Management System** (SIP-024/025) with execution cycle tracking
+- ✅ **Task Adapter Architecture** – Pluggable backend system (SQL/Prefect) with DTO purity, connection pooling, and test injection support
 - ✅ **Memory System** (SIP-042) with LanceDB semantic memory
 - ✅ **JSON Workflow Engine** (SIP-033A) with structured LLM output
 - ✅ **LLM Router Abstraction** – Dynamic provider registry (Ollama, Docker models, extensible)
+- ✅ **Docker Build System** – Multi-stage builds with build script (`scripts/build_agent.py`), deterministic builds, and build artifacts (manifest.json, agent_info.json)
 - ✅ **AppBuilder Integration** – Uses LLM router abstraction, no direct HTTP calls
 - ✅ **Telemetry & Observability** – OpenTelemetry with reasoning events, trace correlation
 - ✅ **Manifest-First Development** eliminating markdown parsing issues
@@ -151,14 +158,16 @@ curl -X POST http://localhost:8000/warmboot/submit \
 - ✅ **Docker Compose** development environment
 - ✅ **Version Management** and archiving system
 
-### Recent Achievements (v0.4.0)
+### Recent Achievements (v0.6.5)
+- ✅ **Docker Build Process**: Multi-stage Dockerfile pattern with build script for assembling agent packages
+- ✅ **Build Artifacts**: Deterministic builds with manifest.json and agent_info.json metadata
+- ✅ **Task Adapter Architecture**: Pluggable backend system with DTO purity principle, supporting SQL (PostgreSQL) and Prefect (future)
+- ✅ **Agent Expansion**: Nat (Strategy) v0.6.5 with PRD capabilities, EVE (QA) v0.6.5 with comprehensive testing capabilities
+- ✅ **Connection Pooling**: Production-ready asyncpg connection pool management for task adapters
+- ✅ **Test Support**: Dependency injection for unit testing in task adapter system
 - ✅ **Telemetry Finalization**: Reasoning events, wrap-up summaries, trace correlation
 - ✅ **LLM Router Abstraction**: Dynamic provider registry supporting multiple backends
-- ✅ **AppBuilder Refactoring**: Integrated with LLM router, respects `USE_LOCAL_LLM` flag
-- ✅ **Comprehensive Documentation**: 18 new IDEA docs, 7 new SIP docs, architecture guides
-- ✅ **Reasoning Event Capture**: Race condition fix ensuring reasoning events appear in wrap-ups
-- ✅ **Provider Extensibility**: Router design supports future DockerModelClient and other providers
-- ✅ **JSON Format Support**: OllamaClient supports `format='json'` parameter for structured output
+- ✅ **Comprehensive Documentation**: 48K+ lines of documentation across 246 markdown files
 
 ### Documentation Milestones
 - ✅ **43 SIPs** – Standard Implementation Protocols
@@ -168,6 +177,52 @@ curl -X POST http://localhost:8000/warmboot/submit \
 - ✅ **46+ WarmBoot Runs** – Documented execution history
 
 **Next Focus**: Multi-agent expansion, production deployment validation, and continuous improvement cycles.
+
+---
+
+## 🐳 Docker Build Process
+
+SquadOps uses a **build-time assembly approach** for creating agent containers:
+
+### Build Script
+The `scripts/build_agent.py` script:
+- Reads agent `config.yaml` to resolve dependencies automatically
+- Assembles only required files into `dist/agents/{role}/`
+- Generates build artifacts (`manifest.json`, `agent_info.json`)
+- Creates deterministic builds with SHA256 build hash
+
+### Multi-Stage Dockerfile Pattern
+All agents use a standard multi-stage build:
+- **Stage 1 (Builder)**: Runs build script to assemble agent package
+- **Stage 2 (Runtime)**: Minimal runtime image with assembled package
+- **Benefits**: No forgotten files, deterministic builds, testable, cloud compatible
+
+### Build Artifacts
+- **manifest.json**: Build artifact metadata (what was built, capabilities, skills, build hash)
+- **agent_info.json**: Runtime identity metadata (who is running, container hash, startup time)
+- **Build Hash**: SHA256 hash of all files for deterministic builds
+
+### Usage
+```bash
+# Build agent package
+python scripts/build_agent.py <role>
+
+# Build Docker image
+docker build -t squadops/<agent>:latest --build-arg AGENT_ROLE=<role> -f agents/roles/<role>/Dockerfile .
+```
+
+### Task Adapter Architecture
+
+SquadOps implements a **pluggable task adapter system**:
+
+- **Abstract Base Class**: `TaskAdapterBase` defines the interface for all task operations
+- **DTO Purity Principle**: Adapters return canonical DTOs only; API formatting happens in FastAPI layer
+- **Backend Selection**: Configurable via `TASKS_BACKEND` environment variable (sql/prefect)
+- **SQL Adapter**: Production-ready PostgreSQL implementation with asyncpg connection pooling
+- **Prefect Adapter**: Stub for future orchestration integration
+- **Test Support**: Dependency injection for unit testing
+
+**Benefits**: Clean architecture, easy backend switching, production-ready connection management, testable design.
 
 ---
 

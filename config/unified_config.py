@@ -104,6 +104,10 @@ class SquadOpsConfig:
         """Get Task API URL"""
         return os.getenv('TASK_API_URL', 'http://task-api:8001')
     
+    def get_tasks_backend(self) -> str:
+        """Get tasks backend selection"""
+        return os.getenv('TASKS_BACKEND', 'sql').lower()
+    
     # Agent Configuration
     
     def get_agent_id(self) -> str:

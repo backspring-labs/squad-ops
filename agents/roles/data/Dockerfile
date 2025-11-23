@@ -1,42 +1,45 @@
+# Stage 1: Build agent package
+FROM python:3.11-slim as builder
+WORKDIR /build
+
+# Install build dependencies
+RUN pip install --no-cache-dir pyyaml
+
+# Copy source code
+COPY agents/ ./agents/
+COPY scripts/build_agent.py ./scripts/
+COPY config/ ./config/
+
+# Build agent package
+ARG AGENT_ROLE=data
+ARG GIT_COMMIT
+RUN GIT_COMMIT=${GIT_COMMIT} python scripts/build_agent.py ${AGENT_ROLE}
+
+# Stage 2: Runtime image
 FROM python:3.11-slim
-
 WORKDIR /app
-
-# Set base path environment variable for unified path resolution
 ENV SQUADOPS_BASE_PATH=/app
 
-# Build argument for agent role
+# Build argument for agent role (needed for COPY path)
 ARG AGENT_ROLE=data
+# Build hash for Docker label (can be passed from CI/CD or will default to "unknown")
+ARG BUILD_HASH=unknown
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY agents/roles/${AGENT_ROLE}/requirements.txt .
+# Copy assembled agent package
+COPY --from=builder /build/dist/agents/${AGENT_ROLE}/ ./
+
+# Set Docker label for build hash
+LABEL squadops.build_hash="${BUILD_HASH}"
+
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy entire agents directory structure maintaining paths
-COPY agents/llm ./agents/llm
-COPY agents/specs ./agents/specs
-COPY agents/capabilities ./agents/capabilities
-COPY agents/capability_bindings.yaml ./agents/capability_bindings.yaml
-COPY agents/telemetry ./agents/telemetry
-COPY agents/memory ./agents/memory
-COPY agents/instances ./agents/instances
-COPY agents/skills ./agents/skills
-COPY agents/utils ./agents/utils
-
-# Copy agent-specific files to root for CMD compatibility
-COPY agents/base_agent.py .
-COPY agents/roles/${AGENT_ROLE}/agent.py .
-COPY agents/roles/${AGENT_ROLE}/config.yaml ./agents/roles/${AGENT_ROLE}/
-
-# Copy config directory
-COPY config ./config
-
-# Create logs and memory database directories
+# Create required directories
 RUN mkdir -p /app/logs /app/data/memory_db
 
 # Expose health check port

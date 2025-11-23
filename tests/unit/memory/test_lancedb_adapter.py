@@ -186,6 +186,91 @@ async def test_put_memory(temp_db_path, mock_lancedb_available):
 
 
 @pytest.mark.asyncio
+async def test_put_if_not_exists_new_memory(temp_db_path, mock_lancedb_available):
+    """Test put_if_not_exists stores memory when it doesn't exist"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    adapter._table = mock_table
+    
+    import agents.memory.lancedb_adapter as adapter_module
+    adapter_module.pd = mock_pd
+    
+    mock_df_instance = MagicMock()
+    mock_pd.DataFrame = MagicMock(return_value=mock_df_instance)
+    
+    import sys
+    mock_pa = sys.modules.get('pyarrow')
+    if mock_pa is None or not isinstance(mock_pa, MagicMock):
+        mock_pa = MagicMock()
+        mock_pa.Table = MagicMock()
+        mock_pa.Table.from_pydict = MagicMock(return_value=MagicMock())
+    
+    original_pa = getattr(adapter_module, 'pa', None)
+    adapter_module.pa = mock_pa
+    adapter_module.pa.Table.from_pydict = MagicMock(return_value=MagicMock())
+    
+    try:
+        with patch.object(adapter_module.pa.Table, 'from_pydict', return_value=MagicMock()):
+            with patch.object(adapter, '_generate_embedding', return_value=[0.1] * 768):
+                # Mock get() to return empty list (memory doesn't exist)
+                with patch.object(adapter, 'get', new_callable=AsyncMock, return_value=[]):
+                    memory_item = {
+                        'ns': 'role',
+                        'agent': 'TestAgent',
+                        'tags': ['test', 'memory'],
+                        'content': {'action': 'role_identity', 'result': {'role': 'qa'}},
+                        'importance': 1.0,
+                        'pid': '',
+                        'ecid': ''
+                    }
+                    
+                    mem_id = await adapter.put_if_not_exists(memory_item)
+                    
+                    assert mem_id is not None
+                    assert len(mem_id) == 16
+                    mock_table.add.assert_called_once()
+    finally:
+        if original_pa is not None:
+            adapter_module.pa = original_pa
+        elif hasattr(adapter_module, 'pa'):
+            delattr(adapter_module, 'pa')
+
+
+@pytest.mark.asyncio
+async def test_put_if_not_exists_existing_memory(temp_db_path, mock_lancedb_available):
+    """Test put_if_not_exists skips storage when memory already exists"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    adapter._table = mock_table
+    
+    import agents.memory.lancedb_adapter as adapter_module
+    adapter_module.pd = mock_pd
+    
+    memory_item = {
+        'ns': 'role',
+        'agent': 'TestAgent',
+        'tags': ['test', 'memory'],
+        'content': {'action': 'role_identity', 'result': {'role': 'qa'}},
+        'importance': 1.0,
+        'pid': '',
+        'ecid': ''
+    }
+    
+    # Mock get() to return existing memory
+    existing_memory = [{'id': 'abc123def4567890', 'content': memory_item['content']}]
+    with patch.object(adapter, 'get', new_callable=AsyncMock, return_value=existing_memory):
+        mem_id = await adapter.put_if_not_exists(memory_item)
+        
+        assert mem_id is None
+        # put() should not be called
+        mock_table.add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_get_memories(temp_db_path, mock_lancedb_available):
     """Test retrieving memories"""
     mock_db, mock_table, mock_pd = mock_lancedb_available

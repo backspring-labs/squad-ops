@@ -15,44 +15,64 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, '/app')  # Match agent imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'agents'))
 
-# IMPORTANT: Patch BaseAgent methods at import time, BEFORE any test modules are imported
-# This ensures patches are active before agent classes are loaded
-# Use patch on the import path to ensure it works even if BaseAgent is already imported elsewhere
-try:
-    from agents.capabilities.loader import AgentConfig
-    
-    # Mock LLM client initialization for all agent tests
-    _mock_llm_client = MagicMock()
-    
-    # Create mock function for _initialize_llm_client that returns the mock client
-    def _mock_initialize_llm_client(self):
-        """Mock _initialize_llm_client to return mock LLM client"""
-        return _mock_llm_client
-    
-    # Mock capability config loading to set minimal config instead of loading from files
-    def _mock_load_capability_config(self):
-        """Mock _load_capability_config to set minimal config"""
-        self.capability_config = AgentConfig(
-            agent_id=getattr(self, 'name', 'test-agent'),
-            role=getattr(self, 'agent_type', 'test'),
-            spec_version='1.0.0',
-            implements=[],
-            constraints={},
-            defaults={'model': 'ollama:test-model'}  # Provide model to prevent LLM init errors
-        )
-        self.capability_loader = MagicMock()
-        self.implemented_capabilities = []
-    
-    # Apply patches on the import path to ensure they work even if BaseAgent is already imported
-    # This patches the methods before any test modules import BaseAgent
-    _base_agent_patch1 = patch('agents.base_agent.BaseAgent._initialize_llm_client', _mock_initialize_llm_client)
-    _base_agent_patch2 = patch('agents.base_agent.BaseAgent._load_capability_config', _mock_load_capability_config)
-    _base_agent_patch1.start()
-    _base_agent_patch2.start()
-except ImportError:
-    # If modules can't be imported (shouldn't happen), patches will be set up in pytest_configure
-    _base_agent_patch1 = None
-    _base_agent_patch2 = None
+# IMPORTANT: Patch BaseAgent methods ONLY for unit tests, NOT integration tests
+# Integration tests MUST use real services (see tests/integration/README.md)
+# Check if we're running integration tests by examining command line arguments and paths
+# This check happens at import time, before BaseAgent is imported
+
+def _detect_integration_tests():
+    """Detect if integration tests are being run"""
+    # Check sys.argv for integration test paths
+    for arg in sys.argv:
+        # Check for integration directory in paths
+        if 'integration' in arg and ('test' in arg.lower() or arg.endswith('.py') or '/' in arg or '\\' in arg):
+            return True
+        # Check for -m integration marker
+        if arg == '-m' and 'integration' in ' '.join(sys.argv):
+            return True
+    return False
+
+_is_integration_test = _detect_integration_tests()
+
+# Only apply patches if NOT running integration tests
+_base_agent_patch1 = None
+_base_agent_patch2 = None
+
+if not _is_integration_test:
+    try:
+        from agents.capabilities.loader import AgentConfig
+        
+        # Mock LLM client initialization for unit tests only
+        _mock_llm_client = MagicMock()
+        
+        # Create mock function for _initialize_llm_client that returns the mock client
+        def _mock_initialize_llm_client(self):
+            """Mock _initialize_llm_client to return mock LLM client"""
+            return _mock_llm_client
+        
+        # Mock capability config loading to set minimal config instead of loading from files
+        def _mock_load_capability_config(self):
+            """Mock _load_capability_config to set minimal config"""
+            self.capability_config = AgentConfig(
+                agent_id=getattr(self, 'name', 'test-agent'),
+                role=getattr(self, 'agent_type', 'test'),
+                spec_version='1.0.0',
+                implements=[],
+                constraints={},
+                defaults={'model': 'ollama:test-model'}  # Provide model to prevent LLM init errors
+            )
+            self.capability_loader = MagicMock()
+            self.implemented_capabilities = []
+        
+        # Apply patches on the import path to ensure they work even if BaseAgent is already imported
+        # This patches the methods before any test modules import BaseAgent
+        _base_agent_patch1 = patch('agents.base_agent.BaseAgent._initialize_llm_client', _mock_initialize_llm_client)
+        _base_agent_patch2 = patch('agents.base_agent.BaseAgent._load_capability_config', _mock_load_capability_config)
+        _base_agent_patch1.start()
+        _base_agent_patch2.start()
+    except ImportError:
+        # If modules can't be imported, patches will remain None
+        pass
 
 # Test configuration
 TEST_CONFIG = {
@@ -272,8 +292,10 @@ def app_builder():
     from agents.tools.app_builder import AppBuilder
     from agents.llm.providers.ollama import OllamaClient
     
-    # Create real Ollama client with local URL and test model
-    llm_client = OllamaClient(url='http://localhost:11434', model='test-model')
+    # Create real Ollama client with local URL and a real model
+    # Use llama3.1:8b as default (should be available for integration tests)
+    # Tests should check ollama_available fixture before using this
+    llm_client = OllamaClient(url='http://localhost:11434', model='llama3.1:8b')
     app_builder = AppBuilder(llm_client)
     
     return app_builder
@@ -310,11 +332,17 @@ def mock_dev_agent():
 def mock_lead_agent():
     """Mock LeadAgent for testing"""
     from agents.roles.lead.agent import LeadAgent
+    from unittest.mock import AsyncMock
     agent = LeadAgent("test-lead-agent")
     
     # Mock messaging components
     agent.send_message = MagicMock()
     agent.update_task_status = MagicMock()
+    
+    # CRITICAL: Mock capability_loader.execute as AsyncMock
+    if not hasattr(agent, 'capability_loader') or agent.capability_loader is None:
+        agent.capability_loader = MagicMock()
+    agent.capability_loader.execute = AsyncMock()
     
     return agent
 
@@ -461,8 +489,18 @@ def mock_files_json_response():
         ]
     }
 
+@pytest.fixture(autouse=True)
+def reset_path_resolver():
+    """Reset PathResolver cache before each test to ensure isolation"""
+    from agents.utils.path_resolver import PathResolver
+    PathResolver.reset()
+    yield
+    PathResolver.reset()  # Also reset after test
+
 def pytest_configure(config):
-    """Configure pytest with custom markers"""
+    """Configure pytest with custom markers and verify patch application"""
+    global _base_agent_patch1, _base_agent_patch2
+    
     # Add custom markers
     config.addinivalue_line(
         "markers", "unit: mark test as unit test"
@@ -483,8 +521,30 @@ def pytest_configure(config):
         "markers", "smoke: mark test as smoke test"
     )
     
-    # Patches are already applied at import time (see top of file)
-    # This hook is just for marker configuration
+    # Verify patch application: if integration tests are detected but patches were applied, stop them
+    # This is a safety net in case the import-time detection missed something
+    test_paths = config.getoption('file_or_dir', default=[])
+    has_integration = False
+    
+    # Check test paths for 'integration' directory
+    if test_paths:
+        for path in test_paths:
+            path_str = str(path)
+            if 'integration' in path_str:
+                has_integration = True
+                break
+    
+    # Check marker expression for integration marker
+    marker_expr = config.getoption('-m', default=None)
+    if marker_expr and 'integration' in marker_expr:
+        has_integration = True
+    
+    # If integration tests detected but patches were applied, stop them
+    if has_integration and _base_agent_patch1 is not None:
+        _base_agent_patch1.stop()
+        _base_agent_patch2.stop()
+        _base_agent_patch1 = None
+        _base_agent_patch2 = None
 
 def pytest_unconfigure(config):
     """Clean up patches after all tests complete"""

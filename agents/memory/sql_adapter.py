@@ -78,6 +78,47 @@ class SqlAdapter(MemoryProvider):
             logger.error(f"Failed to store memory in Squad Memory Pool: {e}")
             raise
     
+    async def put_if_not_exists(self, item: dict) -> Optional[str]:
+        """
+        Store a memory item only if it doesn't already exist.
+        
+        For PostgreSQL, we check existence by agent + ns + content.
+        Since we don't have a unique constraint on content hash,
+        we'll check by agent + ns + content comparison.
+        """
+        try:
+            async with self.db_pool.acquire() as conn:
+                agent = item.get('agent', 'unknown')
+                ns = item.get('ns', 'squad')
+                content = item.get('content', {})
+                
+                # Check if similar memory exists (by agent, ns, and content)
+                # For now, use a simple content comparison
+                # In production, might want to add a content_hash column
+                check_query = """
+                    SELECT id FROM squad_mem_pool
+                    WHERE agent = $1 AND ns = $2 AND content = $3::jsonb
+                    LIMIT 1
+                """
+                
+                existing_id = await conn.fetchval(
+                    check_query,
+                    agent,
+                    ns,
+                    json.dumps(content, sort_keys=True)
+                )
+                
+                if existing_id:
+                    logger.debug(f"Memory already exists for agent {agent}, ns {ns}, skipping storage")
+                    return None
+                
+                # Doesn't exist - store using existing put() logic
+                return await self.put(item)
+                
+        except Exception as e:
+            logger.error(f"Failed to put_if_not_exists in Squad Memory Pool: {e}")
+            raise
+    
     async def get(self, query: str, k: int = 8, **kw) -> List[dict]:
         """
         Retrieve memories from Squad Memory Pool.

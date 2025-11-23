@@ -14,6 +14,7 @@ import aiofiles
 import subprocess
 from abc import ABC, abstractmethod
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -261,6 +262,158 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.debug(f"{self.name}: Failed to record histogram {metric_name}: {e}")
         
+    def _load_agent_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Load agent_info.json from package.
+        
+        Tries Docker path (/app/agent_info.json) first, then local path (./agent_info.json).
+        
+        Returns:
+            Agent info dictionary or None if file doesn't exist
+        """
+        # Try Docker path first
+        docker_path = Path("/app/agent_info.json")
+        if docker_path.exists():
+            try:
+                with open(docker_path, 'r') as f:
+                    agent_info = json.load(f)
+                    logger.debug(f"{self.name}: Loaded agent_info.json from {docker_path}")
+                    return agent_info
+            except Exception as e:
+                logger.warning(f"{self.name}: Failed to load agent_info.json from {docker_path}: {e}")
+        
+        # Try local path
+        local_path = Path("./agent_info.json")
+        if local_path.exists():
+            try:
+                with open(local_path, 'r') as f:
+                    agent_info = json.load(f)
+                    logger.debug(f"{self.name}: Loaded agent_info.json from {local_path}")
+                    return agent_info
+            except Exception as e:
+                logger.warning(f"{self.name}: Failed to load agent_info.json from {local_path}: {e}")
+        
+        # File not found - backward compatibility
+        logger.warning(f"{self.name}: agent_info.json not found, continuing without metadata (backward compatibility)")
+        return None
+    
+    def _detect_runtime_env(self) -> Dict[str, Any]:
+        """
+        Detect runtime environment information.
+        
+        Returns:
+            Dictionary with python_version, prefect_version, cuda_enabled
+        """
+        runtime_env = {
+            "python_version": sys.version.split()[0]
+        }
+        
+        # Try to detect Prefect version
+        try:
+            import prefect
+            runtime_env["prefect_version"] = prefect.__version__
+        except ImportError:
+            runtime_env["prefect_version"] = None
+        
+        # Try to detect CUDA availability
+        cuda_enabled = False
+        try:
+            import torch
+            cuda_enabled = torch.cuda.is_available()
+        except ImportError:
+            # Try checking for CUDA libraries directly
+            try:
+                import ctypes.util
+                cuda_lib = ctypes.util.find_library("cuda")
+                if cuda_lib:
+                    cuda_enabled = True
+            except Exception:
+                pass
+        
+        runtime_env["cuda_enabled"] = cuda_enabled
+        
+        return runtime_env
+    
+    def _get_container_hash(self) -> Optional[str]:
+        """
+        Get container identifier/hash.
+        
+        Tries HOSTNAME env var (set by Docker), then /etc/hostname.
+        
+        Returns:
+            Container identifier or None if not in container
+        """
+        # Try HOSTNAME (set by Docker)
+        hostname = os.getenv('HOSTNAME')
+        if hostname:
+            return hostname
+        
+        # Try reading /etc/hostname
+        try:
+            hostname_path = Path("/etc/hostname")
+            if hostname_path.exists():
+                with open(hostname_path, 'r') as f:
+                    hostname = f.read().strip()
+                    if hostname:
+                        return hostname
+        except Exception:
+            pass
+        
+        # Not in container or can't determine
+        return None
+    
+    def _fill_agent_info(self, agent_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fill runtime fields in agent_info.json.
+        
+        Args:
+            agent_info: Agent info dictionary template
+            
+        Returns:
+            Updated agent info dictionary with runtime fields filled
+        """
+        # Fill agent_id from self.name if not set
+        if not agent_info.get('agent_id'):
+            agent_info['agent_id'] = self.name
+        
+        # Fill runtime environment
+        agent_info['runtime_env'] = self._detect_runtime_env()
+        
+        # Fill startup time
+        agent_info['startup_time_utc'] = datetime.utcnow().isoformat() + "Z"
+        
+        # Fill container hash
+        agent_info['container_hash'] = self._get_container_hash()
+        
+        return agent_info
+    
+    async def _announce_agent_online(self, agent_info: Dict[str, Any]):
+        """
+        Broadcast agent_online message to squad.
+        
+        Args:
+            agent_info: Complete agent info dictionary
+        """
+        try:
+            payload = {
+                "agent_id": agent_info.get('agent_id', self.name),
+                "role": agent_info.get('role', 'unknown'),
+                "build_hash": agent_info.get('build_hash'),
+                "container_hash": agent_info.get('container_hash'),
+                "capabilities": agent_info.get('capabilities', []),
+                "startup_time_utc": agent_info.get('startup_time_utc')
+            }
+            
+            await self.broadcast_message(
+                message_type="agent_online",
+                payload=payload,
+                context={"source": "agent_startup"}
+            )
+            
+            logger.info(f"{self.name}: Announced agent_online with build_hash={agent_info.get('build_hash')}")
+        except Exception as e:
+            logger.warning(f"{self.name}: Failed to announce agent_online: {e}")
+    
     async def initialize(self):
         """Initialize agent connections"""
         try:
@@ -276,6 +429,27 @@ class BaseAgent(ABC):
             
             # Initialize memory providers (SIP-042)
             await self._initialize_memory_providers()
+            
+            # Store role context in memory
+            await self._store_role_context()
+            
+            # Load and process agent_info.json (if available)
+            agent_info = self._load_agent_info()
+            if agent_info:
+                # Fill runtime fields
+                agent_info = self._fill_agent_info(agent_info)
+                
+                # Structured logging for agent identity (Recommended enhancement)
+                logger.info(
+                    "agent_runtime_identity",
+                    extra={"agent_info": agent_info}
+                )
+                
+                # Also log formatted version for readability
+                logger.info(f"{self.name}: Agent info loaded: {json.dumps(agent_info, indent=2)}")
+                
+                # Announce agent online
+                await self._announce_agent_online(agent_info)
             
             # Declare queues
             await self._setup_queues()
@@ -314,6 +488,99 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.warning(f"{self.name}: Failed to initialize memory providers: {e}")
             # Continue without memory if initialization fails
+    
+    async def _store_role_context(self):
+        """Load role definition from registry and store in memory"""
+        try:
+            from agents.factory.role_factory import RoleFactory
+            from agents.utils.path_resolver import PathResolver
+            
+            # Get role name from capability_config
+            role_name = None
+            if self.capability_config:
+                role_name = getattr(self.capability_config, 'role', None)
+            
+            # Fallback: map agent_type to role name (reuse existing mapping)
+            if not role_name:
+                role_map = {
+                    "governance": "lead",
+                    "developer": "dev",
+                    "strategy": "strat",
+                    "quality_assurance": "qa",
+                    "data_analyst": "data",
+                    "financial_analyst": "finance",
+                    "communications": "comms",
+                    "research_curator": "curator",
+                    "creative_designer": "creative",
+                    "auditor": "audit"
+                }
+                role_name = role_map.get(self.agent_type, self.agent_type)
+            
+            # Resolve registry file path using PathResolver
+            from pathlib import Path
+            base_path = PathResolver.get_base_path()
+            registry_path = str(base_path / "agents" / "roles" / "registry.yaml")
+            
+            # Load role definition
+            role_factory = RoleFactory(registry_file=registry_path)
+            role_definition = role_factory.get_role(role_name)
+            
+            # Create formatted context string
+            if role_definition:
+                capabilities_str = "\n".join(f"- {cap}" for cap in role_definition.capabilities[:5])
+                reasoning_explanation = self._get_reasoning_explanation(role_definition.reasoning_style)
+                
+                role_context = f"""You are {self.name}, the {role_definition.display_name} agent in SquadOps.
+
+Your role: {role_definition.description}
+
+Key responsibilities:
+{capabilities_str}
+
+Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanation}
+
+"""
+            else:
+                # Fallback to simple context
+                role_context = f"You are {self.name}, a {self.agent_type} agent in the SquadOps system.\n\n"
+            
+            # Store in memory provider
+            if self.memory_provider:
+                try:
+                    await self.record_memory(
+                        kind="role_identity",
+                        payload={
+                            "role_name": role_name,
+                            "display_name": role_definition.display_name if role_definition else self.agent_type,
+                            "description": role_definition.description if role_definition else f"{self.agent_type} agent",
+                            "reasoning_style": role_definition.reasoning_style if role_definition else self.reasoning_style,
+                            "capabilities": role_definition.capabilities if role_definition else [],
+                            "role_context": role_context
+                        },
+                        importance=1.0,  # Highest importance - core identity
+                        ns="role",
+                        task_context=None
+                    )
+                    logger.info(f"{self.name}: Stored role context in memory for {role_name}")
+                except Exception as e:
+                    logger.warning(f"{self.name}: Failed to store role context in memory: {e}")
+            else:
+                logger.warning(f"{self.name}: Memory provider not available, skipping role context storage")
+                
+        except Exception as e:
+            logger.warning(f"{self.name}: Failed to initialize role context: {e}")
+    
+    def _get_reasoning_explanation(self, reasoning_style: str) -> str:
+        """Get human-readable explanation of reasoning style"""
+        explanations = {
+            "counterfactual": "This means you think by exploring alternative scenarios and 'what if' questions, which helps you identify potential issues and edge cases.",
+            "deductive": "This means you reason from general principles to specific conclusions, which helps you build systematic solutions.",
+            "abductive": "This means you form the best explanation from available evidence, which helps you make strategic decisions.",
+            "inductive": "This means you reason from specific observations to general patterns, which helps you identify trends.",
+            "governance": "This means you focus on coordination, decision-making, and ensuring proper workflows.",
+            "pattern_detection": "This means you identify patterns and relationships in data, which helps you discover insights."
+        }
+        return explanations.get(reasoning_style, "This shapes how you approach problems and make decisions.")
     
     def _extract_memory_context(self, task: Dict[str, Any]) -> Dict[str, str]:
         """
@@ -444,12 +711,23 @@ class BaseAgent(ABC):
             start_time = time.time()
             
             with self.create_span(span_name, span_attrs):
-                mem_id = await adapter.put(memory_item)
+                # For role_identity, use put_if_not_exists to prevent duplicates
+                if kind == "role_identity" and ns == "role" and adapter == self.memory_provider:
+                    # Use singleton storage for role identity
+                    mem_id = await adapter.put_if_not_exists(memory_item)
+                    if mem_id:
+                        logger.info(f"{self.name}: Stored {kind} memory {mem_id}")
+                    else:
+                        logger.debug(f"{self.name}: {kind} memory already exists, skipped storage")
+                else:
+                    # Regular storage for other memory types
+                    mem_id = await adapter.put(memory_item)
+                
                 latency_ms = (time.time() - start_time) * 1000
                 
                 # Record latency histogram
                 self.record_histogram('memory_operation_latency_ms', latency_ms, {
-                    'operation': 'put',
+                    'operation': 'put_if_not_exists' if (kind == "role_identity" and ns == "role" and adapter == self.memory_provider) else 'put',
                     'namespace': ns,
                     'agent': self.name
                 })

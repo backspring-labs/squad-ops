@@ -5,7 +5,7 @@ import asyncio
 import logging
 from typing import Dict, Any
 from datetime import datetime
-from base_agent import BaseAgent
+from agents.base_agent import BaseAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Error, Timing
 from agents.specs.validator import SchemaValidator

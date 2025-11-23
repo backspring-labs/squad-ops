@@ -63,6 +63,9 @@ class CapabilityLoader:
         'comms.chat': ('agents.capabilities.comms_chat', 'ChatHandler', 'handle'),
         'product.draft_prd_from_prompt': ('agents.capabilities.product.draft_prd_from_prompt', 'DraftPRDFromPrompt', 'draft'),
         'product.validate_acceptance_criteria': ('agents.capabilities.product.validate_acceptance_criteria', 'ValidateAcceptanceCriteria', 'validate'),
+        'qa.test_design': ('agents.capabilities.qa.test_design', 'TestDesign', 'design'),
+        'qa.test_dev': ('agents.capabilities.qa.test_dev', 'TestDev', 'develop'),
+        'qa.test_execution': ('agents.capabilities.qa.test_execution', 'TestExecution', 'execute'),
     }
     
     # Mapping from task_type and requirements.action values to capability names

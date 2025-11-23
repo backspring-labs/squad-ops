@@ -10,6 +10,7 @@ ENV/
 build/
 develop-eggs/
 dist/
+dist/agents/  # Build artifacts for agent containers
 downloads/
 eggs/
 .eggs/

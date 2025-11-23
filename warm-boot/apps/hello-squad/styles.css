@@ -3,9 +3,9 @@ body {
   margin: 0;
   padding: 20px;
 }
-dashboard {
-  width: 100%;
-  max-width: 800px;
-  margin: auto;
-  overflow-x: hidden;
+header h1 {
+  color: #333;
+}
+main {
+  text-align: center;
 }

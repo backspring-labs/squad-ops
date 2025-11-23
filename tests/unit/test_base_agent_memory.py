@@ -115,3 +115,56 @@ async def test_base_agent_extract_memory_context():
         assert context4['pid'] == 'unknown'
         assert context4['ecid'] == 'unknown'
 
+
+@pytest.mark.asyncio
+async def test_base_agent_record_memory_role_identity_uses_singleton():
+    """Test that role_identity memories use put_if_not_exists (singleton storage)"""
+    from unittest.mock import MagicMock
+    
+    with patch('agents.memory.lancedb_adapter.LanceDBAdapter') as MockLanceDBAdapter, \
+         patch('agents.memory.sql_adapter.SqlAdapter') as MockSqlAdapter, \
+         patch.object(MemoryTestAgent, '_initialize_llm_client', return_value=MagicMock()):
+        
+        mock_lancedb = AsyncMock()
+        mock_lancedb.put = AsyncMock(return_value="regular-mem-id")
+        mock_lancedb.put_if_not_exists = AsyncMock(return_value="role-identity-id")
+        MockLanceDBAdapter.return_value = mock_lancedb
+        
+        mock_sql = AsyncMock()
+        MockSqlAdapter.return_value = mock_sql
+        
+        agent = MemoryTestAgent("TestAgent", "test", "test")
+        agent.db_pool = AsyncMock()
+        agent.redis_client = AsyncMock()
+        
+        # Initialize memory providers
+        await agent._initialize_memory_providers()
+        
+        # Test role_identity uses put_if_not_exists
+        mem_id = await agent.record_memory(
+            kind="role_identity",
+            payload={'role_name': 'qa', 'role_context': 'You are a QA agent'},
+            importance=1.0,
+            ns="role",
+            task_context=None
+        )
+        
+        assert mem_id is not None
+        assert mem_id == "role-identity-id"
+        # Verify put_if_not_exists was called, not put
+        mock_lancedb.put_if_not_exists.assert_called_once()
+        mock_lancedb.put.assert_not_called()
+        
+        # Test regular memory still uses put
+        mem_id2 = await agent.record_memory(
+            kind="test_action",
+            payload={'result': 'success'},
+            importance=0.8,
+            ns="role",
+            task_context={'pid': 'PID-001', 'ecid': 'ECID-001'}
+        )
+        
+        assert mem_id2 == "regular-mem-id"
+        # Verify put was called for regular memory
+        mock_lancedb.put.assert_called_once()
+

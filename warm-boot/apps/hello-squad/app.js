@@ -1,26 +1,15 @@
 console.log('Application loaded');
-
-const dashboardElement = document.getElementById('dashboard');
-
-function fetchDashboardData() {
-  fetch('/agents/status')
+document.addEventListener('DOMContentLoaded', function() {
+  fetch('/api/status')
     .then(response => response.json())
     .then(data => {
-      const statusElements = data.map(item => {
-        return `<div class="status-item">
-          <h2>${item.projectName}</h2>
-          <p>Status: ${item.status}</p>
-          <p>Progress: ${item.progress}%</p>
-        </div>`;
-      });
-      dashboardElement.innerHTML = statusElements.join('');
+      document.getElementById('app').innerHTML = `
+        <p>Status: ${data.status}</p>
+        <p>Health Check: ${data.healthCheck}</p>
+      `;
     })
     .catch(error => {
       console.error('Error fetching data:', error);
+      document.getElementById('app').innerHTML = '<p>Error loading data.</p>';
     });
-}
-
-fetchDashboardData();
-document.addEventListener('DOMContentLoaded', function() {
-  setInterval(fetchDashboardData, 5000);
 });

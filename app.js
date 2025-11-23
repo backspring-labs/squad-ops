@@ -1,9 +1,9 @@
-console.log('TestApp v1.0.0 loaded');
+console.log('Application loaded');
 document.addEventListener('DOMContentLoaded', function() {
   fetch('/health').then(response => response.text()).then(data => {
-    document.body.insertAdjacentHTML('beforeend', `<p>Health Check: ${data}</p>`);
-  });
-  fetch('/agents/status').then(response => response.json()).then(data => {
-    document.body.insertAdjacentHTML('beforeend', `<p>Agent Status: ${JSON.stringify(data)}</p>`);
+    document.querySelector('main').innerHTML = `Health Check: ${data}`;
+  }).catch(error => {
+    console.error('Error fetching health check:', error);
+    document.querySelector('main').innerHTML = 'Failed to load health check.';
   });
 });

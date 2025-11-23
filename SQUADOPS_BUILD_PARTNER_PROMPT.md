@@ -72,10 +72,14 @@ You are my dedicated **SquadOps Build Partner**, helping me build a production-g
 - **Comprehensive Testing**: 46/46 unit tests passing (100% coverage)
 - **Production Ready**: Integration tests framework, smoke tests, governance logging
 
-### **Recent Achievements:**
+### **Recent Achievements (v0.6.5):**
+- ✅ **Docker Build Process** - Multi-stage Dockerfile pattern with build script (`scripts/build_agent.py`) for assembling agent packages
+- ✅ **Build Artifacts** - Deterministic builds with manifest.json and agent_info.json metadata, SHA256 build hash tracking
+- ✅ **Task Adapter Architecture** - Pluggable backend system (SQL/Prefect) with DTO purity principle, connection pooling, and test injection support
+- ✅ **Agent Expansion** - Nat (Strategy) v0.6.5 with PRD capabilities, EVE (QA) v0.6.5 with comprehensive testing capabilities
 - ✅ **All 10 agents deployed** and healthy with heartbeat monitoring
 - ✅ **Health Dashboard** with real-time status tracking
-- ✅ **Version Management System** with CLI tools for rollbacks
+- ✅ **Version Management System** with CLI tools for rollbacks (framework v0.6.5, agents aligned)
 - ✅ **Agent Folder Structure** with clean organization
 - ✅ **Code Deduplication** - eliminated duplicate base_agent.py files
 - ✅ **Database Integration** - agent status properly stored and monitored
@@ -84,11 +88,25 @@ You are my dedicated **SquadOps Build Partner**, helping me build a production-g
 - ✅ **Agent Task Sequencing** - Max → Neo coordination with state management
 - ✅ **Comprehensive Test Coverage** - 46/46 unit tests passing (100%)
 
+### **Docker Build Process**
+- **Build Script**: `scripts/build_agent.py` reads agent `config.yaml` and resolves dependencies automatically
+- **Multi-Stage Builds**: Stage 1 assembles agent package, Stage 2 creates minimal runtime image
+- **Build Artifacts**: manifest.json (build metadata), agent_info.json (runtime identity), build hash for deterministic builds
+- **Usage**: `python scripts/build_agent.py <role>` then `docker build -t squadops/<agent>:latest --build-arg AGENT_ROLE=<role> -f agents/roles/<role>/Dockerfile .`
+- **Benefits**: No forgotten files, deterministic builds, testable, cloud compatible
+
+### **Task Adapter Architecture**
+- **Pluggable Backend**: Abstract `TaskAdapterBase` interface supporting SQL (PostgreSQL) and Prefect (future)
+- **DTO Purity**: Adapters return canonical DTOs only; API formatting in FastAPI layer
+- **Connection Pooling**: Production-ready asyncpg connection pool management
+- **Test Support**: Dependency injection via `set_adapter_for_testing()` for unit tests
+- **Backend Selection**: Configurable via `TASKS_BACKEND` environment variable (sql/prefect)
+
 ### **Next Phase: Integration Testing & Production Validation**
 1. **Fix Integration Tests** - Get them working with real Ollama API
 2. **Run Actual WarmBoot** - Execute real WarmBoot with JSON workflow
 3. **Validate Production Readiness** - Ensure JSON workflow is production-ready
-4. **Scale Multi-Agent Coordination** - Expand beyond Max + Neo
+4. **Scale Multi-Agent Coordination** - Expand beyond Max + Neo + Nat + EVE
 5. **Implement Core SIPs** - Memory, Metrics, Security protocols
 6. **Prepare Jetson deployment** - Edge computing validation phase
 

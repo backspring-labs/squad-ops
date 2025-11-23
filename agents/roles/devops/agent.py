@@ -13,7 +13,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, Any
-from base_agent import BaseAgent, AgentMessage
+from agents.base_agent import BaseAgent, AgentMessage
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Error, Timing
 from agents.specs.validator import SchemaValidator

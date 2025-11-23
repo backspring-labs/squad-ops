@@ -1,25 +1,24 @@
-console.log('Application loaded');
-document.addEventListener('DOMContentLoaded', function() {
-  fetch('/application/agents/status')
-    .then(response => response.json())
-    .then(data => displayActivityFeed(data))
-    .catch(error => console.error('Error fetching data:', error));
-});
+const fetch = require('node-fetch');
 
-function displayActivityFeed(activities) {
-  const activityFeed = document.getElementById('activity-feed');
-  activities.forEach(activity => {
-    const div = document.createElement('div');
-    div.textContent = `User: ${activity.user}, Action: ${activity.action}, Time: ${new Date(activity.timestamp).toLocaleString()}`;
-    activityFeed.appendChild(div);
-  });
+async function fetchData() {
+  try {
+    const frameworkVersion = process.env.FRAMEWORK_VERSION;
+    const agentStatus = await getAgentStatus();
+    displayData(frameworkVersion, agentStatus);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+  }
 }
 
-window.addEventListener('hashchange', function() {
-  if (window.location.hash === '#/health') {
-    fetch('/application/health')
-      .then(response => response.text())
-      .then(data => document.body.textContent = data)
-      .catch(error => console.error('Error fetching health check:', error));
-  }
-});
+function getAgentStatus() {
+  return fetch('http://localhost:8080/agents/status')
+    .then(response => response.json())
+    .catch(error => { throw new Error(`Failed to fetch agent status: ${error}`); });
+}
+
+function displayData(frameworkVersion, agentStatus) {
+  const appContainer = document.getElementById('app');
+  appContainer.innerHTML = `Framework Version: ${frameworkVersion}<br>Agent Status: ${agentStatus.status}`;
+}
+
+window.addEventListener('DOMContentLoaded', fetchData);
