@@ -235,7 +235,7 @@ class DockerManager:
                     await self.remove_container(old_name)
                     cleaned_containers.append(old_name)
                     logger.info(f"DockerManager cleaned up old container: {old_name}")
-                except:
+                except Exception:
                     # Container might not exist, which is fine
                     pass
             
@@ -260,7 +260,7 @@ class DockerManager:
             await self.stop_container(container_name)
             await self.remove_container(container_name)
             logger.info(f"DockerManager removed existing container: {container_name}")
-        except:
+        except Exception:
             logger.info(f"DockerManager: no existing container {container_name} to remove")
         
         # Also clean up any old containers with different naming patterns
@@ -276,7 +276,7 @@ class DockerManager:
                 await self.stop_container(old_name)
                 await self.remove_container(old_name)
                 logger.info(f"DockerManager cleaned up old container: {old_name}")
-            except:
+            except Exception:
                 pass  # Ignore if container doesn't exist
     
     def _convert_to_kebab_case(self, name: str) -> str:

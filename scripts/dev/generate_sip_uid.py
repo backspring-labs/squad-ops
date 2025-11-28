@@ -6,7 +6,7 @@ Generates ULIDs for new or existing SIPs.
 
 import sys
 try:
-    from ulid import ULID
+    import ulid
 except ImportError:
     print("Error: ulid library not installed. Install with: pip install ulid-py")
     sys.exit(1)
@@ -14,7 +14,7 @@ except ImportError:
 
 def generate_ulid() -> str:
     """Generate a new ULID."""
-    return str(ULID())
+    return str(ulid.new())
 
 
 def main():

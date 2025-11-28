@@ -350,7 +350,7 @@ To restore this version:
             )
             await process.communicate()
             return process.returncode == 0
-        except:
+        except Exception:
             return False
     
     async def _read_file(self, file_path: str) -> str:

@@ -1,0 +1,29 @@
+{
+  // Python: Use Ruff as default linter and formatter
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+  
+  // Disable other Python linters (Ruff replaces them)
+  "python.linting.enabled": false,
+  "python.linting.pylintEnabled": false,
+  "python.linting.flake8Enabled": false,
+  "python.linting.mypyEnabled": false,
+  
+  // Ruff extension settings
+  "ruff.enable": true,
+  "ruff.organizeImports": true,
+  "ruff.fixAll": true,
+  "ruff.lint.enable": true,
+  "ruff.format.enable": true,
+  
+  // Use pyproject.toml for configuration (automatic, but explicit)
+  "ruff.configFile": "pyproject.toml"
+}
+
+

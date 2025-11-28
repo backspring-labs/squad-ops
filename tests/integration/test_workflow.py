@@ -105,11 +105,11 @@ class TestWorkflowIntegration:
                     async with aiohttp.ClientSession() as session:
                         async with session.get('http://localhost:11434/api/version', timeout=2) as response:
                             return response.status == 200
-                except:
+                except Exception:
                     return False
             
             return asyncio.run(check_ollama())
-        except:
+        except Exception:
             return False
     
     @pytest.mark.integration

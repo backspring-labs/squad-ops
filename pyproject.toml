@@ -1,0 +1,129 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "squadops"
+version = "0.0.1"
+description = "SquadOps: a production-grade multi-agent orchestration framework."
+requires-python = ">=3.11"
+authors = [
+  { name = "Jason Ladd / Backspring Industries" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+# You can add dependencies here later if you want to publish as a package.
+
+#######################################
+# Ruff - Linting & basic code hygiene #
+#######################################
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+extend-exclude = [
+    "dist",
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "warm-boot",
+    "sips",
+    "docs",
+    "htmlcov",
+    "scripts/dev/migrations",
+]
+
+[tool.ruff.lint]
+# Rule sets: E,F = pycodestyle errors + pyflakes, I = import sorting, B = bugbear, UP = pyupgrade
+select = ["E", "F", "I", "B", "UP"]
+
+ignore = [
+    "E501",  # line length (handled by Black)
+    "B008",  # function call in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "B",
+]
+
+##########################
+# Black - Code formatter #
+##########################
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+skip-string-normalization = false
+
+##########################
+# Pytest - Test running  #
+##########################
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+markers = [
+    "unit: Unit tests for individual components",
+    "integration: Integration tests for component interactions",
+    "regression: Regression tests for critical workflows",
+    "performance: Performance and load tests",
+    "slow: Slow running tests",
+    "database: Tests that require database",
+    "rabbitmq: Tests that require RabbitMQ",
+    "redis: Tests that require Redis",
+]
+
+###########################
+# Coverage.py - Code cov  #
+###########################
+
+[tool.coverage.run]
+branch = true
+source = [
+  "agents",
+  "config",
+  "infra/task-api",
+  "infra/health-check",
+  "scripts",
+]
+omit = [
+  "tests/*",
+  "dist/*",
+  "**/__init__.py",
+  "warm-boot/*",
+  "scripts/dev/migrations/*",
+  "htmlcov/*",
+  "sips/*",
+  "docs/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 0
+
+###########################
+# Mypy - Optional typing  #
+###########################
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+# Optional: Add per-module overrides for stricter type checking
+# [[tool.mypy.overrides]]
+# module = "agents.*"
+# disallow_untyped_defs = true

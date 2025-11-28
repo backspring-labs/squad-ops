@@ -39,10 +39,9 @@ Reorganized all scripts in the repository according to the established pattern:
    - Validation tool for capability system (SIP-046)
    - Can be used in CI/CD or development
 
-### Maintainer Tools (Already Organized)
+### Reusable Development Utilities (Additional)
 
-- `scripts/maintainer/assign_sip_number.py` - SIP number assignment
-- `scripts/maintainer/generate_sip_uid.py` - ULID generation
+- `scripts/dev/generate_sip_uid.py` - ULID generation (moved from maintainer/ since contributors need it)
 
 ### Maintainer Tools
 
@@ -81,9 +80,10 @@ scripts/
     build_agent.py
     build_all_agents.py
     validate_capabilities.py
-  maintainer/
-    assign_sip_number.py
     generate_sip_uid.py
+  maintainer/
+    update_sip_status.py
+    version_cli.py
   SCRIPT_ANALYSIS_REPORT.md
   SCRIPT_REORGANIZATION_SUMMARY.md
 ```

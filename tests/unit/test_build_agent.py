@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 import sys
 
 # Add scripts to path for testing
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts" / "dev"))
 
 from build_agent import (
     build_agent_package,

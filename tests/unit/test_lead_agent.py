@@ -1754,7 +1754,7 @@ class TestLeadAgent:
                                 from agents.capabilities.build_requirements_generator import BuildRequirementsGenerator
                                 generator = BuildRequirementsGenerator(agent_instance)
                                 task_creator.set_build_requirements_generator(generator)
-                            except:
+                            except Exception:
                                 pass
                         # Call create with proper args
                         prd_analysis = args[0] if args else {}

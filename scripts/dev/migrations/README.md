@@ -52,7 +52,7 @@ Each migration script should include:
 
 ## Related Directories
 
-- `scripts/maintainer/` - Permanent maintainer tools (e.g., `assign_sip_number.py`)
+- `scripts/maintainer/` - Permanent maintainer tools (e.g., `update_sip_status.py`, `version_cli.py`)
 - `scripts/dev/` - Reusable development utilities
 - `scripts/` - Other project scripts
 

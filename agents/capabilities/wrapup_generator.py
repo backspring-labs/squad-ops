@@ -337,7 +337,7 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
                         formatted_time = dt.strftime('%H:%M:%S')
                     else:
                         formatted_time = timestamp
-                except:
+                except Exception:
                     formatted_time = timestamp
             else:
                 formatted_time = 'unknown'
@@ -414,7 +414,7 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
                                     formatted_time = dt.strftime('%H:%M:%S')
                                 else:
                                     formatted_time = timestamp
-                            except:
+                            except Exception:
                                 formatted_time = timestamp
                         else:
                             formatted_time = 'unknown'
@@ -457,7 +457,7 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
                                 formatted_time = dt.strftime('%H:%M:%S')
                             else:
                                 formatted_time = timestamp
-                        except:
+                        except Exception:
                             formatted_time = timestamp
                     else:
                         formatted_time = 'unknown'
@@ -513,7 +513,7 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
                                         formatted_time = dt.strftime('%H:%M:%S')
                                     else:
                                         formatted_time = timestamp
-                                except:
+                                except Exception:
                                     formatted_time = timestamp
                                 
                                 key_decisions = reasoning_summary.get('key_decisions', [])
@@ -551,7 +551,7 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
                     formatted_time = dt.strftime('%H:%M:%S')
                 else:
                     formatted_time = timestamp
-            except:
+            except Exception:
                 formatted_time = timestamp
         else:
             formatted_time = 'unknown'

@@ -77,7 +77,7 @@ class LanceDBAdapter(MemoryProvider):
                 self._create_table()
                 # Verify table was created
                 if self._table is None:
-                    raise RuntimeError(f"Failed to create LanceDB table {self._table_name}")
+                    raise RuntimeError(f"Failed to create LanceDB table {self._table_name}") from e
                 logger.info(f"{self.agent_name}: Successfully created LanceDB table: {self._table_name}")
             
         except Exception as e:

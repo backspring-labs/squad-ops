@@ -109,7 +109,7 @@ class FileManager:
             )
             await process.communicate()
             return process.returncode == 0
-        except:
+        except Exception:
             return False
     
     async def directory_exists(self, dir_path: str) -> bool:
@@ -122,7 +122,7 @@ class FileManager:
             )
             await process.communicate()
             return process.returncode == 0
-        except:
+        except Exception:
             return False
     
     async def create_directory(self, dir_path: str) -> Dict[str, Any]:

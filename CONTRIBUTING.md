@@ -12,7 +12,9 @@ SIPs are organized in the `sips/` directory:
 sips/
   registry.yaml          # Canonical registry of all numbered SIPs
   proposals/             # Unnumbered SIPs (drafts, proposals)
-  SIP-00NN-TITLE.md      # Numbered SIPs (accepted, implemented, deprecated)
+  accepted/              # Accepted SIPs (numbered, approved)
+  implemented/           # Implemented SIPs (framework matches specification)
+  deprecated/           # Deprecated SIPs (superseded or retired)
 ```
 
 ### SIP Lifecycle
@@ -20,9 +22,9 @@ sips/
 SIPs move through four states:
 
 1. **proposed** - Unnumbered, lives in `sips/proposals/`
-2. **accepted** - Numbered, approved by maintainer, lives in `sips/`
-3. **implemented** - Framework functionality matches the SIP specification
-4. **deprecated** - Superseded or retired, but preserved for historical reference
+2. **accepted** - Numbered, approved by maintainer, lives in `sips/accepted/`
+3. **implemented** - Framework functionality matches the SIP specification, lives in `sips/implemented/`
+4. **deprecated** - Superseded or retired, but preserved for historical reference, lives in `sips/deprecated/`
 
 ### Creating a New SIP
 
@@ -30,11 +32,14 @@ SIPs move through four states:
 
 1. **Create a draft SIP** in `sips/proposals/`:
    ```bash
+   # Install script dependencies (if not already installed)
+   pip install -r scripts/dev/requirements.txt
+   
    # Generate a ULID for your SIP
-   python3 scripts/maintainer/generate_sip_uid.py
+   python3 scripts/dev/generate_sip_uid.py
    
    # Create your SIP file
-   touch sips/proposals/SIP-PROPOSAL-My-Idea.md
+   touch sips/proposals/SIP-My-Idea.md
    ```
 
 2. **Add required metadata** at the top of your SIP file:
@@ -70,17 +75,31 @@ After a SIP is approved:
    export SQUADOPS_MAINTAINER=1
    ```
 
-2. **Assign a SIP number**:
+2. **Update SIP status** (proposed → accepted):
    ```bash
-   python3 scripts/maintainer/assign_sip_number.py sips/proposals/SIP-PROPOSAL-My-Idea.md
+   python3 scripts/maintainer/update_sip_status.py sips/proposals/SIP-PROPOSAL-My-Idea.md accepted
    ```
 
    This script will:
    - Assign the next available SIP number
    - Update the SIP file metadata
-   - Move the file from `sips/proposals/` to `sips/`
+   - Move the file from `sips/proposals/` to `sips/accepted/`
    - Rename the file to `SIP-00NN-TITLE.md` format
    - Update `sips/registry.yaml`
+
+3. **Update SIP status** (accepted → implemented, implemented → deprecated):
+   ```bash
+   # Mark as implemented
+   python3 scripts/maintainer/update_sip_status.py sips/accepted/SIP-0046-Title.md implemented
+   
+   # Mark as deprecated
+   python3 scripts/maintainer/update_sip_status.py sips/implemented/SIP-0021-Title.md deprecated
+   ```
+
+   This script will:
+   - Update the SIP file metadata (status, updated_at)
+   - Move the file to the appropriate lifecycle folder
+   - Update `sips/registry.yaml` (status, path, updated_at)
 
 ### SIP Metadata Requirements
 
@@ -114,8 +133,7 @@ The `sips/registry.yaml` file is the canonical index of all numbered SIPs. It is
 - Move SIPs into `sips/` root directory
 
 **Maintainers may:**
-- Assign SIP numbers using `assign_sip_number.py`
-- Update SIP status
+- Update SIP status using `update_sip_status.py` (handles all transitions including number assignment)
 - Modify the registry
 
 ### Unknown or Uncertain SIPs
@@ -125,6 +143,5 @@ If you're unsure about a SIP's status or lifecycle state, it should be placed in
 ### Additional Resources
 
 - See `sips/registry.yaml` for all numbered SIPs
-- Check `sips/MIGRATION_INVENTORY.json` for migration history
 - Review existing SIPs in `sips/` for examples
 

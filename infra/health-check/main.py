@@ -239,7 +239,7 @@ class CommandHandler:
                         lines.append(f"  Status: {agent['status']}")
                         lines.append(f"  Version: {agent['version']}")
                         break
-            except:
+            except Exception:
                 pass
             
             return lines
@@ -613,12 +613,12 @@ class HealthChecker:
                     with urllib.request.urlopen(req, timeout=5) as response:
                         data = json.loads(response.read().decode())
                         version = data.get('rabbitmq_version', 'Unknown')
-            except:
+            except Exception:
                 # Fallback: try to get version from connection properties
                 try:
                     props = connection.server_properties
                     version = props.get('version', 'Unknown')
-                except:
+                except Exception:
                     pass
             
             connection.close()
@@ -721,7 +721,7 @@ class HealthChecker:
                                     version_text = await version_response.text()
                                     # Remove quotes if present
                                     version = version_text.strip('"')
-                        except:
+                        except Exception:
                             pass
                         
                         return {
@@ -1305,7 +1305,7 @@ class HealthChecker:
                             try:
                                 run_num = int(item.split("-")[1])
                                 existing_runs.append(run_num)
-                            except:
+                            except Exception:
                                 continue
                 
                 if existing_runs:
@@ -1412,7 +1412,7 @@ async def create_or_update_agent_status(agent_status: AgentStatusCreate):
         })
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update agent status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update agent status: {str(e)}") from e
 
 @app.put("/health/agents/status/{agent_name}")
 async def update_agent_status(agent_name: str, update: AgentStatusUpdate):
@@ -1472,7 +1472,7 @@ async def update_agent_status(agent_name: str, update: AgentStatusUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update agent status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update agent status: {str(e)}") from e
 
 @app.get("/health/agents/status/{agent_name}")
 async def get_agent_status_by_name(agent_name: str):
@@ -1501,7 +1501,7 @@ async def get_agent_status_by_name(agent_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get agent status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get agent status: {str(e)}") from e
 
 @app.get("/health")
 async def health_dashboard(request: StarletteRequest):

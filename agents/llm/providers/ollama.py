@@ -122,14 +122,14 @@ class OllamaClient:
                         error_text = await response.text()
                         raise Exception(f"Ollama API error {response.status}: {error_text[:500] if error_text else 'No error details'}")
         except aiohttp.ClientError as e:
-            raise Exception(f"Network error calling Ollama: {type(e).__name__}: {str(e)}")
+            raise Exception(f"Network error calling Ollama: {type(e).__name__}: {str(e)}") from e
         except asyncio.TimeoutError as e:
-            raise Exception(f"Ollama API timeout after {self.timeout}s: {str(e)}")
+            raise Exception(f"Ollama API timeout after {self.timeout}s: {str(e)}") from e
         except Exception as e:
             # Re-raise if it's already a formatted Exception
             if isinstance(e, Exception) and len(str(e)) > 0:
                 raise
-            raise Exception(f"Unexpected error calling Ollama: {type(e).__name__}: {str(e)}")
+            raise Exception(f"Unexpected error calling Ollama: {type(e).__name__}: {str(e)}") from e
     
     async def chat(self, messages: List[Dict[str, str]], 
                    temperature: float = 0.7, max_tokens: int = 4000, 
@@ -177,14 +177,14 @@ class OllamaClient:
                         error_text = await response.text()
                         raise Exception(f"Ollama chat API error {response.status}: {error_text[:500] if error_text else 'No error details'}")
         except aiohttp.ClientError as e:
-            raise Exception(f"Network error calling Ollama chat: {type(e).__name__}: {str(e)}")
+            raise Exception(f"Network error calling Ollama chat: {type(e).__name__}: {str(e)}") from e
         except asyncio.TimeoutError as e:
-            raise Exception(f"Ollama chat API timeout after {self.timeout}s: {str(e)}")
+            raise Exception(f"Ollama chat API timeout after {self.timeout}s: {str(e)}") from e
         except Exception as e:
             # Re-raise if it's already a formatted Exception
             if isinstance(e, Exception) and len(str(e)) > 0:
                 raise
-            raise Exception(f"Unexpected error calling Ollama chat: {type(e).__name__}: {str(e)}")
+            raise Exception(f"Unexpected error calling Ollama chat: {type(e).__name__}: {str(e)}") from e
     
     def get_token_usage(self) -> Dict[str, int]:
         """

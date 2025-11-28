@@ -38,6 +38,7 @@ pytest-benchmark>=4.0.0
 memory-profiler>=0.61.0
 
 # Code quality
+ruff>=0.1.0
 flake8>=6.0.0
 black>=23.0.0
 isort>=5.12.0

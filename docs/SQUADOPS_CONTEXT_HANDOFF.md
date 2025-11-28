@@ -527,8 +527,7 @@ SquadOps follows a clear pattern for organizing scripts:
 ```
 scripts/
   maintainer/          # Permanent maintainer tools
-    assign_sip_number.py
-    generate_sip_uid.py
+    update_sip_status.py
     version_cli.py
   dev/
     migrations/        # Temporary migration scripts
@@ -540,6 +539,7 @@ scripts/
     build_agent.py
     build_all_agents.py
     validate_capabilities.py
+    generate_sip_uid.py
     submit_warmboot.sh
     check_rebuild_status.sh
     monitor_rebuild.sh
@@ -549,7 +549,7 @@ scripts/
 
 1. **Permanent Maintainer Tools** (`scripts/maintainer/`)
    - Tools used regularly by maintainers
-   - Examples: `assign_sip_number.py`, `generate_sip_uid.py`, `version_cli.py`
+   - Examples: `update_sip_status.py`, `version_cli.py`
    - No prefix needed
 
 2. **Temporary Migration Scripts** (`scripts/dev/migrations/temp_*.py`)
@@ -565,7 +565,7 @@ scripts/
 
 4. **Reusable Development Utilities** (`scripts/dev/`)
    - General development tools and utilities
-   - Examples: `build_agent.py`, `build_all_agents.py`, `validate_capabilities.py`, `submit_warmboot.sh`, `check_rebuild_status.sh`, `monitor_rebuild.sh`
+   - Examples: `build_agent.py`, `build_all_agents.py`, `validate_capabilities.py`, `generate_sip_uid.py`, `submit_warmboot.sh`, `check_rebuild_status.sh`, `monitor_rebuild.sh`
 
 ### **When to Use `temp_` Prefix**
 

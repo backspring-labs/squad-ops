@@ -162,13 +162,13 @@ class AppBuilder:
             except json.JSONDecodeError as e:
                 logger.error(f"AppBuilder JSON parse error: {e}")
                 logger.error(f"AppBuilder raw response: {response_text[:500]}...")
-                raise Exception(f"Invalid JSON response from LLM: {e}")
+                raise Exception(f"Invalid JSON response from LLM: {e}") from e
                 
         except Exception as e:
             error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
             logger.error(f"AppBuilder LLM call failed: {error_msg}")
             logger.debug(f"AppBuilder exception details:", exc_info=True)
-            raise Exception(f"LLM call failed: {error_msg}")
+            raise Exception(f"LLM call failed: {error_msg}") from e
     
     
     async def generate_manifest_json(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
@@ -220,7 +220,7 @@ class AppBuilder:
             error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
             logger.error(f"AppBuilder failed to generate manifest: {error_msg}")
             logger.debug(f"AppBuilder exception details:", exc_info=True)
-            raise Exception(f"Manifest generation failed: {error_msg}")
+            raise Exception(f"Manifest generation failed: {error_msg}") from e
     
     async def generate_files_json(self, requirements: Dict[str, Any], manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate application files using JSON-based LLM call via router"""
@@ -298,4 +298,4 @@ class AppBuilder:
             error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
             logger.error(f"AppBuilder failed to generate files: {error_msg}")
             logger.debug(f"AppBuilder exception details:", exc_info=True)
-            raise Exception(f"File generation failed: {error_msg}")
+            raise Exception(f"File generation failed: {error_msg}") from e

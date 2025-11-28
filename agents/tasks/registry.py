@@ -75,7 +75,7 @@ async def get_tasks_adapter() -> TaskAdapterBase:
             return _adapter
         except Exception as e:
             logger.error(f"Failed to create SQL tasks adapter: {e}")
-            raise ValueError(f"Failed to initialize SQL tasks adapter: {e}")
+            raise ValueError(f"Failed to initialize SQL tasks adapter: {e}") from e
     
     elif backend == "prefect":
         try:
@@ -83,13 +83,13 @@ async def get_tasks_adapter() -> TaskAdapterBase:
             _adapter = PrefectTasksAdapter()
             logger.info("Initialized Prefect tasks adapter")
             return _adapter
-        except ImportError:
+        except ImportError as e:
             raise ValueError(
                 "Prefect adapter not available. Install prefect package or use TASKS_BACKEND=sql"
-            )
+            ) from e
         except Exception as e:
             logger.error(f"Failed to create Prefect tasks adapter: {e}")
-            raise ValueError(f"Failed to initialize Prefect tasks adapter: {e}")
+            raise ValueError(f"Failed to initialize Prefect tasks adapter: {e}") from e
     
     else:
         raise ValueError(

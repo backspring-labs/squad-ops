@@ -170,7 +170,7 @@ async def get_tasks_by_ecid(ecid: str, adapter: TaskAdapterBase = Depends(get_ta
         tasks = await adapter.list_tasks_for_ecid(ecid)
         return [task_to_dict(task) for task in tasks]
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.get("/api/v1/tasks/agent/{agent_name}")
 async def get_tasks_by_agent(
@@ -185,7 +185,7 @@ async def get_tasks_by_agent(
         tasks = await adapter.list_tasks(filters)
         return [task_to_dict(task) for task in tasks]
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.get("/api/v1/tasks/status/{status}")
 async def get_tasks_by_status(status: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
@@ -195,7 +195,7 @@ async def get_tasks_by_status(status: str, adapter: TaskAdapterBase = Depends(ge
         tasks = await adapter.list_tasks(filters)
         return [task_to_dict(task) for task in tasks]
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.get("/api/v1/execution-cycles")
 async def get_execution_cycles(run_type: Optional[str] = None, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
@@ -204,7 +204,7 @@ async def get_execution_cycles(run_type: Optional[str] = None, adapter: TaskAdap
         flows = await adapter.list_flows(run_type)
         return [flow_to_dict(flow) for flow in flows]
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.get("/api/v1/tasks/summary/{ecid}")
 async def get_task_summary(ecid: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
@@ -214,7 +214,7 @@ async def get_task_summary(ecid: str, adapter: TaskAdapterBase = Depends(get_tas
         # Convert TaskSummary DTO to dict for backward compatibility
         return summary.dict()
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 # POST/PUT endpoints for agents to create and update tasks
 
@@ -234,7 +234,7 @@ async def create_execution_cycle(cycle: ExecutionCycleCreate, adapter: TaskAdapt
         )
         return {"status": "created", "ecid": cycle.ecid}
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.put("/api/v1/execution-cycles/{ecid}")
 async def update_execution_cycle(
@@ -264,7 +264,7 @@ async def update_execution_cycle(
         )
         return {"status": "updated", "ecid": ecid}
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.post("/api/v1/execution-cycles/{ecid}/complete")
 async def complete_execution_cycle(ecid: str, notes: Optional[str] = None, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
@@ -296,7 +296,7 @@ async def start_task(task: TaskLogCreate, adapter: TaskAdapterBase = Depends(get
         await adapter.create_task(task_create)
         return {"status": "started", "task_id": task.task_id}
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.put("/api/v1/tasks/{task_id}")
 async def update_task(
@@ -328,7 +328,7 @@ async def update_task(
         await adapter.update_task_state(task_id, state, meta)
         return {"status": "updated", "task_id": task_id}
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.post("/api/v1/tasks/complete")
 async def complete_task(request: TaskCompleteRequest, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
@@ -368,7 +368,7 @@ async def create_or_update_task_status(
         )
         return {"status": "updated", "task_id": task_status.task_id}
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.put("/api/v1/task-status/{task_id}")
 async def update_task_status_endpoint(
@@ -394,7 +394,7 @@ async def update_task_status_endpoint(
         await adapter.update_task_status(task_id, status, progress, eta, agent_name)
         return {"status": "updated", "task_id": task_id}
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.get("/api/v1/task-status/{task_id}")
 async def get_task_status_endpoint(task_id: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
@@ -405,7 +405,7 @@ async def get_task_status_endpoint(task_id: str, adapter: TaskAdapterBase = Depe
             raise HTTPException(status_code=404, detail=f"Task status {task_id} not found")
         return status
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.get("/api/v1/execution-cycles/{ecid}")
 async def get_execution_cycle(ecid: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
@@ -416,7 +416,7 @@ async def get_execution_cycle(ecid: str, adapter: TaskAdapterBase = Depends(get_
             raise HTTPException(status_code=404, detail=f"Execution cycle {ecid} not found")
         return flow_to_dict(flow)
     except TaskAdapterError as e:
-        raise handle_adapter_error(e)
+        raise handle_adapter_error(e) from e
 
 @app.get("/health")
 async def health_check():
@@ -460,7 +460,7 @@ async def promote_memory(request: MemoryPromoteRequest):
             raise HTTPException(status_code=400, detail="Memory promotion failed or criteria not met")
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to promote memory: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to promote memory: {str(e)}") from e
 
 @app.get("/api/v1/memory/promoted")
 async def get_promoted_memories(agent: Optional[str] = None, 
@@ -485,7 +485,7 @@ async def get_promoted_memories(agent: Optional[str] = None,
         return {"memories": memories, "count": len(memories)}
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve promoted memories: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve promoted memories: {str(e)}") from e
 
 @app.get("/api/v1/memory/{mem_id}")
 async def get_memory(mem_id: str):
@@ -506,7 +506,7 @@ async def get_memory(mem_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve memory: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve memory: {str(e)}") from e
 
 if __name__ == "__main__":
     import uvicorn

@@ -32,7 +32,7 @@ htmlcov/
 .coverage.*
 
 # IDEs
-.vscode/
+# .vscode/ - Committed for team consistency (Ruff linting config)
 .idea/
 *.swp
 *.swo
