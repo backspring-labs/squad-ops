@@ -344,9 +344,9 @@ implements:
 ### 10. Version Management
 
 #### ✅ Update Agent Version
-- **Tool:** Use `version_cli.py` - **NEVER manually edit `config/version.py`**
-- **Command:** `python version_cli.py update <agent-id> <version> [notes]`
-- **Example:** `python version_cli.py update nat 0.6.3 "Added PRD capabilities"`
+- **Tool:** Use `scripts/maintainer/version_cli.py` - **NEVER manually edit `config/version.py`**
+- **Command:** `python scripts/maintainer/version_cli.py update <agent-id> <version> [notes]`
+- **Example:** `python scripts/maintainer/version_cli.py update nat 0.6.3 "Added PRD capabilities"`
 
 ---
 
@@ -486,7 +486,7 @@ Use this checklist when adding a new agent:
   - [ ] Add agent to model validation test if lead/dev/strat
 
 - [ ] **Version Management**
-  - [ ] Update agent version using `version_cli.py update <agent> <version>`
+  - [ ] Update agent version using `scripts/maintainer/version_cli.py update <agent> <version>`
 
 - [ ] **Verification**
   - [ ] Agent builds successfully

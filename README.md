@@ -37,7 +37,7 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 ## 📚 Documentation
 Comprehensive documentation and protocols are available in `/docs/`:
 
-- **SIPs (SquadOps Improvement Proposals)** – 43 protocol specifications including SIP-024/025 Task Management, SIP-033A JSON Workflow, SIP-041 Naming & Correlation, and SIP-031 A2A Envelope Standard
+- **SIPs (SquadOps Improvement Proposals)** – 46 protocol specifications in `sips/` directory including SIP-024/025 Task Management, SIP-033A JSON Workflow, SIP-041 Naming & Correlation, and SIP-031 A2A Envelope Standard
 - **IDEA Documents** – 25+ strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance, and Progressive Modular Build Framework
 - **Architecture Documents** – Design guides for agent implementations and handoff templates
 - **Book Chapters** – 9 chapters covering methodology, implementation, and operations
@@ -147,7 +147,7 @@ curl -X POST http://localhost:8000/warmboot/submit \
 - ✅ **Memory System** (SIP-042) with LanceDB semantic memory
 - ✅ **JSON Workflow Engine** (SIP-033A) with structured LLM output
 - ✅ **LLM Router Abstraction** – Dynamic provider registry (Ollama, Docker models, extensible)
-- ✅ **Docker Build System** – Multi-stage builds with build script (`scripts/build_agent.py`), deterministic builds, and build artifacts (manifest.json, agent_info.json)
+- ✅ **Docker Build System** – Multi-stage builds with build script (`scripts/dev/build_agent.py`), deterministic builds, and build artifacts (manifest.json, agent_info.json)
 - ✅ **AppBuilder Integration** – Uses LLM router abstraction, no direct HTTP calls
 - ✅ **Telemetry & Observability** – OpenTelemetry with reasoning events, trace correlation
 - ✅ **Manifest-First Development** eliminating markdown parsing issues
@@ -185,7 +185,7 @@ curl -X POST http://localhost:8000/warmboot/submit \
 SquadOps uses a **build-time assembly approach** for creating agent containers:
 
 ### Build Script
-The `scripts/build_agent.py` script:
+The `scripts/dev/build_agent.py` script:
 - Reads agent `config.yaml` to resolve dependencies automatically
 - Assembles only required files into `dist/agents/{role}/`
 - Generates build artifacts (`manifest.json`, `agent_info.json`)
@@ -205,7 +205,7 @@ All agents use a standard multi-stage build:
 ### Usage
 ```bash
 # Build agent package
-python scripts/build_agent.py <role>
+python scripts/dev/build_agent.py <role>
 
 # Build Docker image
 docker build -t squadops/<agent>:latest --build-arg AGENT_ROLE=<role> -f agents/roles/<role>/Dockerfile .

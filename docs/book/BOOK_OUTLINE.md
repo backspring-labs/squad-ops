@@ -178,13 +178,13 @@
 #### Chapter 13: Version Management & Governance
 **What You'll Learn:**
 - Framework versioning vs agent versioning
-- The version_cli.py tool for controlled updates
+- The scripts/maintainer/version_cli.py tool for controlled updates
 - Rollback procedures and history tracking
 - ECID-based execution cycle governance
 
 **Real Example:** Bumping from v0.1.4 to v0.2.0 with proper tracking
 
-**Tool Reference:** Complete version_cli.py command guide
+**Tool Reference:** Complete scripts/maintainer/version_cli.py command guide
 
 ---
 

@@ -1,92 +1,99 @@
-# SquadOps Build Partner - Cursor Rules
+# SquadOps .cursorrules
+# These rules guide how Cursor edits the SquadOps repository.
+# They are about FILES, STRUCTURE, and SAFETY — not conversational behavior.
 
-## Context Loading Instructions
-When starting a new session or conversation about SquadOps:
-1. **Always read** `SQUADOPS_BUILD_PARTNER_PROMPT.md` for role, principles, and current goals
-2. **Always read** `SQUADOPS_CONTEXT_HANDOFF.md` for complete system context and protocols
-3. Together these provide complete SquadOps context
+###############################################################################
+# 1. GENERAL SAFETY / READ-ONLY AREAS
+###############################################################################
 
-## Quick Reference
+- Never modify files under the `dist/` directory.
+- Never create new files or folders under `dist/`.
+- Never modify generated metadata files (`manifest.json`, `agent_info.json`) unless explicitly asked.
+- Never modify `config/version.py` directly. Treat it as read-only.
+- Never edit `.cursorrules` itself unless explicitly asked to update it.
 
-### Role
-You are my dedicated **SquadOps Build Partner** helping build a production-grade AI agent orchestration framework.
+###############################################################################
+# 2. VERSIONING & MAINTAINER-ONLY OPERATIONS
+###############################################################################
 
-### Working Principles
-- **Discuss First, Build Second** - Plan and align before implementation
-- **Protocol Compliance** - Follow all SquadOps protocols
-- **Production-Grade** - Enterprise quality from day one
-- **No Shortcuts** - Proper fixes, not workarounds
-- **No Deceptive Simulations** - Real implementation or nothing
-- **Quality Over Speed** - Never prioritize speed over correctness
-- **Industry Standards** - Follow developer conventions and best practices
-- **Well-Documented and Tested** - Maintain comprehensive docs and test coverage
-- **Documentation** - Document as we build
+- Do not implement ad-hoc version logic in arbitrary files.
+- Do not introduce new ways of tracking the framework version.
+- When changes require version bumps, assume they are handled via `scripts/maintainer/version_cli.py` by a maintainer, not by direct edits in code.
+- Do not add, rename, or remove files under `scripts/maintainer/` unless explicitly requested.
 
-### Version Management Protocol
-**ALWAYS use `version_cli.py` for version changes**
-- ❌ NEVER manually edit `config/version.py` directly
-- ✅ Framework version: `python version_cli.py bump <version> [notes]`
-- ✅ Agent version: `python version_cli.py update <agent> <version> [notes]`
-- ✅ Check version: `python version_cli.py version` or `python version_cli.py list`
+###############################################################################
+# 3. SCRIPTS ORGANIZATION
+###############################################################################
 
-### Critical Rules (NEVER VIOLATE)
+- Do not create new scripts in the project root.
+- Permanent contributor utilities belong under `scripts/dev/`.
+- Maintainer-only utilities belong under `scripts/maintainer/`.
+- One-off or temporary migration scripts belong under `scripts/dev/migrations/` and must start with the `temp_` prefix (e.g., `temp_sips_migration_YYYY_MM_DD.py`).
+- Do not move existing scripts out of `scripts/dev/` or `scripts/maintainer/` unless explicitly requested.
 
-**🚫 NEVER Delete or Comment Out Failing Tests**
-- If a test fails, FIX IT by understanding the actual implementation
-- Read the source code to understand what the method actually returns
-- Adjust test expectations to match reality, not the other way around
-- Failing tests indicate a knowledge gap - fill that gap, don't hide it
+###############################################################################
+# 4. SIP (SQUADOPS IMPROVEMENT PROPOSAL) CONVENTIONS
+###############################################################################
 
-**🚫 NEVER Settle for "Close Enough"**
-- If the goal is 90%, anything less than 90% is failure
-- If the goal is 95%, anything less than 95% is failure
-- Don't rationalize why 89% is "basically 90%" - it's not
-- If you catch yourself saying "almost there" or "pretty close", you've already failed
+- Do not scatter SIP files around the repo; they must live under the `sips/` directory.
+- New, unnumbered SIP drafts must go into `sips/proposals/`.
+- Do not assign SIP numbers in filenames (e.g., `SIP-021-...`) unless explicitly instructed. Numbering is a maintainer responsibility.
+- When editing existing SIPs, preserve their lifecycle fields and structure.
 
-**🚫 NEVER Choose Speed Over Correctness**
-- Taking 10 minutes to properly fix a test is better than 10 seconds to delete it
-- If something seems hard, that's a signal to persist, not give up
-- User feedback to "not take shortcuts" is a critical correction - take it seriously
+###############################################################################
+# 5. AGENT & CONTAINER STRUCTURE
+###############################################################################
 
-**✅ ALWAYS Ask for Help Before Giving Up**
-- If you're stuck after 3 genuine attempts, explain the problem to the user
-- Show what you've tried and what the actual blocker is
-- Let the user decide if the approach should change
-- Don't make unilateral decisions to lower standards
+- Do not rename or move directories under `agents/roles/` unless explicitly asked.
+- Do not create new agent roles under `agents/roles/` unless explicitly requested.
+- Do not hard-code agent routing logic via large `if/elif` chains outside the existing registry / loader patterns.
+- Prefer using existing capability/skill/registry patterns rather than inventing new ad-hoc wiring.
+- Do not modify per-role Dockerfiles in `agents/roles/*/Dockerfile` unless explicitly requested.
+- Do not introduce a new root-level `Dockerfile` for the whole framework.
+- Treat the `scripts/build_agent.py` + per-role Dockerfiles as the canonical build pipeline for agents.
 
-**✅ ALWAYS Verify Your Work**
-- Before declaring success, run the full test suite
-- Check that ALL tests pass, not just some
-- Verify coverage meets the stated goal
-- If you removed tests, you haven't succeeded
+###############################################################################
+# 6. TESTS & QUALITY GUARDRAILS
+###############################################################################
 
-### Definition of "Done"
-- ✅ ALL tests pass (0 failures)
-- ✅ Coverage goal explicitly met or exceeded
-- ✅ NO tests deleted, commented out, or marked as "skip"
-- ✅ NO shortcuts taken
-- ✅ User has explicitly confirmed satisfaction
-- ❌ "Almost done" is NOT done
-- ❌ "Close enough" is NOT done
+- Do not delete or comment out tests unless explicitly requested.
+- Do not mark tests as skipped or xfailed just to make the suite pass.
+- When tests fail, prefer:
+  1) Understanding the implementation,
+  2) Fixing the implementation or expectations,
+  rather than removing tests.
+- Do not reduce coverage or remove test files without an explicit user request.
 
-### Current Phase
-**MacBook Infrastructure** ✅ Complete
-**Next:** Agent Coordination & Task Execution
+###############################################################################
+# 7. CYCLEDATA / WARMBOOT / RUN ARTIFACTS
+###############################################################################
 
-### Key Files to Reference
-- `SQUADOPS_BUILD_PARTNER_PROMPT.md` - Your role and working principles
-- `SQUADOPS_CONTEXT_HANDOFF.md` - Complete system architecture and protocols
-- `docs/SIPs/*.md` - Specific Implementation Protocols
-- `docs/retro/*.md` - WarmBoot run retrospectives
-- `TEST_HARNESS_SESSION_SUMMARY.md` - Latest test harness status
+- Do not create arbitrary directories at the repo root for run artifacts.
+- Shared execution-cycle artifacts (cycle data) must go under the agreed `cycle_data/` structure once it exists.
+- Do not repurpose `dist/` as a runtime scratch space; it is strictly for build artifacts.
+- Do not add warmboot-related files outside the designated locations (e.g., warmboot docs in `docs/` and implementation under agents/infra as designed).
 
-### Success Criteria
-- Working infrastructure with real services ✅
-- Protocol-compliant agent implementations
-- Complete test coverage (target: 95%)
-- WarmBoot benchmarking capability
-- Inter-agent communication via RabbitMQ
-- Production-ready deployment
+###############################################################################
+# 8. DOCKER COMPOSE & ENVIRONMENT
+###############################################################################
 
----
-**You are the perfect build partner for SquadOps!** 🚀
+- Do not modify `docker-compose.yml` or add new services unless explicitly requested.
+- Do not change service names or container names in compose files without explicit instruction.
+- Do not add new environment variables or ports to compose services unless requested and explained.
+
+###############################################################################
+# 9. DOCUMENTATION PLACEMENT
+###############################################################################
+
+- High-level docs, prompts, and handoff context belong under `docs/`.
+- Key system documents: `docs/SQUADOPS_BUILD_PARTNER_PROMPT.md` and `docs/SQUADOPS_CONTEXT_HANDOFF.md`.
+- Do not duplicate the same documentation content in multiple files; prefer linking or referencing existing docs.
+
+###############################################################################
+# 10. GENERAL STYLE & INTENT
+###############################################################################
+
+- Respect existing architecture: agents, capabilities, skills, tasks, CycleDataStore, and build metadata are intentional — do not flatten or bypass these layers.
+- Prefer extending existing patterns over inventing new independent ones.
+- When adding new files, choose locations that align with the current structure (e.g., new capabilities under `agents/capabilities/`, new skills under `agents/skills/`, new infra adapters under the appropriate `infra/` module).
+- Avoid “magic” global configurations; favor explicit, testable, and documented changes.

@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir pyyaml
 
 # Copy source code
 COPY agents/ ./agents/
-COPY scripts/build_agent.py ./scripts/
+COPY scripts/dev/build_agent.py ./scripts/
 COPY config/ ./config/
 
 # Build agent package
