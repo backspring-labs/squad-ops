@@ -51,7 +51,7 @@
 
 **Historic Value**: First proven structured LLM workflow eliminating parsing issues and enabling reliable agent coordination.
 
-**Documentation**: See `docs/SIPs/SIP-033A-Manifest-Integration-Addendum.md` for complete implementation details
+**Documentation**: See `sips/` directory for SIP documents (SIP-033A implementation details)
 
 ### ✅ Phase 0.6: Telemetry & LLM Router Abstraction (v0.4.0)
 **Achievement**: Production-grade observability and extensible LLM provider system
@@ -66,7 +66,7 @@
 
 **Historic Value**: First production-ready framework with complete telemetry and extensible LLM provider abstraction.
 
-**Documentation**: See `docs/ideas/IDEA_012_Reasoning_Telemetry_Sharing.md`, `docs/SIPs/SIP-031-Internal-A2A-Envelope-Standard.md`, and `docs/SIPs/SIP-041-Naming-and-Correlation-Cycle-Pulse-Channel-v0.7.md` for complete implementation details
+**Documentation**: See `docs/ideas/IDEA_012_Reasoning_Telemetry_Sharing.md` and `sips/` directory for SIP documents (SIP-031, SIP-041 implementation details)
 
 ---
 
@@ -371,7 +371,7 @@ These SIPs are deferred until specific triggers are met:
 - **System Architecture**: `docs/SQUADOPS_CONTEXT_HANDOFF.md`
 - **Build Partner Prompt**: `docs/SQUADOPS_BUILD_PARTNER_PROMPT.md`
 - **Quality Standards**: `.cursorrules` (Critical Rules)
-- **SIP Directory**: `docs/SIPs/*.md`
+- **SIP Directory**: `sips/` (organized by lifecycle: `accepted/`, `implemented/`, `deprecated/`, `proposals/`)
 - **Retrospectives**: `docs/retro/warmboot-run*.md`
 - **Test Coverage**: `docs/retro/test-coverage-90pct-lessons-learned.md`
 

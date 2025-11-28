@@ -50,7 +50,7 @@
 - Prefer using existing capability/skill/registry patterns rather than inventing new ad-hoc wiring.
 - Do not modify per-role Dockerfiles in `agents/roles/*/Dockerfile` unless explicitly requested.
 - Do not introduce a new root-level `Dockerfile` for the whole framework.
-- Treat the `scripts/build_agent.py` + per-role Dockerfiles as the canonical build pipeline for agents.
+- Treat the `scripts/dev/build_agent.py` + per-role Dockerfiles as the canonical build pipeline for agents.
 
 ###############################################################################
 # 6. TESTS & QUALITY GUARDRAILS
