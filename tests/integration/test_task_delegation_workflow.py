@@ -6,8 +6,6 @@ This test would have caught the bug where Lead Agent wasn't passing the manifest
 """
 
 import pytest
-import asyncio
-from typing import Dict, Any
 from datetime import datetime
 from agents.roles.lead.agent import LeadAgent
 from agents.roles.dev.agent import DevAgent
@@ -86,7 +84,7 @@ async def test_design_manifest_to_build_task_delegation(integration_config, clea
     except (ConnectionError, TimeoutError, OSError) as e:
         # Network/LLM connection errors - skip the test
         pytest.skip(f"Task creation failed due to network/LLM error: {e}")
-    except AssertionError as e:
+    except AssertionError:
         # Assertion failures should fail the test, not skip it
         raise
     except Exception as e:

@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from agents.tasks.base_adapter import TaskAdapterBase
-from agents.tasks.models import TaskCreate, TaskState, TaskFilters, FlowCreate, FlowUpdate, FlowState
+from agents.tasks.models import TaskCreate, TaskState, TaskFilters, FlowState
 from agents.tasks.errors import (
     TaskAdapterError,
     TaskNotFoundError,
@@ -222,7 +222,7 @@ async def get_task_summary(ecid: str, adapter: TaskAdapterBase = Depends(get_tas
 async def create_execution_cycle(cycle: ExecutionCycleCreate, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
     """Create a new execution cycle"""
     try:
-        flow = await adapter.create_flow(
+        await adapter.create_flow(
             cycle.ecid,
             cycle.pid,
             meta={
@@ -254,7 +254,7 @@ async def update_execution_cycle(
         elif update.status == "failed":
             state = FlowState.FAILED
         
-        flow = await adapter.update_flow(
+        await adapter.update_flow(
             ecid,
             state,
             meta={
@@ -359,7 +359,7 @@ async def create_or_update_task_status(
 ):
     """Create or update task status (replaces direct task_status table writes)"""
     try:
-        result = await adapter.update_task_status(
+        await adapter.update_task_status(
             task_status.task_id,
             task_status.status,
             task_status.progress,

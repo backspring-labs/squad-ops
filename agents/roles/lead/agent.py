@@ -9,16 +9,14 @@ Premium Consultation: Strategic resolution
 """
 
 import asyncio
-import json
 import logging
-import time
 import yaml
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from agents.base_agent import BaseAgent, AgentMessage
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
 # Capabilities are now loaded via CapabilityLoader - no direct imports needed
 
@@ -47,7 +45,6 @@ class LeadAgent(BaseAgent):
         }
         # Import configuration
         import sys
-        import os
         sys.path.append('/app')
         from config.agent_config import get_complexity_threshold
         
@@ -104,7 +101,7 @@ class LeadAgent(BaseAgent):
                 # Use calling convention metadata to determine how to call the capability
                 args = self.capability_loader.prepare_capability_args(action, request.payload, request.metadata)
                 result = await self.capability_loader.execute(action, self, *args)
-            except ValueError as e:
+            except ValueError:
                 # Capability not found in Loader
                 return AgentResponse.failure(
                     error_code="UNKNOWN_CAPABILITY",
@@ -284,7 +281,6 @@ class LeadAgent(BaseAgent):
         """Handle task acknowledgment from delegated agents"""
         payload = message.payload
         task_id = payload.get('task_id', 'unknown')
-        status = payload.get('status', 'unknown')
         understanding = payload.get('understanding', '')
         
         logger.info(f"{self.name} received task acknowledgment: {task_id} from {message.sender}")
@@ -559,7 +555,6 @@ class LeadAgent(BaseAgent):
 
 async def main():
     """Main entry point for Lead agent"""
-    import os
     from config.unified_config import get_config
     config = get_config()
     identity = config.get_agent_id()

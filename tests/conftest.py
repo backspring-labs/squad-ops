@@ -8,7 +8,6 @@ import asyncio
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Dict, Any, List
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -378,7 +377,6 @@ def mock_unified_config():
 @pytest.fixture
 def mock_task_api():
     """Mock Task API HTTP responses for testing"""
-    from unittest.mock import AsyncMock
     
     class MockResponse:
         def __init__(self, status=200, json_data=None, text_data=""):

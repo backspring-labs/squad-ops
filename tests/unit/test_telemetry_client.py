@@ -3,9 +3,7 @@ Unit tests for TelemetryClient abstraction (Phase 0)
 Tests TelemetryClient protocol, implementations, and TelemetryRouter
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
-from contextlib import contextmanager
-from typing import Dict, Any, Optional
+from unittest.mock import MagicMock, patch
 
 
 class TestTelemetryClientProtocol:

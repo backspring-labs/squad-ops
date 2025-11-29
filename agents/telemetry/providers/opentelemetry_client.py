@@ -8,7 +8,6 @@ Supports OTLP Collector and Prometheus exporters.
 import os
 import logging
 from typing import Optional, Dict, Any
-from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 

@@ -5,23 +5,19 @@ Uses composition pattern with specialized managers for different responsibilitie
 """
 
 import asyncio
-import json
 import logging
 from typing import Dict, Any, List
 from agents.base_agent import BaseAgent, AgentMessage
 import sys
-import os
 import aiohttp
 
 # Add config path first
 sys.path.append('/app')
 
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
 from datetime import datetime
-from config.deployment_config import get_deployment_config, get_docker_config
-from config.version import get_framework_version
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +116,7 @@ class DevAgent(BaseAgent):
                 # Use calling convention metadata to determine how to call the capability
                 args = self.capability_loader.prepare_capability_args(capability_name, request.payload)
                 result = await self.capability_loader.execute(capability_name, self, *args)
-            except ValueError as e:
+            except ValueError:
                 # Capability not found in Loader
                 return AgentResponse.failure(
                     error_code="UNKNOWN_CAPABILITY",
@@ -387,7 +383,6 @@ class DevAgent(BaseAgent):
 
 async def main():
     """Main entry point for DevAgent"""
-    import os
     from config.unified_config import get_config
     config = get_config()
     identity = config.get_agent_id()

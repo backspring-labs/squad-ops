@@ -8,14 +8,13 @@ import logging
 import asyncio
 import json
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime
 import sys
 import os
 
 # Add config path
 sys.path.append('/app')
-from config.deployment_config import get_version_config
 
 logger = logging.getLogger(__name__)
 

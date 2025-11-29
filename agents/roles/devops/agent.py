@@ -9,13 +9,12 @@ Premium Consultation: DevOps Engineer - Infrastructure automation and deployment
 """
 
 import asyncio
-import json
 import logging
 from datetime import datetime
 from typing import Dict, Any
 from agents.base_agent import BaseAgent, AgentMessage
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
 from pathlib import Path
 
@@ -104,8 +103,6 @@ class DevopsAgent(BaseAgent):
     
     async def _handle_infrastructure(self, request: AgentRequest) -> Dict[str, Any]:
         """Handle devops.infrastructure capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
         
         # Map existing infrastructure logic to new capability format
         return {
@@ -116,8 +113,6 @@ class DevopsAgent(BaseAgent):
     
     async def _handle_deployment(self, request: AgentRequest) -> Dict[str, Any]:
         """Handle devops.deployment capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
         
         # Map existing deployment logic to new capability format
         return {
@@ -291,7 +286,6 @@ class DevopsAgent(BaseAgent):
 
 async def main():
     """Main entry point for {{ROLE_NAME.title()}} agent"""
-    import os
     from config.unified_config import get_config
     config = get_config()
     identity = config.get_agent_id()

@@ -6,7 +6,7 @@ Handles container operations, deployment, and Docker management
 
 import logging
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any
 import sys
 import os
 

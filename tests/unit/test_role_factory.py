@@ -1,9 +1,6 @@
 import pytest
-import yaml
-import tempfile
-import os
 from unittest.mock import patch, mock_open
-from agents.factory.role_factory import RoleFactory, RoleDefinition
+from agents.factory.role_factory import RoleFactory
 
 class TestRoleFactory:
     """Test RoleFactory core functionality"""

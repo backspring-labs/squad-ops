@@ -7,7 +7,7 @@ Implements warmboot.wrapup capability for generating WarmBoot wrap-up reports.
 import logging
 import re
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +141,6 @@ class WrapupGenerator:
         # Extract data from telemetry
         db_metrics = telemetry.get('database_metrics', {})
         task_count = db_metrics.get('task_count', 0)
-        execution_cycle = db_metrics.get('execution_cycle', {})
         execution_duration = telemetry.get('execution_duration', {})
         
         # Extract comprehensive telemetry data
@@ -154,17 +153,12 @@ class WrapupGenerator:
         
         # Extract token metrics
         tokens_used = reasoning_logs.get('tokens_used', metrics.get('tokens_used', 0))
-        tokens_by_agent = reasoning_logs.get('tokens_by_agent', {})
         
         # Format execution duration
         duration_str = execution_duration.get('duration_formatted', 'Unknown')
         if duration_str == 'Unknown' and execution_duration.get('duration_seconds'):
             duration_sec = execution_duration['duration_seconds']
             duration_str = f"{int(duration_sec // 60)}m {int(duration_sec % 60)}s"
-        
-        # Format start and end times
-        start_time = execution_duration.get('start_time', execution_cycle.get('start_time', 'Unknown'))
-        end_time = execution_duration.get('end_time', datetime.utcnow().isoformat())
         
         # Extract reasoning traces - use provided events or fall back to communication log
         if reasoning_events is not None:
@@ -198,7 +192,6 @@ class WrapupGenerator:
         images = docker_events.get('images', {})
         container_count = len(containers)
         image_count = len(images)
-        event_count = docker_events.get('event_count', len(docker_events.get('events', [])))
         
         # Build comprehensive markdown content
         markdown = f"""# 🧩 WarmBoot Run {run_number} — Reasoning & Resource Trace Log

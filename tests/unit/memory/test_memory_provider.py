@@ -3,7 +3,6 @@ Unit tests for MemoryProvider interface
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 from agents.memory.base import MemoryProvider
 
 

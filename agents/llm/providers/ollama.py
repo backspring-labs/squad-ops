@@ -7,7 +7,7 @@ Implements the LLMClient protocol for local Ollama instances.
 import aiohttp
 import asyncio
 import os
-from typing import Dict, Any, List
+from typing import Dict, List
 import logging
 
 logger = logging.getLogger(__name__)

@@ -7,7 +7,7 @@ Implements build.requirements.generate capability for generating build requireme
 import logging
 import yaml
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 

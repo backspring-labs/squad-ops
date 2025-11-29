@@ -8,7 +8,6 @@ Follows the same pattern as LLMRouter for consistency.
 import os
 import logging
 from typing import Optional, Dict, Any
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

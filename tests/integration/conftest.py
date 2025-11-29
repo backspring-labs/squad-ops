@@ -4,12 +4,13 @@ Uses testcontainers to provide real services for integration testing
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 import os
 import sys
 import time
 import requests
-from typing import AsyncGenerator, Dict, Any
+from typing import Dict
 from testcontainers.postgres import PostgresContainer
 # from testcontainers.rabbitmq import RabbitMQContainer  # TODO: Fix testcontainers version
 from testcontainers.redis import RedisContainer
@@ -84,7 +85,7 @@ def check_service_health(service_name: str, host: str, port: int, timeout: int =
                     else:
                         print(f"✅ {service_name} is healthy on {host}:{port}")
                     return True
-            except Exception as e:
+            except Exception:
                 pass
             time.sleep(1)
         
@@ -120,7 +121,7 @@ def check_rabbitmq_management(host: str, port: int, timeout: int = 30, retries: 
                     else:
                         print(f"✅ RabbitMQ management is healthy on {host}:{port}")
                     return True
-            except Exception as e:
+            except Exception:
                 pass
             time.sleep(1)
         
@@ -306,7 +307,7 @@ def event_loop():
     yield loop
     loop.close()
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def ensure_agents_running_fixture():
     """Ensure agent containers are running and healthy before integration tests"""
     print("🤖 Ensuring agent containers are running...")
@@ -435,7 +436,7 @@ def integration_config(postgres_container, rabbitmq_container, redis_container) 
         'use_local_llm': config['USE_LOCAL_LLM']
     }
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def clean_database(postgres_container):
     """
     Clean database state before and after each test.
@@ -592,7 +593,7 @@ async def clean_database(postgres_container):
     finally:
         await db_pool.close()
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def clean_redis(redis_container):
     """Clean Redis state before each test"""
     import redis
@@ -601,7 +602,7 @@ async def clean_redis(redis_container):
     yield
     redis_client.flushall()
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def clean_rabbitmq(rabbitmq_container):
     """
     Clean RabbitMQ queues and exchanges before and after each test.

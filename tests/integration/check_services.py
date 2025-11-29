@@ -16,7 +16,7 @@ import time
 import socket
 import argparse
 import requests
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from pathlib import Path
 
 # Add project root to path

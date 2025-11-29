@@ -7,7 +7,7 @@ Implements task.create capability for creating development tasks from PRD analys
 import logging
 import time
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,6 @@ class TaskCreator:
         try:
             # Import version info
             import sys
-            import os
             sys.path.append('/app')
             from config.version import get_framework_version
             

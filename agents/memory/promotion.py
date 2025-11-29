@@ -5,7 +5,6 @@ Handles promotion of memories from agent-level (LanceDB) to Squad Memory Pool (S
 
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
 from agents.memory.base import MemoryProvider
 from agents.memory.sql_adapter import SqlAdapter
 import asyncpg

@@ -9,9 +9,7 @@ These tests verify that:
 """
 
 import pytest
-import asyncio
 import os
-import json
 from agents.roles.lead.agent import LeadAgent
 from agents.roles.qa.agent import QAAgent
 

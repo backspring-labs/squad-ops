@@ -6,8 +6,7 @@ import subprocess
 import json
 import time
 import requests
-from typing import Dict, Any
-from pathlib import Path
+from typing import Dict
 import sys
 import os
 

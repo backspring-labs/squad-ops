@@ -15,8 +15,17 @@ NC='\033[0m' # No Color
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Auto-activate virtual environment if it exists and not already activated
+if [ -d ".venv" ] && [ -z "$VIRTUAL_ENV" ]; then
+    echo -e "${BLUE}Activating virtual environment...${NC}"
+    source .venv/bin/activate
+fi
+
 echo -e "${BLUE}🧪 SquadOps Test Harness${NC}"
 echo "Project root: $PROJECT_ROOT"
+if [ -n "$VIRTUAL_ENV" ]; then
+    echo "Virtual env: $VIRTUAL_ENV"
+fi
 echo ""
 
 # Function to run tests with proper error handling
@@ -34,6 +43,30 @@ run_tests() {
         echo -e "${RED}❌ $test_type tests failed${NC}"
         return 1
     fi
+}
+
+# Function to check Python version
+check_python_version() {
+    echo -e "${BLUE}Checking Python version...${NC}"
+    
+    local python_version=$(python --version 2>&1 | awk '{print $2}')
+    local required_version="3.11"
+    
+    if ! python -c "import sys; exit(0 if sys.version_info >= (3, 11) else 1)" 2>/dev/null; then
+        echo -e "${RED}❌ Python version $python_version is too old${NC}"
+        echo "SquadOps requires Python >= $required_version"
+        echo "Current version: $python_version"
+        echo ""
+        echo "To fix:"
+        echo "  1. Install pyenv: brew install pyenv"
+        echo "  2. Install Python 3.11: pyenv install 3.11.14"
+        echo "  3. Set local version: pyenv local 3.11.14"
+        echo "  4. Create virtual env: python -m venv .venv"
+        echo "  5. Activate: source .venv/bin/activate"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✅ Python version OK ($python_version)${NC}"
 }
 
 # Function to check if dependencies are installed
@@ -124,6 +157,9 @@ if [[ "$COMMAND" == "help" ]]; then
     show_usage
     exit 0
 fi
+
+# Check Python version
+check_python_version
 
 # Check dependencies
 check_dependencies

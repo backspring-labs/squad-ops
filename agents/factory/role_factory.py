@@ -6,7 +6,7 @@ Unified role management system that eliminates folder duplication
 
 import yaml
 import logging
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, List, Optional, Callable
 from dataclasses import dataclass
 from pathlib import Path
 

@@ -6,12 +6,11 @@ Tests core agent functionality without external dependencies
 
 import pytest
 import asyncio
-from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from agents.base_agent import BaseAgent, AgentMessage
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
-from tests.utils.mock_helpers import create_sample_agent_request, create_sample_agent_response
+from agents.specs.agent_response import AgentResponse
+from tests.utils.mock_helpers import create_sample_agent_request
 
 class ConcreteTestAgent(BaseAgent):
     """Concrete test agent for testing BaseAgent functionality"""
@@ -310,7 +309,8 @@ class TestBaseAgent:
             
             content = await agent.read_file("/test/path/file.txt")
             assert content == "test content"
-            mock_open.assert_called_with("/test/path/file.txt", "r", encoding="utf-8")
+            # aiofiles.open doesn't require 'r' mode (it's the default)
+            mock_open.assert_called_with("/test/path/file.txt", encoding="utf-8")
         
         # Test file writing
         with patch('aiofiles.open') as mock_open, \
@@ -1497,7 +1497,6 @@ class TestBaseAgent:
     @pytest.mark.unit
     def test_fill_agent_info(self, mock_unified_config):
         """Test filling runtime fields in agent_info"""
-        import json
         
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             agent = ConcreteTestAgent(
@@ -1558,8 +1557,6 @@ class TestBaseAgent:
     @pytest.mark.asyncio
     async def test_initialize_with_agent_info(self, mock_database, mock_redis, mock_rabbitmq, mock_unified_config, tmp_path):
         """Test that initialize() loads and processes agent_info.json"""
-        import json
-        from pathlib import Path
         
         with patch('config.unified_config.get_config', return_value=mock_unified_config):
             agent = ConcreteTestAgent(

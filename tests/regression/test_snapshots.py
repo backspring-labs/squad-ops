@@ -6,9 +6,8 @@ Compares current outputs against known good states
 
 import pytest
 import json
-import os
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 from agents.roles.lead.agent import LeadAgent
 from agents.roles.dev.agent import DevAgent
 

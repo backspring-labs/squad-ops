@@ -7,7 +7,6 @@ Tests adapter interface, SQL adapter, and registry
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
-from typing import Dict, Any
 
 from agents.tasks.base_adapter import TaskAdapterBase
 from agents.tasks.sql_adapter import SqlTasksAdapter
@@ -18,7 +17,6 @@ from agents.tasks.models import (
     TaskState,
     TaskFilters,
     Artifact,
-    FlowRun,
     FlowState,
     TaskSummary,
 )
@@ -438,7 +436,6 @@ class TestTasksAdapterRegistry:
             mock_pool.side_effect = create_pool_mock
             
             # Clear any existing adapter
-            from agents.tasks.registry import _adapter
             import agents.tasks.registry as registry_module
             registry_module._adapter = None
             
@@ -466,7 +463,6 @@ class TestTasksAdapterRegistry:
     async def test_get_tasks_adapter_prefect_not_implemented(self):
         """Test registry raises error for unimplemented Prefect backend"""
         # Clear any existing adapter
-        from agents.tasks.registry import _adapter
         import agents.tasks.registry as registry_module
         registry_module._adapter = None
         

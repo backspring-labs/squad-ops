@@ -4,12 +4,7 @@ Tests core LeadAgent functionality without external dependencies
 """
 
 import pytest
-import asyncio
 import yaml
-import json
-import os
-import tempfile
-from typing import Dict, Any, List
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from agents.roles.lead.agent import LeadAgent
 from agents.base_agent import AgentMessage
@@ -17,7 +12,6 @@ from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse
 from tests.utils.mock_helpers import (
     create_sample_validate_warmboot_request,
-    create_sample_agent_response,
     create_sample_build_manifest,
     MockAgentMessage
 )
@@ -1761,7 +1755,7 @@ class TestLeadAgent:
                         app_name = args[1] if len(args) > 1 else "application"
                         ecid = args[2] if len(args) > 2 else None
                         return await task_creator.create(prd_analysis, app_name, ecid)
-                    except Exception as e:
+                    except Exception:
                         # If real capability fails, return empty structure
                         return {'tasks': [], 'app_name': app_name if 'app_name' in locals() else 'application', 'app_version': '0.1.0.001', 'task_count': 0}
                 # For other capabilities, return empty dict by default

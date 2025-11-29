@@ -5,15 +5,14 @@ import pytest
 import json
 import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
-from typing import Dict, Any
 
 from agents.tools.app_builder import AppBuilder
 from agents.skills.dev.architect_prompt import ArchitectPrompt
 from agents.skills.dev.developer_prompt import DeveloperPrompt
 from agents.skills.dev.squadops_constraints import SquadOpsConstraints
 from tests.utils.mock_helpers import (
-    MockOllamaResponse, MockAiohttpSession, MockAiohttpResponse, create_sample_task_spec,
-    create_sample_build_manifest, mock_ollama_json_call
+    MockOllamaResponse, create_sample_task_spec,
+    create_sample_build_manifest
 )
 
 

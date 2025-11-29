@@ -105,7 +105,6 @@ def update_sip_file_metadata(file_path: Path, updates: Dict[str, Any]) -> bool:
             metadata['updated_at'] = datetime.now().isoformat() + 'Z'
             
             # Convert back to YAML
-            import io
             yaml_str = yaml.dump(metadata, default_flow_style=False, sort_keys=False, allow_unicode=True)
             return f"---\n{yaml_str}---\n"
         

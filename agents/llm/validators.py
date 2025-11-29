@@ -4,7 +4,6 @@ Output validation utilities for LLM responses.
 Provides hard validation that fails fast if LLM output doesn't meet quality standards.
 """
 
-import re
 import logging
 from typing import List, Dict
 

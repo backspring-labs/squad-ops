@@ -6,7 +6,6 @@ According to SIP-040, this is a deterministic reasoning pattern with no side eff
 """
 
 from pathlib import Path
-from typing import Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)

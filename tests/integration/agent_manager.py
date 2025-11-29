@@ -8,9 +8,7 @@ Ensures agents are running, rebuilt when needed, and healthy before tests.
 import asyncio
 import subprocess
 import time
-import os
-import json
-from typing import List, Dict, Optional
+from typing import List, Dict
 from pathlib import Path
 
 

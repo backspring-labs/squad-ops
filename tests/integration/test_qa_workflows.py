@@ -19,7 +19,7 @@ class TestQAWorkflows:
         
         # Verify imports work
         try:
-            from agents.capabilities.qa.test_design import TestDesign
+            from agents.capabilities.qa.test_design import TestDesign  # noqa: F401
             assert True
         except ImportError as e:
             pytest.fail(f"Import failed: {e}")
@@ -33,7 +33,7 @@ class TestQAWorkflows:
         
         # Verify imports work
         try:
-            from agents.capabilities.qa.test_dev import TestDev
+            from agents.capabilities.qa.test_dev import TestDev  # noqa: F401
             assert True
         except ImportError as e:
             pytest.fail(f"Import failed: {e}")
@@ -47,7 +47,7 @@ class TestQAWorkflows:
         
         # Verify imports work
         try:
-            from agents.capabilities.qa.test_execution import TestExecution
+            from agents.capabilities.qa.test_execution import TestExecution  # noqa: F401
             assert True
         except ImportError as e:
             pytest.fail(f"Import failed: {e}")
@@ -61,9 +61,9 @@ class TestQAWorkflows:
         
         # Verify imports work
         try:
-            from agents.capabilities.qa.test_design import TestDesign
-            from agents.capabilities.qa.test_dev import TestDev
-            from agents.capabilities.qa.test_execution import TestExecution
+            from agents.capabilities.qa.test_design import TestDesign  # noqa: F401
+            from agents.capabilities.qa.test_dev import TestDev  # noqa: F401
+            from agents.capabilities.qa.test_execution import TestExecution  # noqa: F401
             assert True
         except ImportError as e:
             pytest.fail(f"Import failed: {e}")
@@ -77,7 +77,7 @@ class TestQAWorkflows:
         
         # Verify imports work
         try:
-            from agents.roles.qa.agent import QAAgent
+            from agents.roles.qa.agent import QAAgent  # noqa: F401
             assert True
         except ImportError as e:
             pytest.fail(f"Import failed: {e}")

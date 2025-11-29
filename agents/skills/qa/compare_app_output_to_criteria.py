@@ -88,7 +88,6 @@ class CompareAppOutputToCriteria:
         # Extract version/build information (common patterns)
         version_info = []
         build_info = []
-        status_indicators = []
         
         # Look for version patterns
         version_patterns = soup.find_all(string=re.compile(r'version|v\d+\.\d+', re.I))
@@ -119,7 +118,6 @@ class CompareAppOutputToCriteria:
                 continue
             
             description = criterion.get('description', '')
-            criterion_type = criterion.get('type', 'functional')
             
             # Use text match skill to compare
             match_result = self.text_match.match(all_text, description, threshold=0.7)

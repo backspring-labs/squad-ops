@@ -5,7 +5,7 @@ Centralized configuration for deployment and infrastructure settings
 """
 
 import os
-from typing import Dict, Any, List
+from typing import Any
 
 # Docker Configuration
 DOCKER_CONFIG = {

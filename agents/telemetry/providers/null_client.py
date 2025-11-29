@@ -7,7 +7,6 @@ Similar to mock LLM client when USE_LOCAL_LLM=false.
 
 from typing import Optional, Dict, Any
 from contextlib import nullcontext
-from agents.telemetry.client import TelemetryClient
 
 
 class NullTelemetryClient:

@@ -5,8 +5,7 @@ Implements MemoryProvider interface for Squad layer memory (validated, shared)
 
 import logging
 import json
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import List, Optional
 import asyncpg
 from agents.memory.base import MemoryProvider
 

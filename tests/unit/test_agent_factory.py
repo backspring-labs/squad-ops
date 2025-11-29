@@ -42,14 +42,15 @@ class TestAgentFactory:
         mock_agent_class = MagicMock(return_value=mock_agent_instance)
         mock_module = MagicMock()
         
-        with patch('agents.factory.agent_factory.importlib.import_module', return_value=mock_module) as mock_import, \
-             patch('agents.factory.agent_factory.getattr', return_value=mock_agent_class) as mock_getattr:
+        with patch('importlib.import_module', return_value=mock_module) as mock_import:
+            # Set the LeadAgent attribute directly on the mock module
+            # This way getattr will naturally return our mock class
+            type(mock_module).LeadAgent = mock_agent_class
             
             agent = AgentFactory.create_agent(instance_config)
             
             assert agent == mock_agent_instance
             mock_import.assert_called_once_with('agents.roles.lead.agent')
-            mock_getattr.assert_called_once_with(mock_module, 'LeadAgent')
             mock_agent_class.assert_called_once_with(identity='test-agent-001')
     
     @pytest.mark.unit
@@ -112,12 +113,17 @@ class TestAgentFactory:
             'description': 'Test lead agent'
         }
         
-        # Create mock module before patch context
-        mock_module = MagicMock()
+        # Create mock module that raises AttributeError when accessing LeadAgent
+        # Use a MockSpec to prevent automatic attribute creation
+        from unittest.mock import Mock
+        mock_module = Mock(spec=[])  # Empty spec means no attributes by default
         
-        with patch('agents.factory.agent_factory.importlib.import_module', return_value=mock_module) as mock_import, \
-             patch('agents.factory.agent_factory.getattr', side_effect=AttributeError("Class not found")):
-            
+        with patch('importlib.import_module', return_value=mock_module) as mock_import:
+            # getattr will raise AttributeError since LeadAgent doesn't exist
+            with pytest.raises(Exception):
+                AgentFactory.create_agent(instance_config)
+        
+        with patch('importlib.import_module', return_value=mock_module) as mock_import:
             with pytest.raises(Exception):
                 AgentFactory.create_agent(instance_config)
     
@@ -138,8 +144,9 @@ class TestAgentFactory:
         mock_agent_class = MagicMock(side_effect=Exception("Instantiation failed"))
         mock_module = MagicMock()
         
-        with patch('agents.factory.agent_factory.importlib.import_module', return_value=mock_module) as mock_import, \
-             patch('agents.factory.agent_factory.getattr', return_value=mock_agent_class) as mock_getattr:
+        with patch('importlib.import_module', return_value=mock_module) as mock_import:
+            # Set the LeadAgent attribute to a class that raises when instantiated
+            type(mock_module).LeadAgent = mock_agent_class
             
             with pytest.raises(Exception):
                 AgentFactory.create_agent(instance_config)
@@ -181,14 +188,14 @@ class TestAgentFactory:
             mock_agent_class = MagicMock(return_value=mock_agent_instance)
             mock_module = MagicMock()
             
-            with patch('agents.factory.agent_factory.importlib.import_module', return_value=mock_module) as mock_import, \
-                 patch('agents.factory.agent_factory.getattr', return_value=mock_agent_class) as mock_getattr:
+            with patch('importlib.import_module', return_value=mock_module) as mock_import:
+                # Set the agent class attribute directly on the mock module
+                setattr(mock_module, test_case['expected_class'], mock_agent_class)
                 
                 agent = AgentFactory.create_agent(instance_config)
                 
                 assert agent == mock_agent_instance
                 mock_import.assert_called_once_with(test_case['expected_module'])
-                mock_getattr.assert_called_once_with(mock_module, test_case['expected_class'])
                 mock_agent_class.assert_called_once_with(identity=instance_config['id'])
     
     @pytest.mark.unit
@@ -214,8 +221,9 @@ class TestAgentFactory:
         mock_agent_class = MagicMock(return_value=mock_agent_instance)
         mock_module = MagicMock()
         
-        with patch('agents.factory.agent_factory.importlib.import_module', return_value=mock_module) as mock_import, \
-             patch('agents.factory.agent_factory.getattr', return_value=mock_agent_class) as mock_getattr:
+        with patch('importlib.import_module', return_value=mock_module) as mock_import:
+            # Set the LeadAgent attribute directly on the mock module
+            type(mock_module).LeadAgent = mock_agent_class
             
             agent = AgentFactory.create_agent(instance_config)
             

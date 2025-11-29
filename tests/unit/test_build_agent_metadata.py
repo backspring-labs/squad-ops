@@ -3,15 +3,11 @@
 Unit tests for build_agent.py metadata generation
 """
 
-import pytest
 import yaml
 import json
 import shutil
-import hashlib
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 import sys
-import os
 
 # Add scripts to path for testing
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts" / "dev"))
@@ -21,9 +17,7 @@ from build_agent import (
     get_git_commit,
     get_build_hash,
     get_skills_list,
-    get_files_list,
-    generate_manifest,
-    generate_agent_info
+    get_files_list
 )
 
 

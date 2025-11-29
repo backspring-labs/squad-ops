@@ -87,7 +87,28 @@ docker-compose.yml    # Multi-container setup (421 lines)
 ---
 
 ## 🛠️ Getting Started
-1. **Prerequisites**: Docker, Docker Compose, Ollama (for local LLMs)
+
+### Prerequisites
+
+- **Python 3.11+** (required for local development and testing)
+  - Recommended: Use [pyenv](https://github.com/pyenv/pyenv) for version management
+  - See [CONTRIBUTING.md](CONTRIBUTING.md#local-development-setup) for setup instructions
+- **Docker** and **Docker Compose** (required for running agents and services)
+- **Ollama** (for local LLMs) - Optional, can use cloud LLMs instead
+
+### Quick Start
+
+1. **Set up Python environment** (if running tests locally):
+   ```bash
+   # Install pyenv and Python 3.11.14
+   brew install pyenv
+   pyenv install 3.11.14
+   pyenv local 3.11.14
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r tests/requirements.txt
+   ```
+
 2. **Start Infrastructure**: `docker-compose up -d`
 3. **Verify Health**: Visit `http://localhost:8000/health` for system status
 4. **Test WarmBoot**: Submit PRD via `http://localhost:8000/warmboot/submit`

@@ -3,11 +3,9 @@
 Unit tests for build_agent.py script
 """
 
-import pytest
 import yaml
 import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 import sys
 
 # Add scripts to path for testing
@@ -15,9 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts" / "dev"))
 
 from build_agent import (
     build_agent_package,
-    get_capability_module_path,
-    copy_capability_files,
-    copy_directory
+    get_capability_module_path
 )
 
 

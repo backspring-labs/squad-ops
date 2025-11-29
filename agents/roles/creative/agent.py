@@ -7,7 +7,7 @@ from typing import Dict, Any
 from datetime import datetime
 from agents.base_agent import BaseAgent
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
 from pathlib import Path
 
@@ -98,8 +98,6 @@ class CreativeAgent(BaseAgent):
     
     async def _handle_visual_design(self, request: AgentRequest) -> Dict[str, Any]:
         """Handle creative.visual_design capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
         
         # Map existing visual design logic to new capability format
         return {
@@ -110,8 +108,6 @@ class CreativeAgent(BaseAgent):
     
     async def _handle_ux_design(self, request: AgentRequest) -> Dict[str, Any]:
         """Handle creative.ux_design capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
         
         # Map existing UX design logic to new capability format
         return {
@@ -303,7 +299,6 @@ class CreativeAgent(BaseAgent):
 
 async def main():
     """Main entry point for Creative agent"""
-    import os
     from config.unified_config import get_config
     config = get_config()
     identity = config.get_agent_id()

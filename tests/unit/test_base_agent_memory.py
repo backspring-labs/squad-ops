@@ -3,7 +3,7 @@ Unit tests for BaseAgent memory integration
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from agents.base_agent import BaseAgent
 
 

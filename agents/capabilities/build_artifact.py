@@ -5,7 +5,7 @@ Implements build.artifact capability for building application artifacts from spe
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 

@@ -4,12 +4,8 @@ Tests real message passing through RabbitMQ with actual agent instances
 """
 
 import pytest
-import asyncio
-import json
-from typing import Dict, Any
 from agents.roles.lead.agent import LeadAgent
 from agents.base_agent import AgentMessage
-from tests.integration.conftest import retry_on_network_error
 
 class TestAgentCommunication:
     """Test real agent communication through RabbitMQ"""
@@ -325,7 +321,6 @@ Test application for SquadOps integration testing
     @pytest.mark.asyncio
     async def test_heartbeat_monitoring(self, integration_config, clean_database, clean_redis, ensure_agents_running_fixture):
         """Test agent heartbeat monitoring via Task API"""
-        from config.unified_config import reset_config  # Reset config singleton
         
         lead_agent = LeadAgent("lead-agent-001")
         

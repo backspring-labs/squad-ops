@@ -8,8 +8,8 @@ import logging
 import os
 import hashlib
 import psutil
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional, List
+from datetime import datetime, timezone
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 

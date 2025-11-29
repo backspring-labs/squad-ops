@@ -70,7 +70,7 @@ class QAAgent(BaseAgent):
                 # Use calling convention metadata to determine how to call the capability
                 args = self.capability_loader.prepare_capability_args(action, request.payload, request.metadata)
                 result = await self.capability_loader.execute(action, self, *args)
-            except ValueError as e:
+            except ValueError:
                 # Capability not found in Loader
                 return AgentResponse.failure(
                     error_code="UNKNOWN_CAPABILITY",
@@ -197,7 +197,6 @@ class QAAgent(BaseAgent):
 
 async def main():
     """Main entry point for QA agent"""
-    import os
     from config.unified_config import get_config
     config = get_config()
     identity = config.get_agent_id()

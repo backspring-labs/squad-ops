@@ -1,5 +1,149 @@
 # Contributing to SquadOps
 
+## Local Development Setup
+
+### Python Version Requirements
+
+SquadOps requires **Python 3.11 or higher**. The project uses Python 3.11.14 in production (Docker containers) and for local development.
+
+### Setting Up Python with pyenv (Recommended)
+
+We use [pyenv](https://github.com/pyenv/pyenv) for Python version management to ensure consistency between local development and production.
+
+#### 1. Install pyenv
+
+```bash
+# macOS (using Homebrew)
+brew install pyenv
+
+# Configure your shell (add to ~/.zshrc or ~/.bashrc)
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+```
+
+Then restart your terminal or run:
+```bash
+source ~/.zshrc  # or source ~/.bashrc
+```
+
+#### 2. Install Python 3.11.14
+
+```bash
+pyenv install 3.11.14
+```
+
+#### 3. Set Local Python Version
+
+The project includes a `.python-version` file that pyenv will automatically detect:
+
+```bash
+cd squad-ops
+pyenv local 3.11.14  # This creates/updates .python-version
+```
+
+#### 4. Create Virtual Environment
+
+```bash
+# Create virtual environment using pyenv Python
+python -m venv .venv
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Verify Python version
+python --version  # Should show Python 3.11.14
+```
+
+#### 5. Install Dependencies
+
+```bash
+# Install test dependencies (includes agent runtime deps for unit tests)
+pip install -r tests/requirements.txt
+```
+
+**Note**: `tests/requirements.txt` includes agent runtime dependencies because unit tests import and test agent code. You don't need to install `agents/requirements.txt` separately for testing.
+
+### Verifying Your Setup
+
+Run the test script to verify everything is configured correctly:
+
+```bash
+./tests/run_tests.sh smoke
+```
+
+**Note**: The test script automatically activates the virtual environment if it exists, so you don't need to activate it manually.
+
+This will check:
+- ✅ Python version (must be >= 3.11)
+- ✅ Required dependencies (pytest, pytest-asyncio, agent runtime deps)
+
+**Dependency Structure**: 
+- `tests/requirements.txt` includes both test framework dependencies AND agent runtime dependencies
+- This is necessary because unit tests import agent code (e.g., `from agents.base_agent import BaseAgent`)
+- Agent dependencies are required for tests to import and test agent modules
+
+### Automatic Virtual Environment Activation (Optional)
+
+#### Option 1: Use direnv (Recommended for Development)
+
+[direnv](https://direnv.net/) automatically activates the virtual environment when you `cd` into the project:
+
+```bash
+# Install direnv
+brew install direnv
+
+# Configure your shell (add to ~/.zshrc)
+eval "$(direnv hook zsh)"
+
+# Create .envrc file in project root
+echo 'source .venv/bin/activate' > .envrc
+direnv allow
+```
+
+Now the virtual environment activates automatically when you enter the project directory!
+
+#### Option 2: Manual Activation (Current)
+
+For interactive terminal use, activate manually:
+```bash
+source .venv/bin/activate
+```
+
+#### Option 3: Scripts Auto-Activate
+
+All project scripts (like `./tests/run_tests.sh`) automatically activate the virtual environment, so you can run them without manual activation.
+
+### Troubleshooting
+
+**Problem**: `python --version` shows Python 3.9.x or older
+- **Solution**: Make sure pyenv is configured in your shell and `.python-version` file exists in the project root
+
+**Problem**: `pyenv: command not found`
+- **Solution**: Restart your terminal or run `source ~/.zshrc` (or `source ~/.bashrc`)
+
+**Problem**: Tests fail with `TypeError: unsupported operand type(s) for |`
+- **Solution**: You're using Python < 3.10. Upgrade to Python 3.11+ using pyenv
+
+### Alternative: Using Homebrew Python Directly
+
+If you prefer not to use pyenv, you can use Homebrew Python directly:
+
+```bash
+# Install Python 3.11
+brew install python@3.11
+
+# Create virtual environment with explicit path
+/opt/homebrew/bin/python3.11 -m venv .venv
+
+# Activate
+source .venv/bin/activate
+```
+
+**Note**: pyenv is recommended for better project isolation and automatic version switching.
+
+---
+
 ## SIP (SquadOps Improvement Proposal) Workflow
 
 SIPs are governance artifacts that define protocols, standards, and improvements for the SquadOps framework. This document describes how to create, submit, and manage SIPs.

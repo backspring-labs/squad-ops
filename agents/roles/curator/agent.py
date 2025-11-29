@@ -2,13 +2,12 @@
 """Curator Agent - Curator Role"""
 
 import asyncio
-import json
 import logging
 from typing import Dict, Any, List
 from datetime import datetime
 from agents.base_agent import BaseAgent, AgentMessage
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
 from pathlib import Path
 
@@ -98,8 +97,6 @@ class CuratorAgent(BaseAgent):
     
     async def _handle_research_curation(self, request: AgentRequest) -> Dict[str, Any]:
         """Handle research.curation capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
         
         # Map existing research curation logic to new capability format
         return {
@@ -110,8 +107,6 @@ class CuratorAgent(BaseAgent):
     
     async def _handle_trend_analysis(self, request: AgentRequest) -> Dict[str, Any]:
         """Handle research.trend_analysis capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
         
         # Map existing trend analysis logic to new capability format
         return {
@@ -385,7 +380,6 @@ class CuratorAgent(BaseAgent):
 
 async def main():
     """Main entry point for Curator agent"""
-    import os
     from config.unified_config import get_config
     config = get_config()
     identity = config.get_agent_id()

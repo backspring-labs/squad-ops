@@ -5,8 +5,6 @@ Tests end-to-end PRD workflows
 
 import pytest
 from pathlib import Path
-import tempfile
-import shutil
 
 
 class TestPRDWorkflows:
@@ -50,12 +48,12 @@ class TestPRDWorkflows:
         
         # Verify imports work
         try:
-            from agents.capabilities.product.draft_prd_from_prompt import DraftPRDFromPrompt
-            from agents.capabilities.product.validate_acceptance_criteria import ValidateAcceptanceCriteria
-            from agents.skills.product.format_prd_prompt import FormatPRDPrompt
-            from agents.skills.product.parse_prd_acceptance_criteria import ParsePRDAcceptanceCriteria
-            from agents.skills.qa.compare_app_output_to_criteria import CompareAppOutputToCriteria
-            from agents.skills.shared.text_match import TextMatch
+            from agents.capabilities.product.draft_prd_from_prompt import DraftPRDFromPrompt  # noqa: F401
+            from agents.capabilities.product.validate_acceptance_criteria import ValidateAcceptanceCriteria  # noqa: F401
+            from agents.skills.product.format_prd_prompt import FormatPRDPrompt  # noqa: F401
+            from agents.skills.product.parse_prd_acceptance_criteria import ParsePRDAcceptanceCriteria  # noqa: F401
+            from agents.skills.qa.compare_app_output_to_criteria import CompareAppOutputToCriteria  # noqa: F401
+            from agents.skills.shared.text_match import TextMatch  # noqa: F401
             assert True
         except ImportError as e:
             pytest.fail(f"Import failed: {e}")

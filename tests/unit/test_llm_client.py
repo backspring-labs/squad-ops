@@ -3,7 +3,6 @@ Unit tests for LLM client infrastructure.
 """
 
 import pytest
-import os
 from unittest.mock import patch
 
 def test_llm_provider_configured():
@@ -218,7 +217,6 @@ def test_llm_router_unknown_provider():
 def test_llm_router_provider_registry():
     """Test provider registry functionality"""
     from agents.llm.router import LLMRouter
-    from agents.llm.providers.ollama import OllamaClient
     
     # Test get_available_providers
     providers = LLMRouter.get_available_providers()
@@ -260,7 +258,6 @@ async def test_ollama_client_format_parameter():
     """Test that OllamaClient supports format parameter for JSON output"""
     from agents.llm.providers.ollama import OllamaClient
     from unittest.mock import patch, AsyncMock
-    import aiohttp
     
     client = OllamaClient(url='http://localhost:11434', model='test-model')
     
@@ -302,8 +299,7 @@ async def test_ollama_client_format_parameter():
 async def test_app_builder_uses_router():
     """Test that AppBuilder uses LLM router properly"""
     from agents.tools.app_builder import AppBuilder
-    from unittest.mock import MagicMock, AsyncMock, patch
-    import json
+    from unittest.mock import MagicMock, AsyncMock
     
     # Create mock LLM client (as returned by router)
     mock_llm_client = MagicMock()
@@ -356,7 +352,7 @@ async def test_app_builder_respects_use_local_llm():
             result = await app_builder._call_llm_json("test", "context")
             # Mock response should be parsed as JSON
             assert isinstance(result, dict)
-        except Exception as e:
+        except Exception:
             # If JSON parsing fails, that's okay - mock responses might not be valid JSON
             # The important thing is that AppBuilder uses the router client
             pass

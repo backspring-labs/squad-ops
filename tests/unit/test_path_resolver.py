@@ -3,10 +3,9 @@
 Unit tests for PathResolver utility
 """
 
-import os
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from agents.utils.path_resolver import PathResolver
 
 

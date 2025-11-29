@@ -2,7 +2,7 @@
 """Unit tests for GovernanceApproval capability"""
 
 import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 from agents.capabilities.governance_approval import GovernanceApproval
 
 

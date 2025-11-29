@@ -2,13 +2,12 @@
 """Comms Agent - Comms Role"""
 
 import asyncio
-import json
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 from agents.base_agent import BaseAgent, AgentMessage
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
 from pathlib import Path
 from collections import deque
@@ -99,8 +98,6 @@ class CommsAgent(BaseAgent):
     
     async def _handle_documentation(self, request: AgentRequest) -> Dict[str, Any]:
         """Handle comms.documentation capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
         
         # Map existing documentation logic to new capability format
         return {
@@ -111,8 +108,6 @@ class CommsAgent(BaseAgent):
     
     async def _handle_stakeholder_update(self, request: AgentRequest) -> Dict[str, Any]:
         """Handle comms.stakeholder_update capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
         
         # Map existing stakeholder update logic to new capability format
         return {
@@ -176,7 +171,6 @@ class CommsAgent(BaseAgent):
     async def analyze_emotional_context(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze emotional context of the task"""
         content = task.get('content', '')
-        sender = task.get('sender', 'unknown')
         
         # Mock emotional analysis
         emotional_indicators = {
@@ -337,7 +331,6 @@ class CommsAgent(BaseAgent):
 
 async def main():
     """Main entry point for Comms agent"""
-    import os
     from config.unified_config import get_config
     config = get_config()
     identity = config.get_agent_id()

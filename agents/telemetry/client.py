@@ -5,7 +5,7 @@ Defines the interface that all telemetry providers must implement.
 Follows the same pattern as LLMClient for consistency.
 """
 
-from typing import Protocol, Optional, Dict, Any, ContextManager
+from typing import Protocol, Optional, Dict, Any
 from contextlib import AbstractContextManager
 
 

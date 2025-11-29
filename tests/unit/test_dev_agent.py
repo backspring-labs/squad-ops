@@ -2,17 +2,13 @@
 Comprehensive unit tests for DevAgent - covering JSON workflow and all methods.
 """
 import pytest
-import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
-from typing import Dict, Any
 
 from agents.roles.dev.agent import DevAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse
 from tests.utils.mock_helpers import (
-    create_sample_build_artifact_request,
-    create_sample_agent_response,
-    MockFileManager, MockDockerManager, MockOllamaResponse
+    create_sample_build_artifact_request
 )
 
 

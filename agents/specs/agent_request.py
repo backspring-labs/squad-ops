@@ -6,9 +6,8 @@ Defines the structured input for agent capability requests
 
 import hashlib
 import json
-from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+from dataclasses import dataclass
+from typing import Dict, Any
 
 
 @dataclass

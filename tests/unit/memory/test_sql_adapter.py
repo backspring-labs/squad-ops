@@ -3,7 +3,7 @@ Unit tests for SqlAdapter
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 import asyncpg
 from agents.memory.sql_adapter import SqlAdapter
 

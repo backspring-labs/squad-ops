@@ -1,8 +1,7 @@
 """
 Mock utilities for testing JSON workflow components.
 """
-import json
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 from typing import Dict, Any, List
 import aiohttp
 import asyncio
@@ -14,7 +13,7 @@ FileSpec = None
 
 # New SIP-046 imports
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.agent_response import AgentResponse, Error
 
 
 class MockOllamaResponse:

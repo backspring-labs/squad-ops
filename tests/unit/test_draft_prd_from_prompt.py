@@ -4,7 +4,7 @@ Tests product.draft_prd_from_prompt capability
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from agents.capabilities.product.draft_prd_from_prompt import DraftPRDFromPrompt
 
 

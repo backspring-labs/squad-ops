@@ -8,8 +8,7 @@ import os
 import json
 import logging
 import hashlib
-import uuid
-from typing import Dict, Any, List, Optional
+from typing import Any, List, Optional
 from datetime import datetime
 from agents.memory.base import MemoryProvider
 
@@ -226,20 +225,6 @@ class LanceDBAdapter(MemoryProvider):
             
             # Generate embedding
             embedding = self._generate_embedding(content_text)
-            
-            # Create memory record
-            memory_record = {
-                'id': mem_id,
-                'ns': ns,
-                'agent': agent,
-                'pid': pid,
-                'ecid': ecid,
-                'tags': tags,
-                'importance': float(importance),
-                'content': json.dumps(content),  # Store as JSON string
-                'created_at': datetime.utcnow().isoformat(),
-                'vector': embedding
-            }
             
             # Insert into LanceDB table
             # Convert to PyArrow Table to ensure schema consistency

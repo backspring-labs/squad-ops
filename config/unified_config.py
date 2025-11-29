@@ -45,7 +45,7 @@ class SquadOpsConfig:
             try:
                 with open(profile_path, 'r') as f:
                     self._platform_profile = yaml.safe_load(f)
-            except Exception as e:
+            except Exception:
                 # Gracefully handle missing YAML parser or invalid files
                 self._platform_profile = None
     

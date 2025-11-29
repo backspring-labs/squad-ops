@@ -350,7 +350,6 @@ async def test_memory_provider_agent_integration(postgres_container, clean_datab
         
         # Manually set LanceDBAdapter with temp path before initialization
         import tempfile
-        import shutil
         temp_db = tempfile.mkdtemp()
         agent.memory_provider = LanceDBAdapter("TestAgent", db_path=temp_db)
         

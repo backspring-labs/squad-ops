@@ -6,7 +6,7 @@ Tests critical paths to prevent regressions during rapid development
 
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from agents.roles.lead.agent import LeadAgent
 from agents.roles.dev.agent import DevAgent
 from agents.tools.app_builder import AppBuilder

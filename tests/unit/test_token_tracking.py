@@ -2,10 +2,8 @@
 Unit tests for token usage tracking (Task 1.3)
 """
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from agents.llm.providers.ollama import OllamaClient
-from tests.conftest import mock_unified_config
 
 
 class TestTokenTracking:

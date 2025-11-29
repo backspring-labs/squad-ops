@@ -3,10 +3,7 @@ Unit tests for telemetry integration in agents (Phase 1)
 Tests GPU detection, reasoning extraction, and telemetry collection enhancements
 """
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
-from contextlib import contextmanager
-from datetime import datetime
 
 
 class TestGPUDetection:

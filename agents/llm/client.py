@@ -4,7 +4,7 @@ LLMClient protocol definition for SquadOps agents.
 Defines the interface that all LLM providers must implement.
 """
 
-from typing import Protocol, List, Dict, Any, Tuple, Optional
+from typing import Protocol, List, Dict, Optional
 
 
 class LLMClient(Protocol):

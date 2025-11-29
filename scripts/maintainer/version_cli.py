@@ -10,9 +10,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from config.version import (
-    SQUADOPS_VERSION, AGENT_VERSIONS, CONFIG_VERSIONS, VERSION_HISTORY,
-    get_agent_version, get_agent_config, update_agent_version,
-    get_version_history, rollback_agent, get_framework_version
+    AGENT_VERSIONS, CONFIG_VERSIONS, get_agent_version, get_agent_config, get_version_history, rollback_agent, get_framework_version
 )
 
 def show_framework_version():
@@ -33,7 +31,6 @@ def list_agents():
 
 def show_agent_details(agent_name):
     """Show detailed information for a specific agent"""
-    agent_key = agent_name.lower()
     version = get_agent_version(agent_name)
     config = get_agent_config(agent_name)
     history = get_version_history(agent_name)

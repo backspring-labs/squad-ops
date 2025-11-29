@@ -4,7 +4,7 @@ Tests compare_app_output_to_criteria skill
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from agents.skills.qa.compare_app_output_to_criteria import CompareAppOutputToCriteria
 
 

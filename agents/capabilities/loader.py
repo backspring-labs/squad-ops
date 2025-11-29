@@ -9,7 +9,7 @@ import logging
 import importlib
 import asyncio
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Type, Callable
+from typing import Dict, Any, Optional, List, Type
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)

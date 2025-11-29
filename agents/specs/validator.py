@@ -8,7 +8,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
-from jsonschema import validate, ValidationError, Draft7Validator
+from jsonschema import validate, ValidationError
 
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse

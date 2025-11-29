@@ -4,10 +4,8 @@ Tests capability resolution and execution
 """
 
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from agents.capabilities.loader import CapabilityLoader
-from pathlib import Path
 
 
 class TestCapabilityLoader:

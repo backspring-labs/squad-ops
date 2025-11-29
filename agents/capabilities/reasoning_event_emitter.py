@@ -6,7 +6,7 @@ Implements comms.reasoning.emit capability for emitting agent reasoning events t
 
 import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 

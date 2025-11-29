@@ -3,7 +3,6 @@ Metrics HTTP Server for exposing Prometheus metrics
 Exposes /metrics endpoint on port 8888 for Prometheus scraping
 """
 
-import asyncio
 import logging
 from typing import Optional
 from aiohttp import web
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # Try to import OpenTelemetry metrics
 try:
-    from opentelemetry import metrics
+    from opentelemetry import metrics  # noqa: F401
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.exporter.prometheus import PrometheusMetricReader
     OPENTELEMETRY_AVAILABLE = True
@@ -22,7 +21,7 @@ except ImportError:
 
 # Try to import prometheus_client for formatting
 try:
-    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest, REGISTRY
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest, REGISTRY  # noqa: F401
     PROMETHEUS_CLIENT_AVAILABLE = True
 except ImportError:
     PROMETHEUS_CLIENT_AVAILABLE = False

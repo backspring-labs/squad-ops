@@ -4,7 +4,7 @@ AgentResponse contract for SIP-046
 Defines the structured output from agent capability execution
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Any, Optional
 from datetime import datetime
 
