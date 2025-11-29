@@ -1,6 +1,9 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from agents.factory.agent_factory import AgentFactory, AgentInstance
+
 
 class TestAgentFactory:
     """Test AgentFactory core functionality"""

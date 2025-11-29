@@ -3,21 +3,22 @@
 Unit tests for build_agent.py metadata generation
 """
 
-import yaml
 import json
 import shutil
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import yaml
 
 # Add scripts to path for testing
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts" / "dev"))
 
 from build_agent import (
     build_agent_package,
-    get_git_commit,
     get_build_hash,
+    get_files_list,
+    get_git_commit,
     get_skills_list,
-    get_files_list
 )
 
 
@@ -98,7 +99,7 @@ class TestBuildAgentMetadata:
         
         assert manifest_path.exists(), "manifest.json should exist"
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest = json.load(f)
         
         # Verify schema
@@ -130,10 +131,10 @@ class TestBuildAgentMetadata:
         
         assert agent_info_path.exists(), "agent_info.json should exist"
         
-        with open(agent_info_path, 'r') as f:
+        with open(agent_info_path) as f:
             agent_info = json.load(f)
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest = json.load(f)
         
         # Verify build_hash matches
@@ -162,7 +163,7 @@ class TestBuildAgentMetadata:
         dist_dir1 = self.test_base / "dist" / "agents" / "qa"
         manifest_path1 = dist_dir1 / "manifest.json"
         
-        with open(manifest_path1, 'r') as f:
+        with open(manifest_path1) as f:
             manifest1 = json.load(f)
         
         build_hash1 = manifest1['build_hash']
@@ -173,7 +174,7 @@ class TestBuildAgentMetadata:
         dist_dir2 = self.test_base / "dist" / "agents" / "qa"
         manifest_path2 = dist_dir2 / "manifest.json"
         
-        with open(manifest_path2, 'r') as f:
+        with open(manifest_path2) as f:
             manifest2 = json.load(f)
         
         build_hash2 = manifest2['build_hash']
@@ -192,7 +193,7 @@ class TestBuildAgentMetadata:
         dist_dir = self.test_base / "dist" / "agents" / "qa"
         manifest_path = dist_dir / "manifest.json"
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest1 = json.load(f)
         
         build_hash1 = manifest1['build_hash']
@@ -203,7 +204,7 @@ class TestBuildAgentMetadata:
         # Rebuild
         build_agent_package('qa', self.test_base)
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest2 = json.load(f)
         
         build_hash2 = manifest2['build_hash']
@@ -218,7 +219,7 @@ class TestBuildAgentMetadata:
         dist_dir = self.test_base / "dist" / "agents" / "qa"
         manifest_path = dist_dir / "manifest.json"
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest = json.load(f)
         
         expected_capabilities = ['comms.chat', 'qa.test_design']
@@ -231,7 +232,7 @@ class TestBuildAgentMetadata:
         dist_dir = self.test_base / "dist" / "agents" / "qa"
         manifest_path = dist_dir / "manifest.json"
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest = json.load(f)
         
         # Should include shared and qa skills
@@ -260,7 +261,7 @@ class TestBuildAgentMetadata:
         manifest_path = dist_dir / "manifest.json"
         agent_info_path = dist_dir / "agent_info.json"
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest1 = json.load(f)
         
         build_hash1 = manifest1['build_hash']
@@ -307,7 +308,7 @@ class TestBuildAgentMetadata:
         dist_dir = self.test_base / "dist" / "agents" / "qa"
         manifest_path = dist_dir / "manifest.json"
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest = json.load(f)
         
         assert 'manifest_version' in manifest, "manifest_version field is mandatory"
@@ -320,7 +321,7 @@ class TestBuildAgentMetadata:
         dist_dir = self.test_base / "dist" / "agents" / "qa"
         agent_info_path = dist_dir / "agent_info.json"
         
-        with open(agent_info_path, 'r') as f:
+        with open(agent_info_path) as f:
             agent_info = json.load(f)
         
         assert 'agent_info_version' in agent_info, "agent_info_version field is mandatory"
@@ -333,7 +334,7 @@ class TestBuildAgentMetadata:
         dist_dir = self.test_base / "dist" / "agents" / "qa"
         manifest_path = dist_dir / "manifest.json"
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest = json.load(f)
         
         assert 'shared_modules' in manifest, "shared_modules field is recommended"
@@ -348,7 +349,7 @@ class TestBuildAgentMetadata:
         dist_dir = self.test_base / "dist" / "agents" / "qa"
         manifest_path = dist_dir / "manifest.json"
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest = json.load(f)
         
         assert 'resolver_graph' in manifest, "resolver_graph field is recommended"
@@ -364,7 +365,7 @@ class TestBuildAgentMetadata:
         dist_dir = self.test_base / "dist" / "agents" / "qa"
         agent_info_path = dist_dir / "agent_info.json"
         
-        with open(agent_info_path, 'r') as f:
+        with open(agent_info_path) as f:
             agent_info = json.load(f)
         
         assert 'agent_entrypoint' in agent_info, "agent_entrypoint field is recommended"
@@ -378,10 +379,10 @@ class TestBuildAgentMetadata:
         manifest_path = dist_dir / "manifest.json"
         agent_info_path = dist_dir / "agent_info.json"
         
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest = json.load(f)
         
-        with open(agent_info_path, 'r') as f:
+        with open(agent_info_path) as f:
             agent_info = json.load(f)
         
         # Verify build_hash exists in both

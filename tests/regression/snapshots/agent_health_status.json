@@ -1,5 +1,5 @@
 {
-  "max": {
+  "lead-agent": {
     "name": "test-lead-agent",
     "agent_type": "governance",
     "reasoning_style": "governance",
@@ -8,7 +8,7 @@
     "has_message_queue_size": false,
     "has_task_history_size": false
   },
-  "neo": {
+  "dev-agent": {
     "name": "test-dev-agent",
     "agent_type": "code",
     "reasoning_style": "deductive",

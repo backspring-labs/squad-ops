@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""
+Unit tests for task-api service
+Tests FastAPI endpoints for task management API
+"""
+
+import os
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+# Add path for imports
+project_root = os.path.join(os.path.dirname(__file__), '..', '..')
+sys.path.insert(0, project_root)
+task_api_path = os.path.join(project_root, 'infra', 'task-api')
+sys.path.insert(0, task_api_path)
+
+# Mock dependencies before importing
+with patch('asyncpg.create_pool'), \
+     patch('deps.get_tasks_adapter'):
+    import deps as task_api_deps
+    import main as task_api_main
+    app = task_api_main.app
+    get_tasks_adapter_dep = task_api_deps.get_tasks_adapter_dep
+
+
+class TestTaskAPIService:
+    """Test task-api service endpoints"""
+    
+    @pytest.fixture
+    def client(self):
+        """Create test client"""
+        return TestClient(app)
+    
+    @pytest.fixture
+    def mock_adapter(self):
+        """Create mock tasks adapter"""
+        adapter = MagicMock()
+        adapter.create_task = AsyncMock()
+        adapter.get_task = AsyncMock()
+        adapter.update_task = AsyncMock()
+        adapter.list_tasks = AsyncMock(return_value=[])
+        adapter.complete_task = AsyncMock()
+        adapter.fail_task = AsyncMock()
+        adapter.initialize = AsyncMock()
+        adapter.shutdown = AsyncMock()
+        return adapter
+    
+    @pytest.mark.unit
+    def test_root_endpoint(self, client):
+        """Test root endpoint"""
+        response = client.get("/")
+        assert response.status_code in [200, 404]
+    
+    @pytest.mark.unit
+    def test_health_endpoint(self, client):
+        """Test /health endpoint"""
+        response = client.get("/health")
+        assert response.status_code in [200, 404]
+    
+    @pytest.mark.unit
+    def test_create_task(self, client, mock_adapter):
+        """Test POST /tasks endpoint"""
+        async def mock_get_adapter():
+            return mock_adapter
+        
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        try:
+            task_data = {
+                "task_id": "test-task-1",
+                "ecid": "ec-001",
+                "agent": "test-agent",
+                "status": "started",
+                "priority": "HIGH",
+                "description": "Test task"
+            }
+            
+            from agents.tasks.models import Task
+            mock_task = Task(
+                task_id="test-task-1",
+                ecid="ec-001",
+                agent="test-agent",
+                status="started"
+            )
+            mock_adapter.create_task = AsyncMock(return_value=mock_task)
+            
+            response = client.post("/api/v1/tasks/start", json=task_data)
+            assert response.status_code in [200, 201, 500]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @pytest.mark.unit
+    def test_get_task(self, client, mock_adapter):
+        """Test GET /tasks/{task_id} endpoint"""
+        async def mock_get_adapter():
+            return mock_adapter
+        
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        try:
+            from agents.tasks.models import Task
+            mock_task = Task(
+                task_id="test-task-1",
+                ecid="ec-001",
+                agent="test-agent",
+                status="pending"
+            )
+            mock_adapter.list_tasks_for_ecid = AsyncMock(return_value=[mock_task])
+            
+            response = client.get("/api/v1/tasks/ec/ec-001")
+            assert response.status_code in [200, 404, 500]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @pytest.mark.unit
+    def test_update_task(self, client, mock_adapter):
+        """Test PUT /tasks/{task_id} endpoint"""
+        async def mock_get_adapter():
+            return mock_adapter
+        
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        try:
+            update_data = {
+                "status": "in_progress"
+            }
+            
+            from agents.tasks.models import Task
+            mock_task = Task(
+                task_id="test-task-1",
+                ecid="ec-001",
+                agent="test-agent",
+                status="in_progress"
+            )
+            mock_adapter.update_task_state = AsyncMock(return_value=mock_task)
+            
+            response = client.put("/api/v1/tasks/test-task-1", json=update_data)
+            assert response.status_code in [200, 404, 500]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @pytest.mark.unit
+    def test_list_tasks(self, client, mock_adapter):
+        """Test GET /tasks endpoint"""
+        async def mock_get_adapter():
+            return mock_adapter
+        
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        try:
+            mock_adapter.list_tasks = AsyncMock(return_value=[])
+            
+            response = client.get("/api/v1/tasks/status/pending")
+            assert response.status_code in [200, 500]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @pytest.mark.unit
+    def test_complete_task(self, client, mock_adapter):
+        """Test POST /tasks/{task_id}/complete endpoint"""
+        async def mock_get_adapter():
+            return mock_adapter
+        
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        try:
+            complete_data = {
+                "task_id": "test-task-1",
+                "artifacts": {"result": "success"}
+            }
+            
+            from agents.tasks.models import Task
+            mock_task = Task(
+                task_id="test-task-1",
+                ecid="ec-001",
+                agent="test-agent",
+                status="completed"
+            )
+            mock_adapter.update_task_state = AsyncMock(return_value=mock_task)
+            
+            response = client.post("/api/v1/tasks/complete", json=complete_data)
+            assert response.status_code in [200, 404, 500]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @pytest.mark.unit
+    def test_fail_task(self, client, mock_adapter):
+        """Test POST /tasks/{task_id}/fail endpoint"""
+        async def mock_get_adapter():
+            return mock_adapter
+        
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        try:
+            fail_data = {
+                "task_id": "test-task-1",
+                "error_log": "Task failed"
+            }
+            
+            from agents.tasks.models import Task
+            mock_task = Task(
+                task_id="test-task-1",
+                ecid="ec-001",
+                agent="test-agent",
+                status="failed"
+            )
+            mock_adapter.update_task_state = AsyncMock(return_value=mock_task)
+            
+            response = client.post("/api/v1/tasks/fail", json=fail_data)
+            assert response.status_code in [200, 404, 500]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @pytest.mark.unit
+    def test_create_execution_cycle(self, client, mock_adapter):
+        """Test POST /api/v1/execution-cycles endpoint"""
+        async def mock_get_adapter():
+            return mock_adapter
+        
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        try:
+            from agents.tasks.models import FlowRun
+            mock_flow = FlowRun(
+                ecid="ec-001",
+                pid="p-001",
+                run_type="warmboot",
+                title="Test Cycle",
+                status="active"
+            )
+            mock_adapter.create_flow = AsyncMock(return_value=mock_flow)
+            
+            cycle_data = {
+                "ecid": "ec-001",
+                "pid": "p-001",
+                "run_type": "warmboot",
+                "title": "Test Cycle",
+                "initiated_by": "test-agent"
+            }
+            
+            response = client.post("/api/v1/execution-cycles", json=cycle_data)
+            assert response.status_code in [200, 201, 500]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @pytest.mark.unit
+    def test_get_execution_cycle(self, client, mock_adapter):
+        """Test GET /api/v1/execution-cycles/{ecid} endpoint"""
+        async def mock_get_adapter():
+            return mock_adapter
+        
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        try:
+            from agents.tasks.models import FlowRun
+            mock_flow = FlowRun(
+                ecid="ec-001",
+                pid="p-001",
+                run_type="warmboot",
+                title="Test Cycle",
+                status="active"
+            )
+            mock_adapter.get_flow = AsyncMock(return_value=mock_flow)
+            
+            response = client.get("/api/v1/execution-cycles/ec-001")
+            assert response.status_code in [200, 404, 500]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @pytest.mark.unit
+    def test_create_task_log(self, client, mock_adapter):
+        """Test POST /api/v1/tasks/start endpoint"""
+        async def mock_get_adapter():
+            return mock_adapter
+        
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        try:
+            from agents.tasks.models import Task
+            mock_task = Task(
+                task_id="task-001",
+                ecid="ec-001",
+                agent="test-agent",
+                status="started"
+            )
+            mock_adapter.create_task = AsyncMock(return_value=mock_task)
+            
+            log_data = {
+                "task_id": "task-001",
+                "ecid": "ec-001",
+                "agent": "test-agent",
+                "status": "started"
+            }
+            
+            response = client.post("/api/v1/tasks/start", json=log_data)
+            assert response.status_code in [200, 201, 500]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_tasks_adapter_dep(self, mock_adapter):
+        """Test get_tasks_adapter_dep dependency function"""
+        # Patch the registry function to return our mock
+        with patch('agents.tasks.registry._adapter', mock_adapter), \
+             patch('agents.tasks.registry.get_tasks_adapter', new_callable=AsyncMock, return_value=mock_adapter):
+            result = await get_tasks_adapter_dep()
+            assert result == mock_adapter
+

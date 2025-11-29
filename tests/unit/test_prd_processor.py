@@ -3,8 +3,10 @@ Unit tests for PRDProcessor capability
 Tests prd.process capability functionality
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from agents.capabilities.prd_processor import PRDProcessor
 
 

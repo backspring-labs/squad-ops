@@ -2,10 +2,13 @@
 Unit tests for SIP-046 spec definitions (AgentRequest/AgentResponse).
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
+
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Error, Timing
+
 
 def test_agent_request_creation():
     """Test AgentRequest creation and validation"""

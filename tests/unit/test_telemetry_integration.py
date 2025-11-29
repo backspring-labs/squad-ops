@@ -2,8 +2,9 @@
 Unit tests for telemetry integration in agents (Phase 1)
 Tests GPU detection, reasoning extraction, and telemetry collection enhancements
 """
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
 
 
 class TestGPUDetection:
@@ -320,8 +321,9 @@ class TestBaseAgentTelemetryIntegration:
                     return {}
                 
                 async def handle_agent_request(self, request):
-                    from agents.specs.agent_response import AgentResponse, Timing
                     from datetime import datetime
+
+                    from agents.specs.agent_response import AgentResponse, Timing
                     return AgentResponse.success(
                         result={},
                         idempotency_key='test-key',
@@ -350,8 +352,9 @@ class TestBaseAgentTelemetryIntegration:
                     return {}
                 
                 async def handle_agent_request(self, request):
-                    from agents.specs.agent_response import AgentResponse, Timing
                     from datetime import datetime
+
+                    from agents.specs.agent_response import AgentResponse, Timing
                     return AgentResponse.success(
                         result={},
                         idempotency_key='test-key',

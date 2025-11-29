@@ -4,28 +4,29 @@ Unit tests for Tasks Adapter Framework
 Tests adapter interface, SQL adapter, and registry
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import asyncpg
+import pytest
 
 from agents.tasks.base_adapter import TaskAdapterBase
-from agents.tasks.sql_adapter import SqlTasksAdapter
-from agents.tasks.registry import get_tasks_adapter, set_adapter_for_testing, clear_test_adapter
-from agents.tasks.models import (
-    Task,
-    TaskCreate,
-    TaskState,
-    TaskFilters,
-    Artifact,
-    FlowState,
-    TaskSummary,
-)
 from agents.tasks.errors import (
     TaskAdapterError,
-    TaskNotFoundError,
     TaskConflictError,
+    TaskNotFoundError,
 )
-import asyncpg
+from agents.tasks.models import (
+    Artifact,
+    FlowState,
+    Task,
+    TaskCreate,
+    TaskFilters,
+    TaskState,
+    TaskSummary,
+)
+from agents.tasks.registry import clear_test_adapter, get_tasks_adapter, set_adapter_for_testing
+from agents.tasks.sql_adapter import SqlTasksAdapter
 
 
 class TestTaskAdapterBase:
@@ -838,4 +839,226 @@ class TestDTOPurity:
         assert not isinstance(result, dict)
         assert result.total_tasks == 10
         assert result.completed == 5
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_task_summary_no_tasks(self, adapter, mock_db_pool):
+        """Test get_task_summary when no tasks exist"""
+        pool, conn = mock_db_pool
+        
+        conn.fetchrow = AsyncMock(return_value=None)
+        
+        result = await adapter.get_task_summary("ecid-001")
+        
+        assert isinstance(result, TaskSummary)
+        assert result.total_tasks == 0
+        assert result.completed == 0
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_flow(self, adapter, mock_db_pool):
+        """Test getting an execution cycle by ECID"""
+        pool, conn = mock_db_pool
+        
+        mock_row = MagicMock()
+        mock_row.__getitem__ = lambda self, k: {
+            "ecid": "ecid-001",
+            "pid": "pid-001",
+            "run_type": "warmboot",
+            "title": "Test Flow",
+            "status": "active",
+        }.get(k)
+        mock_row.get = lambda k, d=None: {
+            "ecid": "ecid-001",
+            "pid": "pid-001",
+            "run_type": "warmboot",
+            "title": "Test Flow",
+            "status": "active",
+            "description": None,
+            "created_at": None,
+            "initiated_by": None,
+            "notes": None,
+        }.get(k, d)
+        
+        conn.fetchrow = AsyncMock(return_value=mock_row)
+        
+        flow = await adapter.get_flow("ecid-001")
+        
+        assert flow is not None
+        assert flow.ecid == "ecid-001"
+        assert flow.pid == "pid-001"
+        conn.fetchrow.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_flow_not_found(self, adapter, mock_db_pool):
+        """Test getting flow that doesn't exist"""
+        pool, conn = mock_db_pool
+        
+        conn.fetchrow = AsyncMock(return_value=None)
+        
+        flow = await adapter.get_flow("non-existent")
+        
+        assert flow is None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_list_flows(self, adapter, mock_db_pool):
+        """Test listing execution cycles"""
+        pool, conn = mock_db_pool
+        
+        mock_row1 = MagicMock()
+        mock_row1.__getitem__ = lambda self, k: {
+            "ecid": "ecid-001",
+            "pid": "pid-001",
+            "run_type": "warmboot",
+            "title": "Flow 1",
+            "status": "active",
+        }.get(k)
+        mock_row1.get = lambda k, d=None: {
+            "ecid": "ecid-001",
+            "pid": "pid-001",
+            "run_type": "warmboot",
+            "title": "Flow 1",
+            "status": "active",
+            "description": None,
+            "created_at": None,
+            "initiated_by": None,
+            "notes": None,
+        }.get(k, d)
+        
+        mock_row2 = MagicMock()
+        mock_row2.__getitem__ = lambda self, k: {
+            "ecid": "ecid-002",
+            "pid": "pid-002",
+            "run_type": "standard",
+            "title": "Flow 2",
+            "status": "completed",
+        }.get(k)
+        mock_row2.get = lambda k, d=None: {
+            "ecid": "ecid-002",
+            "pid": "pid-002",
+            "run_type": "standard",
+            "title": "Flow 2",
+            "status": "completed",
+            "description": None,
+            "created_at": None,
+            "initiated_by": None,
+            "notes": None,
+        }.get(k, d)
+        
+        conn.fetch = AsyncMock(return_value=[mock_row1, mock_row2])
+        
+        flows = await adapter.list_flows()
+        
+        assert len(flows) == 2
+        assert flows[0].ecid == "ecid-001"
+        assert flows[1].ecid == "ecid-002"
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_list_flows_with_run_type(self, adapter, mock_db_pool):
+        """Test listing execution cycles filtered by run_type"""
+        pool, conn = mock_db_pool
+        
+        mock_row = MagicMock()
+        mock_row.__getitem__ = lambda self, k: {
+            "ecid": "ecid-001",
+            "pid": "pid-001",
+            "run_type": "warmboot",
+            "title": "WarmBoot Flow",
+            "status": "active",
+        }.get(k)
+        mock_row.get = lambda k, d=None: {
+            "ecid": "ecid-001",
+            "pid": "pid-001",
+            "run_type": "warmboot",
+            "title": "WarmBoot Flow",
+            "status": "active",
+            "description": None,
+            "created_at": None,
+            "initiated_by": None,
+            "notes": None,
+        }.get(k, d)
+        
+        conn.fetch = AsyncMock(return_value=[mock_row])
+        
+        flows = await adapter.list_flows(run_type="warmboot")
+        
+        assert len(flows) == 1
+        assert flows[0].run_type == "warmboot"
+        # Verify query included run_type filter
+        call_args = conn.fetch.call_args[0]
+        assert "run_type" in call_args[0] or "warmboot" in str(call_args)
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_list_flows_empty(self, adapter, mock_db_pool):
+        """Test listing flows when none exist"""
+        pool, conn = mock_db_pool
+        
+        conn.fetch = AsyncMock(return_value=[])
+        
+        flows = await adapter.list_flows()
+        
+        assert len(flows) == 0
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_add_artifact(self, adapter, mock_db_pool):
+        """Test adding artifact to a task"""
+        pool, conn = mock_db_pool
+        
+        # Mock get_task to return existing task
+        mock_task_row = MagicMock()
+        mock_task_row.__getitem__ = lambda self, k: {
+            "task_id": "task-001",
+            "ecid": "ecid-001",
+            "agent": "test-agent",
+            "status": "started",
+            "artifacts": None,
+        }.get(k)
+        mock_task_row.get = lambda k, d=None: {
+            "task_id": "task-001",
+            "ecid": "ecid-001",
+            "agent": "test-agent",
+            "status": "started",
+            "artifacts": None,
+            "priority": None,
+            "description": None,
+            "start_time": None,
+            "end_time": None,
+            "duration": None,
+            "dependencies": [],
+        }.get(k, d)
+        
+        conn.fetchrow = AsyncMock(return_value=mock_task_row)
+        conn.execute = AsyncMock()
+        
+        artifact = Artifact(
+            type="file",
+            path="/path/to/file",
+            description="Test artifact"
+        )
+        
+        await adapter.add_artifact("task-001", artifact)
+        
+        conn.execute.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_add_artifact_task_not_found(self, adapter, mock_db_pool):
+        """Test adding artifact to non-existent task"""
+        pool, conn = mock_db_pool
+        
+        conn.fetchrow = AsyncMock(return_value=None)
+        
+        artifact = Artifact(
+            type="file",
+            path="/path/to/file",
+            description="Test artifact"
+        )
+        
+        with pytest.raises(TaskNotFoundError):
+            await adapter.add_artifact("non-existent", artifact)
 

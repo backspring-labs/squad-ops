@@ -3,8 +3,10 @@ Unit tests for QA domain skills
 Tests compare_app_output_to_criteria skill
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from agents.skills.qa.compare_app_output_to_criteria import CompareAppOutputToCriteria
 
 

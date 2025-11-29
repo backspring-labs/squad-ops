@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Unit tests for GovernanceApproval capability"""
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
+
 from agents.capabilities.governance_approval import GovernanceApproval
 
 

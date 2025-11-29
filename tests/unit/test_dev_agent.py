@@ -1,15 +1,14 @@
 """
 Comprehensive unit tests for DevAgent - covering JSON workflow and all methods.
 """
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
 from agents.roles.dev.agent import DevAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse
-from tests.utils.mock_helpers import (
-    create_sample_build_artifact_request
-)
+from tests.utils.mock_helpers import create_sample_build_artifact_request
 
 
 class TestDevAgent:
@@ -928,8 +927,8 @@ class TestDevAgent:
     # Removed test_handle_generic_task_governance_rejection - _handle_generic_task method removed
         
     @pytest.mark.asyncio
-    async def test_process_task_exception(self, dev_agent):
-        """Test process_task exception handling"""
+    async def test_process_task_exception_on_lookup(self, dev_agent):
+        """Test process_task exception handling when capability lookup raises"""
         task = {
             'task_id': 'test-task-001',
             'task_type': 'development',
@@ -1089,3 +1088,105 @@ class TestDevAgent:
         dev_agent.capability_loader.prepare_capability_args.assert_called_once_with('warmboot.wrapup', task)
         # Verify execute was called with task dict (not task_id, requirements)
         dev_agent.capability_loader.execute.assert_called_once_with('warmboot.wrapup', dev_agent, task)
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_component_status(self, dev_agent):
+        """Test getting component status"""
+        # Mock capability loader to return capability info
+        dev_agent.capability_loader = MagicMock()
+        dev_agent.capability_loader.get_agent_capabilities = MagicMock(return_value=[
+            'manifest.generate', 'docker.build', 'docker.deploy'
+        ])
+        
+        status = await dev_agent.get_component_status()
+        
+        assert 'capabilities' in status
+        assert 'manifest.generate' in status['capabilities']
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_emit_reasoning_event_no_loader(self, dev_agent):
+        """Test emit_reasoning_event when capability loader not initialized"""
+        dev_agent.capability_loader = None
+        
+        # Should not raise, just log warning
+        await dev_agent.emit_reasoning_event(
+            task_id='task-001',
+            ecid='ec-001',
+            reason_step='decision',
+            summary='Test',
+            context='test'
+        )
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_constraint_validation_failure(self, dev_agent):
+        """Test handle_agent_request when constraint validation fails"""
+        request = AgentRequest(
+            action="docker.build",
+            payload={"repo": "unauthorized-repo"},
+            metadata={"pid": "p-001", "ecid": "ec-001"}
+        )
+        
+        # Mock constraint validation to fail
+        with patch.object(dev_agent, '_validate_constraints', return_value=(False, "Repository not allowed")):
+            response = await dev_agent.handle_agent_request(request)
+            
+            assert response.status == 'error'
+            assert response.error.code == "POLICY_VIOLATION"
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_loader_not_initialized(self, dev_agent):
+        """Test handle_agent_request when capability loader not initialized"""
+        request = AgentRequest(
+            action="docker.build",
+            payload={},
+            metadata={"pid": "p-001", "ecid": "ec-001"}
+        )
+        
+        # Mock capability_loader to be None
+        original_loader = dev_agent.capability_loader
+        dev_agent.capability_loader = None
+        
+        try:
+            response = await dev_agent.handle_agent_request(request)
+            
+            # The method should handle None loader gracefully
+            assert response.status == 'error'
+            # May return different error code depending on implementation
+            assert response.error is not None
+        finally:
+            dev_agent.capability_loader = original_loader
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_agent_request_capability_execution_error(self, dev_agent):
+        """Test handle_agent_request when capability execution raises error"""
+        request = AgentRequest(
+            action="docker.build",
+            payload={},
+            metadata={"pid": "p-001", "ecid": "ec-001"}
+        )
+        
+        # Mock validator to pass validation, then make capability execution fail
+        with patch.object(dev_agent.validator, 'validate_request', return_value=(True, None)), \
+             patch.object(dev_agent, '_validate_constraints', return_value=(True, None)):
+            # Mock capability loader execute to raise execution error (not ValueError)
+            original_execute = dev_agent.capability_loader.execute
+            
+            async def mock_execute(capability_name, agent_instance, *args, **kwargs):
+                # Capability exists, but execution fails
+                raise RuntimeError("Execution error")
+            
+            dev_agent.capability_loader.execute = mock_execute
+            
+            try:
+                response = await dev_agent.handle_agent_request(request)
+                
+                assert response.status == 'error'
+                assert response.error.code == "CAPABILITY_EXECUTION_ERROR"
+                assert "Execution error" in response.error.message
+            finally:
+                dev_agent.capability_loader.execute = original_execute

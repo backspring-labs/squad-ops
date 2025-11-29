@@ -2,8 +2,9 @@
 Unit tests for TelemetryClient abstraction (Phase 0)
 Tests TelemetryClient protocol, implementations, and TelemetryRouter
 """
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestTelemetryClientProtocol:
@@ -20,8 +21,9 @@ class TestTelemetryClientProtocol:
     @pytest.mark.unit
     def test_telemetry_client_methods(self):
         """Test that TelemetryClient protocol defines required methods"""
-        from agents.telemetry.client import TelemetryClient
         import inspect
+
+        from agents.telemetry.client import TelemetryClient
         
         # Check for required methods
         methods = [m[0] for m in inspect.getmembers(TelemetryClient, predicate=inspect.isfunction)]
@@ -217,6 +219,7 @@ class TestTelemetryRouter:
     def test_telemetry_router_env_var_override(self):
         """Test TelemetryRouter respects TELEMETRY_BACKEND env var"""
         import os
+
         from agents.telemetry.router import TelemetryRouter
         
         # Set env var to force null client

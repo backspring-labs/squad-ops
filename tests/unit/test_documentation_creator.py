@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Unit tests for DocumentationCreator capability"""
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
-from unittest.mock import Mock, AsyncMock
+
 from agents.capabilities.documentation_creator import DocumentationCreator
 
 

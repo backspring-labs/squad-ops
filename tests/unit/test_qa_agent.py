@@ -3,8 +3,10 @@ Unit tests for QAAgent
 Tests generic capability routing and refactored agent
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from agents.roles.qa.agent import QAAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse

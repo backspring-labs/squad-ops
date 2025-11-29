@@ -3,18 +3,16 @@
 Unit tests for build_agent.py script
 """
 
-import yaml
 import shutil
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import yaml
 
 # Add scripts to path for testing
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts" / "dev"))
 
-from build_agent import (
-    build_agent_package,
-    get_capability_module_path
-)
+from build_agent import build_agent_package, get_capability_module_path
 
 
 class TestBuildAgent:
@@ -209,7 +207,7 @@ class TestBuildAgent:
         manifest_path = dist_dir / "manifest.json"
         
         import json
-        with open(manifest_path, 'r') as f:
+        with open(manifest_path) as f:
             manifest = json.load(f)
         
         build_hash1 = manifest['build_hash']

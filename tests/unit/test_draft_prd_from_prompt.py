@@ -3,8 +3,10 @@ Unit tests for DraftPRDFromPrompt capability
 Tests product.draft_prd_from_prompt capability
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from agents.capabilities.product.draft_prd_from_prompt import DraftPRDFromPrompt
 
 

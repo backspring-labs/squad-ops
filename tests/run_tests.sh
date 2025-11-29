@@ -106,6 +106,7 @@ show_usage() {
     echo "Options:"
     echo "  --no-cov      Skip coverage reporting"
     echo "  --verbose     Verbose output"
+    echo "  --skip-lint   Skip ruff linting (not recommended)"
     echo "  --file FILE   Specific test file (for 'specific' command)"
     echo ""
     echo "Examples:"
@@ -119,6 +120,7 @@ show_usage() {
 COMMAND=""
 NO_COV=false
 VERBOSE=false
+SKIP_LINT=false
 TEST_FILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -133,6 +135,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --verbose)
             VERBOSE=true
+            shift
+            ;;
+        --skip-lint)
+            SKIP_LINT=true
             shift
             ;;
         --file)
@@ -163,6 +169,35 @@ check_python_version
 
 # Check dependencies
 check_dependencies
+
+# Function to run ruff linting
+run_ruff() {
+    echo -e "${YELLOW}Running ruff linting...${NC}"
+    
+    if command -v ruff >/dev/null 2>&1; then
+        if ruff check .; then
+            echo -e "${GREEN}✅ Ruff linting passed${NC}"
+            return 0
+        else
+            echo -e "${RED}❌ Ruff linting failed${NC}"
+            echo "Fix issues with: ruff check --fix ."
+            return 1
+        fi
+    else
+        echo -e "${YELLOW}⚠️  ruff not found, skipping linting${NC}"
+        echo "Install with: pip install ruff"
+        return 0
+    fi
+}
+
+# Run ruff by default (can be skipped with --skip-lint)
+if [[ "$SKIP_LINT" == "false" ]]; then
+    if ! run_ruff; then
+        echo -e "${RED}❌ Linting failed. Fix issues or use --skip-lint to continue${NC}"
+        exit 1
+    fi
+    echo ""
+fi
 
 # Build pytest arguments
 PYTEST_ARGS="-v"

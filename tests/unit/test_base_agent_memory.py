@@ -2,8 +2,10 @@
 Unit tests for BaseAgent memory integration
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from agents.base_agent import BaseAgent
 
 
@@ -15,8 +17,9 @@ class MemoryTestAgent(BaseAgent):
     
     async def handle_agent_request(self, request):
         """Required abstract method"""
-        from agents.specs.agent_response import AgentResponse, Timing
         from datetime import datetime
+
+        from agents.specs.agent_response import AgentResponse, Timing
         return AgentResponse.success(
             result={'status': 'completed'},
             idempotency_key='test-key',

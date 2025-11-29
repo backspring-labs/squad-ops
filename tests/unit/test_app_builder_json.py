@@ -1,18 +1,19 @@
 """
 Unit tests for AppBuilder JSON workflow methods.
 """
-import pytest
 import json
-import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from agents.tools.app_builder import AppBuilder
+import pytest
+
 from agents.skills.dev.architect_prompt import ArchitectPrompt
 from agents.skills.dev.developer_prompt import DeveloperPrompt
 from agents.skills.dev.squadops_constraints import SquadOpsConstraints
+from agents.tools.app_builder import AppBuilder
 from tests.utils.mock_helpers import (
-    MockOllamaResponse, create_sample_task_spec,
-    create_sample_build_manifest
+    MockOllamaResponse,
+    create_sample_build_manifest,
+    create_sample_task_spec,
 )
 
 
@@ -69,7 +70,7 @@ class TestAppBuilderJSON:
     async def test_call_llm_json_timeout(self, app_builder):
         """Test LLM JSON call timeout handling."""
         # Mock llm_client to raise timeout error
-        app_builder.llm_client.complete = AsyncMock(side_effect=asyncio.TimeoutError("LLM timeout"))
+        app_builder.llm_client.complete = AsyncMock(side_effect=TimeoutError("LLM timeout"))
         
         with pytest.raises(Exception, match="LLM call failed"):
             await app_builder._call_llm_json(
@@ -108,8 +109,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         architect_skill = ArchitectPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -147,8 +149,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         architect_skill = ArchitectPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -183,8 +186,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         architect_skill = ArchitectPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -221,8 +225,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -271,8 +276,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -314,8 +320,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -357,8 +364,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -394,8 +402,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -427,8 +436,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         architect_skill = ArchitectPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -458,8 +468,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -561,8 +572,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -598,8 +610,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(
@@ -640,8 +653,9 @@ class TestAppBuilderJSON:
         # Load Skills to get prompt
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
-        import yaml
         import re
+
+        import yaml
         
         app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', sample_task_spec.get('app_name', 'application')).lower().replace(' ', '-')
         constraints = constraints_skill.load(

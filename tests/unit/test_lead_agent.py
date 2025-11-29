@@ -3,18 +3,21 @@ Unit tests for LeadAgent class
 Tests core LeadAgent functionality without external dependencies
 """
 
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
 import yaml
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
-from agents.roles.lead.agent import LeadAgent
+
 from agents.base_agent import AgentMessage
+from agents.roles.lead.agent import LeadAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse
 from tests.utils.mock_helpers import (
-    create_sample_validate_warmboot_request,
+    MockAgentMessage,
     create_sample_build_manifest,
-    MockAgentMessage
+    create_sample_validate_warmboot_request,
 )
+
 
 class TestLeadAgent:
     """Test LeadAgent core functionality"""
@@ -1689,7 +1692,7 @@ class TestLeadAgent:
     @pytest.fixture
     def lead_agent_for_sequencing(self):
         """Create LeadAgent instance for task sequencing tests."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
         
         # Create a mock TaskSpec class
         class MockTaskSpec:
@@ -1745,7 +1748,9 @@ class TestLeadAgent:
                         if hasattr(agent_instance, 'capability_loader'):
                             # Try to get build requirements generator capability
                             try:
-                                from agents.capabilities.build_requirements_generator import BuildRequirementsGenerator
+                                from agents.capabilities.build_requirements_generator import (
+                                    BuildRequirementsGenerator,
+                                )
                                 generator = BuildRequirementsGenerator(agent_instance)
                                 task_creator.set_build_requirements_generator(generator)
                             except Exception:

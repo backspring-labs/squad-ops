@@ -4,13 +4,16 @@ Unit tests for BaseAgent class
 Tests core agent functionality without external dependencies
 """
 
-import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
-from agents.base_agent import BaseAgent, AgentMessage
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
+
+from agents.base_agent import AgentMessage, BaseAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse
 from tests.utils.mock_helpers import create_sample_agent_request
+
 
 class ConcreteTestAgent(BaseAgent):
     """Concrete test agent for testing BaseAgent functionality"""
@@ -730,7 +733,7 @@ class TestBaseAgent:
         )
         
         # write_file catches exceptions and returns False
-        with patch('os.makedirs', side_effect=IOError("Cannot create dir")):
+        with patch('os.makedirs', side_effect=OSError("Cannot create dir")):
             result = await agent.write_file("/test/file.txt", "content")
             assert result is False
     
@@ -1672,3 +1675,359 @@ class TestBaseAgent:
                         break
                 
                 assert structured_log_found, "Structured agent_runtime_identity log should be emitted"
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_read_file_success(self):
+        """Test reading file successfully"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_file = AsyncMock()
+        mock_file.read = AsyncMock(return_value='file content')
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_file)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('aiofiles.open', return_value=mock_context):
+            content = await agent.read_file('/test/file.txt')
+            
+            assert content == 'file content'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_read_file_relative_path(self):
+        """Test reading file with relative path"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_file = AsyncMock()
+        mock_file.read = AsyncMock(return_value='content')
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_file)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('aiofiles.open', return_value=mock_context), \
+             patch('os.path.isabs', return_value=False):
+            content = await agent.read_file('test/file.txt')
+            
+            assert content == 'content'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_read_file_error(self):
+        """Test reading file error handling"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        with patch('aiofiles.open', side_effect=OSError("File not found")):
+            with pytest.raises(IOError):
+                await agent.read_file('/test/file.txt')
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_write_file_success(self):
+        """Test writing file successfully"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_file = AsyncMock()
+        mock_file.write = AsyncMock()
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_file)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('aiofiles.open', return_value=mock_context), \
+             patch('os.path.isabs', return_value=True), \
+             patch('os.makedirs') as mock_makedirs:
+            result = await agent.write_file('/test/file.txt', 'content')
+            
+            assert result is True
+            mock_file.write.assert_called_once_with('content')
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_write_file_relative_path(self):
+        """Test writing file with relative path"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_file = AsyncMock()
+        mock_file.write = AsyncMock()
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_file)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('aiofiles.open', return_value=mock_context), \
+             patch('os.path.isabs', return_value=False), \
+             patch('os.makedirs'):
+            result = await agent.write_file('test/file.txt', 'content')
+            
+            assert result is True
+    
+        
+        with patch('aiohttp.ClientSession.post') as mock_post:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={'task_id': 'task-001', 'status': 'Completed'})
+            mock_post.return_value.__aenter__.return_value = mock_response
+            
+            result = await agent.update_task_status('task-001', 'Completed', progress=100.0, eta='1h')
+            
+            assert result['task_id'] == 'task-001'
+            mock_post.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_update_task_status_api_error(self):
+        """Test updating task status when API returns error"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_response = AsyncMock()
+        mock_response.status = 500
+        mock_response.text = AsyncMock(return_value='Internal server error')
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+        
+        with patch('aiohttp.ClientSession.post', return_value=mock_context):
+            # On non-200 status, method logs error and returns None (implicitly)
+            result = await agent.update_task_status('task-001', 'Completed')
+            # Should return None on error status
+            assert result is None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_record_memory_role_namespace(self):
+        """Test recording memory in role namespace"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_memory_provider = AsyncMock()
+        mock_memory_provider.put = AsyncMock(return_value='mem-123')
+        agent.memory_provider = mock_memory_provider
+        
+        mem_id = await agent.record_memory(
+            kind="test_memory",
+            payload={"test": "data"},
+            importance=0.8,
+            ns="role"
+        )
+        
+        assert mem_id == 'mem-123'
+        mock_memory_provider.put.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_record_memory_squad_namespace(self):
+        """Test recording memory in squad namespace"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_sql_adapter = AsyncMock()
+        mock_sql_adapter.put = AsyncMock(return_value='mem-456')
+        agent.sql_adapter = mock_sql_adapter
+        
+        mem_id = await agent.record_memory(
+            kind="test_memory",
+            payload={"test": "data"},
+            importance=0.8,
+            ns="squad"
+        )
+        
+        assert mem_id == 'mem-456'
+        mock_sql_adapter.put.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_record_memory_no_provider(self):
+        """Test recording memory when provider not available"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        agent.memory_provider = None
+        
+        mem_id = await agent.record_memory(
+            kind="test_memory",
+            payload={"test": "data"}
+        )
+        
+        assert mem_id is None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_record_memory_with_task_context(self):
+        """Test recording memory with task context"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_memory_provider = AsyncMock()
+        mock_memory_provider.put = AsyncMock(return_value='mem-789')
+        agent.memory_provider = mock_memory_provider
+        
+        mem_id = await agent.record_memory(
+            kind="task_completion",
+            payload={"task_id": "task-001", "status": "completed"},
+            importance=0.9,
+            task_context={'ecid': 'ec-001', 'pid': 'p-001'}
+        )
+        
+        assert mem_id == 'mem-789'
+        # Verify context was extracted
+        call_args = mock_memory_provider.put.call_args[0][0]
+        assert call_args['ecid'] == 'ec-001'
+        assert call_args['pid'] == 'p-001'
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_retrieve_memories_role_namespace(self):
+        """Test retrieving memories from role namespace"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_memory_provider = AsyncMock()
+        mock_memory_provider.get = AsyncMock(return_value=[
+            {'id': 'mem-1', 'content': {'action': 'test', 'result': 'success'}}
+        ])
+        agent.memory_provider = mock_memory_provider
+        
+        memories = await agent.retrieve_memories('test query', k=5, ns='role')
+        
+        assert len(memories) == 1
+        assert memories[0]['id'] == 'mem-1'
+        mock_memory_provider.get.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_retrieve_memories_squad_namespace(self):
+        """Test retrieving memories from squad namespace"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        mock_sql_adapter = AsyncMock()
+        mock_sql_adapter.get = AsyncMock(return_value=[
+            {'id': 'mem-2', 'content': {'action': 'squad_memory', 'result': 'data'}}
+        ])
+        agent.sql_adapter = mock_sql_adapter
+        
+        memories = await agent.retrieve_memories('test query', k=5, ns='squad')
+        
+        assert len(memories) == 1
+        assert memories[0]['id'] == 'mem-2'
+        mock_sql_adapter.get.assert_called_once()
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_retrieve_memories_no_provider(self):
+        """Test retrieving memories when provider not available"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        agent.memory_provider = None
+        
+        memories = await agent.retrieve_memories('test query')
+        
+        assert memories == []
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_log_task_start_api_unavailable(self):
+        """Test log_task_start when API is unavailable"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        with patch('aiohttp.ClientSession.post', side_effect=Exception("API unavailable")):
+            result = await agent.log_task_start('task-001', 'ec-001', 'Test task')
+            
+            # Should return None instead of raising
+            assert result is None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_log_task_start_api_error_response(self):
+        """Test log_task_start when API returns error"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        with patch('aiohttp.ClientSession.post') as mock_post:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_response.text = AsyncMock(return_value='Server error')
+            mock_post.return_value.__aenter__.return_value = mock_response
+            
+            result = await agent.log_task_start('task-001', 'ec-001', 'Test task')
+            
+            # Should return None on error
+            assert result is None
+    
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_execution_cycle_api_error(self):
+        """Test create_execution_cycle when API returns error"""
+        agent = ConcreteTestAgent(
+            name="test-agent",
+            agent_type="test",
+            reasoning_style="test"
+        )
+        
+        with patch('aiohttp.ClientSession.post') as mock_post:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_response.text = AsyncMock(return_value='Server error')
+            mock_post.return_value.__aenter__.return_value = mock_response
+            
+            result = await agent.create_execution_cycle(
+                ecid="ec-001",
+                pid="p-001",
+                run_type="warmboot",
+                title="Test Cycle"
+            )
+            
+            # Should still return response even on error
+            assert result is not None

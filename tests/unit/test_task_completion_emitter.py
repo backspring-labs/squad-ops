@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Unit tests for TaskCompletionEmitter capability"""
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch, mock_open
 from datetime import datetime
+from unittest.mock import AsyncMock, Mock, mock_open, patch
+
+import pytest
+
 from agents.capabilities.task_completion_emitter import TaskCompletionEmitter
 
 

@@ -2,8 +2,10 @@
 Unit tests for LLM client infrastructure.
 """
 
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 
 def test_llm_provider_configured():
     """Ensure LLM router can provide a client"""
@@ -30,8 +32,9 @@ def test_llm_provider_configured():
 @pytest.mark.asyncio
 async def test_ollama_client_integration():
     """Test Ollama client functionality"""
+    from unittest.mock import AsyncMock, patch
+
     from agents.llm.providers.ollama import OllamaClient
-    from unittest.mock import patch, AsyncMock
     
     # Create client with localhost URL and test model
     client = OllamaClient(url='http://localhost:11434', model='test-model')
@@ -152,8 +155,9 @@ def test_js_validation():
 
 def test_llm_router_default_config():
     """Test LLM router with default config when file doesn't exist"""
-    from agents.llm.router import LLMRouter
     from unittest.mock import patch
+
+    from agents.llm.router import LLMRouter
     
     # Mock file not existing - should now fail with ValueError since model is required
     with patch('builtins.open', side_effect=FileNotFoundError):
@@ -256,8 +260,9 @@ def test_llm_router_provider_registry():
 @pytest.mark.asyncio
 async def test_ollama_client_format_parameter():
     """Test that OllamaClient supports format parameter for JSON output"""
+    from unittest.mock import AsyncMock, patch
+
     from agents.llm.providers.ollama import OllamaClient
-    from unittest.mock import patch, AsyncMock
     
     client = OllamaClient(url='http://localhost:11434', model='test-model')
     
@@ -298,8 +303,9 @@ async def test_ollama_client_format_parameter():
 @pytest.mark.asyncio
 async def test_app_builder_uses_router():
     """Test that AppBuilder uses LLM router properly"""
+    from unittest.mock import AsyncMock, MagicMock
+
     from agents.tools.app_builder import AppBuilder
-    from unittest.mock import MagicMock, AsyncMock
     
     # Create mock LLM client (as returned by router)
     mock_llm_client = MagicMock()
@@ -330,10 +336,11 @@ async def test_app_builder_uses_router():
 @pytest.mark.asyncio
 async def test_app_builder_respects_use_local_llm():
     """Test that AppBuilder respects USE_LOCAL_LLM setting via router"""
-    from agents.tools.app_builder import AppBuilder
-    from agents.llm.router import LLMRouter
-    from unittest.mock import patch
     import os
+    from unittest.mock import patch
+
+    from agents.llm.router import LLMRouter
+    from agents.tools.app_builder import AppBuilder
     
     # Test with USE_LOCAL_LLM=false (should get mock client)
     with patch.dict(os.environ, {'USE_LOCAL_LLM': 'false'}):

@@ -1,8 +1,10 @@
 """
 Unit tests for token usage tracking (Task 1.3)
 """
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
+
 from agents.llm.providers.ollama import OllamaClient
 
 
@@ -48,8 +50,9 @@ class TestTokenTracking:
     @pytest.mark.unit
     def test_task_completion_emitter_calculates_total_tokens(self, mock_unified_config):
         """Test TaskCompletionEmitter._calculate_total_tokens_used() method"""
-        from agents.capabilities.task_completion_emitter import TaskCompletionEmitter
         from unittest.mock import Mock
+
+        from agents.capabilities.task_completion_emitter import TaskCompletionEmitter
         
         # Create a mock agent with communication log
         mock_agent = Mock()
@@ -78,8 +81,9 @@ class TestTokenTracking:
                     return {}
                 
                 async def handle_agent_request(self, request):
-                    from agents.specs.agent_response import AgentResponse, Timing
                     from datetime import datetime
+
+                    from agents.specs.agent_response import AgentResponse, Timing
                     return AgentResponse.success(
                         result={},
                         idempotency_key='test-key',

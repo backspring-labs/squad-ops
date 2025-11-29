@@ -1,6 +1,9 @@
+from unittest.mock import mock_open, patch
+
 import pytest
-from unittest.mock import patch, mock_open
+
 from agents.factory.role_factory import RoleFactory
+
 
 class TestRoleFactory:
     """Test RoleFactory core functionality"""

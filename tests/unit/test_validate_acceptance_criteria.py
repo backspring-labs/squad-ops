@@ -3,8 +3,10 @@ Unit tests for ValidateAcceptanceCriteria capability
 Tests product.validate_acceptance_criteria capability
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from agents.capabilities.product.validate_acceptance_criteria import ValidateAcceptanceCriteria
 
 

@@ -3,8 +3,10 @@ Unit tests for CapabilityLoader class
 Tests capability resolution and execution
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from agents.capabilities.loader import CapabilityLoader
 
 
