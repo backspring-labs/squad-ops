@@ -1,26 +1,27 @@
-from fastapi import FastAPI, HTTPException, Form, Request
-from starlette.requests import Request as StarletteRequest
+import asyncio
+import json
+import logging
+import os
+import random
+import string
+import sys
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import aio_pika
+import aiohttp
+import asyncpg
+import pika
+import redis.asyncio as redis
+import yaml
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-import asyncio
-import aiohttp
-import asyncpg
-import redis.asyncio as redis
-import pika
-import aio_pika
-import json
-import logging
-import yaml
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-from pathlib import Path
-from dataclasses import dataclass, field
-import uuid
-import random
-import string
-import os
-import sys
+from starlette.requests import Request as StarletteRequest
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,14 +35,13 @@ for logger_name in pika_loggers:
     logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 sys.path.append('/Users/jladd/Code/squad-ops')
-from config.version import SQUADOPS_VERSION, AGENT_VERSIONS, get_agent_version
+from config.version import SQUADOPS_VERSION, get_agent_version  # noqa: E402
 
 app = FastAPI(title="SquadOps Health Check Service", version=SQUADOPS_VERSION)
 
 # Initialize Jinja2 templates
 # In Docker: templates are at /app/templates
 # Locally: use relative path from script location
-import os
 template_dir = "templates" if os.path.exists("templates") else "infra/health-check/templates"
 templates = Jinja2Templates(directory=template_dir)
 
@@ -50,28 +50,28 @@ class WarmBootRequest(BaseModel):
     run_id: str
     application: str
     request_type: str
-    agents: List[str]
+    agents: list[str]
     priority: str
     description: str
-    requirements: Optional[str] = None
-    prd_path: Optional[str] = None
-    requirements_text: Optional[str] = None
+    requirements: str | None = None
+    prd_path: str | None = None
+    requirements_text: str | None = None
 
 # Pydantic models for Agent Status
 class AgentStatusCreate(BaseModel):
     agent_name: str
     status: str
-    current_task_id: Optional[str] = None
-    version: Optional[str] = None
+    current_task_id: str | None = None
+    version: str | None = None
     tps: int = 0
-    memory_count: Optional[int] = None
+    memory_count: int | None = None
 
 class AgentStatusUpdate(BaseModel):
-    status: Optional[str] = None
-    current_task_id: Optional[str] = None
-    version: Optional[str] = None
-    tps: Optional[int] = None
-    memory_count: Optional[int] = None
+    status: str | None = None
+    current_task_id: str | None = None
+    version: str | None = None
+    tps: int | None = None
+    memory_count: int | None = None
 
 # Agent Gateway: Console Session Management
 @dataclass
@@ -79,13 +79,13 @@ class ConsoleSession:
     """Console session for Agent Gateway"""
     session_id: str
     mode: str  # "idle" | "chat"
-    bound_agent: Optional[str] = None
-    ecid: Optional[str] = None
+    bound_agent: str | None = None
+    ecid: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
-    pending_responses: List[Dict[str, Any]] = field(default_factory=list)
+    pending_responses: list[dict[str, Any]] = field(default_factory=list)
 
 # Agent Gateway: In-memory session store
-console_sessions: Dict[str, ConsoleSession] = {}
+console_sessions: dict[str, ConsoleSession] = {}
 
 def create_console_session() -> str:
     """Create a new console session and return session_id"""
@@ -97,7 +97,7 @@ def create_console_session() -> str:
     logger.info(f"Agent Gateway: Created new console session: {session_id}")
     return session_id
 
-def get_console_session(session_id: str) -> Optional[ConsoleSession]:
+def get_console_session(session_id: str) -> ConsoleSession | None:
     """Get console session by session_id"""
     return console_sessions.get(session_id)
 
@@ -126,7 +126,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 PREFECT_URL = os.getenv("PREFECT_URL", "http://prefect-server:4200/api")
 
 # Agent Gateway: Command Parser
-def parse_command(command: str) -> Dict[str, Any]:
+def parse_command(command: str) -> dict[str, Any]:
     """Parse command line into command name and arguments"""
     command = command.strip()
     if not command:
@@ -170,7 +170,7 @@ class CommandHandler:
     def __init__(self, health_checker: 'HealthChecker'):
         self.health_checker = health_checker
     
-    async def handle_help(self) -> List[str]:
+    async def handle_help(self) -> list[str]:
         """Return list of available commands"""
         return [
             "Available commands:",
@@ -185,7 +185,7 @@ class CommandHandler:
             "  clear                   - Clear console output (client-side)"
         ]
     
-    async def handle_agent_list(self) -> List[str]:
+    async def handle_agent_list(self) -> list[str]:
         """Return formatted list of all agents"""
         try:
             agents = await self.health_checker.get_agent_status()
@@ -198,7 +198,7 @@ class CommandHandler:
             logger.error(f"Agent Gateway: Failed to get agent list: {e}")
             return [f"Error: Failed to get agent list: {str(e)}"]
     
-    async def handle_agent_status(self) -> List[str]:
+    async def handle_agent_status(self) -> list[str]:
         """Return detailed agent status"""
         try:
             agents = await self.health_checker.get_agent_status()
@@ -216,7 +216,7 @@ class CommandHandler:
             logger.error(f"Agent Gateway: Failed to get agent status: {e}")
             return [f"Error: Failed to get agent status: {str(e)}"]
     
-    async def handle_agent_info(self, name: str) -> List[str]:
+    async def handle_agent_info(self, name: str) -> list[str]:
         """Return agent details from instances.yaml"""
         try:
             instances = self.health_checker._load_instances()
@@ -247,7 +247,7 @@ class CommandHandler:
             logger.error(f"Agent Gateway: Failed to get agent info: {e}")
             return [f"Error: Failed to get agent info: {str(e)}"]
     
-    async def handle_agent_logs(self, name: str, n: int = 10) -> List[str]:
+    async def handle_agent_logs(self, name: str, n: int = 10) -> list[str]:
         """Return last N log entries for agent (placeholder for MVP)"""
         # Placeholder - would need to access agent logs
         return [
@@ -256,7 +256,7 @@ class CommandHandler:
             "  Future: Query agent container logs or centralized log service"
         ]
     
-    async def handle_chat_start(self, session_id: str, agent_name: str) -> Dict[str, Any]:
+    async def handle_chat_start(self, session_id: str, agent_name: str) -> dict[str, Any]:
         """Start chat session with agent"""
         try:
             # Check if agent exists and is online
@@ -307,7 +307,7 @@ class CommandHandler:
                 "ecid": None
             }
     
-    async def handle_chat_end(self, session_id: str) -> Dict[str, Any]:
+    async def handle_chat_end(self, session_id: str) -> dict[str, Any]:
         """End chat session"""
         try:
             session = get_console_session(session_id)
@@ -337,7 +337,7 @@ class CommandHandler:
                 "ecid": None
             }
     
-    async def handle_whoami(self, session_id: str) -> List[str]:
+    async def handle_whoami(self, session_id: str) -> list[str]:
         """Return session info"""
         session = get_console_session(session_id)
         if not session:
@@ -353,7 +353,7 @@ class CommandHandler:
         ]
         return lines
     
-    async def handle_chat_message(self, session_id: str, message: str) -> Dict[str, Any]:
+    async def handle_chat_message(self, session_id: str, message: str) -> dict[str, Any]:
         """Send chat message to agent via A2A"""
         session = get_console_session(session_id)
         if not session:
@@ -440,7 +440,7 @@ class HealthChecker:
         self.rabbitmq_channel = None
         self.response_queue = None
     
-    def _load_instances(self) -> Dict[str, Dict[str, Any]]:
+    def _load_instances(self) -> dict[str, dict[str, Any]]:
         """
         Load agent instances from instances.yaml.
         Returns dict mapping agent_id -> {display_name, role, description}
@@ -459,7 +459,7 @@ class HealthChecker:
                 return self._instances_cache
             
             # File is new or has been modified - reload it
-            with open(instances_path, 'r') as f:
+            with open(instances_path) as f:
                 data = yaml.safe_load(f)
             
             # Build agent_id -> instance info mapping
@@ -490,7 +490,7 @@ class HealthChecker:
             logger.error(f"Failed to load instances.yaml: {e}, using defaults")
             return self._get_default_instances()
     
-    def _get_default_instances(self) -> Dict[str, Dict[str, Any]]:
+    def _get_default_instances(self) -> dict[str, dict[str, Any]]:
         """Fallback instances mapping if instances.yaml can't be loaded"""
         return {
             'max': {'display_name': 'Max', 'role': 'lead', 'description': 'Task Lead - Governance and coordination'},
@@ -583,7 +583,7 @@ class HealthChecker:
         except Exception as e:
             logger.error(f"Agent Gateway: Error in response consumer: {e}", exc_info=True)
     
-    async def check_rabbitmq(self) -> Dict[str, Any]:
+    async def check_rabbitmq(self) -> dict[str, Any]:
         """Check RabbitMQ health"""
         try:
             connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
@@ -594,9 +594,9 @@ class HealthChecker:
             version = "Unknown"
             try:
                 # RabbitMQ management API endpoint for version info
-                import urllib.request
-                import json
                 import base64
+                import json
+                import urllib.request
                 
                 # Extract credentials from RABBITMQ_URL
                 url_parts = RABBITMQ_URL.replace("amqp://", "").split("@")
@@ -641,7 +641,7 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}"
             }
     
-    async def check_postgres(self) -> Dict[str, Any]:
+    async def check_postgres(self) -> dict[str, Any]:
         """Check PostgreSQL health"""
         try:
             if not self.pg_pool:
@@ -678,7 +678,7 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}"
             }
     
-    async def check_redis(self) -> Dict[str, Any]:
+    async def check_redis(self) -> dict[str, Any]:
         """Check Redis health"""
         try:
             if not self.redis_client:
@@ -705,7 +705,7 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}"
             }
     
-    async def check_prefect(self) -> Dict[str, Any]:
+    async def check_prefect(self) -> dict[str, Any]:
         """Check Prefect health"""
         try:
             async with aiohttp.ClientSession() as session:
@@ -744,7 +744,7 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}"
             }
     
-    async def check_prometheus(self) -> Dict[str, Any]:
+    async def check_prometheus(self) -> dict[str, Any]:
         """Check Prometheus health"""
         try:
             prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
@@ -784,7 +784,7 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}"
             }
     
-    async def check_grafana(self) -> Dict[str, Any]:
+    async def check_grafana(self) -> dict[str, Any]:
         """Check Grafana health"""
         try:
             grafana_url = os.getenv("GRAFANA_URL", "http://grafana:3000")
@@ -816,7 +816,7 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}"
             }
     
-    async def check_otel_collector(self) -> Dict[str, Any]:
+    async def check_otel_collector(self) -> dict[str, Any]:
         """
         Check OpenTelemetry Collector health
         
@@ -844,7 +844,7 @@ class HealthChecker:
                                 notes = "Health check endpoint responding"
                                 # Note: Health check response doesn't include version even with include_metadata: true
                                 # Version must come from deployment config (env var or container metadata)
-                except (aiohttp.ClientError, asyncio.TimeoutError):
+                except (TimeoutError, aiohttp.ClientError):
                     # Health check endpoint not available - will check OTLP endpoint below
                     logger.debug(f"{health_check_url} health check not available")
                 except Exception as e:
@@ -901,7 +901,7 @@ class HealthChecker:
                             else:
                                 version = "Unknown"
                                 logger.debug(f"zPages endpoint returned HTTP {zpages_response.status}")
-                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                except (TimeoutError, aiohttp.ClientError) as e:
                     # zPages endpoint not available - fall back to environment variable
                     logger.debug(f"Could not query zPages endpoint for OTel Collector version: {e}")
                     env_version = os.getenv("OTEL_COLLECTOR_VERSION")
@@ -948,15 +948,11 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}"
             }
     
-    async def get_agent_status(self) -> List[Dict[str, Any]]:
+    async def get_agent_status(self) -> list[dict[str, Any]]:
         """Get agent status from database"""
         try:
             if not self.pg_pool:
                 await self.init_connections()
-            
-            # Load instances.yaml to filter out obsolete agents
-            instances = self._load_instances()
-            valid_agent_ids = set(instances.keys())
             
             async with self.pg_pool.acquire() as conn:
                 rows = await conn.fetch("""
@@ -965,26 +961,31 @@ class HealthChecker:
                     ORDER BY agent_name
                 """)
                 
+                # Load instances.yaml for display metadata (single source of truth)
+                instances = self._load_instances()
+                
                 agents = []
                 for row in rows:
-                    # Skip agents not in instances.yaml (obsolete/stale entries)
                     agent_name = row['agent_name']
-                    if agent_name not in valid_agent_ids:
-                        logger.debug(f"Skipping obsolete agent entry: {agent_name}")
-                        continue
                     
                     # Handle memory_count - asyncpg.Record uses dict-like access
                     memory_count = row['memory_count'] if row['memory_count'] is not None else 0
                     
                     # Use version from database (reported by agents in heartbeats)
-                    # Fall back to config/version.py if database version is missing
-                    agent_version = row['version'] if row['version'] else get_agent_version(agent_name)
+                    agent_version = row['version'] if row['version'] else "0.0.0"
+                    
+                    # Always get display_name and role from instances.yaml (single source of truth)
+                    display_name = agent_name.title()  # Default fallback
+                    role = "Unknown"  # Default fallback
+                    if agent_name in instances:
+                        display_name = instances[agent_name].get('display_name', agent_name.title())
+                        role = instances[agent_name].get('role', 'Unknown')
                     
                     agents.append({
-                        "agent": self._get_display_name(agent_name),
-                        "role": self._get_agent_role(agent_name),
+                        "agent": display_name,
+                        "role": role,
                         "status": row['status'],
-                        "version": agent_version,  # Use version from config/version.py
+                        "version": agent_version,
                         "tps": row['tps'],
                         "memory_count": memory_count,
                         "last_heartbeat": row['last_heartbeat'].isoformat() if row['last_heartbeat'] else None,
@@ -1044,7 +1045,7 @@ class HealthChecker:
             return role_to_desc.get(instance.get('role', ''), 'Unknown')
         return "Unknown"
     
-    async def update_agent_status_in_db(self, agent_status: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_agent_status_in_db(self, agent_status: dict[str, Any]) -> dict[str, Any]:
         """Update agent status in database"""
         try:
             if not self.pg_pool:
@@ -1073,7 +1074,7 @@ class HealthChecker:
             logger.error(f"Failed to update agent status: {e}")
             raise
 
-    async def submit_warmboot_request(self, request: WarmBootRequest) -> Dict[str, Any]:
+    async def submit_warmboot_request(self, request: WarmBootRequest) -> dict[str, Any]:
         """Submit WarmBoot request to agents via RabbitMQ"""
         try:
             # Initialize connections if needed
@@ -1174,7 +1175,7 @@ class HealthChecker:
                 "timestamp": datetime.utcnow().isoformat()
             }
     
-    async def get_warmboot_status(self, run_id: str) -> Dict[str, Any]:
+    async def get_warmboot_status(self, run_id: str) -> dict[str, Any]:
         """Get status of WarmBoot request"""
         try:
             if not self.pg_pool:
@@ -1221,7 +1222,7 @@ class HealthChecker:
                 "timestamp": datetime.utcnow().isoformat()
             }
     
-    async def get_available_prds(self) -> List[Dict[str, Any]]:
+    async def get_available_prds(self) -> list[dict[str, Any]]:
         """Get available PRDs from warm-boot/prd/ directory"""
         try:
             import os
@@ -1237,7 +1238,7 @@ class HealthChecker:
                 if filename.endswith('.md'):
                     file_path = os.path.join(prd_dir, filename)
                     try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
+                        with open(file_path, encoding='utf-8') as f:
                             content = f.read()
                         
                         # Extract PRD metadata
@@ -1256,13 +1257,13 @@ class HealthChecker:
                             "pid": pid,
                             "description": description[:200] + "..." if len(description) > 200 else description
                         })
-                    except Exception as e:
+                    except Exception:
                         # Skip files that can't be read
                         continue
             
             return prds
             
-        except Exception as e:
+        except Exception:
             return []
     
     async def get_next_run_id(self) -> str:
@@ -1321,7 +1322,7 @@ class HealthChecker:
             logger.error(f"Error getting next run ID: {e}")
             return "run-001"
     
-    async def get_agent_messages(self, since: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_agent_messages(self, since: str | None = None) -> list[dict[str, Any]]:
         """Get recent agent messages for live communication feed"""
         try:
             if not self.pg_pool:
@@ -1368,7 +1369,7 @@ class HealthChecker:
                 # Return in chronological order (oldest first)
                 return list(reversed(formatted_messages))
                 
-        except Exception as e:
+        except Exception:
             return []
 
 # Initialize health checker
@@ -1541,10 +1542,10 @@ class ConsoleCommandRequest(BaseModel):
 
 class ConsoleCommandResponse(BaseModel):
     session_id: str
-    lines: List[str]
+    lines: list[str]
     mode: str
-    bound_agent: Optional[str] = None
-    ecid: Optional[str] = None
+    bound_agent: str | None = None
+    ecid: str | None = None
 
 @app.post("/console/command")
 async def console_command(request: ConsoleCommandRequest):
@@ -1775,7 +1776,7 @@ async def get_agent_status_for_form():
     return JSONResponse(content=agents)
 
 @app.get("/warmboot/messages")
-async def get_agent_messages(since: Optional[str] = None):
+async def get_agent_messages(since: str | None = None):
     """Get recent agent messages for live communication feed"""
     messages = await health_checker.get_agent_messages(since)
     return JSONResponse(content=messages)

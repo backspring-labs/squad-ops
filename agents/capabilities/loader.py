@@ -66,6 +66,9 @@ class CapabilityLoader:
         'qa.test_design': ('agents.capabilities.qa.test_design', 'TestDesign', 'design'),
         'qa.test_dev': ('agents.capabilities.qa.test_dev', 'TestDev', 'develop'),
         'qa.test_execution': ('agents.capabilities.qa.test_execution', 'TestExecution', 'execute'),
+        'data.collect_cycle_snapshot': ('agents.capabilities.data.collect_cycle_snapshot', 'CycleSnapshotCollector', 'collect'),
+        'data.profile_cycle_metrics': ('agents.capabilities.data.profile_cycle_metrics', 'CycleMetricsProfiler', 'profile'),
+        'data.compose_cycle_summary': ('agents.capabilities.data.compose_cycle_summary', 'CycleSummaryComposer', 'compose'),
     }
     
     # Mapping from task_type and requirements.action values to capability names

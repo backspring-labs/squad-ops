@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775836826"
+sip_uid: '17642554775836826'
 sip_number: 6
-title: "Warm-Boot-Analysis-WBA"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "2025-10-03T18:44:56.924084Z"
-updated_at: "2025-11-27T10:12:48.881166Z"
-original_filename: "SIP-006-Warm-Boot-Analysis-Role-First.md"
+title: Warm-Boot-Analysis-WBA
+status: deprecated
+author: Unknown
+approver: None
+created_at: '2025-10-03T18:44:56.924084Z'
+updated_at: '2025-11-28T15:53:50.637543Z'
+original_filename: SIP-006-Warm-Boot-Analysis-Role-First.md
 ---
-
 # ✅ SIP-006: Warm Boot Analysis Protocol (WBA) — Role-First
 
 ---

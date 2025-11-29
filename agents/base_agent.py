@@ -10,23 +10,25 @@ import logging
 import os
 import sys
 import time
-import aiofiles
-import subprocess
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import aiofiles
 
 if TYPE_CHECKING:
     from agents.specs.agent_request import AgentRequest
     from agents.specs.agent_response import AgentResponse
-from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse
+from dataclasses import asdict, dataclass
+
 import aio_pika
+import aiohttp
 import asyncpg
 import redis.asyncio as redis
-import aiohttp
-from dataclasses import dataclass, asdict
+
+from agents.specs.agent_request import AgentRequest
+from agents.specs.agent_response import AgentResponse
 
 # Telemetry abstraction - no direct OpenTelemetry imports needed
 # TelemetryClient handles all telemetry backends (OpenTelemetry, AWS, Azure, GCP, Null)
@@ -34,7 +36,7 @@ from dataclasses import dataclass, asdict
 # Import version management
 sys.path.append('/app')
 try:
-    from config.version import get_agent_version, get_agent_config
+    from config.version import get_agent_config, get_agent_version
 except ImportError:
     # Fallback for when config module isn't available
     def get_agent_version(agent_name: str) -> str:
@@ -52,8 +54,8 @@ class AgentMessage:
     sender: str
     recipient: str
     message_type: str
-    payload: Dict[str, Any]
-    context: Dict[str, Any]
+    payload: dict[str, Any]
+    context: dict[str, Any]
     timestamp: str
     message_id: str
 
@@ -64,8 +66,8 @@ class TaskStatus:
     agent_name: str
     status: str  # Available, Active-Non-Blocking, Active-Blocking, Blocked, Completed
     progress: float
-    eta: Optional[str]
-    dependencies: List[str]
+    eta: str | None
+    dependencies: list[str]
     created_at: str
     updated_at: str
 
@@ -82,6 +84,7 @@ class BaseAgent(ABC):
         self.channel = None
         self.db_pool = None  # Deprecated: Keep for legacy reads, will be removed in future
         self.redis_client = None
+        self.agent_info = None  # Store agent_info.json data for metadata in heartbeats
         
         # Memory providers (SIP-042)
         self.memory_provider = None  # Mem0Adapter for agent-level memory
@@ -224,7 +227,7 @@ class BaseAgent(ABC):
             name = f"squadops.{self.name.lower()}"
         return self.telemetry_client.get_meter(name) if self.telemetry_client else None
     
-    def create_span(self, span_name: str, attributes: Dict[str, Any] = None, kind: Optional[str] = None):
+    def create_span(self, span_name: str, attributes: dict[str, Any] = None, kind: str | None = None):
         """Create a telemetry span context manager via TelemetryClient"""
         if not self.telemetry_client:
             from contextlib import nullcontext
@@ -232,7 +235,7 @@ class BaseAgent(ABC):
         
         return self.telemetry_client.create_span(span_name, attributes, kind)
     
-    def record_counter(self, metric_name: str, value: float = 1.0, labels: Dict[str, str] = None):
+    def record_counter(self, metric_name: str, value: float = 1.0, labels: dict[str, str] = None):
         """Record a counter metric via TelemetryClient"""
         if not self.telemetry_client:
             return
@@ -242,7 +245,7 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.debug(f"{self.name}: Failed to record counter {metric_name}: {e}")
     
-    def record_gauge(self, metric_name: str, value: float, labels: Dict[str, str] = None):
+    def record_gauge(self, metric_name: str, value: float, labels: dict[str, str] = None):
         """Record a gauge metric via TelemetryClient"""
         if not self.telemetry_client:
             return
@@ -252,7 +255,7 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.debug(f"{self.name}: Failed to record gauge {metric_name}: {e}")
     
-    def record_histogram(self, metric_name: str, value: float, labels: Dict[str, str] = None):
+    def record_histogram(self, metric_name: str, value: float, labels: dict[str, str] = None):
         """Record a histogram metric via TelemetryClient"""
         if not self.telemetry_client:
             return
@@ -262,7 +265,7 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.debug(f"{self.name}: Failed to record histogram {metric_name}: {e}")
         
-    def _load_agent_info(self) -> Optional[Dict[str, Any]]:
+    def _load_agent_info(self) -> dict[str, Any] | None:
         """
         Load agent_info.json from package.
         
@@ -275,7 +278,7 @@ class BaseAgent(ABC):
         docker_path = Path("/app/agent_info.json")
         if docker_path.exists():
             try:
-                with open(docker_path, 'r') as f:
+                with open(docker_path) as f:
                     agent_info = json.load(f)
                     logger.debug(f"{self.name}: Loaded agent_info.json from {docker_path}")
                     return agent_info
@@ -286,7 +289,7 @@ class BaseAgent(ABC):
         local_path = Path("./agent_info.json")
         if local_path.exists():
             try:
-                with open(local_path, 'r') as f:
+                with open(local_path) as f:
                     agent_info = json.load(f)
                     logger.debug(f"{self.name}: Loaded agent_info.json from {local_path}")
                     return agent_info
@@ -297,7 +300,7 @@ class BaseAgent(ABC):
         logger.warning(f"{self.name}: agent_info.json not found, continuing without metadata (backward compatibility)")
         return None
     
-    def _detect_runtime_env(self) -> Dict[str, Any]:
+    def _detect_runtime_env(self) -> dict[str, Any]:
         """
         Detect runtime environment information.
         
@@ -334,7 +337,7 @@ class BaseAgent(ABC):
         
         return runtime_env
     
-    def _get_container_hash(self) -> Optional[str]:
+    def _get_container_hash(self) -> str | None:
         """
         Get container identifier/hash.
         
@@ -352,7 +355,7 @@ class BaseAgent(ABC):
         try:
             hostname_path = Path("/etc/hostname")
             if hostname_path.exists():
-                with open(hostname_path, 'r') as f:
+                with open(hostname_path) as f:
                     hostname = f.read().strip()
                     if hostname:
                         return hostname
@@ -362,7 +365,7 @@ class BaseAgent(ABC):
         # Not in container or can't determine
         return None
     
-    def _fill_agent_info(self, agent_info: Dict[str, Any]) -> Dict[str, Any]:
+    def _fill_agent_info(self, agent_info: dict[str, Any]) -> dict[str, Any]:
         """
         Fill runtime fields in agent_info.json.
         
@@ -387,7 +390,7 @@ class BaseAgent(ABC):
         
         return agent_info
     
-    async def _announce_agent_online(self, agent_info: Dict[str, Any]):
+    async def _announce_agent_online(self, agent_info: dict[str, Any]):
         """
         Broadcast agent_online message to squad.
         
@@ -438,6 +441,9 @@ class BaseAgent(ABC):
             if agent_info:
                 # Fill runtime fields
                 agent_info = self._fill_agent_info(agent_info)
+                
+                # Store agent_info for use in heartbeats
+                self.agent_info = agent_info
                 
                 # Structured logging for agent identity (Recommended enhancement)
                 logger.info(
@@ -517,7 +523,6 @@ class BaseAgent(ABC):
                 role_name = role_map.get(self.agent_type, self.agent_type)
             
             # Resolve registry file path using PathResolver
-            from pathlib import Path
             base_path = PathResolver.get_base_path()
             registry_path = str(base_path / "agents" / "roles" / "registry.yaml")
             
@@ -582,7 +587,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
         }
         return explanations.get(reasoning_style, "This shapes how you approach problems and make decisions.")
     
-    def _extract_memory_context(self, task: Dict[str, Any]) -> Dict[str, str]:
+    def _extract_memory_context(self, task: dict[str, Any]) -> dict[str, str]:
         """
         Extract PID and ECID from task context.
         Handles various task formats (agent_task_log, message payload, etc.)
@@ -618,7 +623,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
         }
     
     async def record_memory(self, kind: str, payload: Any, importance: float = 0.7, ns: str = "role", 
-                           task_context: Optional[Dict[str, Any]] = None) -> Optional[str]:
+                           task_context: dict[str, Any] | None = None) -> str | None:
         """
         Record a memory after successful agent action (SIP-042).
         Agent-level memories go to LanceDB, Squad-level go to PostgreSQL.
@@ -769,7 +774,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             logger.error(f"{self.name}: Failed to record memory: {e}")
             return None
     
-    async def retrieve_memories(self, query: str = "", k: int = 8, ns: str = "role", **kwargs) -> List[dict]:
+    async def retrieve_memories(self, query: str = "", k: int = 8, ns: str = "role", **kwargs) -> list[dict]:
         """
         Retrieve memories with telemetry instrumentation.
         
@@ -849,7 +854,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             logger.error(f"{self.name}: Failed to retrieve memories: {e}")
             return []
     
-    async def send_message(self, recipient: str, message_type: str, payload: Dict[str, Any], context: Dict[str, Any] = None):
+    async def send_message(self, recipient: str, message_type: str, payload: dict[str, Any], context: dict[str, Any] = None):
         """Send a message to another agent"""
         message = AgentMessage(
             sender=self.name,
@@ -872,7 +877,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
         
         logger.info(f"{self.name} sent {message_type} to {recipient}")
     
-    async def broadcast_message(self, message_type: str, payload: Dict[str, Any], context: Dict[str, Any] = None):
+    async def broadcast_message(self, message_type: str, payload: dict[str, Any], context: dict[str, Any] = None):
         """Broadcast a message to all agents"""
         message = AgentMessage(
             sender=self.name,
@@ -918,7 +923,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             logger.error(f"{self.name} failed to update task status via API: {e}")
             raise
     
-    async def log_activity(self, activity: str, details: Dict[str, Any] = None):
+    async def log_activity(self, activity: str, details: dict[str, Any] = None):
         """
         DEPRECATED: Log agent activity
         
@@ -980,7 +985,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                 return await resp.json()
 
     async def log_task_start(self, task_id: str, ecid: str, description: str, 
-                             priority: str = "MEDIUM", dependencies: List[str] = None,
+                             priority: str = "MEDIUM", dependencies: list[str] = None,
                              delegated_by: str = None, delegated_to: str = None):
         """Log task start via API"""
         try:
@@ -1030,7 +1035,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                     logger.error(f"Failed to log task delegation: {await resp.text()}")
                 return await resp.json()
 
-    async def log_task_completion(self, task_id: str, artifacts: Dict[str, Any] = None):
+    async def log_task_completion(self, task_id: str, artifacts: dict[str, Any] = None):
         """Log task completion via API"""
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -1086,6 +1091,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             # Use health-check service URL (defaults to health-check:8000 if HEALTH_CHECK_URL not set)
             health_check_url = os.getenv('HEALTH_CHECK_URL', 'http://health-check:8000')
             
+            # Send only operational data - health-check will use instances.yaml for display metadata
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{health_check_url}/health/agents/status",
@@ -1146,7 +1152,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             self.capability_loader = None
             self.implemented_capabilities = []
     
-    def _validate_constraints(self, request: 'AgentRequest') -> tuple[bool, Optional[str]]:
+    def _validate_constraints(self, request: 'AgentRequest') -> tuple[bool, str | None]:
         """Validate request against agent constraints"""
         if not self.capability_config:
             return True, None  # No constraints if config not loaded
@@ -1171,12 +1177,11 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
         """Handle agent request - must be implemented by each agent"""
         pass
     
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Process a task - DEPRECATED: Use handle_agent_request instead"""
         # Convert old task format to AgentRequest for compatibility
         try:
             from agents.specs.agent_request import AgentRequest
-            from agents.specs.agent_response import AgentResponse
             
             # Try to convert task to AgentRequest
             if 'action' in task:
@@ -1209,7 +1214,6 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
         """Handle task acknowledgment from delegated agents"""
         payload = message.payload
         task_id = payload.get('task_id', 'unknown')
-        status = payload.get('status', 'unknown')
         understanding = payload.get('understanding', '')
         
         logger.info(f"{self.name} received task acknowledgment: {task_id} from {message.sender}")
@@ -1294,6 +1298,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             }
         )
     
+    @abstractmethod
     async def handle_message(self, message: AgentMessage) -> None:
         """Handle incoming messages - must be implemented by each agent"""
         pass
@@ -1615,7 +1620,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             
             logger.info(f"{self.name} read file: {file_path}")
             
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, encoding='utf-8') as f:
                 content = await f.read()
                 return content
                 
@@ -1643,7 +1648,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             logger.error(f"{self.name} failed to write file {file_path}: {e}")
             return False
     
-    async def modify_file(self, file_path: str, modifications: List[Dict[str, Any]]) -> bool:
+    async def modify_file(self, file_path: str, modifications: list[dict[str, Any]]) -> bool:
         """Modify file content based on modifications list"""
         try:
             # Read current content
@@ -1675,7 +1680,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             logger.error(f"{self.name} failed to modify file {file_path}: {e}")
             return False
     
-    async def execute_command(self, command: str, cwd: str = None) -> Dict[str, Any]:
+    async def execute_command(self, command: str, cwd: str = None) -> dict[str, Any]:
         """Execute shell command asynchronously"""
         try:
             if cwd is None:
@@ -1708,14 +1713,14 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                 'stderr': str(e)
             }
     
-    async def list_files(self, directory: str, pattern: str = None) -> List[str]:
+    async def list_files(self, directory: str, pattern: str = None) -> list[str]:
         """List files in directory"""
         try:
             if not os.path.isabs(directory):
                 directory = os.path.join('/app', directory)
             
             files = []
-            for root, dirs, filenames in os.walk(directory):
+            for root, _dirs, filenames in os.walk(directory):
                 for filename in filenames:
                     if pattern is None or pattern in filename:
                         files.append(os.path.join(root, filename))

@@ -43,12 +43,12 @@ instances:
     description: "QA & Security - Counterfactual reasoning"
 
   # Data Role
-  - id: data-agent
-    display_name: DataAgent
+  - id: data
+    display_name: Data
     role: data
-    model: mixtral-8x7b
+    model: qwen2.5:3b-instruct
     enabled: true
-    description: "Analytics - Inductive reasoning"
+    description: "Analytics - Inductive reasoning, cycle analysis and metrics"
 
   # Finance Role
   - id: finance-agent

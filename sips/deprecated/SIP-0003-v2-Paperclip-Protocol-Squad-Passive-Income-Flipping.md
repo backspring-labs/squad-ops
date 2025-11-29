@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775814171"
+sip_uid: '17642554775814171'
 sip_number: 3
-title: "-SIP-00X-Paperclip-Protocol-Squad-Passive-Income-Flipping"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "bankroll."
-updated_at: "2025-11-27T10:12:48.876482Z"
-original_filename: "SIP-003-Paperclip-Protocol-Squad.md"
+title: -SIP-00X-Paperclip-Protocol-Squad-Passive-Income-Flipping
+status: deprecated
+author: Unknown
+approver: None
+created_at: bankroll.
+updated_at: '2025-11-28T15:50:37.001702Z'
+original_filename: SIP-003-Paperclip-Protocol-Squad.md
 ---
-
 # ✅ SIP-00X: Paperclip Protocol Squad (Passive Income Flipping)
 
 ## 📌 Purpose

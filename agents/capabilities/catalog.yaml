@@ -110,6 +110,36 @@ capabilities:
         - accuracy
         - predictions
   
+  - name: data.collect_cycle_snapshot
+    capability_version: 1.0.0
+    description: "Collect and normalize execution cycle snapshot from Task API and warmboot artifacts"
+    result:
+      keys:
+        - snapshot_path
+        - ecid
+        - task_count
+        - agent_count
+  
+  - name: data.profile_cycle_metrics
+    capability_version: 1.0.0
+    description: "Compute metrics from cycle snapshot and generate JSON + Markdown reports"
+    result:
+      keys:
+        - metrics_json_path
+        - metrics_md_path
+        - ecid
+        - metrics_summary
+  
+  - name: data.compose_cycle_summary
+    capability_version: 1.0.0
+    description: "Compose compact JSON summary with health flags and timeline"
+    result:
+      keys:
+        - summary_path
+        - ecid
+        - health
+        - agent_summary
+  
   # Finance capabilities
   - name: finance.analysis
     capability_version: 1.0.0

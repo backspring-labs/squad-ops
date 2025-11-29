@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775836297"
+sip_uid: '17642554775836297'
 sip_number: 6
-title: "-SIP-006-Warm-Boot-Analysis-Protocol-WBA"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "customer response heuristics."
-updated_at: "2025-11-27T10:12:48.880057Z"
-original_filename: "SIP-006-Warm-Boot-Analysis-Protocol.md"
+title: -SIP-006-Warm-Boot-Analysis-Protocol-WBA
+status: deprecated
+author: Unknown
+approver: None
+created_at: customer response heuristics.
+updated_at: '2025-11-28T15:53:47.402549Z'
+original_filename: SIP-006-Warm-Boot-Analysis-Protocol.md
 ---
-
 # ✅ SIP-006: Warm Boot Analysis Protocol (WBA)
 
 ## 📌 Purpose

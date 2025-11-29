@@ -15,6 +15,9 @@
   "python.linting.flake8Enabled": false,
   "python.linting.mypyEnabled": false,
   
+  // Python interpreter - explicitly set to ensure Ruff can find it
+  "python.defaultInterpreterPath": "/usr/bin/python3",
+  
   // Ruff extension settings
   "ruff.enable": true,
   "ruff.organizeImports": true,
@@ -22,8 +25,29 @@
   "ruff.lint.enable": true,
   "ruff.format.enable": true,
   
+  // Ruff language server and diagnostics settings (new native server)
+  "ruff.server.enable": true,
+  "ruff.codeAction.fixViolation.enable": true,
+  "ruff.codeAction.disableRuleComment.enable": true,
+  "ruff.codeAction.source.organizeImports.enable": true,
+  
   // Use pyproject.toml for configuration (automatic, but explicit)
-  "ruff.configFile": "pyproject.toml"
+  "ruff.configFile": "pyproject.toml",
+  
+  // Ensure diagnostics are shown
+  "ruff.lint.showNotifications": "onError",
+  
+  // Explicitly enable diagnostics for Python files
+  "python.analysis.diagnosticMode": "workspace",
+  
+  // File watching and diagnostics refresh
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/__pycache__/**": true
+  }
 }
 
 

@@ -163,7 +163,7 @@ implements:
 #### ✅ Building Agent Packages
 - **Step 1:** Build agent package using build script:
   ```bash
-  python scripts/build_agent.py <role>
+  python scripts/dev/build_agent.py <role>
   ```
 - **Step 2:** Verify package contents:
   ```bash
@@ -183,7 +183,7 @@ implements:
   
   # Copy source code
   COPY agents/ ./agents/
-  COPY scripts/build_agent.py ./scripts/
+  COPY scripts/dev/build_agent.py ./scripts/
   COPY config/ ./config/
   
   # Build agent package
@@ -264,6 +264,22 @@ implements:
     description: "Strategy agent for product planning and PRD drafting"
   ```
 - **Verification:** Agent appears in health-check app agent listing
+
+#### ✅ Agent ID Consistency (CRITICAL)
+- **Pattern:** Use simple, lowercase agent IDs matching the role name (e.g., `max`, `neo`, `eve`, `data`, `nat`)
+- **DO NOT use `-agent` suffix** unless the agent already exists with that pattern in the codebase
+- **Check existing patterns first:**
+  1. Look at `agents/instances/instances.yaml` - see what IDs other agents use
+  2. Check `docker-compose.yml` - see what `AGENT_ID` values are set
+  3. Check `agents/capability_bindings.yaml` - see what agent IDs are used for bindings
+  4. **Follow the majority pattern** - if most agents use simple IDs (`max`, `neo`), use simple ID
+- **Critical:** Agent ID must match across ALL locations:
+  - `agents/instances/instances.yaml` `id` field
+  - `docker-compose.yml` `AGENT_ID` environment variable
+  - `agents/capability_bindings.yaml` capability bindings
+- **Why:** Health-check service filters agents by matching `agent_name` from database against `instances.yaml` IDs. Mismatch = agent won't appear in dashboard
+- **Common Mistake:** Using `-agent` suffix (e.g., `data-agent`) when simple ID pattern exists (e.g., `data`, `max`, `neo`)
+- **Verification:** After deployment, check health-check dashboard - agent should appear with correct display name
 
 #### ✅ Verify Health-Check Visibility
 - **Action:** Rebuild health-check after updating `instances.yaml`: `docker-compose build health-check && docker-compose up -d health-check`
@@ -414,7 +430,7 @@ implements:
    ```
 4. **Prevention:** 
    - Add capabilities to `config.yaml` `implements` list
-   - Verify build script includes module: `python scripts/build_agent.py <role>` then check `dist/agents/<role>/`
+   - Verify build script includes module: `python scripts/dev/build_agent.py <role>` then check `dist/agents/<role>/`
    - If module is missing, it may need to be added to build script's shared infrastructure list
 
 ### Pitfall #6: Agent Not Visible in Health-Check
@@ -423,10 +439,19 @@ implements:
 **Root Causes:**
 1. Not registered in `instances.yaml`
 2. Health-check not restarted after `instances.yaml` update
+3. **Agent ID mismatch** - `AGENT_ID` in `docker-compose.yml` doesn't match `id` in `instances.yaml`
+4. Agent ID inconsistency across files (e.g., `data-agent` in bindings but `data` in instances.yaml)
 
 **Solutions:**
 1. Add agent entry to `instances.yaml`
 2. Rebuild/restart health-check: `docker-compose build health-check && docker-compose up -d health-check`
+3. **Verify agent ID consistency:**
+   - Check `agents/instances/instances.yaml` - what is the `id` field?
+   - Check `docker-compose.yml` - does `AGENT_ID` match the `id`?
+   - Check `agents/capability_bindings.yaml` - do bindings use the same agent ID?
+   - All three must match exactly
+4. **Follow existing pattern:** If most agents use simple IDs (`max`, `neo`, `eve`), use simple ID. Don't add `-agent` suffix unless that's the established pattern for that role
+5. **Check agent logs:** Look for `"agent_name"` in startup logs - it should match the `id` in `instances.yaml`
 
 ---
 
@@ -461,13 +486,17 @@ Use this checklist when adding a new agent:
 - [ ] **Docker Setup**
   - [ ] Use multi-stage Dockerfile pattern (build script runs automatically)
   - [ ] Add `ENV SQUADOPS_BASE_PATH=/app` to Dockerfile Stage 2
-  - [ ] Test build script: `python scripts/build_agent.py <role>`
+  - [ ] Test build script: `python scripts/dev/build_agent.py <role>`
   - [ ] Verify package contents: `ls -la dist/agents/<role>/`
   - [ ] Build Docker image: `docker build -t squadops/<agent>:latest --build-arg AGENT_ROLE=<role> -f agents/roles/<role>/Dockerfile .`
   - [ ] **Note:** Build script automatically includes all required modules based on `config.yaml` `implements` list
 
 - [ ] **Agent Registration**
-  - [ ] Add agent entry to `agents/instances/instances.yaml`
+  - [ ] **Check existing agent ID patterns** - Look at `instances.yaml` and `docker-compose.yml` to see what pattern other agents use
+  - [ ] Add agent entry to `agents/instances/instances.yaml` with consistent ID pattern
+  - [ ] Set `AGENT_ID` in `docker-compose.yml` to match `id` in `instances.yaml` exactly
+  - [ ] Use same agent ID in `agents/capability_bindings.yaml` for all capability bindings
+  - [ ] Verify agent ID consistency across all three files (instances.yaml, docker-compose.yml, capability_bindings.yaml)
   - [ ] Rebuild health-check after `instances.yaml` update
   - [ ] Verify agent appears in health-check dashboard
 
@@ -508,7 +537,8 @@ Use this checklist when adding a new agent:
 7. **Build script handles module copying** - Add capabilities to `config.yaml` `implements` list, build script automatically includes required modules
 8. **Test model configuration** - Verify model exists and works before deploying
 9. **Follow the checklist** - Missing steps cause hard-to-debug issues
-10. **Test build script output** - Run `python scripts/build_agent.py <role>` and verify `dist/agents/<role>/` contains all required files before building Docker image
+10. **Test build script output** - Run `python scripts/dev/build_agent.py <role>` and verify `dist/agents/<role>/` contains all required files before building Docker image
+11. **Agent ID consistency is critical** - Agent ID must match exactly across `instances.yaml`, `docker-compose.yml`, and `capability_bindings.yaml`. Follow existing patterns (simple IDs like `max`, `neo`, `data` preferred over `-agent` suffix)
 
 ---
 
@@ -522,7 +552,8 @@ Use this checklist when adding a new agent:
 
 ---
 
-**Last Updated:** November 16, 2025  
+**Last Updated:** November 28, 2025  
 **Author:** SquadOps Build Partner  
-**Status:** ✅ Production-ready checklist
+**Status:** ✅ Production-ready checklist  
+**Updates:** Added agent ID consistency section (Pitfall #6) based on Data agent implementation
 

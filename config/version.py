@@ -15,7 +15,7 @@ AGENT_VERSIONS = {
     "neo": "0.6.5",  # Real agent with file modification capabilities
     "nat": "0.6.5",  # Mock agent
     "joi": "0.0.0",  # Mock agent
-    "data": "0.0.0", # Mock agent
+    "data": "0.6.5", # Mock agent
     "eve": "0.6.5",  # Mock agent
     "quark": "0.0.0", # Mock agent
     "og": "0.0.0",   # Mock agent

@@ -53,6 +53,9 @@ CAPABILITY_MAP = {
     'qa.test_dev': 'agents.capabilities.qa.test_dev',
     'qa.test_execution': 'agents.capabilities.qa.test_execution',
     'test.run': 'agents.capabilities.qa.test_execution',  # Alias for test.run
+    'data.collect_cycle_snapshot': 'agents.capabilities.data.collect_cycle_snapshot',
+    'data.profile_cycle_metrics': 'agents.capabilities.data.profile_cycle_metrics',
+    'data.compose_cycle_summary': 'agents.capabilities.data.compose_cycle_summary',
 }
 
 

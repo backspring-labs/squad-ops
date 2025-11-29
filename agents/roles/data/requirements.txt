@@ -1,3 +1,8 @@
+# Core dependencies
+aiohttp>=3.9.0
+aiofiles>=23.2.1
+pyyaml>=6.0
+jsonschema>=4.20.0
 fastapi==0.104.1
 uvicorn==0.24.0
 aio-pika==9.3.1
@@ -5,3 +10,17 @@ asyncpg==0.29.0
 redis==5.0.1
 pydantic==2.5.0
 python-dotenv==1.0.0
+
+# Memory support
+lancedb==0.8.2
+sentence-transformers>=2.7.0
+pyarrow>=14.0.0
+pandas>=2.0.0
+
+# OpenTelemetry packages (required for telemetry)
+opentelemetry-api>=1.22.0
+opentelemetry-sdk>=1.22.0
+opentelemetry-instrumentation
+opentelemetry-exporter-otlp-proto-grpc>=1.22.0
+opentelemetry-exporter-prometheus
+opentelemetry-semantic-conventions

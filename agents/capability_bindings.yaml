@@ -19,6 +19,7 @@ bindings:
   # Communications capabilities (console chat)
   comms.chat: nat  # Console chat support for Nat
   comms.chat: eve  # Console chat support for Eve
+  comms.chat: data  # Console chat support for Data agent
   
   # QA capabilities
   qa.test_design: eve
@@ -28,6 +29,9 @@ bindings:
   # Data capabilities
   data.analysis: data
   data.modeling: data
+  data.collect_cycle_snapshot: data
+  data.profile_cycle_metrics: data
+  data.compose_cycle_summary: data
   
   # Finance capabilities
   finance.analysis: quark

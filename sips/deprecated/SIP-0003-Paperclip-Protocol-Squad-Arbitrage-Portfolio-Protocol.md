@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775787694"
+sip_uid: '17642554775787694'
 sip_number: 3
-title: "-SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "2025-10-03T18:44:56.922290Z"
-updated_at: "2025-11-27T10:12:48.875514Z"
-original_filename: "SIP-003-Paperclip-Protocol-Squad-with-Lore.md"
+title: -SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol
+status: deprecated
+author: Unknown
+approver: None
+created_at: '2025-10-03T18:44:56.922290Z'
+updated_at: '2025-11-28T15:50:18.436076Z'
+original_filename: SIP-003-Paperclip-Protocol-Squad-with-Lore.md
 ---
-
 # ✅ SIP-003: Paperclip Protocol Squad (Arbitrage Portfolio Protocol)
 
 ## 📌 Purpose

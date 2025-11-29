@@ -53,7 +53,7 @@ SIPs move through four states:
    approver: null
    created_at: "2025-11-27T00:00:00Z"
    updated_at: "2025-11-27T00:00:00Z"
-   original_filename: "SIP-PROPOSAL-My-Idea.md"
+   original_filename: "SIP-My-Idea.md"
    ---
    ```
 
@@ -77,7 +77,7 @@ After a SIP is approved:
 
 2. **Update SIP status** (proposed → accepted):
    ```bash
-   python3 scripts/maintainer/update_sip_status.py sips/proposals/SIP-PROPOSAL-My-Idea.md accepted
+   python3 scripts/maintainer/update_sip_status.py sips/proposals/SIP-My-Idea.md accepted
    ```
 
    This script will:

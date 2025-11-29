@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775863171"
+sip_uid: '17642554775863171'
 sip_number: 14
-title: "SOC-Review-Module"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "2025-10-03T18:44:56.926025Z"
-updated_at: "2025-11-27T10:12:48.885184Z"
-original_filename: "SIP-014_SOC_Review_Module.md"
+title: SOC-Review-Module
+status: deprecated
+author: Unknown
+approver: None
+created_at: '2025-10-03T18:44:56.926025Z'
+updated_at: '2025-11-28T15:51:29.332908Z'
+original_filename: SIP-014_SOC_Review_Module.md
 ---
-
 # SIP-014: SOC Review Module
 
 **Status:** Draft  

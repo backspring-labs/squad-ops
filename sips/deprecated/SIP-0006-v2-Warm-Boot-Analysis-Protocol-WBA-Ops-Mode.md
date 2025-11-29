@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775833100"
+sip_uid: '17642554775833100'
 sip_number: 6
-title: "-SIP-0061-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "FBA integration for better fulfillment tracking."
-updated_at: "2025-11-27T10:12:48.880594Z"
-original_filename: "SIP-006.1-Warm-Boot-Analysis-Ops-Mode.md"
+title: -SIP-0061-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode
+status: deprecated
+author: Unknown
+approver: None
+created_at: FBA integration for better fulfillment tracking.
+updated_at: '2025-11-28T15:53:49.165616Z'
+original_filename: SIP-006.1-Warm-Boot-Analysis-Ops-Mode.md
 ---
-
 # ✅ SIP-006.1: Warm Boot Analysis Protocol (WBA – Ops Mode)
 
 ## 📌 Purpose  

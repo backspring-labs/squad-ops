@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775828094"
+sip_uid: '17642554775828094'
 sip_number: 4
-title: "-SIP-004-Continuous-Adaptation-Protocol-CAP"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "2025-10-03T18:44:56.923175Z"
-updated_at: "2025-11-27T10:12:48.877325Z"
-original_filename: "SIP-004-Continuous-Adaptation-Protocol.md"
+title: -SIP-004-Continuous-Adaptation-Protocol-CAP
+status: deprecated
+author: Unknown
+approver: None
+created_at: '2025-10-03T18:44:56.923175Z'
+updated_at: '2025-11-28T15:50:20.179057Z'
+original_filename: SIP-004-Continuous-Adaptation-Protocol.md
 ---
-
 # ✅ SIP-004: Continuous Adaptation Protocol (CAP)
 
 ## 📌 Purpose

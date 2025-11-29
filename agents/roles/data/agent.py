@@ -2,16 +2,14 @@
 """Data Agent - Data Role"""
 
 import asyncio
-import json
 import logging
-from typing import Dict, Any, List
 from datetime import datetime
-from agents.base_agent import BaseAgent, AgentMessage
+from typing import Any
+
+from agents.base_agent import AgentMessage, BaseAgent
 from agents.specs.agent_request import AgentRequest
-from agents.specs.agent_response import AgentResponse, Error, Timing
+from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
-from pathlib import Path
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -24,16 +22,14 @@ class DataAgent(BaseAgent):
             agent_type="data_analyst",
             reasoning_style="inductive"
         )
-        self.time_series_cache = {}
-        self.batch_queue = []
-        self.patterns_discovered = {}
         
-        # Initialize schema validator
-        base_path = Path(__file__).parent.parent.parent.parent
+        # Initialize schema validator using unified path resolver
+        from agents.utils.path_resolver import PathResolver
+        base_path = PathResolver.get_base_path()
         self.validator = SchemaValidator(base_path)
     
     async def handle_agent_request(self, request: AgentRequest) -> AgentResponse:
-        """Handle agent request using capability-based routing"""
+        """Handle agent request using generic capability routing"""
         started_at = datetime.utcnow()
         
         try:
@@ -60,17 +56,35 @@ class DataAgent(BaseAgent):
             # Generate idempotency key
             idempotency_key = request.generate_idempotency_key(self.name)
             
-            # Route to capability handler
+            # Route to capability via Loader
             action = request.action
-            if action == "data.analysis":
-                result = await self._handle_data_analysis(request)
-            elif action == "data.modeling":
-                result = await self._handle_data_modeling(request)
-            else:
+            if not self.capability_loader:
+                return AgentResponse.failure(
+                    error_code="LOADER_NOT_INITIALIZED",
+                    error_message="Capability loader not initialized",
+                    retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            
+            try:
+                # Execute capability via Loader - fully generic routing
+                # Use calling convention metadata to determine how to call the capability
+                args = self.capability_loader.prepare_capability_args(action, request.payload, request.metadata)
+                result = await self.capability_loader.execute(action, self, *args)
+            except ValueError:
+                # Capability not found in Loader
                 return AgentResponse.failure(
                     error_code="UNKNOWN_CAPABILITY",
                     error_message=f"Unknown capability: {action}",
                     retryable=False,
+                    timing=Timing.create(started_at)
+                )
+            except Exception as e:
+                logger.error(f"{self.name}: Capability execution error: {e}", exc_info=True)
+                return AgentResponse.failure(
+                    error_code="CAPABILITY_EXECUTION_ERROR",
+                    error_message=str(e),
+                    retryable=True,
                     timing=Timing.create(started_at)
                 )
             
@@ -96,247 +110,94 @@ class DataAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_data_analysis(self, request: AgentRequest) -> Dict[str, Any]:
-        """Handle data.analysis capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
+    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """
+        Process tasks using generic capability routing.
         
-        # Map existing data analysis logic to new capability format
-        return {
-            'insights': [],
-            'metrics': {},
-            'visualization_uri': f'/visualizations/{task_id}'
-        }
-    
-    async def _handle_data_modeling(self, request: AgentRequest) -> Dict[str, Any]:
-        """Handle data.modeling capability"""
-        payload = request.payload
-        task_id = payload.get('task_id', 'unknown')
-        
-        # Map existing data modeling logic to new capability format
-        return {
-            'model_uri': f'/models/{task_id}',
-            'accuracy': 0.0,
-            'predictions': []
-        }
-    
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process data tasks using inductive reasoning and batch processing"""
+        Uses CapabilityLoader.get_capability_for_task() to determine capability
+        based on task_type or requirements.action, then executes it generically.
+        """
         task_id = task.get('task_id', 'unknown')
-        task_type = task.get('type', 'data_analysis')
+        task_type = task.get('type', task.get('task_type', 'unknown'))
         
-        logger.info(f"Data processing data task: {task_id}")
+        logger.info(f"{self.name} processing {task_type} task: {task_id}")
         
-        # Add to batch queue
-        self.batch_queue.append(task)
-        
-        # Process batch if ready
-        if len(self.batch_queue) >= 3:  # Batch size threshold
-            await self.process_batch()
-        
-        # Update task status
-        await self.update_task_status(task_id, "Active-Non-Blocking", 30.0)
-        
-        # Collect data points
-        data_points = await self.collect_data_points(task)
-        
-        # Store in time-series
-        await self.update_task_status(task_id, "Active-Non-Blocking", 50.0)
-        
-        await self.store_time_series_data(task_id, data_points)
-        
-        # Inductive analysis
-        await self.update_task_status(task_id, "Active-Non-Blocking", 70.0)
-        
-        patterns = await self.inductive_analysis(data_points, task)
-        
-        # Generate insights
-        await self.update_task_status(task_id, "Active-Non-Blocking", 90.0)
-        
-        insights = await self.generate_insights(patterns, task)
-        
-        await self.update_task_status(task_id, "Completed", 100.0)
-        
-        return {
-            'task_id': task_id,
-            'status': 'completed',
-            'data_points': len(data_points),
-            'patterns': patterns,
-            'insights': insights,
-            'time_series_length': len(self.time_series_cache.get(task_id, [])),
-            'mock_response': await self.mock_llm_response(
-                f"Data analysis for {task_type}",
-                f"Patterns found: {len(patterns)}"
-            )
-        }
+        try:
+            # Check if this is a new SIP-046 AgentRequest format
+            if 'action' in task:
+                # Let BaseAgent handle the conversion to AgentRequest
+                return await super().process_task(task)
+            
+            # Generic capability routing via loader
+            if not self.capability_loader:
+                logger.error(f"{self.name}: Capability loader not initialized")
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': 'Capability loader not initialized'
+                }
+            
+            # Determine capability from task structure
+            capability_name = self.capability_loader.get_capability_for_task(task)
+            if not capability_name:
+                logger.warning(f"{self.name} received task with no capability mapping: {task_type}")
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': f'No capability mapping found for task type: {task_type}'
+                }
+            
+            logger.info(f"{self.name} routing task {task_id} to capability: {capability_name}")
+            
+            # Update task status to in_progress
+            await self.update_task_status(task_id, "Active-Non-Blocking", 25.0)
+            
+            try:
+                # Generic capability execution - use calling convention metadata
+                # This handles all calling conventions: task_dict, requirements_only, task_id_requirements, payload_as_is
+                args = self.capability_loader.prepare_capability_args(capability_name, task)
+                result = await self.capability_loader.execute(capability_name, self, *args)
+                
+                # Update task status to completed
+                await self.update_task_status(task_id, "Completed", 100.0)
+                
+                # Return result (capabilities return their own result format)
+                return result
+                    
+            except ValueError as e:
+                # Capability not found
+                logger.error(f"{self.name}: Capability not found: {e}")
+                await self.update_task_status(task_id, "Failed", 0.0, str(e))
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': f'Capability not found: {e}'
+                }
+            except Exception as e:
+                logger.error(f"{self.name}: Capability execution error: {e}", exc_info=True)
+                await self.update_task_status(task_id, "Failed", 0.0, str(e))
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': str(e)
+                }
+                
+        except Exception as e:
+            logger.error(f"{self.name}: Error processing task: {e}", exc_info=True)
+            return {
+                'task_id': task_id,
+                'status': 'error',
+                'error': str(e)
+            }
     
     async def handle_message(self, message: AgentMessage) -> None:
-        """Handle data-related messages"""
-        if message.message_type == "data_query":
-            await self.handle_data_query(message)
-        elif message.message_type == "pattern_request":
-            await self.handle_pattern_request(message)
-        elif message.message_type == "analytics_request":
-            await self.handle_analytics_request(message)
-        else:
-            logger.info(f"Data received message: {message.message_type} from {message.sender}")
-    
-    async def collect_data_points(self, task: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Collect data points for analysis"""
-        data_source = task.get('data_source', 'mock')
-        
-        # Mock data collection
-        data_points = []
-        for i in range(10):  # Mock 10 data points
-            data_points.append({
-                'timestamp': time.time() - (i * 3600),  # Mock hourly data
-                'value': 100 + (i * 5) + (i % 3),  # Mock trend with noise
-                'category': task.get('category', 'general'),
-                'metadata': {'source': data_source, 'quality': 'high'}
-            })
-        
-        return data_points
-    
-    async def store_time_series_data(self, task_id: str, data_points: List[Dict[str, Any]]):
-        """Store data in time-series format"""
-        if task_id not in self.time_series_cache:
-            self.time_series_cache[task_id] = []
-        
-        self.time_series_cache[task_id].extend(data_points)
-    
-    async def inductive_analysis(self, data_points: List[Dict[str, Any]], task: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Perform inductive analysis to find patterns"""
-        patterns = []
-        
-        if len(data_points) >= 3:
-            # Mock pattern detection
-            values = [dp['value'] for dp in data_points]
-            
-            # Trend pattern
-            if values[-1] > values[0]:
-                patterns.append({
-                    'type': 'trend',
-                    'direction': 'increasing',
-                    'confidence': 0.8,
-                    'description': 'Upward trend detected'
-                })
-            
-            # Seasonal pattern (mock)
-            if len(values) >= 4:
-                patterns.append({
-                    'type': 'seasonal',
-                    'period': 4,
-                    'confidence': 0.6,
-                    'description': 'Possible seasonal pattern'
-                })
-        
-        return patterns
-    
-    async def generate_insights(self, patterns: List[Dict[str, Any]], task: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate insights from patterns"""
-        return {
-            'summary': f"Found {len(patterns)} patterns in the data",
-            'key_findings': [p['description'] for p in patterns],
-            'recommendations': ['Monitor trend continuation', 'Investigate seasonal factors'],
-            'confidence_score': sum(p.get('confidence', 0) for p in patterns) / max(len(patterns), 1)
-        }
-    
-    async def process_batch(self):
-        """Process batch of tasks"""
-        if not self.batch_queue:
-            return
-        
-        logger.info(f"Data processing batch of {len(self.batch_queue)} tasks")
-        
-        # Process batch
-        batch_results = []
-        for task in self.batch_queue:
-            result = await self.process_task(task)
-            batch_results.append(result)
-        
-        # Clear batch queue
-        self.batch_queue = []
-        
-        # Store batch patterns
-        self.patterns_discovered[f"batch_{int(time.time())}"] = batch_results
-    
-    async def handle_data_query(self, message: AgentMessage):
-        """Handle data queries"""
-        query_type = message.payload.get('query_type', 'general')
-        task_id = message.payload.get('task_id')
-        
-        logger.info(f"Data handling data query: {query_type}")
-        
-        # Mock data query response
-        response_data = {
-            'query_type': query_type,
-            'data_available': True,
-            'time_range': 'last_24_hours',
-            'data_points': 100,
-            'quality': 'high'
-        }
-        
-        await self.send_message(
-            message.sender,
-            "data_query_response",
-            {
-                'task_id': task_id,
-                'data': response_data,
-                'analyst': 'Data'
-            }
-        )
-    
-    async def handle_pattern_request(self, message: AgentMessage):
-        """Handle pattern requests"""
-        task_id = message.payload.get('task_id')
-        
-        # Get relevant patterns
-        relevant_patterns = []
-        for patterns in self.patterns_discovered.values():
-            if isinstance(patterns, list):
-                relevant_patterns.extend(patterns)
-        
-        await self.send_message(
-            message.sender,
-            "pattern_response",
-            {
-                'task_id': task_id,
-                'patterns': relevant_patterns[-10:],  # Last 10 patterns
-                'pattern_count': len(relevant_patterns)
-            }
-        )
-    
-    async def handle_analytics_request(self, message: AgentMessage):
-        """Handle analytics requests"""
-        analytics_type = message.payload.get('analytics_type', 'summary')
-        task_id = message.payload.get('task_id')
-        
-        logger.info(f"Data handling analytics request: {analytics_type}")
-        
-        # Generate analytics
-        analytics = {
-            'type': analytics_type,
-            'summary': 'Data shows positive trends with seasonal variations',
-            'metrics': {
-                'total_data_points': sum(len(ts) for ts in self.time_series_cache.values()),
-                'patterns_discovered': len(self.patterns_discovered),
-                'data_quality': 'high'
-            }
-        }
-        
-        await self.send_message(
-            message.sender,
-            "analytics_response",
-            {
-                'task_id': task_id,
-                'analytics': analytics,
-                'analyst': 'Data'
-            }
-        )
+        """Handle generic messages"""
+        logger.info(f"{self.name} received message: {message.message_type} from {message.sender}")
+        # Generic message handling - no business logic, just logging
+        # Business logic should be in capabilities if needed
 
 async def main():
     """Main entry point for Data agent"""
-    import os
     from config.unified_config import get_config
     config = get_config()
     identity = config.get_agent_id()

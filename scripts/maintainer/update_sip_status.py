@@ -24,7 +24,7 @@ DEPRECATED_DIR = REPO_ROOT / "sips" / "deprecated"
 # Valid status transitions
 VALID_TRANSITIONS = {
     'proposed': ['accepted'],
-    'accepted': ['implemented'],
+    'accepted': ['implemented', 'deprecated'],
     'implemented': ['deprecated'],
 }
 
@@ -59,12 +59,6 @@ def load_registry() -> Dict[str, Any]:
 def save_registry(registry: Dict[str, Any]) -> bool:
     """Save the registry."""
     try:
-        # Backup registry first
-        if REGISTRY_FILE.exists():
-            backup_file = REGISTRY_FILE.with_suffix('.yaml.backup')
-            shutil.copy2(REGISTRY_FILE, backup_file)
-            print(f"Registry backed up to: {backup_file}")
-        
         with open(REGISTRY_FILE, 'w', encoding='utf-8') as f:
             yaml.dump(registry, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
         return True

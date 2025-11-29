@@ -3,12 +3,12 @@ sips:
 - sip_uid: '17642554775787694'
   sip_number: 3
   title: -SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol
-  path: sips/accepted/SIP-0003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol.md
-  status: accepted
+  path: sips/deprecated/SIP-0003-v2-Paperclip-Protocol-Squad-Passive-Income-Flipping.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-10-03T18:44:56.922290Z'
-  updated_at: '2025-11-27T10:12:48.875514Z'
+  updated_at: '2025-11-28T15:50:37.004438Z'
   variant: null
 - sip_uid: '17642554775814171'
   sip_number: 3
@@ -23,12 +23,12 @@ sips:
 - sip_uid: '17642554775828094'
   sip_number: 4
   title: -SIP-004-Continuous-Adaptation-Protocol-CAP
-  path: sips/accepted/SIP-0004-Continuous-Adaptation-Protocol-CAP.md
-  status: accepted
+  path: sips/deprecated/SIP-0004-v2-Continuous-Adaptation-Protocol-CAP.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-10-03T18:44:56.923175Z'
-  updated_at: '2025-11-27T10:12:48.877325Z'
+  updated_at: '2025-11-28T15:50:37.892222Z'
   variant: null
 - sip_uid: '17642554775827032'
   sip_number: 4
@@ -43,12 +43,12 @@ sips:
 - sip_uid: '17642554775827020'
   sip_number: 5
   title: -SIP-005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA
-  path: sips/accepted/SIP-0005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA.md
-  status: accepted
+  path: sips/deprecated/SIP-0005-v2-Four-Layer-Metrics-RCA-Role-First.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-10-03T18:44:56.923409Z'
-  updated_at: '2025-11-27T10:12:48.878732Z'
+  updated_at: '2025-11-28T15:52:39.980459Z'
   variant: null
 - sip_uid: '17642554775832227'
   sip_number: 5
@@ -63,12 +63,12 @@ sips:
 - sip_uid: '17642554775836297'
   sip_number: 6
   title: -SIP-006-Warm-Boot-Analysis-Protocol-WBA
-  path: sips/accepted/SIP-0006-Warm-Boot-Analysis-Protocol-WBA.md
-  status: accepted
+  path: sips/deprecated/SIP-0006-v3-Warm-Boot-Analysis-WBA.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: customer response heuristics.
-  updated_at: '2025-11-27T10:12:48.880057Z'
+  updated_at: '2025-11-28T15:53:50.638088Z'
   variant: null
 - sip_uid: '17642554775833100'
   sip_number: 6
@@ -153,12 +153,12 @@ sips:
 - sip_uid: '17642554775863171'
   sip_number: 14
   title: SOC-Review-Module
-  path: sips/accepted/SIP-0014-SOC-Review-Module.md
-  status: accepted
+  path: sips/deprecated/SIP-0014-SOC-Review-Module.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-10-03T18:44:56.926025Z'
-  updated_at: '2025-11-27T10:12:48.885184Z'
+  updated_at: '2025-11-28T15:51:29.334338Z'
   variant: null
 - sip_uid: '17642554775869299'
   sip_number: 15
