@@ -1,19 +1,19 @@
 ---
 sip_uid: "01KB4B74MN5BHXZH42ZRPEYVAG"
-sip_number: null
+sip_number: 47
 title: "Cycle Data Layout, Project Registry, and CycleDataStore Contract for Execution Cycles"
-status: "proposed"
+status: "accepted"
 author: "Jason Ladd"
-approver: null
+approver: "Jason Ladd"
 created_at: "2025-11-28T04:23:35Z"
-updated_at: "2025-11-28T04:23:35Z"
+updated_at: "2025-11-29T14:04:26Z"
 original_filename: "SIP_CYCLE_DATA_STORE.md"
 ---
 
 # Cycle Data Layout, Project Registry, and `CycleDataStore` Contract
 
 - **Title:** Cycle Data Layout, Project Registry, and `CycleDataStore` Contract for Execution Cycles  
-- **Status:** Draft  
+- **Status:** Accepted  
 - **Owner:** Jason (product/architecture), Max (orchestrator), Neo (implementation), EVE (validation)  
 - **Target Release:** Point release (0.x → 0.(x+1)) – first major refactor of run artifacts  
 - **Created:** 2025-11-26  

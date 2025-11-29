@@ -4,10 +4,23 @@
 -- Drop old table
 DROP TABLE IF EXISTS agent_task_logs CASCADE;
 
--- Execution Cycle table (SIP-024)
+-- Projects table (SIP-0047)
+CREATE TABLE IF NOT EXISTS projects (
+    project_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name);
+CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at);
+
+-- Execution Cycle table (SIP-024, SIP-0047)
 CREATE TABLE IF NOT EXISTS execution_cycle (
     ecid TEXT PRIMARY KEY,
     pid TEXT NOT NULL,
+    project_id TEXT REFERENCES projects(project_id),
     run_type TEXT CHECK (run_type IN ('warmboot','project','experiment','tuning')),
     title TEXT,
     description TEXT,
@@ -16,6 +29,8 @@ CREATE TABLE IF NOT EXISTS execution_cycle (
     status TEXT DEFAULT 'active',
     notes TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_execution_cycle_project_id ON execution_cycle(project_id);
 
 -- Task Log table (SIP-024/025)
 CREATE TABLE IF NOT EXISTS agent_task_log (
@@ -129,12 +144,18 @@ CREATE INDEX IF NOT EXISTS idx_agent_task_log_ecid ON agent_task_log(ecid);
 CREATE INDEX IF NOT EXISTS idx_agent_task_log_agent ON agent_task_log(agent);
 CREATE INDEX IF NOT EXISTS idx_agent_task_log_status ON agent_task_log(status);
 CREATE INDEX IF NOT EXISTS idx_execution_cycle_run_type ON execution_cycle(run_type);
+CREATE INDEX IF NOT EXISTS idx_execution_cycle_project_id ON execution_cycle(project_id);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_sender ON squadcomms_messages(sender);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_recipient ON squadcomms_messages(recipient);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_timestamp ON squadcomms_messages(timestamp);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id);
+
+-- Insert initial projects (SIP-0047)
+INSERT INTO projects (project_id, name, description) VALUES
+('warmboot_selftest', 'WarmBoot Self-Test', 'Framework self-test execution cycles')
+ON CONFLICT (project_id) DO NOTHING;
 
 -- Insert initial process registry entries
 INSERT INTO process_registry (pid, process_name, status, last_updated_version, change_notes) VALUES

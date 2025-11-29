@@ -2,10 +2,12 @@
 Unit tests for promotion service
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from agents.memory.promotion import PromotionService
+
+import pytest
+
 from agents.memory.lancedb_adapter import LanceDBAdapter
+from agents.memory.promotion import PromotionService
 from agents.memory.sql_adapter import SqlAdapter
 
 

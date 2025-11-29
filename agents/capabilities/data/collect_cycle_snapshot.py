@@ -97,14 +97,31 @@ class CycleSnapshotCollector:
                 "collected_at": datetime.utcnow().isoformat() + "Z"
             }
             
-            # Save snapshot
-            snapshot_filename = f"cycle-snapshot-{ecid}.json"
-            snapshot_path = output_path / snapshot_filename
+            # Save snapshot using CycleDataStore (SIP-0047)
+            from agents.cycle_data import CycleDataStore
             
-            async with aiofiles.open(snapshot_path, 'w') as f:
-                await f.write(json.dumps(snapshot, indent=2))
+            # Get project_id from execution cycle or default to warmboot_selftest
+            project_id = "warmboot_selftest"  # Default for WarmBoot
+            if execution_cycle and execution_cycle.get("project_id"):
+                project_id = execution_cycle["project_id"]
             
-            logger.info(f"{self.name} saved cycle snapshot: {snapshot_path}")
+            # Initialize CycleDataStore
+            cycle_data_root = self.agent.config.get_cycle_data_root()
+            cycle_store = CycleDataStore(cycle_data_root, project_id, ecid)
+            
+            # Save snapshot to meta area
+            snapshot_json = json.dumps(snapshot, indent=2)
+            success = cycle_store.write_text_artifact(
+                'meta',
+                f'cycle-snapshot-{ecid}.json',
+                snapshot_json
+            )
+            
+            if success:
+                snapshot_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-snapshot-{ecid}.json'
+                logger.info(f"{self.name} saved cycle snapshot: {snapshot_path}")
+            else:
+                raise Exception("Failed to write cycle snapshot to CycleDataStore")
             
             # Record memory
             if hasattr(self.agent, 'record_memory'):

@@ -456,10 +456,20 @@ async def clean_database(postgres_container):
         async with db_pool.acquire() as conn:
             # Ensure all tables exist before truncating
             await conn.execute("""
+                -- Create projects table (SIP-0047)
+                CREATE TABLE IF NOT EXISTS projects (
+                    project_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT now(),
+                    updated_at TIMESTAMP DEFAULT now()
+                );
+                
                 -- Create tables if they don't exist (for test isolation)
                 CREATE TABLE IF NOT EXISTS execution_cycle (
                     ecid TEXT PRIMARY KEY,
                     pid TEXT NOT NULL,
+                    project_id TEXT REFERENCES projects(project_id),
                     run_type TEXT,
                     title TEXT,
                     description TEXT,
@@ -553,6 +563,7 @@ async def clean_database(postgres_container):
                     task_status,
                     agent_status,
                     squad_mem_pool,
+                    projects,
                     memory_reuse_log,
                     warmboot_runs
                 RESTART IDENTITY CASCADE;

@@ -1,4 +1,4 @@
-last_assigned: 46
+last_assigned: 47
 sips:
 - sip_uid: '17642554775787694'
   sip_number: 3
@@ -441,4 +441,15 @@ sips:
   approver: None
   created_at: 2025‑11‑08
   updated_at: '2025-11-27T10:12:48.903558Z'
+  variant: null
+- sip_uid: 01KB4B74MN5BHXZH42ZRPEYVAG
+  sip_number: 47
+  title: Cycle Data Layout, Project Registry, and CycleDataStore Contract for Execution
+    Cycles
+  path: sips/implemented/SIP-0047-Cycle-Data-Layout-Project.md
+  status: implemented
+  author: Jason Ladd
+  approver: Jason Ladd
+  created_at: '2025-11-28T04:23:35Z'
+  updated_at: '2025-11-29T10:14:54.118864Z'
   variant: null

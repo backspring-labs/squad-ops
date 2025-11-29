@@ -1,0 +1,13 @@
+{
+  "ecid": "ECID-WB-001",
+  "execution_cycle": {},
+  "tasks": [],
+  "agents": {},
+  "artifacts": {
+    "wrapup_files": [],
+    "log_files": [],
+    "summary_files": [],
+    "other_files": []
+  },
+  "collected_at": "2025-11-29T15:01:47.296531Z"
+}

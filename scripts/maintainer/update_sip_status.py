@@ -120,11 +120,17 @@ def update_sip_file_metadata(file_path: Path, updates: Dict[str, Any]) -> bool:
 
 
 def normalize_filename(sip_number: int, title: str) -> str:
-    """Generate normalized filename."""
+    """Generate normalized filename with maximum 4 words."""
     # Clean title for filename
     clean_title = re.sub(r'[^\w\s-]', '', title)
-    clean_title = re.sub(r'\s+', '-', clean_title)
-    clean_title = clean_title[:80]  # Limit length
+    clean_title = re.sub(r'\s+', ' ', clean_title).strip()
+    
+    # Split into words and take first 4 words
+    words = clean_title.split()
+    words = words[:4]  # Limit to 4 words
+    
+    # Join with hyphens
+    clean_title = '-'.join(words)
     
     return f"SIP-{sip_number:04d}-{clean_title}.md"
 

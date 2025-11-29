@@ -170,6 +170,11 @@ SIPs move through four states:
 3. **implemented** - Framework functionality matches the SIP specification, lives in `sips/implemented/`
 4. **deprecated** - Superseded or retired, but preserved for historical reference, lives in `sips/deprecated/`
 
+**File Naming Convention:**
+- When a SIP is accepted, the filename is automatically normalized to `SIP-00NN-Word1-Word2-Word3-Word4.md` format
+- Only the first 4 words from the title are used in the filename
+- Example: "Cycle Data Layout, Project Registry, and CycleDataStore Contract" → `SIP-0047-Cycle-Data-Layout-Project.md`
+
 ### Creating a New SIP
 
 #### For Contributors
@@ -182,7 +187,7 @@ SIPs move through four states:
    # Generate a ULID for your SIP
    python3 scripts/dev/generate_sip_uid.py
    
-   # Create your SIP file
+   # Create your SIP file (filename can be descriptive, will be normalized to 4 words when accepted)
    touch sips/proposals/SIP-My-Idea.md
    ```
 
@@ -228,7 +233,7 @@ After a SIP is approved:
    - Assign the next available SIP number
    - Update the SIP file metadata
    - Move the file from `sips/proposals/` to `sips/accepted/`
-   - Rename the file to `SIP-00NN-TITLE.md` format
+   - Rename the file to `SIP-00NN-Word1-Word2-Word3-Word4.md` format (maximum 4 words from title)
    - Update `sips/registry.yaml`
 
 3. **Update SIP status** (accepted → implemented, implemented → deprecated):

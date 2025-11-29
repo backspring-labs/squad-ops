@@ -2,10 +2,11 @@
 Unit tests for LanceDBAdapter
 """
 
-import pytest
-import tempfile
 import shutil
-from unittest.mock import patch, MagicMock, AsyncMock
+import tempfile
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture
@@ -48,14 +49,22 @@ def mock_lancedb_available():
     mock_pd = MagicMock()
     mock_pd.DataFrame = MagicMock()  # Callable mock, not just MagicMock class
     
+    # Create a mock for _initialize_lancedb that sets _db and _table
+    def mock_initialize(self):
+        """Mock _initialize_lancedb to set _db and _table without real initialization"""
+        self._db = mock_db
+        self._table = mock_table
+    
     with patch.dict('sys.modules', {
         'lancedb': mock_lancedb_module,
         'pyarrow': mock_pa,
         'pandas': mock_pd
     }):
         with patch('agents.memory.lancedb_adapter.LANCEDB_AVAILABLE', True):
-            # Also patch the module-level pd after import
-            yield mock_db, mock_table, mock_pd
+            # Patch _initialize_lancedb to prevent real table creation
+            with patch('agents.memory.lancedb_adapter.LanceDBAdapter._initialize_lancedb', mock_initialize):
+                # Also patch the module-level pd after import
+                yield mock_db, mock_table, mock_pd
 
 
 @pytest.mark.asyncio
@@ -331,7 +340,7 @@ async def test_get_memories_with_filters(temp_db_path, mock_lancedb_available):
         mock_search_builder.to_pandas.return_value = mock_results_df
         mock_table.search.return_value = mock_search_builder
         
-        results = await adapter.get(
+        await adapter.get(
             "test query",
             k=5,
             ns='role',
@@ -420,3 +429,180 @@ async def test_extract_content_text(temp_db_path, mock_lancedb_available):
     # Test with string content
     text = adapter._extract_content_text("simple string")
     assert text == "simple string"
+
+
+@pytest.mark.asyncio
+async def test_count_memories(temp_db_path, mock_lancedb_available):
+    """Test counting memories"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    # Explicitly set _table to mock to ensure isolation
+    adapter._table = mock_table
+    
+    # Mock pandas DataFrame for count
+    mock_df = MagicMock()
+    mock_df.__len__ = lambda self: 5
+    mock_table.to_pandas = MagicMock(return_value=mock_df)
+    
+    count = await adapter.count()
+    
+    assert count == 5
+
+
+@pytest.mark.asyncio
+async def test_count_memories_with_filters(temp_db_path, mock_lancedb_available):
+    """Test counting memories with filters"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    # Explicitly set _table to mock to ensure isolation
+    adapter._table = mock_table
+    
+    # Mock search builder chain
+    mock_search_builder = MagicMock()
+    mock_search_builder.where = MagicMock(return_value=mock_search_builder)
+    mock_search_builder.limit = MagicMock(return_value=mock_search_builder)
+    mock_df = MagicMock()
+    mock_df.__len__ = lambda self: 3
+    mock_search_builder.to_pandas = MagicMock(return_value=mock_df)
+    mock_table.search = MagicMock(return_value=mock_search_builder)
+    
+    count = await adapter.count(ns='role', agent='TestAgent', tags=['tag1'])
+    
+    assert count == 3
+
+
+@pytest.mark.asyncio
+async def test_count_memories_no_table(temp_db_path, mock_lancedb_available):
+    """Test counting memories when table not initialized"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    adapter._table = None
+    
+    count = await adapter.count()
+    
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_count_memories_exception(temp_db_path, mock_lancedb_available):
+    """Test counting memories when exception occurs"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    mock_table.to_pandas = MagicMock(side_effect=Exception("DB error"))
+    
+    count = await adapter.count()
+    
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_get_memories_empty_query_defaults(temp_db_path, mock_lancedb_available):
+    """Test getting memories with empty query uses default"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    
+    # Mock search builder
+    mock_search_builder = MagicMock()
+    mock_search_builder.limit = MagicMock(return_value=mock_search_builder)
+    mock_df = MagicMock()
+    mock_df.iterrows = MagicMock(return_value=iter([]))
+    mock_search_builder.to_pandas = MagicMock(return_value=mock_df)
+    mock_table.search = MagicMock(return_value=mock_search_builder)
+    
+    # Mock embedding generation
+    with patch.object(adapter, '_generate_embedding', return_value=[0.1] * 768):
+        results = await adapter.get("", k=10)
+        
+        assert isinstance(results, list)
+
+
+@pytest.mark.asyncio
+async def test_get_memories_with_mem_ids_filter(temp_db_path, mock_lancedb_available):
+    """Test getting memories filtered by memory IDs"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    # Explicitly set _table to mock to ensure isolation
+    adapter._table = mock_table
+    
+    # Mock search builder
+    mock_search_builder = MagicMock()
+    mock_search_builder.where = MagicMock(return_value=mock_search_builder)
+    mock_search_builder.limit = MagicMock(return_value=mock_search_builder)
+    mock_df = MagicMock()
+    mock_df.iterrows = MagicMock(return_value=iter([]))
+    mock_search_builder.to_pandas = MagicMock(return_value=mock_df)
+    mock_table.search = MagicMock(return_value=mock_search_builder)
+    
+    with patch.object(adapter, '_generate_embedding', return_value=[0.1] * 768):
+        results = await adapter.get("test", k=10, mem_ids=['mem-1', 'mem-2'])
+        
+        assert isinstance(results, list)
+        mock_search_builder.where.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_memories_with_tags_filter(temp_db_path, mock_lancedb_available):
+    """Test getting memories filtered by tags"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    # Explicitly set _table to mock to ensure isolation
+    adapter._table = mock_table
+    
+    # Mock search builder
+    mock_search_builder = MagicMock()
+    mock_search_builder.where = MagicMock(return_value=mock_search_builder)
+    mock_search_builder.limit = MagicMock(return_value=mock_search_builder)
+    mock_df = MagicMock()
+    mock_df.iterrows = MagicMock(return_value=iter([]))
+    mock_search_builder.to_pandas = MagicMock(return_value=mock_df)
+    mock_table.search = MagicMock(return_value=mock_search_builder)
+    
+    with patch.object(adapter, '_generate_embedding', return_value=[0.1] * 768):
+        results = await adapter.get("test", k=10, tags=['tag1', 'tag2'])
+        
+        assert isinstance(results, list)
+        mock_search_builder.where.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_memories_no_table(temp_db_path, mock_lancedb_available):
+    """Test getting memories when table not initialized"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    adapter._table = None
+    
+    results = await adapter.get("test", k=10)
+    
+    assert isinstance(results, list)
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_memories_exception(temp_db_path, mock_lancedb_available):
+    """Test getting memories when exception occurs"""
+    mock_db, mock_table, mock_pd = mock_lancedb_available
+    from agents.memory.lancedb_adapter import LanceDBAdapter
+    
+    adapter = LanceDBAdapter("TestAgent", db_path=temp_db_path)
+    mock_table.search = MagicMock(side_effect=Exception("DB error"))
+    
+    results = await adapter.get("test", k=10)
+    
+    assert isinstance(results, list)
+    assert len(results) == 0

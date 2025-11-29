@@ -10,6 +10,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 from config import deployment_config, agent_config
+from agents.utils.path_resolver import PathResolver
 
 
 class SquadOpsConfig:
@@ -198,6 +199,26 @@ class SquadOpsConfig:
         """Get filesystem configuration value"""
         return deployment_config.get_filesystem_config(key)
     
+    # Cycle Data Configuration (SIP-0047)
+    
+    def get_cycle_data_root(self) -> Path:
+        """
+        Get cycle data root directory path.
+        
+        Checks SQUADOPS_CYCLE_DATA_ROOT environment variable first,
+        then falls back to <repo_root>/cycle_data.
+        
+        Returns:
+            Path object pointing to the cycle data root directory
+        """
+        env_root = os.getenv('SQUADOPS_CYCLE_DATA_ROOT')
+        if env_root:
+            return Path(env_root).resolve()
+        
+        # Fallback to repo root / cycle_data
+        repo_root = PathResolver.get_base_path()
+        return repo_root / 'cycle_data'
+    
     # Platform information
     
     def get_platform(self) -> str:
@@ -235,6 +256,7 @@ class SquadOpsConfig:
                 'display_name': self.get_agent_display_name(),
             },
             'llm': self.get_llm_config(),
+            'cycle_data_root': str(self.get_cycle_data_root()),
         }
 
 

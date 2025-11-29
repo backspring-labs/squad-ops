@@ -78,25 +78,37 @@ class CycleSummaryComposer:
                 "summary_generated_at": datetime.utcnow().isoformat() + "Z"
             }
             
-            # Determine output directory
-            from agents.utils.path_resolver import PathResolver
-            base_path = PathResolver.get_base_path()
-            warmboot_runs_dir = base_path / "warm-boot" / "runs"
+            # Save summary using CycleDataStore (SIP-0047)
+            from agents.cycle_data import CycleDataStore
             
-            if snapshot_path:
-                output_dir = Path(snapshot_path).parent
+            # Get project_id from execution cycle or default to warmboot_selftest
+            project_id = "warmboot_selftest"  # Default for WarmBoot
+            try:
+                from agents.tasks.registry import get_tasks_adapter
+                adapter = await get_tasks_adapter()
+                flow = await adapter.get_flow(ecid)
+                if flow and flow.project_id:
+                    project_id = flow.project_id
+            except Exception as e:
+                logger.debug(f"Could not retrieve project_id from execution cycle, using default: {e}")
+            
+            # Initialize CycleDataStore
+            cycle_data_root = self.agent.config.get_cycle_data_root()
+            cycle_store = CycleDataStore(cycle_data_root, project_id, ecid)
+            
+            # Save summary to meta area
+            summary_json = json.dumps(summary, indent=2)
+            success = cycle_store.write_text_artifact(
+                'meta',
+                f'cycle-summary-{ecid}.json',
+                summary_json
+            )
+            
+            if success:
+                summary_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-summary-{ecid}.json'
+                logger.info(f"{self.name} saved cycle summary: {summary_path}")
             else:
-                run_dir = self._extract_run_directory(ecid, warmboot_runs_dir)
-                output_dir = run_dir if run_dir else warmboot_runs_dir / f"run-{ecid.split('-')[-1]}"
-            
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Save summary
-            summary_path = output_dir / f"cycle-summary-{ecid}.json"
-            async with aiofiles.open(summary_path, 'w') as f:
-                await f.write(json.dumps(summary, indent=2))
-            
-            logger.info(f"{self.name} saved cycle summary: {summary_path}")
+                raise Exception("Failed to write cycle summary to CycleDataStore")
             
             # Record memory
             if hasattr(self.agent, 'record_memory'):

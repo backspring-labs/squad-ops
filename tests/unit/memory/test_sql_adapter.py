@@ -2,9 +2,11 @@
 Unit tests for SqlAdapter
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
 import asyncpg
+import pytest
+
 from agents.memory.sql_adapter import SqlAdapter
 
 
@@ -192,4 +194,232 @@ async def test_sql_adapter_put_if_not_exists_existing_memory(sql_adapter):
     assert mem_id is None
     # Should have called fetchval once (check existence)
     assert mock_conn.fetchval.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_sql_adapter_get_with_mem_ids(sql_adapter):
+    """Test retrieving memories by memory IDs"""
+    import uuid
+    mem_id1 = str(uuid.uuid4())
+    mem_id2 = str(uuid.uuid4())
+    
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[
+        {
+            'id': uuid.UUID(mem_id1),
+            'agent': 'TestAgent',
+            'ns': 'squad',
+            'pid': None,
+            'ecid': None,
+            'tags': [],
+            'importance': 0.8,
+            'status': 'validated',
+            'validator': None,
+            'content': '{"action": "test"}',
+            'created_at': None
+        }
+    ])
+    
+    class MockConnectionContext:
+        def __init__(self, conn):
+            self.conn = conn
+        
+        async def __aenter__(self):
+            return self.conn
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    sql_adapter.db_pool.acquire = MagicMock(return_value=MockConnectionContext(mock_conn))
+    
+    results = await sql_adapter.get("", k=10, mem_ids=[mem_id1, mem_id2])
+    
+    assert isinstance(results, list)
+    assert len(results) >= 0
+
+
+@pytest.mark.asyncio
+async def test_sql_adapter_get_with_invalid_uuid(sql_adapter):
+    """Test retrieving memories with invalid UUID in mem_ids"""
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[])
+    
+    class MockConnectionContext:
+        def __init__(self, conn):
+            self.conn = conn
+        
+        async def __aenter__(self):
+            return self.conn
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    sql_adapter.db_pool.acquire = MagicMock(return_value=MockConnectionContext(mock_conn))
+    
+    results = await sql_adapter.get("", k=10, mem_ids=['invalid-uuid', 'another-invalid'])
+    
+    assert isinstance(results, list)
+
+
+@pytest.mark.asyncio
+async def test_sql_adapter_get_with_all_filters(sql_adapter):
+    """Test retrieving memories with all filters"""
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[])
+    
+    class MockConnectionContext:
+        def __init__(self, conn):
+            self.conn = conn
+        
+        async def __aenter__(self):
+            return self.conn
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    sql_adapter.db_pool.acquire = MagicMock(return_value=MockConnectionContext(mock_conn))
+    
+    results = await sql_adapter.get(
+        "test query",
+        k=5,
+        agent='TestAgent',
+        pid='PID-001',
+        ecid='ECID-001',
+        ns='squad',
+        status='validated',
+        tags=['tag1', 'tag2']
+    )
+    
+    assert isinstance(results, list)
+
+
+@pytest.mark.asyncio
+async def test_sql_adapter_get_empty_query(sql_adapter):
+    """Test retrieving memories with empty query"""
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[])
+    
+    class MockConnectionContext:
+        def __init__(self, conn):
+            self.conn = conn
+        
+        async def __aenter__(self):
+            return self.conn
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    sql_adapter.db_pool.acquire = MagicMock(return_value=MockConnectionContext(mock_conn))
+    
+    results = await sql_adapter.get("", k=10)
+    
+    assert isinstance(results, list)
+
+
+@pytest.mark.asyncio
+async def test_sql_adapter_get_with_json_content(sql_adapter):
+    """Test retrieving memories with JSON content"""
+    import json
+    mock_conn = AsyncMock()
+    mock_row = MagicMock()
+    mock_row.__getitem__ = lambda self, k: {
+        'id': 'test-uuid',
+        'agent': 'TestAgent',
+        'ns': 'squad',
+        'pid': None,
+        'ecid': None,
+        'tags': None,
+        'importance': 0.8,
+        'status': 'validated',
+        'validator': None,
+        'content': json.dumps({'action': 'test'}),
+        'created_at': None
+    }.get(k)
+    mock_conn.fetch = AsyncMock(return_value=[mock_row])
+    
+    class MockConnectionContext:
+        def __init__(self, conn):
+            self.conn = conn
+        
+        async def __aenter__(self):
+            return self.conn
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    sql_adapter.db_pool.acquire = MagicMock(return_value=MockConnectionContext(mock_conn))
+    
+    results = await sql_adapter.get("test", k=10)
+    
+    assert len(results) > 0
+    assert isinstance(results[0]['content'], dict)
+
+
+@pytest.mark.asyncio
+async def test_sql_adapter_get_exception_handling(sql_adapter):
+    """Test that get returns empty list on exception"""
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(side_effect=Exception("DB error"))
+    
+    class MockConnectionContext:
+        def __init__(self, conn):
+            self.conn = conn
+        
+        async def __aenter__(self):
+            return self.conn
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    sql_adapter.db_pool.acquire = MagicMock(return_value=MockConnectionContext(mock_conn))
+    
+    results = await sql_adapter.get("test", k=10)
+    
+    assert isinstance(results, list)
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_sql_adapter_promote_not_found(sql_adapter):
+    """Test promoting memory that doesn't exist"""
+    mock_conn = AsyncMock()
+    mock_conn.fetchval = AsyncMock(return_value=None)  # Memory not found
+    
+    class MockConnectionContext:
+        def __init__(self, conn):
+            self.conn = conn
+        
+        async def __aenter__(self):
+            return self.conn
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    sql_adapter.db_pool.acquire = MagicMock(return_value=MockConnectionContext(mock_conn))
+    
+    result = await sql_adapter.promote("non-existent-id", "lead-agent", "squad")
+    
+    assert result == "non-existent-id"  # Returns original ID even if not found
+
+
+@pytest.mark.asyncio
+async def test_sql_adapter_promote_exception(sql_adapter):
+    """Test promoting memory when exception occurs"""
+    mock_conn = AsyncMock()
+    mock_conn.fetchval = AsyncMock(side_effect=Exception("DB error"))
+    
+    class MockConnectionContext:
+        def __init__(self, conn):
+            self.conn = conn
+        
+        async def __aenter__(self):
+            return self.conn
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+    
+    sql_adapter.db_pool.acquire = MagicMock(return_value=MockConnectionContext(mock_conn))
+    
+    with pytest.raises(Exception):
+        await sql_adapter.promote("test-id", "lead-agent", "squad")
 

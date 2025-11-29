@@ -20,7 +20,8 @@ class TestWrapupGenerator:
         agent = MagicMock()
         agent.name = "test-agent"
         agent.communication_log = []
-        agent.write_file = AsyncMock(return_value=True)
+        agent.config = MagicMock()
+        agent.config.get_cycle_data_root = MagicMock(return_value=MagicMock())
         return agent
     
     @pytest.fixture
@@ -48,12 +49,20 @@ class TestWrapupGenerator:
             'reasoning_events': [{'reason_step': 'decision', 'summary': 'Test'}]
         }
         
-        with patch.object(generator, 'generate_wrapup_markdown', new_callable=AsyncMock, return_value='# Wrap-up'):
+        with patch.object(generator, 'generate_wrapup_markdown', new_callable=AsyncMock, return_value='# Wrap-up'), \
+             patch('agents.cycle_data.CycleDataStore') as mock_cycle_store_class:
+            mock_cycle_store = MagicMock()
+            mock_cycle_store.write_text_artifact = MagicMock(return_value=True)
+            mock_path = MagicMock()
+            mock_path.__truediv__ = MagicMock(return_value=MagicMock() / 'artifacts' / 'warmboot-run001-wrapup.md')
+            mock_cycle_store.get_cycle_path.return_value = mock_path
+            mock_cycle_store_class.return_value = mock_cycle_store
+            
             result = await generator.generate_wrapup(task=task)
             
             assert 'wrapup_uri' in result
             assert 'wrapup_content' in result
-            mock_agent.write_file.assert_called_once()
+            mock_cycle_store.write_text_artifact.assert_called_once()
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -83,9 +92,15 @@ class TestWrapupGenerator:
     @pytest.mark.asyncio
     async def test_generate_wrapup_write_failure(self, generator, mock_agent):
         """Test generating wrapup when file write fails"""
-        mock_agent.write_file = AsyncMock(return_value=False)
-        
-        with patch.object(generator, 'generate_wrapup_markdown', new_callable=AsyncMock, return_value='# Wrap-up'):
+        with patch.object(generator, 'generate_wrapup_markdown', new_callable=AsyncMock, return_value='# Wrap-up'), \
+             patch('agents.cycle_data.CycleDataStore') as mock_cycle_store_class:
+            mock_cycle_store = MagicMock()
+            mock_cycle_store.write_text_artifact = MagicMock(return_value=False)
+            mock_path = MagicMock()
+            mock_path.__truediv__ = MagicMock(return_value=MagicMock() / 'artifacts' / 'warmboot-run001-wrapup.md')
+            mock_cycle_store.get_cycle_path.return_value = mock_path
+            mock_cycle_store_class.return_value = mock_cycle_store
+            
             result = await generator.generate_wrapup(
                 ecid='ECID-WB-001',
                 task_id='task-001'

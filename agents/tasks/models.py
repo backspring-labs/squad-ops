@@ -87,6 +87,7 @@ class FlowRun(BaseModel):
     """Execution cycle (flow) model matching execution_cycle table"""
     ecid: str
     pid: str
+    project_id: Optional[str] = None  # SIP-0047
     run_type: str  # 'warmboot', 'project', 'experiment', 'tuning'
     title: str
     description: Optional[str] = None
@@ -103,6 +104,7 @@ class FlowCreate(BaseModel):
     """DTO for creating a new execution cycle"""
     ecid: str
     pid: str
+    project_id: Optional[str] = None  # SIP-0047
     run_type: str
     title: str
     description: Optional[str] = None

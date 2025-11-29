@@ -966,19 +966,23 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             })
     
     async def create_execution_cycle(self, ecid: str, pid: str, run_type: str, 
-                                     title: str, description: str = None):
-        """Create execution cycle via API"""
+                                     title: str, description: str = None, project_id: str = None):
+        """Create execution cycle via API (SIP-0047: supports project_id)"""
         async with aiohttp.ClientSession() as session:
+            payload = {
+                "ecid": ecid,
+                "pid": pid,
+                "run_type": run_type,
+                "title": title,
+                "description": description,
+                "initiated_by": self.name
+            }
+            if project_id:
+                payload["project_id"] = project_id
+            
             async with session.post(
                 f"{self.task_api_url}/api/v1/execution-cycles",
-                json={
-                    "ecid": ecid,
-                    "pid": pid,
-                    "run_type": run_type,
-                    "title": title,
-                    "description": description,
-                    "initiated_by": self.name
-                }
+                json=payload
             ) as resp:
                 if resp.status != 200:
                     logger.error(f"Failed to create execution cycle: {await resp.text()}")

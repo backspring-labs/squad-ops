@@ -47,12 +47,6 @@ class TestCycleSnapshotCollector:
             'agents': ['agent1', 'agent2']
         }
         
-        mock_file_obj = AsyncMock()
-        mock_file_obj.write = AsyncMock()
-        mock_file_context = AsyncMock()
-        mock_file_context.__aenter__ = AsyncMock(return_value=mock_file_obj)
-        mock_file_context.__aexit__ = AsyncMock(return_value=None)
-        
         mock_base_path = MagicMock()
         mock_base_path.__truediv__ = MagicMock(return_value=MagicMock())
         
@@ -60,12 +54,18 @@ class TestCycleSnapshotCollector:
         collector.agent.record_memory = AsyncMock()
         
         with patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=mock_base_path), \
-             patch('aiofiles.open', return_value=mock_file_context), \
+             patch('agents.cycle_data.CycleDataStore') as mock_cycle_store_class, \
              patch.object(collector, '_fetch_execution_cycle', new_callable=AsyncMock, return_value=mock_snapshot_data), \
              patch.object(collector, '_fetch_tasks', new_callable=AsyncMock, return_value=mock_snapshot_data.get('tasks', [])), \
              patch('pathlib.Path.mkdir'), \
              patch.object(collector, '_scan_artifacts', new_callable=AsyncMock, return_value={}), \
              patch.object(collector, '_aggregate_by_agent', return_value=mock_snapshot_data.get('agents', [])):
+            mock_cycle_store = MagicMock()
+            mock_cycle_store.write_text_artifact = MagicMock(return_value=True)
+            mock_path = MagicMock()
+            mock_path.__truediv__ = MagicMock(return_value=MagicMock() / 'meta' / 'cycle-snapshot-ECID-WB-001.json')
+            mock_cycle_store.get_cycle_path.return_value = mock_path
+            mock_cycle_store_class.return_value = mock_cycle_store
             
             result = await collector.collect(ecid)
             
@@ -78,12 +78,6 @@ class TestCycleSnapshotCollector:
         ecid = "ECID-WB-001"
         output_dir = "/test/output"
         
-        mock_file_obj = AsyncMock()
-        mock_file_obj.write = AsyncMock()
-        mock_file_context = AsyncMock()
-        mock_file_context.__aenter__ = AsyncMock(return_value=mock_file_obj)
-        mock_file_context.__aexit__ = AsyncMock(return_value=None)
-        
         mock_base_path = MagicMock()
         mock_base_path.__truediv__ = MagicMock(return_value=MagicMock())
         
@@ -91,12 +85,18 @@ class TestCycleSnapshotCollector:
         collector.agent.record_memory = AsyncMock()
         
         with patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=mock_base_path), \
-             patch('aiofiles.open', return_value=mock_file_context), \
+             patch('agents.cycle_data.CycleDataStore') as mock_cycle_store_class, \
              patch.object(collector, '_fetch_execution_cycle', new_callable=AsyncMock, return_value={}), \
              patch.object(collector, '_fetch_tasks', new_callable=AsyncMock, return_value=[]), \
              patch('pathlib.Path.mkdir'), \
              patch.object(collector, '_scan_artifacts', new_callable=AsyncMock, return_value={}), \
              patch.object(collector, '_aggregate_by_agent', return_value=[]):
+            mock_cycle_store = MagicMock()
+            mock_cycle_store.write_text_artifact = MagicMock(return_value=True)
+            mock_path = MagicMock()
+            mock_path.__truediv__ = MagicMock(return_value=MagicMock() / 'meta' / 'cycle-snapshot-ECID-WB-001.json')
+            mock_cycle_store.get_cycle_path.return_value = mock_path
+            mock_cycle_store_class.return_value = mock_cycle_store
             
             result = await collector.collect(ecid, output_dir)
             

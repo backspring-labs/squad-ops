@@ -16,7 +16,7 @@
   "python.linting.mypyEnabled": false,
   
   // Python interpreter - explicitly set to ensure Ruff can find it
-  "python.defaultInterpreterPath": "/usr/bin/python3",
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
   
   // Ruff extension settings
   "ruff.enable": true,

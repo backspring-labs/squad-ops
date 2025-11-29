@@ -60,34 +60,51 @@ class CycleMetricsProfiler:
             # Compute metrics
             metrics = self._compute_metrics(snapshot)
             
-            # Determine output directory
-            from agents.utils.path_resolver import PathResolver
-            base_path = PathResolver.get_base_path()
-            warmboot_runs_dir = base_path / "warm-boot" / "runs"
+            # Save metrics using CycleDataStore (SIP-0047)
+            from agents.cycle_data import CycleDataStore
             
-            # Extract run directory from snapshot path or ECID
-            if snapshot_path:
-                output_dir = Path(snapshot_path).parent
+            # Get project_id from execution cycle or default to warmboot_selftest
+            project_id = "warmboot_selftest"  # Default for WarmBoot
+            try:
+                from agents.tasks.registry import get_tasks_adapter
+                adapter = await get_tasks_adapter()
+                flow = await adapter.get_flow(ecid)
+                if flow and flow.project_id:
+                    project_id = flow.project_id
+            except Exception as e:
+                logger.debug(f"Could not retrieve project_id from execution cycle, using default: {e}")
+            
+            # Initialize CycleDataStore
+            cycle_data_root = self.agent.config.get_cycle_data_root()
+            cycle_store = CycleDataStore(cycle_data_root, project_id, ecid)
+            
+            # Save JSON metrics to meta area
+            metrics_json = json.dumps(metrics, indent=2)
+            success_json = cycle_store.write_text_artifact(
+                'meta',
+                f'cycle-metrics-{ecid}.json',
+                metrics_json
+            )
+            
+            if success_json:
+                metrics_json_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-metrics-{ecid}.json'
+                logger.info(f"{self.name} saved metrics JSON: {metrics_json_path}")
             else:
-                run_dir = self._extract_run_directory(ecid, warmboot_runs_dir)
-                output_dir = run_dir if run_dir else warmboot_runs_dir / f"run-{ecid.split('-')[-1]}"
+                raise Exception("Failed to write cycle metrics JSON to CycleDataStore")
             
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Generate JSON metrics file
-            metrics_json_path = output_dir / f"cycle-metrics-{ecid}.json"
-            async with aiofiles.open(metrics_json_path, 'w') as f:
-                await f.write(json.dumps(metrics, indent=2))
-            
-            logger.info(f"{self.name} saved metrics JSON: {metrics_json_path}")
-            
-            # Generate Markdown summary
-            metrics_md_path = output_dir / f"cycle-metrics-{ecid}.md"
+            # Generate and save Markdown summary to meta area
             markdown_content = self._generate_markdown(ecid, metrics, snapshot)
-            async with aiofiles.open(metrics_md_path, 'w') as f:
-                await f.write(markdown_content)
+            success_md = cycle_store.write_text_artifact(
+                'meta',
+                f'cycle-metrics-{ecid}.md',
+                markdown_content
+            )
             
-            logger.info(f"{self.name} saved metrics Markdown: {metrics_md_path}")
+            if success_md:
+                metrics_md_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-metrics-{ecid}.md'
+                logger.info(f"{self.name} saved metrics Markdown: {metrics_md_path}")
+            else:
+                raise Exception("Failed to write cycle metrics Markdown to CycleDataStore")
             
             # Record memory
             if hasattr(self.agent, 'record_memory'):

@@ -258,11 +258,14 @@ class PRDProcessor:
             if not ecid:
                 ecid = "ECID-WB-001"
             
-            # Create execution cycle (Max owns the execution cycle lifecycle)
+            # Create execution cycle with project_id (SIP-0047)
             try:
-                await self.agent.create_execution_cycle(ecid, "PID-001", "warmboot", 
-                                                       f"WarmBoot {ecid}", prd_path)
-                logger.info(f"{self.name} created execution cycle {ecid}")
+                await self.agent.create_execution_cycle(
+                    ecid, "PID-001", "warmboot", 
+                    f"WarmBoot {ecid}", prd_path,
+                    project_id="warmboot_selftest"
+                )
+                logger.info(f"{self.name} created execution cycle {ecid} with project_id=warmboot_selftest")
             except Exception as e:
                 # Execution cycle may already exist in edge cases - continue anyway
                 logger.warning(f"Execution cycle {ecid} creation failed (may already exist): {e}")

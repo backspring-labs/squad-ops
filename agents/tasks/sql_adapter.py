@@ -109,6 +109,7 @@ class SqlTasksAdapter(TaskAdapterBase):
         return FlowRun(
             ecid=row["ecid"],
             pid=row["pid"],
+            project_id=row.get("project_id"),  # SIP-0047
             run_type=row["run_type"],
             title=row["title"],
             description=row.get("description"),
@@ -357,17 +358,25 @@ class SqlTasksAdapter(TaskAdapterBase):
         """Create a new execution cycle"""
         try:
             meta = meta or {}
+            project_id = meta.get("project_id")
+            
+            # Validate project_id if provided (SIP-0047)
+            if project_id:
+                from agents.cycle_data.project_validator import validate_project_id
+                await validate_project_id(project_id, self.db_pool)
+            
             async with self.db_pool.acquire() as conn:
                 try:
                     now = datetime.utcnow()
                     await conn.execute(
                         """
                         INSERT INTO execution_cycle 
-                        (ecid, pid, run_type, title, description, initiated_by, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        (ecid, pid, project_id, run_type, title, description, initiated_by, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     """,
                         ecid,
                         pid,
+                        project_id,
                         meta.get("run_type", "project"),
                         meta.get("title", ""),
                         meta.get("description"),

@@ -1129,8 +1129,9 @@ class TestDevAgent:
             metadata={"pid": "p-001", "ecid": "ec-001"}
         )
         
-        # Mock constraint validation to fail
-        with patch.object(dev_agent, '_validate_constraints', return_value=(False, "Repository not allowed")):
+        # Mock request validation to pass, but constraint validation to fail
+        with patch.object(dev_agent.validator, 'validate_request', return_value=(True, None)), \
+             patch.object(dev_agent, '_validate_constraints', return_value=(False, "Repository not allowed")):
             response = await dev_agent.handle_agent_request(request)
             
             assert response.status == 'error'

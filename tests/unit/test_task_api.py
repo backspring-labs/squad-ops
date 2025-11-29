@@ -29,9 +29,19 @@ with patch('asyncpg.create_pool'), \
 class TestTaskAPIService:
     """Test task-api service endpoints"""
     
+    @pytest.fixture(autouse=True)
+    def clear_dependency_overrides(self):
+        """Clear app dependency overrides before and after each test for isolation"""
+        # Clear before test to ensure clean state
+        app.dependency_overrides.clear()
+        yield
+        # Clear after test to prevent state leakage
+        app.dependency_overrides.clear()
+    
     @pytest.fixture
     def client(self):
-        """Create test client"""
+        """Create test client - recreated for each test to ensure fresh state"""
+        # Create a new TestClient for each test to avoid state caching
         return TestClient(app)
     
     @pytest.fixture
@@ -42,6 +52,8 @@ class TestTaskAPIService:
         adapter.get_task = AsyncMock()
         adapter.update_task = AsyncMock()
         adapter.list_tasks = AsyncMock(return_value=[])
+        adapter.list_tasks_for_ecid = AsyncMock(return_value=[])
+        adapter.create_flow = AsyncMock()
         adapter.complete_task = AsyncMock()
         adapter.fail_task = AsyncMock()
         adapter.initialize = AsyncMock()
@@ -66,30 +78,29 @@ class TestTaskAPIService:
         async def mock_get_adapter():
             return mock_adapter
         
+        # Set dependency override before making request
         app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
-        try:
-            task_data = {
-                "task_id": "test-task-1",
-                "ecid": "ec-001",
-                "agent": "test-agent",
-                "status": "started",
-                "priority": "HIGH",
-                "description": "Test task"
-            }
-            
-            from agents.tasks.models import Task
-            mock_task = Task(
-                task_id="test-task-1",
-                ecid="ec-001",
-                agent="test-agent",
-                status="started"
-            )
-            mock_adapter.create_task = AsyncMock(return_value=mock_task)
-            
-            response = client.post("/api/v1/tasks/start", json=task_data)
-            assert response.status_code in [200, 201, 500]
-        finally:
-            app.dependency_overrides.clear()
+        
+        task_data = {
+            "task_id": "test-task-1",
+            "ecid": "ec-001",
+            "agent": "test-agent",
+            "status": "started",
+            "priority": "HIGH",
+            "description": "Test task"
+        }
+        
+        from agents.tasks.models import Task
+        mock_task = Task(
+            task_id="test-task-1",
+            ecid="ec-001",
+            agent="test-agent",
+            status="started"
+        )
+        mock_adapter.create_task = AsyncMock(return_value=mock_task)
+        
+        response = client.post("/api/v1/tasks/start", json=task_data)
+        assert response.status_code in [200, 201, 500]
     
     @pytest.mark.unit
     def test_get_task(self, client, mock_adapter):
@@ -145,14 +156,12 @@ class TestTaskAPIService:
         async def mock_get_adapter():
             return mock_adapter
         
+        # Set dependency override before making request
         app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
-        try:
-            mock_adapter.list_tasks = AsyncMock(return_value=[])
-            
-            response = client.get("/api/v1/tasks/status/pending")
-            assert response.status_code in [200, 500]
-        finally:
-            app.dependency_overrides.clear()
+        mock_adapter.list_tasks = AsyncMock(return_value=[])
+        
+        response = client.get("/api/v1/tasks/status/pending")
+        assert response.status_code in [200, 500]
     
     @pytest.mark.unit
     def test_complete_task(self, client, mock_adapter):
@@ -209,35 +218,37 @@ class TestTaskAPIService:
             app.dependency_overrides.clear()
     
     @pytest.mark.unit
-    def test_create_execution_cycle(self, client, mock_adapter):
+    def test_create_execution_cycle(self, mock_adapter):
         """Test POST /api/v1/execution-cycles endpoint"""
         async def mock_get_adapter():
             return mock_adapter
         
+        # Set dependency override before creating client
         app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
-        try:
-            from agents.tasks.models import FlowRun
-            mock_flow = FlowRun(
-                ecid="ec-001",
-                pid="p-001",
-                run_type="warmboot",
-                title="Test Cycle",
-                status="active"
-            )
-            mock_adapter.create_flow = AsyncMock(return_value=mock_flow)
-            
-            cycle_data = {
-                "ecid": "ec-001",
-                "pid": "p-001",
-                "run_type": "warmboot",
-                "title": "Test Cycle",
-                "initiated_by": "test-agent"
-            }
-            
-            response = client.post("/api/v1/execution-cycles", json=cycle_data)
-            assert response.status_code in [200, 201, 500]
-        finally:
-            app.dependency_overrides.clear()
+        
+        from agents.tasks.models import FlowRun
+        mock_flow = FlowRun(
+            ecid="ec-001",
+            pid="p-001",
+            run_type="warmboot",
+            title="Test Cycle",
+            status="active"
+        )
+        # Ensure create_flow is properly mocked
+        mock_adapter.create_flow = AsyncMock(return_value=mock_flow)
+        
+        cycle_data = {
+            "ecid": "ec-001",
+            "pid": "p-001",
+            "run_type": "warmboot",
+            "title": "Test Cycle",
+            "initiated_by": "test-agent"
+        }
+        
+        # Create client after setting override to ensure it picks up the override
+        client = TestClient(app)
+        response = client.post("/api/v1/execution-cycles", json=cycle_data)
+        assert response.status_code in [200, 201, 500]
     
     @pytest.mark.unit
     def test_get_execution_cycle(self, client, mock_adapter):
@@ -263,33 +274,35 @@ class TestTaskAPIService:
             app.dependency_overrides.clear()
     
     @pytest.mark.unit
-    def test_create_task_log(self, client, mock_adapter):
+    def test_create_task_log(self, mock_adapter):
         """Test POST /api/v1/tasks/start endpoint"""
         async def mock_get_adapter():
             return mock_adapter
         
+        # Set dependency override before creating client
         app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
-        try:
-            from agents.tasks.models import Task
-            mock_task = Task(
-                task_id="task-001",
-                ecid="ec-001",
-                agent="test-agent",
-                status="started"
-            )
-            mock_adapter.create_task = AsyncMock(return_value=mock_task)
-            
-            log_data = {
-                "task_id": "task-001",
-                "ecid": "ec-001",
-                "agent": "test-agent",
-                "status": "started"
-            }
-            
-            response = client.post("/api/v1/tasks/start", json=log_data)
-            assert response.status_code in [200, 201, 500]
-        finally:
-            app.dependency_overrides.clear()
+        
+        from agents.tasks.models import Task
+        mock_task = Task(
+            task_id="task-001",
+            ecid="ec-001",
+            agent="test-agent",
+            status="started"
+        )
+        # Ensure create_task is properly mocked
+        mock_adapter.create_task = AsyncMock(return_value=mock_task)
+        
+        log_data = {
+            "task_id": "task-001",
+            "ecid": "ec-001",
+            "agent": "test-agent",
+            "status": "started"
+        }
+        
+        # Create client after setting override to ensure it picks up the override
+        client = TestClient(app)
+        response = client.post("/api/v1/tasks/start", json=log_data)
+        assert response.status_code in [200, 201, 500]
     
     @pytest.mark.unit
     @pytest.mark.asyncio

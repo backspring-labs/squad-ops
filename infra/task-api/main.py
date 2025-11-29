@@ -62,6 +62,7 @@ async def shutdown_event():
 class ExecutionCycleCreate(BaseModel):
     ecid: str
     pid: str
+    project_id: Optional[str] = None  # SIP-0047
     run_type: str
     title: str
     description: Optional[str] = None
@@ -226,6 +227,7 @@ async def create_execution_cycle(cycle: ExecutionCycleCreate, adapter: TaskAdapt
             cycle.ecid,
             cycle.pid,
             meta={
+                "project_id": cycle.project_id,  # SIP-0047
                 "run_type": cycle.run_type,
                 "title": cycle.title,
                 "description": cycle.description,

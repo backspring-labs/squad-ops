@@ -84,19 +84,38 @@ class WrapupGenerator:
                 ecid, run_number, task_id, completion_payload or {}, telemetry_data or {}, reasoning_events
             )
             
-            # Write wrap-up to file
-            runs_dir = "/app/warm-boot/runs"
-            run_dir = f"{runs_dir}/run-{run_number}"
-            wrapup_file = f"{run_dir}/warmboot-run{run_number}-wrapup.md"
+            # Write wrap-up using CycleDataStore (SIP-0047)
+            from agents.cycle_data import CycleDataStore
             
-            # Write wrap-up file (write_file already ensures directory exists)
-            success = await self.agent.write_file(wrapup_file, wrapup_content)
+            # Get project_id from execution cycle or default to warmboot_selftest
+            project_id = "warmboot_selftest"  # Default for WarmBoot
+            try:
+                # Try to get project_id from execution cycle if available
+                from agents.tasks.registry import get_tasks_adapter
+                adapter = await get_tasks_adapter()
+                flow = await adapter.get_flow(ecid)
+                if flow and flow.project_id:
+                    project_id = flow.project_id
+            except Exception as e:
+                logger.debug(f"Could not retrieve project_id from execution cycle, using default: {e}")
+            
+            # Initialize CycleDataStore
+            cycle_data_root = self.agent.config.get_cycle_data_root()
+            cycle_store = CycleDataStore(cycle_data_root, project_id, ecid)
+            
+            # Write wrapup to artifacts area
+            success = cycle_store.write_text_artifact(
+                'artifacts',
+                f'warmboot-run{run_number}-wrapup.md',
+                wrapup_content
+            )
             
             if success:
-                logger.info(f"{self.name} successfully wrote WarmBoot wrap-up: {wrapup_file}")
-                wrapup_uri = wrapup_file
+                wrapup_path = cycle_store.get_cycle_path() / 'artifacts' / f'warmboot-run{run_number}-wrapup.md'
+                logger.info(f"{self.name} successfully wrote WarmBoot wrap-up: {wrapup_path}")
+                wrapup_uri = str(wrapup_path)
             else:
-                logger.error(f"{self.name} failed to write WarmBoot wrap-up: {wrapup_file}")
+                logger.error(f"{self.name} failed to write WarmBoot wrap-up")
                 wrapup_uri = None
             
             return {
