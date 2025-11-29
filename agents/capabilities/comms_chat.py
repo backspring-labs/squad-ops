@@ -213,9 +213,9 @@ class ChatHandler:
             agent_status = getattr(self.agent, 'status', 'online')
             current_task = getattr(self.agent, 'current_task', None)
             
-            # Agent is available if status is "Available" or "online" AND no current task
-            # Agent is busy if status is "Active-Non-Blocking" or "Active-Blocking" OR has current_task
-            is_available = (agent_status == "Available" or agent_status == "online") and current_task is None
+            # Agent is available if status is "available" or "online" AND no current task
+            # Agent is busy if status is "active-non-blocking" or "active-blocking" OR has current_task
+            is_available = (agent_status == "available" or agent_status == "online") and current_task is None
             
             if not is_available:
                 busy_message = f"[{self.name} is currently busy with task {current_task}. Please try again later.]"

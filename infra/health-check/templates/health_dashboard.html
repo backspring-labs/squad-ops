@@ -132,10 +132,10 @@
                         </thead>
                         <tbody>
                             {% for agent in agent_status %}
-                            <tr class="{% if agent.status == 'online' %}table-success{% else %}table-danger{% endif %}">
+                            <tr class="{% if agent.status in ['online', 'available', 'active-non-blocking'] %}table-success{% else %}table-danger{% endif %}">
                                 <td>{{ agent.agent }}</td>
                                 <td>{{ agent.role }}</td>
-                                <td>{% if agent.status == 'online' %}✅{% else %}❌{% endif %} {{ agent.status }}</td>
+                                <td>{% if agent.status in ['online', 'available', 'active-non-blocking'] %}✅{% else %}❌{% endif %} {{ agent.status }}</td>
                                 <td>{{ agent.version }}</td>
                                 <td>{{ agent.tps }}</td>
                                 <td>{{ agent.memory_count|default(0) }}</td>
@@ -772,8 +772,9 @@
                         const agentId = agent.agent.toLowerCase();
                         const displayName = agent.agent;
                         const role = agent.role || 'unknown';
-                        const checked = agent.status === 'online' || agent.agent === 'Max';
-                        const disabled = agent.agent === 'Max';
+                        const onlineStatuses = ['online', 'available', 'active-non-blocking'];
+                        const checked = onlineStatuses.includes(agent.status);
+                        const disabled = false;
                         
                         const col = document.createElement('div');
                         col.className = 'col-md-4';

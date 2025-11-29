@@ -64,7 +64,7 @@ class TaskStatus:
     """Task status tracking"""
     task_id: str
     agent_name: str
-    status: str  # Available, Active-Non-Blocking, Active-Blocking, Blocked, Completed
+    status: str  # available, active-non-blocking, active-blocking, blocked, completed
     progress: float
     eta: str | None
     dependencies: list[str]
@@ -1489,9 +1489,9 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                         
                         # Set busy status before processing
                         task_id = task_data.get('task_id', 'unknown')
-                        self.status = "Active-Non-Blocking"
+                        self.status = "active-non-blocking"
                         self.current_task = task_id
-                        logger.debug(f"{self.name} set status to Active-Non-Blocking for task {task_id}")
+                        logger.debug(f"{self.name} set status to active-non-blocking for task {task_id}")
                         
                         logger.debug(f"{self.name} about to call process_task")
                         result = await self.process_task(task_data)
@@ -1507,7 +1507,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                         logger.debug(f"{self.name} update_task_status completed")
                         
                         # Clear busy status after successful completion
-                        self.status = "Available"
+                        self.status = "available"
                         self.current_task = None
                         logger.debug(f"{self.name} cleared busy status after task completion")
                         
@@ -1517,7 +1517,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                     except Exception as e:
                         logger.error(f"{self.name} task processing error: {e}")
                         # Clear busy status on error
-                        self.status = "Available"
+                        self.status = "available"
                         self.current_task = None
                         logger.debug(f"{self.name} cleared busy status after task error")
                         await message.nack(requeue=False)

@@ -190,8 +190,9 @@ class CommandHandler:
         try:
             agents = await self.health_checker.get_agent_status()
             lines = ["Agents:"]
+            online_statuses = ["online", "available", "active-non-blocking"]
             for agent in agents:
-                status_icon = "✅" if agent["status"] == "online" else "❌"
+                status_icon = "✅" if agent["status"] in online_statuses else "❌"
                 lines.append(f"  {status_icon} {agent['agent']} ({agent['role']}) - {agent['status']}")
             return lines
         except Exception as e:
@@ -203,8 +204,9 @@ class CommandHandler:
         try:
             agents = await self.health_checker.get_agent_status()
             lines = ["Agent Status:"]
+            online_statuses = ["online", "available", "active-non-blocking"]
             for agent in agents:
-                status_icon = "✅" if agent["status"] == "online" else "❌"
+                status_icon = "✅" if agent["status"] in online_statuses else "❌"
                 lines.append(f"  {status_icon} {agent['agent']} ({agent['role']})")
                 lines.append(f"    Status: {agent['status']}")
                 lines.append(f"    Version: {agent['version']}")
@@ -263,11 +265,12 @@ class CommandHandler:
             agents = await self.health_checker.get_agent_status()
             agent_found = False
             agent_online = False
+            online_statuses = ['online', 'available', 'active-non-blocking']
             
             for agent in agents:
                 if agent['agent'].lower() == agent_name.lower():
                     agent_found = True
-                    agent_online = agent['status'] == 'online'
+                    agent_online = agent['status'] in online_statuses
                     break
             
             if not agent_found:
@@ -2022,12 +2025,8 @@ async def warmboot_form():
                         const checkbox = document.getElementById(`agent_${agent.agent.toLowerCase()}`);
                         if (checkbox) {
                             // Set default selection based on agent status
-                            checkbox.checked = agent.status === 'online' || agent.agent === 'Max';
-                            
-                            // Disable Max (always required)
-                            if (agent.agent === 'Max') {
-                                checkbox.disabled = true;
-                            }
+                            const onlineStatuses = ['online', 'available', 'active-non-blocking'];
+                            checkbox.checked = onlineStatuses.includes(agent.status);
                         }
                     });
                 } catch (error) {
