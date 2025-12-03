@@ -4,6 +4,8 @@ Unit tests for WrapupGenerator capability
 Tests wrap-up report generation
 """
 
+from pathlib import Path
+from tempfile import mkdtemp
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,7 +23,9 @@ class TestWrapupGenerator:
         agent.name = "test-agent"
         agent.communication_log = []
         agent.config = MagicMock()
-        agent.config.get_cycle_data_root = MagicMock(return_value=MagicMock())
+        # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
+        temp_dir = Path(mkdtemp())
+        agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
         return agent
     
     @pytest.fixture

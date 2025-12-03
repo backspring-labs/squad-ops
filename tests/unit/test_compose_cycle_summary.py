@@ -4,6 +4,8 @@ Unit tests for CycleSummaryComposer capability
 Tests cycle summary composition capability
 """
 
+from pathlib import Path
+from tempfile import mkdtemp
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +21,10 @@ class TestCycleSummaryComposer:
         """Create mock agent instance"""
         agent = MagicMock()
         agent.name = "test-agent"
+        agent.config = MagicMock()
+        # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
+        temp_dir = Path(mkdtemp())
+        agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
         return agent
     
     @pytest.fixture
@@ -59,7 +65,14 @@ class TestCycleSummaryComposer:
              patch.object(composer, '_determine_health', return_value='green'), \
              patch.object(composer, '_build_agent_summary', return_value={}), \
              patch.object(composer, '_build_timeline', return_value=[]), \
+             patch('agents.cycle_data.CycleDataStore') as mock_cycle_store_class, \
              patch('aiofiles.open', return_value=mock_file_context):
+            mock_cycle_store = MagicMock()
+            mock_cycle_store.write_text_artifact = MagicMock(return_value=True)
+            mock_path = MagicMock()
+            mock_path.__truediv__ = MagicMock(return_value=MagicMock() / 'meta' / f'cycle-summary-{ecid}.json')
+            mock_cycle_store.get_cycle_path.return_value = mock_path
+            mock_cycle_store_class.return_value = mock_cycle_store
             
             result = await composer.compose(ecid)
             

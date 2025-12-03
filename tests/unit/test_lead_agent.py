@@ -1620,6 +1620,12 @@ class TestLeadAgent:
         """Test SIP-027 Phase 1: Full wrap-up generation workflow"""
         agent = LeadAgent("lead-agent")
         
+        # Mock get_cycle_data_root to prevent MagicMock directory creation
+        from pathlib import Path
+        from tempfile import mkdtemp
+        temp_dir = Path(mkdtemp())
+        agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
+        
         # Mock dependencies
         from agents.capabilities.telemetry_collector import TelemetryCollector
         from agents.capabilities.wrapup_generator import WrapupGenerator
@@ -1669,6 +1675,12 @@ class TestLeadAgent:
     async def test_generate_warmboot_wrapup_error_handling(self):
         """Test wrap-up generation handles errors gracefully"""
         agent = LeadAgent("lead-agent")
+        
+        # Mock get_cycle_data_root to prevent MagicMock directory creation
+        from pathlib import Path
+        from tempfile import mkdtemp
+        temp_dir = Path(mkdtemp())
+        agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
         
         # Mock telemetry to raise error
         from agents.capabilities.telemetry_collector import TelemetryCollector

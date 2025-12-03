@@ -4,6 +4,8 @@ Unit tests for CycleMetricsProfiler capability
 Tests cycle metrics profiling capability
 """
 
+from pathlib import Path
+from tempfile import mkdtemp
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +21,12 @@ class TestCycleMetricsProfiler:
         """Create mock agent instance"""
         agent = MagicMock()
         agent.name = "test-agent"
+        agent.config = MagicMock()
+        # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
+        from pathlib import Path
+        from tempfile import mkdtemp
+        temp_dir = Path(mkdtemp())
+        agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
         return agent
     
     @pytest.fixture
@@ -56,15 +64,15 @@ class TestCycleMetricsProfiler:
         mock_file_context.__aenter__ = AsyncMock(return_value=mock_file_obj)
         mock_file_context.__aexit__ = AsyncMock(return_value=None)
         
-        mock_base_path = MagicMock()
-        mock_base_path.__truediv__ = MagicMock(return_value=MagicMock())
+        # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
+        temp_dir = Path(mkdtemp())
         
         # Mock agent's record_memory
         profiler.agent.record_memory = AsyncMock()
         
         with patch.object(profiler, '_load_snapshot', new_callable=AsyncMock, return_value=mock_snapshot), \
              patch.object(profiler, '_compute_metrics', return_value=mock_metrics), \
-             patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=mock_base_path), \
+             patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=temp_dir), \
              patch('aiofiles.open', return_value=mock_file_context):
             
             result = await profiler.profile(ecid)

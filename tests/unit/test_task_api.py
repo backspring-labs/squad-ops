@@ -73,22 +73,10 @@ class TestTaskAPIService:
         assert response.status_code in [200, 404]
     
     @pytest.mark.unit
-    def test_create_task(self, client, mock_adapter):
+    def test_create_task(self, mock_adapter):
         """Test POST /tasks endpoint"""
         async def mock_get_adapter():
             return mock_adapter
-        
-        # Set dependency override before making request
-        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
-        
-        task_data = {
-            "task_id": "test-task-1",
-            "ecid": "ec-001",
-            "agent": "test-agent",
-            "status": "started",
-            "priority": "HIGH",
-            "description": "Test task"
-        }
         
         from agents.tasks.models import Task
         mock_task = Task(
@@ -99,8 +87,31 @@ class TestTaskAPIService:
         )
         mock_adapter.create_task = AsyncMock(return_value=mock_task)
         
+        # Set dependency override before creating client
+        app.dependency_overrides.clear()  # Ensure clean state
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        
+        # Verify override is set
+        assert get_tasks_adapter_dep in app.dependency_overrides
+        
+        # Verify routes are registered
+        routes = [r.path for r in app.routes if hasattr(r, 'path')]
+        assert "/api/v1/tasks/start" in routes, f"Route not found. Available routes: {routes[:10]}"
+        
+        # Create client after setting override to ensure it picks up the override
+        client = TestClient(app)
+        
+        task_data = {
+            "task_id": "test-task-1",
+            "ecid": "ec-001",
+            "agent": "test-agent",
+            "status": "started",
+            "priority": "HIGH",
+            "description": "Test task"
+        }
+        
         response = client.post("/api/v1/tasks/start", json=task_data)
-        assert response.status_code in [200, 201, 500]
+        assert response.status_code in [200, 201, 500], f"Unexpected status {response.status_code}. Response: {response.text[:200]}"
     
     @pytest.mark.unit
     def test_get_task(self, client, mock_adapter):
@@ -151,15 +162,22 @@ class TestTaskAPIService:
             app.dependency_overrides.clear()
     
     @pytest.mark.unit
-    def test_list_tasks(self, client, mock_adapter):
+    def test_list_tasks(self, mock_adapter):
         """Test GET /tasks endpoint"""
         async def mock_get_adapter():
             return mock_adapter
         
-        # Set dependency override before making request
-        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
         mock_adapter.list_tasks = AsyncMock(return_value=[])
         
+        # Set dependency override before creating client
+        app.dependency_overrides.clear()  # Ensure clean state
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        
+        # Verify override is set
+        assert get_tasks_adapter_dep in app.dependency_overrides
+        
+        # Create client after setting override to ensure it picks up the override
+        client = TestClient(app)
         response = client.get("/api/v1/tasks/status/pending")
         assert response.status_code in [200, 500]
     
@@ -223,9 +241,6 @@ class TestTaskAPIService:
         async def mock_get_adapter():
             return mock_adapter
         
-        # Set dependency override before creating client
-        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
-        
         from agents.tasks.models import FlowRun
         mock_flow = FlowRun(
             ecid="ec-001",
@@ -236,6 +251,13 @@ class TestTaskAPIService:
         )
         # Ensure create_flow is properly mocked
         mock_adapter.create_flow = AsyncMock(return_value=mock_flow)
+        
+        # Set dependency override before creating client
+        app.dependency_overrides.clear()  # Ensure clean state
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        
+        # Verify override is set
+        assert get_tasks_adapter_dep in app.dependency_overrides
         
         cycle_data = {
             "ecid": "ec-001",
@@ -279,9 +301,6 @@ class TestTaskAPIService:
         async def mock_get_adapter():
             return mock_adapter
         
-        # Set dependency override before creating client
-        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
-        
         from agents.tasks.models import Task
         mock_task = Task(
             task_id="task-001",
@@ -291,6 +310,13 @@ class TestTaskAPIService:
         )
         # Ensure create_task is properly mocked
         mock_adapter.create_task = AsyncMock(return_value=mock_task)
+        
+        # Set dependency override before creating client
+        app.dependency_overrides.clear()  # Ensure clean state
+        app.dependency_overrides[get_tasks_adapter_dep] = mock_get_adapter
+        
+        # Verify override is set
+        assert get_tasks_adapter_dep in app.dependency_overrides
         
         log_data = {
             "task_id": "task-001",

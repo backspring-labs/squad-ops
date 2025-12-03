@@ -4,6 +4,8 @@ Unit tests for CycleSnapshotCollector capability
 Tests cycle snapshot collection capability
 """
 
+from pathlib import Path
+from tempfile import mkdtemp
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,6 +22,10 @@ class TestCycleSnapshotCollector:
         agent = MagicMock()
         agent.name = "test-agent"
         agent.task_api_url = "http://localhost:8001"
+        agent.config = MagicMock()
+        # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
+        temp_dir = Path(mkdtemp())
+        agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
         return agent
     
     @pytest.fixture
@@ -47,13 +53,13 @@ class TestCycleSnapshotCollector:
             'agents': ['agent1', 'agent2']
         }
         
-        mock_base_path = MagicMock()
-        mock_base_path.__truediv__ = MagicMock(return_value=MagicMock())
+        # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
+        temp_dir = Path(mkdtemp())
         
         # Mock agent's record_memory
         collector.agent.record_memory = AsyncMock()
         
-        with patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=mock_base_path), \
+        with patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=temp_dir), \
              patch('agents.cycle_data.CycleDataStore') as mock_cycle_store_class, \
              patch.object(collector, '_fetch_execution_cycle', new_callable=AsyncMock, return_value=mock_snapshot_data), \
              patch.object(collector, '_fetch_tasks', new_callable=AsyncMock, return_value=mock_snapshot_data.get('tasks', [])), \
@@ -78,13 +84,13 @@ class TestCycleSnapshotCollector:
         ecid = "ECID-WB-001"
         output_dir = "/test/output"
         
-        mock_base_path = MagicMock()
-        mock_base_path.__truediv__ = MagicMock(return_value=MagicMock())
+        # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
+        temp_dir = Path(mkdtemp())
         
         # Mock agent's record_memory
         collector.agent.record_memory = AsyncMock()
         
-        with patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=mock_base_path), \
+        with patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=temp_dir), \
              patch('agents.cycle_data.CycleDataStore') as mock_cycle_store_class, \
              patch.object(collector, '_fetch_execution_cycle', new_callable=AsyncMock, return_value={}), \
              patch.object(collector, '_fetch_tasks', new_callable=AsyncMock, return_value=[]), \
@@ -108,8 +114,8 @@ class TestCycleSnapshotCollector:
         """Test collection when API call fails"""
         ecid = "ECID-WB-001"
         
-        mock_base_path = MagicMock()
-        mock_base_path.__truediv__ = MagicMock(return_value=MagicMock())
+        # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
+        temp_dir = Path(mkdtemp())
         
         mock_session_instance = AsyncMock()
         mock_session_instance.get = AsyncMock(side_effect=Exception("API error"))
@@ -117,7 +123,7 @@ class TestCycleSnapshotCollector:
         mock_session_context.__aenter__ = AsyncMock(return_value=mock_session_instance)
         mock_session_context.__aexit__ = AsyncMock(return_value=None)
         
-        with patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=mock_base_path), \
+        with patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=temp_dir), \
              patch('aiohttp.ClientSession', return_value=mock_session_context):
             
             with pytest.raises(Exception):
