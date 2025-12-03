@@ -5,7 +5,7 @@ Tests cycle metrics profiling capability
 """
 
 from pathlib import Path
-from tempfile import mkdtemp
+from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,11 +23,15 @@ class TestCycleMetricsProfiler:
         agent.name = "test-agent"
         agent.config = MagicMock()
         # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
-        from pathlib import Path
-        from tempfile import mkdtemp
-        temp_dir = Path(mkdtemp())
+        # Use TemporaryDirectory context manager for automatic cleanup
+        temp_dir_ctx = TemporaryDirectory()
+        temp_dir = Path(temp_dir_ctx.name)
+        # Store context manager on agent so it persists for the test duration
+        agent._temp_dir_ctx = temp_dir_ctx
         agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
-        return agent
+        yield agent
+        # Cleanup temporary directory after test
+        temp_dir_ctx.cleanup()
     
     @pytest.fixture
     def profiler(self, mock_agent):
@@ -65,19 +69,21 @@ class TestCycleMetricsProfiler:
         mock_file_context.__aexit__ = AsyncMock(return_value=None)
         
         # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
-        temp_dir = Path(mkdtemp())
-        
-        # Mock agent's record_memory
-        profiler.agent.record_memory = AsyncMock()
-        
-        with patch.object(profiler, '_load_snapshot', new_callable=AsyncMock, return_value=mock_snapshot), \
-             patch.object(profiler, '_compute_metrics', return_value=mock_metrics), \
-             patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=temp_dir), \
-             patch('aiofiles.open', return_value=mock_file_context):
+        # Use TemporaryDirectory context manager for automatic cleanup
+        with TemporaryDirectory() as tmpdir:
+            temp_dir = Path(tmpdir)
             
-            result = await profiler.profile(ecid)
+            # Mock agent's record_memory
+            profiler.agent.record_memory = AsyncMock()
             
-            assert 'ecid' in result or 'metrics_json_path' in result
+            with patch.object(profiler, '_load_snapshot', new_callable=AsyncMock, return_value=mock_snapshot), \
+                 patch.object(profiler, '_compute_metrics', return_value=mock_metrics), \
+                 patch('agents.utils.path_resolver.PathResolver.get_base_path', return_value=temp_dir), \
+                 patch('aiofiles.open', return_value=mock_file_context):
+                
+                result = await profiler.profile(ecid)
+                
+                assert 'ecid' in result or 'metrics_json_path' in result
     
     @pytest.mark.unit
     @pytest.mark.asyncio

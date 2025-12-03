@@ -5,7 +5,7 @@ Tests wrap-up report generation
 """
 
 from pathlib import Path
-from tempfile import mkdtemp
+from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,9 +24,15 @@ class TestWrapupGenerator:
         agent.communication_log = []
         agent.config = MagicMock()
         # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
-        temp_dir = Path(mkdtemp())
+        # Use TemporaryDirectory context manager for automatic cleanup
+        temp_dir_ctx = TemporaryDirectory()
+        temp_dir = Path(temp_dir_ctx.name)
+        # Store context manager on agent so it persists for the test duration
+        agent._temp_dir_ctx = temp_dir_ctx
         agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
-        return agent
+        yield agent
+        # Cleanup temporary directory after test
+        temp_dir_ctx.cleanup()
     
     @pytest.fixture
     def generator(self, mock_agent):

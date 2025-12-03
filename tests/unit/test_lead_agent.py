@@ -1621,54 +1621,62 @@ class TestLeadAgent:
         agent = LeadAgent("lead-agent")
         
         # Mock get_cycle_data_root to prevent MagicMock directory creation
+        # Use TemporaryDirectory context manager for automatic cleanup
         from pathlib import Path
-        from tempfile import mkdtemp
-        temp_dir = Path(mkdtemp())
+        from tempfile import TemporaryDirectory
+        temp_dir_ctx = TemporaryDirectory()
+        temp_dir = Path(temp_dir_ctx.name)
         agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
+        # Store context manager for cleanup
+        agent._temp_dir_ctx = temp_dir_ctx
         
-        # Mock dependencies
-        from agents.capabilities.telemetry_collector import TelemetryCollector
-        from agents.capabilities.wrapup_generator import WrapupGenerator
-        telemetry_collector = TelemetryCollector(agent)
-        wrapup_generator = WrapupGenerator(agent)
-        
-        telemetry_collector.collect = AsyncMock(return_value={
-            'database_metrics': {'task_count': 2},
-            'rabbitmq_metrics': {'messages_processed': 5}
-        })
-        
-        wrapup_generator.generate_wrapup_markdown = AsyncMock(return_value='# Test Markdown')
-        wrapup_generator.generate_wrapup = AsyncMock(return_value={
-            'wrapup_uri': '/test/wrapup.md',
-            'wrapup_content': '# Test Markdown',
-            'telemetry_data': {},
-            'run_number': '042'
-        })
-        
-        agent.execute_command = AsyncMock(return_value={
-            'success': True, 'returncode': 0
-        })
-        
-        agent.write_file = AsyncMock(return_value=True)
-        
-        ecid = 'ECID-WB-042'
-        task_id = 'test-task'
-        completion_payload = {'status': 'completed'}
-        
-        # Generate wrap-up via capability
-        telemetry = await telemetry_collector.collect(ecid, task_id)
-        result = await wrapup_generator.generate_wrapup(ecid, task_id, completion_payload, telemetry)
-        
-        # Verify methods were called
-        telemetry_collector.collect.assert_called_once_with(ecid, task_id)
-        wrapup_generator.generate_wrapup.assert_called_once()
-        
-        # Verify result structure
-        assert result is not None
-        assert 'wrapup_uri' in result
-        assert 'wrapup_content' in result
-        assert 'telemetry_data' in result
-        assert 'run_number' in result
+        try:
+            # Mock dependencies
+            from agents.capabilities.telemetry_collector import TelemetryCollector
+            from agents.capabilities.wrapup_generator import WrapupGenerator
+            telemetry_collector = TelemetryCollector(agent)
+            wrapup_generator = WrapupGenerator(agent)
+            
+            telemetry_collector.collect = AsyncMock(return_value={
+                'database_metrics': {'task_count': 2},
+                'rabbitmq_metrics': {'messages_processed': 5}
+            })
+            
+            wrapup_generator.generate_wrapup_markdown = AsyncMock(return_value='# Test Markdown')
+            wrapup_generator.generate_wrapup = AsyncMock(return_value={
+                'wrapup_uri': '/test/wrapup.md',
+                'wrapup_content': '# Test Markdown',
+                'telemetry_data': {},
+                'run_number': '042'
+            })
+            
+            agent.execute_command = AsyncMock(return_value={
+                'success': True, 'returncode': 0
+            })
+            
+            agent.write_file = AsyncMock(return_value=True)
+            
+            ecid = 'ECID-WB-042'
+            task_id = 'test-task'
+            completion_payload = {'status': 'completed'}
+            
+            # Generate wrap-up via capability
+            telemetry = await telemetry_collector.collect(ecid, task_id)
+            result = await wrapup_generator.generate_wrapup(ecid, task_id, completion_payload, telemetry)
+            
+            # Verify methods were called
+            telemetry_collector.collect.assert_called_once_with(ecid, task_id)
+            wrapup_generator.generate_wrapup.assert_called_once()
+            
+            # Verify result structure
+            assert result is not None
+            assert 'wrapup_uri' in result
+            assert 'wrapup_content' in result
+            assert 'telemetry_data' in result
+            assert 'run_number' in result
+        finally:
+            # Cleanup temporary directory
+            temp_dir_ctx.cleanup()
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1677,27 +1685,33 @@ class TestLeadAgent:
         agent = LeadAgent("lead-agent")
         
         # Mock get_cycle_data_root to prevent MagicMock directory creation
+        # Use TemporaryDirectory context manager for automatic cleanup
         from pathlib import Path
-        from tempfile import mkdtemp
-        temp_dir = Path(mkdtemp())
+        from tempfile import TemporaryDirectory
+        temp_dir_ctx = TemporaryDirectory()
+        temp_dir = Path(temp_dir_ctx.name)
         agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
         
-        # Mock telemetry to raise error
-        from agents.capabilities.telemetry_collector import TelemetryCollector
-        from agents.capabilities.wrapup_generator import WrapupGenerator
-        telemetry_collector = TelemetryCollector(agent)
-        wrapup_generator = WrapupGenerator(agent)
-        
-        telemetry_collector.collect = AsyncMock(side_effect=Exception("DB error"))
-        
-        # Generate wrap-up should not crash
         try:
-            telemetry = await telemetry_collector.collect('ECID-ERROR', 'task-error')
-            await wrapup_generator.generate_wrapup('ECID-ERROR', 'task-error', {}, telemetry)
-        except Exception:
-            pass  # Expected to fail
-        
-        # Should log error but not raise
+            # Mock telemetry to raise error
+            from agents.capabilities.telemetry_collector import TelemetryCollector
+            from agents.capabilities.wrapup_generator import WrapupGenerator
+            telemetry_collector = TelemetryCollector(agent)
+            wrapup_generator = WrapupGenerator(agent)
+            
+            telemetry_collector.collect = AsyncMock(side_effect=Exception("DB error"))
+            
+            # Generate wrap-up should not crash
+            try:
+                telemetry = await telemetry_collector.collect('ECID-ERROR', 'task-error')
+                await wrapup_generator.generate_wrapup('ECID-ERROR', 'task-error', {}, telemetry)
+            except Exception:
+                pass  # Expected to fail
+            
+            # Should log error but not raise
+        finally:
+            # Cleanup temporary directory
+            temp_dir_ctx.cleanup()
     
     # ===== TASK SEQUENCING AND COORDINATION TESTS =====
     
