@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiofiles
 
@@ -32,30 +32,30 @@ class CycleMetricsProfiler:
         self.agent = agent
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
     
-    async def profile(self, ecid: str, snapshot_path: Optional[str] = None) -> Dict[str, Any]:
+    async def profile(self, cycle_id: str, snapshot_path: str | None = None) -> dict[str, Any]:
         """
         Compute metrics from cycle snapshot.
         
         Implements the data.profile_cycle_metrics capability.
         
         Args:
-            ecid: Execution cycle ID
+            cycle_id: Execution cycle ID
             snapshot_path: Optional path to snapshot JSON (auto-detected if not provided)
             
         Returns:
             Dictionary containing:
             - metrics_json_path: Path to metrics JSON file
             - metrics_md_path: Path to metrics Markdown file
-            - ecid: Execution cycle ID
+            - cycle_id: Execution cycle ID
             - metrics_summary: Summary of key metrics
         """
-        logger.info(f"{self.name} profiling cycle metrics for ECID: {ecid}")
+        logger.info(f"{self.name} profiling cycle metrics for cycle_id: {cycle_id}")
         
         try:
             # Load snapshot
-            snapshot = await self._load_snapshot(ecid, snapshot_path)
+            snapshot = await self._load_snapshot(cycle_id, snapshot_path)
             if not snapshot:
-                raise ValueError(f"Could not load snapshot for ECID: {ecid}")
+                raise ValueError(f"Could not load snapshot for cycle_id: {cycle_id}")
             
             # Compute metrics
             metrics = self._compute_metrics(snapshot)
@@ -68,7 +68,7 @@ class CycleMetricsProfiler:
             try:
                 from agents.tasks.registry import get_tasks_adapter
                 adapter = await get_tasks_adapter()
-                flow = await adapter.get_flow(ecid)
+                flow = await adapter.get_flow(cycle_id)
                 if flow and flow.project_id:
                     project_id = flow.project_id
             except Exception as e:
@@ -76,32 +76,32 @@ class CycleMetricsProfiler:
             
             # Initialize CycleDataStore
             cycle_data_root = self.agent.config.get_cycle_data_root()
-            cycle_store = CycleDataStore(cycle_data_root, project_id, ecid)
+            cycle_store = CycleDataStore(cycle_data_root, project_id, cycle_id)
             
             # Save JSON metrics to meta area
             metrics_json = json.dumps(metrics, indent=2)
             success_json = cycle_store.write_text_artifact(
                 'meta',
-                f'cycle-metrics-{ecid}.json',
+                f'cycle-metrics-{cycle_id}.json',
                 metrics_json
             )
             
             if success_json:
-                metrics_json_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-metrics-{ecid}.json'
+                metrics_json_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-metrics-{cycle_id}.json'
                 logger.info(f"{self.name} saved metrics JSON: {metrics_json_path}")
             else:
                 raise Exception("Failed to write cycle metrics JSON to CycleDataStore")
             
             # Generate and save Markdown summary to meta area
-            markdown_content = self._generate_markdown(ecid, metrics, snapshot)
+            markdown_content = self._generate_markdown(cycle_id, metrics, snapshot)
             success_md = cycle_store.write_text_artifact(
                 'meta',
-                f'cycle-metrics-{ecid}.md',
+                f'cycle-metrics-{cycle_id}.md',
                 markdown_content
             )
             
             if success_md:
-                metrics_md_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-metrics-{ecid}.md'
+                metrics_md_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-metrics-{cycle_id}.md'
                 logger.info(f"{self.name} saved metrics Markdown: {metrics_md_path}")
             else:
                 raise Exception("Failed to write cycle metrics Markdown to CycleDataStore")
@@ -111,7 +111,7 @@ class CycleMetricsProfiler:
                 await self.agent.record_memory(
                     kind="cycle_metrics_profiled",
                     payload={
-                        "ecid": ecid,
+                        "cycle_id": cycle_id,
                         "metrics_json_path": str(metrics_json_path),
                         "total_tasks": metrics.get("summary", {}).get("total_tasks", 0)
                     },
@@ -122,7 +122,7 @@ class CycleMetricsProfiler:
             return {
                 "metrics_json_path": str(metrics_json_path),
                 "metrics_md_path": str(metrics_md_path),
-                "ecid": ecid,
+                "cycle_id": cycle_id,
                 "metrics_summary": metrics.get("summary", {})
             }
             
@@ -130,7 +130,7 @@ class CycleMetricsProfiler:
             logger.error(f"{self.name} failed to profile cycle metrics: {e}", exc_info=True)
             raise
     
-    async def _load_snapshot(self, ecid: str, snapshot_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    async def _load_snapshot(self, cycle_id: str, snapshot_path: str | None = None) -> dict[str, Any] | None:
         """Load snapshot JSON file"""
         try:
             if snapshot_path:
@@ -140,10 +140,10 @@ class CycleMetricsProfiler:
                 from agents.utils.path_resolver import PathResolver
                 base_path = PathResolver.get_base_path()
                 warmboot_runs_dir = base_path / "warm-boot" / "runs"
-                run_dir = self._extract_run_directory(ecid, warmboot_runs_dir)
+                run_dir = self._extract_run_directory(cycle_id, warmboot_runs_dir)
                 if not run_dir:
                     return None
-                path = run_dir / f"cycle-snapshot-{ecid}.json"
+                path = run_dir / f"cycle-snapshot-{cycle_id}.json"
             
             if not path.exists():
                 logger.warning(f"{self.name} snapshot file not found: {path}")
@@ -156,10 +156,10 @@ class CycleMetricsProfiler:
             logger.error(f"{self.name} error loading snapshot: {e}")
             return None
     
-    def _extract_run_directory(self, ecid: str, warmboot_runs_dir: Path) -> Optional[Path]:
+    def _extract_run_directory(self, cycle_id: str, warmboot_runs_dir: Path) -> Path | None:
         """Extract run directory from ECID"""
         try:
-            parts = ecid.split('-')
+            parts = cycle_id.split('-')
             if len(parts) >= 3:
                 run_number = parts[-1]
                 run_number = run_number.zfill(3) if run_number.isdigit() else run_number
@@ -170,7 +170,7 @@ class CycleMetricsProfiler:
         except Exception:
             return None
     
-    def _compute_metrics(self, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    def _compute_metrics(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         """Compute metrics from snapshot"""
         tasks = snapshot.get("tasks", [])
         agents = snapshot.get("agents", {})
@@ -210,7 +210,7 @@ class CycleMetricsProfiler:
         total_failure = sum(1 for t in tasks if (t.get('status') or t.get('state') or '').lower() in ['failed', 'error'])
         
         metrics = {
-            "ecid": snapshot.get("ecid"),
+            "cycle_id": snapshot.get("cycle_id"),
             "computed_at": datetime.utcnow().isoformat() + "Z",
             "summary": {
                 "total_tasks": total_tasks,
@@ -228,7 +228,7 @@ class CycleMetricsProfiler:
         
         return metrics
     
-    def _compute_duration_stats(self, tasks: List[Dict[str, Any]], execution_cycle: Dict[str, Any]) -> Dict[str, Any]:
+    def _compute_duration_stats(self, tasks: list[dict[str, Any]], execution_cycle: dict[str, Any]) -> dict[str, Any]:
         """Compute duration statistics from tasks"""
         durations = []
         
@@ -258,7 +258,7 @@ class CycleMetricsProfiler:
             "total_seconds": round(sum(durations), 2)
         }
     
-    def _build_timeline(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _build_timeline(self, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Build ordered timeline of events"""
         timeline = []
         
@@ -277,7 +277,7 @@ class CycleMetricsProfiler:
         
         return timeline[:50]  # Limit to first 50 events
     
-    def _generate_markdown(self, ecid: str, metrics: Dict[str, Any], snapshot: Dict[str, Any]) -> str:
+    def _generate_markdown(self, cycle_id: str, metrics: dict[str, Any], snapshot: dict[str, Any]) -> str:
         """Generate Markdown summary of metrics"""
         summary = metrics.get("summary", {})
         agent_metrics = metrics.get("agent_metrics", {})
@@ -286,7 +286,7 @@ class CycleMetricsProfiler:
         
         md = f"""# Cycle Metrics Report
 
-**ECID:** {ecid}  
+**Cycle ID:** {cycle_id}  
 **Generated:** {metrics.get('computed_at', 'Unknown')}
 
 ## Summary

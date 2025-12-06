@@ -175,7 +175,7 @@ async def test_put_memory(temp_db_path, mock_lancedb_available):
                     'content': {'action': 'test_action', 'result': {'status': 'success'}},
                     'importance': 0.8,
                     'pid': 'PID-001',
-                    'ecid': 'ECID-001'
+                    'cycle_id': 'ECID-001'
                 }
                 
                 mem_id = await adapter.put(memory_item)
@@ -231,7 +231,7 @@ async def test_put_if_not_exists_new_memory(temp_db_path, mock_lancedb_available
                         'content': {'action': 'role_identity', 'result': {'role': 'qa'}},
                         'importance': 1.0,
                         'pid': '',
-                        'ecid': ''
+                        'cycle_id': ''
                     }
                     
                     mem_id = await adapter.put_if_not_exists(memory_item)
@@ -265,7 +265,7 @@ async def test_put_if_not_exists_existing_memory(temp_db_path, mock_lancedb_avai
         'content': {'action': 'role_identity', 'result': {'role': 'qa'}},
         'importance': 1.0,
         'pid': '',
-        'ecid': ''
+        'cycle_id': ''
     }
     
     # Mock get() to return existing memory
@@ -298,7 +298,7 @@ async def test_get_memories(temp_db_path, mock_lancedb_available):
                 'ns': 'role',
                 'agent': 'TestAgent',
                 'pid': 'PID-001',
-                'ecid': 'ECID-001',
+                'cycle_id': 'ECID-001',
                 'tags': ['test'],
                 'importance': 0.8,
                 'content': '{"action": "test"}',
@@ -386,7 +386,7 @@ async def test_get_memories_by_id(temp_db_path, mock_lancedb_available):
                 'ns': 'role',
                 'agent': 'TestAgent',
                 'pid': 'PID-001',
-                'ecid': 'ECID-001',
+                'cycle_id': 'ECID-001',
                 'tags': ['test'],
                 'importance': 0.8,
                 'content': '{"action": "test"}',

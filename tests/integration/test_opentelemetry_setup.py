@@ -3,14 +3,14 @@ Integration tests for OpenTelemetry setup
 Validates that OpenTelemetry is properly configured and accessible
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 # Add agents path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from agents.base_agent import BaseAgent
 
 
 class TestOpenTelemetrySetup:

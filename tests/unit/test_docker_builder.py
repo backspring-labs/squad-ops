@@ -47,7 +47,7 @@ class TestDockerBuilder:
             'application': 'TestApp',
             'version': '1.0.0',
             'manifest': {'architecture_type': 'spa_web_app', 'files': []},
-            'ecid': 'ec-001'
+            'cycle_id': 'ec-001'
         }
         
         with patch.object(docker_builder.file_manager, 'directory_exists', new_callable=AsyncMock, return_value=True), \
@@ -76,7 +76,7 @@ class TestDockerBuilder:
             'application': 'TestApp',
             'version': '1.0.0',
             'manifest': {'architecture_type': 'spa_web_app', 'files': []},
-            'ecid': 'ec-001',
+            'cycle_id': 'ec-001',
             'prd_analysis': 'Test analysis',
             'features': ['feature1'],
             'constraints': {},
@@ -145,7 +145,7 @@ class TestDockerBuilder:
             'application': 'TestApp',
             'version': '1.0.0',
             'manifest': {'architecture_type': 'spa_web_app', 'files': []},
-            'ecid': 'ec-001'
+            'cycle_id': 'ec-001'
         }
         
         with patch.object(docker_builder.file_manager, 'directory_exists', new_callable=AsyncMock, return_value=False), \
@@ -168,7 +168,7 @@ class TestDockerBuilder:
             'application': 'TestApp',
             'version': '1.0.0',
             'manifest': {'architecture_type': 'spa_web_app', 'files': []},
-            'ecid': 'ec-001'
+            'cycle_id': 'ec-001'
         }
         
         with patch.object(docker_builder.file_manager, 'directory_exists', new_callable=AsyncMock, return_value=True), \

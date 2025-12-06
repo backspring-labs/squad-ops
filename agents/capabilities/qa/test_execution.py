@@ -5,12 +5,12 @@ Executes test suites and generates reports.
 """
 
 import asyncio
-import logging
 import json
+import logging
 import re
-from pathlib import Path
-from typing import Dict, Any, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class TestExecution:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
     
-    async def execute(self, test_files_uri: list, environment: Optional[str] = None, config: Optional[Dict] = None) -> Dict[str, Any]:
+    async def execute(self, test_files_uri: list, environment: str | None = None, config: dict | None = None) -> dict[str, Any]:
         """
         Execute test suite and generate reports.
         
@@ -125,7 +125,7 @@ class TestExecution:
         else:
             return 'unknown'
     
-    async def _run_tests(self, test_files_uri: list, framework: str, environment: Optional[str], config: Optional[Dict]) -> Dict[str, Any]:
+    async def _run_tests(self, test_files_uri: list, framework: str, environment: str | None, config: dict | None) -> dict[str, Any]:
         """Run tests using appropriate framework"""
         execution_log = []
         passed = 0
@@ -170,7 +170,7 @@ class TestExecution:
             'timestamp': datetime.now().isoformat()
         }
     
-    async def _run_pytest_tests(self, test_files_uri: list, config: Optional[Dict]) -> Dict[str, Any]:
+    async def _run_pytest_tests(self, test_files_uri: list, config: dict | None) -> dict[str, Any]:
         """Run pytest tests"""
         try:
             # Build pytest command
@@ -220,7 +220,7 @@ class TestExecution:
                 'log': [f"Error: {str(e)}"]
             }
     
-    async def _run_unittest_tests(self, test_files_uri: list, config: Optional[Dict]) -> Dict[str, Any]:
+    async def _run_unittest_tests(self, test_files_uri: list, config: dict | None) -> dict[str, Any]:
         """Run unittest tests"""
         try:
             # Build unittest command
@@ -258,7 +258,7 @@ class TestExecution:
                 'log': [f"Error: {str(e)}"]
             }
     
-    async def _run_jest_tests(self, test_files_uri: list, config: Optional[Dict]) -> Dict[str, Any]:
+    async def _run_jest_tests(self, test_files_uri: list, config: dict | None) -> dict[str, Any]:
         """Run Jest tests"""
         try:
             # Build jest command
@@ -298,7 +298,7 @@ class TestExecution:
                 'log': [f"Error: {str(e)}"]
             }
     
-    def _generate_report(self, execution_result: Dict[str, Any], framework: str) -> str:
+    def _generate_report(self, execution_result: dict[str, Any], framework: str) -> str:
         """Generate markdown test report"""
         report_lines = [
             "# Test Execution Report",

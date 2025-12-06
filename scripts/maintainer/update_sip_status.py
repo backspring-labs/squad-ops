@@ -6,13 +6,14 @@ Handles all transitions: proposed → accepted, accepted → implemented, implem
 """
 
 import os
-import sys
-import yaml
 import re
 import shutil
-from pathlib import Path
+import sys
 from datetime import datetime
-from typing import Dict, Any, Optional, Tuple
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 REGISTRY_FILE = REPO_ROOT / "sips" / "registry.yaml"
@@ -43,20 +44,20 @@ def check_maintainer_flag() -> bool:
     return maintainer == '1' or maintainer == 'true' or maintainer == 'True'
 
 
-def load_registry() -> Dict[str, Any]:
+def load_registry() -> dict[str, Any]:
     """Load the SIP registry."""
     if not REGISTRY_FILE.exists():
         return {'last_assigned': 0, 'sips': []}
     
     try:
-        with open(REGISTRY_FILE, 'r', encoding='utf-8') as f:
+        with open(REGISTRY_FILE, encoding='utf-8') as f:
             return yaml.safe_load(f) or {'last_assigned': 0, 'sips': []}
     except Exception as e:
         print(f"Error loading registry: {e}")
         return {'last_assigned': 0, 'sips': []}
 
 
-def save_registry(registry: Dict[str, Any]) -> bool:
+def save_registry(registry: dict[str, Any]) -> bool:
     """Save the registry."""
     try:
         with open(REGISTRY_FILE, 'w', encoding='utf-8') as f:
@@ -67,16 +68,16 @@ def save_registry(registry: Dict[str, Any]) -> bool:
         return False
 
 
-def get_next_sip_number(registry: Dict[str, Any]) -> int:
+def get_next_sip_number(registry: dict[str, Any]) -> int:
     """Get the next available SIP number."""
     last_assigned = registry.get('last_assigned', 0)
     return last_assigned + 1
 
 
-def extract_metadata_from_file(file_path: Path) -> Optional[Dict[str, Any]]:
+def extract_metadata_from_file(file_path: Path) -> dict[str, Any] | None:
     """Extract metadata from SIP file YAML frontmatter."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding='utf-8') as f:
             content = f.read()
         
         # Extract YAML frontmatter
@@ -91,10 +92,10 @@ def extract_metadata_from_file(file_path: Path) -> Optional[Dict[str, Any]]:
     return None
 
 
-def update_sip_file_metadata(file_path: Path, updates: Dict[str, Any]) -> bool:
+def update_sip_file_metadata(file_path: Path, updates: dict[str, Any]) -> bool:
     """Update SIP file metadata in YAML frontmatter."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding='utf-8') as f:
             content = f.read()
         
         # Update frontmatter
@@ -135,7 +136,7 @@ def normalize_filename(sip_number: int, title: str) -> str:
     return f"SIP-{sip_number:04d}-{clean_title}.md"
 
 
-def validate_transition(current_status: str, new_status: str) -> Tuple[bool, str]:
+def validate_transition(current_status: str, new_status: str) -> tuple[bool, str]:
     """Validate that the status transition is allowed."""
     if current_status not in VALID_TRANSITIONS:
         return False, f"Invalid current status: {current_status}"
@@ -146,7 +147,7 @@ def validate_transition(current_status: str, new_status: str) -> Tuple[bool, str
     return True, ""
 
 
-def find_sip_in_registry(registry: Dict[str, Any], sip_number: Optional[int] = None, sip_uid: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def find_sip_in_registry(registry: dict[str, Any], sip_number: int | None = None, sip_uid: str | None = None) -> dict[str, Any] | None:
     """Find SIP in registry by sip_number or sip_uid."""
     if sip_number is not None:
         for sip in registry.get('sips', []):
@@ -180,7 +181,7 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
     
     current_status = metadata.get('status')
     if not current_status:
-        print(f"Error: SIP file does not have a status field")
+        print("Error: SIP file does not have a status field")
         return False
     
     # Validate transition
@@ -239,8 +240,8 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         registry['sips'].append(registry_entry)
         registry['last_assigned'] = sip_number
         
-        # Sort registry by SIP number
-        registry['sips'].sort(key=lambda x: (x.get('sip_number', 0), x.get('variant', 1)))
+        # Sort registry by SIP number (handle None values)
+        registry['sips'].sort(key=lambda x: (x.get('sip_number') or 0, x.get('variant') or 1))
         
         print(f"\n✅ SIP-{sip_number:04d} status updated: {current_status} → {new_status}")
         print(f"   Title: {title}")

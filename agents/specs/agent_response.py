@@ -5,8 +5,8 @@ Defines the structured output from agent capability execution
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -24,7 +24,7 @@ class Timing:
     ended_at: str
     
     @classmethod
-    def create(cls, started_at: Optional[datetime] = None, ended_at: Optional[datetime] = None) -> 'Timing':
+    def create(cls, started_at: datetime | None = None, ended_at: datetime | None = None) -> 'Timing':
         """Create Timing from datetime objects"""
         if started_at is None:
             started_at = datetime.utcnow()
@@ -36,7 +36,7 @@ class Timing:
             ended_at=ended_at.isoformat()
         )
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert Timing to dict"""
         return {
             'started_at': self.started_at,
@@ -49,10 +49,10 @@ class AgentResponse:
     """Contract: AgentResponse for capability execution results"""
     
     status: str  # "ok" or "error"
-    result: Dict[str, Any]
-    error: Optional[Error] = None
-    idempotency_key: Optional[str] = None
-    timing: Optional[Timing] = None
+    result: dict[str, Any]
+    error: Error | None = None
+    idempotency_key: str | None = None
+    timing: Timing | None = None
     
     def __post_init__(self):
         """Validate status"""
@@ -62,7 +62,7 @@ class AgentResponse:
         if self.status == 'error' and self.error is None:
             raise ValueError("error is required when status is 'error'")
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict"""
         response = {
             'status': self.status,
@@ -83,7 +83,7 @@ class AgentResponse:
         return response
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'AgentResponse':
+    def from_dict(cls, data: dict[str, Any]) -> 'AgentResponse':
         """Create AgentResponse from dict"""
         error = None
         if 'error' in data:
@@ -111,8 +111,8 @@ class AgentResponse:
         )
     
     @classmethod
-    def success(cls, result: Dict[str, Any], idempotency_key: Optional[str] = None, 
-                timing: Optional[Timing] = None) -> 'AgentResponse':
+    def success(cls, result: dict[str, Any], idempotency_key: str | None = None, 
+                timing: Timing | None = None) -> 'AgentResponse':
         """Create successful response"""
         if timing is None:
             timing = Timing.create()
@@ -126,9 +126,9 @@ class AgentResponse:
     
     @classmethod
     def failure(cls, error_code: str, error_message: str, retryable: bool = False,
-                result: Optional[Dict[str, Any]] = None,
-                idempotency_key: Optional[str] = None,
-                timing: Optional[Timing] = None) -> 'AgentResponse':
+                result: dict[str, Any] | None = None,
+                idempotency_key: str | None = None,
+                timing: Timing | None = None) -> 'AgentResponse':
         """Create error response"""
         if timing is None:
             timing = Timing.create()

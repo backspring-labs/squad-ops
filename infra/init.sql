@@ -16,28 +16,35 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name);
 CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at);
 
--- Execution Cycle table (SIP-024, SIP-0047)
-CREATE TABLE IF NOT EXISTS execution_cycle (
-    ecid TEXT PRIMARY KEY,
+-- Cycle table (SIP-024, SIP-0047, SIP-0048 - renamed from execution_cycle, enhanced with new fields)
+CREATE TABLE IF NOT EXISTS cycle (
+    cycle_id TEXT PRIMARY KEY,
     pid TEXT NOT NULL,
     project_id TEXT REFERENCES projects(project_id),
     run_type TEXT CHECK (run_type IN ('warmboot','project','experiment','tuning')),
     title TEXT,
     description TEXT,
+    name TEXT,  -- SIP-0048: Human-readable cycle name
+    goal TEXT,  -- SIP-0048: Cycle objective or goal statement
+    start_time TIMESTAMP,  -- SIP-0048: Cycle start timestamp
+    end_time TIMESTAMP,  -- SIP-0048: Cycle end timestamp
+    inputs JSONB,  -- SIP-0048: Cycle inputs as JSON (PIDs, repo, branch)
     created_at TIMESTAMP DEFAULT now(),
     initiated_by TEXT,
     status TEXT DEFAULT 'active',
     notes TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_execution_cycle_project_id ON execution_cycle(project_id);
+CREATE INDEX IF NOT EXISTS idx_cycle_project_id ON cycle(project_id);
 
--- Task Log table (SIP-024/025)
+-- Task Log table (SIP-024/025, SIP-0048 - updated to use cycle_id, enhanced with new fields)
 CREATE TABLE IF NOT EXISTS agent_task_log (
     task_id TEXT PRIMARY KEY,
     pid TEXT,
-    ecid TEXT REFERENCES execution_cycle(ecid),
-    agent TEXT NOT NULL,
+    cycle_id TEXT REFERENCES cycle(cycle_id),
+    agent TEXT NOT NULL,  -- Kept for backward compatibility
+    agent_id TEXT,  -- SIP-0048: Agent identifier (use agent_id, not role normalization)
+    task_name TEXT,  -- SIP-0048: Task name/type identifier
     phase TEXT,
     status TEXT NOT NULL,
     priority TEXT,
@@ -46,6 +53,7 @@ CREATE TABLE IF NOT EXISTS agent_task_log (
     end_time TIMESTAMP,
     duration INTERVAL,
     artifacts JSONB,
+    metrics JSONB,  -- SIP-0048: Task metrics as JSON
     dependencies TEXT[],
     error_log TEXT,
     delegated_by TEXT,
@@ -140,11 +148,13 @@ CREATE TABLE IF NOT EXISTS optimization_log (
 );
 
 -- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_agent_task_log_ecid ON agent_task_log(ecid);
+CREATE INDEX IF NOT EXISTS idx_agent_task_log_cycle_id ON agent_task_log(cycle_id);
 CREATE INDEX IF NOT EXISTS idx_agent_task_log_agent ON agent_task_log(agent);
+CREATE INDEX IF NOT EXISTS idx_agent_task_log_agent_id ON agent_task_log(agent_id);  -- SIP-0048: new index
+CREATE INDEX IF NOT EXISTS idx_agent_task_log_task_name ON agent_task_log(task_name);  -- SIP-0048: new index
 CREATE INDEX IF NOT EXISTS idx_agent_task_log_status ON agent_task_log(status);
-CREATE INDEX IF NOT EXISTS idx_execution_cycle_run_type ON execution_cycle(run_type);
-CREATE INDEX IF NOT EXISTS idx_execution_cycle_project_id ON execution_cycle(project_id);
+CREATE INDEX IF NOT EXISTS idx_cycle_run_type ON cycle(run_type);
+CREATE INDEX IF NOT EXISTS idx_cycle_project_id ON cycle(project_id);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_sender ON squadcomms_messages(sender);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_recipient ON squadcomms_messages(recipient);
 CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_timestamp ON squadcomms_messages(timestamp);
@@ -181,7 +191,7 @@ CREATE TABLE IF NOT EXISTS squad_mem_pool (
     agent TEXT NOT NULL,
     ns TEXT NOT NULL DEFAULT 'squad',
     pid TEXT,
-    ecid TEXT,
+    cycle_id TEXT,
     tags TEXT[],
     importance FLOAT DEFAULT 0.7,
     status TEXT DEFAULT 'pending',
@@ -194,7 +204,7 @@ CREATE TABLE IF NOT EXISTS squad_mem_pool (
 CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_agent ON squad_mem_pool(agent);
 CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_ns ON squad_mem_pool(ns);
 CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_pid ON squad_mem_pool(pid);
-CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_ecid ON squad_mem_pool(ecid);
+CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_cycle_id ON squad_mem_pool(cycle_id);
 CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_tags ON squad_mem_pool USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_status ON squad_mem_pool(status);
 CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_created_at ON squad_mem_pool(created_at DESC);

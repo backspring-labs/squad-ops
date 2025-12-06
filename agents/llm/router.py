@@ -5,11 +5,12 @@ Routes LLM requests to the appropriate provider based on configuration.
 Supports dynamic provider registration for extensibility (Ollama, Docker models, etc.)
 """
 
-import yaml
-import os
 import importlib
+import os
 from pathlib import Path
-from typing import Dict, Type
+
+import yaml
+
 from agents.llm.client import LLMClient
 from agents.llm.providers.ollama import OllamaClient
 
@@ -18,7 +19,7 @@ class LLMRouter:
     """Route LLM requests to configured provider"""
     
     # Provider registry - maps provider names to client classes
-    _provider_registry: Dict[str, Type[LLMClient]] = {
+    _provider_registry: dict[str, type[LLMClient]] = {
         'ollama': OllamaClient,
         # Future providers can be added here:
         # 'docker_model': DockerModelClient,
@@ -30,7 +31,7 @@ class LLMRouter:
         self.default_provider = config.get('default_provider', 'ollama')
     
     @classmethod
-    def register_provider(cls, name: str, client_class: Type[LLMClient]):
+    def register_provider(cls, name: str, client_class: type[LLMClient]):
         """Register a new LLM provider dynamically"""
         cls._provider_registry[name] = client_class
         logger = importlib.import_module('logging').getLogger(__name__)

@@ -53,7 +53,7 @@ class TestPRDProcessor:
         
         task = {
             'prd_path': '/test/prd.md',
-            'ecid': 'test-ecid-001'
+            'cycle_id': 'test-ecid-001'
         }
         
         result = await processor.process(task=task)
@@ -111,7 +111,7 @@ class TestPRDProcessor:
         
         task = {
             'prd_path': '/test/prd.md',
-            'ecid': 'test-ecid-001'
+            'cycle_id': 'test-ecid-001'
         }
         
         result = await processor.process(task=task)
@@ -161,7 +161,7 @@ class TestPRDProcessor:
         
         task = {
             'prd_path': '/test/prd.md',
-            'ecid': 'test-ecid-001'
+            'cycle_id': 'test-ecid-001'
         }
         
         result = await processor.process(task=task)
@@ -209,7 +209,7 @@ class TestPRDProcessor:
         
         task = {
             'prd_path': '/test/prd.md',
-            'ecid': 'test-ecid-001'
+            'cycle_id': 'test-ecid-001'
         }
         
         result = await processor.process(task=task)

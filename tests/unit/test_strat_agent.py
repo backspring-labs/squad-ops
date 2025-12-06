@@ -55,7 +55,7 @@ class TestStratAgent:
         request = AgentRequest(
             action="product.draft_prd_from_prompt",
             payload={'requirement': 'test', 'objective': 'test', 'app_name': 'TestApp'},
-            metadata={'pid': 'PID-TEST-001', 'ecid': 'ECID-TEST-001'}
+            metadata={'pid': 'PID-TEST-001', 'cycle_id': 'ECID-TEST-001'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -82,7 +82,7 @@ class TestStratAgent:
         request = AgentRequest(
             action="unknown.capability",
             payload={},
-            metadata={'pid': 'PID-TEST-002', 'ecid': 'ECID-TEST-002'}
+            metadata={'pid': 'PID-TEST-002', 'cycle_id': 'ECID-TEST-002'}
         )
         
         response = await agent.handle_agent_request(request)

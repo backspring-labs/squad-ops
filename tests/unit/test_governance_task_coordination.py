@@ -32,7 +32,7 @@ async def test_coordinate_task_delegation(capability, mock_agent):
         'type': 'build',
         'payload': {'task_id': 'test-task-123'}
     }
-    metadata = {'ecid': 'test-ecid'}
+    metadata = {'cycle_id': 'test-ecid'}
     
     result = await capability.coordinate(request, metadata)
     

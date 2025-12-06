@@ -5,7 +5,7 @@ Implements manifest.generate capability for generating architecture manifests an
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class ManifestGenerator:
         self.app_builder = AppBuilder(llm_client=agent_instance.llm_client, agent=agent_instance)
         self.file_manager = FileManager()
     
-    async def generate(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate(self, task_id: str, requirements: dict[str, Any]) -> dict[str, Any]:
         """
         Generate architecture manifest and create initial files.
         
@@ -95,7 +95,7 @@ class ManifestGenerator:
             build_requirements = {
                 'app_name': requirements.get('app_name', requirements.get('application', 'Application')),
                 'version': requirements.get('version', '1.0.0'),
-                'run_id': requirements.get('run_id', requirements.get('ecid', 'unknown')),
+                'run_id': requirements.get('run_id', requirements.get('cycle_id', 'unknown')),
                 'prd_analysis': requirements.get('prd_analysis', ''),
                 'features': features,
                 'constraints': requirements.get('constraints', {}),
@@ -105,8 +105,9 @@ class ManifestGenerator:
             logger.info(f"{self.name} using build requirements with {len(features)} features")
             
             # Compose Skills + Tools: Load prompts using Skills, then pass to Tool
-            import yaml
             import re
+
+            import yaml
             
             # Convert app name to kebab-case for nginx subpath
             app_name = build_requirements.get('app_name', 'application')
@@ -135,11 +136,11 @@ class ManifestGenerator:
             logger.info(f"{self.name} generated manifest JSON: {manifest.get('architecture_type', 'unknown')} with {len(manifest.get('files', []))} files")
             
             # Emit reasoning event about architecture decisions
-            ecid = requirements.get('ecid', getattr(self.agent, 'current_ecid', 'unknown'))
+            cycle_id = requirements.get('cycle_id', getattr(self.agent, 'current_cycle_id', 'unknown'))
             if hasattr(self.agent, 'emit_reasoning_event'):
                 await self.agent.emit_reasoning_event(
                     task_id=task_id,
-                    ecid=ecid,
+                    cycle_id=cycle_id,
                     reason_step='decision',
                     summary=f"Selected {manifest.get('architecture_type', 'unknown')} architecture with {len(manifest.get('files', []))} files based on build requirements",
                     context='manifest_generation',
@@ -224,7 +225,7 @@ class ManifestGenerator:
             if hasattr(self.agent, 'emit_reasoning_event'):
                 await self.agent.emit_reasoning_event(
                     task_id=task_id,
-                    ecid=ecid,
+                    cycle_id=cycle_id,
                     reason_step='checkpoint',
                     summary=f"Created {len(created_files)} files with {manifest.get('architecture_type', 'unknown')} structure",
                     context='manifest_generation',
@@ -247,7 +248,7 @@ class ManifestGenerator:
                         'features': build_requirements.get('features', [])
                     },
                     importance=0.8,
-                    task_context={'ecid': ecid, 'pid': requirements.get('pid')}
+                    task_context={'cycle_id': cycle_id, 'pid': requirements.get('pid')}
                 )
             
             return {

@@ -7,7 +7,7 @@ Implements warmboot.wrapup capability for generating WarmBoot wrap-up reports.
 import logging
 import re
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,11 @@ class WrapupGenerator:
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
         self.communication_log = agent.communication_log if hasattr(agent, 'communication_log') else []
     
-    async def generate_wrapup(self, task: Dict[str, Any] = None, 
-                             ecid: str = None, task_id: str = None, 
-                             completion_payload: Dict[str, Any] = None,
-                             telemetry_data: Dict[str, Any] = None, 
-                             reasoning_events: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def generate_wrapup(self, task: dict[str, Any] = None, 
+                             cycle_id: str = None, task_id: str = None, 
+                             completion_payload: dict[str, Any] = None,
+                             telemetry_data: dict[str, Any] = None, 
+                             reasoning_events: list[dict[str, Any]] = None) -> dict[str, Any]:
         """
         Generate WarmBoot wrap-up report.
         
@@ -50,8 +50,8 @@ class WrapupGenerator:
         2. Individual parameters (for backward compatibility)
         
         Args:
-            task: Task dictionary containing ecid, task_id, completion_payload, telemetry, reasoning_events
-            ecid: Execution cycle ID (extracted from task if not provided)
+            task: Task dictionary containing cycle_id, task_id, completion_payload, telemetry, reasoning_events
+            cycle_id: Execution cycle ID (extracted from task if not provided)
             task_id: Task ID (extracted from task if not provided)
             completion_payload: Completion payload from task (extracted from task if not provided)
             telemetry_data: Telemetry data (extracted from task.telemetry if not provided)
@@ -63,25 +63,25 @@ class WrapupGenerator:
         try:
             # Extract parameters from task dictionary if provided (generic routing)
             if task is not None:
-                ecid = task.get('ecid', ecid or 'unknown')
+                cycle_id = task.get('cycle_id', cycle_id or 'unknown')
                 task_id = task.get('task_id', task_id or task.get('original_task_id', 'unknown'))
                 completion_payload = task.get('completion_payload', completion_payload or {})
                 telemetry_data = task.get('telemetry', telemetry_data or {})
                 reasoning_events = task.get('reasoning_events', reasoning_events)
             
             # Validate required parameters
-            if not ecid or not task_id:
-                raise ValueError("ecid and task_id are required (either via task dict or individual parameters)")
+            if not cycle_id or not task_id:
+                raise ValueError("cycle_id and task_id are required (either via task dict or individual parameters)")
             
-            logger.info(f"{self.name} starting WarmBoot wrap-up generation for ECID {ecid}")
+            logger.info(f"{self.name} starting WarmBoot wrap-up generation for cycle_id {cycle_id}")
             
-            # Extract run number from ECID (e.g., "ECID-WB-055" -> "055")
-            run_match = re.search(r'WB-(\d+)', ecid)
+            # Extract run number from cycle_id (e.g., "CYCLE-WB-055" -> "055")
+            run_match = re.search(r'WB-(\d+)', cycle_id)
             run_number = run_match.group(1) if run_match else "001"
             
             # Generate wrap-up markdown
             wrapup_content = await self.generate_wrapup_markdown(
-                ecid, run_number, task_id, completion_payload or {}, telemetry_data or {}, reasoning_events
+                cycle_id, run_number, task_id, completion_payload or {}, telemetry_data or {}, reasoning_events
             )
             
             # Write wrap-up using CycleDataStore (SIP-0047)
@@ -93,7 +93,7 @@ class WrapupGenerator:
                 # Try to get project_id from execution cycle if available
                 from agents.tasks.registry import get_tasks_adapter
                 adapter = await get_tasks_adapter()
-                flow = await adapter.get_flow(ecid)
+                flow = await adapter.get_flow(cycle_id)
                 if flow and flow.project_id:
                     project_id = flow.project_id
             except Exception as e:
@@ -101,7 +101,7 @@ class WrapupGenerator:
             
             # Initialize CycleDataStore
             cycle_data_root = self.agent.config.get_cycle_data_root()
-            cycle_store = CycleDataStore(cycle_data_root, project_id, ecid)
+            cycle_store = CycleDataStore(cycle_data_root, project_id, cycle_id)
             
             # Write wrapup to artifacts area
             success = cycle_store.write_text_artifact(
@@ -134,15 +134,15 @@ class WrapupGenerator:
                 'error': str(e)
             }
     
-    async def generate_wrapup_markdown(self, ecid: str, run_number: str, task_id: str,
-                                       completion_payload: Dict[str, Any],
-                                       telemetry: Dict[str, Any], 
-                                       reasoning_events: List[Dict[str, Any]] = None) -> str:
+    async def generate_wrapup_markdown(self, cycle_id: str, run_number: str, task_id: str,
+                                       completion_payload: dict[str, Any],
+                                       telemetry: dict[str, Any], 
+                                       reasoning_events: list[dict[str, Any]] = None) -> str:
         """
         Generate wrap-up markdown content.
         
         Args:
-            ecid: Execution cycle ID
+            cycle_id: Execution cycle ID
             run_number: Run number
             task_id: Task ID
             completion_payload: Completion payload
@@ -185,9 +185,9 @@ class WrapupGenerator:
             max_reasoning = self._format_reasoning_events(reasoning_events, agent_name='max')
             neo_reasoning = self._format_reasoning_events(reasoning_events, agent_name='neo')
         else:
-            # Fallback to reading from communication log (backward compatibility)
-            max_reasoning = self.extract_real_ai_reasoning(ecid, agent_name='max')
-            neo_reasoning = self.extract_real_ai_reasoning(ecid, agent_name='neo')
+            # Fallback to reading from communication log
+            max_reasoning = self.extract_real_ai_reasoning(cycle_id, agent_name='max')
+            neo_reasoning = self.extract_real_ai_reasoning(cycle_id, agent_name='neo')
         
         # Format artifacts with full hashes
         artifacts_list = []
@@ -215,7 +215,7 @@ class WrapupGenerator:
         # Build comprehensive markdown content
         markdown = f"""# 🧩 WarmBoot Run {run_number} — Reasoning & Resource Trace Log
 _Generated: {datetime.utcnow().isoformat()}_  
-_ECID: {ecid}_  
+_Cycle ID: {cycle_id}_  
 _Duration: {duration_str}_
 
 ---
@@ -226,7 +226,7 @@ _Duration: {duration_str}_
 {max_reasoning if max_reasoning.startswith('>') else '> ' + max_reasoning}
 
 **Actions Taken:**
-- Created execution cycle {ecid}
+- Created execution cycle {cycle_id}
 - Delegated tasks to Neo via task.developer.assign events
 - Monitored completion via governance listener
 
@@ -320,7 +320,7 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
         
         return markdown
     
-    def _format_reasoning_events(self, reasoning_events: List[Dict[str, Any]], agent_name: str = None) -> str:
+    def _format_reasoning_events(self, reasoning_events: list[dict[str, Any]], agent_name: str = None) -> str:
         """
         Format reasoning events list into text format.
         
@@ -386,7 +386,7 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
         # Join with newlines to match extract_real_ai_reasoning format
         return '\n'.join(formatted_reasoning) if formatted_reasoning else ''
     
-    def extract_real_ai_reasoning(self, ecid: str, agent_name: str = None) -> str:
+    def extract_real_ai_reasoning(self, cycle_id: str, agent_name: str = None) -> str:
         """
         Extract real AI reasoning from communication log for wrap-up.
         
@@ -394,7 +394,7 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
         Also checks completion event payloads for reasoning from other agents.
         
         Args:
-            ecid: Execution cycle ID
+            cycle_id: Execution cycle ID
             agent_name: Optional agent name filter
             
         Returns:
@@ -403,14 +403,14 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
         try:
             real_reasoning = []
             
-            # Find entries with llm_reasoning message type for this ECID
+            # Find entries with llm_reasoning message type for this cycle_id
             for entry in self.communication_log:
-                entry_ecid = entry.get('ecid')
+                entry_cycle_id = entry.get('cycle_id')
                 entry_agent = entry.get('agent', 'unknown')
                 entry_type = entry.get('message_type', '')
                 
-                # Filter by ECID and optionally by agent name
-                if entry_ecid == ecid:
+                # Filter by cycle_id and optionally by agent name
+                if entry_cycle_id == cycle_id:
                     if entry_type in ['llm_reasoning', 'reasoning'] or 'llm' in entry_type.lower():
                         # Skip if agent filter specified and doesn't match
                         if agent_name and entry_agent.lower() != agent_name.lower():
@@ -449,12 +449,12 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
             
             # Also check for agent reasoning events
             for entry in self.communication_log:
-                entry_ecid = entry.get('ecid')
+                entry_cycle_id = entry.get('cycle_id')
                 entry_agent = entry.get('agent', entry.get('sender', 'unknown'))
                 entry_type = entry.get('message_type', '')
                 
-                # Filter by ECID and optionally by agent name
-                if entry_ecid == ecid and entry_type == 'agent_reasoning':
+                # Filter by cycle_id and optionally by agent name
+                if entry_cycle_id == cycle_id and entry_type == 'agent_reasoning':
                     # Skip if agent filter specified and doesn't match
                     if agent_name and entry_agent.lower() != agent_name.lower():
                         continue
@@ -507,12 +507,12 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
             # Also check completion event payloads for reasoning from other agents
             if agent_name:
                 for entry in self.communication_log:
-                    entry_ecid = entry.get('ecid')
+                    entry_cycle_id = entry.get('cycle_id')
                     entry_type = entry.get('message_type', '')
                     entry_payload = entry.get('payload', {})
                     
                     # Check completion events from the target agent
-                    if entry_ecid == ecid and entry_type == 'task.developer.completed':
+                    if entry_cycle_id == cycle_id and entry_type == 'task.developer.completed':
                         sender = entry.get('sender', '').lower()
                         if agent_name.lower() in sender or ('neo' in sender.lower() if agent_name.lower() == 'neo' else False):
                             # Look for reasoning summary in payload
@@ -537,15 +537,15 @@ _End of WarmBoot Run {run_number} Reasoning & Resource Trace Log_
                 return '\n'.join(real_reasoning)
             else:
                 if agent_name:
-                    return f"> No reasoning trace found for agent '{agent_name}' in communication log for ECID {ecid}"
+                    return f"> No reasoning trace found for agent '{agent_name}' in communication log for cycle_id {cycle_id}"
                 else:
-                    return f"> No reasoning trace found in communication log for ECID {ecid}"
+                    return f"> No reasoning trace found in communication log for cycle_id {cycle_id}"
                 
         except Exception as e:
             logger.warning(f"{self.name} failed to extract real AI reasoning: {e}")
             return f"> Failed to extract real AI reasoning from logs: {e}"
     
-    def format_event_timeline_entry(self, event: Dict[str, Any]) -> str:
+    def format_event_timeline_entry(self, event: dict[str, Any]) -> str:
         """
         Format a single event for the timeline table.
         

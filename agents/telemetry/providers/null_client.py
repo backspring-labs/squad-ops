@@ -5,8 +5,8 @@ No-op implementation used when telemetry is unavailable, disabled, or for testin
 Similar to mock LLM client when USE_LOCAL_LLM=false.
 """
 
-from typing import Optional, Dict, Any
 from contextlib import nullcontext
+from typing import Any
 
 
 class NullTelemetryClient:
@@ -27,8 +27,8 @@ class NullTelemetryClient:
     def create_span(
         self,
         name: str,
-        attributes: Optional[Dict[str, Any]] = None,
-        kind: Optional[str] = None
+        attributes: dict[str, Any] | None = None,
+        kind: str | None = None
     ):
         """
         Create a telemetry span (no-op context manager)
@@ -47,7 +47,7 @@ class NullTelemetryClient:
         self,
         name: str,
         value: int = 1,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> None:
         """
         Record a counter metric (no-op)
@@ -63,7 +63,7 @@ class NullTelemetryClient:
         self,
         name: str,
         value: float,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> None:
         """
         Record a gauge metric (no-op)
@@ -79,7 +79,7 @@ class NullTelemetryClient:
         self,
         name: str,
         value: float,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> None:
         """
         Record a histogram metric (no-op)

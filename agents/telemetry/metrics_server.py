@@ -4,7 +4,7 @@ Exposes /metrics endpoint on port 8888 for Prometheus scraping
 """
 
 import logging
-from typing import Optional
+
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 # Try to import OpenTelemetry metrics
 try:
     from opentelemetry import metrics  # noqa: F401
-    from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.exporter.prometheus import PrometheusMetricReader
+    from opentelemetry.sdk.metrics import MeterProvider
     OPENTELEMETRY_AVAILABLE = True
 except ImportError:
     OPENTELEMETRY_AVAILABLE = False
@@ -21,7 +21,7 @@ except ImportError:
 
 # Try to import prometheus_client for formatting
 try:
-    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest, REGISTRY  # noqa: F401
+    from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest  # noqa: F401
     PROMETHEUS_CLIENT_AVAILABLE = True
 except ImportError:
     PROMETHEUS_CLIENT_AVAILABLE = False
@@ -31,7 +31,7 @@ except ImportError:
 class MetricsHTTPServer:
     """HTTP server for exposing Prometheus metrics"""
     
-    def __init__(self, port: int = 8888, meter_provider: Optional[MeterProvider] = None, prometheus_reader: Optional[PrometheusMetricReader] = None):
+    def __init__(self, port: int = 8888, meter_provider: MeterProvider | None = None, prometheus_reader: PrometheusMetricReader | None = None):
         """
         Initialize metrics HTTP server
         
@@ -62,7 +62,7 @@ class MetricsHTTPServer:
             )
         
         # Import symbols explicitly to ensure they're in scope
-        from prometheus_client import generate_latest, REGISTRY, CONTENT_TYPE_LATEST
+        from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
         
         # Strip charset from CONTENT_TYPE_LATEST (aiohttp doesn't allow it in content_type)
         content_type = CONTENT_TYPE_LATEST.split(';')[0].strip() if CONTENT_TYPE_LATEST else 'text/plain'
@@ -217,7 +217,7 @@ class MetricsHTTPServer:
                 await self.site.stop()
             if self.runner:
                 await self.runner.cleanup()
-            logger.info(f"Metrics HTTP server stopped")
+            logger.info("Metrics HTTP server stopped")
         except Exception as e:
             logger.error(f"Error stopping metrics HTTP server: {e}")
 

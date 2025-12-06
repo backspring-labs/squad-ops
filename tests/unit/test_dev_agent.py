@@ -138,7 +138,7 @@ class TestDevAgent:
         request = AgentRequest(
             action="test.run",  # Valid format but not in Dev's capabilities
             payload={},
-            metadata={"pid": "PID-001", "ecid": "ECID-001"}
+            metadata={"pid": "PID-001", "cycle_id": "ECID-001"}
         )
         
         # Mock validator and constraint validation
@@ -957,7 +957,7 @@ class TestDevAgent:
         
         await dev_agent.emit_reasoning_event(
             task_id='test-task-001',
-            ecid='ECID-WB-001',
+            cycle_id='CYCLE-WB-001',  # SIP-0048: renamed from ecid
             reason_step='decision',
             summary='Selected FastAPI architecture',
             context='manifest_generation',
@@ -968,7 +968,7 @@ class TestDevAgent:
         # Verify capability was called with correct arguments
         dev_agent.capability_loader.execute.assert_called_once_with(
             'comms.reasoning.emit', dev_agent,
-            'test-task-001', 'ECID-WB-001', 'decision', 'Selected FastAPI architecture',
+            'test-task-001', 'CYCLE-WB-001', 'decision', 'Selected FastAPI architecture',  # SIP-0048: renamed from ECID-WB-001
             'manifest_generation', ['FastAPI chosen', 'Async support needed'], 0.85
         )
     
@@ -1063,7 +1063,7 @@ class TestDevAgent:
         task = {
             "task_id": "test-wrapup-001",
             "task_type": "warmboot_wrapup",
-            "ecid": "ECID-WB-001",
+            "cycle_id": "CYCLE-WB-001",  # SIP-0048: renamed from ecid
             "original_task_id": "test-original-001",
             "completion_payload": {"status": "completed"},
             "telemetry": {"duration": 100},
@@ -1113,7 +1113,7 @@ class TestDevAgent:
         # Should not raise, just log warning
         await dev_agent.emit_reasoning_event(
             task_id='task-001',
-            ecid='ec-001',
+            cycle_id='cycle-001',  # SIP-0048: renamed from ecid
             reason_step='decision',
             summary='Test',
             context='test'
@@ -1126,7 +1126,7 @@ class TestDevAgent:
         request = AgentRequest(
             action="docker.build",
             payload={"repo": "unauthorized-repo"},
-            metadata={"pid": "p-001", "ecid": "ec-001"}
+            metadata={"pid": "p-001", "cycle_id": "cycle-001"}  # SIP-0048: renamed from ecid
         )
         
         # Mock request validation to pass, but constraint validation to fail
@@ -1144,7 +1144,7 @@ class TestDevAgent:
         request = AgentRequest(
             action="docker.build",
             payload={},
-            metadata={"pid": "p-001", "ecid": "ec-001"}
+            metadata={"pid": "p-001", "cycle_id": "cycle-001"}  # SIP-0048: renamed from ecid
         )
         
         # Mock capability_loader to be None
@@ -1168,7 +1168,7 @@ class TestDevAgent:
         request = AgentRequest(
             action="docker.build",
             payload={},
-            metadata={"pid": "p-001", "ecid": "ec-001"}
+            metadata={"pid": "p-001", "cycle_id": "cycle-001"}  # SIP-0048: renamed from ecid
         )
         
         # Mock validator to pass validation, then make capability execution fail

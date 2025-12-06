@@ -9,7 +9,7 @@
 #   ./scripts/dev/ops/rebuild_and_deploy.sh health-check        # Rebuild only health-check service
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents              # Rebuild only agent containers
 #   ./scripts/dev/ops/rebuild_and_deploy.sh health-check agents # Rebuild health-check and agents
-#   ./scripts/dev/ops/rebuild_and_deploy.sh task-api            # Rebuild only task-api
+#   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api         # Rebuild only runtime-api
 #
 # Environment variables:
 #   FORCE_REBUILD=1                             # Use --no-cache for full rebuild
@@ -23,7 +23,7 @@ cd "$REPO_ROOT"
 # Parse command-line arguments
 REBUILD_HEALTH_CHECK=false
 REBUILD_AGENTS=false
-REBUILD_TASK_API=false
+REBUILD_RUNTIME_API=false
 REBUILD_ALL=true
 
 if [ $# -gt 0 ]; then
@@ -36,18 +36,18 @@ if [ $# -gt 0 ]; then
             agents)
                 REBUILD_AGENTS=true
                 ;;
-            task-api|task_api)
-                REBUILD_TASK_API=true
+            runtime-api|runtime_api|task-api|task_api)
+                REBUILD_RUNTIME_API=true
                 ;;
             all)
                 REBUILD_ALL=true
                 REBUILD_HEALTH_CHECK=true
                 REBUILD_AGENTS=true
-                REBUILD_TASK_API=true
+                REBUILD_RUNTIME_API=true
                 ;;
             *)
                 echo "Unknown argument: $arg"
-                echo "Usage: $0 [health-check] [agents] [task-api] [all]"
+                echo "Usage: $0 [health-check] [agents] [runtime-api] [all]"
                 exit 1
                 ;;
         esac
@@ -56,7 +56,7 @@ else
     # Default: rebuild everything
     REBUILD_HEALTH_CHECK=true
     REBUILD_AGENTS=true
-    REBUILD_TASK_API=true
+    REBUILD_RUNTIME_API=true
 fi
 
 # Log file for background execution (in repo root)
@@ -79,11 +79,11 @@ echo -e "${BLUE}🚀 SquadOps Rebuild & Deploy${NC}"
 echo "================================"
 echo -e "${BLUE}Target services:${NC}"
 if [ "$REBUILD_ALL" = true ]; then
-    echo -e "  ${YELLOW}✓${NC} All services (health-check, agents, task-api)"
+    echo -e "  ${YELLOW}✓${NC} All services (health-check, agents, runtime-api)"
 else
     [ "$REBUILD_HEALTH_CHECK" = true ] && echo -e "  ${YELLOW}✓${NC} health-check"
     [ "$REBUILD_AGENTS" = true ] && echo -e "  ${YELLOW}✓${NC} agents"
-    [ "$REBUILD_TASK_API" = true ] && echo -e "  ${YELLOW}✓${NC} task-api"
+    [ "$REBUILD_RUNTIME_API" = true ] && echo -e "  ${YELLOW}✓${NC} runtime-api"
 fi
 echo ""
 
@@ -146,10 +146,10 @@ echo -e "${BLUE}📊 Step 2: Ensuring Docker Compose infrastructure is running..
 echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
 docker-compose up -d rabbitmq postgres redis prefect-server prefect-ui
 
-# Conditionally start task-api and health-check if they're being rebuilt
-if [ "$REBUILD_TASK_API" = true ] || [ "$REBUILD_ALL" = true ]; then
-    echo "Starting task-api..."
-    docker-compose up -d task-api || true
+# Conditionally start runtime-api and health-check if they're being rebuilt
+if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo "Starting runtime-api..."
+    docker-compose up -d runtime-api || true
 fi
 
 if [ "$REBUILD_HEALTH_CHECK" = true ] || [ "$REBUILD_ALL" = true ]; then
@@ -184,29 +184,29 @@ else
     echo -e "${YELLOW}⚠️  Redis may still be starting${NC}"
 fi
 
-# Check Task API
+# Check Runtime API
 if curl -s --connect-timeout 5 http://localhost:8001/docs > /dev/null 2>&1 || \
    curl -s --connect-timeout 5 http://localhost:8001/api/v1/execution-cycles 2>&1 | grep -q "method not allowed\|unauthorized\|not found" || \
-   docker ps --format '{{.Names}}\t{{.Status}}' | grep squadops-task-api | grep -q "Up"; then
-    echo -e "${GREEN}✅ Task API container is running${NC}"
+   docker ps --format '{{.Names}}\t{{.Status}}' | grep squadops-runtime-api | grep -q "Up"; then
+    echo -e "${GREEN}✅ Runtime API container is running${NC}"
 else
-    echo -e "${YELLOW}⚠️  Task API may still be starting${NC}"
+    echo -e "${YELLOW}⚠️  Runtime API may still be starting${NC}"
 fi
 
 # Step 3: Rebuild services that changed
 echo ""
 echo -e "${BLUE}🔨 Step 3: Rebuilding containers with updated code...${NC}"
 
-# Rebuild Task API if requested
-if [ "$REBUILD_TASK_API" = true ] || [ "$REBUILD_ALL" = true ]; then
-    echo -e "${YELLOW}📦 Rebuilding task-api...${NC}"
+# Rebuild Runtime API if requested
+if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "${YELLOW}📦 Rebuilding runtime-api...${NC}"
     if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-        docker-compose build --no-cache task-api || echo -e "${RED}  ⚠️  Build failed for task-api${NC}"
+        docker-compose build --no-cache runtime-api || echo -e "${RED}  ⚠️  Build failed for runtime-api${NC}"
     else
-        docker-compose build task-api || echo -e "${RED}  ⚠️  Build failed for task-api${NC}"
+        docker-compose build runtime-api || echo -e "${RED}  ⚠️  Build failed for runtime-api${NC}"
     fi
-    docker-compose up -d task-api
-    echo -e "${GREEN}✅ Task API rebuilt and restarted${NC}"
+    docker-compose up -d runtime-api
+    echo -e "${GREEN}✅ Runtime API rebuilt and restarted${NC}"
 fi
 
 # Rebuild Health Check if requested
@@ -400,8 +400,8 @@ echo -e "${BLUE}Next steps:${NC}"
 if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "  1. Verify agent logs: ${YELLOW}docker-compose logs --tail=50 max neo${NC}"
 fi
-if [ "$REBUILD_TASK_API" = true ] || [ "$REBUILD_ALL" = true ]; then
-    echo -e "  2. Check Task API health: ${YELLOW}curl http://localhost:8001/health${NC}"
+if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "  2. Check Runtime API health: ${YELLOW}curl http://localhost:8001/health${NC}"
 fi
 if [ "$REBUILD_HEALTH_CHECK" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "  3. Check Health Check dashboard: ${YELLOW}curl http://localhost:8000/health${NC}"

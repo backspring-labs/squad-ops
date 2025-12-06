@@ -5,21 +5,21 @@ Wraps OpenTelemetry SDK for local/Prometheus deployment.
 Supports OTLP Collector and Prometheus exporters.
 """
 
-import os
 import logging
-from typing import Optional, Dict, Any
+import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Check if OpenTelemetry is available
 try:
-    from opentelemetry import trace, metrics
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.resources import Resource  # Fixed: resources (plural), not resource
+    from opentelemetry import metrics, trace
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     from opentelemetry.exporter.prometheus import PrometheusMetricReader
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.resources import Resource  # Fixed: resources (plural), not resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
     from opentelemetry.semconv.resource import ResourceAttributes
     
     # Optional automatic instrumentation
@@ -48,7 +48,7 @@ except ImportError:
 class OpenTelemetryClient:
     """OpenTelemetry telemetry client implementation for local/Prometheus setup"""
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         """
         Initialize OpenTelemetry client
         
@@ -119,7 +119,7 @@ class OpenTelemetryClient:
                 self.meter_provider = MeterProvider(resource=resource, metric_readers=[self.prometheus_reader])
                 metrics.set_meter_provider(self.meter_provider)
                 self.meter = metrics.get_meter(service_name, service_version)
-                logger.info(f"Prometheus metrics exporter configured (reader initialized)")
+                logger.info("Prometheus metrics exporter configured (reader initialized)")
             except Exception as e:
                 logger.warning(f"Failed to configure Prometheus exporter: {e}")
                 self.meter = None
@@ -163,8 +163,8 @@ class OpenTelemetryClient:
     def create_span(
         self,
         name: str,
-        attributes: Optional[Dict[str, Any]] = None,
-        kind: Optional[str] = None
+        attributes: dict[str, Any] | None = None,
+        kind: str | None = None
     ):
         """
         Create a telemetry span (trace segment)
@@ -202,7 +202,7 @@ class OpenTelemetryClient:
         self,
         name: str,
         value: int = 1,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> None:
         """
         Record a counter metric (incremental)
@@ -225,7 +225,7 @@ class OpenTelemetryClient:
         self,
         name: str,
         value: float,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> None:
         """
         Record a gauge metric (absolute value)
@@ -249,7 +249,7 @@ class OpenTelemetryClient:
         self,
         name: str,
         value: float,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> None:
         """
         Record a histogram metric (distribution)

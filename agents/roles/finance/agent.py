@@ -3,13 +3,14 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, List
 from datetime import datetime
-from agents.base_agent import BaseAgent, AgentMessage
+from pathlib import Path
+from typing import Any
+
+from agents.base_agent import AgentMessage, BaseAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ class FinanceAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_finance_analysis(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_finance_analysis(self, request: AgentRequest) -> dict[str, Any]:
         """Handle finance.analysis capability"""
         
         # Map existing finance analysis logic to new capability format
@@ -105,7 +106,7 @@ class FinanceAgent(BaseAgent):
             'recommendations': []
         }
     
-    async def _handle_budget_planning(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_budget_planning(self, request: AgentRequest) -> dict[str, Any]:
         """Handle finance.budget_planning capability"""
         
         # Map existing budget planning logic to new capability format
@@ -115,7 +116,7 @@ class FinanceAgent(BaseAgent):
             'cost_optimization': []
         }
     
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Process financial tasks using rule-based reasoning"""
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', 'financial_analysis')
@@ -169,7 +170,7 @@ class FinanceAgent(BaseAgent):
         else:
             logger.info(f"Quark received message: {message.message_type} from {message.sender}")
     
-    async def load_rules(self, task: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def load_rules(self, task: dict[str, Any]) -> list[dict[str, Any]]:
         """Load applicable rules for the task"""
         task_type = task.get('type', 'general')
         
@@ -190,7 +191,7 @@ class FinanceAgent(BaseAgent):
         
         return rules
     
-    async def define_constraints(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def define_constraints(self, task: dict[str, Any]) -> dict[str, Any]:
         """Define constraints for constraint solving"""
         constraints = {
             'budget_limit': task.get('budget_limit', 10000),
@@ -201,7 +202,7 @@ class FinanceAgent(BaseAgent):
         
         return constraints
     
-    async def execute_rule_based_analysis(self, rules: List[Dict[str, Any]], constraints: Dict[str, Any], task: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_rule_based_analysis(self, rules: list[dict[str, Any]], constraints: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
         """Execute rule-based analysis"""
         analysis_result = {
             'rules_evaluated': len(rules),
@@ -231,7 +232,7 @@ class FinanceAgent(BaseAgent):
         
         return analysis_result
     
-    async def update_ledger(self, task: Dict[str, Any], analysis: Dict[str, Any]):
+    async def update_ledger(self, task: dict[str, Any], analysis: dict[str, Any]):
         """Update financial ledger"""
         ledger_entry = {
             'timestamp': task.get('timestamp'),

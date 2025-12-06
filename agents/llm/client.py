@@ -4,7 +4,7 @@ LLMClient protocol definition for SquadOps agents.
 Defines the interface that all LLM providers must implement.
 """
 
-from typing import Protocol, List, Dict, Optional
+from typing import Protocol
 
 
 class LLMClient(Protocol):
@@ -27,7 +27,7 @@ class LLMClient(Protocol):
     
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4000,
         **kwargs
@@ -40,7 +40,7 @@ class LLMClient(Protocol):
         """
         ...
     
-    def get_token_usage(self) -> Optional[Dict[str, int]]:
+    def get_token_usage(self) -> dict[str, int] | None:
         """
         Get token usage from the last LLM call (if available)
         

@@ -80,7 +80,7 @@ class ConsoleSession:
     session_id: str
     mode: str  # "idle" | "chat"
     bound_agent: str | None = None
-    ecid: str | None = None
+    cycle_id: str | None = None  # SIP-0048: renamed from ecid
     created_at: datetime = field(default_factory=datetime.utcnow)
     pending_responses: list[dict[str, Any]] = field(default_factory=list)
 
@@ -113,11 +113,11 @@ def update_console_session(session_id: str, **kwargs) -> None:
     
     logger.debug(f"Agent Gateway: Updated session {session_id}: {kwargs}")
 
-def generate_console_ecid() -> str:
-    """Generate ECID for console chat session"""
+def generate_console_cycle_id() -> str:
+    """Generate cycle_id for console chat session"""
     timestamp = int(datetime.utcnow().timestamp())
     random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-    return f"ECID-CONSOLE-{timestamp}-{random_suffix}"
+    return f"CYCLE-CONSOLE-{timestamp}-{random_suffix}"
 
 # Configuration
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://squadops:squadops123@rabbitmq:5672/")
@@ -278,7 +278,7 @@ class CommandHandler:
                     "lines": [f"Error: Agent '{agent_name}' not found"],
                     "mode": "idle",
                     "bound_agent": None,
-                    "ecid": None
+                    "cycle_id": None
                 }
             
             if not agent_online:
@@ -286,20 +286,20 @@ class CommandHandler:
                     "lines": [f"Error: Agent '{agent_name}' is offline"],
                     "mode": "idle",
                     "bound_agent": None,
-                    "ecid": None
+                    "cycle_id": None
                 }
             
-            # Create ECID and update session
-            ecid = generate_console_ecid()
-            update_console_session(session_id, mode="chat", bound_agent=agent_name.lower(), ecid=ecid)
+            # Create cycle_id and update session
+            cycle_id = generate_console_cycle_id()
+            update_console_session(session_id, mode="chat", bound_agent=agent_name.lower(), cycle_id=cycle_id)
             
-            logger.info(f"Agent Gateway: Chat started: {agent_name} (session: {session_id}, ecid: {ecid})")
+            logger.info(f"Agent Gateway: Chat started: {agent_name} (session: {session_id}, cycle_id: {cycle_id})")
             
             return {
                 "lines": [f"Chat started with {agent_name}. Type 'chat end' to exit."],
                 "mode": "chat",
                 "bound_agent": agent_name.lower(),
-                "ecid": ecid
+                "cycle_id": cycle_id
             }
         except Exception as e:
             logger.error(f"Agent Gateway: Failed to start chat: {e}")
@@ -307,7 +307,7 @@ class CommandHandler:
                 "lines": [f"Error: Failed to start chat: {str(e)}"],
                 "mode": "idle",
                 "bound_agent": None,
-                "ecid": None
+                "cycle_id": None
             }
     
     async def handle_chat_end(self, session_id: str) -> dict[str, Any]:
@@ -316,20 +316,20 @@ class CommandHandler:
             session = get_console_session(session_id)
             if session and session.mode == "chat":
                 agent_name = session.bound_agent
-                update_console_session(session_id, mode="idle", bound_agent=None, ecid=None)
+                update_console_session(session_id, mode="idle", bound_agent=None, cycle_id=None)
                 logger.info(f"Agent Gateway: Chat ended: {agent_name} (session: {session_id})")
                 return {
                     "lines": [f"Chat ended with {agent_name}."],
                     "mode": "idle",
                     "bound_agent": None,
-                    "ecid": None
+                    "cycle_id": None
                 }
             else:
                 return {
                     "lines": ["Not in chat mode."],
                     "mode": "idle",
                     "bound_agent": None,
-                    "ecid": None
+                    "cycle_id": None
                 }
         except Exception as e:
             logger.error(f"Agent Gateway: Failed to end chat: {e}")
@@ -337,7 +337,7 @@ class CommandHandler:
                 "lines": [f"Error: Failed to end chat: {str(e)}"],
                 "mode": "idle",
                 "bound_agent": None,
-                "ecid": None
+                "cycle_id": None
             }
     
     async def handle_whoami(self, session_id: str) -> list[str]:
@@ -351,7 +351,7 @@ class CommandHandler:
             f"  Session ID: {session.session_id}",
             f"  Mode: {session.mode}",
             f"  Bound Agent: {session.bound_agent or 'None'}",
-            f"  ECID: {session.ecid or 'None'}",
+            f"  Cycle ID: {session.cycle_id or 'None'}",
             f"  Created: {session.created_at.isoformat()}"
         ]
         return lines
@@ -364,7 +364,7 @@ class CommandHandler:
                 "lines": ["Error: Session not found"],
                 "mode": "idle",
                 "bound_agent": None,
-                "ecid": None
+                "cycle_id": None
             }
         
         if session.mode != "chat" or not session.bound_agent:
@@ -372,13 +372,13 @@ class CommandHandler:
                 "lines": ["Error: Not in chat mode. Use 'chat <agent>' to start."],
                 "mode": session.mode,
                 "bound_agent": session.bound_agent,
-                "ecid": session.ecid
+                "cycle_id": session.cycle_id
             }
         
         try:
             # Build A2A message and send via RabbitMQ
             agent_name = session.bound_agent
-            ecid = session.ecid
+            cycle_id = session.cycle_id
             
             # Build A2A message
             timestamp = int(datetime.utcnow().timestamp())
@@ -390,12 +390,12 @@ class CommandHandler:
                 },
                 "metadata": {
                     "pid": f"PID-CONSOLE-{timestamp}",
-                    "ecid": ecid,
+                    "cycle_id": cycle_id,
                     "tags": ["console", "chat"],
                     "response_queue": "console_responses",  # Gateway tells agent where to respond
                     "correlation_id": session_id              # Gateway uses this to match response
                 },
-                "request_id": f"{ecid}-{timestamp}"
+                "request_id": f"{cycle_id}-{timestamp}"
             }
             
             # Send via RabbitMQ to comms queue (not tasks queue)
@@ -421,7 +421,7 @@ class CommandHandler:
                 "lines": [f"[You → {agent_name}]: {message}"],
                 "mode": session.mode,
                 "bound_agent": session.bound_agent,
-                "ecid": session.ecid
+                "cycle_id": session.cycle_id
             }
         except Exception as e:
             logger.error(f"Agent Gateway: Failed to send chat message: {e}")
@@ -429,7 +429,7 @@ class CommandHandler:
                 "lines": [f"Error: Failed to send message: {str(e)}"],
                 "mode": session.mode,
                 "bound_agent": session.bound_agent,
-                "ecid": session.ecid
+                "cycle_id": session.cycle_id
             }
 
 class HealthChecker:
@@ -1084,8 +1084,8 @@ class HealthChecker:
             if not self.pg_pool:
                 await self.init_connections()
             
-            # Create ECID for this warmboot (Max will create the execution cycle)
-            ecid = f"ECID-WB-{request.run_id.replace('run-', '')}"
+            # Create cycle_id for this warmboot (Max will create the execution cycle)
+            cycle_id = f"CYCLE-WB-{request.run_id.replace('run-', '')}"
             
             # Send messages to agents via RabbitMQ
             connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
@@ -1097,7 +1097,7 @@ class HealthChecker:
             max_message = {
                 "action": "validate.warmboot",
                 "payload": {
-                    "task_id": f"{ecid}-main",
+                    "task_id": f"{cycle_id}-main",
                     "application": request.application,
                     "request_type": request.request_type,
                     "agents": request.agents,
@@ -1109,10 +1109,10 @@ class HealthChecker:
                 },
                 "metadata": {
                     "pid": f"PID-{request.run_id.replace('run-', '')}",
-                    "ecid": ecid,
+                    "cycle_id": cycle_id,
                     "tags": ["warmboot", request.request_type]
                 },
-                "request_id": f"{ecid}-main-{int(datetime.utcnow().timestamp())}"
+                "request_id": f"{cycle_id}-main-{int(datetime.utcnow().timestamp())}"
             }
             
             channel.basic_publish(
@@ -1548,7 +1548,7 @@ class ConsoleCommandResponse(BaseModel):
     lines: list[str]
     mode: str
     bound_agent: str | None = None
-    ecid: str | None = None
+    cycle_id: str | None = None  # SIP-0048: renamed from ecid
 
 @app.post("/console/command")
 async def console_command(request: ConsoleCommandRequest):
@@ -1583,7 +1583,7 @@ async def console_command(request: ConsoleCommandRequest):
                 lines=[],
                 mode=session.mode,
                 bound_agent=session.bound_agent,
-                ecid=session.ecid
+                cycle_id=session.cycle_id
             )
         elif cmd == "help":
             lines = await handler.handle_help()
@@ -1592,7 +1592,7 @@ async def console_command(request: ConsoleCommandRequest):
                 lines=lines,
                 mode=session.mode,
                 bound_agent=session.bound_agent,
-                ecid=session.ecid
+                cycle_id=session.cycle_id
             )
         elif cmd == "agent":
             if len(args) == 0:
@@ -1601,7 +1601,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=["Error: 'agent' command requires subcommand (list, status, info, logs)"],
                     mode=session.mode,
                     bound_agent=session.bound_agent,
-                    ecid=session.ecid
+                    cycle_id=session.cycle_id
                 )
             subcmd = args[0].lower()
             if subcmd == "list":
@@ -1611,7 +1611,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=lines,
                     mode=session.mode,
                     bound_agent=session.bound_agent,
-                    ecid=session.ecid
+                    cycle_id=session.cycle_id
                 )
             elif subcmd == "status":
                 lines = await handler.handle_agent_status()
@@ -1620,7 +1620,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=lines,
                     mode=session.mode,
                     bound_agent=session.bound_agent,
-                    ecid=session.ecid
+                    cycle_id=session.cycle_id
                 )
             elif subcmd == "info":
                 if len(args) < 2:
@@ -1629,7 +1629,7 @@ async def console_command(request: ConsoleCommandRequest):
                         lines=["Error: 'agent info' requires agent name"],
                         mode=session.mode,
                         bound_agent=session.bound_agent,
-                        ecid=session.ecid
+                        cycle_id=session.cycle_id
                     )
                 lines = await handler.handle_agent_info(args[1])
                 return ConsoleCommandResponse(
@@ -1637,7 +1637,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=lines,
                     mode=session.mode,
                     bound_agent=session.bound_agent,
-                    ecid=session.ecid
+                    cycle_id=session.cycle_id
                 )
             elif subcmd == "logs":
                 if len(args) < 2:
@@ -1646,7 +1646,7 @@ async def console_command(request: ConsoleCommandRequest):
                         lines=["Error: 'agent logs' requires agent name"],
                         mode=session.mode,
                         bound_agent=session.bound_agent,
-                        ecid=session.ecid
+                        cycle_id=session.cycle_id
                     )
                 n = int(args[2]) if len(args) >= 3 else 10
                 lines = await handler.handle_agent_logs(args[1], n)
@@ -1655,7 +1655,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=lines,
                     mode=session.mode,
                     bound_agent=session.bound_agent,
-                    ecid=session.ecid
+                    cycle_id=session.cycle_id
                 )
             else:
                 return ConsoleCommandResponse(
@@ -1663,7 +1663,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=[f"Error: Unknown agent subcommand '{subcmd}'. Use 'help' for available commands."],
                     mode=session.mode,
                     bound_agent=session.bound_agent,
-                    ecid=session.ecid
+                    cycle_id=session.cycle_id
                 )
         elif cmd == "chat":
             if len(args) == 0:
@@ -1672,7 +1672,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=["Error: 'chat' command requires agent name or 'end'"],
                     mode=session.mode,
                     bound_agent=session.bound_agent,
-                    ecid=session.ecid
+                    cycle_id=session.cycle_id
                 )
             if args[0].lower() == "end":
                 result = await handler.handle_chat_end(request.session_id)
@@ -1681,7 +1681,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=result["lines"],
                     mode=result["mode"],
                     bound_agent=result["bound_agent"],
-                    ecid=result["ecid"]
+                    cycle_id=result["cycle_id"]
                 )
             else:
                 result = await handler.handle_chat_start(request.session_id, args[0])
@@ -1690,7 +1690,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=result["lines"],
                     mode=result["mode"],
                     bound_agent=result["bound_agent"],
-                    ecid=result["ecid"]
+                    cycle_id=result["cycle_id"]
                 )
         elif cmd == "whoami":
             lines = await handler.handle_whoami(request.session_id)
@@ -1700,7 +1700,7 @@ async def console_command(request: ConsoleCommandRequest):
                 lines=lines,
                 mode=session.mode if session else "idle",
                 bound_agent=session.bound_agent if session else None,
-                ecid=session.ecid if session else None
+                cycle_id=session.cycle_id if session else None
             )
         elif cmd == "clear":
             # Client-side only command
@@ -1709,7 +1709,7 @@ async def console_command(request: ConsoleCommandRequest):
                 lines=["[Console cleared]"],
                 mode=session.mode,
                 bound_agent=session.bound_agent,
-                ecid=session.ecid
+                cycle_id=session.cycle_id
             )
         else:
             # Check if in chat mode - treat as message
@@ -1720,7 +1720,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=result["lines"],
                     mode=result["mode"],
                     bound_agent=result["bound_agent"],
-                    ecid=result["ecid"]
+                    cycle_id=result["cycle_id"]
                 )
             else:
                 return ConsoleCommandResponse(
@@ -1728,7 +1728,7 @@ async def console_command(request: ConsoleCommandRequest):
                     lines=[f"Error: Unknown command '{cmd}'. Type 'help' for available commands."],
                     mode=session.mode,
                     bound_agent=session.bound_agent,
-                    ecid=session.ecid
+                    cycle_id=session.cycle_id
                 )
     except HTTPException:
         raise
@@ -1740,7 +1740,7 @@ async def console_command(request: ConsoleCommandRequest):
             lines=[f"Error: {str(e)}"],
             mode=session.mode if session else "idle",
             bound_agent=session.bound_agent if session else None,
-            ecid=session.ecid if session else None
+                cycle_id=session.cycle_id if session else None
         )
 
 @app.get("/console/session")

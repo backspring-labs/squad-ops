@@ -1,10 +1,10 @@
 """
 Mock utilities for testing JSON workflow components.
 """
+from typing import Any
 from unittest.mock import MagicMock
-from typing import Dict, Any, List
+
 import aiohttp
-import asyncio
 
 # TaskSpec and BuildManifest removed - using dict-based requirements instead
 TaskSpec = None
@@ -20,7 +20,7 @@ class MockOllamaResponse:
     """Mock Ollama API response for testing."""
     
     @staticmethod
-    def manifest_response() -> Dict[str, Any]:
+    def manifest_response() -> dict[str, Any]:
         """Valid manifest JSON response."""
         return {
             "architecture": {
@@ -53,7 +53,7 @@ class MockOllamaResponse:
         }
     
     @staticmethod
-    def files_response() -> Dict[str, Any]:
+    def files_response() -> dict[str, Any]:
         """Valid files JSON response."""
         return {
             "files": [
@@ -89,7 +89,7 @@ class MockOllamaResponse:
 class MockAiohttpSession:
     """Mock aiohttp.ClientSession for testing."""
     
-    def __init__(self, response_data: Dict[str, Any] = None, should_timeout: bool = False, 
+    def __init__(self, response_data: dict[str, Any] = None, should_timeout: bool = False, 
                  should_raise_exception: bool = False):
         self.response_data = response_data or MockOllamaResponse.manifest_response()
         self.should_timeout = should_timeout
@@ -102,7 +102,7 @@ class MockAiohttpSession:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         pass
     
-    def post(self, url: str, json: Dict[str, Any] = None, **kwargs):
+    def post(self, url: str, json: dict[str, Any] = None, **kwargs):
         """Mock POST method that returns an async context manager."""
         self.post_calls.append({"url": url, "json": json, "kwargs": kwargs})
         
@@ -116,7 +116,7 @@ class MockAiohttpSession:
 class MockAiohttpResponse:
     """Mock aiohttp response for testing."""
     
-    def __init__(self, response_data: Dict[str, Any] = None, should_timeout: bool = False,
+    def __init__(self, response_data: dict[str, Any] = None, should_timeout: bool = False,
                  should_raise_exception: bool = False, malformed_json: bool = False):
         self.response_data = response_data or MockOllamaResponse.manifest_response()
         self.should_timeout = should_timeout
@@ -125,7 +125,7 @@ class MockAiohttpResponse:
     
     async def __aenter__(self):
         if self.should_timeout:
-            raise asyncio.TimeoutError("Mock timeout")
+            raise TimeoutError("Mock timeout")
         
         if self.should_raise_exception:
             raise aiohttp.ClientError("Mock connection error")
@@ -147,7 +147,7 @@ class MockAiohttpResponse:
         return 200
 
 
-def create_sample_task_spec() -> Dict[str, Any]:
+def create_sample_task_spec() -> dict[str, Any]:
     """Create a sample requirements dict for testing (replaces TaskSpec)."""
     return {
         "app_name": "TestApp",
@@ -160,7 +160,7 @@ def create_sample_task_spec() -> Dict[str, Any]:
     }
 
 
-def create_sample_build_manifest() -> Dict[str, Any]:
+def create_sample_build_manifest() -> dict[str, Any]:
     """Create a sample manifest dict for testing (replaces BuildManifest)."""
     return {
         "architecture_type": "spa_web_app",
@@ -193,7 +193,7 @@ class MockFileManager:
         self.create_file_calls = []
         self.directories = set()  # Track created directories
     
-    async def create_file(self, file_path: str, content: str, directory: str = None) -> Dict[str, Any]:
+    async def create_file(self, file_path: str, content: str, directory: str = None) -> dict[str, Any]:
         """Mock create_file method."""
         self.create_file_calls.append({"path": file_path, "content": content, "directory": directory})
         self.created_files[file_path] = content
@@ -205,21 +205,21 @@ class MockFileManager:
         """Mock directory_exists method."""
         return directory in self.directories or any(directory.startswith(d) for d in self.directories)
     
-    async def list_files(self, directory: str) -> List[str]:
+    async def list_files(self, directory: str) -> list[str]:
         """Mock list_files method - returns file paths that were created."""
         # Return files that were created (simplified - just return created file paths)
         return list(self.created_files.keys())
     
-    async def create_directory(self, directory: str) -> Dict[str, Any]:
+    async def create_directory(self, directory: str) -> dict[str, Any]:
         """Mock create_directory method."""
         self.directories.add(directory)
         return {"status": "success", "directory": directory}
     
-    async def get_operation_history(self) -> List[Dict[str, Any]]:
+    async def get_operation_history(self) -> list[dict[str, Any]]:
         """Mock get_operation_history method."""
         return self.create_file_calls.copy()
     
-    def get_created_files(self) -> Dict[str, str]:
+    def get_created_files(self) -> dict[str, str]:
         """Get all created files."""
         return self.created_files.copy()
 
@@ -232,13 +232,13 @@ class MockDockerManager:
         self.deploy_calls = []
         self.containers = {}
     
-    async def build_image(self, app_name: str, version: str, source_dir: str) -> Dict[str, Any]:
+    async def build_image(self, app_name: str, version: str, source_dir: str) -> dict[str, Any]:
         """Mock build_image method."""
         self.build_calls.append({"app_name": app_name, "version": version, "source_dir": source_dir})
         return {"status": "success", "image_name": f"{app_name.lower()}:{version}"}
     
     async def deploy_container(self, image_name: str, container_name: str, 
-                              port: int = 80, target_url: str = None) -> Dict[str, Any]:
+                              port: int = 80, target_url: str = None) -> dict[str, Any]:
         """Mock deploy_container method."""
         self.deploy_calls.append({
             "image_name": image_name,
@@ -259,7 +259,7 @@ class MockAgentMessage:
     """Mock AgentMessage for testing."""
     
     def __init__(self, sender: str, recipient: str, message_type: str, 
-                 payload: Dict[str, Any], context: Dict[str, Any] = None):
+                 payload: dict[str, Any], context: dict[str, Any] = None):
         self.sender = sender
         self.recipient = recipient
         self.message_type = message_type
@@ -267,7 +267,7 @@ class MockAgentMessage:
         self.context = context or {}
 
 
-def mock_ollama_json_call(response_data: Dict[str, Any] = None, 
+def mock_ollama_json_call(response_data: dict[str, Any] = None, 
                          should_fail: bool = False) -> MagicMock:
     """Create a mock for _call_ollama_json method."""
     mock = MagicMock()
@@ -285,14 +285,14 @@ def mock_ollama_json_call(response_data: Dict[str, Any] = None,
 # ============================================================================
 
 def create_sample_agent_request(action: str = "build.artifact", 
-                               payload: Dict[str, Any] = None,
-                               metadata: Dict[str, Any] = None) -> AgentRequest:
+                               payload: dict[str, Any] = None,
+                               metadata: dict[str, Any] = None) -> AgentRequest:
     """Create a sample AgentRequest for testing."""
     if payload is None:
         payload = {"task_id": "test-001", "project": "test-project"}
     
     if metadata is None:
-        metadata = {"pid": "PID-001", "ecid": "ECID-001", "tags": ["test"]}
+        metadata = {"pid": "PID-001", "cycle_id": "CYCLE-001", "tags": ["test"]}  # SIP-0048: renamed from ecid
     
     return AgentRequest(
         action=action,
@@ -302,7 +302,7 @@ def create_sample_agent_request(action: str = "build.artifact",
 
 
 def create_sample_agent_response(status: str = "ok",
-                                 result: Dict[str, Any] = None,
+                                 result: dict[str, Any] = None,
                                  error: Error = None,
                                  idempotency_key: str = "test-key-001") -> AgentResponse:
     """Create a sample AgentResponse for testing."""
@@ -330,7 +330,7 @@ def create_sample_build_artifact_request(task_id: str = "test-001") -> AgentRequ
     return create_sample_agent_request(
         action="build.artifact",
         payload={"task_id": task_id, "project": "test-project"},
-        metadata={"pid": "PID-001", "ecid": "ECID-001"}
+        metadata={"pid": "PID-001", "cycle_id": "CYCLE-001"}  # SIP-0048: renamed from ecid
     )
 
 
@@ -339,14 +339,14 @@ def create_sample_test_run_request(task_id: str = "test-001") -> AgentRequest:
     return create_sample_agent_request(
         action="test.run",
         payload={"task_id": task_id, "test_suite": "unit"},
-        metadata={"pid": "PID-001", "ecid": "ECID-001"}
+        metadata={"pid": "PID-001", "cycle_id": "CYCLE-001"}  # SIP-0048: renamed from ecid
     )
 
 
-def create_sample_validate_warmboot_request(ecid: str = "ECID-001") -> AgentRequest:
+def create_sample_validate_warmboot_request(cycle_id: str = "CYCLE-001") -> AgentRequest:  # SIP-0048: renamed from ecid
     """Create a sample validate.warmboot request."""
     return create_sample_agent_request(
         action="validate.warmboot",
         payload={"run_id": "run-001"},
-        metadata={"pid": "PID-001", "ecid": ecid}
+        metadata={"pid": "PID-001", "cycle_id": cycle_id}  # SIP-0048: renamed from ecid
     )

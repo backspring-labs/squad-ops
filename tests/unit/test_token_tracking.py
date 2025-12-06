@@ -165,7 +165,7 @@ class TestTokenTracking:
             mock_tasks_resp.__aexit__ = AsyncMock(return_value=None)
             
             mock_cycle_resp = AsyncMock(status=200, json=AsyncMock(return_value={
-                'ecid': 'ECID-WB-001',
+                'cycle_id': 'ECID-WB-001',
                 'start_time': '2024-01-01T00:00:00Z'
             }))
             mock_cycle_resp.__aenter__ = AsyncMock(return_value=mock_cycle_resp)

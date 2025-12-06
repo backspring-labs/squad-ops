@@ -7,16 +7,17 @@ with clear messages indicating that Prefect integration is not yet implemented.
 """
 
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Any
+
 from agents.tasks.base_adapter import TaskAdapterBase
 from agents.tasks.models import (
-    Task,
-    TaskCreate,
-    TaskState,
-    TaskFilters,
     Artifact,
     FlowRun,
     FlowState,
+    Task,
+    TaskCreate,
+    TaskFilters,
+    TaskState,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,20 +71,20 @@ class PrefectTasksAdapter(TaskAdapterBase):
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
-    async def get_task(self, task_id: str) -> Optional[Task]:
+    async def get_task(self, task_id: str) -> Task | None:
         """Get a task by ID"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
-    async def list_tasks(self, filters: TaskFilters) -> List[Task]:
+    async def list_tasks(self, filters: TaskFilters) -> list[Task]:
         """List tasks matching filters"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
     async def update_task_state(
-        self, task_id: str, state: TaskState, meta: Optional[Dict[str, Any]] = None
+        self, task_id: str, state: TaskState, meta: dict[str, Any] | None = None
     ) -> Task:
         """Update task state"""
         raise NotImplementedError(
@@ -102,20 +103,20 @@ class PrefectTasksAdapter(TaskAdapterBase):
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
-    async def list_tasks_for_pid(self, pid: str) -> List[Task]:
+    async def list_tasks_for_pid(self, pid: str) -> list[Task]:
         """List all tasks for a process ID"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
-    async def list_tasks_for_ecid(self, ecid: str) -> List[Task]:
+    async def list_tasks_for_cycle_id(self, cycle_id: str) -> list[Task]:
         """List all tasks for an execution cycle ID"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
     async def create_flow(
-        self, ecid: str, pid: str, meta: Optional[Dict[str, Any]] = None
+        self, cycle_id: str, pid: str, meta: dict[str, Any] | None = None
     ) -> FlowRun:
         """Create a new execution cycle (flow)"""
         raise NotImplementedError(
@@ -123,26 +124,26 @@ class PrefectTasksAdapter(TaskAdapterBase):
         )
 
     async def update_flow(
-        self, flow_id: str, state: FlowState, meta: Optional[Dict[str, Any]] = None
+        self, flow_id: str, state: FlowState, meta: dict[str, Any] | None = None
     ) -> FlowRun:
         """Update an execution cycle (flow)"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
-    async def get_flow(self, ecid: str) -> Optional[FlowRun]:
-        """Get an execution cycle by ECID"""
+    async def get_flow(self, cycle_id: str) -> FlowRun | None:
+        """Get an execution cycle by cycle_id"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
-    async def list_flows(self, run_type: Optional[str] = None) -> List[FlowRun]:
+    async def list_flows(self, run_type: str | None = None) -> list[FlowRun]:
         """List execution cycles, optionally filtered by run_type"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
-    async def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task_status(self, task_id: str) -> dict[str, Any] | None:
         """Get task status from task_status table"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
@@ -153,15 +154,15 @@ class PrefectTasksAdapter(TaskAdapterBase):
         task_id: str,
         status: str,
         progress: float = 0.0,
-        eta: Optional[str] = None,
-        agent_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        eta: str | None = None,
+        agent_name: str | None = None,
+    ) -> dict[str, Any]:
         """Update task status in task_status table"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."
         )
 
-    async def get_task_summary(self, ecid: str) -> Dict[str, Any]:
+    async def get_task_summary(self, cycle_id: str) -> dict[str, Any]:
         """Get task summary statistics for an execution cycle"""
         raise NotImplementedError(
             "Prefect adapter not yet implemented. Use TASKS_BACKEND=sql for now."

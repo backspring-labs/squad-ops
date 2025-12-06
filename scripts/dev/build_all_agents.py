@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build all agent packages"""
-from pathlib import Path
 import sys
+from pathlib import Path
+
 from scripts.dev.build_agent import build_agent_package
 
 roles = ['qa', 'lead', 'dev', 'strat', 'data', 'finance', 'comms', 'curator', 'creative', 'audit', 'devops']

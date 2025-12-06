@@ -215,7 +215,7 @@ class TestCapabilityLoader:
                     'framework': 'vanilla_js'
                 },
                 'features': ['Feature 1'],
-                'ecid': 'ECID-001'
+                'cycle_id': 'ECID-001'
             }
             
             result = await loader.execute('build.artifact', mock_agent, requirements)

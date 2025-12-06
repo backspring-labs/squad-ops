@@ -4,12 +4,15 @@ Snapshot tests for regression prevention
 Compares current outputs against known good states
 """
 
-import pytest
 import json
 from pathlib import Path
 from unittest.mock import patch
-from agents.roles.lead.agent import LeadAgent
+
+import pytest
+
 from agents.roles.dev.agent import DevAgent
+from agents.roles.lead.agent import LeadAgent
+
 
 class TestSnapshots:
     """Snapshot tests to prevent regressions"""
@@ -57,7 +60,7 @@ class TestSnapshots:
                 pytest.skip("Created initial snapshot - run test again to verify")
             
             # Load and compare with snapshot
-            with open(snapshot_file, 'r') as f:
+            with open(snapshot_file) as f:
                 snapshot_data = json.load(f)
             
             assert normalized_result == snapshot_data, \
@@ -91,7 +94,7 @@ class TestSnapshots:
             pytest.skip("Created initial snapshot - run test again to verify")
         
         # Load and compare with snapshot
-        with open(snapshot_file, 'r') as f:
+        with open(snapshot_file) as f:
             snapshot_data = json.load(f)
         
         assert normalized_tasks == snapshot_data, \
@@ -132,7 +135,7 @@ class TestSnapshots:
             pytest.skip("Created initial snapshot - run test again to verify")
         
         # Load and compare with snapshot
-        with open(snapshot_file, 'r') as f:
+        with open(snapshot_file) as f:
             snapshot_data = json.load(f)
         
         # Migrate old snapshot format if needed (backward compatibility)
@@ -182,7 +185,7 @@ class TestSnapshots:
             pytest.skip("Created initial snapshot - run test again to verify")
         
         # Load and compare with snapshot
-        with open(snapshot_file, 'r') as f:
+        with open(snapshot_file) as f:
             snapshot_data = json.load(f)
         
         assert results == snapshot_data, \
@@ -223,7 +226,7 @@ class TestSnapshots:
             pytest.skip("Created initial snapshot - run test again to verify")
         
         # Load and compare with snapshot
-        with open(snapshot_file, 'r') as f:
+        with open(snapshot_file) as f:
             snapshot_data = json.load(f)
         
         assert results == snapshot_data, \

@@ -52,7 +52,7 @@ class TestManifestGenerator:
             'prd_analysis': 'Test analysis',
             'constraints': {},
             'success_criteria': ['Deploy successfully'],
-            'ecid': 'ec-001',
+            'cycle_id': 'ec-001',
             'target_directory': '/test/target'
         }
         
@@ -92,7 +92,7 @@ class TestManifestGenerator:
             'application': 'TestApp',
             'version': '1.0.0',
             'features': ['feature1', 'feature2'],
-            'ecid': 'ec-001'
+            'cycle_id': 'ec-001'
         }
         
         mock_manifest = {'architecture_type': 'spa_web_app', 'files': []}
@@ -115,7 +115,7 @@ class TestManifestGenerator:
             'application': 'TestApp',
             'version': '1.0.0',
             'features': [{'name': 'feature1'}, {'description': 'feature2'}],
-            'ecid': 'ec-001'
+            'cycle_id': 'ec-001'
         }
         
         mock_manifest = {'architecture_type': 'spa_web_app', 'files': []}
@@ -138,7 +138,7 @@ class TestManifestGenerator:
             'application': 'TestApp',
             'version': '1.0.0',
             'features': [],
-            'ecid': 'ec-001'
+            'cycle_id': 'ec-001'
         }
         
         mock_manifest = {'architecture_type': 'spa_web_app', 'files': []}

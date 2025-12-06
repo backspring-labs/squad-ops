@@ -9,12 +9,13 @@ These tests verify that:
 5. Build hash propagation works correctly
 """
 
-import pytest
-import subprocess
-import docker
-import time
 import json
+import subprocess
+import time
 from pathlib import Path
+
+import docker
+import pytest
 
 
 @pytest.mark.integration

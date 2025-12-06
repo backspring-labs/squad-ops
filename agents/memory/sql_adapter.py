@@ -3,10 +3,11 @@ SqlAdapter - PostgreSQL-based memory provider for Squad Memory Pool
 Implements MemoryProvider interface for Squad layer memory (validated, shared)
 """
 
-import logging
 import json
-from typing import List, Optional
+import logging
+
 import asyncpg
+
 from agents.memory.base import MemoryProvider
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class SqlAdapter(MemoryProvider):
         Store a memory item in Squad Memory Pool.
         
         Args:
-            item: Dictionary with ns, agent, tags, content, importance, pid, ecid, status, validator
+            item: Dictionary with ns, agent, tags, content, importance, pid, cycle_id, status, validator
         
         Returns:
             Memory ID (UUID) as string
@@ -42,7 +43,7 @@ class SqlAdapter(MemoryProvider):
                 agent = item.get('agent', 'unknown')
                 ns = item.get('ns', 'squad')
                 pid = item.get('pid')
-                ecid = item.get('ecid')
+                cycle_id = item.get('cycle_id')
                 tags = item.get('tags', [])
                 importance = item.get('importance', 0.7)
                 status = item.get('status', 'validated')
@@ -52,7 +53,7 @@ class SqlAdapter(MemoryProvider):
                 # Insert into squad_mem_pool
                 query = """
                     INSERT INTO squad_mem_pool 
-                    (agent, ns, pid, ecid, tags, importance, status, validator, content)
+                    (agent, ns, pid, cycle_id, tags, importance, status, validator, content)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
                     RETURNING id
                 """
@@ -62,7 +63,7 @@ class SqlAdapter(MemoryProvider):
                     agent,
                     ns,
                     pid,
-                    ecid,
+                    cycle_id,
                     tags,
                     importance,
                     status,
@@ -77,7 +78,7 @@ class SqlAdapter(MemoryProvider):
             logger.error(f"Failed to store memory in Squad Memory Pool: {e}")
             raise
     
-    async def put_if_not_exists(self, item: dict) -> Optional[str]:
+    async def put_if_not_exists(self, item: dict) -> str | None:
         """
         Store a memory item only if it doesn't already exist.
         
@@ -118,7 +119,7 @@ class SqlAdapter(MemoryProvider):
             logger.error(f"Failed to put_if_not_exists in Squad Memory Pool: {e}")
             raise
     
-    async def get(self, query: str, k: int = 8, **kw) -> List[dict]:
+    async def get(self, query: str, k: int = 8, **kw) -> list[dict]:
         """
         Retrieve memories from Squad Memory Pool.
         
@@ -165,10 +166,10 @@ class SqlAdapter(MemoryProvider):
                     params.append(kw['pid'])
                     param_idx += 1
                 
-                # Filter by ecid
-                if 'ecid' in kw:
-                    conditions.append(f"ecid = ${param_idx}")
-                    params.append(kw['ecid'])
+                # Filter by cycle_id
+                if 'cycle_id' in kw:
+                    conditions.append(f"cycle_id = ${param_idx}")
+                    params.append(kw['cycle_id'])
                     param_idx += 1
                 
                 # Filter by namespace
@@ -199,7 +200,7 @@ class SqlAdapter(MemoryProvider):
                 
                 # Execute query
                 sql_query = f"""
-                    SELECT id, agent, ns, pid, ecid, tags, importance, status, validator, content, created_at
+                    SELECT id, agent, ns, pid, cycle_id, tags, importance, status, validator, content, created_at
                     FROM squad_mem_pool
                     WHERE {where_clause}
                     ORDER BY importance DESC, created_at DESC
@@ -217,7 +218,7 @@ class SqlAdapter(MemoryProvider):
                         'agent': row['agent'],
                         'ns': row['ns'],
                         'pid': row['pid'],
-                        'ecid': row['ecid'],
+                        'cycle_id': row['cycle_id'],
                         'tags': row['tags'] or [],
                         'importance': float(row['importance']),
                         'status': row['status'],

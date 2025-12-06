@@ -5,7 +5,7 @@ Implements warmboot.memory capability for loading WarmBoot memories and governan
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class WarmBootMemoryHandler:
         self.sql_adapter = getattr(agent_instance, 'sql_adapter', None)
         self.record_memory = agent_instance.record_memory if hasattr(agent_instance, 'record_memory') else None
     
-    async def load_memories(self, ecid: Optional[str] = None, pid: Optional[str] = None) -> Dict[str, Any]:
+    async def load_memories(self, cycle_id: str | None = None, pid: str | None = None) -> dict[str, Any]:
         """
         Load relevant memories for WarmBoot context (SIP-042).
         Pre-loads agent memories from Squad Memory Pool.
@@ -37,7 +37,7 @@ class WarmBootMemoryHandler:
         Implements the warmboot.memory capability.
         
         Args:
-            ecid: Optional execution cycle ID
+            cycle_id: Optional execution cycle ID
             pid: Optional process ID
             
         Returns:
@@ -54,15 +54,15 @@ class WarmBootMemoryHandler:
             
             # Load from Squad Memory Pool
             kwargs = {'status': 'validated'}
-            if ecid:
-                kwargs['ecid'] = ecid
+            if cycle_id:
+                kwargs['cycle_id'] = cycle_id
             if pid:
                 kwargs['pid'] = pid
             
             memories = await self.sql_adapter.get("", k=20, **kwargs)
             
             if memories:
-                logger.info(f"{self.name}: Loaded {len(memories)} memories for WarmBoot context (ECID: {ecid}, PID: {pid})")
+                logger.info(f"{self.name}: Loaded {len(memories)} memories for WarmBoot context (cycle_id: {cycle_id}, PID: {pid})")
                 # Store in agent context for use during task processing
                 if not hasattr(self.agent, 'warmboot_memories'):
                     self.agent.warmboot_memories = []
@@ -74,7 +74,7 @@ class WarmBootMemoryHandler:
                     'memories': memories
                 }
             else:
-                logger.debug(f"{self.name}: No memories found for ECID: {ecid}, PID: {pid}")
+                logger.debug(f"{self.name}: No memories found for cycle_id: {cycle_id}, PID: {pid}")
                 return {
                     'memories_loaded': False,
                     'memory_count': 0,
@@ -90,7 +90,7 @@ class WarmBootMemoryHandler:
                 'error': str(e)
             }
     
-    async def log_governance(self, run_id: str, manifest: Dict[str, Any], files: List[str]) -> Dict[str, Any]:
+    async def log_governance(self, run_id: str, manifest: dict[str, Any], files: list[str]) -> dict[str, Any]:
         """
         Log WarmBoot governance information (SIP-042).
         

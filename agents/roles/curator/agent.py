@@ -3,13 +3,14 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, List
 from datetime import datetime
-from agents.base_agent import BaseAgent, AgentMessage
+from pathlib import Path
+from typing import Any
+
+from agents.base_agent import AgentMessage, BaseAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ class CuratorAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_research_curation(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_research_curation(self, request: AgentRequest) -> dict[str, Any]:
         """Handle research.curation capability"""
         
         # Map existing research curation logic to new capability format
@@ -105,7 +106,7 @@ class CuratorAgent(BaseAgent):
             'insights': []
         }
     
-    async def _handle_trend_analysis(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_trend_analysis(self, request: AgentRequest) -> dict[str, Any]:
         """Handle research.trend_analysis capability"""
         
         # Map existing trend analysis logic to new capability format
@@ -115,7 +116,7 @@ class CuratorAgent(BaseAgent):
             'predictions': []
         }
     
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Process pattern detection tasks using continuous learning"""
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', 'pattern_analysis')
@@ -175,7 +176,7 @@ class CuratorAgent(BaseAgent):
         else:
             logger.info(f"Og received message: {message.message_type} from {message.sender}")
     
-    async def build_knowledge_graph(self, task: Dict[str, Any]):
+    async def build_knowledge_graph(self, task: dict[str, Any]):
         """Build knowledge graph from task data"""
         task_id = task.get('task_id')
         data_points = task.get('data_points', [])
@@ -204,7 +205,7 @@ class CuratorAgent(BaseAgent):
         
         self.knowledge_graph[task_id] = nodes
     
-    async def detect_patterns(self, task: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def detect_patterns(self, task: dict[str, Any]) -> list[dict[str, Any]]:
         """Detect patterns in the data"""
         task_id = task.get('task_id')
         nodes = self.knowledge_graph.get(task_id, {})
@@ -239,7 +240,7 @@ class CuratorAgent(BaseAgent):
         
         return patterns
     
-    async def analyze_trends(self, patterns: List[Dict[str, Any]], task: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def analyze_trends(self, patterns: list[dict[str, Any]], task: dict[str, Any]) -> list[dict[str, Any]]:
         """Analyze trends from patterns"""
         trends = []
         
@@ -259,7 +260,7 @@ class CuratorAgent(BaseAgent):
         
         return trends
     
-    async def synthesize_insights(self, patterns: List[Dict[str, Any]], trends: List[Dict[str, Any]], task: Dict[str, Any]) -> Dict[str, Any]:
+    async def synthesize_insights(self, patterns: list[dict[str, Any]], trends: list[dict[str, Any]], task: dict[str, Any]) -> dict[str, Any]:
         """Synthesize insights from patterns and trends"""
         insights = {
             'summary': f"Analysis of {len(patterns)} patterns and {len(trends)} trends",
@@ -283,7 +284,7 @@ class CuratorAgent(BaseAgent):
         
         return insights
     
-    async def update_learning(self, task: Dict[str, Any], patterns: List[Dict[str, Any]], trends: List[Dict[str, Any]]):
+    async def update_learning(self, task: dict[str, Any], patterns: list[dict[str, Any]], trends: list[dict[str, Any]]):
         """Update learning history"""
         learning_entry = {
             'timestamp': task.get('timestamp'),

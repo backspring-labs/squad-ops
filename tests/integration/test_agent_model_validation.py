@@ -7,15 +7,15 @@ Verifies that all agents are configured with models that:
 
 This test prevents runtime failures like "model 'mixtral-8x7b' not found".
 """
-import pytest
-import aiohttp
-import yaml
 import asyncio
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+
+import aiohttp
+import pytest
+import yaml
 
 
-def get_agent_model_configs() -> Dict[str, Dict[str, str]]:
+def get_agent_model_configs() -> dict[str, dict[str, str]]:
     """
     Discover and parse agent configs for lead, dev, and strat agents only.
     
@@ -53,7 +53,7 @@ def get_agent_model_configs() -> Dict[str, Dict[str, str]]:
             continue
         
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path) as f:
                 config_data = yaml.safe_load(f)
             
             agent_id = config_data.get('agent_id')
@@ -96,7 +96,7 @@ def get_agent_model_configs() -> Dict[str, Dict[str, str]]:
     return agent_configs
 
 
-async def get_available_ollama_models(ollama_url: str) -> List[str]:
+async def get_available_ollama_models(ollama_url: str) -> list[str]:
     """
     Query Ollama API for available models.
     
@@ -125,11 +125,11 @@ async def get_available_ollama_models(ollama_url: str) -> List[str]:
                     raise Exception(f"Ollama API error {response.status}: {error_text[:200]}")
     except aiohttp.ClientError as e:
         raise Exception(f"Network error connecting to Ollama: {type(e).__name__}: {str(e)}")
-    except asyncio.TimeoutError:
-        raise Exception(f"Ollama API timeout after 10s")
+    except TimeoutError:
+        raise Exception("Ollama API timeout after 10s")
 
 
-async def check_model_available(ollama_url: str, model_name: str) -> Tuple[bool, Optional[str]]:
+async def check_model_available(ollama_url: str, model_name: str) -> tuple[bool, str | None]:
     """
     Test if a model is available and functional by making a simple completion call.
     
@@ -168,7 +168,7 @@ async def check_model_available(ollama_url: str, model_name: str) -> Tuple[bool,
                     return False, f"Ollama API error {response.status}: {error_text[:200]}"
     except aiohttp.ClientError as e:
         return False, f"Network error: {type(e).__name__}: {str(e)}"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return False, "Model test timeout after 30s"
 
 
@@ -239,7 +239,7 @@ class TestAgentModelValidation:
                 error_msg += f"  Config: {missing['config_path']}\n"
                 error_msg += f"  Configured model: {missing['raw_config']}\n"
                 error_msg += f"  Expected model name: {missing['model']}\n"
-                error_msg += f"  Status: ❌ NOT FOUND in Ollama\n"
+                error_msg += "  Status: ❌ NOT FOUND in Ollama\n"
             
             error_msg += "\n" + "=" * 70 + "\n"
             error_msg += f"\nAvailable models in Ollama ({len(available_models)}):\n"
@@ -366,7 +366,7 @@ class TestAgentModelValidation:
             for missing in missing_models:
                 error_msg += f"\nAgent: {missing['agent_id']} ({missing['role']})\n"
                 error_msg += f"  Config: {missing['config_path']}\n"
-                error_msg += f"  Status: ❌ No defaults.model configured\n"
+                error_msg += "  Status: ❌ No defaults.model configured\n"
             
             error_msg += "\n" + "=" * 70 + "\n"
             error_msg += "\n💡 To fix:\n"

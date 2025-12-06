@@ -90,7 +90,7 @@ branch = true
 source = [
   "agents",
   "config",
-  "infra/task-api",
+  "infra/runtime-api",  # SIP-0048: renamed from task-api
   "infra/health-check",
   "scripts",
 ]

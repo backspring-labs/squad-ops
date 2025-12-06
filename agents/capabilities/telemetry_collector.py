@@ -4,12 +4,13 @@ Telemetry Collector Capability Handler
 Implements the telemetry.collect capability for collecting comprehensive telemetry data.
 """
 
+import hashlib
 import logging
 import os
-import hashlib
+from datetime import UTC, datetime
+from typing import Any
+
 import psutil
-from datetime import datetime, timezone
-from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +41,14 @@ class TelemetryCollector:
         self.task_api_url = agent.task_api_url if hasattr(agent, 'task_api_url') else 'http://localhost:8001'
         self.communication_log = agent.communication_log if hasattr(agent, 'communication_log') else []
     
-    async def collect(self, ecid: str, task_id: str) -> Dict[str, Any]:
+    async def collect(self, cycle_id: str, task_id: str) -> dict[str, Any]:
         """
         Collect comprehensive telemetry data.
         
         Implements the telemetry.collect capability.
         
         Args:
-            ecid: Execution cycle ID
+            cycle_id: Execution cycle ID
             task_id: Task ID
             
         Returns:
@@ -66,12 +67,12 @@ class TelemetryCollector:
         
         try:
             # Collect all telemetry components
-            telemetry['database_metrics'] = await self.collect_database_metrics(ecid)
-            telemetry['rabbitmq_metrics'] = await self.collect_rabbitmq_metrics(ecid)
+            telemetry['database_metrics'] = await self.collect_database_metrics(cycle_id)
+            telemetry['rabbitmq_metrics'] = await self.collect_rabbitmq_metrics(cycle_id)
             telemetry['system_metrics'] = await self.collect_system_metrics()
             telemetry['docker_events'] = await self.collect_docker_events(telemetry.get('database_metrics', {}))
             telemetry['artifact_hashes'] = await self.collect_artifact_hashes()
-            telemetry['reasoning_logs'] = await self.collect_reasoning_logs(ecid)
+            telemetry['reasoning_logs'] = await self.collect_reasoning_logs(cycle_id)
             telemetry['event_timeline'] = self.build_event_timeline()
             
             # Add execution duration if available
@@ -84,7 +85,7 @@ class TelemetryCollector:
         
         return telemetry
     
-    async def collect_database_metrics(self, ecid: str) -> Dict[str, Any]:
+    async def collect_database_metrics(self, cycle_id: str) -> dict[str, Any]:
         """Collect database metrics via Task API"""
         metrics = {}
         
@@ -92,19 +93,19 @@ class TelemetryCollector:
             import aiohttp
             
             async with aiohttp.ClientSession() as session:
-                # Get task logs for this ECID
-                async with session.get(f"{self.task_api_url}/api/v1/tasks/ec/{ecid}") as resp:
+                # Get task logs for this cycle_id
+                async with session.get(f"{self.task_api_url}/api/v1/tasks/ec/{cycle_id}") as resp:
                     if resp.status == 200:
                         task_logs = await resp.json()
                         metrics['task_count'] = len(task_logs)
                         metrics['tasks'] = task_logs
                     else:
-                        logger.warning(f"Failed to fetch tasks for ECID {ecid}: {await resp.text()}")
+                        logger.warning(f"Failed to fetch tasks for cycle_id {cycle_id}: {await resp.text()}")
                         metrics['task_count'] = 0
                         metrics['tasks'] = []
                 
                 # Get execution cycle info
-                async with session.get(f"{self.task_api_url}/api/v1/execution-cycles/{ecid}") as resp:
+                async with session.get(f"{self.task_api_url}/api/v1/execution-cycles/{cycle_id}") as resp:
                     if resp.status == 200:
                         cycle_info = await resp.json()
                         metrics['execution_cycle'] = cycle_info
@@ -128,7 +129,7 @@ class TelemetryCollector:
                             logger.warning(f"{self.name} failed to calculate execution duration: {e}")
                             metrics['execution_duration'] = {'error': str(e)}
                     else:
-                        logger.warning(f"Failed to fetch execution cycle {ecid}: {await resp.text()}")
+                        logger.warning(f"Failed to fetch execution cycle {cycle_id}: {await resp.text()}")
             
             logger.info(f"{self.name} collected database metrics: {metrics.get('task_count', 0)} tasks")
             
@@ -138,7 +139,7 @@ class TelemetryCollector:
         
         return metrics
     
-    async def collect_rabbitmq_metrics(self, ecid: str) -> Dict[str, Any]:
+    async def collect_rabbitmq_metrics(self, cycle_id: str) -> dict[str, Any]:
         """Collect RabbitMQ metrics"""
         metrics = {}
         
@@ -164,7 +165,7 @@ class TelemetryCollector:
             try:
                 self.agent.record_counter('rabbitmq_messages_total', total_messages_manual, {
                     'source': 'communication_log',
-                    'ecid': ecid
+                    'cycle_id': cycle_id
                 })
             except Exception as e:
                 logger.debug(f"{self.name} failed to record RabbitMQ telemetry metric: {e}")
@@ -175,7 +176,7 @@ class TelemetryCollector:
             try:
                 import aiohttp
                 prometheus_url = os.getenv('PROMETHEUS_URL', 'http://prometheus:9090')
-                query = f'sum(rabbitmq_messages_total{{ecid="{ecid}"}})'
+                query = f'sum(rabbitmq_messages_total{{cycle_id="{cycle_id}"}})'
                 
                 async with aiohttp.ClientSession() as session:
                     async with session.get(
@@ -221,7 +222,7 @@ class TelemetryCollector:
         
         return metrics
     
-    async def collect_system_metrics(self) -> Dict[str, Any]:
+    async def collect_system_metrics(self) -> dict[str, Any]:
         """Collect system metrics (CPU, memory, GPU)"""
         metrics = {}
         
@@ -274,7 +275,7 @@ class TelemetryCollector:
         
         return metrics
     
-    async def collect_docker_events(self, database_metrics: Dict[str, Any]) -> Dict[str, Any]:
+    async def collect_docker_events(self, database_metrics: dict[str, Any]) -> dict[str, Any]:
         """Collect Docker events"""
         events = {}
         
@@ -289,7 +290,7 @@ class TelemetryCollector:
                 except (ImportError, Exception):
                     cycle_start = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
                     if cycle_start.tzinfo:
-                        cycle_start = cycle_start.astimezone(timezone.utc).replace(tzinfo=None)
+                        cycle_start = cycle_start.astimezone(UTC).replace(tzinfo=None)
             
             # Get Docker events since cycle start (or last 5 minutes as fallback)
             since_time = "5m"  # Default
@@ -350,7 +351,7 @@ class TelemetryCollector:
         
         return events
     
-    async def collect_artifact_hashes(self) -> Dict[str, str]:
+    async def collect_artifact_hashes(self) -> dict[str, str]:
         """Collect artifact hashes"""
         hashes = {}
         
@@ -373,7 +374,7 @@ class TelemetryCollector:
         
         return hashes
     
-    async def collect_reasoning_logs(self, ecid: str) -> Dict[str, Any]:
+    async def collect_reasoning_logs(self, cycle_id: str) -> dict[str, Any]:
         """Collect reasoning logs from communication log"""
         logs = {}
         
@@ -391,7 +392,7 @@ class TelemetryCollector:
                     ollama_log_entry = {
                         'timestamp': entry.get('timestamp'),
                         'agent': entry.get('agent'),
-                        'ecid': entry.get('ecid'),
+                        'cycle_id': entry.get('cycle_id'),
                         'trace_id': entry.get('trace_id'),
                         'prompt': entry.get('prompt', ''),
                         'response': entry.get('full_response', entry.get('description', '')),
@@ -416,14 +417,14 @@ class TelemetryCollector:
             try:
                 import aiohttp
                 prometheus_url = os.getenv('PROMETHEUS_URL', 'http://prometheus:9090')
-                query_with_ecid = f'sum(agent_tokens_used_total{{ecid="{ecid}"}})'
-                query_without_ecid = f'sum(agent_tokens_used_total)'
+                query_with_cycle_id = f'sum(agent_tokens_used_total{{cycle_id="{cycle_id}"}})'
+                query_without_cycle_id = 'sum(agent_tokens_used_total)'
                 
                 async with aiohttp.ClientSession() as session:
-                    # First try with ECID label
+                    # First try with cycle_id label
                     async with session.get(
                         f'{prometheus_url}/api/v1/query',
-                        params={'query': query_with_ecid},
+                        params={'query': query_with_cycle_id},
                         timeout=aiohttp.ClientTimeout(total=5)
                     ) as resp:
                         if resp.status == 200:
@@ -435,15 +436,15 @@ class TelemetryCollector:
                                     tokens_from_telemetry = {
                                         'source': 'prometheus',
                                         'total_tokens': total_tokens_telemetry,
-                                        'query': query_with_ecid
+                                        'query': query_with_cycle_id
                                     }
                                     logger.debug(f"{self.name} Token metrics from Prometheus: {total_tokens_telemetry} tokens")
                     
-                    # If no results with ECID, try without ECID
+                    # If no results with cycle_id, try without cycle_id
                     if total_tokens_telemetry == 0:
                         async with session.get(
                             f'{prometheus_url}/api/v1/query',
-                            params={'query': query_without_ecid},
+                            params={'query': query_without_cycle_id},
                             timeout=aiohttp.ClientTimeout(total=5)
                         ) as resp:
                             if resp.status == 200:
@@ -458,10 +459,10 @@ class TelemetryCollector:
                                         tokens_from_telemetry = {
                                             'source': 'prometheus',
                                             'total_tokens': total_tokens_telemetry,
-                                            'query': query_without_ecid,
-                                            'note': 'Metrics without ECID label - aggregated all tokens'
+                                            'query': query_without_cycle_id,
+                                            'note': 'Metrics without cycle_id label - aggregated all tokens'
                                         }
-                                        logger.debug(f"{self.name} Token metrics from Prometheus (no ECID): {total_tokens_telemetry} tokens")
+                                        logger.debug(f"{self.name} Token metrics from Prometheus (no cycle_id): {total_tokens_telemetry} tokens")
             except Exception as e:
                 logger.debug(f"{self.name} Failed to query Prometheus for token metrics: {e}")
             
@@ -487,7 +488,7 @@ class TelemetryCollector:
         
         return logs
     
-    def build_event_timeline(self) -> List[Dict[str, Any]]:
+    def build_event_timeline(self) -> list[dict[str, Any]]:
         """Build event timeline from communication log"""
         timeline = []
         
@@ -513,7 +514,7 @@ class TelemetryCollector:
             # Try datetime.fromisoformat first (Python 3.7+)
             dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
             if dt.tzinfo:
-                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                dt = dt.astimezone(UTC).replace(tzinfo=None)
             return dt
         except (ValueError, AttributeError):
             # Fallback to dateutil if available
@@ -521,7 +522,7 @@ class TelemetryCollector:
                 from dateutil import parser
                 dt = parser.parse(datetime_str)
                 if dt.tzinfo:
-                    dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                    dt = dt.astimezone(UTC).replace(tzinfo=None)
                 return dt
             except ImportError:
                 # Last resort: assume format and parse manually

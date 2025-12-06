@@ -55,7 +55,7 @@ class TestBaseAgent:
             assert agent.connection is None  # Actual attribute
             # Verify unified config was loaded
             assert agent.config is not None
-            assert agent.task_api_url == 'http://task-api:8001'
+            assert agent.runtime_api_url == 'http://runtime-api:8001'  # SIP-0048: renamed from task_api_url
     
     @pytest.mark.unit
     def test_agent_message_creation(self):
@@ -181,7 +181,7 @@ class TestBaseAgent:
                 agent_type="test",
                 reasoning_style="test"
             )
-            agent.task_api_url = 'http://task-api:8001'
+            agent.runtime_api_url = 'http://runtime-api:8001'  # SIP-0048: renamed from task_api_url
             
             # Mock HTTP response from Task API
             mock_response = AsyncMock()
@@ -202,7 +202,7 @@ class TestBaseAgent:
             # Verify API was called with correct payload
             assert mock_session.post.called
             call_args = mock_session.post.call_args
-            assert call_args[0][0] == 'http://task-api:8001/api/v1/task-status'
+            assert call_args[0][0] == 'http://runtime-api:8001/api/v1/task-status'  # SIP-0048: renamed from task-api
             json_payload = call_args[1]['json']
             assert json_payload['task_id'] == 'task-001'
             assert json_payload['status'] == 'in_progress'
@@ -247,7 +247,7 @@ class TestBaseAgent:
                 request = AgentRequest(
                     action="test.action",
                     payload={},
-                    metadata={"ecid": "ECID-001"}  # Missing pid
+                    metadata={"cycle_id": "CYCLE-001"}  # SIP-0048: renamed from ecid, Missing pid
                 )
                 await agent.handle_agent_request(request)
     
@@ -267,7 +267,7 @@ class TestBaseAgent:
             task = {
                 "action": "test.action",
                 "payload": {"task_id": "test-001"},
-                "metadata": {"pid": "PID-001", "ecid": "ECID-001"}
+                "metadata": {"pid": "PID-001", "cycle_id": "CYCLE-001"}  # SIP-0048: renamed from ecid
             }
             
             result = await agent.process_task(task)
@@ -360,7 +360,7 @@ class TestBaseAgent:
                 agent_type="test",
                 reasoning_style="test"
             )
-            agent.task_api_url = 'http://task-api:8001'
+            agent.runtime_api_url = 'http://runtime-api:8001'  # SIP-0048: renamed from task_api_url
             agent.status = 'online'
             agent.current_task = None
             
@@ -402,18 +402,18 @@ class TestBaseAgent:
         with patch('aiohttp.ClientSession.post') as mock_post:
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json.return_value = {'ecid': 'test-ecid-001', 'status': 'created'}
+            mock_response.json.return_value = {'cycle_id': 'test-cycle-001', 'status': 'created'}  # SIP-0048: renamed from ecid
             mock_post.return_value.__aenter__.return_value = mock_response
             
             result = await agent.create_execution_cycle(
-                ecid="test-ecid-001",
+                cycle_id="test-cycle-001",  # SIP-0048: renamed from ecid
                 pid="test-pid-001",
                 run_type="warmboot",
                 title="Test Execution Cycle",
                 description="Test description"
             )
             
-            assert result['ecid'] == 'test-ecid-001'
+            assert result['cycle_id'] == 'test-cycle-001'  # SIP-0048: renamed from ecid
             assert result['status'] == 'created'
             mock_post.assert_called_once()
     
@@ -435,7 +435,7 @@ class TestBaseAgent:
             
             result = await agent.log_task_start(
                 task_id="task-001",
-                ecid="ecid-001",
+                cycle_id="cycle-001",  # SIP-0048: renamed from ecid
                 description="Test task",
                 priority="HIGH",
                 dependencies=["dep-001"],
@@ -465,7 +465,7 @@ class TestBaseAgent:
             
             result = await agent.log_task_delegation(
                 task_id="task-001",
-                ecid="ecid-001",
+                cycle_id="cycle-001",  # SIP-0048: renamed from ecid
                 delegated_to="dev-agent",
                 description="Delegated task"
             )
@@ -537,16 +537,16 @@ class TestBaseAgent:
         with patch('aiohttp.ClientSession.put') as mock_put:
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json.return_value = {'ecid': 'ecid-001', 'status': 'completed'}
+            mock_response.json.return_value = {'cycle_id': 'cycle-001', 'status': 'completed'}  # SIP-0048: renamed from ecid
             mock_put.return_value.__aenter__.return_value = mock_response
             
             result = await agent.update_execution_cycle_status(
-                ecid="ecid-001",
+                cycle_id="cycle-001",  # SIP-0048: renamed from ecid
                 status="completed",
                 notes="Execution completed successfully"
             )
             
-            assert result['ecid'] == 'ecid-001'
+            assert result['cycle_id'] == 'cycle-001'  # SIP-0048: renamed from ecid
             assert result['status'] == 'completed'
             mock_put.assert_called_once()
     
@@ -1900,13 +1900,13 @@ class TestBaseAgent:
             kind="task_completion",
             payload={"task_id": "task-001", "status": "completed"},
             importance=0.9,
-            task_context={'ecid': 'ec-001', 'pid': 'p-001'}
+            task_context={'cycle_id': 'cycle-001', 'pid': 'p-001'}  # SIP-0048: renamed from ecid
         )
         
         assert mem_id == 'mem-789'
         # Verify context was extracted
         call_args = mock_memory_provider.put.call_args[0][0]
-        assert call_args['ecid'] == 'ec-001'
+        assert call_args['cycle_id'] == 'cycle-001'  # SIP-0048: renamed from ecid
         assert call_args['pid'] == 'p-001'
     
     @pytest.mark.unit
@@ -2023,7 +2023,7 @@ class TestBaseAgent:
             mock_post.return_value.__aenter__.return_value = mock_response
             
             result = await agent.create_execution_cycle(
-                ecid="ec-001",
+                cycle_id="cycle-001",  # SIP-0048: renamed from ecid
                 pid="p-001",
                 run_type="warmboot",
                 title="Test Cycle"

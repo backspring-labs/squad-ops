@@ -3,7 +3,7 @@ MemoryProvider base interface (SIP-042)
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+
 
 class MemoryProvider(ABC):
     """
@@ -30,7 +30,7 @@ class MemoryProvider(ABC):
         pass
     
     @abstractmethod
-    async def get(self, query: str, k: int = 8, **kw) -> List[dict]:
+    async def get(self, query: str, k: int = 8, **kw) -> list[dict]:
         """
         Retrieve memories matching query.
         
@@ -60,7 +60,7 @@ class MemoryProvider(ABC):
         pass
     
     @abstractmethod
-    async def put_if_not_exists(self, item: dict) -> Optional[str]:
+    async def put_if_not_exists(self, item: dict) -> str | None:
         """
         Store a memory item only if it doesn't already exist (singleton pattern).
         

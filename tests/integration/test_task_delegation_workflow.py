@@ -5,11 +5,13 @@ Tests the complete workflow from design manifest completion to build task delega
 This test would have caught the bug where Lead Agent wasn't passing the manifest to Dev Agent's build task.
 """
 
-import pytest
 from datetime import datetime
-from agents.roles.lead.agent import LeadAgent
-from agents.roles.dev.agent import DevAgent
+
+import pytest
+
 from agents.base_agent import AgentMessage
+from agents.roles.dev.agent import DevAgent
+from agents.roles.lead.agent import LeadAgent
 
 
 @pytest.mark.integration

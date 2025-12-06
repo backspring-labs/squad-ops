@@ -6,7 +6,7 @@ Extracts acceptance criteria from PRD content.
 
 import logging
 import re
-from typing import List, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class ParsePRDAcceptanceCriteria:
     Deterministic skill (parsing logic only).
     """
     
-    def extract(self, prd_content: str) -> List[Dict[str, Any]]:
+    def extract(self, prd_content: str) -> list[dict[str, Any]]:
         """
         Extract acceptance criteria from PRD markdown content.
         

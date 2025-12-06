@@ -2,10 +2,11 @@
 Tasks Adapter Registry - Factory for creating and managing task adapters
 """
 
-import os
 import logging
+import os
+
 import asyncpg
-from typing import Optional
+
 from agents.tasks.base_adapter import TaskAdapterBase
 from agents.tasks.sql_adapter import SqlTasksAdapter
 from config.unified_config import get_config
@@ -13,8 +14,8 @@ from config.unified_config import get_config
 logger = logging.getLogger(__name__)
 
 # Global adapter instance (singleton)
-_adapter: Optional[TaskAdapterBase] = None
-_test_adapter: Optional[TaskAdapterBase] = None
+_adapter: TaskAdapterBase | None = None
+_test_adapter: TaskAdapterBase | None = None
 
 
 def set_adapter_for_testing(adapter: TaskAdapterBase) -> None:

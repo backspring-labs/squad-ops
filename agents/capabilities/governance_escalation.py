@@ -5,7 +5,7 @@ Implements governance.escalation capability for handling task escalation request
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class GovernanceEscalation:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
     
-    async def escalate(self, request: Dict[str, Any]) -> Dict[str, Any]:
+    async def escalate(self, request: dict[str, Any]) -> dict[str, Any]:
         """
         Escalate task to premium consultation.
         

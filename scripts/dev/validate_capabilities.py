@@ -4,10 +4,12 @@ Validation script for SIP-046 capability system
 Validates capability catalog, agent configs, and bindings
 """
 
-import sys
-import yaml
 import json
+import sys
 from pathlib import Path
+
+import yaml
+
 
 def validate_capabilities():
     """Validate capability system"""
@@ -21,7 +23,7 @@ def validate_capabilities():
         errors.append(f"Capability catalog not found: {catalog_path}")
         return errors, warnings
     
-    with open(catalog_path, 'r') as f:
+    with open(catalog_path) as f:
         catalog_data = yaml.safe_load(f)
     
     capabilities = {cap['name']: cap for cap in catalog_data.get('capabilities', [])}
@@ -32,7 +34,7 @@ def validate_capabilities():
         errors.append(f"Capability bindings not found: {bindings_path}")
         return errors, warnings
     
-    with open(bindings_path, 'r') as f:
+    with open(bindings_path) as f:
         bindings_data = yaml.safe_load(f)
     
     bindings = bindings_data.get('bindings', {})
@@ -58,7 +60,7 @@ def validate_capabilities():
             warnings.append(f"Agent config not found for role: {role_dir.name}")
             continue
         
-        with open(config_path, 'r') as f:
+        with open(config_path) as f:
             config_data = yaml.safe_load(f)
         
         agent_id = config_data.get('agent_id', 'unknown')
@@ -86,7 +88,7 @@ def validate_capabilities():
     
     if request_schema_path.exists():
         try:
-            with open(request_schema_path, 'r') as f:
+            with open(request_schema_path) as f:
                 json.load(f)
         except json.JSONDecodeError as e:
             errors.append(f"Invalid request schema JSON: {e}")
@@ -95,7 +97,7 @@ def validate_capabilities():
     
     if response_schema_path.exists():
         try:
-            with open(response_schema_path, 'r') as f:
+            with open(response_schema_path) as f:
                 json.load(f)
         except json.JSONDecodeError as e:
             errors.append(f"Invalid response schema JSON: {e}")

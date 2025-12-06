@@ -5,9 +5,9 @@ Implements task.create capability for creating development tasks from PRD analys
 """
 
 import logging
-import time
 import re
-from typing import Dict, Any, Optional
+import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class TaskCreator:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
         self.log_task_start = agent_instance.log_task_start if hasattr(agent_instance, 'log_task_start') else None
-        self.current_ecid = getattr(agent_instance, 'current_ecid', 'ECID-WB-001')
+        self.current_cycle_id = getattr(agent_instance, 'current_cycle_id', 'CYCLE-WB-001')
         self.build_requirements_generator = None  # Will be set if available
     
     def set_build_requirements_generator(self, generator):
@@ -45,8 +45,8 @@ class TaskCreator:
         kebab = re.sub(r'(?<!^)(?=[A-Z])', '-', name)
         return kebab.lower()
     
-    async def create(self, prd_analysis: Dict[str, Any], app_name: str = "application", ecid: str = None, 
-                     build_requirements: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def create(self, prd_analysis: dict[str, Any], app_name: str = "application", cycle_id: str = None, 
+                     build_requirements: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Create development tasks from PRD analysis.
         
@@ -55,7 +55,7 @@ class TaskCreator:
         Args:
             prd_analysis: PRD analysis dictionary with core_features, technical_requirements, etc.
             app_name: Application name
-            ecid: Execution cycle ID
+            cycle_id: Execution cycle ID
             build_requirements: Optional pre-generated build requirements (if not provided, will be generated)
             
         Returns:
@@ -76,17 +76,17 @@ class TaskCreator:
             # Get framework version and determine warm-boot sequence
             framework_version = get_framework_version()  # e.g., "0.1.4"
             
-            # Extract warm-boot sequence from the current ecid
-            # The ecid format: "ECID-WB-###-description" -> extract "###"
-            current_ecid = getattr(self.agent, 'current_ecid', self.current_ecid)
-            ecid_parts = current_ecid.split("-")
-            # For ECID-WB-027-test-harness-validation, get index 2 which is "027"
-            warm_boot_sequence = ecid_parts[2] if len(ecid_parts) > 2 else "001"
+            # Extract warm-boot sequence from the current cycle_id
+            # The cycle_id format: "CYCLE-WB-###-description" -> extract "###"
+            current_cycle_id = getattr(self.agent, 'current_cycle_id', self.current_cycle_id)
+            cycle_id_parts = current_cycle_id.split("-")
+            # For CYCLE-WB-027-test-harness-validation, get index 2 which is "027"
+            warm_boot_sequence = cycle_id_parts[2] if len(cycle_id_parts) > 2 else "001"
             
             app_version = f"{framework_version}.{warm_boot_sequence}"  # e.g., "0.1.4.008"
             
-            # Use provided ecid or fall back to current_ecid for run_id
-            run_id = ecid if ecid else current_ecid
+            # Use provided cycle_id or fall back to current_cycle_id for run_id
+            run_id = cycle_id if cycle_id else current_cycle_id
             
             # Generate build requirements if not provided
             if build_requirements is None:
@@ -115,7 +115,7 @@ class TaskCreator:
                 {
                     "task_id": f"{app_kebab}-archive-{int(time.time())}",
                     "task_type": "development",
-                    "ecid": ecid,
+                    "cycle_id": cycle_id,
                     "description": f"Archive any existing {app_name} application to ensure clean slate build for version {app_version}",
                     "capability": "version.archive",  # Optional: explicit capability (takes precedence over action mapping)
                     "requirements": {
@@ -133,7 +133,7 @@ class TaskCreator:
                 {
                     "task_id": f"{app_kebab}-design-{int(time.time())}",
                     "task_type": "development",
-                    "ecid": ecid,
+                    "cycle_id": cycle_id,
                     "description": f"Design architecture manifest for {app_name} application version {app_version}",
                     "capability": "manifest.generate",  # Optional: explicit capability (takes precedence over action mapping)
                     "requirements": {
@@ -145,7 +145,7 @@ class TaskCreator:
                         "target_directory": f"warm-boot/apps/{app_kebab}/",
                         # Flatten build requirements directly into requirements
                         "app_name": build_requirements.get("app_name", app_name),
-                        "run_id": build_requirements.get("run_id", ecid),
+                        "run_id": build_requirements.get("run_id", cycle_id),
                         "prd_analysis": build_requirements.get("prd_analysis", ""),
                         "features": build_requirements.get("features", []),
                         "constraints": build_requirements.get("constraints", {}),
@@ -157,7 +157,7 @@ class TaskCreator:
                 {
                     "task_id": f"{app_kebab}-build-{int(time.time())}",
                     "task_type": "development",
-                    "ecid": ecid,
+                    "cycle_id": cycle_id,
                     "description": f"Build {app_name} application version {app_version} using JSON workflow",
                     "capability": "docker.build",  # Optional: explicit capability (takes precedence over action mapping)
                     "requirements": {
@@ -172,7 +172,7 @@ class TaskCreator:
                         "from_scratch": True,
                         # Flatten build requirements directly into requirements
                         "app_name": build_requirements.get("app_name", app_name),
-                        "run_id": build_requirements.get("run_id", ecid),
+                        "run_id": build_requirements.get("run_id", cycle_id),
                         "prd_analysis": build_requirements.get("prd_analysis", prd_analysis.get("full_analysis", "")),
                         "constraints": build_requirements.get("constraints", {}),
                         "success_criteria": build_requirements.get("success_criteria", []),
@@ -184,7 +184,7 @@ class TaskCreator:
                 {
                     "task_id": f"{app_kebab}-deploy-{int(time.time())}",
                     "task_type": "development",
-                    "ecid": ecid,
+                    "cycle_id": cycle_id,
                     "description": f"Deploy {app_name} application version {app_version} with proper versioning",
                     "capability": "docker.deploy",  # Optional: explicit capability (takes precedence over action mapping)
                     "requirements": {
@@ -207,7 +207,7 @@ class TaskCreator:
                 for task in tasks:
                     await self.log_task_start(
                         task['task_id'], 
-                        ecid, 
+                        cycle_id, 
                         task['description'],
                         task['priority'],
                         task.get('dependencies', [])

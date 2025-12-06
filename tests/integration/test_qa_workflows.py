@@ -3,8 +3,9 @@ Integration tests for QA test design, dev, and execution workflows
 Tests end-to-end QA workflows
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 class TestQAWorkflows:

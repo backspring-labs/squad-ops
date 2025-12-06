@@ -4,9 +4,10 @@ AppBuilder - JSON workflow application building using LLM.
 Uses structured JSON output from LLMs for manifest and file generation.
 """
 
-from typing import List, Dict, Any
-from agents.llm.client import LLMClient
 import logging
+from typing import Any
+
+from agents.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class AppBuilder:
         name = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', name)
         return name.lower().replace(' ', '-')
     
-    async def _call_llm_json(self, prompt: str, context: str = "AppBuilder") -> Dict:
+    async def _call_llm_json(self, prompt: str, context: str = "AppBuilder") -> dict:
         """Call LLM via router with JSON format enforcement and telemetry logging
         
         Uses the LLM router abstraction layer instead of direct HTTP calls.
@@ -45,7 +46,7 @@ class AppBuilder:
                 'agent.name': self.agent.name,
                 'llm.operation': context,
                 'llm.prompt_length': len(prompt),
-                'ecid': getattr(self.agent, 'current_ecid', None)
+                'cycle_id': getattr(self.agent, 'current_cycle_id', None)
             })
         
         # Call LLM via router with JSON format
@@ -92,7 +93,7 @@ class AppBuilder:
                     'agent': self.agent.name,
                     'message_type': 'llm_reasoning',
                     'description': f"AppBuilder {context}: {response_text[:500]}...",
-                    'ecid': getattr(self.agent, 'current_ecid', None),
+                    'cycle_id': getattr(self.agent, 'current_cycle_id', None),
                     'prompt': prompt,  # Task 1.1: Capture prompt
                     'full_response': response_text,
                     'trace_id': trace_id  # Task 1.1: Link to telemetry trace
@@ -107,13 +108,13 @@ class AppBuilder:
                 # Record token usage metric if available
                 if token_usage:
                     try:
-                        ecid = getattr(self.agent, 'current_ecid', None)
+                        cycle_id = getattr(self.agent, 'current_cycle_id', None)
                         labels = {
                             'agent': self.agent.name,
                             'operation': context.lower().replace(' ', '_'),
                         }
-                        if ecid:
-                            labels['ecid'] = ecid
+                        if cycle_id:
+                            labels['cycle_id'] = cycle_id
                         
                         total_tokens = token_usage.get('total_tokens', 0)
                         self.agent.record_counter('agent_tokens_used_total', total_tokens, labels)
@@ -132,11 +133,11 @@ class AppBuilder:
         except Exception as e:
             error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
             logger.error(f"AppBuilder LLM call failed: {error_msg}")
-            logger.debug(f"AppBuilder exception details:", exc_info=True)
+            logger.debug("AppBuilder exception details:", exc_info=True)
             raise Exception(f"LLM call failed: {error_msg}") from e
     
     
-    async def generate_manifest_json(self, prompt: str, requirements: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def generate_manifest_json(self, prompt: str, requirements: dict[str, Any] = None) -> dict[str, Any]:
         """
         Generate BuildManifest using JSON-based LLM call via router.
         
@@ -151,7 +152,7 @@ class AppBuilder:
         # Pass context for telemetry logging
         return await self._generate_manifest_with_context(prompt, context="manifest_generation")
     
-    async def _generate_manifest_with_context(self, prompt: str, context: str) -> Dict[str, Any]:
+    async def _generate_manifest_with_context(self, prompt: str, context: str) -> dict[str, Any]:
         """Generate manifest with context for telemetry"""
         
         try:
@@ -168,10 +169,10 @@ class AppBuilder:
         except Exception as e:
             error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
             logger.error(f"AppBuilder failed to generate manifest: {error_msg}")
-            logger.debug(f"AppBuilder exception details:", exc_info=True)
+            logger.debug("AppBuilder exception details:", exc_info=True)
             raise Exception(f"Manifest generation failed: {error_msg}") from e
     
-    async def generate_files_json(self, prompt: str, requirements: Dict[str, Any] = None, manifest: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    async def generate_files_json(self, prompt: str, requirements: dict[str, Any] = None, manifest: dict[str, Any] = None) -> list[dict[str, Any]]:
         """
         Generate application files using JSON-based LLM call via router.
         
@@ -187,7 +188,7 @@ class AppBuilder:
         # Pass context for telemetry logging
         return await self._generate_files_with_context(prompt, context="file_generation")
     
-    async def _generate_files_with_context(self, prompt: str, context: str) -> List[Dict[str, Any]]:
+    async def _generate_files_with_context(self, prompt: str, context: str) -> list[dict[str, Any]]:
         """Generate files with context for telemetry"""
         
         try:
@@ -230,5 +231,5 @@ class AppBuilder:
         except Exception as e:
             error_msg = str(e) if e else f"{type(e).__name__}: {repr(e)}"
             logger.error(f"AppBuilder failed to generate files: {error_msg}")
-            logger.debug(f"AppBuilder exception details:", exc_info=True)
+            logger.debug("AppBuilder exception details:", exc_info=True)
             raise Exception(f"File generation failed: {error_msg}") from e

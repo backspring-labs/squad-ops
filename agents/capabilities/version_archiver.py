@@ -5,7 +5,7 @@ Implements version.archive capability for archiving existing versions.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,13 @@ class VersionArchiver:
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
         
         # Import VersionManager and AppBuilder as tools
-        from agents.tools.version_manager import VersionManager
         from agents.tools.app_builder import AppBuilder
+        from agents.tools.version_manager import VersionManager
         
         self.version_manager = VersionManager()
         self.app_builder = AppBuilder(llm_client=agent_instance.llm_client, agent=agent_instance)
     
-    async def archive(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
+    async def archive(self, task_id: str, requirements: dict[str, Any]) -> dict[str, Any]:
         """
         Archive existing version.
         
@@ -46,7 +46,7 @@ class VersionArchiver:
                 - application: Application name
                 - version: New version to archive for
                 - source_dir: Source directory (optional)
-                - ecid: Execution cycle ID
+                - cycle_id: Execution cycle ID
                 - pid: Process ID
                 
         Returns:

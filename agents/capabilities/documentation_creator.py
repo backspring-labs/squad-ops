@@ -4,10 +4,10 @@ Documentation Creator Capability Handler
 Implements comms.documentation capability for creating documentation and written content.
 """
 
-import logging
-import json
 import asyncio
-from typing import Dict, Any
+import json
+import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class DocumentationCreator:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
     
-    async def create(self, task_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    async def create(self, task_id: str, result: dict[str, Any]) -> dict[str, Any]:
         """
         Create documentation for the task.
         

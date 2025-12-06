@@ -11,13 +11,13 @@ Usage:
     python tests/integration/check_services.py --service postgres
 """
 
+import argparse
+import socket
 import sys
 import time
-import socket
-import argparse
-import requests
-from typing import Dict, List, Tuple
 from pathlib import Path
+
+import requests
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -35,9 +35,9 @@ class ServiceChecker:
     
     def __init__(self, verbose: bool = False):
         self.verbose = verbose
-        self.results: Dict[str, Tuple[bool, str]] = {}
+        self.results: dict[str, tuple[bool, str]] = {}
     
-    def check_service_health(self, service_name: str, host: str, port: int, timeout: int = 30) -> Tuple[bool, str]:
+    def check_service_health(self, service_name: str, host: str, port: int, timeout: int = 30) -> tuple[bool, str]:
         """
         Check if a service is healthy and accepting connections.
         
@@ -78,7 +78,7 @@ class ServiceChecker:
             print(f"❌ {message}")
         return False, message
     
-    def check_rabbitmq_management(self, host: str, port: int, timeout: int = 30) -> Tuple[bool, str]:
+    def check_rabbitmq_management(self, host: str, port: int, timeout: int = 30) -> tuple[bool, str]:
         """
         Check RabbitMQ management interface.
         
@@ -114,7 +114,7 @@ class ServiceChecker:
             print(f"❌ {message}")
         return False, message
     
-    def check_ollama(self, url: str = "http://localhost:11434", timeout: int = 30) -> Tuple[bool, str]:
+    def check_ollama(self, url: str = "http://localhost:11434", timeout: int = 30) -> tuple[bool, str]:
         """
         Check Ollama service.
         
@@ -149,7 +149,7 @@ class ServiceChecker:
             print(f"❌ {message}")
         return False, message
     
-    def check_agent_containers(self, agents: List[str] = ['max', 'neo']) -> Tuple[bool, str]:
+    def check_agent_containers(self, agents: list[str] = ['max', 'neo']) -> tuple[bool, str]:
         """
         Check that agent containers are running and healthy.
         
@@ -200,7 +200,7 @@ class ServiceChecker:
                 print(f"❌ {message}")
             return False, message
     
-    def check_all_services(self, include_optional: bool = False) -> Dict[str, Tuple[bool, str]]:
+    def check_all_services(self, include_optional: bool = False) -> dict[str, tuple[bool, str]]:
         """
         Check all required services.
         
@@ -227,7 +227,7 @@ class ServiceChecker:
         
         return results
     
-    def print_summary(self, results: Dict[str, Tuple[bool, str]]):
+    def print_summary(self, results: dict[str, tuple[bool, str]]):
         """Print summary of service check results."""
         print("\n" + "="*70)
         print("Service Health Check Summary")

@@ -4,8 +4,10 @@ Tests real message passing through RabbitMQ with actual agent instances
 """
 
 import pytest
-from agents.roles.lead.agent import LeadAgent
+
 from agents.base_agent import AgentMessage
+from agents.roles.lead.agent import LeadAgent
+
 
 class TestAgentCommunication:
     """Test real agent communication through RabbitMQ"""
@@ -16,8 +18,8 @@ class TestAgentCommunication:
     @pytest.mark.agent_containers
     async def test_lead_to_dev_communication(self, integration_config, clean_database, clean_rabbitmq, ensure_agents_running_fixture):
         """Test message passing from LeadAgent to DevAgent with retry logic for network issues"""
-        import tempfile
         import os
+        import tempfile
         
         # Create a temporary PRD file
         sample_prd_content = """
@@ -194,7 +196,7 @@ Test application for SquadOps integration testing
             await lead_agent.handle_message(approval_message)
             
             # Integration test success - approval request handled
-            print(f"✅ Approval request flow test passed")
+            print("✅ Approval request flow test passed")
             
         finally:
             await lead_agent.cleanup()
@@ -231,7 +233,7 @@ Test application for SquadOps integration testing
             assert escalated_task['reason'] == 'High complexity'
             
             # Integration test success - escalation handled
-            print(f"✅ Escalation flow test passed")
+            print("✅ Escalation flow test passed")
             
         finally:
             await lead_agent.cleanup()
@@ -311,7 +313,7 @@ Test application for SquadOps integration testing
             assert 'manifest_generation' in reasoning or 'decision' in reasoning
             assert 'FastAPI' in reasoning or 'Selected' in reasoning
             
-            print(f"✅ Reasoning event flow test passed: reasoning event received and stored")
+            print("✅ Reasoning event flow test passed: reasoning event received and stored")
             
         finally:
             await lead_agent.cleanup()
@@ -338,13 +340,13 @@ Test application for SquadOps integration testing
             await lead_agent.send_heartbeat()
             
             # Integration test success - heartbeat sent via API
-            print(f"✅ Heartbeat monitoring test passed (Task API)")
+            print("✅ Heartbeat monitoring test passed (Task API)")
             
         except Exception as e:
             # If Task API not available, that's okay for this integration test
             # The test verifies the method exists and can be called
             print(f"⚠️  Task API not available for heartbeat test: {e}")
-            print(f"   This is expected if Task API service is not running")
+            print("   This is expected if Task API service is not running")
         finally:
             await lead_agent.cleanup()
     

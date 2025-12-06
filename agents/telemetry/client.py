@@ -5,8 +5,8 @@ Defines the interface that all telemetry providers must implement.
 Follows the same pattern as LLMClient for consistency.
 """
 
-from typing import Protocol, Optional, Dict, Any
 from contextlib import AbstractContextManager
+from typing import Any, Protocol
 
 
 class TelemetryClient(Protocol):
@@ -23,8 +23,8 @@ class TelemetryClient(Protocol):
     def create_span(
         self,
         name: str,
-        attributes: Optional[Dict[str, Any]] = None,
-        kind: Optional[str] = None
+        attributes: dict[str, Any] | None = None,
+        kind: str | None = None
     ) -> AbstractContextManager:
         """
         Create a telemetry span (trace segment)
@@ -43,7 +43,7 @@ class TelemetryClient(Protocol):
         self,
         name: str,
         value: int = 1,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> None:
         """
         Record a counter metric (incremental)
@@ -59,7 +59,7 @@ class TelemetryClient(Protocol):
         self,
         name: str,
         value: float,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> None:
         """
         Record a gauge metric (absolute value)
@@ -75,7 +75,7 @@ class TelemetryClient(Protocol):
         self,
         name: str,
         value: float,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> None:
         """
         Record a histogram metric (distribution)

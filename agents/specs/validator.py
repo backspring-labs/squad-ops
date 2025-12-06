@@ -7,12 +7,13 @@ Validates against JSON schemas and capability catalog
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
-from jsonschema import validate, ValidationError
+from typing import Any
 
+from jsonschema import ValidationError, validate
+
+from agents.capabilities.loader import CapabilityLoader
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse
-from agents.capabilities.loader import CapabilityLoader
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class SchemaValidator:
     """Validator for AgentRequest and AgentResponse"""
     
-    def __init__(self, base_path: Optional[Path] = None):
+    def __init__(self, base_path: Path | None = None):
         """Initialize validator with base path"""
         from agents.utils.path_resolver import PathResolver
         
@@ -33,11 +34,11 @@ class SchemaValidator:
         self.request_schema_path = self.specs_path / "request.schema.json"
         self.response_schema_path = self.specs_path / "response.schema.json"
         
-        self._request_schema: Optional[Dict[str, Any]] = None
-        self._response_schema: Optional[Dict[str, Any]] = None
-        self._capability_loader: Optional[CapabilityLoader] = None
+        self._request_schema: dict[str, Any] | None = None
+        self._response_schema: dict[str, Any] | None = None
+        self._capability_loader: CapabilityLoader | None = None
     
-    def _load_request_schema(self) -> Dict[str, Any]:
+    def _load_request_schema(self) -> dict[str, Any]:
         """Load request schema"""
         if self._request_schema is not None:
             return self._request_schema
@@ -48,12 +49,12 @@ class SchemaValidator:
             self._request_schema = {"type": "object"}
             return self._request_schema
         
-        with open(self.request_schema_path, 'r') as f:
+        with open(self.request_schema_path) as f:
             self._request_schema = json.load(f)
         
         return self._request_schema
     
-    def _load_response_schema(self) -> Dict[str, Any]:
+    def _load_response_schema(self) -> dict[str, Any]:
         """Load response schema"""
         if self._response_schema is not None:
             return self._response_schema
@@ -64,7 +65,7 @@ class SchemaValidator:
             self._response_schema = {"type": "object"}
             return self._response_schema
         
-        with open(self.response_schema_path, 'r') as f:
+        with open(self.response_schema_path) as f:
             self._response_schema = json.load(f)
         
         return self._response_schema
@@ -75,7 +76,7 @@ class SchemaValidator:
             self._capability_loader = CapabilityLoader(self.base_path)
         return self._capability_loader
     
-    def validate_request(self, request: AgentRequest) -> tuple[bool, Optional[str]]:
+    def validate_request(self, request: AgentRequest) -> tuple[bool, str | None]:
         """Validate AgentRequest against schema"""
         try:
             schema = self._load_request_schema()
@@ -101,7 +102,7 @@ class SchemaValidator:
             logger.error(f"Request validation error: {e}", exc_info=True)
             return False, f"Validation error: {str(e)}"
     
-    def validate_response(self, response: AgentResponse) -> tuple[bool, Optional[str]]:
+    def validate_response(self, response: AgentResponse) -> tuple[bool, str | None]:
         """Validate AgentResponse against schema"""
         try:
             schema = self._load_response_schema()
@@ -118,7 +119,7 @@ class SchemaValidator:
             logger.error(f"Response validation error: {e}", exc_info=True)
             return False, f"Validation error: {str(e)}"
     
-    def validate_result_keys(self, capability: str, result: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+    def validate_result_keys(self, capability: str, result: dict[str, Any]) -> tuple[bool, str | None]:
         """Validate result keys match capability catalog result schema"""
         try:
             loader = self._get_capability_loader()

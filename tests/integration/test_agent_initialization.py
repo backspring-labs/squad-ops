@@ -8,8 +8,10 @@ These tests verify that:
 4. New initialization flow works correctly
 """
 
-import pytest
 import os
+
+import pytest
+
 from agents.roles.lead.agent import LeadAgent
 from agents.roles.qa.agent import QAAgent
 

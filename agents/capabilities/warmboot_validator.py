@@ -5,7 +5,7 @@ Implements validate.warmboot capability for validating WarmBoot execution and ge
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class WarmBootValidator:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
     
-    async def validate(self, request: Dict[str, Any], metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def validate(self, request: dict[str, Any], metadata: dict[str, Any] = None) -> dict[str, Any]:
         """
         Validate WarmBoot execution and generate wrap-up.
         
@@ -44,7 +44,7 @@ class WarmBootValidator:
                 - requirements: Task requirements
                 - prd_path: PRD file path
             metadata: Request metadata containing:
-                - ecid: Execution cycle ID
+                - cycle_id: Execution cycle ID
                 - pid: Process ID
                 
         Returns:
@@ -56,16 +56,16 @@ class WarmBootValidator:
         """
         try:
             metadata = metadata or {}
-            ecid = metadata.get('ecid', 'unknown')
+            cycle_id = metadata.get('cycle_id', 'unknown')
             pid = metadata.get('pid', 'unknown')
             
-            logger.info(f"{self.name} validating WarmBoot execution for ECID: {ecid}")
+            logger.info(f"{self.name} validating WarmBoot execution for cycle_id: {cycle_id}")
             
             # Convert AgentRequest to old task format for compatibility with process_task
             task = {
-                'task_id': request.get('task_id', f"{ecid}-main"),
+                'task_id': request.get('task_id', f"{cycle_id}-main"),
                 'type': 'governance',
-                'ecid': ecid,
+                'cycle_id': cycle_id,
                 'pid': pid,
                 'application': request.get('application'),
                 'request_type': request.get('request_type'),
@@ -83,11 +83,11 @@ class WarmBootValidator:
             validation_result = {
                 'match': result.get('status') == 'completed',
                 'diffs': result.get('diffs', []),
-                'wrap_up_uri': result.get('wrap_up_uri', f'/warm-boot/runs/{ecid}/wrap-up.md'),
+                'wrap_up_uri': result.get('wrap_up_uri', f'/warm-boot/runs/{cycle_id}/wrap-up.md'),
                 'metrics': result.get('metrics', {})
             }
             
-            logger.info(f"{self.name} completed WarmBoot validation for ECID: {ecid}, match: {validation_result['match']}")
+            logger.info(f"{self.name} completed WarmBoot validation for cycle_id: {cycle_id}, match: {validation_result['match']}")
             return validation_result
             
         except Exception as e:

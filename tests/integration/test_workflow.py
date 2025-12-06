@@ -9,10 +9,11 @@ Tests individual workflow components:
 
 Note: End-to-end workflow testing is handled by WarmBoot runs.
 """
-import pytest
 import json
 import os
 import tempfile
+
+import pytest
 
 from agents.skills.dev.architect_prompt import ArchitectPrompt
 from agents.skills.dev.developer_prompt import DeveloperPrompt
@@ -24,8 +25,9 @@ class TestWorkflowIntegration:
     
     def _generate_manifest_prompt(self, task_spec):
         """Helper to generate manifest prompt using Skills."""
-        import yaml
         import re
+
+        import yaml
         
         architect_skill = ArchitectPrompt()
         constraints_skill = SquadOpsConstraints()
@@ -49,8 +51,9 @@ class TestWorkflowIntegration:
     
     def _generate_files_prompt(self, task_spec, manifest):
         """Helper to generate files prompt using Skills."""
-        import yaml
         import re
+
+        import yaml
         
         developer_skill = DeveloperPrompt()
         constraints_skill = SquadOpsConstraints()
@@ -93,8 +96,9 @@ class TestWorkflowIntegration:
     def ollama_available(self):
         """Check if Ollama is available for integration tests."""
         try:
-            import aiohttp
             import asyncio
+
+            import aiohttp
             
             async def check_ollama():
                 try:
@@ -263,13 +267,13 @@ class TestWorkflowIntegration:
             assert os.path.exists(checksums_file)
             
             # Verify manifest file content
-            with open(manifest_file, 'r') as f:
+            with open(manifest_file) as f:
                 loaded_manifest = yaml.safe_load(f)
                 assert loaded_manifest["architecture_type"] == "spa_web_app"
                 assert loaded_manifest["framework"] == "vanilla_js"
             
             # Verify checksums file content
-            with open(checksums_file, 'r') as f:
+            with open(checksums_file) as f:
                 loaded_checksums = json.load(f)
                 assert loaded_checksums["run_id"] == sample_task_spec.get("run_id")
                 assert "files" in loaded_checksums

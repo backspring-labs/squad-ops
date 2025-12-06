@@ -139,11 +139,11 @@ services:
     networks:
     - squadnet
     restart: unless-stopped
-  task-api:
+  runtime-api:  # SIP-0048: renamed from task-api
     build:
       context: .
-      dockerfile: infra/task-api/Dockerfile
-    container_name: squadops-task-api
+      dockerfile: infra/runtime-api/Dockerfile
+    container_name: squadops-runtime-api  # SIP-0048: renamed from squadops-task-api
     ports:
     - 8001:8001
     environment:
@@ -329,7 +329,7 @@ services:
       AGENT_DISPLAY_NAME: Data
       USE_LOCAL_LLM: "true"
       OLLAMA_URL: http://host.docker.internal:11434
-      TASK_API_URL: http://task-api:8001
+      RUNTIME_API_URL: http://runtime-api:8001  # SIP-0048: renamed from TASK_API_URL
       RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
       REDIS_URL: redis://redis:6379
@@ -343,7 +343,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      task-api:
+      runtime-api:  # SIP-0048: renamed from task-api
         condition: service_started
     networks:
     - squadnet

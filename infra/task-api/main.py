@@ -1,24 +1,25 @@
-from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
-import asyncpg
 import os
-from typing import List, Optional, Dict, Any
-from datetime import datetime
-
 import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+import asyncpg
+from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel
 
 # Add parent directory to path to allow importing deps
 sys.path.insert(0, str(Path(__file__).parent))
 
+from deps import get_tasks_adapter_dep
+
 from agents.tasks.base_adapter import TaskAdapterBase
-from agents.tasks.models import TaskCreate, TaskState, TaskFilters, FlowState
 from agents.tasks.errors import (
     TaskAdapterError,
-    TaskNotFoundError,
     TaskConflictError,
+    TaskNotFoundError,
 )
-from deps import get_tasks_adapter_dep
+from agents.tasks.models import FlowState, TaskCreate, TaskFilters, TaskState
 
 app = FastAPI(title="SquadOps Task Management API", version="1.0")
 
@@ -60,38 +61,38 @@ async def shutdown_event():
 
 # Pydantic models (for backward compatibility with existing API clients)
 class ExecutionCycleCreate(BaseModel):
-    ecid: str
+    cycle_id: str  # SIP-0048: renamed from ecid
     pid: str
-    project_id: Optional[str] = None  # SIP-0047
+    project_id: str | None = None  # SIP-0047
     run_type: str
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     initiated_by: str
 
 class ExecutionCycleUpdate(BaseModel):
-    status: Optional[str] = None
-    notes: Optional[str] = None
+    status: str | None = None
+    notes: str | None = None
 
 class TaskLogCreate(BaseModel):
     task_id: str
-    ecid: str
+    cycle_id: str  # SIP-0048: renamed from ecid
     agent: str
     status: str
-    priority: Optional[str] = "MEDIUM"
-    description: Optional[str] = None
-    dependencies: Optional[List[str]] = []
-    delegated_by: Optional[str] = None
-    delegated_to: Optional[str] = None
+    priority: str | None = "MEDIUM"
+    description: str | None = None
+    dependencies: list[str] | None = []
+    delegated_by: str | None = None
+    delegated_to: str | None = None
 
 class TaskLogUpdate(BaseModel):
-    status: Optional[str] = None
-    end_time: Optional[datetime] = None
-    artifacts: Optional[Dict[str, Any]] = None
-    error_log: Optional[str] = None
+    status: str | None = None
+    end_time: datetime | None = None
+    artifacts: dict[str, Any] | None = None
+    error_log: str | None = None
 
 class TaskCompleteRequest(BaseModel):
     task_id: str
-    artifacts: Optional[Dict[str, Any]] = None
+    artifacts: dict[str, Any] | None = None
 
 class TaskFailRequest(BaseModel):
     task_id: str
@@ -102,12 +103,12 @@ class TaskStatusCreate(BaseModel):
     agent_name: str
     status: str
     progress: float = 0.0
-    eta: Optional[str] = None
+    eta: str | None = None
 
 class TaskStatusUpdate(BaseModel):
-    status: Optional[str] = None
-    progress: Optional[float] = None
-    eta: Optional[str] = None
+    status: str | None = None
+    progress: float | None = None
+    eta: str | None = None
 
 # Helper functions to convert between DTOs and legacy formats
 def task_to_dict(task) -> dict:
@@ -115,7 +116,7 @@ def task_to_dict(task) -> dict:
     result = {
         "task_id": task.task_id,
         "pid": task.pid,
-        "ecid": task.ecid,
+        "cycle_id": task.cycle_id,  # SIP-0048: renamed from ecid
         "agent": task.agent,
         "phase": task.phase,
         "status": task.status,
@@ -140,7 +141,7 @@ def task_to_dict(task) -> dict:
 def flow_to_dict(flow) -> dict:
     """Convert FlowRun DTO to legacy dict format"""
     return {
-        "ecid": flow.ecid,
+        "cycle_id": flow.cycle_id,  # SIP-0048: renamed from ecid
         "pid": flow.pid,
         "run_type": flow.run_type,
         "title": flow.title,
@@ -164,11 +165,11 @@ def handle_adapter_error(e: Exception) -> HTTPException:
 
 # GET endpoints for querying tasks and execution cycles
 
-@app.get("/api/v1/tasks/ec/{ecid}")
-async def get_tasks_by_ecid(ecid: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
-    """Get all tasks for a specific execution cycle"""
+@app.get("/api/v1/tasks/ec/{cycle_id}")  # SIP-0048: renamed from ecid
+async def get_tasks_by_ecid(cycle_id: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):  # SIP-0048: renamed from ecid
+    """Get all tasks for a specific execution cycle (SIP-0048: uses cycle_id)"""
     try:
-        tasks = await adapter.list_tasks_for_ecid(ecid)
+        tasks = await adapter.list_tasks_for_ecid(cycle_id)  # SIP-0048: renamed from ecid
         return [task_to_dict(task) for task in tasks]
     except TaskAdapterError as e:
         raise handle_adapter_error(e) from e
@@ -176,13 +177,13 @@ async def get_tasks_by_ecid(ecid: str, adapter: TaskAdapterBase = Depends(get_ta
 @app.get("/api/v1/tasks/agent/{agent_name}")
 async def get_tasks_by_agent(
     agent_name: str, 
-    ecid: Optional[str] = None, 
+    cycle_id: str | None = None,  # SIP-0048: renamed from ecid
     limit: int = 50,
     adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)
 ):
-    """Get recent tasks for a specific agent, optionally filtered by ECID"""
+    """Get recent tasks for a specific agent, optionally filtered by cycle_id (SIP-0048: renamed from ECID)"""
     try:
-        filters = TaskFilters(agent=agent_name, ecid=ecid, limit=limit)
+        filters = TaskFilters(agent=agent_name, cycle_id=cycle_id, limit=limit)  # SIP-0048: renamed from ecid
         tasks = await adapter.list_tasks(filters)
         return [task_to_dict(task) for task in tasks]
     except TaskAdapterError as e:
@@ -199,7 +200,7 @@ async def get_tasks_by_status(status: str, adapter: TaskAdapterBase = Depends(ge
         raise handle_adapter_error(e) from e
 
 @app.get("/api/v1/execution-cycles")
-async def get_execution_cycles(run_type: Optional[str] = None, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
+async def get_execution_cycles(run_type: str | None = None, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
     """Get execution cycles, optionally filtered by type"""
     try:
         flows = await adapter.list_flows(run_type)
@@ -207,11 +208,11 @@ async def get_execution_cycles(run_type: Optional[str] = None, adapter: TaskAdap
     except TaskAdapterError as e:
         raise handle_adapter_error(e) from e
 
-@app.get("/api/v1/tasks/summary/{ecid}")
-async def get_task_summary(ecid: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
-    """Get task summary for an execution cycle"""
+@app.get("/api/v1/tasks/summary/{cycle_id}")  # SIP-0048: renamed from ecid
+async def get_task_summary(cycle_id: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):  # SIP-0048: renamed from ecid
+    """Get task summary for an execution cycle (SIP-0048: uses cycle_id)"""
     try:
-        summary = await adapter.get_task_summary(ecid)
+        summary = await adapter.get_task_summary(cycle_id)  # SIP-0048: renamed from ecid
         # Convert TaskSummary DTO to dict for backward compatibility
         return summary.dict()
     except TaskAdapterError as e:
@@ -221,10 +222,10 @@ async def get_task_summary(ecid: str, adapter: TaskAdapterBase = Depends(get_tas
 
 @app.post("/api/v1/execution-cycles")
 async def create_execution_cycle(cycle: ExecutionCycleCreate, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
-    """Create a new execution cycle"""
+    """Create a new execution cycle (SIP-0048: uses cycle_id)"""
     try:
         await adapter.create_flow(
-            cycle.ecid,
+            cycle.cycle_id,  # SIP-0048: renamed from ecid
             cycle.pid,
             meta={
                 "project_id": cycle.project_id,  # SIP-0047
@@ -234,17 +235,17 @@ async def create_execution_cycle(cycle: ExecutionCycleCreate, adapter: TaskAdapt
                 "initiated_by": cycle.initiated_by,
             }
         )
-        return {"status": "created", "ecid": cycle.ecid}
+        return {"status": "created", "cycle_id": cycle.cycle_id}  # SIP-0048: renamed from ecid
     except TaskAdapterError as e:
         raise handle_adapter_error(e) from e
 
-@app.put("/api/v1/execution-cycles/{ecid}")
+@app.put("/api/v1/execution-cycles/{cycle_id}")  # SIP-0048: renamed from ecid
 async def update_execution_cycle(
-    ecid: str, 
+    cycle_id: str,  # SIP-0048: renamed from ecid
     update: ExecutionCycleUpdate,
     adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)
 ):
-    """Update execution cycle status or notes"""
+    """Update execution cycle status or notes (SIP-0048: uses cycle_id)"""
     if not update.status and not update.notes:
         raise HTTPException(status_code=400, detail="No fields to update")
     
@@ -257,28 +258,28 @@ async def update_execution_cycle(
             state = FlowState.FAILED
         
         await adapter.update_flow(
-            ecid,
+            cycle_id,  # SIP-0048: renamed from ecid
             state,
             meta={
                 "status": update.status,
                 "notes": update.notes,
             }
         )
-        return {"status": "updated", "ecid": ecid}
+        return {"status": "updated", "cycle_id": cycle_id}  # SIP-0048: renamed from ecid
     except TaskAdapterError as e:
         raise handle_adapter_error(e) from e
 
-@app.post("/api/v1/execution-cycles/{ecid}/complete")
-async def complete_execution_cycle(ecid: str, notes: Optional[str] = None, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
-    """Mark execution cycle as completed"""
+@app.post("/api/v1/execution-cycles/{cycle_id}/complete")  # SIP-0048: renamed from ecid
+async def complete_execution_cycle(cycle_id: str, notes: str | None = None, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):  # SIP-0048: renamed from ecid
+    """Mark execution cycle as completed (SIP-0048: uses cycle_id)"""
     update = ExecutionCycleUpdate(status="completed", notes=notes)
-    return await update_execution_cycle(ecid, update, adapter)
+    return await update_execution_cycle(cycle_id, update, adapter)
 
-@app.post("/api/v1/execution-cycles/{ecid}/fail")
-async def fail_execution_cycle(ecid: str, notes: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
-    """Mark execution cycle as failed"""
+@app.post("/api/v1/execution-cycles/{cycle_id}/fail")  # SIP-0048: renamed from ecid
+async def fail_execution_cycle(cycle_id: str, notes: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):  # SIP-0048: renamed from ecid
+    """Mark execution cycle as failed (SIP-0048: uses cycle_id)"""
     update = ExecutionCycleUpdate(status="failed", notes=notes)
-    return await update_execution_cycle(ecid, update, adapter)
+    return await update_execution_cycle(cycle_id, update, adapter)
 
 @app.post("/api/v1/tasks/start")
 async def start_task(task: TaskLogCreate, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
@@ -286,7 +287,7 @@ async def start_task(task: TaskLogCreate, adapter: TaskAdapterBase = Depends(get
     try:
         task_create = TaskCreate(
             task_id=task.task_id,
-            ecid=task.ecid,
+            cycle_id=task.cycle_id,  # SIP-0048: renamed from ecid
             agent=task.agent,
             status=task.status,
             priority=task.priority,
@@ -409,13 +410,13 @@ async def get_task_status_endpoint(task_id: str, adapter: TaskAdapterBase = Depe
     except TaskAdapterError as e:
         raise handle_adapter_error(e) from e
 
-@app.get("/api/v1/execution-cycles/{ecid}")
-async def get_execution_cycle(ecid: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):
-    """Get a single execution cycle by ECID"""
+@app.get("/api/v1/execution-cycles/{cycle_id}")  # SIP-0048: renamed from ecid
+async def get_execution_cycle(cycle_id: str, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)):  # SIP-0048: renamed from ecid
+    """Get a single execution cycle by cycle_id (SIP-0048: renamed from ECID)"""
     try:
-        flow = await adapter.get_flow(ecid)
+        flow = await adapter.get_flow(cycle_id)  # SIP-0048: renamed from ecid
         if not flow:
-            raise HTTPException(status_code=404, detail=f"Execution cycle {ecid} not found")
+            raise HTTPException(status_code=404, detail=f"Execution cycle {cycle_id} not found")  # SIP-0048: renamed from ecid
         return flow_to_dict(flow)
     except TaskAdapterError as e:
         raise handle_adapter_error(e) from e
@@ -438,8 +439,9 @@ async def promote_memory(request: MemoryPromoteRequest):
     """Promote a memory from Mem0 to Squad Memory Pool"""
     try:
         from agents.memory.mem0_adapter import Mem0Adapter
-        from agents.memory.sql_adapter import SqlAdapter
+
         from agents.memory.promotion import PromotionService
+        from agents.memory.sql_adapter import SqlAdapter
         
         # Initialize adapters
         mem0_adapter = Mem0Adapter(request.agent_name)
@@ -465,11 +467,11 @@ async def promote_memory(request: MemoryPromoteRequest):
         raise HTTPException(status_code=500, detail=f"Failed to promote memory: {str(e)}") from e
 
 @app.get("/api/v1/memory/promoted")
-async def get_promoted_memories(agent: Optional[str] = None, 
-                               pid: Optional[str] = None,
-                               ecid: Optional[str] = None,
+async def get_promoted_memories(agent: str | None = None, 
+                               pid: str | None = None,
+                               cycle_id: str | None = None,  # SIP-0048: renamed from ecid
                                limit: int = 50):
-    """Get promoted memories from Squad Memory Pool"""
+    """Get promoted memories from Squad Memory Pool (SIP-0048: uses cycle_id)"""
     try:
         from agents.memory.sql_adapter import SqlAdapter
         
@@ -480,8 +482,8 @@ async def get_promoted_memories(agent: Optional[str] = None,
             kwargs['agent'] = agent
         if pid:
             kwargs['pid'] = pid
-        if ecid:
-            kwargs['ecid'] = ecid
+        if cycle_id:  # SIP-0048: renamed from ecid
+            kwargs['cycle_id'] = cycle_id  # SIP-0048: renamed from ecid
         
         memories = await sql_adapter.get("", k=limit, **kwargs)
         return {"memories": memories, "count": len(memories)}

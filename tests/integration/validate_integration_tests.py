@@ -8,8 +8,8 @@ This script MUST pass before any integration test changes are committed.
 Violations cause immediate test failure.
 """
 
-import sys
 import re
+import sys
 from pathlib import Path
 
 

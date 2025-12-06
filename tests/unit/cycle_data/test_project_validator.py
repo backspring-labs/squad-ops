@@ -2,9 +2,10 @@
 Unit tests for project validator (SIP-0047)
 """
 
-import pytest
-import asyncpg
 from unittest.mock import AsyncMock, MagicMock
+
+import asyncpg
+import pytest
 
 from agents.cycle_data.project_validator import ProjectNotFoundError, validate_project_id
 

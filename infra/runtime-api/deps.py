@@ -1,9 +1,9 @@
 """
-FastAPI dependencies for task API
+FastAPI dependencies for Runtime API (SIP-0048: renamed from task API)
 """
 
-from agents.tasks.registry import get_tasks_adapter
 from agents.tasks.base_adapter import TaskAdapterBase
+from agents.tasks.registry import get_tasks_adapter
 
 
 async def get_tasks_adapter_dep() -> TaskAdapterBase:

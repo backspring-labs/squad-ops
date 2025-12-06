@@ -4,20 +4,21 @@ Implements MemoryProvider interface for Role layer memory (agent-specific)
 Uses local LanceDB tables with local embeddings (Ollama/SentenceTransformers)
 """
 
-import os
+import hashlib
 import json
 import logging
-import hashlib
-from typing import Any, List, Optional
+import os
 from datetime import datetime
+from typing import Any
+
 from agents.memory.base import MemoryProvider
 
 logger = logging.getLogger(__name__)
 
 try:
     import lancedb
-    import pyarrow as pa
     import pandas as pd
+    import pyarrow as pa
     LANCEDB_AVAILABLE = True
 except ImportError:
     LANCEDB_AVAILABLE = False
@@ -30,7 +31,7 @@ class LanceDBAdapter(MemoryProvider):
     Uses local LanceDB tables with columnar storage.
     """
     
-    def __init__(self, agent_name: str, db_path: Optional[str] = None):
+    def __init__(self, agent_name: str, db_path: str | None = None):
         """
         Initialize LanceDBAdapter for an agent.
         
@@ -92,7 +93,7 @@ class LanceDBAdapter(MemoryProvider):
                 pa.field('ns', pa.string()),
                 pa.field('agent', pa.string()),
                 pa.field('pid', pa.string()),
-                pa.field('ecid', pa.string()),
+                pa.field('cycle_id', pa.string()),
                 pa.field('tags', pa.list_(pa.string())),
                 pa.field('importance', pa.float32()),
                 pa.field('content', pa.string()),  # JSON string
@@ -107,7 +108,7 @@ class LanceDBAdapter(MemoryProvider):
                 'ns': [''],
                 'agent': [''],
                 'pid': [''],
-                'ecid': [''],
+                'cycle_id': [''],
                 'tags': [[]],  # Empty list for list field
                 'importance': [0.0],
                 'content': [''],
@@ -127,7 +128,7 @@ class LanceDBAdapter(MemoryProvider):
             self._table = None  # Ensure it's None on failure
             raise  # Re-raise to let _initialize_lancedb handle it
     
-    def _generate_embedding(self, text: str) -> List[float]:
+    def _generate_embedding(self, text: str) -> list[float]:
         """
         Generate embedding for text using Ollama (primary) or SentenceTransformers (fallback).
         
@@ -197,7 +198,7 @@ class LanceDBAdapter(MemoryProvider):
         Store a memory item in LanceDB.
         
         Args:
-            item: Dictionary with ns, agent, tags, content, importance, pid, ecid
+            item: Dictionary with ns, agent, tags, content, importance, pid, cycle_id
         
         Returns:
             Memory ID as string
@@ -214,7 +215,7 @@ class LanceDBAdapter(MemoryProvider):
             content = item.get('content', {})
             importance = item.get('importance', 0.7)
             pid = item.get('pid', '')
-            ecid = item.get('ecid', '')
+            cycle_id = item.get('cycle_id', '')
             
             # Generate memory ID
             content_str = json.dumps(content, sort_keys=True)
@@ -234,7 +235,7 @@ class LanceDBAdapter(MemoryProvider):
                 'ns': [ns],
                 'agent': [agent],
                 'pid': [pid],
-                'ecid': [ecid],
+                'cycle_id': [cycle_id],
                 'tags': [tags],
                 'importance': [float(importance)],
                 'content': [json.dumps(content)],
@@ -251,7 +252,7 @@ class LanceDBAdapter(MemoryProvider):
             logger.error(f"{self.agent_name}: Failed to store memory: {e}")
             raise
     
-    async def put_if_not_exists(self, item: dict) -> Optional[str]:
+    async def put_if_not_exists(self, item: dict) -> str | None:
         """
         Store a memory item only if it doesn't already exist.
         
@@ -338,7 +339,7 @@ class LanceDBAdapter(MemoryProvider):
             logger.debug(f"{self.agent_name}: Count error details:", exc_info=True)
             return 0
     
-    async def get(self, query: str, k: int = 8, **kw) -> List[dict]:
+    async def get(self, query: str, k: int = 8, **kw) -> list[dict]:
         """
         Retrieve memories matching query using LanceDB semantic search.
         
@@ -444,7 +445,7 @@ class LanceDBAdapter(MemoryProvider):
                     'ns': str(row['ns']),
                     'agent': str(row['agent']),
                     'pid': str(row.get('pid', '')) if pd.notna(row.get('pid', '')) else '',
-                    'ecid': str(row.get('ecid', '')) if pd.notna(row.get('ecid', '')) else '',
+                    'cycle_id': str(row.get('cycle_id', '')) if pd.notna(row.get('cycle_id', '')) else '',
                     'tags': tags_list,
                     'importance': float(row['importance']),
                     'content': content,

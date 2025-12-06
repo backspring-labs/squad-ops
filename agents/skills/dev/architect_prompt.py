@@ -5,8 +5,8 @@ Skill: Architecture reasoning pattern for generating build manifests.
 According to SIP-040, this is a deterministic reasoning pattern with no side effects.
 """
 
-from pathlib import Path
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class ArchitectPrompt:
         safe_kwargs = {}
         
         try:
-            with open(self.template_path, 'r') as f:
+            with open(self.template_path) as f:
                 template_content = f.read()
             
             # Use string.Template for safer substitution

@@ -3,13 +3,14 @@
 
 import asyncio
 import logging
-from typing import Dict, Any
 from datetime import datetime
+from pathlib import Path
+from typing import Any
+
 from agents.base_agent import BaseAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
-from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -96,7 +97,7 @@ class CreativeAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_visual_design(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_visual_design(self, request: AgentRequest) -> dict[str, Any]:
         """Handle creative.visual_design capability"""
         
         # Map existing visual design logic to new capability format
@@ -106,7 +107,7 @@ class CreativeAgent(BaseAgent):
             'style_guide': {}
         }
     
-    async def _handle_ux_design(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_ux_design(self, request: AgentRequest) -> dict[str, Any]:
         """Handle creative.ux_design capability"""
         
         # Map existing UX design logic to new capability format
@@ -116,7 +117,7 @@ class CreativeAgent(BaseAgent):
             'user_flows': []
         }
         
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Process creative design tasks"""
         task_type = task.get('type', 'unknown')
         task_id = task.get('task_id', 'unknown')
@@ -134,7 +135,7 @@ class CreativeAgent(BaseAgent):
         else:
             return await self.handle_generic_task(task)
     
-    async def create_visual_asset(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_visual_asset(self, task: dict[str, Any]) -> dict[str, Any]:
         """Create visual assets using creative synthesis"""
         asset_type = task.get('asset_type', 'generic')
         specifications = task.get('specifications', {})
@@ -162,7 +163,7 @@ class CreativeAgent(BaseAgent):
         
         return result
     
-    async def perform_creative_synthesis(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def perform_creative_synthesis(self, task: dict[str, Any]) -> dict[str, Any]:
         """Perform creative synthesis combining multiple elements"""
         elements = task.get('elements', [])
         synthesis_type = task.get('synthesis_type', 'blend')
@@ -191,7 +192,7 @@ class CreativeAgent(BaseAgent):
         logger.info(f"Glyph performed creative synthesis: {synthesis_id}")
         return result
     
-    async def provide_visual_inspiration(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def provide_visual_inspiration(self, task: dict[str, Any]) -> dict[str, Any]:
         """Provide visual inspiration and creative direction"""
         context = task.get('context', 'general')
         mood = task.get('mood', 'neutral')
@@ -226,7 +227,7 @@ class CreativeAgent(BaseAgent):
         logger.info(f"Glyph provided visual inspiration: {inspiration_id}")
         return result
     
-    async def review_design(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def review_design(self, task: dict[str, Any]) -> dict[str, Any]:
         """Review and provide feedback on designs"""
         design_data = task.get('design_data', {})
         review_criteria = task.get('criteria', ['aesthetics', 'usability', 'brand_consistency'])
@@ -267,7 +268,7 @@ class CreativeAgent(BaseAgent):
         logger.info(f"Glyph completed design review: {review_id}")
         return result
     
-    async def handle_generic_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_generic_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle generic creative tasks"""
         task_description = task.get('description', 'No description provided')
         

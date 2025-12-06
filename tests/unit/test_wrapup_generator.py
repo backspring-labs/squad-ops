@@ -52,7 +52,7 @@ class TestWrapupGenerator:
     async def test_generate_wrapup_from_task_dict(self, generator, mock_agent):
         """Test generating wrapup from task dictionary"""
         task = {
-            'ecid': 'ECID-WB-001',
+            'cycle_id': 'ECID-WB-001',
             'task_id': 'task-001',
             'completion_payload': {'status': 'completed'},
             'telemetry': {'duration': 100},
@@ -80,7 +80,7 @@ class TestWrapupGenerator:
         """Test generating wrapup from individual parameters"""
         with patch.object(generator, 'generate_wrapup_markdown', new_callable=AsyncMock, return_value='# Wrap-up'):
             result = await generator.generate_wrapup(
-                ecid='ECID-WB-001',
+                cycle_id='CYCLE-WB-001',
                 task_id='task-001',
                 completion_payload={'status': 'completed'}
             )
@@ -90,13 +90,13 @@ class TestWrapupGenerator:
     
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_generate_wrapup_missing_ecid(self, generator):
-        """Test generating wrapup when ecid is missing"""
+    async def test_generate_wrapup_missing_cycle_id(self, generator):
+        """Test generating wrapup when cycle_id is missing"""
         result = await generator.generate_wrapup(task_id='task-001')
         
         assert result['wrapup_uri'] is None
         assert 'error' in result
-        assert 'ecid and task_id are required' in result['error']
+        assert 'cycle_id and task_id are required' in result['error']
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -112,7 +112,7 @@ class TestWrapupGenerator:
             mock_cycle_store_class.return_value = mock_cycle_store
             
             result = await generator.generate_wrapup(
-                ecid='ECID-WB-001',
+                cycle_id='CYCLE-WB-001',
                 task_id='task-001'
             )
             
@@ -122,7 +122,7 @@ class TestWrapupGenerator:
     @pytest.mark.asyncio
     async def test_generate_wrapup_markdown(self, generator):
         """Test generating wrapup markdown content"""
-        ecid = 'ECID-WB-001'
+        cycle_id = 'CYCLE-WB-001'
         run_number = '001'
         task_id = 'task-001'
         completion_payload = {'status': 'completed'}
@@ -130,11 +130,11 @@ class TestWrapupGenerator:
         reasoning_events = [{'reason_step': 'decision', 'summary': 'Test'}]
         
         markdown = await generator.generate_wrapup_markdown(
-            ecid, run_number, task_id, completion_payload, telemetry_data, reasoning_events
+            cycle_id, run_number, task_id, completion_payload, telemetry_data, reasoning_events
         )
         
         assert 'WarmBoot' in markdown
-        assert ecid in markdown
+        assert cycle_id in markdown
         assert run_number in markdown
     
     @pytest.mark.unit
@@ -142,7 +142,7 @@ class TestWrapupGenerator:
     async def test_generate_wrapup_markdown_no_reasoning_events(self, generator):
         """Test generating wrapup markdown without reasoning events"""
         markdown = await generator.generate_wrapup_markdown(
-            'ECID-WB-001', '001', 'task-001', {}, {}, None
+            'CYCLE-WB-001', '001', 'task-001', {}, {}, None
         )
         
         assert 'WarmBoot' in markdown
@@ -153,7 +153,7 @@ class TestWrapupGenerator:
         """Test generating wrapup exception handling"""
         with patch.object(generator, 'generate_wrapup_markdown', new_callable=AsyncMock, side_effect=Exception("Error")):
             result = await generator.generate_wrapup(
-                ecid='ECID-WB-001',
+                cycle_id='CYCLE-WB-001',
                 task_id='task-001'
             )
             

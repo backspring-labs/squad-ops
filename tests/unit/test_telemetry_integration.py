@@ -42,7 +42,7 @@ Performance: Utilization = 45%, Memory = 8192 MiB / 24576 MiB
                 mock_tasks_resp.__aexit__ = AsyncMock(return_value=None)
                 
                 mock_cycle_resp = AsyncMock(status=200, json=AsyncMock(return_value={
-                    'ecid': 'ECID-WB-001',
+                    'cycle_id': 'ECID-WB-001',
                     'created_at': '2024-01-01T00:00:00Z'
                 }))
                 mock_cycle_resp.__aenter__ = AsyncMock(return_value=mock_cycle_resp)
@@ -97,7 +97,7 @@ Performance: Utilization = 45%, Memory = 8192 MiB / 24576 MiB
                 mock_tasks_resp.__aexit__ = AsyncMock(return_value=None)
                 
                 mock_cycle_resp = AsyncMock(status=200, json=AsyncMock(return_value={
-                    'ecid': 'ECID-WB-001',
+                    'cycle_id': 'ECID-WB-001',
                     'created_at': '2024-01-01T00:00:00Z'
                 }))
                 mock_cycle_resp.__aenter__ = AsyncMock(return_value=mock_cycle_resp)
@@ -146,7 +146,7 @@ class TestReasoningExtraction:
                 {
                     'timestamp': '2024-01-01T12:00:00Z',
                     'agent': 'lead-agent',
-                    'ecid': 'ECID-WB-001',
+                    'cycle_id': 'ECID-WB-001',
                     'message_type': 'llm_reasoning',
                     'full_response': 'This is Lead Agent reasoning about the PRD',
                     'description': 'PRD Analysis'
@@ -154,7 +154,7 @@ class TestReasoningExtraction:
                 {
                     'timestamp': '2024-01-01T12:05:00Z',
                     'agent': 'dev-agent',
-                    'ecid': 'ECID-WB-001',
+                    'cycle_id': 'ECID-WB-001',
                     'message_type': 'llm_reasoning',
                     'full_response': 'This is Dev Agent reasoning about file generation',
                     'description': 'File Generation'
@@ -162,7 +162,7 @@ class TestReasoningExtraction:
                 {
                     'timestamp': '2024-01-01T12:10:00Z',
                     'agent': 'lead-agent',
-                    'ecid': 'ECID-WB-002',  # Different ECID
+                    'cycle_id': 'ECID-WB-002',  # Different ECID
                     'message_type': 'llm_reasoning',
                     'full_response': 'Different ECID reasoning'
                 }
@@ -192,14 +192,14 @@ class TestReasoningExtraction:
                 {
                     'timestamp': '2024-01-01T12:00:00Z',
                     'agent': 'lead-agent',
-                    'ecid': 'ECID-WB-001',
+                    'cycle_id': 'ECID-WB-001',
                     'message_type': 'llm_reasoning',
                     'full_response': 'Lead Agent reasoning'
                 },
                 {
                     'timestamp': '2024-01-01T12:05:00Z',
                     'agent': 'dev-agent',
-                    'ecid': 'ECID-WB-001',
+                    'cycle_id': 'ECID-WB-001',
                     'message_type': 'llm_reasoning',
                     'full_response': 'Dev Agent reasoning'
                 }
@@ -259,7 +259,7 @@ class TestExecutionDuration:
             
             # Return execution cycle with created_at (used as start_time)
             mock_cycle_resp = AsyncMock(status=200, json=AsyncMock(return_value={
-                'ecid': 'ECID-WB-001',
+                'cycle_id': 'ECID-WB-001',
                 'created_at': '2024-01-01T12:00:00Z',  # Used as start_time
                 'status': 'active'
             }))

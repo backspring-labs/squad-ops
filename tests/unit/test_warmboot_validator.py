@@ -37,7 +37,7 @@ async def test_validate_successful_warmboot(capability, mock_agent):
         'agents': ['max', 'neo']
     }
     metadata = {
-        'ecid': 'test-ecid',
+        'cycle_id': 'test-ecid',
         'pid': 'test-pid'
     }
     
@@ -60,7 +60,7 @@ async def test_validate_failed_warmboot(capability, mock_agent):
     }
     
     request = {'application': 'test-app'}
-    metadata = {'ecid': 'test-ecid'}
+    metadata = {'cycle_id': 'test-ecid'}
     
     result = await capability.validate(request, metadata)
     
@@ -86,7 +86,7 @@ async def test_validate_error_handling(capability, mock_agent):
     mock_agent.process_task.side_effect = Exception("Validation failed")
     
     request = {'application': 'test-app'}
-    metadata = {'ecid': 'test-ecid'}
+    metadata = {'cycle_id': 'test-ecid'}
     
     result = await capability.validate(request, metadata)
     

@@ -3,9 +3,10 @@
 
 import asyncio
 import logging
-from typing import Dict, Any
 from datetime import datetime
-from agents.base_agent import BaseAgent, AgentMessage
+from typing import Any
+
+from agents.base_agent import AgentMessage, BaseAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
@@ -109,7 +110,7 @@ class QAAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """
         Process tasks using generic capability routing.
         

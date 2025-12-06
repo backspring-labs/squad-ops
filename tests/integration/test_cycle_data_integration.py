@@ -3,14 +3,14 @@ Integration test for CycleDataStore and project registry (SIP-0047)
 """
 
 import json
-import pytest
 import tempfile
 from pathlib import Path
+
 import asyncpg
+import pytest
 
 from agents.cycle_data import CycleDataStore
 from agents.tasks.sql_adapter import SqlTasksAdapter
-from config.unified_config import get_config
 
 
 @pytest.mark.asyncio

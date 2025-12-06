@@ -8,7 +8,6 @@ Ensures agents are running, rebuilt when needed, and healthy before tests.
 import asyncio
 import subprocess
 import time
-from typing import List, Dict
 from pathlib import Path
 
 
@@ -22,7 +21,7 @@ class AgentManager:
             'neo': 'squadops-neo'
         }
     
-    async def ensure_agents_running(self, agents: List[str] = ['max', 'neo']) -> bool:
+    async def ensure_agents_running(self, agents: list[str] = ['max', 'neo']) -> bool:
         """
         Ensure specified agents are running and healthy.
         
@@ -51,7 +50,7 @@ class AgentManager:
         print(f"✅ All agents ({agents}) are running and healthy")
         return True
     
-    async def rebuild_agents(self, agents: List[str] = ['max', 'neo']) -> bool:
+    async def rebuild_agents(self, agents: list[str] = ['max', 'neo']) -> bool:
         """
         Rebuild and restart specified agents with latest code.
         
@@ -259,7 +258,7 @@ class AgentManager:
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             return False
     
-    def get_agent_container_info(self) -> Dict[str, Dict]:
+    def get_agent_container_info(self) -> dict[str, dict]:
         """Get information about all agent containers."""
         info = {}
         

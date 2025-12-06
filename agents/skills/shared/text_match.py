@@ -5,7 +5,7 @@ Implements semantic text matching for criteria validation.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class TextMatch:
     Can use simple keyword matching for MVP, LLM-based semantic matching later.
     """
     
-    def match(self, text: str, pattern: str, threshold: float = 0.7) -> Dict[str, Any]:
+    def match(self, text: str, pattern: str, threshold: float = 0.7) -> dict[str, Any]:
         """
         Match text against a pattern using semantic matching.
         

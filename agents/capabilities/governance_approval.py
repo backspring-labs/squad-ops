@@ -5,7 +5,7 @@ Implements governance.approval capability for processing approval requests and d
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class GovernanceApproval:
         # Access agent's escalation_threshold for complexity checks
         self.escalation_threshold = getattr(agent_instance, 'escalation_threshold', 0.7)
     
-    async def approve(self, request: Dict[str, Any]) -> Dict[str, Any]:
+    async def approve(self, request: dict[str, Any]) -> dict[str, Any]:
         """
         Process approval request.
         

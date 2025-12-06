@@ -6,17 +6,18 @@ This script reads agent config.yaml, resolves dependencies, and assembles
 only the required files into dist/agents/{role}/ for container builds.
 """
 
-import yaml
-import shutil
-import logging
-from pathlib import Path
-from typing import Set, List, Dict, Any, Optional
-import sys
 import hashlib
 import json
-import subprocess
+import logging
 import os
+import shutil
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ def get_capability_directory(module_path: str) -> str:
     return '/'.join(parts[:-1])  # Fallback
 
 
-def copy_capability_files(capability_name: str, src_base: Path, dst_base: Path) -> Set[str]:
+def copy_capability_files(capability_name: str, src_base: Path, dst_base: Path) -> set[str]:
     """Copy capability files and return set of directories copied."""
     module_path = get_capability_module_path(capability_name)
     if not module_path:
@@ -149,7 +150,7 @@ def copy_directory(src: Path, dst: Path, description: str = ""):
         logger.debug(f"Copied {description}: {src.name}")
 
 
-def get_git_commit(base_path: Path, build_arg: Optional[str] = None) -> Optional[str]:
+def get_git_commit(base_path: Path, build_arg: str | None = None) -> str | None:
     """
     Get git commit hash.
     
@@ -234,7 +235,7 @@ def get_build_hash(dist_dir: Path) -> str:
     return f"sha256:{build_hash}"
 
 
-def get_skills_list(dist_dir: Path, role: str) -> List[str]:
+def get_skills_list(dist_dir: Path, role: str) -> list[str]:
     """
     Get list of skills included in the agent package.
     
@@ -274,7 +275,7 @@ def get_skills_list(dist_dir: Path, role: str) -> List[str]:
     return sorted(skills)
 
 
-def get_files_list(dist_dir: Path) -> List[str]:
+def get_files_list(dist_dir: Path) -> list[str]:
     """
     Get list of all files included in the agent package.
     
@@ -298,12 +299,12 @@ def generate_manifest(
     role: str,
     dist_dir: Path,
     base_path: Path,
-    capabilities: List[str],
-    skills: List[str],
-    files: List[str],
+    capabilities: list[str],
+    skills: list[str],
+    files: list[str],
     build_hash: str,
-    git_commit_arg: Optional[str] = None
-) -> Dict[str, Any]:
+    git_commit_arg: str | None = None
+) -> dict[str, Any]:
     """
     Generate manifest.json with build artifact metadata.
     
@@ -373,10 +374,10 @@ def generate_manifest(
 
 def generate_agent_info(
     role: str,
-    capabilities: List[str],
-    skills: List[str],
+    capabilities: list[str],
+    skills: list[str],
     build_hash: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate agent_info.json template with build-time fields.
     
@@ -422,7 +423,7 @@ def build_agent_package(role: str, base_path: Path) -> None:
     if not config_file.exists():
         raise FileNotFoundError(f"Agent config not found: {config_file}")
     
-    with open(config_file, 'r') as f:
+    with open(config_file) as f:
         config = yaml.safe_load(f)
     
     # Get capabilities from implements list

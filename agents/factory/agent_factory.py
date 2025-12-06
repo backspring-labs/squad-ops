@@ -6,8 +6,8 @@ Dynamic agent instantiation based on role and identity
 
 import importlib
 import logging
-from typing import Dict, Any, List
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class AgentFactory:
     """Factory for creating agents based on role and identity"""
     
     @staticmethod
-    def create_agent(instance_config: Dict[str, Any]):
+    def create_agent(instance_config: dict[str, Any]):
         """Create an agent instance from configuration"""
         try:
             role = instance_config['role']
@@ -48,7 +48,7 @@ class AgentFactory:
             raise
     
     @staticmethod
-    def create_agents_from_instances(instances: List[Dict[str, Any]]):
+    def create_agents_from_instances(instances: list[dict[str, Any]]):
         """Create multiple agents from instances configuration"""
         agents = {}
         
@@ -75,7 +75,7 @@ class AgentFactory:
         return []
     
     @staticmethod
-    def validate_instance_config(instance_config: Dict[str, Any]) -> bool:
+    def validate_instance_config(instance_config: dict[str, Any]) -> bool:
         """Validate agent instance configuration"""
         required_fields = ['id', 'display_name', 'role', 'model', 'enabled']
         

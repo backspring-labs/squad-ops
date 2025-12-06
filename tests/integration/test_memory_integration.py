@@ -3,11 +3,12 @@ Integration tests for memory system - REAL integration tests
 Tests verify actual integration between components using real services.
 """
 
-import pytest
 import asyncpg
-from agents.memory.lancedb_adapter import LanceDBAdapter, LANCEDB_AVAILABLE
-from agents.memory.sql_adapter import SqlAdapter
+import pytest
+
+from agents.memory.lancedb_adapter import LANCEDB_AVAILABLE, LanceDBAdapter
 from agents.memory.promotion import PromotionService
+from agents.memory.sql_adapter import SqlAdapter
 
 
 @pytest.mark.asyncio
@@ -15,8 +16,8 @@ from agents.memory.promotion import PromotionService
 @pytest.mark.skipif(not LANCEDB_AVAILABLE, reason="LanceDB not available")
 async def test_lancedb_adapter_sql_adapter_integration(postgres_container, clean_database):
     """Test integration: LanceDBAdapter stores → SqlAdapter promotes → PostgreSQL persists"""
-    import tempfile
     import shutil
+    import tempfile
     
     # Setup REAL database connection
     postgres_url = postgres_container.get_connection_url()
@@ -127,8 +128,8 @@ async def test_lancedb_adapter_sql_adapter_integration(postgres_container, clean
 @pytest.mark.skipif(not LANCEDB_AVAILABLE, reason="LanceDB not available")
 async def test_promotion_service_integration(postgres_container, clean_database):
     """Test integration: PromotionService with REAL adapters and database"""
-    import tempfile
     import shutil
+    import tempfile
     
     postgres_url = postgres_container.get_connection_url()
     if postgres_url.startswith('postgresql+psycopg2://'):
@@ -305,8 +306,9 @@ async def test_memory_provider_agent_integration(postgres_container, clean_datab
     # Create a test agent subclass
     class TestAgent(BaseAgent):
         async def handle_agent_request(self, request):
-            from agents.specs.agent_response import AgentResponse, Timing
             from datetime import datetime
+
+            from agents.specs.agent_response import AgentResponse, Timing
             return AgentResponse.success(
                 result={'status': 'completed'},
                 idempotency_key="test-key",

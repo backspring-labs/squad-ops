@@ -16,15 +16,15 @@
     },
     "metadata": {
       "type": "object",
-      "required": ["pid", "ecid"],
+      "required": ["pid", "cycle_id"],
       "properties": {
         "pid": {
           "type": "string",
           "description": "Process ID"
         },
-        "ecid": {
+        "cycle_id": {
           "type": "string",
-          "description": "Execution Cycle ID"
+          "description": "Execution Cycle ID (SIP-0048: renamed from ecid)"
         },
         "tags": {
           "type": "array",

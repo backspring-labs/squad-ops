@@ -4,14 +4,14 @@ Version Manager Component for Dev Agent
 Handles version detection, archiving, and version management
 """
 
-import logging
 import asyncio
 import json
-import re
-from typing import Dict, Any
-from datetime import datetime
-import sys
+import logging
 import os
+import re
+import sys
+from datetime import datetime
+from typing import Any
 
 # Add config path
 sys.path.append('/app')
@@ -79,7 +79,7 @@ class VersionManager:
             logger.error(f"VersionManager failed to detect existing version: {e}")
             return 'unknown'
     
-    async def archive_existing_version(self, app_name: str, source_dir: str, new_version: str) -> Dict[str, Any]:
+    async def archive_existing_version(self, app_name: str, source_dir: str, new_version: str) -> dict[str, Any]:
         """Archive existing version to preserve it before new deployment"""
         try:
             app_kebab = self._convert_to_kebab_case(app_name)
@@ -113,7 +113,7 @@ class VersionManager:
                 app_name, existing_version, new_version, source_dir, archive_dir
             )
             await self._write_file(f"{archive_dir}/ARCHIVE_README.md", doc_content)
-            logger.info(f"VersionManager created archive documentation")
+            logger.info("VersionManager created archive documentation")
             
             # Store archive info
             self.archive_history[f"{app_name}-{existing_version}"] = {
@@ -157,7 +157,7 @@ class VersionManager:
             logger.error(f"VersionManager failed to calculate new version: {e}")
             return f"{framework_version}.001"
     
-    async def update_version_in_files(self, app_dir: str, new_version: str) -> Dict[str, Any]:
+    async def update_version_in_files(self, app_dir: str, new_version: str) -> dict[str, Any]:
         """Update version information in application files"""
         try:
             updated_files = []
@@ -207,11 +207,11 @@ class VersionManager:
                 'new_version': new_version
             }
     
-    async def get_version_history(self, app_name: str) -> Dict[str, Any]:
+    async def get_version_history(self, app_name: str) -> dict[str, Any]:
         """Get version history for an application"""
         try:
             app_kebab = self._convert_to_kebab_case(app_name)
-            archive_dir = f"warm-boot/archive"
+            archive_dir = "warm-boot/archive"
             
             # List all archives for this app
             if await self._file_exists(archive_dir):
@@ -242,11 +242,11 @@ class VersionManager:
                 'app_name': app_name
             }
     
-    async def cleanup_old_archives(self, app_name: str, keep_count: int = 5) -> Dict[str, Any]:
+    async def cleanup_old_archives(self, app_name: str, keep_count: int = 5) -> dict[str, Any]:
         """Clean up old archives, keeping only the most recent ones"""
         try:
             app_kebab = self._convert_to_kebab_case(app_name)
-            archive_dir = f"warm-boot/archive"
+            archive_dir = "warm-boot/archive"
             
             if not await self._file_exists(archive_dir):
                 return {

@@ -3,18 +3,19 @@ Integration test configuration for SquadOps
 Uses testcontainers to provide real services for integration testing
 """
 
-import pytest
-import pytest_asyncio
 import asyncio
 import os
 import sys
 import time
+from pathlib import Path
+
+import pytest
+import pytest_asyncio
 import requests
-from typing import Dict
 from testcontainers.postgres import PostgresContainer
+
 # from testcontainers.rabbitmq import RabbitMQContainer  # TODO: Fix testcontainers version
 from testcontainers.redis import RedisContainer
-from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -22,10 +23,12 @@ sys.path.insert(0, '/app')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'agents'))
 
 # Import agent manager for container management
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(__file__))
 from agent_manager import AgentManager
+
 
 def load_test_config():
     """Load integration test configuration from file"""
@@ -182,7 +185,7 @@ def check_agent_containers(agents: list = ['max', 'neo'], retries: int = 3) -> b
                 time.sleep(2)  # Brief pause between retries
             else:
                 print(f"❌ Agent containers failed health check after {retries} attempts")
-                print(f"   Troubleshooting: Start agents with 'docker-compose up -d max neo' or check logs with 'docker logs squadops-max'")
+                print("   Troubleshooting: Start agents with 'docker-compose up -d max neo' or check logs with 'docker logs squadops-max'")
                 return False
                 
         except Exception as e:
@@ -191,7 +194,7 @@ def check_agent_containers(agents: list = ['max', 'neo'], retries: int = 3) -> b
                 time.sleep(2)
             else:
                 print(f"❌ Agent container check failed after {retries} attempts: {e}")
-                print(f"   Troubleshooting: Check Docker is running and agent containers exist")
+                print("   Troubleshooting: Check Docker is running and agent containers exist")
                 return False
     
     return False
@@ -417,7 +420,7 @@ def redis_container():
             yield redis
 
 @pytest.fixture
-def integration_config(postgres_container, rabbitmq_container, redis_container) -> Dict[str, str]:
+def integration_config(postgres_container, rabbitmq_container, redis_container) -> dict[str, str]:
     """Configuration for integration tests using real containers"""
     config = load_test_config()
     
@@ -725,8 +728,8 @@ def retry_on_network_error(max_retries: int = 3, delay: float = 1.0, backoff: fl
             # Test code here
     """
     def decorator(func):
-        import functools
         import asyncio
+        import functools
         
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):

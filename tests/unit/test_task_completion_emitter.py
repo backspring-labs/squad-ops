@@ -49,7 +49,7 @@ async def test_emit_build_task_completion(capability, mock_agent):
     
     assert emit_result['event_sent'] is True
     assert emit_result['task_id'] == task_id
-    assert emit_result['ecid'] == ecid
+    assert emit_result['cycle_id'] == ecid
     mock_agent.send_message.assert_called_once()
 
 

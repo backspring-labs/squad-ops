@@ -224,7 +224,7 @@ case "$COMMAND" in
         ;;
     coverage)
         echo -e "${YELLOW}Generating coverage report...${NC}"
-        python -m pytest tests/ --cov=agents --cov=config --cov=infra/task-api --cov=infra/health-check --cov-report=html --cov-report=term-missing --cov-report=xml
+        python -m pytest tests/ --cov=agents --cov=config --cov=infra/runtime-api --cov=infra/health-check --cov-report=html --cov-report=term-missing --cov-report=xml  # SIP-0048: renamed from task-api
         echo -e "${GREEN}✅ Coverage report generated${NC}"
         echo "HTML report: htmlcov/index.html"
         ;;

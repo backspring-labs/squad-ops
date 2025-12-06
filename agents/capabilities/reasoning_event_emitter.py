@@ -6,7 +6,7 @@ Implements comms.reasoning.emit capability for emitting agent reasoning events t
 
 import logging
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class ReasoningEventEmitter:
         self.communication_log = getattr(agent_instance, 'communication_log', [])
         self._role_to_agent_cache = None
     
-    def _load_role_to_agent_mapping(self) -> Dict[str, str]:
+    def _load_role_to_agent_mapping(self) -> dict[str, str]:
         """
         Load role-to-agent mapping from instances.yaml.
         
@@ -44,6 +44,7 @@ class ReasoningEventEmitter:
         
         try:
             from pathlib import Path
+
             import yaml
             
             # Find instances.yaml (same logic as TaskDelegator)
@@ -51,7 +52,7 @@ class ReasoningEventEmitter:
             instances_path = base_path / 'config' / 'instances.yaml'
             
             if instances_path.exists():
-                with open(instances_path, 'r') as f:
+                with open(instances_path) as f:
                     instances = yaml.safe_load(f) or {}
                 
                 role_map = {}
@@ -80,9 +81,9 @@ class ReasoningEventEmitter:
         lead_agent = role_map.get('lead', 'max')
         return lead_agent
     
-    async def emit(self, task_id: str, ecid: str, reason_step: str, 
+    async def emit(self, task_id: str, cycle_id: str, reason_step: str, 
                    summary: str, context: str, 
-                   key_points: List[str] = None, confidence: float = None) -> Dict[str, Any]:
+                   key_points: list[str] = None, confidence: float = None) -> dict[str, Any]:
         """
         Emit reasoning event to lead agent for aggregation.
         
@@ -92,7 +93,7 @@ class ReasoningEventEmitter:
         
         Args:
             task_id: Task identifier
-            ecid: Execution cycle identifier
+            cycle_id: Execution cycle identifier
             reason_step: Type of reasoning step ('decision', 'hypothesis', 'checkpoint')
             summary: Brief summary of reasoning
             context: Operation context ('manifest_generation', 'build', 'deploy', etc.)
@@ -103,18 +104,18 @@ class ReasoningEventEmitter:
             Dictionary containing:
             - event_sent: Boolean indicating if event was sent successfully
             - task_id: Task identifier
-            - ecid: Execution cycle identifier
+            - cycle_id: Execution cycle identifier
         """
         try:
             # Extract actual LLM reasoning from communication_log for this context
             llm_reasoning = None
             for entry in self.communication_log:
-                entry_ecid = entry.get('ecid')
+                entry_cycle_id = entry.get('cycle_id')
                 entry_type = entry.get('message_type', '')
                 entry_context = entry.get('description', '')
                 
-                # Match by ECID, llm_reasoning type, and context in description
-                if (entry_ecid == ecid and 
+                # Match by cycle_id, llm_reasoning type, and context in description
+                if (entry_cycle_id == cycle_id and 
                     entry_type == 'llm_reasoning' and 
                     context.lower() in entry_context.lower()):
                     # Found matching LLM reasoning - extract it
@@ -129,7 +130,7 @@ class ReasoningEventEmitter:
             reasoning_event = {
                 'schema': 'reasoning.v1',
                 'task_id': task_id,
-                'ecid': ecid,
+                'cycle_id': cycle_id,
                 'reason_step': reason_step,
                 'summary': summary,
                 'context': context,
@@ -159,7 +160,7 @@ class ReasoningEventEmitter:
                 context={
                     'sender_agent': self.name,
                     'sender_role': 'developer',
-                    'ecid': ecid
+                    'cycle_id': cycle_id
                 }
             )
             
@@ -171,7 +172,7 @@ class ReasoningEventEmitter:
             return {
                 'event_sent': True,
                 'task_id': task_id,
-                'ecid': ecid,
+                'cycle_id': cycle_id,
                 'lead_agent': lead_agent_id
             }
             
@@ -180,7 +181,7 @@ class ReasoningEventEmitter:
             return {
                 'event_sent': False,
                 'task_id': task_id,
-                'ecid': ecid,
+                'cycle_id': cycle_id,
                 'error': str(e)
             }
 

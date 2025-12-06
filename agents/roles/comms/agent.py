@@ -3,15 +3,16 @@
 
 import asyncio
 import logging
-from typing import Dict, Any
+import time
+from collections import deque
 from datetime import datetime
-from agents.base_agent import BaseAgent, AgentMessage
+from pathlib import Path
+from typing import Any
+
+from agents.base_agent import AgentMessage, BaseAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
-from pathlib import Path
-from collections import deque
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class CommsAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_documentation(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_documentation(self, request: AgentRequest) -> dict[str, Any]:
         """Handle comms.documentation capability"""
         
         # Map existing documentation logic to new capability format
@@ -106,7 +107,7 @@ class CommsAgent(BaseAgent):
             'format': 'markdown'
         }
     
-    async def _handle_stakeholder_update(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_stakeholder_update(self, request: AgentRequest) -> dict[str, Any]:
         """Handle comms.stakeholder_update capability"""
         
         # Map existing stakeholder update logic to new capability format
@@ -116,7 +117,7 @@ class CommsAgent(BaseAgent):
             'delivery_status': 'pending'
         }
     
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Process communication tasks with empathetic reasoning"""
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', 'communication')
@@ -168,7 +169,7 @@ class CommsAgent(BaseAgent):
         else:
             logger.info(f"Joi received message: {message.message_type} from {message.sender}")
     
-    async def analyze_emotional_context(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_emotional_context(self, task: dict[str, Any]) -> dict[str, Any]:
         """Analyze emotional context of the task"""
         content = task.get('content', '')
         
@@ -186,7 +187,7 @@ class CommsAgent(BaseAgent):
             'empathy_level': 'high' if emotional_indicators['stress_level'] == 'high' else 'normal'
         }
     
-    def get_recommended_approach(self, indicators: Dict[str, str]) -> str:
+    def get_recommended_approach(self, indicators: dict[str, str]) -> str:
         """Get recommended communication approach based on emotional indicators"""
         if indicators['stress_level'] == 'high':
             return 'supportive'
@@ -195,7 +196,7 @@ class CommsAgent(BaseAgent):
         else:
             return 'collaborative'
     
-    async def generate_empathetic_response(self, task: Dict[str, Any], analysis: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_empathetic_response(self, task: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
         """Generate empathetic response based on analysis"""
         approach = analysis['recommended_approach']
         
@@ -227,7 +228,7 @@ class CommsAgent(BaseAgent):
             'emotional_support': analysis['empathy_level']
         }
     
-    async def update_conversation_history(self, task: Dict[str, Any], response: Dict[str, Any]):
+    async def update_conversation_history(self, task: dict[str, Any], response: dict[str, Any]):
         """Update conversation history with decay"""
         conversation_entry = {
             'timestamp': time.time(),
@@ -240,7 +241,7 @@ class CommsAgent(BaseAgent):
         
         self.conversation_history.append(conversation_entry)
     
-    def get_conversation_context(self) -> Dict[str, Any]:
+    def get_conversation_context(self) -> dict[str, Any]:
         """Get current conversation context"""
         if not self.conversation_history:
             return {'context': 'no_history', 'count': 0}
@@ -276,12 +277,12 @@ class CommsAgent(BaseAgent):
             else:
                 logger.info(f"Joi handled interrupt: {interrupt_type}")
     
-    async def handle_urgent_communication(self, interrupt: Dict[str, Any]):
+    async def handle_urgent_communication(self, interrupt: dict[str, Any]):
         """Handle urgent communication interrupts"""
         logger.info("Joi handling urgent communication interrupt")
         # Mock urgent communication handling
     
-    async def handle_emotional_crisis(self, interrupt: Dict[str, Any]):
+    async def handle_emotional_crisis(self, interrupt: dict[str, Any]):
         """Handle emotional crisis interrupts"""
         logger.info("Joi handling emotional crisis interrupt")
         # Mock emotional crisis handling

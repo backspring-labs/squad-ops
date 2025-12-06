@@ -61,7 +61,7 @@ class TestQAAgent:
         request = AgentRequest(
             action="qa.test_design",
             payload={'requirements': 'test requirements'},
-            metadata={'pid': 'PID-TEST-001', 'ecid': 'ECID-TEST-001'}
+            metadata={'pid': 'PID-TEST-001', 'cycle_id': 'ECID-TEST-001'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -95,7 +95,7 @@ class TestQAAgent:
         request = AgentRequest(
             action="qa.test_dev",
             payload={'test_plan_uri': '/test-plan.md'},
-            metadata={'pid': 'PID-TEST-002', 'ecid': 'ECID-TEST-002'}
+            metadata={'pid': 'PID-TEST-002', 'cycle_id': 'ECID-TEST-002'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -129,7 +129,7 @@ class TestQAAgent:
         request = AgentRequest(
             action="qa.test_execution",
             payload={'test_files_uri': ['/test.py']},
-            metadata={'pid': 'PID-TEST-003', 'ecid': 'ECID-TEST-003'}
+            metadata={'pid': 'PID-TEST-003', 'cycle_id': 'ECID-TEST-003'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -155,7 +155,7 @@ class TestQAAgent:
         request = AgentRequest(
             action="unknown.capability",
             payload={},
-            metadata={'pid': 'PID-TEST-004', 'ecid': 'ECID-TEST-004'}
+            metadata={'pid': 'PID-TEST-004', 'cycle_id': 'ECID-TEST-004'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -176,7 +176,7 @@ class TestQAAgent:
         request = AgentRequest(
             action="qa.test_design",
             payload={},
-            metadata={'pid': 'PID-TEST-005', 'ecid': 'ECID-TEST-005'}
+            metadata={'pid': 'PID-TEST-005', 'cycle_id': 'ECID-TEST-005'}
         )
         
         response = await agent.handle_agent_request(request)

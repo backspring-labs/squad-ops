@@ -46,7 +46,7 @@ class TestDockerDeployer:
         requirements = {
             'application': 'TestApp',
             'version': '1.0.0',
-            'ecid': 'ec-001',
+            'cycle_id': 'ec-001',
             'source_dir': '/test/source'
         }
         

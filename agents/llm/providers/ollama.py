@@ -4,11 +4,10 @@ Ollama LLM provider adapter for SquadOps agents.
 Implements the LLMClient protocol for local Ollama instances.
 """
 
-import aiohttp
-import asyncio
-import os
-from typing import Dict, List
 import logging
+import os
+
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ class OllamaClient:
         
         self.timeout = timeout
         # Track token usage from last call (Task 1.3)
-        self._last_token_usage: Dict[str, int] = None
+        self._last_token_usage: dict[str, int] = None
     
     async def complete(self, prompt: str, temperature: float = 0.7, 
                       max_tokens: int = 4000, **kwargs) -> str:
@@ -116,14 +115,14 @@ class OllamaClient:
                         
                         response_text = result.get('response', '')
                         if not response_text:
-                            raise Exception(f"Ollama API returned empty response")
+                            raise Exception("Ollama API returned empty response")
                         return response_text
                     else:
                         error_text = await response.text()
                         raise Exception(f"Ollama API error {response.status}: {error_text[:500] if error_text else 'No error details'}")
         except aiohttp.ClientError as e:
             raise Exception(f"Network error calling Ollama: {type(e).__name__}: {str(e)}") from e
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             raise Exception(f"Ollama API timeout after {self.timeout}s: {str(e)}") from e
         except Exception as e:
             # Re-raise if it's already a formatted Exception
@@ -131,7 +130,7 @@ class OllamaClient:
                 raise
             raise Exception(f"Unexpected error calling Ollama: {type(e).__name__}: {str(e)}") from e
     
-    async def chat(self, messages: List[Dict[str, str]], 
+    async def chat(self, messages: list[dict[str, str]], 
                    temperature: float = 0.7, max_tokens: int = 4000, 
                    **kwargs) -> str:
         """Generate chat completion via Ollama API"""
@@ -171,14 +170,14 @@ class OllamaClient:
                         
                         content = result.get('message', {}).get('content', '')
                         if not content:
-                            raise Exception(f"Ollama chat API returned empty content")
+                            raise Exception("Ollama chat API returned empty content")
                         return content
                     else:
                         error_text = await response.text()
                         raise Exception(f"Ollama chat API error {response.status}: {error_text[:500] if error_text else 'No error details'}")
         except aiohttp.ClientError as e:
             raise Exception(f"Network error calling Ollama chat: {type(e).__name__}: {str(e)}") from e
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             raise Exception(f"Ollama chat API timeout after {self.timeout}s: {str(e)}") from e
         except Exception as e:
             # Re-raise if it's already a formatted Exception
@@ -186,7 +185,7 @@ class OllamaClient:
                 raise
             raise Exception(f"Unexpected error calling Ollama chat: {type(e).__name__}: {str(e)}") from e
     
-    def get_token_usage(self) -> Dict[str, int]:
+    def get_token_usage(self) -> dict[str, int]:
         """
         Get token usage from the last LLM call (Task 1.3)
         

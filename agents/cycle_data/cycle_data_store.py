@@ -9,7 +9,7 @@ and telemetry in the canonical cycle_data/<project_id>/<ECID>/ layout.
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -25,18 +25,18 @@ class CycleDataStore:
     # Valid areas for cycle data
     VALID_AREAS = {'meta', 'shared', 'agents', 'artifacts', 'tests', 'telemetry'}
     
-    def __init__(self, cycle_data_root: Path, project_id: str, ecid: str):
+    def __init__(self, cycle_data_root: Path, project_id: str, cycle_id: str):  # SIP-0048: renamed from ecid
         """
         Initialize CycleDataStore for a specific cycle.
         
         Args:
             cycle_data_root: Base path for cycle data (e.g., repo_root/cycle_data)
             project_id: Project identifier (must exist in projects table)
-            ecid: Execution cycle identifier
+            cycle_id: Execution cycle identifier (SIP-0048: renamed from ecid)
         """
         self.cycle_data_root = Path(cycle_data_root)
         self.project_id = project_id
-        self.ecid = ecid
+        self.cycle_id = cycle_id  # SIP-0048: renamed from ecid
         self._cycle_path = None
         self._directory_created = False
     
@@ -45,10 +45,10 @@ class CycleDataStore:
         Get the full path to this cycle's data directory.
         
         Returns:
-            Path to cycle_data/<project_id>/<ECID>/
+            Path to cycle_data/<project_id>/<cycle_id>/
         """
         if self._cycle_path is None:
-            self._cycle_path = self.cycle_data_root / self.project_id / self.ecid
+            self._cycle_path = self.cycle_data_root / self.project_id / self.cycle_id  # SIP-0048: renamed from ecid
         return self._cycle_path
     
     def _ensure_directory_structure(self):
@@ -66,7 +66,7 @@ class CycleDataStore:
         self._directory_created = True
         logger.debug(f"Created cycle data directory structure: {cycle_path}")
     
-    def _get_area_path(self, area: str, agent_name: Optional[str] = None) -> Path:
+    def _get_area_path(self, area: str, agent_name: str | None = None) -> Path:
         """
         Get the path for a specific area, optionally with agent subdirectory.
         
@@ -96,7 +96,7 @@ class CycleDataStore:
         area: str,
         relative_path: str,
         content: str,
-        agent_name: Optional[str] = None
+        agent_name: str | None = None
     ) -> bool:
         """
         Write a text artifact to the cycle data store.
@@ -134,7 +134,7 @@ class CycleDataStore:
         area: str,
         relative_path: str,
         data: bytes,
-        agent_name: Optional[str] = None
+        agent_name: str | None = None
     ) -> bool:
         """
         Write a binary artifact to the cycle data store.
@@ -171,8 +171,8 @@ class CycleDataStore:
         self,
         area: str,
         relative_path: str,
-        agent_name: Optional[str] = None
-    ) -> Optional[str]:
+        agent_name: str | None = None
+    ) -> str | None:
         """
         Read a text artifact from the cycle data store.
         
@@ -204,8 +204,8 @@ class CycleDataStore:
         self,
         area: str,
         relative_path: str,
-        agent_name: Optional[str] = None
-    ) -> Optional[bytes]:
+        agent_name: str | None = None
+    ) -> bytes | None:
         """
         Read a binary artifact from the cycle data store.
         
@@ -235,8 +235,8 @@ class CycleDataStore:
     
     def append_telemetry_event(
         self,
-        event: Dict[str, Any],
-        agent_name: Optional[str] = None
+        event: dict[str, Any],
+        agent_name: str | None = None
     ) -> bool:
         """
         Append a telemetry event as a JSON line to the telemetry stream.

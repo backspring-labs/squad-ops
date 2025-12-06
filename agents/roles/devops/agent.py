@@ -11,12 +11,13 @@ Premium Consultation: DevOps Engineer - Infrastructure automation and deployment
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any
-from agents.base_agent import BaseAgent, AgentMessage
+from pathlib import Path
+from typing import Any
+
+from agents.base_agent import AgentMessage, BaseAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ class DevopsAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_infrastructure(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_infrastructure(self, request: AgentRequest) -> dict[str, Any]:
         """Handle devops.infrastructure capability"""
         
         # Map existing infrastructure logic to new capability format
@@ -111,7 +112,7 @@ class DevopsAgent(BaseAgent):
             'configuration': {}
         }
     
-    async def _handle_deployment(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_deployment(self, request: AgentRequest) -> dict[str, Any]:
         """Handle devops.deployment capability"""
         
         # Map existing deployment logic to new capability format
@@ -121,7 +122,7 @@ class DevopsAgent(BaseAgent):
             'version': '1.0.0'
         }
     
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Process devops tasks with systematic reasoning"""
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', 'unknown')
@@ -166,7 +167,7 @@ class DevopsAgent(BaseAgent):
         
         return result
     
-    async def _process_devops_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def _process_devops_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Process specialized devops tasks"""
         # Generate mock response using the base agent's mock_llm_response
         prompt = f"Process devops task: {task.get('description', 'No description')}"
@@ -180,7 +181,7 @@ class DevopsAgent(BaseAgent):
             "confidence": 0.85
         }
     
-    async def _process_generic_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def _process_generic_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Process generic tasks"""
         prompt = f"Process generic task: {task.get('description', 'No description')}"
         response = await self.mock_llm_response(prompt, "generic")
@@ -272,7 +273,7 @@ class DevopsAgent(BaseAgent):
             {"response_type": "devops"}
         )
     
-    async def get_status(self) -> Dict[str, Any]:
+    async def get_status(self) -> dict[str, Any]:
         """Get current agent status"""
         return {
             "agent_name": self.name,

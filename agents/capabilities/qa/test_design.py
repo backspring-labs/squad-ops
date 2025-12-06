@@ -5,9 +5,9 @@ Designs test plans and test cases from requirements/PRDs.
 """
 
 import logging
-from pathlib import Path
-from typing import Dict, Any, Optional
 import re
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class TestDesign:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
     
-    async def design(self, requirements: str, prd_path: Optional[str] = None, context: Optional[Dict] = None) -> Dict[str, Any]:
+    async def design(self, requirements: str, prd_path: str | None = None, context: dict | None = None) -> dict[str, Any]:
         """
         Design test plan from requirements or PRD.
         
@@ -123,7 +123,7 @@ class TestDesign:
             logger.error(f"{self.name} failed to design test plan: {e}", exc_info=True)
             raise
     
-    def _build_test_plan_prompt(self, requirements: str, prd_content: Optional[str], context: Optional[Dict]) -> str:
+    def _build_test_plan_prompt(self, requirements: str, prd_content: str | None, context: dict | None) -> str:
         """Build prompt for LLM to generate test plan"""
         prompt_parts = [
             "You are a QA engineer designing a comprehensive test plan.",
@@ -209,7 +209,7 @@ class TestDesign:
         
         return test_scenarios
     
-    def _analyze_coverage(self, test_plan_content: str, requirements: str, prd_content: Optional[str]) -> Dict[str, Any]:
+    def _analyze_coverage(self, test_plan_content: str, requirements: str, prd_content: str | None) -> dict[str, Any]:
         """Analyze test coverage"""
         # Simple coverage analysis
         # Count requirements keywords mentioned in test plan

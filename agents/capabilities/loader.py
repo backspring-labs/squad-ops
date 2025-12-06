@@ -4,13 +4,14 @@ SquadOps Capability Loader
 Loads capability catalog, agent configs, and capability bindings
 """
 
-import yaml
-import logging
-import importlib
 import asyncio
-from pathlib import Path
-from typing import Dict, Any, Optional, List, Type
+import importlib
+import logging
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class Capability:
     name: str
     capability_version: str
     description: str
-    result: Dict[str, Any]
+    result: dict[str, Any]
 
 @dataclass
 class AgentConfig:
@@ -28,9 +29,9 @@ class AgentConfig:
     agent_id: str
     role: str
     spec_version: str
-    implements: List[Dict[str, Any]]
-    constraints: Dict[str, Any]
-    defaults: Dict[str, Any]
+    implements: list[dict[str, Any]]
+    constraints: dict[str, Any]
+    defaults: dict[str, Any]
 
 class CapabilityLoader:
     """Loader for capability catalog, agent configs, and bindings"""
@@ -88,8 +89,8 @@ class CapabilityLoader:
     # Capabilities that accept task dictionary as first parameter (for generic routing)
     # All other capabilities accept (task_id, requirements)
     TASK_DICT_CAPABILITIES = {
-        'warmboot.wrapup',  # Accepts task dict, extracts ecid, task_id, completion_payload, etc.
-        'prd.process',  # Accepts task dict, extracts prd_path and ecid
+        'warmboot.wrapup',  # Accepts task dict, extracts cycle_id, task_id, completion_payload, etc.
+        'prd.process',  # Accepts task dict, extracts prd_path and cycle_id
     }
     
     # Calling convention metadata for capabilities
@@ -120,7 +121,7 @@ class CapabilityLoader:
         # All other capabilities use this convention
     }
     
-    def __init__(self, base_path: Optional[Path] = None):
+    def __init__(self, base_path: Path | None = None):
         """Initialize loader with base path"""
         from agents.utils.path_resolver import PathResolver
         
@@ -133,17 +134,17 @@ class CapabilityLoader:
         self.bindings_path = self.base_path / "agents" / "capability_bindings.yaml"
         self.roles_path = self.base_path / "agents" / "roles"
         
-        self._catalog: Optional[Dict[str, Capability]] = None
-        self._bindings: Optional[Dict[str, str]] = None
-        self._class_cache: Dict[str, Type] = {}  # Cache for capability classes
+        self._catalog: dict[str, Capability] | None = None
+        self._bindings: dict[str, str] | None = None
+        self._class_cache: dict[str, type] = {}  # Cache for capability classes
     
-    def load_catalog(self) -> Dict[str, Capability]:
+    def load_catalog(self) -> dict[str, Capability]:
         """Load capability catalog"""
         if self._catalog is not None:
             return self._catalog
         
         try:
-            with open(self.catalog_path, 'r') as f:
+            with open(self.catalog_path) as f:
                 data = yaml.safe_load(f)
             
             catalog = {}
@@ -164,7 +165,7 @@ class CapabilityLoader:
             logger.error(f"Failed to load capability catalog: {e}")
             raise
     
-    def load_agent_config(self, role: str) -> Optional[AgentConfig]:
+    def load_agent_config(self, role: str) -> AgentConfig | None:
         """Load agent config.yaml for a role"""
         config_path = self.roles_path / role / "config.yaml"
         
@@ -173,7 +174,7 @@ class CapabilityLoader:
             return None
         
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path) as f:
                 data = yaml.safe_load(f)
             
             config = AgentConfig(
@@ -192,7 +193,7 @@ class CapabilityLoader:
             logger.error(f"Failed to load agent config for role {role}: {e}")
             raise
     
-    def load_bindings(self) -> Dict[str, str]:
+    def load_bindings(self) -> dict[str, str]:
         """Load capability bindings"""
         if self._bindings is not None:
             return self._bindings
@@ -204,7 +205,7 @@ class CapabilityLoader:
             return self._bindings
         
         try:
-            with open(self.bindings_path, 'r') as f:
+            with open(self.bindings_path) as f:
                 data = yaml.safe_load(f)
             
             bindings = data.get('bindings', {})
@@ -218,12 +219,12 @@ class CapabilityLoader:
             self._bindings = {}
             return self._bindings
     
-    def get_agent_for_capability(self, capability: str) -> Optional[str]:
+    def get_agent_for_capability(self, capability: str) -> str | None:
         """Resolve capability to agent ID"""
         bindings = self.load_bindings()
         return bindings.get(capability)
     
-    def validate_capability(self, capability: str, version: Optional[str] = None) -> bool:
+    def validate_capability(self, capability: str, version: str | None = None) -> bool:
         """Validate capability exists in catalog"""
         catalog = self.load_catalog()
         
@@ -237,12 +238,12 @@ class CapabilityLoader:
         
         return True
     
-    def get_capability(self, capability: str) -> Optional[Capability]:
+    def get_capability(self, capability: str) -> Capability | None:
         """Get capability definition from catalog"""
         catalog = self.load_catalog()
         return catalog.get(capability)
     
-    def get_agent_capabilities(self, role: str) -> List[str]:
+    def get_agent_capabilities(self, role: str) -> list[str]:
         """Get list of capabilities implemented by an agent"""
         config = self.load_agent_config(role)
         if config is None:
@@ -250,7 +251,7 @@ class CapabilityLoader:
         
         return [impl['capability'] for impl in config.implements]
     
-    def get_capability_for_task(self, task: Dict[str, Any]) -> Optional[str]:
+    def get_capability_for_task(self, task: dict[str, Any]) -> str | None:
         """
         Determine capability name for a task based on task_type or requirements.action.
         
@@ -323,8 +324,8 @@ class CapabilityLoader:
         else:
             return 'payload_as_is'
     
-    def prepare_capability_args(self, capability_name: str, payload: Dict[str, Any], 
-                                metadata: Dict[str, Any] = None) -> tuple:
+    def prepare_capability_args(self, capability_name: str, payload: dict[str, Any], 
+                                metadata: dict[str, Any] = None) -> tuple:
         """
         Prepare arguments for capability execution based on calling convention.
         
@@ -362,7 +363,7 @@ class CapabilityLoader:
             # Pass payload as-is
             return (payload,)
     
-    def resolve(self, capability_name: str) -> Optional[Type]:
+    def resolve(self, capability_name: str) -> type | None:
         """
         Resolve capability name to capability class.
         

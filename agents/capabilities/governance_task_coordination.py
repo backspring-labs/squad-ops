@@ -5,7 +5,7 @@ Implements governance.task_coordination capability for coordinating and delegati
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class GovernanceTaskCoordination:
         # Access capability loader for determining delegation targets
         self.capability_loader = getattr(agent_instance, 'capability_loader', None)
     
-    async def coordinate(self, request: Dict[str, Any], metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def coordinate(self, request: dict[str, Any], metadata: dict[str, Any] = None) -> dict[str, Any]:
         """
         Coordinate task delegation across squad.
         

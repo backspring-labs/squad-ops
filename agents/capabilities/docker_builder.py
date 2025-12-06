@@ -5,7 +5,7 @@ Implements docker.build capability for building Docker images from source.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class DockerBuilder:
         self.docker_manager = DockerManager()
         self.file_manager = FileManager()
     
-    async def build(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
+    async def build(self, task_id: str, requirements: dict[str, Any]) -> dict[str, Any]:
         """
         Build Docker image from source.
         
@@ -93,7 +93,7 @@ class DockerBuilder:
             build_requirements = {
                 'app_name': requirements.get('app_name', app_name),
                 'version': version,
-                'run_id': requirements.get('run_id', requirements.get('ecid', 'unknown')),
+                'run_id': requirements.get('run_id', requirements.get('cycle_id', 'unknown')),
                 'prd_analysis': requirements.get('prd_analysis', 'Application build'),
                 'features': features or [],
                 'constraints': requirements.get('constraints', {}),
@@ -109,11 +109,13 @@ class DockerBuilder:
             if not await self.file_manager.directory_exists(app_dir):
                 logger.info(f"{self.name} app directory doesn't exist, creating files from manifest")
                 # Compose Skills + Tools: Load prompts using Skills, then pass to Tool
+                import re
+
+                import yaml
+
                 from agents.skills.dev.developer_prompt import DeveloperPrompt
                 from agents.skills.dev.squadops_constraints import SquadOpsConstraints
                 from agents.tools.app_builder import AppBuilder
-                import yaml
-                import re
                 
                 app_builder = AppBuilder(llm_client=self.agent.llm_client, agent=self.agent)
                 
@@ -183,11 +185,11 @@ class DockerBuilder:
             source_dir = f"warm-boot/apps/{app_name.lower().replace(' ', '-')}/"
             
             # Emit reasoning event about build decisions
-            ecid = requirements.get('ecid', getattr(self.agent, 'current_ecid', 'unknown'))
+            cycle_id = requirements.get('cycle_id', getattr(self.agent, 'current_cycle_id', 'unknown'))
             if hasattr(self.agent, 'emit_reasoning_event'):
                 await self.agent.emit_reasoning_event(
                     task_id=task_id,
-                    ecid=ecid,
+                    cycle_id=cycle_id,
                     reason_step='decision',
                     summary=f"Building Docker image for {app_name} v{version} using {manifest.get('architecture_type', 'unknown')} architecture",
                     context='build',
@@ -218,7 +220,7 @@ class DockerBuilder:
             if hasattr(self.agent, 'emit_reasoning_event'):
                 await self.agent.emit_reasoning_event(
                     task_id=task_id,
-                    ecid=ecid,
+                    cycle_id=cycle_id,
                     reason_step='checkpoint',
                     summary=f"Successfully built Docker image {build_result.get('image_name')}:{version}",
                     context='build',
@@ -242,7 +244,7 @@ class DockerBuilder:
                         'architecture_type': manifest.get('architecture_type', 'unknown')
                     },
                     importance=0.8,
-                    task_context={'ecid': ecid, 'pid': requirements.get('pid')}
+                    task_context={'cycle_id': cycle_id, 'pid': requirements.get('pid')}
                 )
             
             return {

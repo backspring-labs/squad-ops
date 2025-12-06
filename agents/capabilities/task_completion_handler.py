@@ -6,8 +6,9 @@ Implements task.completion.handle capability for handling task completion events
 
 import asyncio
 import logging
+from typing import Any
+
 import aiohttp
-from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class TaskCompletionHandler:
             self.telemetry_collector = getattr(agent_instance, 'telemetry_collector', None)
             self.warmboot_memory_handler = getattr(agent_instance, 'warmboot_memory_handler', None)
     
-    async def handle_completion(self, message: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_completion(self, message: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
         """
         Handle task completion event.
         
@@ -67,18 +68,18 @@ class TaskCompletionHandler:
         
         Args:
             message: Message payload containing task completion data
-            context: Message context containing ECID and other metadata
+            context: Message context containing cycle_id and other metadata
             
         Returns:
             Dictionary containing handled status, next_action, and completion_status
         """
         try:
             task_id = message.get('task_id', 'unknown')
-            ecid = context.get('ecid', message.get('ecid', 'unknown'))
+            cycle_id = context.get('cycle_id', message.get('cycle_id', 'unknown'))
             status = message.get('status', 'unknown')
             action = message.get('action', 'unknown')
             
-            logger.info(f"{self.name} handling completion: task {task_id}, ECID {ecid}, status {status}, action {action}")
+            logger.info(f"{self.name} handling completion: task {task_id}, cycle_id {cycle_id}, status {status}, action {action}")
             
             # Route to specific completion handlers based on action
             if action == 'design_manifest':
@@ -93,24 +94,24 @@ class TaskCompletionHandler:
                 # Wait briefly for any pending reasoning events to be processed
                 await asyncio.sleep(0.5)
                 
-                # Extract reasoning events from communication log for this ECID
+                # Extract reasoning events from communication log for this cycle_id
                 reasoning_events = [
                     entry for entry in self.communication_log
-                    if entry.get('ecid') == ecid 
+                    if entry.get('cycle_id') == cycle_id 
                     and entry.get('message_type') == 'agent_reasoning'
                 ]
                 
                 if len(reasoning_events) > 0:
-                    logger.info(f"{self.name} found {len(reasoning_events)} reasoning events for ECID {ecid} before delegating wrap-up")
+                    logger.info(f"{self.name} found {len(reasoning_events)} reasoning events for cycle_id {cycle_id} before delegating wrap-up")
                 else:
-                    logger.debug(f"{self.name} no reasoning events found for ECID {ecid} before delegating wrap-up")
+                    logger.debug(f"{self.name} no reasoning events found for cycle_id {cycle_id} before delegating wrap-up")
                 
-                logger.info(f"{self.name} delegating WarmBoot wrap-up generation for ECID {ecid}")
+                logger.info(f"{self.name} delegating WarmBoot wrap-up generation for cycle_id {cycle_id}")
                 
                 # Collect telemetry data
                 telemetry = {}
                 if self.telemetry_collector:
-                    telemetry = await self.telemetry_collector.collect(ecid, task_id)
+                    telemetry = await self.telemetry_collector.collect(cycle_id, task_id)
                 
                 # Create wrap-up task and delegate to agent with warmboot.wrapup capability
                 if self.capability_loader:
@@ -126,7 +127,7 @@ class TaskCompletionHandler:
                             wrapup_task = {
                                 'type': 'warmboot_wrapup',
                                 'task_id': f"{task_id}-wrapup",
-                                'ecid': ecid,
+                                'cycle_id': cycle_id,
                                 'original_task_id': task_id,
                                 'completion_payload': message,
                                 'reasoning_events': reasoning_events,
@@ -139,12 +140,12 @@ class TaskCompletionHandler:
                                 message_type='task_delegation',
                                 payload=wrapup_task,
                                 context={
-                                    'ecid': ecid,
+                                    'cycle_id': cycle_id,
                                     'delegated_by': self.name,
                                     'task_type': 'warmboot_wrapup'
                                 }
                             )
-                            logger.info(f"{self.name} delegated wrap-up task to {wrapup_agent} for ECID {ecid}")
+                            logger.info(f"{self.name} delegated wrap-up task to {wrapup_agent} for cycle_id {cycle_id}")
                         else:
                             logger.warning(f"{self.name} could not determine wrap-up agent, skipping wrap-up generation")
                     except Exception as e:
@@ -169,93 +170,93 @@ class TaskCompletionHandler:
                 'error': str(e)
             }
     
-    async def _handle_design_manifest_completion(self, message: Dict[str, Any], context: Dict[str, Any]) -> None:
+    async def _handle_design_manifest_completion(self, message: dict[str, Any], context: dict[str, Any]) -> None:
         """Handle design manifest completion - extract manifest and trigger build task"""
         try:
             task_id = message.get('task_id', 'unknown')
-            ecid = context.get('ecid', message.get('ecid', 'unknown'))
+            cycle_id = context.get('cycle_id', message.get('cycle_id', 'unknown'))
             status = message.get('status', 'unknown')
             
-            logger.info(f"{self.name} received design manifest completion: task {task_id}, ECID {ecid}, status {status}")
+            logger.info(f"{self.name} received design manifest completion: task {task_id}, cycle_id {cycle_id}, status {status}")
             
             if status == 'completed' and 'manifest' in message:
                 # Extract manifest from Neo's response
                 manifest = message['manifest']
                 self.warmboot_state['manifest'] = manifest
                 
-                logger.info(f"{self.name} stored manifest for ECID {ecid}: {manifest.get('architecture', {}).get('type', 'unknown')} with {len(manifest.get('files', []))} files")
+                logger.info(f"{self.name} stored manifest for cycle_id {cycle_id}: {manifest.get('architecture', {}).get('type', 'unknown')} with {len(manifest.get('files', []))} files")
                 
                 # Find and delegate the build task with the manifest
-                await self._delegate_build_task_with_manifest(ecid, manifest)
+                await self._delegate_build_task_with_manifest(cycle_id, manifest)
             else:
                 logger.warning(f"{self.name} design manifest task failed or missing manifest: {status}")
                 
         except Exception as e:
             logger.error(f"{self.name} failed to handle design manifest completion: {e}")
     
-    async def _handle_build_completion(self, message: Dict[str, Any], context: Dict[str, Any]) -> None:
+    async def _handle_build_completion(self, message: dict[str, Any], context: dict[str, Any]) -> None:
         """Handle build completion - extract files and trigger deploy task"""
         try:
             task_id = message.get('task_id', 'unknown')
-            ecid = context.get('ecid', message.get('ecid', 'unknown'))
+            cycle_id = context.get('cycle_id', message.get('cycle_id', 'unknown'))
             status = message.get('status', 'unknown')
             
-            logger.info(f"{self.name} received build completion: task {task_id}, ECID {ecid}, status {status}")
+            logger.info(f"{self.name} received build completion: task {task_id}, cycle_id {cycle_id}, status {status}")
             
             if status == 'completed' and 'created_files' in message:
                 # Extract created files from Neo's response
                 created_files = message['created_files']
                 self.warmboot_state['build_files'] = created_files
                 
-                logger.info(f"{self.name} stored build files for ECID {ecid}: {len(created_files)} files created")
+                logger.info(f"{self.name} stored build files for cycle_id {cycle_id}: {len(created_files)} files created")
                 
                 # Trigger next task in sequence (deploy)
-                await self._trigger_next_task(ecid, 'deploy')
+                await self._trigger_next_task(cycle_id, 'deploy')
             else:
                 logger.warning(f"{self.name} build task failed or missing files: {status}")
                 
         except Exception as e:
             logger.error(f"{self.name} failed to handle build completion: {e}")
     
-    async def _handle_deploy_completion(self, message: Dict[str, Any], context: Dict[str, Any]) -> None:
+    async def _handle_deploy_completion(self, message: dict[str, Any], context: dict[str, Any]) -> None:
         """Handle deploy completion - trigger governance logging"""
         try:
             task_id = message.get('task_id', 'unknown')
-            ecid = context.get('ecid', message.get('ecid', 'unknown'))
+            cycle_id = context.get('cycle_id', message.get('cycle_id', 'unknown'))
             status = message.get('status', 'unknown')
             
-            logger.info(f"{self.name} received deploy completion: task {task_id}, ECID {ecid}, status {status}")
+            logger.info(f"{self.name} received deploy completion: task {task_id}, cycle_id {cycle_id}, status {status}")
             
             if status == 'completed':
                 # Trigger governance logging via capability
                 if self.warmboot_memory_handler:
-                    await self.warmboot_memory_handler.log_governance(ecid, self.warmboot_state.get('manifest', {}), self.warmboot_state.get('build_files', []))
+                    await self.warmboot_memory_handler.log_governance(cycle_id, self.warmboot_state.get('manifest', {}), self.warmboot_state.get('build_files', []))
                 
                 # Record memory for WarmBoot completion
                 if self.record_memory:
                     await self.record_memory(
                         kind="warmboot_completion",
                         payload={
-                            'ecid': ecid,
+                            'cycle_id': cycle_id,
                             'task_id': task_id,
                             'manifest': self.warmboot_state.get('manifest', {}),
                             'build_files_count': len(self.warmboot_state.get('build_files', []))
                         },
                         importance=0.9,
-                        task_context={'ecid': ecid, 'pid': message.get('pid')}
+                        task_context={'cycle_id': cycle_id, 'pid': message.get('pid')}
                     )
                 
-                logger.info(f"{self.name} completed three-task sequence for ECID {ecid}")
+                logger.info(f"{self.name} completed three-task sequence for cycle_id {cycle_id}")
             else:
                 logger.warning(f"{self.name} deploy task failed: {status}")
                 
         except Exception as e:
             logger.error(f"{self.name} failed to handle deploy completion: {e}")
     
-    async def _trigger_next_task(self, ecid: str, next_action: str) -> None:
+    async def _trigger_next_task(self, cycle_id: str, next_action: str) -> None:
         """Trigger the next task in the sequence"""
         try:
-            logger.info(f"{self.name} triggering next task: {next_action} for ECID {ecid}")
+            logger.info(f"{self.name} triggering next task: {next_action} for cycle_id {cycle_id}")
             # This is a placeholder - in a real implementation, we'd:
             # 1. Find the next task in the sequence
             # 2. Send it to Neo
@@ -264,14 +265,14 @@ class TaskCompletionHandler:
         except Exception as e:
             logger.error(f"{self.name} failed to trigger next task: {e}")
     
-    async def _delegate_build_task_with_manifest(self, ecid: str, manifest: Dict[str, Any]) -> None:
-        """Find the pending build task for this ECID and delegate it with the manifest"""
+    async def _delegate_build_task_with_manifest(self, cycle_id: str, manifest: dict[str, Any]) -> None:
+        """Find the pending build task for this cycle_id and delegate it with the manifest"""
         try:
             async with aiohttp.ClientSession() as session:
-                # Query tasks API for pending build task with this ECID
+                # Query tasks API for pending build task with this cycle_id
                 async with session.get(
                     f"{self.task_api_url}/api/v1/tasks",
-                    params={"ecid": ecid, "status": "pending"}
+                    params={"cycle_id": cycle_id, "status": "pending"}
                 ) as resp:
                     if resp.status == 200:
                         tasks = await resp.json()
@@ -297,21 +298,21 @@ class TaskCompletionHandler:
                                         payload=build_task,
                                         context={
                                             'delegated_by': self.name,
-                                            'delegation_reason': f"Build task with manifest from design completion",
-                                            'ecid': ecid
+                                            'delegation_reason': "Build task with manifest from design completion",
+                                            'cycle_id': cycle_id
                                         }
                                     )
                                 
                                 logger.info(f"{self.name} delegated build task {build_task['task_id']} with manifest to {delegation_target}")
                         else:
-                            logger.warning(f"{self.name} no pending build task found for ECID {ecid}")
+                            logger.warning(f"{self.name} no pending build task found for cycle_id {cycle_id}")
                     else:
                         logger.warning(f"{self.name} failed to query tasks API: {resp.status}")
                         
         except Exception as e:
             logger.error(f"{self.name} failed to delegate build task with manifest: {e}", exc_info=True)
     
-    def _determine_next_action(self, current_action: str) -> Optional[str]:
+    def _determine_next_action(self, current_action: str) -> str | None:
         """Determine the next action in the sequence"""
         action_sequence = {
             'design_manifest': 'build',

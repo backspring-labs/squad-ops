@@ -4,11 +4,12 @@ SquadOps Role Factory
 Unified role management system that eliminates folder duplication
 """
 
-import yaml
 import logging
-from typing import Dict, List, Optional, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -19,26 +20,26 @@ class RoleDefinition:
     display_name: str
     agent_type: str
     reasoning_style: str
-    capabilities: List[str]
-    task_types: List[str]
-    metrics: Dict[str, str]
+    capabilities: list[str]
+    task_types: list[str]
+    metrics: dict[str, str]
     description: str
 
 class RoleFactory:
     """Factory for managing roles and generating agent configurations"""
     
     def __init__(self, registry_file: str = "agents/roles/registry.yaml", 
-                 file_reader: Optional[Callable] = None):
+                 file_reader: Callable | None = None):
         self.registry_file = registry_file
         self.file_reader = file_reader or self._default_file_reader
         self.roles = self._load_roles()
     
     def _default_file_reader(self, path: str) -> str:
         """Default file reader - can be mocked in tests"""
-        with open(path, 'r') as f:
+        with open(path) as f:
             return f.read()
     
-    def _load_roles(self) -> Dict[str, RoleDefinition]:
+    def _load_roles(self) -> dict[str, RoleDefinition]:
         """Load role definitions from registry"""
         try:
             content = self.file_reader(self.registry_file)
@@ -68,7 +69,7 @@ class RoleFactory:
         """Get role definition by name"""
         return self.roles.get(role_name)
     
-    def get_all_roles(self) -> Dict[str, RoleDefinition]:
+    def get_all_roles(self) -> dict[str, RoleDefinition]:
         """Get all available roles"""
         return self.roles
     
@@ -83,7 +84,7 @@ class RoleFactory:
         if not template_path.exists():
             raise FileNotFoundError("Agent template not found")
         
-        with open(template_path, 'r') as f:
+        with open(template_path) as f:
             template = f.read()
         
         # Replace placeholders
@@ -107,7 +108,7 @@ class RoleFactory:
         if not template_path.exists():
             raise FileNotFoundError("Config template not found")
         
-        with open(template_path, 'r') as f:
+        with open(template_path) as f:
             template = f.read()
         
         # Replace placeholders
@@ -133,7 +134,7 @@ class RoleFactory:
         if not template_path.exists():
             raise FileNotFoundError("Dockerfile template not found")
         
-        with open(template_path, 'r') as f:
+        with open(template_path) as f:
             template = f.read()
         
         # Replace placeholders

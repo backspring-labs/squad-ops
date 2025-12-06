@@ -15,13 +15,13 @@ def test_agent_request_creation():
     request = AgentRequest(
         action="build.artifact",
         payload={"task_id": "test-001", "project": "test-project"},
-        metadata={"pid": "PID-001", "ecid": "ECID-001"}
+        metadata={"pid": "PID-001", "cycle_id": "ECID-001"}
     )
     
     assert request.action == "build.artifact"
     assert request.payload["task_id"] == "test-001"
     assert request.metadata["pid"] == "PID-001"
-    assert request.metadata["ecid"] == "ECID-001"
+    assert request.metadata["cycle_id"] == "ECID-001"
 
 def test_agent_request_validation():
     """Test AgentRequest validation requires pid and ecid"""
@@ -29,14 +29,14 @@ def test_agent_request_validation():
         AgentRequest(
             action="build.artifact",
             payload={},
-            metadata={"ecid": "ECID-001"}  # Missing pid
+            metadata={"cycle_id": "ECID-001"}  # Missing pid
         )
     
-    with pytest.raises(ValueError, match="metadata.ecid is required"):
+    with pytest.raises(ValueError, match="metadata.cycle_id is required"):
         AgentRequest(
             action="build.artifact",
             payload={},
-            metadata={"pid": "PID-001"}  # Missing ecid
+            metadata={"pid": "PID-001"}  # Missing cycle_id
         )
 
 def test_agent_request_idempotency_key():
@@ -44,7 +44,7 @@ def test_agent_request_idempotency_key():
     request = AgentRequest(
         action="build.artifact",
         payload={"task_id": "test-001"},
-        metadata={"pid": "PID-001", "ecid": "ECID-001"}
+        metadata={"pid": "PID-001", "cycle_id": "ECID-001"}
     )
     
     key1 = request.generate_idempotency_key("agent-001")
@@ -62,14 +62,14 @@ def test_agent_request_to_dict():
     request = AgentRequest(
         action="build.artifact",
         payload={"task_id": "test-001"},
-        metadata={"pid": "PID-001", "ecid": "ECID-001", "tags": ["test"]}
+        metadata={"pid": "PID-001", "cycle_id": "ECID-001", "tags": ["test"]}
     )
     
     data = request.to_dict()
     assert data["action"] == "build.artifact"
     assert data["payload"]["task_id"] == "test-001"
     assert data["metadata"]["pid"] == "PID-001"
-    assert data["metadata"]["ecid"] == "ECID-001"
+    assert data["metadata"]["cycle_id"] == "ECID-001"
     assert data["metadata"]["tags"] == ["test"]
 
 def test_agent_request_from_dict():
@@ -77,7 +77,7 @@ def test_agent_request_from_dict():
     data = {
         "action": "build.artifact",
         "payload": {"task_id": "test-001"},
-        "metadata": {"pid": "PID-001", "ecid": "ECID-001"}
+        "metadata": {"pid": "PID-001", "cycle_id": "ECID-001"}
     }
     
     request = AgentRequest.from_dict(data)
@@ -90,7 +90,7 @@ def test_agent_request_action_format_validation():
     request = AgentRequest(
         action="build.artifact",
         payload={},
-        metadata={"pid": "PID-001", "ecid": "ECID-001"}
+        metadata={"pid": "PID-001", "cycle_id": "ECID-001"}
     )
     
     assert request.validate_action_format() is True

@@ -4,11 +4,11 @@ File Manager Component for Dev Agent
 Handles file system operations, file creation, and file management
 """
 
-import logging
 import asyncio
+import logging
 import os
-from typing import Dict, Any, List
 import sys
+from typing import Any
 
 # Add config path
 sys.path.append('/app')
@@ -23,7 +23,7 @@ class FileManager:
         self.file_cache = {}
         self.operation_history = []
     
-    async def create_file(self, file_path: str, content: str, directory: str = None) -> Dict[str, Any]:
+    async def create_file(self, file_path: str, content: str, directory: str = None) -> dict[str, Any]:
         """Create a file with specified content"""
         try:
             # Combine directory and file_path to get full path
@@ -125,7 +125,7 @@ class FileManager:
         except Exception:
             return False
     
-    async def create_directory(self, dir_path: str) -> Dict[str, Any]:
+    async def create_directory(self, dir_path: str) -> dict[str, Any]:
         """Create a directory"""
         try:
             await self._execute_command(f"mkdir -p '{dir_path}'")
@@ -146,7 +146,7 @@ class FileManager:
                 'directory': dir_path
             }
     
-    async def list_files(self, dir_path: str, pattern: str = None) -> List[str]:
+    async def list_files(self, dir_path: str, pattern: str = None) -> list[str]:
         """List files in a directory"""
         try:
             if pattern:
@@ -164,7 +164,7 @@ class FileManager:
             logger.error(f"FileManager failed to list files in {dir_path}: {e}")
             return []
     
-    async def delete_file(self, file_path: str) -> Dict[str, Any]:
+    async def delete_file(self, file_path: str) -> dict[str, Any]:
         """Delete a file"""
         try:
             if await self.file_exists(file_path):
@@ -195,7 +195,7 @@ class FileManager:
                 'file_path': file_path
             }
     
-    async def copy_file(self, source_path: str, dest_path: str) -> Dict[str, Any]:
+    async def copy_file(self, source_path: str, dest_path: str) -> dict[str, Any]:
         """Copy a file"""
         try:
             # Ensure destination directory exists
@@ -221,7 +221,7 @@ class FileManager:
                 'dest_path': dest_path
             }
     
-    async def move_file(self, source_path: str, dest_path: str) -> Dict[str, Any]:
+    async def move_file(self, source_path: str, dest_path: str) -> dict[str, Any]:
         """Move a file"""
         try:
             # Ensure destination directory exists
@@ -252,7 +252,7 @@ class FileManager:
                 'dest_path': dest_path
             }
     
-    async def get_file_info(self, file_path: str) -> Dict[str, Any]:
+    async def get_file_info(self, file_path: str) -> dict[str, Any]:
         """Get file information"""
         try:
             if not await self.file_exists(file_path):
@@ -292,7 +292,7 @@ class FileManager:
                 'file_path': file_path
             }
     
-    async def validate_file_path(self, file_path: str) -> Dict[str, Any]:
+    async def validate_file_path(self, file_path: str) -> dict[str, Any]:
         """Validate file path for security and compliance"""
         try:
             # Check for path traversal attempts
@@ -323,7 +323,7 @@ class FileManager:
                 if file_info.get('size', 0) > max_size:
                     return {
                         'status': 'invalid',
-                        'error': f'File size exceeds maximum allowed size',
+                        'error': 'File size exceeds maximum allowed size',
                         'file_path': file_path,
                         'file_size': file_info.get('size'),
                         'max_size': max_size
@@ -342,7 +342,7 @@ class FileManager:
                 'file_path': file_path
             }
     
-    async def cleanup_temp_files(self, temp_dir: str = None) -> Dict[str, Any]:
+    async def cleanup_temp_files(self, temp_dir: str = None) -> dict[str, Any]:
         """Clean up temporary files"""
         try:
             if not temp_dir:
@@ -373,7 +373,7 @@ class FileManager:
                 'temp_dir': temp_dir
             }
     
-    async def get_operation_history(self) -> Dict[str, Any]:
+    async def get_operation_history(self) -> dict[str, Any]:
         """Get file operation history"""
         return {
             'status': 'success',
@@ -386,7 +386,7 @@ class FileManager:
         """Ensure directory exists, create if it doesn't"""
         # Skip if directory path is empty
         if not dir_path or dir_path.strip() == '':
-            logger.warning(f"FileManager skipping directory creation for empty path")
+            logger.warning("FileManager skipping directory creation for empty path")
             return
         
         if not await self.directory_exists(dir_path):

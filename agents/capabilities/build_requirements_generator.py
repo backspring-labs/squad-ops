@@ -5,9 +5,10 @@ Implements build.requirements.generate capability for generating build requireme
 """
 
 import logging
-import yaml
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class BuildRequirementsGenerator:
         # Initialize Skill
         self.build_requirements_prompt_skill = BuildRequirementsPrompt()
     
-    async def generate(self, prd_content: str, app_name: str, version: str, run_id: str, features: List[str] = None) -> Dict[str, Any]:
+    async def generate(self, prd_content: str, app_name: str, version: str, run_id: str, features: list[str] = None) -> dict[str, Any]:
         """
         Generate build requirements from PRD content using LLM.
         
@@ -105,7 +106,7 @@ class BuildRequirementsGenerator:
                 'agent': self.name,
                 'message_type': 'build_requirements_generation',
                 'description': f"Generated build requirements for {app_name}: {response[:500]}...",
-                'ecid': run_id,
+                'cycle_id': run_id,
                 'full_response': response
             })
             

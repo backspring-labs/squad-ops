@@ -41,7 +41,7 @@ class TestDataAgent:
         mock_loader.prepare_capability_args = MagicMock(return_value=('ECID-WB-001',))
         mock_loader.execute = AsyncMock(return_value={
             'snapshot_path': '/warm-boot/runs/run-001/cycle-snapshot-ECID-WB-001.json',
-            'ecid': 'ECID-WB-001',
+            'cycle_id': 'ECID-WB-001',
             'task_count': 10,
             'agent_count': 3
         })
@@ -55,8 +55,8 @@ class TestDataAgent:
         
         request = AgentRequest(
             action="data.collect_cycle_snapshot",
-            payload={'ecid': 'ECID-WB-001'},
-            metadata={'pid': 'PID-TEST-001', 'ecid': 'ECID-WB-001'}
+            payload={'cycle_id': 'ECID-WB-001'},
+            metadata={'pid': 'PID-TEST-001', 'cycle_id': 'ECID-WB-001'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -77,7 +77,7 @@ class TestDataAgent:
         mock_loader.execute = AsyncMock(return_value={
             'metrics_json_path': '/warm-boot/runs/run-001/cycle-metrics-ECID-WB-001.json',
             'metrics_md_path': '/warm-boot/runs/run-001/cycle-metrics-ECID-WB-001.md',
-            'ecid': 'ECID-WB-001',
+            'cycle_id': 'ECID-WB-001',
             'metrics_summary': {'total_tasks': 10, 'success_rate': 0.9}
         })
         agent.capability_loader = mock_loader
@@ -89,8 +89,8 @@ class TestDataAgent:
         
         request = AgentRequest(
             action="data.profile_cycle_metrics",
-            payload={'ecid': 'ECID-WB-001'},
-            metadata={'pid': 'PID-TEST-002', 'ecid': 'ECID-WB-001'}
+            payload={'cycle_id': 'ECID-WB-001'},
+            metadata={'pid': 'PID-TEST-002', 'cycle_id': 'ECID-WB-001'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -109,7 +109,7 @@ class TestDataAgent:
         mock_loader.prepare_capability_args = MagicMock(return_value=('ECID-WB-001',))
         mock_loader.execute = AsyncMock(return_value={
             'summary_path': '/warm-boot/runs/run-001/cycle-summary-ECID-WB-001.json',
-            'ecid': 'ECID-WB-001',
+            'cycle_id': 'ECID-WB-001',
             'health': 'green',
             'agent_summary': {'max': {'task_count': 5, 'failures': 0, 'success_rate': 1.0}}
         })
@@ -122,8 +122,8 @@ class TestDataAgent:
         
         request = AgentRequest(
             action="data.compose_cycle_summary",
-            payload={'ecid': 'ECID-WB-001'},
-            metadata={'pid': 'PID-TEST-003', 'ecid': 'ECID-WB-001'}
+            payload={'cycle_id': 'ECID-WB-001'},
+            metadata={'pid': 'PID-TEST-003', 'cycle_id': 'ECID-WB-001'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -149,7 +149,7 @@ class TestDataAgent:
         request = AgentRequest(
             action="unknown.capability",
             payload={},
-            metadata={'pid': 'PID-TEST-004', 'ecid': 'ECID-TEST-004'}
+            metadata={'pid': 'PID-TEST-004', 'cycle_id': 'ECID-TEST-004'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -170,7 +170,7 @@ class TestDataAgent:
         request = AgentRequest(
             action="data.collect_cycle_snapshot",
             payload={},
-            metadata={'pid': 'PID-TEST-005', 'ecid': 'ECID-TEST-005'}
+            metadata={'pid': 'PID-TEST-005', 'cycle_id': 'ECID-TEST-005'}
         )
         
         response = await agent.handle_agent_request(request)
@@ -190,7 +190,7 @@ class TestDataAgent:
         mock_loader.prepare_capability_args = MagicMock(return_value=('ECID-WB-001',))
         mock_loader.execute = AsyncMock(return_value={
             'snapshot_path': '/warm-boot/runs/run-001/cycle-snapshot-ECID-WB-001.json',
-            'ecid': 'ECID-WB-001',
+            'cycle_id': 'ECID-WB-001',
             'task_count': 10,
             'agent_count': 3
         })
@@ -201,7 +201,7 @@ class TestDataAgent:
         task = {
             'task_id': 'test-task-001',
             'type': 'cycle_analysis',
-            'ecid': 'ECID-WB-001'
+            'cycle_id': 'ECID-WB-001'
         }
         
         result = await agent.process_task(task)

@@ -4,15 +4,15 @@ Docker Manager Component for Dev Agent
 Handles container operations, deployment, and Docker management
 """
 
-import logging
 import asyncio
-from typing import Dict, Any
-import sys
+import logging
 import os
+import sys
+from typing import Any
 
 # Add config path
 sys.path.append('/app')
-from config.deployment_config import get_docker_config, get_deployment_config
+from config.deployment_config import get_deployment_config, get_docker_config
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class DockerManager:
         self.containers = {}
         self.images = {}
     
-    async def build_image(self, app_name: str, version: str, source_dir: str) -> Dict[str, Any]:
+    async def build_image(self, app_name: str, version: str, source_dir: str) -> dict[str, Any]:
         """Build Docker image for application"""
         try:
             app_kebab = self._convert_to_kebab_case(app_name)
@@ -66,7 +66,7 @@ class DockerManager:
                 'version': version
             }
     
-    async def deploy_container(self, app_name: str, version: str) -> Dict[str, Any]:
+    async def deploy_container(self, app_name: str, version: str) -> dict[str, Any]:
         """Deploy application container"""
         try:
             app_kebab = self._convert_to_kebab_case(app_name)
@@ -101,7 +101,7 @@ class DockerManager:
                 'container_name': container_name
             }
     
-    async def stop_container(self, container_name: str) -> Dict[str, Any]:
+    async def stop_container(self, container_name: str) -> dict[str, Any]:
         """Stop a running container"""
         try:
             stop_cmd = f"docker stop {container_name}"
@@ -132,7 +132,7 @@ class DockerManager:
                     'container_name': container_name
                 }
     
-    async def remove_container(self, container_name: str) -> Dict[str, Any]:
+    async def remove_container(self, container_name: str) -> dict[str, Any]:
         """Remove a container"""
         try:
             remove_cmd = f"docker rm {container_name}"
@@ -163,7 +163,7 @@ class DockerManager:
                     'container_name': container_name
                 }
     
-    async def get_container_status(self, container_name: str) -> Dict[str, Any]:
+    async def get_container_status(self, container_name: str) -> dict[str, Any]:
         """Get container status"""
         try:
             status_cmd = f"docker ps -a --filter name={container_name} --format '{{{{.Names}}}}\\t{{{{.Status}}}}\\t{{{{.Ports}}}}'"
@@ -189,7 +189,7 @@ class DockerManager:
                 'container_name': container_name
             }
     
-    async def list_containers(self, filter_name: str = None) -> Dict[str, Any]:
+    async def list_containers(self, filter_name: str = None) -> dict[str, Any]:
         """List containers with optional filtering"""
         try:
             if filter_name:
@@ -212,7 +212,7 @@ class DockerManager:
                 'error': str(e)
             }
     
-    async def cleanup_old_containers(self, app_name: str) -> Dict[str, Any]:
+    async def cleanup_old_containers(self, app_name: str) -> dict[str, Any]:
         """Clean up old containers for an application"""
         try:
             app_kebab = self._convert_to_kebab_case(app_name)
@@ -312,7 +312,7 @@ class DockerManager:
                 logger.error(f"DockerManager command execution failed: {command}, Error: {e}")
             raise
     
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Perform Docker health check"""
         try:
             # Check if Docker is available
@@ -336,7 +336,7 @@ class DockerManager:
                 'error': str(e)
             }
     
-    async def get_system_info(self) -> Dict[str, Any]:
+    async def get_system_info(self) -> dict[str, Any]:
         """Get Docker system information"""
         try:
             # Get Docker version

@@ -5,7 +5,7 @@ Implements docker.deploy capability for deploying containers.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,13 @@ class DockerDeployer:
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
         
         # Import DockerManager and AppBuilder as tools
-        from agents.tools.docker_manager import DockerManager
         from agents.tools.app_builder import AppBuilder
+        from agents.tools.docker_manager import DockerManager
         
         self.docker_manager = DockerManager()
         self.app_builder = AppBuilder(llm_client=agent_instance.llm_client, agent=agent_instance)
     
-    async def deploy(self, task_id: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
+    async def deploy(self, task_id: str, requirements: dict[str, Any]) -> dict[str, Any]:
         """
         Deploy container.
         
@@ -68,11 +68,11 @@ class DockerDeployer:
             logger.info(f"{self.name} deploying {app_name} v{version}")
             
             # Emit reasoning event about deployment strategy
-            ecid = requirements.get('ecid', getattr(self.agent, 'current_ecid', 'unknown'))
+            cycle_id = requirements.get('cycle_id', getattr(self.agent, 'current_cycle_id', 'unknown'))
             if hasattr(self.agent, 'emit_reasoning_event'):
                 await self.agent.emit_reasoning_event(
                     task_id=task_id,
-                    ecid=ecid,
+                    cycle_id=cycle_id,
                     reason_step='decision',
                     summary=f"Deploying {app_name} v{version} with versioning and traceability enabled",
                     context='deploy',
@@ -105,7 +105,7 @@ class DockerDeployer:
                 if hasattr(self.agent, 'emit_reasoning_event'):
                     await self.agent.emit_reasoning_event(
                         task_id=task_id,
-                        ecid=ecid,
+                        cycle_id=cycle_id,
                         reason_step='checkpoint',
                         summary=f"Successfully deployed {app_name} v{version} as container {deploy_result.get('container_name', 'unknown')}",
                         context='deploy',
@@ -113,7 +113,7 @@ class DockerDeployer:
                             f"Container: {deploy_result.get('container_name', 'unknown')}",
                             f"Image: {deploy_result.get('image', 'unknown')}",
                             f"Version: {version}",
-                            f"Deployment strategy: Docker container with volume mounts"
+                            "Deployment strategy: Docker container with volume mounts"
                         ]
                     )
                 
@@ -131,7 +131,7 @@ class DockerDeployer:
                             'image': deploy_result['image']
                         },
                         importance=0.9,
-                        task_context={'ecid': ecid, 'pid': requirements.get('pid')}
+                        task_context={'cycle_id': cycle_id, 'pid': requirements.get('pid')}
                     )
                 
                 return {

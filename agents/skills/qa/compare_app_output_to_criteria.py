@@ -5,12 +5,13 @@ Fetches deployed app HTML, parses content, and compares against acceptance crite
 """
 
 import logging
-import aiohttp
-import re
-from bs4 import BeautifulSoup
-from typing import List, Dict, Any
-import sys
 import os
+import re
+import sys
+from typing import Any
+
+import aiohttp
+from bs4 import BeautifulSoup
 
 # Add parent directory to path to import shared skill
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
@@ -31,7 +32,7 @@ class CompareAppOutputToCriteria:
         """Initialize with text match skill"""
         self.text_match = TextMatch()
     
-    async def compare(self, app_url: str, criteria_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def compare(self, app_url: str, criteria_list: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Fetch deployed app HTML and compare against acceptance criteria.
         

@@ -4,12 +4,15 @@ Regression tests for core SquadOps workflows
 Tests critical paths to prevent regressions during rapid development
 """
 
-import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch
-from agents.roles.lead.agent import LeadAgent
+
+import pytest
+
 from agents.roles.dev.agent import DevAgent
+from agents.roles.lead.agent import LeadAgent
 from agents.tools.app_builder import AppBuilder
+
 # TaskSpec and BuildManifest removed - using dict-based requirements instead
 
 class TestCoreWorkflows:

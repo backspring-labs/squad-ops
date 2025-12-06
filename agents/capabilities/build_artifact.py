@@ -5,7 +5,7 @@ Implements build.artifact capability for building application artifacts from spe
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class BuildArtifact:
         self.docker_manager = DockerManager()
         self.file_manager = FileManager()
     
-    async def build(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
+    async def build(self, requirements: dict[str, Any]) -> dict[str, Any]:
         """
         Build application artifacts from specifications.
         
@@ -60,7 +60,7 @@ class BuildArtifact:
                 - prd_analysis: PRD analysis content
                 - constraints: Build constraints
                 - success_criteria: Success criteria
-                - ecid: Execution cycle ID
+                - cycle_id: Execution cycle ID
                 - pid: Process ID
                 
         Returns:
@@ -88,7 +88,7 @@ class BuildArtifact:
             build_requirements = {
                 'app_name': requirements.get('app_name', app_name),
                 'version': version,
-                'run_id': requirements.get('run_id', requirements.get('ecid', 'unknown')),
+                'run_id': requirements.get('run_id', requirements.get('cycle_id', 'unknown')),
                 'prd_analysis': requirements.get('prd_analysis', 'Application build'),
                 'features': requirements.get('features', []),
                 'constraints': requirements.get('constraints', {}),
@@ -104,8 +104,9 @@ class BuildArtifact:
                 logger.info(f"{self.name} creating files from manifest")
                 
                 # Compose Skills + Tools: Load prompts using Skills, then pass to Tool
-                import yaml
                 import re
+
+                import yaml
                 
                 # Convert app name to kebab-case for nginx subpath
                 app_name_kebab = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', build_requirements.get('app_name', 'application')).lower().replace(' ', '-')

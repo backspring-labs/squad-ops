@@ -3,11 +3,12 @@
 Pytest configuration and fixtures for SquadOps test harness
 """
 
-import pytest
 import asyncio
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -288,8 +289,8 @@ def sample_build_manifest():
 @pytest.fixture
 def app_builder():
     """Real AppBuilder for integration tests"""
-    from agents.tools.app_builder import AppBuilder
     from agents.llm.providers.ollama import OllamaClient
+    from agents.tools.app_builder import AppBuilder
     
     # Create real Ollama client with local URL and a real model
     # Use llama3.1:8b as default (should be available for integration tests)
@@ -330,8 +331,9 @@ def mock_dev_agent():
 @pytest.fixture
 def mock_lead_agent():
     """Mock LeadAgent for testing"""
-    from agents.roles.lead.agent import LeadAgent
     from unittest.mock import AsyncMock
+
+    from agents.roles.lead.agent import LeadAgent
     agent = LeadAgent("test-lead-agent")
     
     # Mock messaging components
@@ -354,7 +356,7 @@ def mock_unified_config():
     mock_config.get_rabbitmq_url.return_value = 'amqp://test:test@localhost:5672/'
     mock_config.get_postgres_url.return_value = 'postgresql://test:test@localhost:5432/squadops'
     mock_config.get_redis_url.return_value = 'redis://localhost:6379'
-    mock_config.get_task_api_url.return_value = 'http://task-api:8001'
+    mock_config.get_runtime_api_url.return_value = 'http://runtime-api:8001'  # SIP-0048: renamed from get_task_api_url
     
     # Mock agent config
     mock_config.get_agent_id.return_value = 'test-agent'

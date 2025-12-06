@@ -3,14 +3,15 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, List
+import time
 from datetime import datetime
-from agents.base_agent import BaseAgent, AgentMessage
+from pathlib import Path
+from typing import Any
+
+from agents.base_agent import AgentMessage, BaseAgent
 from agents.specs.agent_request import AgentRequest
 from agents.specs.agent_response import AgentResponse, Timing
 from agents.specs.validator import SchemaValidator
-from pathlib import Path
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class AuditAgent(BaseAgent):
                 timing=Timing.create(started_at)
             )
     
-    async def _handle_monitoring(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_monitoring(self, request: AgentRequest) -> dict[str, Any]:
         """Handle audit.monitoring capability"""
         
         # Map existing monitoring logic to new capability format
@@ -106,7 +107,7 @@ class AuditAgent(BaseAgent):
             'alerts': []
         }
     
-    async def _handle_compliance_tracking(self, request: AgentRequest) -> Dict[str, Any]:
+    async def _handle_compliance_tracking(self, request: AgentRequest) -> dict[str, Any]:
         """Handle audit.compliance_tracking capability"""
         
         # Map existing compliance tracking logic to new capability format
@@ -116,7 +117,7 @@ class AuditAgent(BaseAgent):
             'violations': []
         }
     
-    async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Process monitoring and audit tasks"""
         task_id = task.get('task_id', 'unknown')
         task_type = task.get('type', 'monitoring_audit')
@@ -200,7 +201,7 @@ class AuditAgent(BaseAgent):
             
             self.agent_activity[agent].append(activity)
     
-    async def perform_audit(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def perform_audit(self, task: dict[str, Any]) -> dict[str, Any]:
         """Perform comprehensive audit"""
         audit_results = {
             'timestamp': time.time(),
@@ -228,7 +229,7 @@ class AuditAgent(BaseAgent):
         
         return audit_results
     
-    async def detect_anomalies(self, audit_results: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def detect_anomalies(self, audit_results: dict[str, Any]) -> list[dict[str, Any]]:
         """Detect anomalies in agent behavior"""
         anomalies = []
         
@@ -256,7 +257,7 @@ class AuditAgent(BaseAgent):
         
         return anomalies
     
-    async def generate_audit_report(self, audit_results: Dict[str, Any], anomalies: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def generate_audit_report(self, audit_results: dict[str, Any], anomalies: list[dict[str, Any]]) -> dict[str, Any]:
         """Generate comprehensive audit report"""
         report = {
             'report_id': f"audit_report_{int(time.time())}",
@@ -278,7 +279,7 @@ class AuditAgent(BaseAgent):
         
         return report
     
-    async def secure_log_storage(self, task_id: str, report: Dict[str, Any]):
+    async def secure_log_storage(self, task_id: str, report: dict[str, Any]):
         """Store logs securely"""
         log_entry = {
             'task_id': task_id,

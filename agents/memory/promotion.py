@@ -4,10 +4,12 @@ Handles promotion of memories from agent-level (LanceDB) to Squad Memory Pool (S
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any
+
+import asyncpg
+
 from agents.memory.base import MemoryProvider
 from agents.memory.sql_adapter import SqlAdapter
-import asyncpg
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +55,7 @@ class PromotionService:
             logger.error(f"Failed to get reuse count: {e}")
             return 0
     
-    async def log_memory_access(self, memory_id: str, agent_name: str, query_context: Optional[str] = None):
+    async def log_memory_access(self, memory_id: str, agent_name: str, query_context: str | None = None):
         """
         Log memory access for reuse tracking.
         
@@ -72,7 +74,7 @@ class PromotionService:
             logger.error(f"Failed to log memory access: {e}")
     
     async def promote_memory(self, memory_id: str, validator: str, agent_name: str, 
-                           auto_promote: bool = False) -> Optional[str]:
+                           auto_promote: bool = False) -> str | None:
         """
         Promote a memory from LanceDB to Squad Memory Pool.
         
@@ -107,7 +109,7 @@ class PromotionService:
                 'agent': agent_name,
                 'ns': 'squad',
                 'pid': memory.get('content', {}).get('pid'),
-                'ecid': memory.get('content', {}).get('ecid'),
+                'cycle_id': memory.get('content', {}).get('cycle_id'),
                 'tags': memory.get('tags', []),
                 'importance': memory.get('importance', 0.7),
                 'status': 'validated',
@@ -125,10 +127,10 @@ class PromotionService:
             logger.error(f"Failed to promote memory {memory_id}: {e}")
             return None
     
-    async def get_promoted_memories(self, agent: Optional[str] = None, 
-                                   pid: Optional[str] = None,
-                                   ecid: Optional[str] = None,
-                                   limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_promoted_memories(self, agent: str | None = None, 
+                                   pid: str | None = None,
+                                   ecid: str | None = None,
+                                   limit: int = 50) -> list[dict[str, Any]]:
         """
         Get promoted memories from Squad Memory Pool.
         

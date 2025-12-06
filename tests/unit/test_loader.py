@@ -355,7 +355,7 @@ class TestCapabilityLoader:
     @pytest.mark.unit
     def test_prepare_capability_args_task_dict(self, loader):
         """Test preparing args for task_dict convention"""
-        payload = {'task_id': 'task-001', 'ecid': 'ec-001'}
+        payload = {'task_id': 'task-001', 'cycle_id': 'ec-001'}
         
         args = loader.prepare_capability_args('warmboot.wrapup', payload)
         
@@ -386,7 +386,7 @@ class TestCapabilityLoader:
     def test_prepare_capability_args_payload_and_metadata(self, loader):
         """Test preparing args for payload_and_metadata convention"""
         payload = {'test': 'data'}
-        metadata = {'ecid': 'ec-001'}
+        metadata = {'cycle_id': 'ec-001'}
         
         args = loader.prepare_capability_args('governance.task_coordination', payload, metadata)
         

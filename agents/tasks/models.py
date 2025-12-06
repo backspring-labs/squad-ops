@@ -2,9 +2,10 @@
 Tasks Adapter Models - Backend-agnostic DTOs for task management
 """
 
-from enum import Enum
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from enum import Enum
+from typing import Any  # SIP-0048: Dict used for metrics and inputs
+
 from pydantic import BaseModel, Field
 
 
@@ -30,71 +31,81 @@ class FlowState(str, Enum):
 class Artifact(BaseModel):
     """Artifact model for task outputs"""
     type: str  # e.g., "code", "test_report", "build_plan", "pr", "log"
-    path: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    content: Optional[Any] = None  # Can store actual content if needed
+    path: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    content: Any | None = None  # Can store actual content if needed
 
 
 class TaskFilters(BaseModel):
     """Filters for querying tasks"""
-    ecid: Optional[str] = None
-    agent: Optional[str] = None
-    status: Optional[str] = None
-    pid: Optional[str] = None
-    limit: Optional[int] = 50
+    cycle_id: str | None = None  # SIP-0048: renamed from ecid
+    agent: str | None = None
+    status: str | None = None
+    pid: str | None = None
+    limit: int | None = 50
 
 
 class TaskCreate(BaseModel):
-    """DTO for creating a new task"""
+    """DTO for creating a new task (SIP-0048: enhanced with agent_id, task_name)"""
     task_id: str
-    ecid: str
-    agent: str
+    cycle_id: str  # SIP-0048: renamed from ecid
+    agent: str  # Kept for backward compatibility
+    agent_id: str | None = None  # SIP-0048: Agent identifier (use agent_id, not role normalization)
+    task_name: str | None = None  # SIP-0048: Task name/type identifier
     status: str = "started"
-    priority: Optional[str] = "MEDIUM"
-    description: Optional[str] = None
-    dependencies: Optional[List[str]] = Field(default_factory=list)
-    delegated_by: Optional[str] = None
-    delegated_to: Optional[str] = None
-    phase: Optional[str] = None
-    pid: Optional[str] = None
+    priority: str | None = "MEDIUM"
+    description: str | None = None
+    dependencies: list[str] | None = Field(default_factory=list)
+    delegated_by: str | None = None
+    delegated_to: str | None = None
+    phase: str | None = None
+    pid: str | None = None
 
 
 class Task(BaseModel):
-    """Complete task model matching agent_task_log table"""
+    """Complete task model matching agent_task_log table (SIP-0048: enhanced with agent_id, task_name, metrics)"""
     task_id: str
-    pid: Optional[str] = None
-    ecid: Optional[str] = None
-    agent: str
-    phase: Optional[str] = None
+    pid: str | None = None
+    cycle_id: str | None = None  # SIP-0048: renamed from ecid
+    agent: str  # Kept for backward compatibility
+    agent_id: str | None = None  # SIP-0048: Agent identifier (use agent_id, not role normalization)
+    task_name: str | None = None  # SIP-0048: Task name/type identifier
+    phase: str | None = None
     status: str
-    priority: Optional[str] = None
-    description: Optional[str] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    duration: Optional[str] = None  # INTERVAL type as string
-    artifacts: Optional[List[Artifact]] = Field(default_factory=list)
-    dependencies: Optional[List[str]] = Field(default_factory=list)
-    error_log: Optional[str] = None
-    delegated_by: Optional[str] = None
-    delegated_to: Optional[str] = None
-    created_at: Optional[datetime] = None
+    priority: str | None = None
+    description: str | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    duration: str | None = None  # INTERVAL type as string
+    artifacts: list[Artifact] | None = Field(default_factory=list)
+    metrics: dict[str, Any] | None = Field(default_factory=dict)  # SIP-0048: Task metrics as JSON
+    dependencies: list[str] | None = Field(default_factory=list)
+    error_log: str | None = None
+    delegated_by: str | None = None
+    delegated_to: str | None = None
+    created_at: datetime | None = None
 
     class Config:
         from_attributes = True
 
 
 class FlowRun(BaseModel):
-    """Execution cycle (flow) model matching execution_cycle table"""
-    ecid: str
+    """Execution cycle (flow) model matching cycle table (SIP-0048: renamed from execution_cycle, enhanced with new fields)"""
+    cycle_id: str  # SIP-0048: renamed from ecid
     pid: str
-    project_id: Optional[str] = None  # SIP-0047
+    project_id: str | None = None  # SIP-0047
     run_type: str  # 'warmboot', 'project', 'experiment', 'tuning'
     title: str
-    description: Optional[str] = None
-    created_at: Optional[datetime] = None
-    initiated_by: Optional[str] = None
+    description: str | None = None
+    name: str | None = None  # SIP-0048: Human-readable cycle name
+    goal: str | None = None  # SIP-0048: Cycle objective or goal statement
+    start_time: datetime | None = None  # SIP-0048: Cycle start timestamp
+    end_time: datetime | None = None  # SIP-0048: Cycle end timestamp
+    inputs: dict[str, Any] | None = Field(default_factory=dict)  # SIP-0048: Cycle inputs as JSON (PIDs, repo, branch)
+    created_at: datetime | None = None
+    initiated_by: str | None = None
     status: str = "active"
-    notes: Optional[str] = None
+    notes: str | None = None
 
     class Config:
         from_attributes = True
@@ -102,19 +113,19 @@ class FlowRun(BaseModel):
 
 class FlowCreate(BaseModel):
     """DTO for creating a new execution cycle"""
-    ecid: str
+    cycle_id: str  # SIP-0048: renamed from ecid
     pid: str
-    project_id: Optional[str] = None  # SIP-0047
+    project_id: str | None = None  # SIP-0047
     run_type: str
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     initiated_by: str
 
 
 class FlowUpdate(BaseModel):
     """DTO for updating an execution cycle"""
-    status: Optional[str] = None
-    notes: Optional[str] = None
+    status: str | None = None
+    notes: str | None = None
 
 
 class TaskStatus(BaseModel):
@@ -123,8 +134,8 @@ class TaskStatus(BaseModel):
     agent_name: str
     status: str
     progress: float = 0.0
-    eta: Optional[str] = None
-    updated_at: Optional[datetime] = None
+    eta: str | None = None
+    updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -137,7 +148,7 @@ class TaskSummary(BaseModel):
     in_progress: int
     delegated: int
     failed: int
-    avg_duration: Optional[str] = None  # INTERVAL type as string
+    avg_duration: str | None = None  # INTERVAL type as string
 
     class Config:
         from_attributes = True

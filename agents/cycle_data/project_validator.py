@@ -4,7 +4,7 @@ Project Validator - Validates project_id against projects table (SIP-0047)
 """
 
 import logging
-from typing import Optional
+
 import asyncpg
 
 logger = logging.getLogger(__name__)

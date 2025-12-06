@@ -54,7 +54,7 @@ class TestCycleSnapshotCollector:
         ecid = "ECID-WB-001"
 
         mock_snapshot_data = {
-            "ecid": ecid,
+            "cycle_id": ecid,
             "tasks": [{"task_id": "task-1", "status": "completed"}],
             "agents": ["agent1", "agent2"],
         }

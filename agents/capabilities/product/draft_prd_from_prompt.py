@@ -5,9 +5,9 @@ Drafts PRD from requirement/objective prompt using template structure.
 """
 
 import logging
-from pathlib import Path
-from typing import Dict, Any
 import re
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class DraftPRDFromPrompt:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
     
-    async def draft(self, requirement: str, objective: str, app_name: str) -> Dict[str, Any]:
+    async def draft(self, requirement: str, objective: str, app_name: str) -> dict[str, Any]:
         """
         Draft PRD from requirement/objective prompt.
         

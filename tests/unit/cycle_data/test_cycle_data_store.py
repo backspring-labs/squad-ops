@@ -3,9 +3,10 @@ Unit tests for CycleDataStore (SIP-0047)
 """
 
 import json
-import pytest
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from agents.cycle_data import CycleDataStore
 
@@ -22,17 +23,17 @@ class TestCycleDataStore:
     @pytest.fixture
     def cycle_store(self, temp_dir):
         """Create CycleDataStore instance"""
-        return CycleDataStore(temp_dir, "test_project", "ECID-TEST-001")
+        return CycleDataStore(temp_dir, "test_project", "CYCLE-TEST-001")  # SIP-0048: renamed from ECID-TEST-001
     
     def test_initialization(self, cycle_store, temp_dir):
         """Test CycleDataStore initialization"""
         assert cycle_store.cycle_data_root == temp_dir
         assert cycle_store.project_id == "test_project"
-        assert cycle_store.ecid == "ECID-TEST-001"
+        assert cycle_store.cycle_id == "CYCLE-TEST-001"  # SIP-0048: renamed from ecid
     
     def test_get_cycle_path(self, cycle_store, temp_dir):
         """Test cycle path resolution"""
-        expected_path = temp_dir / "test_project" / "ECID-TEST-001"
+        expected_path = temp_dir / "test_project" / "CYCLE-TEST-001"  # SIP-0048: renamed from ECID-TEST-001
         assert cycle_store.get_cycle_path() == expected_path
     
     def test_write_text_artifact(self, cycle_store):

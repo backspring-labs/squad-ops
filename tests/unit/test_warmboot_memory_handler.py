@@ -47,7 +47,7 @@ class TestWarmBootMemoryHandler:
         
         mock_agent.sql_adapter.get = AsyncMock(return_value=mock_memories)
         
-        result = await handler.load_memories(ecid='ec-001', pid='p-001')
+        result = await handler.load_memories(cycle_id='cycle-001', pid='p-001')
         
         assert result['memories_loaded'] is True
         assert result['memory_count'] == 2
@@ -73,7 +73,7 @@ class TestWarmBootMemoryHandler:
         """Test loading memories when none found"""
         mock_agent.sql_adapter.get = AsyncMock(return_value=[])
         
-        result = await handler.load_memories(ecid='ec-001')
+        result = await handler.load_memories(cycle_id='cycle-001')
         
         assert result['memories_loaded'] is False
         assert result['memory_count'] == 0
@@ -84,11 +84,11 @@ class TestWarmBootMemoryHandler:
         """Test loading memories with ECID and PID filters"""
         mock_agent.sql_adapter.get = AsyncMock(return_value=[])
         
-        await handler.load_memories(ecid='ec-001', pid='p-001')
+        await handler.load_memories(cycle_id='cycle-001', pid='p-001')
         
         # Verify get was called with filters
         call_kwargs = mock_agent.sql_adapter.get.call_args[1]
-        assert call_kwargs['ecid'] == 'ec-001'
+        assert call_kwargs['cycle_id'] == 'cycle-001'
         assert call_kwargs['pid'] == 'p-001'
         assert call_kwargs['status'] == 'validated'
     
@@ -98,7 +98,7 @@ class TestWarmBootMemoryHandler:
         """Test loading memories when exception occurs"""
         mock_agent.sql_adapter.get = AsyncMock(side_effect=Exception("DB error"))
         
-        result = await handler.load_memories(ecid='ec-001')
+        result = await handler.load_memories(cycle_id='cycle-001')
         
         assert result['memories_loaded'] is False
         assert result['memory_count'] == 0

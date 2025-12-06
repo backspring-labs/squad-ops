@@ -5,10 +5,11 @@ Implements task.delegate and task.determine_target capabilities for delegating t
 """
 
 import logging
-import yaml
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class TaskDelegator:
         self.task_api_url = agent.task_api_url if hasattr(agent, 'task_api_url') else 'http://localhost:8001'
         self._role_to_agent_cache = None
     
-    async def determine_target(self, task_type: str) -> Dict[str, Any]:
+    async def determine_target(self, task_type: str) -> dict[str, Any]:
         """
         Determine which agent should handle a task based on role.
         
@@ -74,7 +75,7 @@ class TaskDelegator:
             
             # Governance tasks should NEVER be delegated
             if task_type.lower() == 'governance':
-                raise ValueError(f"Governance tasks should not be delegated - handled by lead directly")
+                raise ValueError("Governance tasks should not be delegated - handled by lead directly")
             
             # Special handling for warmboot_wrapup - use capability binding
             if task_type.lower() == 'warmboot_wrapup':
@@ -129,7 +130,7 @@ class TaskDelegator:
                 'error': str(e)
             }
     
-    async def delegate(self, task: Dict[str, Any], delegation_reason: str = None) -> Dict[str, Any]:
+    async def delegate(self, task: dict[str, Any], delegation_reason: str = None) -> dict[str, Any]:
         """
         Delegate a task to another agent.
         
@@ -162,7 +163,7 @@ class TaskDelegator:
                 context={
                     'delegated_by': self.name,
                     'delegation_reason': delegation_reason,
-                    'ecid': task.get('ecid')
+                    'cycle_id': task.get('cycle_id')
                 }
             )
             
@@ -186,7 +187,7 @@ class TaskDelegator:
                 'error': str(e)
             }
     
-    def _load_role_to_agent_mapping(self) -> Dict[str, str]:
+    def _load_role_to_agent_mapping(self) -> dict[str, str]:
         """
         Load role-to-agent mapping from instances.yaml.
         Returns dict mapping role -> agent_id for enabled agents.
@@ -201,7 +202,7 @@ class TaskDelegator:
                 logger.warning(f"Instances file not found: {self.instances_file}, using defaults")
                 return self._get_default_role_mapping()
             
-            with open(instances_path, 'r') as f:
+            with open(instances_path) as f:
                 data = yaml.safe_load(f)
             
             # Build role -> agent_id mapping from enabled instances
@@ -223,7 +224,7 @@ class TaskDelegator:
             logger.error(f"Failed to load instances.yaml: {e}, using defaults")
             return self._get_default_role_mapping()
     
-    def _get_default_role_mapping(self) -> Dict[str, str]:
+    def _get_default_role_mapping(self) -> dict[str, str]:
         """Fallback role-to-agent mapping if instances.yaml can't be loaded"""
         return {
             'lead': 'max',

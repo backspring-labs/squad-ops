@@ -5,6 +5,7 @@ Generates ULIDs for new or existing SIPs.
 """
 
 import sys
+
 try:
     import ulid
 except ImportError:

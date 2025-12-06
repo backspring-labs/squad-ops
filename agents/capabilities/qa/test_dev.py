@@ -5,9 +5,9 @@ Develops test code/scripts from test plans.
 """
 
 import logging
-from pathlib import Path
-from typing import Dict, Any, Optional
 import re
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class TestDev:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
     
-    async def develop(self, test_plan_uri: str, code_structure: Optional[str] = None, framework: Optional[str] = None) -> Dict[str, Any]:
+    async def develop(self, test_plan_uri: str, code_structure: str | None = None, framework: str | None = None) -> dict[str, Any]:
         """
         Develop test code from test plan.
         
@@ -126,7 +126,7 @@ class TestDev:
             logger.error(f"{self.name} failed to develop test code: {e}", exc_info=True)
             raise
     
-    def _build_test_code_prompt(self, test_plan_content: str, code_structure: Optional[str], framework: str) -> str:
+    def _build_test_code_prompt(self, test_plan_content: str, code_structure: str | None, framework: str) -> str:
         """Build prompt for LLM to generate test code"""
         prompt_parts = [
             f"You are a QA engineer writing test code using {framework}.",
@@ -163,7 +163,7 @@ class TestDev:
         
         return "\n".join(prompt_parts)
     
-    def _parse_test_code(self, test_code_content: str, framework: str) -> Dict[str, str]:
+    def _parse_test_code(self, test_code_content: str, framework: str) -> dict[str, str]:
         """Parse generated test code into separate files"""
         test_files = {}
         

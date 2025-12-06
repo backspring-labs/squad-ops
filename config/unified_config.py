@@ -6,11 +6,13 @@ with platform-aware architecture for future extensibility
 """
 
 import os
-import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional
-from config import deployment_config, agent_config
+from typing import Any
+
+import yaml
+
 from agents.utils.path_resolver import PathResolver
+from config import agent_config, deployment_config
 
 
 class SquadOpsConfig:
@@ -22,7 +24,7 @@ class SquadOpsConfig:
     4. Environment variables (highest priority)
     """
     
-    def __init__(self, platform: Optional[str] = None):
+    def __init__(self, platform: str | None = None):
         """
         Initialize configuration manager
         
@@ -44,7 +46,7 @@ class SquadOpsConfig:
         profile_path = Path(__file__).parent / 'environments' / f'{self.platform}.yaml'
         if profile_path.exists():
             try:
-                with open(profile_path, 'r') as f:
+                with open(profile_path) as f:
                     self._platform_profile = yaml.safe_load(f)
             except Exception:
                 # Gracefully handle missing YAML parser or invalid files
@@ -69,8 +71,8 @@ class SquadOpsConfig:
     def _validate(self):
         """Validate configuration on initialization"""
         # Basic validation - can be extended
-        if not self.get_task_api_url():
-            raise ValueError("Task API URL is required")
+        if not self.get_runtime_api_url():  # SIP-0048: renamed from get_task_api_url
+            raise ValueError("Runtime API URL is required")  # SIP-0048: renamed from Task API URL
     
     # Infrastructure URLs
     
@@ -101,9 +103,9 @@ class SquadOpsConfig:
         # Use deployment_config helper
         return deployment_config.get_redis_url()
     
-    def get_task_api_url(self) -> str:
-        """Get Task API URL"""
-        return os.getenv('TASK_API_URL', 'http://task-api:8001')
+    def get_runtime_api_url(self) -> str:  # SIP-0048: renamed from get_task_api_url
+        """Get Runtime API URL (SIP-0048: renamed from Task API URL)"""
+        return os.getenv('RUNTIME_API_URL', 'http://runtime-api:8001')  # SIP-0048: renamed from TASK_API_URL
     
     def get_tasks_backend(self) -> str:
         """Get tasks backend selection"""
@@ -154,7 +156,7 @@ class SquadOpsConfig:
     
     # LLM Configuration
     
-    def get_llm_config(self, key: Optional[str] = None) -> Any:
+    def get_llm_config(self, key: str | None = None) -> Any:
         """
         Get LLM configuration
         
@@ -227,7 +229,7 @@ class SquadOpsConfig:
     
     # Service discovery (stubbed for future cloud providers)
     
-    def get_service_endpoint(self, service: str) -> Optional[str]:
+    def get_service_endpoint(self, service: str) -> str | None:
         """
         Get service endpoint with platform-aware service discovery (future)
         
@@ -240,7 +242,7 @@ class SquadOpsConfig:
     
     # Convenience methods for common patterns
     
-    def get_all_config(self) -> Dict[str, Any]:
+    def get_all_config(self) -> dict[str, Any]:
         """Get all configuration as dictionary"""
         return {
             'platform': self.platform,
@@ -248,7 +250,7 @@ class SquadOpsConfig:
                 'rabbitmq_url': self.get_rabbitmq_url(),
                 'postgres_url': self.get_postgres_url(),
                 'redis_url': self.get_redis_url(),
-                'task_api_url': self.get_task_api_url(),
+                'runtime_api_url': self.get_runtime_api_url(),  # SIP-0048: renamed from task_api_url
             },
             'agent': {
                 'id': self.get_agent_id(),
@@ -261,10 +263,10 @@ class SquadOpsConfig:
 
 
 # Global singleton instance (lazy initialization)
-_config_instance: Optional[SquadOpsConfig] = None
+_config_instance: SquadOpsConfig | None = None
 
 
-def get_config(platform: Optional[str] = None) -> SquadOpsConfig:
+def get_config(platform: str | None = None) -> SquadOpsConfig:
     """
     Get global configuration instance (singleton pattern)
     

@@ -5,7 +5,6 @@ Provides hard validation that fails fast if LLM output doesn't meet quality stan
 """
 
 import logging
-from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +82,7 @@ def clean_yaml_response(response: str) -> str:
         return strip_markdown_markers(response)
     return response
 
-def parse_delimited_files(content: str, delimiter: str = "--- FILE:") -> List[Dict[str, str]]:
+def parse_delimited_files(content: str, delimiter: str = "--- FILE:") -> list[dict[str, str]]:
     """Parse delimited file format from LLM response"""
     files = []
     sections = content.split(delimiter)

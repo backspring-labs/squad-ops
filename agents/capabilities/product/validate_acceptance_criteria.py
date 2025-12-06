@@ -5,7 +5,7 @@ Validates PRD acceptance criteria against deployed application.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class ValidateAcceptanceCriteria:
         self.agent = agent_instance
         self.name = agent_instance.name if hasattr(agent_instance, 'name') else 'unknown'
     
-    async def validate(self, prd_path: str, app_url: str = "http://localhost:8080/hello-squad/") -> Dict[str, Any]:
+    async def validate(self, prd_path: str, app_url: str = "http://localhost:8080/hello-squad/") -> dict[str, Any]:
         """
         Validate PRD acceptance criteria against deployed application.
         
@@ -51,7 +51,9 @@ class ValidateAcceptanceCriteria:
             logger.info(f"{self.name} loaded PRD from {prd_path}")
             
             # Use ParsePRDAcceptanceCriteria skill to extract criteria
-            from agents.skills.product.parse_prd_acceptance_criteria import ParsePRDAcceptanceCriteria
+            from agents.skills.product.parse_prd_acceptance_criteria import (
+                ParsePRDAcceptanceCriteria,
+            )
             parser = ParsePRDAcceptanceCriteria()
             criteria_list = parser.extract(prd_content)
             

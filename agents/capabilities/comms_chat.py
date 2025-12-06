@@ -5,10 +5,10 @@ Implements comms.chat capability for handling interactive chat messages from con
 Transport-agnostic - just receives request and returns response.
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class ChatHandler:
         # Default: retrieve for most messages
         return True
     
-    def _format_memory(self, mem: Dict[str, Any], index: int) -> str:
+    def _format_memory(self, mem: dict[str, Any], index: int) -> str:
         """
         Format a memory for inclusion in the prompt.
         Extracts key information from structured content.
@@ -101,7 +101,7 @@ class ChatHandler:
             # Try to extract from tags
             tags = mem.get('tags', [])
             if tags:
-                # Find first tag that's not a pid/ecid/agent tag
+                # Find first tag that's not a pid/cycle_id/agent tag
                 for tag in tags:
                     if ':' not in tag:
                         mem_kind = tag
@@ -152,7 +152,7 @@ class ChatHandler:
         mem_id_short = mem_id[:8] if len(mem_id) > 8 else mem_id
         return f"[Memory {index} (ID: {mem_id_short}...)] {mem_kind}: {summary}"
     
-    def _filter_memories_by_relevance(self, memories: List[Dict[str, Any]], min_relevance: float = 0.6) -> List[Dict[str, Any]]:
+    def _filter_memories_by_relevance(self, memories: list[dict[str, Any]], min_relevance: float = 0.6) -> list[dict[str, Any]]:
         """
         Filter memories by relevance score if available.
         LanceDB search may include _distance field (lower is better).
@@ -191,7 +191,7 @@ class ChatHandler:
         
         return filtered if filtered else memories  # Return all if no filtering possible
     
-    async def handle(self, message: str, session_id: str) -> Dict[str, Any]:
+    async def handle(self, message: str, session_id: str) -> dict[str, Any]:
         """
         Handle chat message - checks busy status and generates response.
         
@@ -315,7 +315,7 @@ Keep responses under 200 words unless the user asks for detailed information."""
             try:
                 if not hasattr(self.agent, 'llm_client') or not self.agent.llm_client:
                     logger.error(f"{self.name} LLM client not initialized")
-                    response_text = f"[Sorry, I'm not properly configured to respond. Please contact the system administrator.]"
+                    response_text = "[Sorry, I'm not properly configured to respond. Please contact the system administrator.]"
                 else:
                     # Use real LLM client for chat response
                     llm_result = await self.agent.llm_client.complete(

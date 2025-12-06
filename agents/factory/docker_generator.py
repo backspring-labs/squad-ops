@@ -4,9 +4,10 @@ SquadOps Docker Compose Generator
 Dynamic Docker Compose generation from instances.yaml
 """
 
-import yaml
 import logging
-from typing import Dict, Any, List
+from typing import Any
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class DockerComposeGenerator:
         self.instances_file = instances_file
         self.base_compose_template = self._load_base_template()
     
-    def _load_base_template(self) -> Dict[str, Any]:
+    def _load_base_template(self) -> dict[str, Any]:
         """Load base Docker Compose template"""
         return {
             'version': '3.8',
@@ -34,17 +35,17 @@ class DockerComposeGenerator:
             }
         }
     
-    def _load_instances(self) -> List[Dict[str, Any]]:
+    def _load_instances(self) -> list[dict[str, Any]]:
         """Load agent instances from YAML file"""
         try:
-            with open(self.instances_file, 'r') as f:
+            with open(self.instances_file) as f:
                 data = yaml.safe_load(f)
                 return data.get('instances', [])
         except Exception as e:
             logger.error(f"Failed to load instances from {self.instances_file}: {e}")
             return []
     
-    def _generate_infrastructure_services(self) -> Dict[str, Any]:
+    def _generate_infrastructure_services(self) -> dict[str, Any]:
         """Generate infrastructure services (RabbitMQ, PostgreSQL, etc.)"""
         return {
             'rabbitmq': {
@@ -157,7 +158,7 @@ class DockerComposeGenerator:
             }
         }
     
-    def _generate_agent_service(self, instance: Dict[str, Any]) -> Dict[str, Any]:
+    def _generate_agent_service(self, instance: dict[str, Any]) -> dict[str, Any]:
         """Generate Docker service configuration for an agent instance"""
         agent_id = instance['id']
         role = instance['role']
@@ -188,7 +189,7 @@ class DockerComposeGenerator:
             'networks': ['squadnet']
         }
     
-    def generate_compose(self) -> Dict[str, Any]:
+    def generate_compose(self) -> dict[str, Any]:
         """Generate complete Docker Compose configuration"""
         instances = self._load_instances()
         
@@ -221,7 +222,7 @@ class DockerComposeGenerator:
             logger.error(f"Failed to save Docker Compose configuration: {e}")
             return False
     
-    def get_enabled_agents(self) -> List[str]:
+    def get_enabled_agents(self) -> list[str]:
         """Get list of enabled agent IDs"""
         instances = self._load_instances()
         return [instance['id'] for instance in instances if instance.get('enabled', False)]
@@ -235,7 +236,7 @@ if __name__ == "__main__":
     for agent in enabled_agents:
         print(f"  - {agent}")
     
-    print(f"\n📝 Generating Docker Compose configuration...")
+    print("\n📝 Generating Docker Compose configuration...")
     if generator.save_compose():
         print("✅ Docker Compose configuration generated successfully!")
     else:

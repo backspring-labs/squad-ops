@@ -5,15 +5,15 @@ Routes telemetry requests to the appropriate provider based on platform.
 Follows the same pattern as LLMRouter for consistency.
 """
 
-import os
 import logging
-from typing import Optional, Dict, Any
+import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 from agents.telemetry.client import TelemetryClient
-from agents.telemetry.providers.opentelemetry_client import OpenTelemetryClient
 from agents.telemetry.providers.null_client import NullTelemetryClient
+from agents.telemetry.providers.opentelemetry_client import OpenTelemetryClient
 
 # Cloud providers will be imported when implemented
 # from agents.telemetry.providers.aws_client import AWSTelemetryClient
@@ -24,7 +24,7 @@ from agents.telemetry.providers.null_client import NullTelemetryClient
 class TelemetryRouter:
     """Route telemetry requests to configured provider based on platform"""
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         """
         Initialize telemetry router
         
@@ -39,7 +39,7 @@ class TelemetryRouter:
         self.telemetry_backend = self.config.get('telemetry_backend')
     
     @classmethod
-    def from_config(cls, config_path: Optional[str] = None) -> TelemetryClient:
+    def from_config(cls, config_path: str | None = None) -> TelemetryClient:
         """
         Load router from unified config and return appropriate TelemetryClient
         
@@ -99,7 +99,7 @@ class TelemetryRouter:
             return NullTelemetryClient()
     
     @staticmethod
-    def _build_telemetry_config(unified_config, platform: str, backend: Optional[str] = None) -> Dict[str, Any]:
+    def _build_telemetry_config(unified_config, platform: str, backend: str | None = None) -> dict[str, Any]:
         """
         Build telemetry configuration from unified config
         

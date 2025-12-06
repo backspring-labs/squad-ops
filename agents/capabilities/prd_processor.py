@@ -4,10 +4,10 @@ PRD Processor Capability Handlers
 Implements prd.read and prd.analyze capabilities for processing Product Requirements Documents.
 """
 
-import logging
 import json
+import logging
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class PRDReader:
         self.agent = agent
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
     
-    async def read(self, prd_path: str) -> Dict[str, Any]:
+    async def read(self, prd_path: str) -> dict[str, Any]:
         """
         Read and return PRD content.
         
@@ -62,7 +62,7 @@ class PRDReader:
                 'error': str(e)
             }
     
-    def _parse_sections(self, content: str) -> Dict[str, str]:
+    def _parse_sections(self, content: str) -> dict[str, str]:
         """
         Parse PRD content into sections.
         
@@ -112,7 +112,7 @@ class PRDAnalyzer:
         self.agent = agent
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
         self.communication_log = agent.communication_log if hasattr(agent, 'communication_log') else []
-        self.current_ecid = agent.current_ecid if hasattr(agent, 'current_ecid') else None
+        self.current_cycle_id = agent.current_cycle_id if hasattr(agent, 'current_cycle_id') else None
         
         # Import Skill (reasoning pattern)
         from agents.skills.lead.prd_analysis_prompt import PRDAnalysisPrompt
@@ -120,7 +120,7 @@ class PRDAnalyzer:
         # Initialize Skill
         self.prd_analysis_prompt_skill = PRDAnalysisPrompt()
     
-    async def analyze(self, prd_content: str, agent_role: str = "Lead Agent") -> Dict[str, Any]:
+    async def analyze(self, prd_content: str, agent_role: str = "Lead Agent") -> dict[str, Any]:
         """
         Analyze PRD content and extract requirements using LLM.
         
@@ -150,7 +150,7 @@ class PRDAnalyzer:
                 'agent': self.name,
                 'message_type': 'llm_reasoning',
                 'description': f"Real AI PRD Analysis: {llm_response[:500]}...",
-                'ecid': self.current_ecid,
+                'cycle_id': self.current_cycle_id,
                 'full_response': llm_response
             })
             
@@ -224,16 +224,16 @@ class PRDProcessor:
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
         self.capability_loader = agent.capability_loader if hasattr(agent, 'capability_loader') else None
     
-    async def process(self, task: Dict[str, Any] = None, prd_path: str = None, ecid: str = None) -> Dict[str, Any]:
+    async def process(self, task: dict[str, Any] = None, prd_path: str = None, cycle_id: str = None) -> dict[str, Any]:
         """
         Process a PRD request - orchestrates reading, analysis, task creation, and delegation.
         
         Implements the prd.process capability.
         
         Args:
-            task: Task dictionary (if provided, extracts prd_path and ecid from it)
+            task: Task dictionary (if provided, extracts prd_path and cycle_id from it)
             prd_path: Path to PRD file (used if task not provided)
-            ecid: Execution cycle ID (optional, extracted from task or defaults to ECID-WB-001)
+            cycle_id: Execution cycle ID (optional, extracted from task or defaults to CYCLE-WB-001)
             
         Returns:
             Dictionary containing:
@@ -247,32 +247,32 @@ class PRDProcessor:
             # Extract parameters from task dict if provided (for generic routing)
             if task:
                 prd_path = task.get('prd_path') or prd_path
-                ecid = task.get('ecid') or task.get('context', {}).get('ecid') or ecid
+                cycle_id = task.get('cycle_id') or task.get('context', {}).get('cycle_id') or cycle_id
             
             if not prd_path:
                 return {"status": "error", "message": "PRD path not provided"}
             
             logger.info(f"{self.name} processing PRD request: {prd_path}")
             
-            # Use provided ecid or create default
-            if not ecid:
-                ecid = "ECID-WB-001"
+            # Use provided cycle_id or create default
+            if not cycle_id:
+                cycle_id = "CYCLE-WB-001"
             
             # Create execution cycle with project_id (SIP-0047)
             try:
                 await self.agent.create_execution_cycle(
-                    ecid, "PID-001", "warmboot", 
-                    f"WarmBoot {ecid}", prd_path,
+                    cycle_id, "PID-001", "warmboot", 
+                    f"WarmBoot {cycle_id}", prd_path,
                     project_id="warmboot_selftest"
                 )
-                logger.info(f"{self.name} created execution cycle {ecid} with project_id=warmboot_selftest")
+                logger.info(f"{self.name} created execution cycle {cycle_id} with project_id=warmboot_selftest")
             except Exception as e:
                 # Execution cycle may already exist in edge cases - continue anyway
-                logger.warning(f"Execution cycle {ecid} creation failed (may already exist): {e}")
+                logger.warning(f"Execution cycle {cycle_id} creation failed (may already exist): {e}")
             
-            # Store the current ecid for use in create_development_tasks
-            self.agent.current_ecid = ecid
-            logger.info(f"{self.name} stored current ecid: {ecid}")
+            # Store the current cycle_id for use in create_development_tasks
+            self.agent.current_cycle_id = cycle_id
+            logger.info(f"{self.name} stored current cycle_id: {cycle_id}")
             
             # Read PRD via capability Loader
             if not self.capability_loader:
@@ -301,7 +301,7 @@ class PRDProcessor:
             
             # Create development tasks via capability Loader
             task_result = await self.capability_loader.execute(
-                'task.create', self.agent, prd_analysis, app_name, ecid
+                'task.create', self.agent, prd_analysis, app_name, cycle_id
             )
             tasks = task_result.get('tasks', [])
             if not tasks:
@@ -335,7 +335,7 @@ class PRDProcessor:
                 # Log task delegation
                 await self.agent.log_task_delegation(
                     task['task_id'],
-                    ecid,
+                    cycle_id,
                     delegation_target,
                     task['description']
                 )
@@ -360,10 +360,10 @@ class PRDProcessor:
                         'task_type': task.get('task_type', 'unknown'),
                         'delegated_to': delegation_target,
                         'decision': 'approved',
-                        'ecid': ecid
+                        'cycle_id': cycle_id
                     },
                     importance=0.7,
-                    task_context={'ecid': ecid, 'pid': task.get('pid', 'unknown')}
+                    task_context={'cycle_id': cycle_id, 'pid': task.get('pid', 'unknown')}
                 )
                 
                 delegated_tasks.append({

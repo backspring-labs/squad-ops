@@ -4,14 +4,22 @@ SquadOps Version Management CLI
 Manages framework and agent versions, configurations, and rollbacks
 """
 
-import sys
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
+
 from config.version import (
-    AGENT_VERSIONS, CONFIG_VERSIONS, get_agent_version, get_agent_config, get_version_history, rollback_agent, get_framework_version
+    AGENT_VERSIONS,
+    CONFIG_VERSIONS,
+    get_agent_config,
+    get_agent_version,
+    get_framework_version,
+    get_version_history,
+    rollback_agent,
 )
+
 
 def show_framework_version():
     """Show current framework version"""
@@ -106,10 +114,10 @@ def update_version(agent_name, new_version, llm=None, config=None, notes=""):
         print(f"   Config: {config}")
     if notes:
         print(f"   Notes: {notes}")
-    print(f"   Updated: config/version.py")
+    print("   Updated: config/version.py")
     print()
     print("⚠️  Remember to commit this change:")
-    print(f'   git add config/version.py')
+    print('   git add config/version.py')
     print(f'   git commit -m "chore: bump {agent_name} to {new_version}"')
     
     return True
@@ -155,10 +163,10 @@ def update_framework_version(new_version, notes=""):
     print(f"✅ Updated framework version to {new_version}")
     if notes:
         print(f"   Notes: {notes}")
-    print(f"   Updated: config/version.py")
+    print("   Updated: config/version.py")
     print()
     print("⚠️  Remember to commit this change:")
-    print(f'   git add config/version.py')
+    print('   git add config/version.py')
     print(f'   git commit -m "chore: bump version to {new_version}"')
     
     return True
@@ -180,7 +188,7 @@ def export_versions():
 def import_versions(filename):
     """Import version configuration from file"""
     try:
-        with open(filename, "r") as f:
+        with open(filename) as f:
             config = json.load(f)
         
         # Update global variables

@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiofiles
 
@@ -32,33 +32,33 @@ class CycleSummaryComposer:
         self.agent = agent
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
     
-    async def compose(self, ecid: str, snapshot_path: Optional[str] = None, metrics_path: Optional[str] = None) -> Dict[str, Any]:
+    async def compose(self, cycle_id: str, snapshot_path: str | None = None, metrics_path: str | None = None) -> dict[str, Any]:
         """
         Compose compact cycle summary.
         
         Implements the data.compose_cycle_summary capability.
         
         Args:
-            ecid: Execution cycle ID
+            cycle_id: Execution cycle ID
             snapshot_path: Optional path to snapshot JSON (auto-detected if not provided)
             metrics_path: Optional path to metrics JSON (auto-detected if not provided)
             
         Returns:
             Dictionary containing:
             - summary_path: Path to summary JSON file
-            - ecid: Execution cycle ID
+            - cycle_id: Execution cycle ID
             - health: Health flag (green/yellow/red)
             - agent_summary: Summary of agent metrics
         """
-        logger.info(f"{self.name} composing cycle summary for ECID: {ecid}")
+        logger.info(f"{self.name} composing cycle summary for cycle_id: {cycle_id}")
         
         try:
             # Load snapshot and metrics
-            snapshot = await self._load_snapshot(ecid, snapshot_path)
-            metrics = await self._load_metrics(ecid, metrics_path)
+            snapshot = await self._load_snapshot(cycle_id, snapshot_path)
+            metrics = await self._load_metrics(cycle_id, metrics_path)
             
             if not snapshot:
-                raise ValueError(f"Could not load snapshot for ECID: {ecid}")
+                raise ValueError(f"Could not load snapshot for cycle_id: {cycle_id}")
             
             # Determine health flag
             health = self._determine_health(snapshot, metrics)
@@ -71,7 +71,7 @@ class CycleSummaryComposer:
             
             # Compose summary
             summary = {
-                "ecid": ecid,
+                "cycle_id": cycle_id,
                 "health": health,
                 "agents": agent_summary,
                 "timeline": timeline,
@@ -86,7 +86,7 @@ class CycleSummaryComposer:
             try:
                 from agents.tasks.registry import get_tasks_adapter
                 adapter = await get_tasks_adapter()
-                flow = await adapter.get_flow(ecid)
+                flow = await adapter.get_flow(cycle_id)
                 if flow and flow.project_id:
                     project_id = flow.project_id
             except Exception as e:
@@ -94,18 +94,18 @@ class CycleSummaryComposer:
             
             # Initialize CycleDataStore
             cycle_data_root = self.agent.config.get_cycle_data_root()
-            cycle_store = CycleDataStore(cycle_data_root, project_id, ecid)
+            cycle_store = CycleDataStore(cycle_data_root, project_id, cycle_id)
             
             # Save summary to meta area
             summary_json = json.dumps(summary, indent=2)
             success = cycle_store.write_text_artifact(
                 'meta',
-                f'cycle-summary-{ecid}.json',
+                f'cycle-summary-{cycle_id}.json',
                 summary_json
             )
             
             if success:
-                summary_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-summary-{ecid}.json'
+                summary_path = cycle_store.get_cycle_path() / 'meta' / f'cycle-summary-{cycle_id}.json'
                 logger.info(f"{self.name} saved cycle summary: {summary_path}")
             else:
                 raise Exception("Failed to write cycle summary to CycleDataStore")
@@ -115,7 +115,7 @@ class CycleSummaryComposer:
                 await self.agent.record_memory(
                     kind="cycle_summary_composed",
                     payload={
-                        "ecid": ecid,
+                        "cycle_id": cycle_id,
                         "summary_path": str(summary_path),
                         "health": health
                     },
@@ -125,7 +125,7 @@ class CycleSummaryComposer:
             
             return {
                 "summary_path": str(summary_path),
-                "ecid": ecid,
+                "cycle_id": cycle_id,
                 "health": health,
                 "agent_summary": agent_summary
             }
@@ -134,7 +134,7 @@ class CycleSummaryComposer:
             logger.error(f"{self.name} failed to compose cycle summary: {e}", exc_info=True)
             raise
     
-    async def _load_snapshot(self, ecid: str, snapshot_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    async def _load_snapshot(self, cycle_id: str, snapshot_path: str | None = None) -> dict[str, Any] | None:
         """Load snapshot JSON file"""
         try:
             if snapshot_path:
@@ -143,10 +143,10 @@ class CycleSummaryComposer:
                 from agents.utils.path_resolver import PathResolver
                 base_path = PathResolver.get_base_path()
                 warmboot_runs_dir = base_path / "warm-boot" / "runs"
-                run_dir = self._extract_run_directory(ecid, warmboot_runs_dir)
+                run_dir = self._extract_run_directory(cycle_id, warmboot_runs_dir)
                 if not run_dir:
                     return None
-                path = run_dir / f"cycle-snapshot-{ecid}.json"
+                path = run_dir / f"cycle-snapshot-{cycle_id}.json"
             
             if not path.exists():
                 return None
@@ -158,7 +158,7 @@ class CycleSummaryComposer:
             logger.warning(f"{self.name} error loading snapshot: {e}")
             return None
     
-    async def _load_metrics(self, ecid: str, metrics_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    async def _load_metrics(self, cycle_id: str, metrics_path: str | None = None) -> dict[str, Any] | None:
         """Load metrics JSON file"""
         try:
             if metrics_path:
@@ -167,10 +167,10 @@ class CycleSummaryComposer:
                 from agents.utils.path_resolver import PathResolver
                 base_path = PathResolver.get_base_path()
                 warmboot_runs_dir = base_path / "warm-boot" / "runs"
-                run_dir = self._extract_run_directory(ecid, warmboot_runs_dir)
+                run_dir = self._extract_run_directory(cycle_id, warmboot_runs_dir)
                 if not run_dir:
                     return None
-                path = run_dir / f"cycle-metrics-{ecid}.json"
+                path = run_dir / f"cycle-metrics-{cycle_id}.json"
             
             if not path.exists():
                 return None
@@ -182,10 +182,10 @@ class CycleSummaryComposer:
             logger.warning(f"{self.name} error loading metrics: {e}")
             return None
     
-    def _extract_run_directory(self, ecid: str, warmboot_runs_dir: Path) -> Optional[Path]:
+    def _extract_run_directory(self, cycle_id: str, warmboot_runs_dir: Path) -> Path | None:
         """Extract run directory from ECID"""
         try:
-            parts = ecid.split('-')
+            parts = cycle_id.split('-')
             if len(parts) >= 3:
                 run_number = parts[-1]
                 run_number = run_number.zfill(3) if run_number.isdigit() else run_number
@@ -196,7 +196,7 @@ class CycleSummaryComposer:
         except Exception:
             return None
     
-    def _determine_health(self, snapshot: Dict[str, Any], metrics: Optional[Dict[str, Any]]) -> str:
+    def _determine_health(self, snapshot: dict[str, Any], metrics: dict[str, Any] | None) -> str:
         """
         Determine health flag based on failure rate.
         
@@ -234,7 +234,7 @@ class CycleSummaryComposer:
         else:
             return "red"
     
-    def _build_agent_summary(self, snapshot: Dict[str, Any], metrics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _build_agent_summary(self, snapshot: dict[str, Any], metrics: dict[str, Any] | None) -> dict[str, Any]:
         """Build compact agent summary"""
         agent_summary = {}
         
@@ -263,7 +263,7 @@ class CycleSummaryComposer:
         
         return agent_summary
     
-    def _build_timeline(self, snapshot: Dict[str, Any], metrics: Optional[Dict[str, Any]]) -> List:
+    def _build_timeline(self, snapshot: dict[str, Any], metrics: dict[str, Any] | None) -> list:
         """Build ordered timeline if available"""
         if metrics and "timeline" in metrics:
             return metrics["timeline"][:20]  # Limit to first 20 events

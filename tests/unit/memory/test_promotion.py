@@ -20,7 +20,7 @@ def mock_lancedb_adapter():
         'ns': 'role',
         'agent': 'TestAgent',
         'tags': ['test'],
-        'content': {'action': 'test', 'pid': 'PID-001', 'ecid': 'ECID-001'},
+        'content': {'action': 'test', 'pid': 'PID-001', 'cycle_id': 'ECID-001'},
         'importance': 0.8
     }])
     return adapter

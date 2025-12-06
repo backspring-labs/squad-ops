@@ -4,10 +4,9 @@ Unified Path Resolver for SquadOps Agents
 Provides a single source of truth for determining the repository base path
 """
 
-import os
 import logging
+import os
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ class PathResolver:
     with fallback detection logic for local development.
     """
     
-    _base_path: Optional[Path] = None
+    _base_path: Path | None = None
     
     @classmethod
     def get_base_path(cls) -> Path:

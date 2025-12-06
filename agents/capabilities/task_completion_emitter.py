@@ -4,11 +4,11 @@ Task Completion Emitter Capability Handler
 Implements task.completion.emit capability for emitting developer completion events to LeadAgent.
 """
 
-import logging
 import hashlib
+import logging
 import os
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class TaskCompletionEmitter:
                 total_tokens += token_usage.get('total_tokens', 0)
         return total_tokens
     
-    def _load_role_to_agent_mapping(self) -> Dict[str, str]:
+    def _load_role_to_agent_mapping(self) -> dict[str, str]:
         """
         Load role-to-agent mapping from instances.yaml.
         
@@ -60,6 +60,7 @@ class TaskCompletionEmitter:
         
         try:
             from pathlib import Path
+
             import yaml
             
             # Find instances.yaml
@@ -67,7 +68,7 @@ class TaskCompletionEmitter:
             instances_path = base_path / 'config' / 'instances.yaml'
             
             if instances_path.exists():
-                with open(instances_path, 'r') as f:
+                with open(instances_path) as f:
                     instances = yaml.safe_load(f) or {}
                 
                 role_map = {}
@@ -96,12 +97,12 @@ class TaskCompletionEmitter:
         lead_agent = role_map.get('lead', 'max')
         return lead_agent
     
-    def _extract_reasoning_summary_for_task(self, ecid: str, action: str) -> Dict[str, Any]:
+    def _extract_reasoning_summary_for_task(self, cycle_id: str, action: str) -> dict[str, Any]:
         """
         Extract reasoning summary from communication log for a specific task/action.
         
         Args:
-            ecid: Execution cycle identifier
+            cycle_id: Execution cycle identifier
             action: Task action (manifest_generation, build, deploy)
             
         Returns:
@@ -119,13 +120,13 @@ class TaskCompletionEmitter:
         
         target_context = context_map.get(action, action)
         
-        # Find reasoning events in communication log for this ECID and context
+        # Find reasoning events in communication log for this cycle_id and context
         for entry in self.communication_log:
-            entry_ecid = entry.get('ecid')
+            entry_cycle_id = entry.get('cycle_id')
             entry_type = entry.get('message_type', '')
             
             # Check for LLM reasoning entries
-            if entry_ecid == ecid and entry_type == 'llm_reasoning':
+            if entry_cycle_id == cycle_id and entry_type == 'llm_reasoning':
                 description = entry.get('description', '')
                 # Match context more precisely - check for context word in description
                 description_lower = description.lower()
@@ -158,7 +159,7 @@ class TaskCompletionEmitter:
                 'note': 'No reasoning events found for this task'
             }
     
-    async def emit(self, task_id: str, ecid: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    async def emit(self, task_id: str, cycle_id: str, result: dict[str, Any]) -> dict[str, Any]:
         """
         Emit developer completion event for WarmBoot wrap-up.
         
@@ -166,7 +167,7 @@ class TaskCompletionEmitter:
         
         Args:
             task_id: Task identifier
-            ecid: Execution cycle identifier
+            cycle_id: Execution cycle identifier
             result: Task result dictionary containing:
                 - action: Task action (archive, build, deploy, etc.)
                 - created_files: List of created file paths
@@ -178,7 +179,7 @@ class TaskCompletionEmitter:
             Dictionary containing:
             - event_sent: Boolean indicating if event was sent successfully
             - task_id: Task identifier
-            - ecid: Execution cycle identifier
+            - cycle_id: Execution cycle identifier
         """
         try:
             # Calculate task duration
@@ -219,15 +220,15 @@ class TaskCompletionEmitter:
             else:
                 tasks_completed = [action]
             
-            # Extract reasoning summary from communication log for this task/ecid
-            reasoning_summary = self._extract_reasoning_summary_for_task(ecid, action)
+            # Extract reasoning summary from communication log for this task/cycle_id
+            reasoning_summary = self._extract_reasoning_summary_for_task(cycle_id, action)
             
             # Create completion event payload
             completion_event = {
                 'event_type': 'task.developer.completed',
                 'sender_agent': self.name,
                 'sender_role': 'developer',
-                'ecid': ecid,
+                'cycle_id': cycle_id,
                 'timestamp': datetime.utcnow().isoformat(),
                 'payload': {
                     'task_id': task_id,
@@ -256,16 +257,16 @@ class TaskCompletionEmitter:
                 context={
                     'event_type': completion_event['event_type'],
                     'sender_role': completion_event['sender_role'],
-                    'ecid': ecid
+                    'cycle_id': cycle_id
                 }
             )
             
-            logger.info(f"{self.name} emitted developer completion event for task {task_id}, ECID {ecid}")
+            logger.info(f"{self.name} emitted developer completion event for task {task_id}, cycle_id {cycle_id}")
             
             return {
                 'event_sent': True,
                 'task_id': task_id,
-                'ecid': ecid
+                'cycle_id': cycle_id
             }
             
         except Exception as e:
@@ -273,7 +274,7 @@ class TaskCompletionEmitter:
             return {
                 'event_sent': False,
                 'task_id': task_id,
-                'ecid': ecid,
+                'cycle_id': cycle_id,
                 'error': str(e)
             }
 
