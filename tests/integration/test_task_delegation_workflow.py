@@ -53,7 +53,7 @@ async def test_design_manifest_to_build_task_delegation(integration_config, clea
     }
     
     # Create a real task creation (simulating what happens in process_prd_request)
-    ecid = "TEST-ECID-001"
+    cycle_id = "TEST-ECID-001"
     
     # Initialize agent if needed
     try:
@@ -70,7 +70,7 @@ async def test_design_manifest_to_build_task_delegation(integration_config, clea
             lead_agent,
             prd_analysis={'core_features': ['Feature1'], 'technical_requirements': []},
             app_name="TestApp",
-            ecid=ecid
+            cycle_id=cycle_id
         )
         tasks = task_result.get('tasks', [])
         
@@ -111,9 +111,9 @@ async def test_design_manifest_to_build_task_delegation(integration_config, clea
             'manifest': test_manifest,
             'created_files': ['index.html', 'app.js']
         },
-        context={'ecid': ecid},
+        context={'cycle_id': cycle_id},
         timestamp=datetime.utcnow().isoformat(),
-        message_id=f"msg-design-{ecid}"
+        message_id=f"msg-design-{cycle_id}"
     )
     
     # Simulate Lead Agent receiving design manifest completion
@@ -174,7 +174,7 @@ async def test_build_task_received_with_manifest(integration_config, clean_datab
     build_task = {
         'task_id': 'test-build-task',
         'task_type': 'development',
-        'ecid': 'TEST-ECID-001',
+        'cycle_id': 'TEST-ECID-001',
         'requirements': {
             'action': 'build',
             'application': 'TestApp',
@@ -243,7 +243,7 @@ async def test_build_task_fails_without_manifest(integration_config, clean_datab
     build_task = {
         'task_id': 'test-build-task',
         'task_type': 'development',
-        'ecid': 'TEST-ECID-001',
+        'cycle_id': 'TEST-ECID-001',
         'requirements': {
             'action': 'build',
             'application': 'TestApp',

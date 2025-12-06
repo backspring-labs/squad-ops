@@ -349,7 +349,7 @@ def postgres_container():
                 "psql", "-U", postgres.username, "-d", postgres.dbname, "-c",
                 """
                 CREATE TABLE IF NOT EXISTS execution_cycles (
-                    ecid VARCHAR(50) PRIMARY KEY,
+                    cycle_id VARCHAR(50) PRIMARY KEY,
                     pid VARCHAR(50),
                     run_type VARCHAR(50),
                     initiated_by VARCHAR(100),
@@ -469,8 +469,8 @@ async def clean_database(postgres_container):
                 );
                 
                 -- Create tables if they don't exist (for test isolation)
-                CREATE TABLE IF NOT EXISTS execution_cycle (
-                    ecid TEXT PRIMARY KEY,
+                CREATE TABLE IF NOT EXISTS cycle (
+                    cycle_id TEXT PRIMARY KEY,
                     pid TEXT NOT NULL,
                     project_id TEXT REFERENCES projects(project_id),
                     run_type TEXT,
@@ -485,7 +485,7 @@ async def clean_database(postgres_container):
                 CREATE TABLE IF NOT EXISTS agent_task_log (
                     task_id TEXT PRIMARY KEY,
                     pid TEXT,
-                    ecid TEXT,
+                    cycle_id TEXT,
                     agent TEXT NOT NULL,
                     phase TEXT,
                     status TEXT NOT NULL,
@@ -527,7 +527,7 @@ async def clean_database(postgres_container):
                     agent TEXT NOT NULL,
                     ns TEXT NOT NULL DEFAULT 'squad',
                     pid TEXT,
-                    ecid TEXT,
+                    cycle_id TEXT,
                     tags TEXT[],
                     importance FLOAT DEFAULT 0.7,
                     status TEXT DEFAULT 'pending',

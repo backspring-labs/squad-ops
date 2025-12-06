@@ -71,13 +71,13 @@ Test application for SquadOps integration testing
             try:
                 # Use a unique ECID to avoid conflicts
                 import uuid
-                unique_ecid = f"test-ecid-{uuid.uuid4().hex[:8]}"
+                unique_cycle_id = f"test-cycle-{uuid.uuid4().hex[:8]}"
                 
                 # Process a PRD request via process_task (routes to prd.process capability)
                 task = {
-                    'task_id': f'{unique_ecid}-prd-task',
+                    'task_id': f'{unique_cycle_id}-prd-task',
                     'prd_path': temp_prd_path,
-                    'ecid': unique_ecid,
+                    'cycle_id': unique_cycle_id,
                     'description': f'Process PRD: {temp_prd_path}'
                 }
                 result = await lead_agent.process_task(task)
@@ -271,7 +271,7 @@ Test application for SquadOps integration testing
                 payload={
                     'schema': 'reasoning.v1',
                     'task_id': 'test-task-reasoning-001',
-                    'ecid': 'ECID-TEST-001',
+                    'cycle_id': 'ECID-TEST-001',
                     'reason_step': 'decision',
                     'summary': 'Selected FastAPI architecture for async support',
                     'context': 'manifest_generation',
@@ -282,7 +282,7 @@ Test application for SquadOps integration testing
                 context={
                     'sender_agent': 'dev-agent-001',
                     'sender_role': 'developer',
-                    'ecid': 'ECID-TEST-001'
+                    'cycle_id': 'ECID-TEST-001'
                 },
                 timestamp='2025-01-01T12:00:00Z',
                 message_id='msg-reasoning-test-001'
@@ -297,7 +297,7 @@ Test application for SquadOps integration testing
             assert log_entry['message_type'] == 'agent_reasoning'
             assert log_entry['sender'] == 'dev-agent-001'
             assert log_entry['agent'] == 'dev-agent-001'
-            assert log_entry['ecid'] == 'ECID-TEST-001'
+            assert log_entry['cycle_id'] == 'ECID-TEST-001'
             assert log_entry['task_id'] == 'test-task-reasoning-001'
             assert log_entry['reason_step'] == 'decision'
             assert log_entry['summary'] == 'Selected FastAPI architecture for async support'
@@ -308,7 +308,7 @@ Test application for SquadOps integration testing
             # Verify reasoning can be extracted for wrap-up via WrapupGenerator
             from agents.capabilities.wrapup_generator import WrapupGenerator
             wrapup_generator = WrapupGenerator(lead_agent)
-            reasoning = wrapup_generator.extract_real_ai_reasoning('ECID-TEST-001', agent_name='dev-agent-001')
+            reasoning = wrapup_generator.extract_real_ai_reasoning('ECID-TEST-001', agent_name='dev-agent-001')  # Note: cycle_id value passed as argument
             assert 'dev-agent-001' in reasoning
             assert 'manifest_generation' in reasoning or 'decision' in reasoning
             assert 'FastAPI' in reasoning or 'Selected' in reasoning

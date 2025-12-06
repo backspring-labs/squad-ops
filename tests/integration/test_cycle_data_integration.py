@@ -40,8 +40,8 @@ async def test_cycle_data_integration(postgres_container):
             
             # Create execution_cycle table with project_id
             await conn.execute("""
-                CREATE TABLE IF NOT EXISTS execution_cycle (
-                    ecid TEXT PRIMARY KEY,
+                CREATE TABLE IF NOT EXISTS cycle (
+                    cycle_id TEXT PRIMARY KEY,
                     pid TEXT NOT NULL,
                     project_id TEXT REFERENCES projects(project_id),
                     run_type TEXT,
@@ -77,7 +77,7 @@ async def test_cycle_data_integration(postgres_container):
             }
         )
         
-        assert flow.ecid == ecid
+        assert flow.cycle_id == ecid
         assert flow.project_id == "test_project"
         
         # Create temporary directory for cycle data
@@ -89,7 +89,7 @@ async def test_cycle_data_integration(postgres_container):
             
             # Write cycle manifest
             manifest = {
-                "ecid": ecid,
+                "cycle_id": ecid,
                 "project_id": "test_project",
                 "created_at": "2025-01-29T00:00:00Z"
             }
@@ -116,7 +116,7 @@ async def test_cycle_data_integration(postgres_container):
             telemetry_event = {
                 "timestamp": "2025-01-29T00:00:00Z",
                 "event_type": "cycle_start",
-                "ecid": ecid
+                "cycle_id": ecid
             }
             success = cycle_store.append_telemetry_event(telemetry_event)
             assert success is True
@@ -132,7 +132,7 @@ async def test_cycle_data_integration(postgres_container):
             # Verify files can be read back
             read_manifest = cycle_store.read_text_artifact("meta", "cycle_manifest.json")
             assert read_manifest is not None
-            assert json.loads(read_manifest)["ecid"] == ecid
+            assert json.loads(read_manifest)["cycle_id"] == ecid
             
             read_plan = cycle_store.read_text_artifact("shared", "plan.md")
             assert read_plan == plan_content

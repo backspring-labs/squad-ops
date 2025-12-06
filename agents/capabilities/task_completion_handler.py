@@ -35,7 +35,7 @@ class TaskCompletionHandler:
         self.send_message = agent_instance.send_message if hasattr(agent_instance, 'send_message') else None
         self.communication_log = agent_instance.communication_log if hasattr(agent_instance, 'communication_log') else []
         self.record_memory = agent_instance.record_memory if hasattr(agent_instance, 'record_memory') else None
-        self.task_api_url = getattr(agent_instance, 'task_api_url', 'http://task-api:8001')
+        self.runtime_api_url = getattr(agent_instance, 'runtime_api_url', 'http://runtime-api:8001')  # SIP-0048: renamed from task_api_url
         
         # Load capabilities via capability loader if available
         self.capability_loader = getattr(agent_instance, 'capability_loader', None)
@@ -271,7 +271,7 @@ class TaskCompletionHandler:
             async with aiohttp.ClientSession() as session:
                 # Query tasks API for pending build task with this cycle_id
                 async with session.get(
-                    f"{self.task_api_url}/api/v1/tasks",
+                    f"{self.runtime_api_url}/api/v1/tasks",
                     params={"cycle_id": cycle_id, "status": "pending"}
                 ) as resp:
                     if resp.status == 200:

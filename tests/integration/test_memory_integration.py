@@ -36,7 +36,7 @@ async def test_lancedb_adapter_sql_adapter_integration(postgres_container, clean
                     agent TEXT NOT NULL,
                     ns TEXT NOT NULL DEFAULT 'squad',
                     pid TEXT,
-                    ecid TEXT,
+                    cycle_id TEXT,
                     tags TEXT[],
                     importance FLOAT DEFAULT 0.7,
                     status TEXT DEFAULT 'pending',
@@ -53,7 +53,7 @@ async def test_lancedb_adapter_sql_adapter_integration(postgres_container, clean
                     query_context TEXT
                 );
                 
-                CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_ecid ON squad_mem_pool(ecid);
+                CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_cycle_id ON squad_mem_pool(cycle_id);
                 CREATE INDEX IF NOT EXISTS idx_memory_reuse_log_memory_id ON memory_reuse_log(memory_id);
             """)
         
@@ -70,11 +70,11 @@ async def test_lancedb_adapter_sql_adapter_integration(postgres_container, clean
                 'action': 'test_action',
                 'result': 'success',
                 'pid': 'PID-001',
-                'ecid': 'ECID-001'
+                'cycle_id': 'ECID-001'
             },
             'importance': 0.8,
             'pid': 'PID-001',
-            'ecid': 'ECID-001'
+                'cycle_id': 'ECID-001'
         }
         
         mem_id = await lancedb_adapter.put(memory_item)
@@ -91,7 +91,7 @@ async def test_lancedb_adapter_sql_adapter_integration(postgres_container, clean
             'agent': 'TestAgent',
             'ns': 'squad',
             'pid': 'PID-001',
-            'ecid': 'ECID-001',
+                'cycle_id': 'ECID-001',
             'tags': ['test', 'integration'],
             'importance': 0.8,
             'status': 'validated',
@@ -112,7 +112,7 @@ async def test_lancedb_adapter_sql_adapter_integration(postgres_container, clean
             assert result['agent'] == 'TestAgent'
             assert result['ns'] == 'squad'
             assert result['pid'] == 'PID-001'
-            assert result['ecid'] == 'ECID-001'
+            assert result['cycle_id'] == 'ECID-001'
             # Content is JSONB, parse it
             import json
             content = result['content'] if isinstance(result['content'], dict) else json.loads(result['content'])
@@ -147,7 +147,7 @@ async def test_promotion_service_integration(postgres_container, clean_database)
                     agent TEXT NOT NULL,
                     ns TEXT NOT NULL DEFAULT 'squad',
                     pid TEXT,
-                    ecid TEXT,
+                    cycle_id TEXT,
                     tags TEXT[],
                     importance FLOAT DEFAULT 0.7,
                     status TEXT DEFAULT 'pending',
@@ -177,10 +177,10 @@ async def test_promotion_service_integration(postgres_container, clean_database)
             'ns': 'role',
             'agent': 'TestAgent',
             'tags': ['test', 'promotion'],
-            'content': {'action': 'test_promotion', 'pid': 'PID-PROMO', 'ecid': 'ECID-PROMO'},
+            'content': {'action': 'test_promotion', 'pid': 'PID-PROMO', 'cycle_id': 'ECID-PROMO'},
             'importance': 0.8,
             'pid': 'PID-PROMO',
-            'ecid': 'ECID-PROMO'
+            'cycle_id': 'ECID-PROMO'
         }
         
         mem_id = await lancedb_adapter.put(memory_item)
@@ -244,7 +244,7 @@ async def test_sql_adapter_postgresql_integration(postgres_container, clean_data
                     agent TEXT NOT NULL,
                     ns TEXT NOT NULL DEFAULT 'squad',
                     pid TEXT,
-                    ecid TEXT,
+                    cycle_id TEXT,
                     tags TEXT[],
                     importance FLOAT DEFAULT 0.7,
                     status TEXT DEFAULT 'pending',
@@ -253,7 +253,7 @@ async def test_sql_adapter_postgresql_integration(postgres_container, clean_data
                     created_at TIMESTAMPTZ DEFAULT now()
                 );
                 
-                CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_ecid ON squad_mem_pool(ecid);
+                CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_cycle_id ON squad_mem_pool(cycle_id);
                 CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_pid ON squad_mem_pool(pid);
             """)
         
@@ -265,7 +265,7 @@ async def test_sql_adapter_postgresql_integration(postgres_container, clean_data
             'agent': 'TestAgent',
             'ns': 'squad',
             'pid': 'PID-001',
-            'ecid': 'ECID-001',
+                'cycle_id': 'ECID-001',
             'tags': ['test', 'real'],
             'importance': 0.9,
             'status': 'validated',
@@ -277,9 +277,9 @@ async def test_sql_adapter_postgresql_integration(postgres_container, clean_data
         assert mem_id is not None
         
         # Retrieve from REAL database
-        results = await sql_adapter.get("", k=10, ecid='ECID-001')
+        results = await sql_adapter.get("", k=10, cycle_id='ECID-001')
         assert len(results) > 0
-        assert results[0]['ecid'] == 'ECID-001'
+        assert results[0]['cycle_id'] == 'ECID-001'
         assert results[0]['content']['action'] == 'real_test'
         
         # Test filtering by PID
@@ -337,7 +337,7 @@ async def test_memory_provider_agent_integration(postgres_container, clean_datab
                     agent TEXT NOT NULL,
                     ns TEXT NOT NULL DEFAULT 'squad',
                     pid TEXT,
-                    ecid TEXT,
+                    cycle_id TEXT,
                     tags TEXT[],
                     importance FLOAT DEFAULT 0.7,
                     status TEXT DEFAULT 'pending',
@@ -370,7 +370,7 @@ async def test_memory_provider_agent_integration(postgres_container, clean_datab
             kind="test_action",
             payload={'result': 'success'},
             importance=0.8,
-            task_context={'pid': 'PID-001', 'ecid': 'ECID-001'}
+            task_context={'pid': 'PID-001', 'cycle_id': 'ECID-001'}
         )
         
         assert mem_id is not None
@@ -402,7 +402,7 @@ async def test_memory_replay_from_sql_only(postgres_container, clean_database):
                     agent TEXT NOT NULL,
                     ns TEXT NOT NULL DEFAULT 'squad',
                     pid TEXT,
-                    ecid TEXT,
+                    cycle_id TEXT,
                     tags TEXT[],
                     importance FLOAT DEFAULT 0.7,
                     status TEXT DEFAULT 'pending',
@@ -411,11 +411,11 @@ async def test_memory_replay_from_sql_only(postgres_container, clean_database):
                     created_at TIMESTAMPTZ DEFAULT now()
                 );
                 
-                CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_ecid ON squad_mem_pool(ecid);
+                CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_cycle_id ON squad_mem_pool(cycle_id);
             """)
             
             # Clean up any existing memories for this test ECID
-            await conn.execute("DELETE FROM squad_mem_pool WHERE ecid = 'ECID-REPLAY-TEST'")
+            await conn.execute("DELETE FROM squad_mem_pool WHERE cycle_id = 'ECID-REPLAY-TEST'")
         
         sql_adapter = SqlAdapter(db_pool)
         
@@ -426,14 +426,14 @@ async def test_memory_replay_from_sql_only(postgres_container, clean_database):
                 'agent': 'lead-agent',
                 'ns': 'squad',
                 'pid': 'PID-REPLAY-TEST',
-                'ecid': 'ECID-REPLAY-TEST',
+                    'cycle_id': 'ECID-REPLAY-TEST',
                 'tags': ['warmboot', 'completion'],
                 'importance': 0.9,
                 'status': 'validated',
                 'validator': 'lead-agent',
                 'content': {
                     'action': 'warmboot_completion',
-                    'ecid': 'ECID-REPLAY-TEST',
+                    'cycle_id': 'ECID-REPLAY-TEST',
                     'pid': 'PID-REPLAY-TEST',
                     'result': 'success'
                 }
@@ -442,14 +442,14 @@ async def test_memory_replay_from_sql_only(postgres_container, clean_database):
                 'agent': 'dev-agent',
                 'ns': 'squad',
                 'pid': 'PID-REPLAY-TEST',
-                'ecid': 'ECID-REPLAY-TEST',
+                    'cycle_id': 'ECID-REPLAY-TEST',
                 'tags': ['build', 'success'],
                 'importance': 0.8,
                 'status': 'validated',
                 'validator': 'lead-agent',
                 'content': {
                     'action': 'build_success',
-                    'ecid': 'ECID-REPLAY-TEST',
+                    'cycle_id': 'ECID-REPLAY-TEST',
                     'pid': 'PID-REPLAY-TEST',
                     'result': 'success'
                 }
@@ -461,11 +461,11 @@ async def test_memory_replay_from_sql_only(postgres_container, clean_database):
         
         # Retrieve memories for ECID (simulating WarmBoot replay)
         # This tests SQL-only replay without Mem0
-        retrieved_memories = await sql_adapter.get("", k=10, ecid='ECID-REPLAY-TEST', status='validated')
+        retrieved_memories = await sql_adapter.get("", k=10, cycle_id='ECID-REPLAY-TEST', status='validated')
         
         # Should have exactly 2 memories we just inserted
         assert len(retrieved_memories) == 2, f"Expected 2 memories, got {len(retrieved_memories)}"
-        assert all(m['ecid'] == 'ECID-REPLAY-TEST' for m in retrieved_memories)
+        assert all(m['cycle_id'] == 'ECID-REPLAY-TEST' for m in retrieved_memories)
         assert all(m['status'] == 'validated' for m in retrieved_memories)
         
         # Verify we can reconstruct WarmBoot state from SQL-only memories

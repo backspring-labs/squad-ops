@@ -377,7 +377,7 @@ class LeadAgent(BaseAgent):
 
                 async with aiohttp.ClientSession() as session:
                     async with session.put(
-                        f"{self.task_api_url}/api/v1/tasks/{task_id}",
+                        f"{self.runtime_api_url}/api/v1/tasks/{task_id}",  # SIP-0048: renamed from task_api_url
                         json={"status": "in_progress"},
                     ) as resp:
                         if resp.status == 200:

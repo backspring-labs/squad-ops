@@ -109,7 +109,7 @@ class TestDataAgentCapabilities:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a sample snapshot structure
             snapshot = {
-                "ecid": "ECID-TEST-001",
+                "cycle_id": "ECID-TEST-001",
                 "execution_cycle": {"id": "ECID-TEST-001", "status": "completed"},
                 "tasks": [
                     {"task_id": "TASK-001", "agent": "max", "status": "completed"},
@@ -132,7 +132,7 @@ class TestDataAgentCapabilities:
             assert snapshot_path.exists()
             with open(snapshot_path) as f:
                 loaded = json.load(f)
-                assert loaded["ecid"] == "ECID-TEST-001"
+                assert loaded["cycle_id"] == "ECID-TEST-001"
                 assert len(loaded["tasks"]) == 2
     
     @pytest.mark.integration
@@ -149,7 +149,7 @@ class TestDataAgentCapabilities:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a sample snapshot
             snapshot = {
-                "ecid": "ECID-TEST-002",
+                "cycle_id": "ECID-TEST-002",
                 "execution_cycle": {"id": "ECID-TEST-002"},
                 "tasks": [
                     {"task_id": "TASK-001", "agent": "max", "status": "completed"},
@@ -171,7 +171,7 @@ class TestDataAgentCapabilities:
             # Test metrics computation
             metrics = profiler._compute_metrics(snapshot)
             
-            assert metrics["ecid"] == "ECID-TEST-002"
+            assert metrics["cycle_id"] == "ECID-TEST-002"
             assert metrics["summary"]["total_tasks"] == 2
             assert metrics["summary"]["total_agents"] == 2
             assert metrics["summary"]["total_success"] == 1
@@ -192,7 +192,7 @@ class TestDataAgentCapabilities:
         
         # Create sample snapshot
         snapshot = {
-            "ecid": "ECID-TEST-003",
+            "cycle_id": "ECID-TEST-003",
             "execution_cycle": {"id": "ECID-TEST-003"},
             "tasks": [
                 {"task_id": "TASK-001", "agent": "max", "status": "completed"},
@@ -208,7 +208,7 @@ class TestDataAgentCapabilities:
         
         # Create sample metrics
         metrics = {
-            "ecid": "ECID-TEST-003",
+            "cycle_id": "ECID-TEST-003",
             "summary": {
                 "total_tasks": 2,
                 "total_agents": 2,

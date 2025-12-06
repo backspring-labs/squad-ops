@@ -33,7 +33,7 @@ class CycleSnapshotCollector:
         """
         self.agent = agent
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
-        self.task_api_url = agent.task_api_url if hasattr(agent, 'task_api_url') else 'http://localhost:8001'
+        self.runtime_api_url = agent.runtime_api_url if hasattr(agent, 'runtime_api_url') else 'http://localhost:8001'  # SIP-0048: renamed from task_api_url
     
     async def collect(self, cycle_id: str, output_dir: str | None = None) -> dict[str, Any]:
         """
@@ -176,7 +176,7 @@ class CycleSnapshotCollector:
         """Fetch execution cycle info from Task API"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.task_api_url}/api/v1/execution-cycles/{cycle_id}") as resp:
+                async with session.get(f"{self.runtime_api_url}/api/v1/execution-cycles/{cycle_id}") as resp:
                     if resp.status == 200:
                         return await resp.json()
                     else:
@@ -190,7 +190,7 @@ class CycleSnapshotCollector:
         """Fetch tasks for cycle_id from Task API"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.task_api_url}/api/v1/tasks/ec/{cycle_id}") as resp:
+                async with session.get(f"{self.runtime_api_url}/api/v1/tasks/ec/{cycle_id}") as resp:
                     if resp.status == 200:
                         return await resp.json()
                     else:

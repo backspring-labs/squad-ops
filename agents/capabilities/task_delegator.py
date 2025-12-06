@@ -34,7 +34,7 @@ class TaskDelegator:
         self.agent = agent
         self.name = agent.name if hasattr(agent, 'name') else 'unknown'
         self.instances_file = agent.instances_file if hasattr(agent, 'instances_file') else "agents/instances/instances.yaml"
-        self.task_api_url = agent.task_api_url if hasattr(agent, 'task_api_url') else 'http://localhost:8001'
+        self.runtime_api_url = agent.runtime_api_url if hasattr(agent, 'runtime_api_url') else 'http://localhost:8001'  # SIP-0048: renamed from task_api_url
         self._role_to_agent_cache = None
     
     async def determine_target(self, task_type: str) -> dict[str, Any]:
