@@ -1363,10 +1363,9 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                     payload=task,
                     metadata={
                         "pid": task.get("pid", "unknown"),
-                        "cycle_id": task.get("cycle_id")
-                        or task.get(
-                            "ecid", "unknown"
-                        ),  # SIP-0048: support both for backward compatibility
+                        "cycle_id": task.get(
+                            "cycle_id", "unknown"
+                        ),  # SIP-0048: ecid backward compatibility removed
                     },
                 )
                 response = await self.handle_agent_request(request)

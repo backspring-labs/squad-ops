@@ -116,7 +116,7 @@ capabilities:
     result:
       keys:
         - snapshot_path
-        - ecid
+        - cycle_id  # SIP-0048: renamed from ecid
         - task_count
         - agent_count
   
@@ -127,7 +127,7 @@ capabilities:
       keys:
         - metrics_json_path
         - metrics_md_path
-        - ecid
+        - cycle_id  # SIP-0048: renamed from ecid
         - metrics_summary
   
   - name: data.compose_cycle_summary
@@ -136,7 +136,7 @@ capabilities:
     result:
       keys:
         - summary_path
-        - ecid
+        - cycle_id  # SIP-0048: renamed from ecid
         - health
         - agent_summary
   

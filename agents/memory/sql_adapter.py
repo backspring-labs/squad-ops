@@ -12,44 +12,45 @@ from agents.memory.base import MemoryProvider
 
 logger = logging.getLogger(__name__)
 
+
 class SqlAdapter(MemoryProvider):
     """
     Adapter for PostgreSQL Squad Memory Pool.
     Handles Squad layer memory (validated, shared memories).
     """
-    
+
     def __init__(self, db_pool: asyncpg.Pool):
         """
         Initialize SqlAdapter with database connection pool.
-        
+
         Args:
             db_pool: AsyncPG connection pool
         """
         self.db_pool = db_pool
-    
+
     async def put(self, item: dict) -> str:
         """
         Store a memory item in Squad Memory Pool.
-        
+
         Args:
             item: Dictionary with ns, agent, tags, content, importance, pid, cycle_id, status, validator
-        
+
         Returns:
             Memory ID (UUID) as string
         """
         try:
             async with self.db_pool.acquire() as conn:
                 # Extract fields
-                agent = item.get('agent', 'unknown')
-                ns = item.get('ns', 'squad')
-                pid = item.get('pid')
-                cycle_id = item.get('cycle_id')
-                tags = item.get('tags', [])
-                importance = item.get('importance', 0.7)
-                status = item.get('status', 'validated')
-                validator = item.get('validator')
-                content = item.get('content', {})
-                
+                agent = item.get("agent", "unknown")
+                ns = item.get("ns", "squad")
+                pid = item.get("pid")
+                cycle_id = item.get("cycle_id")
+                tags = item.get("tags", [])
+                importance = item.get("importance", 0.7)
+                status = item.get("status", "validated")
+                validator = item.get("validator")
+                content = item.get("content", {})
+
                 # Insert into squad_mem_pool
                 query = """
                     INSERT INTO squad_mem_pool 
@@ -57,7 +58,7 @@ class SqlAdapter(MemoryProvider):
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
                     RETURNING id
                 """
-                
+
                 mem_id = await conn.fetchval(
                     query,
                     agent,
@@ -68,30 +69,30 @@ class SqlAdapter(MemoryProvider):
                     importance,
                     status,
                     validator,
-                    json.dumps(content)
+                    json.dumps(content),
                 )
-                
+
                 logger.debug(f"Stored memory {mem_id} in Squad Memory Pool for agent {agent}")
                 return str(mem_id)
-                
+
         except Exception as e:
             logger.error(f"Failed to store memory in Squad Memory Pool: {e}")
             raise
-    
+
     async def put_if_not_exists(self, item: dict) -> str | None:
         """
         Store a memory item only if it doesn't already exist.
-        
+
         For PostgreSQL, we check existence by agent + ns + content.
         Since we don't have a unique constraint on content hash,
         we'll check by agent + ns + content comparison.
         """
         try:
             async with self.db_pool.acquire() as conn:
-                agent = item.get('agent', 'unknown')
-                ns = item.get('ns', 'squad')
-                content = item.get('content', {})
-                
+                agent = item.get("agent", "unknown")
+                ns = item.get("ns", "squad")
+                content = item.get("content", {})
+
                 # Check if similar memory exists (by agent, ns, and content)
                 # For now, use a simple content comparison
                 # In production, might want to add a content_hash column
@@ -100,34 +101,33 @@ class SqlAdapter(MemoryProvider):
                     WHERE agent = $1 AND ns = $2 AND content = $3::jsonb
                     LIMIT 1
                 """
-                
+
                 existing_id = await conn.fetchval(
-                    check_query,
-                    agent,
-                    ns,
-                    json.dumps(content, sort_keys=True)
+                    check_query, agent, ns, json.dumps(content, sort_keys=True)
                 )
-                
+
                 if existing_id:
-                    logger.debug(f"Memory already exists for agent {agent}, ns {ns}, skipping storage")
+                    logger.debug(
+                        f"Memory already exists for agent {agent}, ns {ns}, skipping storage"
+                    )
                     return None
-                
+
                 # Doesn't exist - store using existing put() logic
                 return await self.put(item)
-                
+
         except Exception as e:
             logger.error(f"Failed to put_if_not_exists in Squad Memory Pool: {e}")
             raise
-    
+
     async def get(self, query: str, k: int = 8, **kw) -> list[dict]:
         """
         Retrieve memories from Squad Memory Pool.
-        
+
         Args:
-            query: Search query (can be tag, agent, pid, ecid, or text search)
+            query: Search query (can be tag, agent, pid, cycle_id, or text search)
             k: Maximum number of results
-            **kw: Additional filters (agent, pid, ecid, tags, ns, status)
-        
+            **kw: Additional filters (agent, pid, cycle_id, tags, ns, status)  # SIP-0048: renamed from ecid
+
         Returns:
             List of memory dictionaries
         """
@@ -137,15 +137,18 @@ class SqlAdapter(MemoryProvider):
                 conditions = []
                 params = []
                 param_idx = 1
-                
+
                 # Filter by memory IDs (for direct lookup)
-                if 'mem_ids' in kw and kw['mem_ids']:
+                if "mem_ids" in kw and kw["mem_ids"]:
                     # Convert UUID strings to UUID objects if needed
                     import uuid
+
                     uuid_list = []
-                    for mem_id in kw['mem_ids']:
+                    for mem_id in kw["mem_ids"]:
                         try:
-                            uuid_list.append(uuid.UUID(mem_id) if isinstance(mem_id, str) else mem_id)
+                            uuid_list.append(
+                                uuid.UUID(mem_id) if isinstance(mem_id, str) else mem_id
+                            )
                         except ValueError:
                             logger.warning(f"Invalid UUID format: {mem_id}")
                             continue
@@ -153,51 +156,51 @@ class SqlAdapter(MemoryProvider):
                         conditions.append(f"id = ANY(${param_idx}::uuid[])")
                         params.append(uuid_list)
                         param_idx += 1
-                
+
                 # Filter by agent
-                if 'agent' in kw:
+                if "agent" in kw:
                     conditions.append(f"agent = ${param_idx}")
-                    params.append(kw['agent'])
+                    params.append(kw["agent"])
                     param_idx += 1
-                
+
                 # Filter by pid
-                if 'pid' in kw:
+                if "pid" in kw:
                     conditions.append(f"pid = ${param_idx}")
-                    params.append(kw['pid'])
+                    params.append(kw["pid"])
                     param_idx += 1
-                
+
                 # Filter by cycle_id
-                if 'cycle_id' in kw:
+                if "cycle_id" in kw:
                     conditions.append(f"cycle_id = ${param_idx}")
-                    params.append(kw['cycle_id'])
+                    params.append(kw["cycle_id"])
                     param_idx += 1
-                
+
                 # Filter by namespace
-                if 'ns' in kw:
+                if "ns" in kw:
                     conditions.append(f"ns = ${param_idx}")
-                    params.append(kw['ns'])
+                    params.append(kw["ns"])
                     param_idx += 1
-                
+
                 # Filter by status
-                if 'status' in kw:
+                if "status" in kw:
                     conditions.append(f"status = ${param_idx}")
-                    params.append(kw['status'])
+                    params.append(kw["status"])
                     param_idx += 1
-                
+
                 # Filter by tags
-                if 'tags' in kw and kw['tags']:
+                if "tags" in kw and kw["tags"]:
                     conditions.append(f"tags && ${param_idx}")
-                    params.append(kw['tags'])
+                    params.append(kw["tags"])
                     param_idx += 1
-                
+
                 # Text search in content
                 if query:
                     conditions.append(f"content::text ILIKE ${param_idx}")
                     params.append(f"%{query}%")
                     param_idx += 1
-                
+
                 where_clause = " AND ".join(conditions) if conditions else "TRUE"
-                
+
                 # Execute query
                 sql_query = f"""
                     SELECT id, agent, ns, pid, cycle_id, tags, importance, status, validator, content, created_at
@@ -207,42 +210,48 @@ class SqlAdapter(MemoryProvider):
                     LIMIT ${param_idx}
                 """
                 params.append(k)
-                
+
                 rows = await conn.fetch(sql_query, *params)
-                
+
                 # Convert to list of dicts
                 results = []
                 for row in rows:
-                    results.append({
-                        'id': str(row['id']),
-                        'agent': row['agent'],
-                        'ns': row['ns'],
-                        'pid': row['pid'],
-                        'cycle_id': row['cycle_id'],
-                        'tags': row['tags'] or [],
-                        'importance': float(row['importance']),
-                        'status': row['status'],
-                        'validator': row['validator'],
-                        'content': json.loads(row['content']) if isinstance(row['content'], str) else row['content'],
-                        'created_at': row['created_at'].isoformat() if row['created_at'] else None
-                    })
-                
+                    results.append(
+                        {
+                            "id": str(row["id"]),
+                            "agent": row["agent"],
+                            "ns": row["ns"],
+                            "pid": row["pid"],
+                            "cycle_id": row["cycle_id"],
+                            "tags": row["tags"] or [],
+                            "importance": float(row["importance"]),
+                            "status": row["status"],
+                            "validator": row["validator"],
+                            "content": json.loads(row["content"])
+                            if isinstance(row["content"], str)
+                            else row["content"],
+                            "created_at": row["created_at"].isoformat()
+                            if row["created_at"]
+                            else None,
+                        }
+                    )
+
                 logger.debug(f"Retrieved {len(results)} memories from Squad Memory Pool")
                 return results
-                
+
         except Exception as e:
             logger.error(f"Failed to retrieve memories from Squad Memory Pool: {e}")
             return []
-    
+
     async def promote(self, mem_id: str, validator: str, to_ns: str = "squad") -> str:
         """
         Promote a memory (already in Squad Memory Pool, update status).
-        
+
         Args:
             mem_id: Memory ID to promote
             validator: Agent performing promotion
             to_ns: Target namespace (usually 'squad')
-        
+
         Returns:
             Memory ID
         """
@@ -255,17 +264,16 @@ class SqlAdapter(MemoryProvider):
                     WHERE id = $3
                     RETURNING id
                 """
-                
+
                 result = await conn.fetchval(query, validator, to_ns, mem_id)
-                
+
                 if result:
                     logger.info(f"Promoted memory {mem_id} to namespace {to_ns} by {validator}")
                     return str(result)
                 else:
                     logger.warning(f"Memory {mem_id} not found for promotion")
                     return mem_id
-                    
+
         except Exception as e:
             logger.error(f"Failed to promote memory {mem_id}: {e}")
             raise
-
