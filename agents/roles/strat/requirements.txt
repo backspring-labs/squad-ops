@@ -16,3 +16,5 @@ lancedb==0.8.2  # Memory system (SIP-042)
 sentence-transformers>=2.7.0  # Local embeddings fallback
 pyarrow>=14.0.0  # Required for LanceDB
 pandas>=2.0.0  # Required for LanceDB DataFrame operations
+# SIP-Agent-Lifecycle: FSM state management
+transitions>=0.9.0

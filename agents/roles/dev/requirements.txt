@@ -23,3 +23,5 @@ opentelemetry-semantic-conventions
 # SIP-046: Agent specs and validation
 jsonschema>=4.20.0
 pyyaml>=6.0
+# SIP-Agent-Lifecycle: FSM state management
+transitions>=0.9.0

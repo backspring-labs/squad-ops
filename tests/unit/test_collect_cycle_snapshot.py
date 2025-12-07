@@ -21,7 +21,7 @@ class TestCycleSnapshotCollector:
         """Create mock agent instance"""
         agent = MagicMock()
         agent.name = "test-agent"
-        agent.task_api_url = "http://localhost:8001"
+        agent.runtime_api_url = "http://localhost:8001"
         agent.config = MagicMock()
         # Use a temporary directory path instead of MagicMock to avoid creating "MagicMock" directory
         # Use TemporaryDirectory context manager for automatic cleanup
@@ -45,7 +45,7 @@ class TestCycleSnapshotCollector:
         collector = CycleSnapshotCollector(mock_agent)
         assert collector.agent == mock_agent
         assert collector.name == "test-agent"
-        assert collector.task_api_url == "http://localhost:8001"
+        assert collector.runtime_api_url == "http://localhost:8001"
 
     @pytest.mark.unit
     @pytest.mark.asyncio

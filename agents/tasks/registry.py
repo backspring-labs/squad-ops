@@ -58,8 +58,9 @@ async def get_tasks_adapter() -> TaskAdapterBase:
     if _adapter is not None:
         return _adapter
     
-    # Create new adapter based on backend selection
-    backend = os.getenv("TASKS_BACKEND", "sql").lower()
+    # Create new adapter based on backend selection - Use centralized config
+    config = get_config()
+    backend = config.get_tasks_backend()
     
     if backend == "sql":
         try:

@@ -19,7 +19,7 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 ## 🧩 Core Components
 - **Agent Squad** – 4 functional agents (Max/Lead v0.6.5, Neo/Dev v0.6.5, Nat/Strategy v0.6.5, EVE/QA v0.6.5) with real LLM integration + 6 mock agents
 - **SquadComms** – RabbitMQ messaging for inter-agent communication
-- **Task Management API** – FastAPI service with execution cycle tracking (SIP-024/025)
+- **Runtime API** – FastAPI service with execution cycle tracking (SIP-0048, renamed from Task Management API)
 - **Task Adapter Architecture** – Pluggable backend system (SQL/Prefect) with DTO purity and connection pooling
 - **JSON Workflow Engine** – Structured LLM output with manifest-first development (SIP-033A)
 - **LLM Router Abstraction** – Dynamic provider registry supporting Ollama, Docker models, and future providers
@@ -62,7 +62,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 └── templates/        # Agent generation templates
 /infra/               # Infrastructure services
 ├── health-check/     # FastAPI monitoring service (1,125 lines)
-├── task-api/         # Task Management API (SIP-024/025 implementation)
+├── runtime-api/      # Runtime API (SIP-0048, renamed from task-api)
 ├── init.sql          # Database schema with execution cycles
 └── config.env        # Environment configuration
 /warm-boot/           # Application development
@@ -173,8 +173,8 @@ curl -X POST http://localhost:8000/warmboot/submit \
 - ✅ **Telemetry & Observability** – OpenTelemetry with reasoning events, trace correlation
 - ✅ **Manifest-First Development** eliminating markdown parsing issues
 - ✅ **Framework Enforcement** (vanilla_js) and agent coordination
-- ✅ **Task Management API** with connection pooling and error handling
-- ✅ **Infrastructure Services** (RabbitMQ, PostgreSQL, Redis, Prefect, Health Check, Task-API)
+- ✅ **Runtime API** with connection pooling and error handling (SIP-0048)
+- ✅ **Infrastructure Services** (RabbitMQ, PostgreSQL, Redis, Prefect, Health Check, Runtime API)
 - ✅ **End-to-End Workflow** (PRD → Task Planning → Code Generation → Deployment)
 - ✅ **Docker Compose** development environment
 - ✅ **Version Management** and archiving system

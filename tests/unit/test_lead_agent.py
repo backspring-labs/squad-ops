@@ -637,7 +637,7 @@ class TestLeadAgent:
         with patch("config.unified_config.get_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent-001")
             agent.db_pool = mock_database
-            agent.task_api_url = "http://task-api:8001"
+            agent.runtime_api_url = "http://runtime-api:8001"
 
             task = {
                 "task_id": "task-001",
@@ -1555,7 +1555,7 @@ class TestLeadAgent:
         """Test SIP-027 Phase 1: Telemetry collection via Task API"""
         with patch("config.unified_config.get_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent")
-            agent.task_api_url = "http://task-api:8001"
+            agent.runtime_api_url = "http://runtime-api:8001"
 
             # Mock Task API responses (replaces direct DB reads)
             mock_tasks_response = AsyncMock()
@@ -1694,7 +1694,7 @@ class TestLeadAgent:
         """Test telemetry collection handles errors gracefully via Task API"""
         with patch("config.unified_config.get_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent")
-            agent.task_api_url = "http://task-api:8001"
+            agent.runtime_api_url = "http://runtime-api:8001"
 
             # Mock Task API to return errors
             mock_error_response = AsyncMock()

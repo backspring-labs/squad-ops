@@ -40,8 +40,8 @@ docker-compose logs -f max | grep -E "(task|delegation|governance)"
 # Terminal 2: Neo (Dev Agent) logs
 docker-compose logs -f neo | grep -E "(task|design|build|deploy)"
 
-# Terminal 3: Task API logs
-docker-compose logs -f task-api
+# Terminal 3: Runtime API logs
+docker-compose logs -f runtime-api
 ```
 
 **Status Check:**

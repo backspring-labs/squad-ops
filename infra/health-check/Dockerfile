@@ -16,6 +16,7 @@ COPY infra/health-check/main.py .
 COPY infra/health-check/templates ./templates
 COPY config ./config
 COPY agents/instances ./agents/instances
+COPY agents/utils ./agents/utils
 
 # Expose port
 EXPOSE 8000

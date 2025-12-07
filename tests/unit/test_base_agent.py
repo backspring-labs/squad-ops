@@ -50,7 +50,7 @@ class TestBaseAgent:
             assert agent.name == "test-agent"
             assert agent.agent_type == "test"
             assert agent.reasoning_style == "test"
-            assert agent.status == "online"  # Changed from "initialized"
+            assert agent.lifecycle_state == "STARTING"  # FSM initial state
             assert agent.current_task is None  # Actual attribute
             assert agent.connection is None  # Actual attribute
             # Verify unified config was loaded
@@ -361,13 +361,14 @@ class TestBaseAgent:
                 reasoning_style="test"
             )
             agent.runtime_api_url = 'http://runtime-api:8001'  # SIP-0048: renamed from task_api_url
-            agent.status = 'online'
+            # Transition to READY state for heartbeat test
+            agent.to_ready()
             agent.current_task = None
             
-            # Mock HTTP response from Task API
+            # Mock HTTP response from Health Check API
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(return_value={"status": "updated", "agent_name": "test-agent"})
+            mock_response.json = AsyncMock(return_value={"status": "updated", "agent_id": "test-agent"})
             mock_response.text = AsyncMock(return_value="")
             mock_response.__aenter__ = AsyncMock(return_value=mock_response)
             mock_response.__aexit__ = AsyncMock(return_value=None)
@@ -383,11 +384,13 @@ class TestBaseAgent:
             # Verify API was called with correct payload
             assert mock_session.post.called
             call_args = mock_session.post.call_args
-            # Heartbeat now goes to health-check service, not task-api
+            # Heartbeat now goes to health-check service
             assert call_args[0][0] == 'http://health-check:8000/health/agents/status'
             json_payload = call_args[1]['json']
-            assert json_payload['agent_name'] == 'test-agent'
-            assert json_payload['status'] == 'online'
+            assert json_payload['agent_id'] == 'test-agent'  # SIP-Agent-Lifecycle: uses agent_id
+            assert json_payload['lifecycle_state'] == 'READY'  # SIP-Agent-Lifecycle: uses lifecycle_state
+            assert 'status' not in json_payload  # SIP-Agent-Lifecycle: status field removed
+            assert 'network_status' not in json_payload  # SIP-Agent-Lifecycle: agents don't send network_status
     
     @pytest.mark.unit
     @pytest.mark.asyncio

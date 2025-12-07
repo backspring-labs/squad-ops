@@ -62,9 +62,13 @@ CREATE TABLE IF NOT EXISTS agent_task_log (
 );
 
 -- Agent Status Table
+-- SIP-Agent-Lifecycle: agent_id is the identifier used for all key references
+-- network_status is derived by Health Check from heartbeat timing (online/offline)
+-- lifecycle_state is reported by agent FSM (STARTING, READY, WORKING, BLOCKED, CRASHED, STOPPING, or UNKNOWN when offline)
 CREATE TABLE IF NOT EXISTS agent_status (
-    agent_name TEXT PRIMARY KEY,
-    status TEXT NOT NULL,
+    agent_id TEXT PRIMARY KEY,  -- Renamed from agent_name for consistency with task system
+    network_status TEXT NOT NULL,  -- Renamed from status, derived by Health Check from heartbeat timing
+    lifecycle_state TEXT,  -- Agent FSM state (nullable, set to UNKNOWN when network_status=offline)
     last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     current_task_id TEXT,
     version TEXT,
@@ -173,17 +177,18 @@ INSERT INTO process_registry (pid, process_name, status, last_updated_version, c
 ON CONFLICT (pid) DO NOTHING;
 
 -- Insert initial agent status entries
-INSERT INTO agent_status (agent_name, status, version) VALUES
-('Max', 'offline', '1.0.0'),
-('Neo', 'offline', '1.0.0'),
-('Nat', 'offline', '1.0.0'),
-('Joi', 'offline', '1.0.0'),
-('Data', 'offline', '1.0.0'),
-('EVE', 'offline', '1.0.0'),
-('Quark', 'offline', '1.0.0'),
-('Glyph', 'offline', '1.0.0'),
-('Og', 'offline', '1.0.0')
-ON CONFLICT (agent_name) DO NOTHING;
+-- SIP-Agent-Lifecycle: Use agent_id (lowercase identifier) and network_status
+INSERT INTO agent_status (agent_id, network_status, lifecycle_state, version) VALUES
+('max', 'offline', 'UNKNOWN', '1.0.0'),
+('neo', 'offline', 'UNKNOWN', '1.0.0'),
+('nat', 'offline', 'UNKNOWN', '1.0.0'),
+('joi', 'offline', 'UNKNOWN', '1.0.0'),
+('data', 'offline', 'UNKNOWN', '1.0.0'),
+('eve', 'offline', 'UNKNOWN', '1.0.0'),
+('quark', 'offline', 'UNKNOWN', '1.0.0'),
+('glyph', 'offline', 'UNKNOWN', '1.0.0'),
+('og', 'offline', 'UNKNOWN', '1.0.0')
+ON CONFLICT (agent_id) DO NOTHING;
 
 -- Squad Memory Pool (SIP-042)
 CREATE TABLE IF NOT EXISTS squad_mem_pool (

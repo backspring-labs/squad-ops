@@ -1,12 +1,12 @@
 ---
-sip_uid: "01KBH738S3M9TPC9XH3C80T1HC"
+sip_uid: 01KBH738S3M9TPC9XH3C80T1HC
 sip_number: 48
 title: CDS Baseline Plus SRC — SquadOps v0.7.x
-status: accepted
+status: implemented
 author: Framework Committee
 approver: null
 created_at: '2025-12-02T22:55:00Z'
-updated_at: '2025-12-02T23:45:00Z'
+updated_at: '2025-12-06T10:54:52.655978Z'
 original_filename: SIP-CDS-Baseline-Plus-SRC-v0-7-x.md
 ---
 # SIP_CDS_BASELINE_PLUS_SRC — SquadOps v0.7.x  

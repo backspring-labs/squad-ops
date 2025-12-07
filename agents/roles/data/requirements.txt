@@ -17,6 +17,8 @@ sentence-transformers>=2.7.0
 pyarrow>=14.0.0
 pandas>=2.0.0
 
+# SIP-Agent-Lifecycle: FSM state management
+transitions>=0.9.0
 # OpenTelemetry packages (required for telemetry)
 opentelemetry-api>=1.22.0
 opentelemetry-sdk>=1.22.0

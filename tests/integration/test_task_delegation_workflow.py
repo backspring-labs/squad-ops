@@ -26,7 +26,7 @@ async def test_design_manifest_to_build_task_delegation(integration_config, clea
     # Set environment variables BEFORE creating agents (config is loaded in __init__)
     import os
     os.environ['OLLAMA_URL'] = integration_config.get('ollama_url', 'http://localhost:11434')
-    os.environ['TASK_API_URL'] = integration_config.get('task_api_url', 'http://localhost:8001')
+    os.environ['RUNTIME_API_URL'] = integration_config.get('runtime_api_url', 'http://localhost:8001')
     os.environ['USE_LOCAL_LLM'] = integration_config.get('use_local_llm', 'true')
     
     # Create agents AFTER setting environment variables
@@ -37,7 +37,7 @@ async def test_design_manifest_to_build_task_delegation(integration_config, clea
     lead_agent.postgres_url = integration_config['database_url']
     lead_agent.redis_url = integration_config['redis_url']
     lead_agent.rabbitmq_url = integration_config['rabbitmq_url']
-    lead_agent.task_api_url = integration_config.get('task_api_url', 'http://localhost:8001')
+    lead_agent.runtime_api_url = integration_config.get('runtime_api_url', 'http://localhost:8001')
     
     # Create a real design manifest (not a mock - this is what would come from DevAgent)
     test_manifest = {
@@ -147,7 +147,7 @@ async def test_build_task_received_with_manifest(integration_config, clean_datab
     # Set environment variables BEFORE creating agent (config is loaded in __init__)
     import os
     os.environ['OLLAMA_URL'] = integration_config.get('ollama_url', 'http://localhost:11434')
-    os.environ['TASK_API_URL'] = integration_config.get('task_api_url', 'http://localhost:8001')
+    os.environ['RUNTIME_API_URL'] = integration_config.get('runtime_api_url', 'http://localhost:8001')
     os.environ['USE_LOCAL_LLM'] = integration_config.get('use_local_llm', 'true')
     
     # Create agent AFTER setting environment variables
@@ -157,7 +157,7 @@ async def test_build_task_received_with_manifest(integration_config, clean_datab
     dev_agent.postgres_url = integration_config['database_url']
     dev_agent.redis_url = integration_config['redis_url']
     dev_agent.rabbitmq_url = integration_config['rabbitmq_url']
-    dev_agent.task_api_url = integration_config.get('task_api_url', 'http://localhost:8001')
+    dev_agent.runtime_api_url = integration_config.get('runtime_api_url', 'http://localhost:8001')
     
     # Create a real build task with a valid manifest (not a mock)
     test_manifest = {

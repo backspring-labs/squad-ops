@@ -20,7 +20,7 @@ class TestTaskDelegator:
         agent = MagicMock()
         agent.name = "test-agent"
         agent.instances_file = "agents/instances/instances.yaml"
-        agent.task_api_url = "http://localhost:8001"
+        agent.runtime_api_url = "http://localhost:8001"
         return agent
     
     @pytest.fixture

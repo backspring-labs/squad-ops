@@ -54,7 +54,7 @@ Test application for SquadOps integration testing
             # Set environment variables for external services from integration config
             import os
             os.environ['OLLAMA_URL'] = integration_config['ollama_url']
-            os.environ['TASK_API_URL'] = integration_config['task_api_url']
+            os.environ['RUNTIME_API_URL'] = integration_config['runtime_api_url']
             os.environ['USE_LOCAL_LLM'] = integration_config['use_local_llm']
             
             # Create LeadAgent with real connections - no mocking for true integration test
@@ -252,7 +252,7 @@ Test application for SquadOps integration testing
             agent.postgres_url = integration_config['database_url']
             agent.redis_url = integration_config['redis_url']
             agent.rabbitmq_url = integration_config['rabbitmq_url']
-            agent.task_api_url = integration_config['task_api_url']
+            agent.runtime_api_url = integration_config['runtime_api_url']
         
         # Initialize both agents
         await lead_agent.initialize()
@@ -330,7 +330,7 @@ Test application for SquadOps integration testing
         lead_agent.postgres_url = integration_config['database_url']
         lead_agent.redis_url = integration_config['redis_url']
         lead_agent.rabbitmq_url = integration_config['rabbitmq_url']
-        lead_agent.task_api_url = integration_config.get('task_api_url', 'http://localhost:8001')
+        lead_agent.runtime_api_url = integration_config.get('runtime_api_url', 'http://localhost:8001')
         
         await lead_agent.initialize()
         

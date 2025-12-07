@@ -60,7 +60,7 @@ Before running integration tests, ensure these services are running:
 #### Start Infrastructure Services
 ```bash
 # Start all infrastructure services
-docker-compose up -d postgres redis rabbitmq task-api health-check
+docker-compose up -d postgres redis rabbitmq runtime-api health-check
 
 # Verify services are running
 docker ps --filter "name=squadops" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
@@ -199,7 +199,7 @@ RABBITMQ_HOST=localhost
 RABBITMQ_PORT=5672
 REDIS_URL=redis://localhost:6379
 OLLAMA_URL=http://localhost:11434
-TASK_API_URL=http://localhost:8001
+RUNTIME_API_URL=http://localhost:8001
 LOG_LEVEL=INFO
 USE_LOCAL_LLM=true
 ```

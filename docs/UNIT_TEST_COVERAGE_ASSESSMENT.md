@@ -130,8 +130,8 @@ The SquadOps project currently has **41% overall unit test coverage**, which is 
 | Component | Coverage | Status |
 |-----------|----------|-------|
 | **health-check/main.py** | 0% | 🔴 Critical |
-| **task-api/main.py** | 0% | 🔴 Critical |
-| **task-api/deps.py** | 0% | 🔴 Critical |
+| **runtime-api/main.py** | 0% | 🔴 Critical |
+| **runtime-api/deps.py** | 0% | 🔴 Critical |
 
 ### Specs & Contracts
 
@@ -147,8 +147,8 @@ The SquadOps project currently has **41% overall unit test coverage**, which is 
 
 ### 1. Infrastructure Services (0% Coverage)
 - `infra/health-check/main.py` - 878 statements, 0% coverage
-- `infra/task-api/main.py` - 294 statements, 0% coverage
-- `infra/task-api/deps.py` - 4 statements, 0% coverage
+- `infra/runtime-api/main.py` - 294 statements, 0% coverage
+- `infra/runtime-api/deps.py` - 4 statements, 0% coverage
 
 **Impact**: These are critical runtime services with no test coverage. Any bugs could cause production failures.
 
@@ -205,7 +205,7 @@ Multiple capability modules have zero test coverage:
 |------|------------|---------|----------|
 | `infra/health-check/main.py` | 878 | 878 | 0% |
 | `agents/base_agent.py` | 808 | 310 | 60% |
-| `infra/task-api/main.py` | 294 | 294 | 0% |
+| `infra/runtime-api/main.py` | 294 | 294 | 0% |
 | `agents/telemetry/collector.py` | 288 | 93 | 64% |
 | `agents/tasks/sql_adapter.py` | 297 | 154 | 45% |
 | `agents/capabilities/wrapup_generator.py` | 231 | 127 | 42% |
@@ -222,7 +222,7 @@ Multiple capability modules have zero test coverage:
 
 1. **Add tests for infrastructure services**
    - `infra/health-check/main.py` - Health check endpoints
-   - `infra/task-api/main.py` - Task API endpoints
+   - `infra/runtime-api/main.py` - Runtime API endpoints
    - These are runtime-critical and should have integration tests
 
 2. **Add tests for development tools**
@@ -310,7 +310,7 @@ Based on documentation review:
 
 ### Short Term (Next 2 Weeks)
 
-1. Add tests for infrastructure services (health-check, task-api)
+1. Add tests for infrastructure services (health-check, runtime-api)
 2. Add tests for development tools (version_manager, file_manager, docker_manager)
 3. Add tests for at least 3 zero-coverage capabilities
 
@@ -350,6 +350,6 @@ With focused effort on these areas, the project can make significant progress to
 
 To regenerate coverage reports:
 ```bash
-python -m pytest tests/unit/ --cov=agents --cov=config --cov=infra/task-api --cov=infra/health-check --cov-report=html --cov-report=term-missing
+python -m pytest tests/unit/ --cov=agents --cov=config --cov=infra/runtime-api --cov=infra/health-check --cov-report=html --cov-report=term-missing
 ```
 

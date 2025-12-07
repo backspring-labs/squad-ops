@@ -52,7 +52,7 @@ def load_test_config():
             'RABBITMQ_PORT': os.getenv('RABBITMQ_PORT', '5672'),
             'REDIS_URL': os.getenv('REDIS_URL', 'redis://localhost:6379'),
             'OLLAMA_URL': os.getenv('OLLAMA_URL', 'http://localhost:11434'),
-            'TASK_API_URL': os.getenv('TASK_API_URL', 'http://localhost:8001'),
+            'RUNTIME_API_URL': os.getenv('RUNTIME_API_URL', 'http://localhost:8001'),
             'LOG_LEVEL': os.getenv('LOG_LEVEL', 'INFO'),
             'USE_LOCAL_LLM': os.getenv('USE_LOCAL_LLM', 'true')
         }
@@ -434,7 +434,7 @@ def integration_config(postgres_container, rabbitmq_container, redis_container) 
         'redis_url': f"redis://localhost:{redis_container.get_exposed_port(6379)}",
         'rabbitmq_url': rabbitmq_container.get_connection_url(),
         'ollama_url': config['OLLAMA_URL'],
-        'task_api_url': config['TASK_API_URL'],
+        'runtime_api_url': config['RUNTIME_API_URL'],
         'log_level': config['LOG_LEVEL'],
         'use_local_llm': config['USE_LOCAL_LLM']
     }

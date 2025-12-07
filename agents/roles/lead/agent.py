@@ -569,7 +569,7 @@ class LeadAgent(BaseAgent):
             "status_response",
             {
                 "agent": self.name,
-                "status": self.status,
+                "lifecycle_state": self.lifecycle_state,  # SIP-Agent-Lifecycle: replaced status with lifecycle_state
                 "current_task": self.current_task,
                 "task_state_log_count": len(self.task_state_log),
                 "approval_queue_count": len(self.approval_queue),

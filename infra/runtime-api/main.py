@@ -1,4 +1,3 @@
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -23,11 +22,16 @@ from agents.tasks.errors import (
 )
 from agents.tasks.models import FlowState, TaskCreate, TaskFilters, TaskState
 
+# Initialize centralized configuration
+from config.unified_config import get_config
+
 app = FastAPI(
     title="SquadOps Runtime API", version="1.0"
 )  # SIP-0048: renamed from Task Management API
 
-POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://squadops:squadops123@postgres:5432/squadops")
+# Get PostgreSQL URL from centralized config system
+config = get_config()
+POSTGRES_URL = config.get_postgres_url()
 
 # Global connection pool (for memory endpoints only)
 pool = None

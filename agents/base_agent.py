@@ -85,7 +85,7 @@ class BaseAgent(ABC):
         self.name = name
         self.agent_type = agent_type
         self.reasoning_style = reasoning_style
-        self.status = "online"
+        # Removed self.status - replaced by lifecycle_state FSM
         self.current_task = None
         self.connection = None
         self.channel = None
@@ -127,6 +127,9 @@ class BaseAgent(ABC):
 
         # Initialize telemetry client (abstraction layer)
         self.telemetry_client = self._initialize_telemetry_client()
+
+        # Initialize lifecycle FSM (SIP-Agent-Lifecycle)
+        self._initialize_lifecycle_fsm()
 
     def _initialize_llm_client(self):
         """Initialize LLM client from router, using model from config.yaml if available"""
@@ -235,6 +238,125 @@ class BaseAgent(ABC):
             f"{self.name}: Telemetry client initialized ({type(telemetry_client).__name__})"
         )
         return telemetry_client
+
+    def _initialize_lifecycle_fsm(self):
+        """Initialize lifecycle FSM using Transitions library (SIP-Agent-Lifecycle)"""
+        from transitions import Machine
+
+        # Define canonical lifecycle states
+        states = ['STARTING', 'READY', 'WORKING', 'BLOCKED', 'CRASHED', 'STOPPING']
+
+        # Define allowed transitions per SIP §6.2
+        transitions = [
+            {'trigger': 'to_ready', 'source': 'STARTING', 'dest': 'READY'},
+            {'trigger': 'start_work', 'source': 'READY', 'dest': 'WORKING'},
+            {'trigger': 'complete_work', 'source': 'WORKING', 'dest': 'READY'},
+            {'trigger': 'block', 'source': 'WORKING', 'dest': 'BLOCKED'},
+            {'trigger': 'unblock', 'source': 'BLOCKED', 'dest': 'WORKING'},
+            {'trigger': 'crash', 'source': ['WORKING', 'BLOCKED'], 'dest': 'CRASHED'},
+            {'trigger': 'stop', 'source': ['READY', 'CRASHED'], 'dest': 'STOPPING'},
+        ]
+
+        # Initialize FSM machine bound to this agent instance
+        self.lifecycle_fsm = Machine(
+            model=self,
+            states=states,
+            transitions=transitions,
+            initial='STARTING',
+            auto_transitions=False,  # Disable auto-generated transitions for safety
+            ignore_invalid_triggers=False  # Raise MachineError on illegal transitions
+        )
+
+        # Register state entry callbacks for logging
+        self.lifecycle_fsm.on_enter_READY(self._on_enter_READY)
+        self.lifecycle_fsm.on_enter_WORKING(self._on_enter_WORKING)
+        self.lifecycle_fsm.on_enter_BLOCKED(self._on_enter_BLOCKED)
+        self.lifecycle_fsm.on_enter_CRASHED(self._on_enter_CRASHED)
+        self.lifecycle_fsm.on_enter_STOPPING(self._on_enter_STOPPING)
+
+        logger.info(f"{self.name}: Lifecycle FSM initialized (state: {self.state})")
+
+    @property
+    def lifecycle_state(self) -> str:
+        """Get current lifecycle state from FSM
+        
+        When Machine is bound to a model, Transitions library stores state on the model itself.
+        """
+        return getattr(self, 'state', 'STARTING')  # Fallback to STARTING if state not set
+
+    def _on_enter_READY(self, *args, **kwargs):
+        """Callback when entering READY state"""
+        # Transitions library passes event_data, but we can accept *args, **kwargs for flexibility
+        event = args[0] if args else None
+        asyncio.create_task(self._log_lifecycle_transition('READY', event))
+
+    def _on_enter_WORKING(self, *args, **kwargs):
+        """Callback when entering WORKING state"""
+        event = args[0] if args else None
+        asyncio.create_task(self._log_lifecycle_transition('WORKING', event))
+
+    def _on_enter_BLOCKED(self, *args, **kwargs):
+        """Callback when entering BLOCKED state"""
+        event = args[0] if args else None
+        asyncio.create_task(self._log_lifecycle_transition('BLOCKED', event))
+
+    def _on_enter_CRASHED(self, *args, **kwargs):
+        """Callback when entering CRASHED state"""
+        event = args[0] if args else None
+        asyncio.create_task(self._log_lifecycle_transition('CRASHED', event))
+
+    def _on_enter_STOPPING(self, *args, **kwargs):
+        """Callback when entering STOPPING state"""
+        asyncio.create_task(self._log_lifecycle_transition('STOPPING', event))
+
+    async def _log_lifecycle_transition(self, new_state: str, event, reason: str | None = None):
+        """Log lifecycle transition to Cycle Data Store
+        
+        SIP-Agent-Lifecycle: Logs lifecycle transitions with required fields:
+        agent_id, previous_lifecycle_state, new_lifecycle_state, timestamp, cycle_id, task_id, reason
+        """
+        try:
+            # Extract previous state from event
+            previous_state = event.source if hasattr(event, 'source') else 'UNKNOWN'
+
+            # Get current cycle and task context
+            cycle_id = getattr(self, '_current_cycle_id', None)
+            task_id = self.current_task if self.current_task else None
+
+            # Build transition event for Cycle Data Store
+            transition_event = {
+                'event_type': 'agent.lifecycle.transition',
+                'agent_id': self.name.lower(),  # Use lowercase identifier
+                'previous_lifecycle_state': previous_state,
+                'new_lifecycle_state': new_state,
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'cycle_id': cycle_id,
+                'task_id': task_id,
+                'reason': reason,
+            }
+
+            # Log to Cycle Data Store if cycle_id is available
+            if cycle_id:
+                try:
+                    from agents.cycle_data import CycleDataStore
+                    # Get cycle_data_root from config or use default
+                    cycle_data_root = Path(os.getenv("CYCLE_DATA_ROOT", "/app/cycle_data"))
+                    project_id = getattr(self, '_current_project_id', 'warmboot_selftest')  # Default project
+                    
+                    cycle_store = CycleDataStore(cycle_data_root, project_id, cycle_id)
+                    cycle_store.append_telemetry_event(transition_event, agent_name=self.name.lower())
+                except Exception as cds_error:
+                    logger.debug(f"{self.name}: Failed to log to Cycle Data Store: {cds_error}")
+
+            # Also log to standard logger
+            logger.info(
+                f"{self.name}: Lifecycle transition {previous_state} → {new_state}"
+                + (f" (reason: {reason})" if reason else "")
+                + (f" [cycle_id: {cycle_id}]" if cycle_id else "")
+            )
+
+        except Exception as e:
+            logger.error(f"{self.name}: Failed to log lifecycle transition: {e}")
 
     def get_tracer(self, name: str = None):
         """Get telemetry tracer instance via TelemetryClient"""
@@ -488,10 +610,21 @@ class BaseAgent(ABC):
             # Declare queues
             await self._setup_queues()
 
-            logger.info(f"{self.name} initialized successfully")
+            # Transition to READY state after successful initialization
+            try:
+                self.to_ready()
+                logger.info(f"{self.name} initialized successfully (lifecycle state: {self.lifecycle_state})")
+            except Exception as fsm_error:
+                logger.error(f"{self.name}: Failed to transition to READY state: {fsm_error}")
+                # Don't raise - initialization succeeded, just FSM transition failed
 
         except Exception as e:
             logger.error(f"Failed to initialize {self.name}: {e}")
+            # Transition to CRASHED state on initialization failure
+            try:
+                self.crash()
+            except Exception:
+                pass  # Ignore FSM errors during crash
             raise
 
     async def _setup_queues(self):
@@ -1248,12 +1381,13 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             health_check_url = os.getenv("HEALTH_CHECK_URL", "http://health-check:8000")
 
             # Send only operational data - health-check will use instances.yaml for display metadata
+            # SIP-Agent-Lifecycle: Send agent_id and lifecycle_state (NOT status or network_status)
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{health_check_url}/health/agents/status",
                     json={
-                        "agent_name": self.name,
-                        "status": self.status,
+                        "agent_id": self.name.lower(),  # Use lowercase identifier for consistency
+                        "lifecycle_state": self.lifecycle_state,  # FSM state
                         "current_task_id": self.current_task or None,
                         "version": get_agent_version(self.name),
                         "tps": 0,  # Mock TPS for now
@@ -1347,13 +1481,20 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
         """Process a task - DEPRECATED: Use handle_agent_request instead"""
         # Convert old task format to AgentRequest for compatibility
         try:
+            # Transition to WORKING state when task starts
+            try:
+                if self.lifecycle_state == 'READY':
+                    self.start_work()
+            except Exception as fsm_error:
+                logger.warning(f"{self.name}: Failed to transition to WORKING: {fsm_error}")
+
             from agents.specs.agent_request import AgentRequest
 
             # Try to convert task to AgentRequest
             if "action" in task:
                 request = AgentRequest.from_dict(task)
                 response = await self.handle_agent_request(request)
-                return response.to_dict()
+                result = response.to_dict()
             else:
                 # Fallback for old format
                 logger.warning(f"{self.name}: Received old format task, converting...")
@@ -1369,9 +1510,24 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                     },
                 )
                 response = await self.handle_agent_request(request)
-                return response.to_dict()
+                result = response.to_dict()
+
+            # Transition back to READY state when task completes
+            try:
+                if self.lifecycle_state == 'WORKING':
+                    self.complete_work()
+            except Exception as fsm_error:
+                logger.warning(f"{self.name}: Failed to transition to READY: {fsm_error}")
+
+            return result
         except Exception as e:
             logger.error(f"{self.name}: Failed to process task: {e}", exc_info=True)
+            # Transition to CRASHED state on fatal error
+            try:
+                if self.lifecycle_state in ['WORKING', 'BLOCKED']:
+                    self.crash()
+            except Exception:
+                pass  # Ignore FSM errors during crash
             return {"status": "error", "error": str(e), "task_id": task.get("task_id", "unknown")}
 
     async def handle_task_acknowledgment(self, message: AgentMessage) -> None:
@@ -1463,7 +1619,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             "status_response",
             {
                 "agent": self.name,
-                "status": self.status,
+                "lifecycle_state": self.lifecycle_state,
                 "current_task": self.current_task,
                 "task_state_log_count": len(getattr(self, "task_state_log", [])),
                 "approval_queue_count": len(getattr(self, "approval_queue", [])),
@@ -1672,12 +1828,11 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                         task_data = json.loads(message.body.decode())
                         logger.debug(f"{self.name} parsed task_data: {task_data}")
 
-                        # Set busy status before processing
+                        # Set current task before processing
                         task_id = task_data.get("task_id", "unknown")
-                        self.status = "active-non-blocking"
                         self.current_task = task_id
                         logger.debug(
-                            f"{self.name} set status to active-non-blocking for task {task_id}"
+                            f"{self.name} processing task {task_id} (lifecycle state: {self.lifecycle_state})"
                         )
 
                         logger.debug(f"{self.name} about to call process_task")
@@ -1689,20 +1844,24 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                         await self.update_task_status(task_id, "Completed", progress=100.0)
                         logger.debug(f"{self.name} update_task_status completed")
 
-                        # Clear busy status after successful completion
-                        self.status = "available"
+                        # Clear current task after successful completion
                         self.current_task = None
-                        logger.debug(f"{self.name} cleared busy status after task completion")
+                        logger.debug(f"{self.name} cleared current task after completion")
 
                         await message.ack()
                         logger.info(f"{self.name} completed task: {task_id}")
 
                     except Exception as e:
                         logger.error(f"{self.name} task processing error: {e}")
-                        # Clear busy status on error
-                        self.status = "available"
+                        # Transition to CRASHED state on error
+                        try:
+                            if self.lifecycle_state in ['WORKING', 'BLOCKED']:
+                                self.crash()
+                        except Exception:
+                            pass  # Ignore FSM errors during crash
+                        # Clear current task on error
                         self.current_task = None
-                        logger.debug(f"{self.name} cleared busy status after task error")
+                        logger.debug(f"{self.name} cleared current task after error")
                         await message.nack(requeue=False)
 
             async def process_comms():
@@ -1921,6 +2080,13 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
 
     async def cleanup(self):
         """Cleanup resources"""
+        # Transition to STOPPING state before cleanup
+        try:
+            if self.lifecycle_state in ['READY', 'CRASHED']:
+                self.stop()
+        except Exception as fsm_error:
+            logger.warning(f"{self.name}: Failed to transition to STOPPING: {fsm_error}")
+
         # Stop metrics server if running
         if hasattr(self, "metrics_server") and self.metrics_server:
             try:
@@ -1936,7 +2102,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
         if self.redis_client:
             await self.redis_client.close()
 
-        logger.info(f"{self.name} shut down")
+        logger.info(f"{self.name} shut down (final lifecycle state: {self.lifecycle_state})")
 
 
 if __name__ == "__main__":

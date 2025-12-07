@@ -180,7 +180,7 @@
 
 ### **Network Architecture**
 - **Docker network:** `squadnet` for all containers
-- **Service endpoints:** RabbitMQ (5672), Prefect (4200), Keycloak (8080), Task-API (8001)
+- **Service endpoints:** RabbitMQ (5672), Prefect (4200), Keycloak (8080), Runtime API (8001)
 - **Message Schema:** Structured JSON with sender, recipient, type, payload, context
 - **Task Management:** HTTP API endpoints for task lifecycle management
 
@@ -443,7 +443,7 @@ A task is NOT complete if:
 - **🎉 BREAKTHROUGH STATUS:** ✅ **COMPLETE TASK MANAGEMENT SYSTEM WITH SIP-024/025 IMPLEMENTED**
 
 ### **Deployment Achievements:**
-- ✅ **Infrastructure Services:** RabbitMQ, PostgreSQL, Redis, Prefect Server, Task-API all online
+- ✅ **Infrastructure Services:** RabbitMQ, PostgreSQL, Redis, Prefect Server, Runtime API all online
 - ✅ **10-Agent Squad:** Max (v0.6.5), Neo (v0.6.5), Nat (v0.6.5), EVE (v0.6.5), plus 6 mock agents all deployed and healthy
 - ✅ **Docker Build System:** Multi-stage Dockerfiles with build script for all agents, deterministic builds with build artifacts
 - ✅ **Task Adapter Architecture:** Pluggable backend system with SQL adapter (PostgreSQL) and Prefect adapter stub, DTO purity, connection pooling

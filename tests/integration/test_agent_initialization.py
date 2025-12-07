@@ -23,7 +23,7 @@ async def test_agent_loads_agent_info_on_initialize(integration_config, clean_da
     # Set environment variables
     os.environ['OLLAMA_URL'] = integration_config['ollama_url']
     os.environ['USE_LOCAL_LLM'] = integration_config['use_local_llm']
-    os.environ['TASK_API_URL'] = integration_config.get('task_api_url', 'http://localhost:8001')
+    os.environ['RUNTIME_API_URL'] = integration_config.get('runtime_api_url', 'http://localhost:8001')
     
     lead_agent = LeadAgent("test-lead-agent")
     lead_agent.postgres_url = integration_config['database_url']
@@ -61,7 +61,7 @@ async def test_agent_initialization_with_memory_providers(integration_config, cl
     # Set environment variables
     os.environ['OLLAMA_URL'] = integration_config['ollama_url']
     os.environ['USE_LOCAL_LLM'] = integration_config['use_local_llm']
-    os.environ['TASK_API_URL'] = integration_config.get('task_api_url', 'http://localhost:8001')
+    os.environ['RUNTIME_API_URL'] = integration_config.get('runtime_api_url', 'http://localhost:8001')
     
     qa_agent = QAAgent("test-qa-agent")
     qa_agent.postgres_url = integration_config['database_url']
@@ -99,7 +99,7 @@ async def test_agent_stores_role_context(integration_config, clean_database):
     # Set environment variables
     os.environ['OLLAMA_URL'] = integration_config['ollama_url']
     os.environ['USE_LOCAL_LLM'] = integration_config['use_local_llm']
-    os.environ['TASK_API_URL'] = integration_config.get('task_api_url', 'http://localhost:8001')
+    os.environ['RUNTIME_API_URL'] = integration_config.get('runtime_api_url', 'http://localhost:8001')
     
     qa_agent = QAAgent("test-qa-agent")
     qa_agent.postgres_url = integration_config['database_url']
@@ -140,7 +140,7 @@ async def test_agent_initialization_backward_compatibility(integration_config, c
     # Set environment variables
     os.environ['OLLAMA_URL'] = integration_config['ollama_url']
     os.environ['USE_LOCAL_LLM'] = integration_config['use_local_llm']
-    os.environ['TASK_API_URL'] = integration_config.get('task_api_url', 'http://localhost:8001')
+    os.environ['RUNTIME_API_URL'] = integration_config.get('runtime_api_url', 'http://localhost:8001')
     
     lead_agent = LeadAgent("test-lead-agent")
     lead_agent.postgres_url = integration_config['database_url']

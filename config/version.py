@@ -7,16 +7,16 @@
 #   python scripts/maintainer/version_cli.py update <agent> <version> [notes]
 
 # Framework Version
-SQUADOPS_VERSION = "0.7.0"
+SQUADOPS_VERSION = "0.7.1"
 
 # Agent Versions (individual agent versions)
 AGENT_VERSIONS = {
-    "max": "0.6.5",  # Real agent with local LLM
-    "neo": "0.6.5",  # Real agent with file modification capabilities
-    "nat": "0.6.5",  # Mock agent
+    "max": "0.7.1",  # Real agent with local LLM
+    "neo": "0.7.1",  # Real agent with file modification capabilities
+    "nat": "0.7.1",  # Real agent - Strategy role
     "joi": "0.0.0",  # Mock agent
-    "data": "0.6.5", # Mock agent
-    "eve": "0.6.5",  # Mock agent
+    "data": "0.7.1", # Real agent - Data role
+    "eve": "0.7.1",  # Real agent - QA role
     "quark": "0.0.0", # Mock agent
     "og": "0.0.0",   # Mock agent
     "glyph": "0.0.0", # Mock agent
@@ -27,10 +27,10 @@ AGENT_VERSIONS = {
 CONFIG_VERSIONS = {
     "max": {"llm": "llama3.1:8b", "config": "lead-agent"},
     "neo": {"llm": "qwen2.5:7b", "config": "dev-agent"},
-    "nat": {"llm": "mock", "config": "strategy-agent"},
+    "nat": {"llm": "mixtral-8x7b", "config": "strategy-agent"},
     "joi": {"llm": "mock", "config": "comms-agent"},
-    "data": {"llm": "mock", "config": "data-agent"},
-    "eve": {"llm": "mock", "config": "qa-agent"},
+    "data": {"llm": "qwen2.5:3b-instruct", "config": "data-agent"},
+    "eve": {"llm": "qwen2.5:3b-instruct", "config": "qa-agent"},
     "quark": {"llm": "mock", "config": "finance-agent"},
     "og": {"llm": "mock", "config": "curator-agent"},
     "glyph": {"llm": "mock", "config": "creative-agent"},
@@ -43,13 +43,24 @@ VERSION_HISTORY = {
         {"version": "0.1.0", "date": "2025-10-05", "llm": "llama3.1:8b", "notes": "Real agent with local LLM integration"},
         {"version": "0.2.0", "date": "2025-10-11", "llm": "llama3.1:8b", "notes": "Test coverage validation + WarmBoot run-055"},
         {"version": "0.3.0", "date": "2025-11-01", "llm": "llama3.1:8b", "notes": "Run-110: Added target_directory to task requirements, production-grade task orchestration"},
-        {"version": "0.5.0", "date": "2025-11-05", "llm": "llama3.1:8b", "notes": "v0.5.0 memory integration - LanceDB semantic memory, task delegation memory recording, manifest workflow improvements"}
+        {"version": "0.5.0", "date": "2025-11-05", "llm": "llama3.1:8b", "notes": "v0.5.0 memory integration - LanceDB semantic memory, task delegation memory recording, manifest workflow improvements"},
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
     ],
     "neo": [
         {"version": "0.1.0", "date": "2025-10-05", "llm": "qwen2.5:7b", "notes": "Real agent with file modification capabilities"},
         {"version": "0.2.0", "date": "2025-10-11", "llm": "qwen2.5:7b", "notes": "Test coverage validation + WarmBoot run-055"},
         {"version": "0.3.0", "date": "2025-11-01", "llm": "qwen2.5:7b", "notes": "Run-110: Fixed FileManager path combination, proper target_directory usage, production-grade file generation"},
-        {"version": "0.5.0", "date": "2025-11-05", "llm": "qwen2.5:7b", "notes": "v0.5.0 memory integration - LanceDB semantic memory, build/deploy success memory recording, manifest-based workflow"}
+        {"version": "0.5.0", "date": "2025-11-05", "llm": "qwen2.5:7b", "notes": "v0.5.0 memory integration - LanceDB semantic memory, build/deploy success memory recording, manifest-based workflow"},
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
+    ],
+    "nat": [
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
+    ],
+    "data": [
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
+    ],
+    "eve": [
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
     ]
 }
 
@@ -103,6 +114,6 @@ def rollback_agent(agent_name, target_version):
 # 0.5.X - Production deployment (enterprise features)
 # 1.0.X - Stable release (external users + Backspring validation)
 
-# Current status: 0.7.0 (SIP-0047: Cycle Data Layout, Project Registry, and CycleDataStore implementation)
+# Current status: 0.7.1 (SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation)
 # Previous: 0.1.4 (Task Management System complete)
 # Next major: 0.3.0 (Multi-agent expansion with EVE, Nat, Data, HAL)

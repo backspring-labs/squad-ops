@@ -124,7 +124,8 @@
                             <tr>
                                 <th>Agent</th>
                                 <th>Role</th>
-                                <th>Status</th>
+                                <th>Network Status</th>
+                                <th>Lifecycle State</th>
                                 <th>Version</th>
                                 <th>TPS</th>
                                 <th>Memories</th>
@@ -132,10 +133,32 @@
                         </thead>
                         <tbody>
                             {% for agent in agent_status %}
-                            <tr class="{% if agent.status in ['online', 'available', 'active-non-blocking'] %}table-success{% else %}table-danger{% endif %}">
-                                <td>{{ agent.agent }}</td>
+                            <tr class="{% if agent.network_status == 'online' %}table-success{% else %}table-danger{% endif %}">
+                                <td>{{ agent.agent_name }}</td>
                                 <td>{{ agent.role }}</td>
-                                <td>{% if agent.status in ['online', 'available', 'active-non-blocking'] %}✅{% else %}❌{% endif %} {{ agent.status }}</td>
+                                <td>
+                                    {% if agent.network_status == 'online' %}✅{% else %}❌{% endif %} 
+                                    {{ agent.network_status }}
+                                </td>
+                                <td>
+                                    {% if agent.lifecycle_state == 'READY' %}
+                                        <span class="badge bg-success">READY</span>
+                                    {% elif agent.lifecycle_state == 'WORKING' %}
+                                        <span class="badge bg-primary">WORKING</span>
+                                    {% elif agent.lifecycle_state == 'BLOCKED' %}
+                                        <span class="badge bg-warning">BLOCKED</span>
+                                    {% elif agent.lifecycle_state == 'CRASHED' %}
+                                        <span class="badge bg-danger">CRASHED</span>
+                                    {% elif agent.lifecycle_state == 'STOPPING' %}
+                                        <span class="badge bg-secondary">STOPPING</span>
+                                    {% elif agent.lifecycle_state == 'STARTING' %}
+                                        <span class="badge bg-info">STARTING</span>
+                                    {% elif agent.lifecycle_state == 'UNKNOWN' %}
+                                        <span class="badge bg-secondary text-muted">UNKNOWN</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ agent.lifecycle_state }}</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ agent.version }}</td>
                                 <td>{{ agent.tps }}</td>
                                 <td>{{ agent.memory_count|default(0) }}</td>
@@ -769,11 +792,11 @@
                     
                     for (let j = i; j < Math.min(i + 3, agents.length); j++) {
                         const agent = agents[j];
-                        const agentId = agent.agent.toLowerCase();
-                        const displayName = agent.agent;
+                        const agentId = agent.agent_id ? agent.agent_id.toLowerCase() : (agent.agent ? agent.agent.toLowerCase() : 'unknown');
+                        const displayName = agent.agent_name || agent.agent || agentId;
                         const role = agent.role || 'unknown';
-                        const onlineStatuses = ['online', 'available', 'active-non-blocking'];
-                        const checked = onlineStatuses.includes(agent.status);
+                        // Use network_status (online/offline) instead of status
+                        const checked = agent.network_status === 'online';
                         const disabled = false;
                         
                         const col = document.createElement('div');

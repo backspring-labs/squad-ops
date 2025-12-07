@@ -98,9 +98,10 @@ class TestHealthCheckService:
             assert response.status_code == 200
             
             # Test POST /health/agents/status
+            # SIP-Agent-Lifecycle: Uses agent_id and lifecycle_state, not agent_name and status
             status_data = {
-                "agent_name": "test-agent",
-                "status": "online",
+                "agent_id": "test-agent",
+                "lifecycle_state": "READY",
                 "tps": 10
             }
             response = client.post("/health/agents/status", json=status_data)

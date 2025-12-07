@@ -453,13 +453,13 @@ sips:
   created_at: '2025-11-28T04:23:35Z'
   updated_at: '2025-11-29T10:14:54.118864Z'
   variant: null
-- sip_uid: "01KBH738S3M9TPC9XH3C80T1HC"
+- sip_uid: 01KBH738S3M9TPC9XH3C80T1HC
   sip_number: 48
   title: CDS Baseline Plus SRC — SquadOps v0.7.x
-  path: sips/accepted/SIP-0048-CDS-Baseline-Plus-SRC.md
-  status: accepted
+  path: sips/implemented/SIP-0048-CDS-Baseline-Plus-SRC.md
+  status: implemented
   author: Framework Committee
   approver: null
   created_at: '2025-12-02T22:55:00Z'
-  updated_at: '2025-12-02T23:20:36.332171Z'
+  updated_at: '2025-12-06T10:54:52.657145Z'
   variant: null
