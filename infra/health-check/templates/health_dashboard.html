@@ -141,7 +141,9 @@
                                     {{ agent.network_status }}
                                 </td>
                                 <td>
-                                    {% if agent.lifecycle_state == 'READY' %}
+                                    {% if agent.network_status == 'offline' and agent.lifecycle_state == 'UNKNOWN' %}
+                                        <span class="badge bg-secondary text-white">UNKNOWN</span>
+                                    {% elif agent.lifecycle_state == 'READY' %}
                                         <span class="badge bg-success">READY</span>
                                     {% elif agent.lifecycle_state == 'WORKING' %}
                                         <span class="badge bg-primary">WORKING</span>

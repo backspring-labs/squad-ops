@@ -530,6 +530,33 @@ class HealthChecker:
             logger.error(f"Failed to load instances.yaml: {e}, using defaults")
             return self._get_default_instances()
 
+    def _get_instances_order(self) -> list[str]:
+        """
+        Get ordered list of agent_ids from instances.yaml (preserves file order).
+        Returns list of agent_ids in the order they appear in instances.yaml.
+        """
+        try:
+            instances_path = Path(self.instances_file)
+            if not instances_path.exists():
+                return []
+
+            with open(instances_path) as f:
+                data = yaml.safe_load(f)
+
+            # Return agent_ids in the order they appear in instances.yaml
+            order = []
+            for instance in data.get("instances", []):
+                if instance.get("enabled", False):
+                    agent_id = instance.get("id")
+                    if agent_id:
+                        order.append(agent_id)
+
+            return order
+
+        except Exception as e:
+            logger.error(f"Failed to get instances order: {e}")
+            return []
+
     def _get_default_instances(self) -> dict[str, dict[str, Any]]:
         """Fallback instances mapping if instances.yaml can't be loaded"""
         return {
@@ -1104,55 +1131,107 @@ class HealthChecker:
                 rows = await conn.fetch("""
                     SELECT agent_id, lifecycle_state, version, tps, memory_count, last_heartbeat, current_task_id
                     FROM agent_status
-                    ORDER BY agent_id
                 """)
 
                 # Load instances.yaml for display metadata (single source of truth)
                 instances = self._load_instances()
+                # Get order from instances.yaml to preserve file ordering
+                instances_order = self._get_instances_order()
+
+                # Build a dict of agent_id -> row for quick lookup
+                rows_by_id = {row["agent_id"]: row for row in rows}
 
                 agents = []
-                for row in rows:
-                    agent_id = row["agent_id"]
+                # First, add agents in instances.yaml order
+                for agent_id in instances_order:
+                    if agent_id in rows_by_id:
+                        row = rows_by_id[agent_id]
 
-                    # Derive network_status from last_heartbeat timing
-                    network_status = self._compute_network_status(row["last_heartbeat"])
+                        # Derive network_status from last_heartbeat timing
+                        network_status = self._compute_network_status(row["last_heartbeat"])
 
-                    # Get lifecycle_state: use stored value if online, UNKNOWN if offline
-                    stored_lifecycle_state = row["lifecycle_state"]
-                    if network_status == "offline":
-                        lifecycle_state = "UNKNOWN"
-                    else:
-                        lifecycle_state = stored_lifecycle_state if stored_lifecycle_state else "UNKNOWN"
+                        # Get lifecycle_state: use stored value if online, UNKNOWN if offline
+                        stored_lifecycle_state = row["lifecycle_state"]
+                        if network_status == "offline":
+                            lifecycle_state = "UNKNOWN"
+                        else:
+                            lifecycle_state = stored_lifecycle_state if stored_lifecycle_state else "UNKNOWN"
 
-                    # Handle memory_count - asyncpg.Record uses dict-like access
-                    memory_count = row["memory_count"] if row["memory_count"] is not None else 0
+                        # Handle memory_count - asyncpg.Record uses dict-like access
+                        memory_count = row["memory_count"] if row["memory_count"] is not None else 0
 
-                    # Use version from database (reported by agents in heartbeats)
-                    agent_version = row["version"] if row["version"] else "0.0.0"
+                        # Use version from database (reported by agents in heartbeats)
+                        agent_version = row["version"] if row["version"] else "0.0.0"
 
-                    # Get display_name and role from instances.yaml (single source of truth)
-                    display_name = agent_id.title()  # Default fallback
-                    role = "Unknown"  # Default fallback
-                    if agent_id in instances:
-                        display_name = instances[agent_id].get("display_name", agent_id.title())
-                        role = instances[agent_id].get("role", "Unknown")
+                        # Get display_name and role (description) from instances.yaml (single source of truth)
+                        display_name = agent_id.title()  # Default fallback
+                        role = "N/A"  # Default fallback
+                        if agent_id in instances:
+                            display_name = instances[agent_id].get("display_name", agent_id.title())
+                            role = instances[agent_id].get("description", "N/A")
 
-                    agents.append(
-                        {
-                            "agent_id": agent_id,  # Identifier for key references
-                            "agent_name": display_name,  # Display name for dashboard
-                            "role": role,
-                            "network_status": network_status,  # Derived from heartbeat timing
-                            "lifecycle_state": lifecycle_state,  # From agent FSM or UNKNOWN
-                            "version": agent_version,
-                            "tps": row["tps"],
-                            "memory_count": memory_count,
-                            "last_seen": row["last_heartbeat"].isoformat() + "Z"
-                            if row["last_heartbeat"]
-                            else None,
-                            "current_task_id": row["current_task_id"],
-                        }
-                    )
+                        agents.append(
+                            {
+                                "agent_id": agent_id,  # Identifier for key references
+                                "agent_name": display_name,  # Display name for dashboard
+                                "role": role,
+                                "network_status": network_status,  # Derived from heartbeat timing
+                                "lifecycle_state": lifecycle_state,  # From agent FSM or UNKNOWN
+                                "version": agent_version,
+                                "tps": row["tps"],
+                                "memory_count": memory_count,
+                                "last_seen": row["last_heartbeat"].isoformat() + "Z"
+                                if row["last_heartbeat"]
+                                else None,
+                                "current_task_id": row["current_task_id"],
+                            }
+                        )
+
+                # Then, add any agents in database that aren't in instances.yaml (alphabetically)
+                for agent_id in sorted(rows_by_id.keys()):
+                    if agent_id not in instances_order:
+                        row = rows_by_id[agent_id]
+                        agent_id = row["agent_id"]
+
+                        # Derive network_status from last_heartbeat timing
+                        network_status = self._compute_network_status(row["last_heartbeat"])
+
+                        # Get lifecycle_state: use stored value if online, UNKNOWN if offline
+                        stored_lifecycle_state = row["lifecycle_state"]
+                        if network_status == "offline":
+                            lifecycle_state = "UNKNOWN"
+                        else:
+                            lifecycle_state = stored_lifecycle_state if stored_lifecycle_state else "UNKNOWN"
+
+                        # Handle memory_count - asyncpg.Record uses dict-like access
+                        memory_count = row["memory_count"] if row["memory_count"] is not None else 0
+
+                        # Use version from database (reported by agents in heartbeats)
+                        agent_version = row["version"] if row["version"] else "0.0.0"
+
+                        # Get display_name and role (description) from instances.yaml (single source of truth)
+                        display_name = agent_id.title()  # Default fallback
+                        role = "N/A"  # Default fallback
+                        if agent_id in instances:
+                            display_name = instances[agent_id].get("display_name", agent_id.title())
+                            role = instances[agent_id].get("description", "N/A")
+
+                        agents.append(
+                            {
+                                "agent_id": agent_id,  # Identifier for key references
+                                "agent_name": display_name,  # Display name for dashboard
+                                "role": role,
+                                "network_status": network_status,  # Derived from heartbeat timing
+                                "lifecycle_state": lifecycle_state,  # From agent FSM or UNKNOWN
+                                "version": agent_version,
+                                "tps": row["tps"],
+                                "memory_count": memory_count,
+                                "last_seen": row["last_heartbeat"].isoformat() + "Z"
+                                if row["last_heartbeat"]
+                                else None,
+                                "current_task_id": row["current_task_id"],
+                            }
+                        )
 
                 return agents
         except Exception as e:

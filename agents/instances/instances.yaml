@@ -8,7 +8,7 @@ instances:
     role: lead
     model: llama3.1:8b
     enabled: true
-    description: "Task Lead - Governance and coordination"
+    description: "Task Lead - Orchestration"
 
   # Strategy Role  
   - id: nat
@@ -48,7 +48,7 @@ instances:
     role: data
     model: qwen2.5:3b-instruct
     enabled: true
-    description: "Analytics - Inductive reasoning, cycle analysis and metrics"
+    description: "Analytics - Inductive reasoning"
 
   # Finance Role
   - id: finance-agent

@@ -307,6 +307,7 @@ class BaseAgent(ABC):
 
     def _on_enter_STOPPING(self, *args, **kwargs):
         """Callback when entering STOPPING state"""
+        event = args[0] if args else None
         asyncio.create_task(self._log_lifecycle_transition('STOPPING', event))
 
     async def _log_lifecycle_transition(self, new_state: str, event, reason: str | None = None):
