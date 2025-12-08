@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775975725"
+sip_uid: '17642554775975725'
 sip_number: 46
-title: "Rev-1-Agent-Specs-and-Configuration-ACPAligned-YAML-Standard"
-status: "accepted"
-author: "Jason Ladd"
-approver: "None"
-created_at: "2025‑11‑08"
-updated_at: "2025-11-27T10:12:48.903558Z"
-original_filename: "SIP-046-REV1-AGENT-SPECS-AND-CONFIGURATION.md"
+title: Rev-1-Agent-Specs-and-Configuration-ACPAligned-YAML-Standard
+status: implemented
+author: Jason Ladd
+approver: None
+created_at: 2025‑11‑08
+updated_at: '2025-12-07T19:51:05.579796Z'
+original_filename: SIP-046-REV1-AGENT-SPECS-AND-CONFIGURATION.md
 ---
-
 # SIP-046 Rev 1: Agent Specs and Configuration (ACP‑Aligned, YAML Standard)
 
 **Author:** Jason Ladd  

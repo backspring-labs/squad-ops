@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775889002"
+sip_uid: '17642554775889002'
 sip_number: 19
-title: "SIP-Management-Workflow-Protocol"
-status: "accepted"
-author: "drafts SIP → commits PR to /protocols/."
-approver: "None"
-created_at: "SIP Registry automatically."
-updated_at: "2025-11-27T10:12:48.889201Z"
-original_filename: "SIP-019-SIP-Management-Workflow.md"
+title: SIP-Management-Workflow-Protocol
+status: implemented
+author: drafts SIP → commits PR to /protocols/.
+approver: None
+created_at: SIP Registry automatically.
+updated_at: '2025-12-07T19:50:57.903005Z'
+original_filename: SIP-019-SIP-Management-Workflow.md
 ---
-
 # ✅ SIP-019: SIP Management Workflow Protocol
 
 ## 📌 Purpose

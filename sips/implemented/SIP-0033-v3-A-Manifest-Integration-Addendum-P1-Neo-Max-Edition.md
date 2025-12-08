@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775959705"
+sip_uid: '17642554775959705'
 sip_number: 33
-title: "SIP-033A-Manifest-Integration-Addendum-P1-Neo-Max-Edition"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "2025-10-18T10:58:47.253171Z"
-updated_at: "2025-11-27T10:12:48.900242Z"
-original_filename: "SIP-033A-Manifest-Integration-Addendum.md"
+title: SIP-033A-Manifest-Integration-Addendum-P1-Neo-Max-Edition
+status: implemented
+author: Unknown
+approver: None
+created_at: '2025-10-18T10:58:47.253171Z'
+updated_at: '2025-12-07T19:51:02.286414Z'
+original_filename: SIP-033A-Manifest-Integration-Addendum.md
 ---
-
 # SIP-033A: Manifest Integration Addendum (P1 – Neo + Max Edition)
 
 ## Overview

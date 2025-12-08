@@ -1,4 +1,4 @@
-last_assigned: 48
+last_assigned: 49
 sips:
 - sip_uid: '17642554775787694'
   sip_number: 3
@@ -223,23 +223,23 @@ sips:
 - sip_uid: '17642554775889002'
   sip_number: 19
   title: SIP-Management-Workflow-Protocol
-  path: sips/accepted/SIP-0019-SIP-Management-Workflow-Protocol.md
-  status: accepted
+  path: sips/implemented/SIP-0019-SIP-Management-Workflow-Protocol.md
+  status: implemented
   author: drafts SIP → commits PR to /protocols/.
   approver: None
   created_at: SIP Registry automatically.
-  updated_at: '2025-11-27T10:12:48.889201Z'
+  updated_at: '2025-12-07T19:50:57.903937Z'
   variant: null
 - sip_uid: '17642554775888268'
   sip_number: 20
   title: Health-Check-WarmBoot-Enhancement
-  path: sips/accepted/SIP-0020-Health-Check-WarmBoot-Enhancement.md
-  status: accepted
+  path: sips/implemented/SIP-0020-Health-Check-WarmBoot-Enhancement.md
+  status: implemented
   author: Unknown
   approver: None
   created_at: (modify existing), bug-fix (fix existing), refactor (improve existing),
     deployment (deploy existing)
-  updated_at: '2025-11-27T10:12:48.889814Z'
+  updated_at: '2025-12-07T19:51:00.190894Z'
   variant: null
 - sip_uid: '17642554775883363'
   sip_number: 21
@@ -295,12 +295,12 @@ sips:
 - sip_uid: '17642554775915724'
   sip_number: 26
   title: Testing-Framework-and-Philosophy
-  path: sips/accepted/SIP-0026-Testing-Framework-and-Philosophy.md
-  status: accepted
+  path: sips/implemented/SIP-0026-Testing-Framework-and-Philosophy.md
+  status: implemented
   author: Unknown
   approver: None
   created_at: 'Process**: Explicit snapshot updates required'
-  updated_at: '2025-11-27T10:12:48.894311Z'
+  updated_at: '2025-12-07T19:51:07.193762Z'
   variant: null
 - sip_uid: '17642554775924932'
   sip_number: 27
@@ -365,12 +365,12 @@ sips:
 - sip_uid: '17642554775943561'
   sip_number: 33
   title: -LLM-Client-Abstraction-Manifest-First-AppBuilder
-  path: sips/implemented/SIP-0033-LLM-Client-Abstraction-Manifest-First-AppBuilder.md
+  path: sips/implemented/SIP-0033-v3-A-Manifest-Integration-Addendum-P1-Neo-Max-Edition.md
   status: implemented
   author: Unknown
   approver: None
   created_at: '2025-10-16T00:00:00Z'
-  updated_at: '2025-11-27T10:12:48.899115Z'
+  updated_at: '2025-12-07T19:51:02.287177Z'
   variant: null
 - sip_uid: '17642554775942955'
   sip_number: 33
@@ -435,12 +435,12 @@ sips:
 - sip_uid: '17642554775975725'
   sip_number: 46
   title: Rev-1-Agent-Specs-and-Configuration-ACPAligned-YAML-Standard
-  path: sips/accepted/SIP-0046-Rev-1-Agent-Specs-and-Configuration-ACPAligned-YAML-Standard.md
-  status: accepted
+  path: sips/implemented/SIP-0046-Rev-1-Agent-Specs-and-Configuration-ACPAligned-YAML-Standard.md
+  status: implemented
   author: Jason Ladd
   approver: None
   created_at: 2025‑11‑08
-  updated_at: '2025-11-27T10:12:48.903558Z'
+  updated_at: '2025-12-07T19:51:05.580366Z'
   variant: null
 - sip_uid: 01KB4B74MN5BHXZH42ZRPEYVAG
   sip_number: 47
@@ -463,3 +463,12 @@ sips:
   created_at: '2025-12-02T22:55:00Z'
   updated_at: '2025-12-06T10:54:52.657145Z'
   variant: null
+- sip_uid: 01KBTWMSCW472RT7T72DYNXKT2
+  sip_number: 49
+  title: Agent Lifecycle & Health Check Integration
+  path: sips/implemented/SIP-0049-Agent-Lifecycle-Health-Check.md
+  status: implemented
+  author: Jason Ladd
+  approver: jladd
+  created_at: '2025-12-06T22:31:20Z'
+  updated_at: '2025-12-07T19:47:42.152658Z'
