@@ -25,7 +25,12 @@ from agents.tasks.models import (
     TaskState,
     TaskSummary,
 )
-from agents.tasks.registry import clear_test_adapter, get_tasks_adapter, set_adapter_for_testing
+from agents.tasks.registry import (
+    clear_test_adapter,
+    get_tasks_adapter,
+    reset_registry,
+    set_adapter_for_testing,
+)
 from agents.tasks.sql_adapter import SqlTasksAdapter
 
 
@@ -109,12 +114,29 @@ class TestSqlTasksAdapter:
             task_id="test-001",
             cycle_id="cycle-001",  # SIP-0048: renamed from ecid
             agent="test-agent",
+            task_type="code_generate",  # ACI v0.8: required field
+            inputs={},  # ACI v0.8: required field
             status="started",
             priority="MEDIUM",
             description="Test task",
         )
 
-        task = await adapter.create_task(task_create)
+        # Mock get_flow to return a FlowRun (create_task calls it to get project_id)
+        from agents.tasks.models import FlowRun
+        
+        with patch.object(
+            adapter,
+            "get_flow",
+            new_callable=AsyncMock,
+            return_value=FlowRun(
+                cycle_id="cycle-001",
+                pid="p-001",
+                run_type="warmboot",
+                title="Test Cycle",
+                status="active",
+            ),
+        ):
+            task = await adapter.create_task(task_create)
 
         assert task.task_id == "test-001"
         assert task.cycle_id == "cycle-001"  # SIP-0048: renamed from ecid
@@ -406,6 +428,13 @@ class TestSqlTasksAdapter:
 class TestTasksAdapterRegistry:
     """Test adapter registry"""
 
+    @pytest.fixture(autouse=True)
+    def reset_registry_before_test(self):
+        """Reset registry before each test for isolation"""
+        reset_registry()
+        yield
+        reset_registry()
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_get_tasks_adapter_default_sql(self):
@@ -417,6 +446,9 @@ class TestTasksAdapterRegistry:
             mock_config_instance = MagicMock()
             mock_config_instance.get_postgres_url.return_value = (
                 "postgresql://test:test@localhost/test"
+            )
+            mock_config_instance.get_tasks_backend.return_value = (
+                "sql"  # Explicitly set to sql for this test
             )
             mock_config.return_value = mock_config_instance
 
@@ -468,30 +500,47 @@ class TestTasksAdapterRegistry:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_get_tasks_adapter_prefect_not_implemented(self):
-        """Test registry raises error for unimplemented Prefect backend"""
+    async def test_get_tasks_adapter_prefect_implemented(self):
+        """Test registry returns implemented Prefect backend"""
         # Clear any existing adapter
         import agents.tasks.registry as registry_module
 
         registry_module._adapter = None
 
-        with patch.dict("os.environ", {"TASKS_BACKEND": "prefect"}):
-            # Prefect adapter exists but raises NotImplementedError when used
-            adapter = await get_tasks_adapter()
-            # Verify it's a Prefect adapter
-            from agents.tasks.prefect_adapter import PrefectTasksAdapter
+        with patch("asyncpg.create_pool") as mock_pool:
+            mock_pool_instance = AsyncMock()
+            mock_pool_instance.acquire = AsyncMock()
+            mock_conn = AsyncMock()
 
-            assert isinstance(adapter, PrefectTasksAdapter)
-            # Verify it raises NotImplementedError when methods are called
-            with pytest.raises(NotImplementedError):
-                await adapter.create_task(
-                    TaskCreate(
-                        task_id="test",
-                        cycle_id="cycle",
-                        agent="agent",
-                        status="started",  # SIP-0048: renamed from ecid
-                    )
-                )
+            class MockConnectionContext:
+                def __init__(self, conn):
+                    self.conn = conn
+
+                async def __aenter__(self):
+                    return self.conn
+
+                async def __aexit__(self, *args):
+                    pass
+
+            mock_pool_instance.acquire.return_value = MockConnectionContext(mock_conn)
+            mock_conn.execute = AsyncMock()
+            mock_conn.fetchrow = AsyncMock(return_value=None)
+
+            async def create_pool_mock(*args, **kwargs):
+                return mock_pool_instance
+
+            mock_pool.side_effect = create_pool_mock
+
+            with patch.dict("os.environ", {"TASKS_BACKEND": "prefect"}):
+                # Prefect adapter is now implemented
+                adapter = await get_tasks_adapter()
+                # Verify it's a Prefect adapter
+                from agents.tasks.prefect_adapter import PrefectTasksAdapter
+
+                assert isinstance(adapter, PrefectTasksAdapter)
+                # Verify it can be initialized (doesn't raise NotImplementedError)
+                await adapter.initialize()
+                assert adapter._initialized is True
 
 
 class TestTasksModels:
@@ -504,6 +553,8 @@ class TestTasksModels:
             task_id="test-001",
             cycle_id="cycle-001",  # SIP-0048: renamed from ecid
             agent="test-agent",
+            task_type="code_generate",  # ACI v0.8: required field
+            inputs={},  # ACI v0.8: required field
             status="started",
             priority="HIGH",
             description="Test task",
@@ -623,10 +674,29 @@ class TestErrorWrapping:
             task_id="test-001",
             cycle_id="cycle-001",  # SIP-0048: renamed from ecid
             agent="test-agent",
+            task_type="code_generate",  # ACI v0.8: required field
+            inputs={},  # ACI v0.8: required field
             status="started",
         )
 
-        with pytest.raises(TaskConflictError) as exc_info:
+        # Mock get_flow to return a FlowRun (create_task calls it to get project_id)
+        from agents.tasks.models import FlowRun
+        
+        with (
+            patch.object(
+                adapter,
+                "get_flow",
+                new_callable=AsyncMock,
+                return_value=FlowRun(
+                    cycle_id="cycle-001",
+                    pid="p-001",
+                    run_type="warmboot",
+                    title="Test Cycle",
+                    status="active",
+                ),
+            ),
+            pytest.raises(TaskConflictError) as exc_info,
+        ):
             await adapter.create_task(task_create)
 
         assert "already exists" in str(exc_info.value)

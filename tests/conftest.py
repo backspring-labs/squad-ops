@@ -497,6 +497,54 @@ def reset_path_resolver():
     yield
     PathResolver.reset()  # Also reset after test
 
+# ACI v0.8 Test Fixtures
+@pytest.fixture
+def sample_task_envelope():
+    """Sample TaskEnvelope with all required fields"""
+    from agents.tasks.models import TaskEnvelope
+    return TaskEnvelope(
+        task_id="task-001",
+        agent_id="agent-001",
+        cycle_id="CYCLE-001",
+        pulse_id="pulse-001",
+        project_id="project-001",
+        task_type="code_generate",
+        inputs={"action": "build"},
+        correlation_id="corr-CYCLE-001",
+        causation_id="cause-root",
+        trace_id="trace-placeholder-task-001",
+        span_id="span-placeholder-task-001",
+    )
+
+@pytest.fixture
+def sample_task_envelope_minimal():
+    """Minimal TaskEnvelope with required fields only"""
+    from agents.tasks.models import TaskEnvelope
+    return TaskEnvelope(
+        task_id="task-002",
+        agent_id="agent-002",
+        cycle_id="CYCLE-002",
+        pulse_id="pulse-002",
+        project_id="project-002",
+        task_type="test_execute",
+        inputs={},  # Empty but present
+        correlation_id="corr-CYCLE-002",
+        causation_id="cause-root",
+        trace_id="trace-placeholder-task-002",
+        span_id="span-placeholder-task-002",
+    )
+
+@pytest.fixture
+def legacy_task_dict():
+    """Legacy task dict format (should be rejected)"""
+    return {
+        "task_id": "task-003",
+        "type": "development",
+        "description": "Legacy task",
+        "cycle_id": "CYCLE-003",
+        # Missing: agent_id, pulse_id, project_id, task_type, inputs, lineage fields
+    }
+
 def pytest_configure(config):
     """Configure pytest with custom markers and verify patch application"""
     global _base_agent_patch1, _base_agent_patch2

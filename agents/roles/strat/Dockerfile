@@ -10,6 +10,10 @@ COPY agents/ ./agents/
 COPY scripts/dev/build_agent.py ./scripts/
 COPY config/ ./config/
 
+# Cache buster: ensures build runs with fresh files when source changes
+ARG CACHE_BUST=default
+RUN echo "Build cache bust: ${CACHE_BUST}"
+
 # Build agent package
 ARG AGENT_ROLE=strat
 ARG GIT_COMMIT

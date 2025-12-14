@@ -5,7 +5,7 @@ from typing import Any
 
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Add parent directory to path to allow importing deps
 sys.path.insert(0, str(Path(__file__).parent))
@@ -36,11 +36,37 @@ POSTGRES_URL = config.get_postgres_url()
 # Global connection pool (for memory endpoints only)
 pool = None
 
+# Global RabbitMQ connection and channel (for task publishing)
+rabbitmq_connection = None
+rabbitmq_channel = None
+
 
 @app.on_event("startup")
 async def startup_event():
-    global pool
+    global pool, rabbitmq_connection, rabbitmq_channel
     pool = await asyncpg.create_pool(POSTGRES_URL, min_size=1, max_size=10)
+
+    # Initialize RabbitMQ connection (persistent, like agents do)
+    import logging
+
+    logger = logging.getLogger(__name__)
+    try:
+        import aio_pika
+
+        rabbitmq_url = config.get_rabbitmq_url()
+        print("[STARTUP] Attempting to connect to RabbitMQ...", flush=True)
+        global rabbitmq_connection, rabbitmq_channel  # Ensure we're modifying globals
+        rabbitmq_connection = await aio_pika.connect_robust(rabbitmq_url)
+        rabbitmq_channel = await rabbitmq_connection.channel()
+        print(
+            f"[STARTUP] ✅ RabbitMQ connection established during startup (connection={rabbitmq_connection is not None}, channel={rabbitmq_channel is not None})",
+            flush=True,
+        )
+        logger.info("RabbitMQ connection established during startup")
+    except Exception as e:
+        # Log error but don't fail startup - connection will be retried on first use
+        print(f"[STARTUP] ❌ Failed to initialize RabbitMQ connection: {e}", flush=True)
+        logger.error(f"Failed to initialize RabbitMQ connection during startup: {e}", exc_info=True)
 
     # Initialize tasks adapter
     try:
@@ -57,9 +83,11 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global pool
+    global pool, rabbitmq_connection
     if pool:
         await pool.close()
+    if rabbitmq_connection:
+        await rabbitmq_connection.close()
 
     # Shutdown tasks adapter
     try:
@@ -91,11 +119,15 @@ class ExecutionCycleUpdate(BaseModel):
 
 
 class TaskLogCreate(BaseModel):
+    """ACI v0.8: Task creation request with required lineage fields"""
+
     task_id: str
     cycle_id: str  # SIP-0048: renamed from ecid
     agent: str  # Kept for backward compatibility
     agent_id: str | None = None  # SIP-0048: Agent identifier (use agent_id, not role normalization)
-    task_name: str | None = None  # SIP-0048: Task name/type identifier
+    task_name: str | None = None  # Optional human-readable label
+    task_type: str  # Required standardized taxonomy/behavior category (ACI)
+    inputs: dict[str, Any] = Field(default_factory=dict)  # Required structured task inputs (ACI)
     status: str
     priority: str | None = "MEDIUM"
     description: str | None = None
@@ -103,6 +135,14 @@ class TaskLogCreate(BaseModel):
     dependencies: list[str] | None = []
     delegated_by: str | None = None
     delegated_to: str | None = None
+
+    # ACI Lineage fields (required, will be generated if not provided)
+    project_id: str | None = None
+    pulse_id: str | None = None
+    correlation_id: str | None = None
+    causation_id: str | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
 
 
 class TaskLogUpdate(BaseModel):
@@ -347,27 +387,123 @@ async def fail_execution_cycle(
 async def start_task(
     task: TaskLogCreate, adapter: TaskAdapterBase = Depends(get_tasks_adapter_dep)
 ):
-    """Log task start"""
+    """
+    Create task with ACI TaskEnvelope contract.
+
+    Returns fully populated TaskEnvelope (not legacy task dict).
+    All lineage fields are required in request or generated via LineageGenerator.
+    """
     try:
+        from agents.utils.lineage_generator import LineageGenerator
+
+        # Generate missing lineage fields
+        lineage = LineageGenerator.ensure_lineage_fields(
+            cycle_id=task.cycle_id,
+            task_id=task.task_id,
+            correlation_id=task.correlation_id,
+            causation_id=task.causation_id,
+            trace_id=task.trace_id,
+            span_id=task.span_id,
+            tracing_enabled=False,  # Placeholder mode for v0.8
+        )
+
+        # Get project_id from cycle if not provided
+        if not task.project_id:
+            # Try to get from cycle
+            flow = await adapter.get_flow(task.cycle_id)
+            if flow and flow.project_id:
+                project_id = flow.project_id
+            else:
+                project_id = "project-placeholder"  # Fallback
+        else:
+            project_id = task.project_id
+
+        # Get pulse_id or generate placeholder
+        pulse_id = task.pulse_id or f"pulse-placeholder-{task.task_id}"
+
+        # Create TaskCreate with all lineage fields
         task_create = TaskCreate(
             task_id=task.task_id,
-            cycle_id=task.cycle_id,  # SIP-0048: renamed from ecid
-            agent=task.agent,  # Kept for backward compatibility
+            cycle_id=task.cycle_id,
+            agent=task.agent,
+            agent_id=task.agent_id or task.agent,
+            task_name=task.task_name,
+            task_type=task.task_type,
+            inputs=task.inputs,
             status=task.status,
             priority=task.priority,
             description=task.description,
-            pid=task.pid,  # SIP-0048: Process identifier
+            pid=task.pid,
             dependencies=task.dependencies or [],
             delegated_by=task.delegated_by,
             delegated_to=task.delegated_to,
+            project_id=project_id,
+            pulse_id=pulse_id,
+            correlation_id=lineage["correlation_id"],
+            causation_id=lineage["causation_id"],
+            trace_id=lineage["trace_id"],
+            span_id=lineage["span_id"],
         )
-        # Set agent_id and task_name if provided (SIP-0048)
-        if task.agent_id:
-            task_create.agent_id = task.agent_id
-        if task.task_name:
-            task_create.task_name = task.task_name
-        await adapter.create_task(task_create)
-        return {"status": "started", "task_id": task.task_id}
+
+        # Create task via adapter (stores in DB with lineage fields)
+        created_task = await adapter.create_task(task_create)
+
+        # Construct TaskEnvelope
+        from agents.tasks.models import TaskEnvelope
+
+        envelope = TaskEnvelope(
+            task_id=created_task.task_id,
+            agent_id=created_task.agent_id or created_task.agent,
+            cycle_id=created_task.cycle_id,
+            pulse_id=pulse_id,
+            project_id=project_id,
+            task_type=task.task_type,
+            inputs=task.inputs,
+            correlation_id=lineage["correlation_id"],
+            causation_id=lineage["causation_id"],
+            trace_id=lineage["trace_id"],
+            span_id=lineage["span_id"],
+            priority=created_task.priority,
+            metadata={
+                "task_name": created_task.task_name,
+                "phase": created_task.phase,
+                "description": created_task.description,
+            },
+            task_name=created_task.task_name,
+        )
+
+        # Publish TaskEnvelope to RabbitMQ for agent consumption
+        # Use persistent channel established at startup (like agents do)
+        try:
+            from agents.utils.task_envelope import send_envelope_to_agent_queue
+
+            global rabbitmq_channel
+
+            # Ensure channel is available (fallback to creating connection if startup failed)
+            if rabbitmq_channel is None:
+                import logging
+
+                import aio_pika
+
+                logger = logging.getLogger(__name__)
+                logger.warning("RabbitMQ channel not available, creating temporary connection")
+                rabbitmq_url = config.get_rabbitmq_url()
+                connection = await aio_pika.connect_robust(rabbitmq_url)
+                try:
+                    channel = await connection.channel()
+                    await send_envelope_to_agent_queue(channel, envelope.agent_id, envelope)
+                finally:
+                    await connection.close()
+            else:
+                await send_envelope_to_agent_queue(rabbitmq_channel, envelope.agent_id, envelope)
+        except Exception as e:
+            # Log error but don't fail task creation - task is already in DB
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to publish task {envelope.task_id} to RabbitMQ: {e}")
+
+        return envelope.model_dump()
     except TaskAdapterError as e:
         raise handle_adapter_error(e) from e
 

@@ -473,6 +473,9 @@ def build_agent_package(role: str, base_path: Path) -> None:
         ("agents/telemetry", "telemetry"),
         ("agents/specs", "agent specs"),
         ("agents/utils", "utilities"),
+        ("agents/tasks", "task models and adapters"),  # ACI v0.8: Required for TaskEnvelope deserialization
+        ("agents/context", "pulse context"),  # Required for PulseContext loading
+        ("agents/cycle_data", "cycle data store"),  # Required by agents.context
         ("agents/factory", "agent factory"),
         ("agents/instances", "agent instances"),
     ]

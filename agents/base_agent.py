@@ -20,6 +20,7 @@ import aiofiles
 if TYPE_CHECKING:
     from agents.specs.agent_request import AgentRequest
     from agents.specs.agent_response import AgentResponse
+    from agents.tasks.models import TaskEnvelope
 from dataclasses import asdict, dataclass
 
 import aio_pika
@@ -49,6 +50,118 @@ except ImportError:
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class EventEmitter:
+    """
+    ACI v0.8: Event Emitter for structured observability events.
+
+    Emits structured events ONLY from lifecycle hooks (no ad-hoc paths).
+    Async, non-blocking, fail-safe (loss of backend doesn't break execution).
+    Initially no-op (wired but not emitting), ready for SOC Ledger integration.
+    """
+
+    def __init__(self):
+        self._enabled = False  # Initially disabled (no-op mode)
+
+    async def emit(self, event) -> None:
+        """
+        Emit a structured event.
+
+        Currently no-op. Future: will send to SOC Ledger or observability backend.
+        """
+        if not self._enabled:
+            return  # No-op mode
+
+        # Future: Send to SOC Ledger or observability backend
+        # For now, just log at debug level
+        logger.debug(f"Event emitted: {event.event_type} (task_id: {event.task_id})")
+
+
+class LifecycleHookManager:
+    """
+    ACI v0.8: Lifecycle Hook Manager
+
+    Implements all required hooks (ACI Section 8.4) as callable no-ops.
+    Hooks are async and non-blocking. Each hook receives context with full lineage fields.
+    All structured events originate ONLY from lifecycle hooks.
+    """
+
+    def __init__(self, event_emitter: EventEmitter | None = None):
+        self.event_emitter = event_emitter or EventEmitter()
+
+    async def on_agent_start(self, context: dict[str, Any]) -> None:
+        """Agent lifecycle: agent started"""
+        await self._emit_event("agent_started", context)
+
+    async def on_agent_stop(self, context: dict[str, Any]) -> None:
+        """Agent lifecycle: agent stopped"""
+        await self._emit_event("agent_stopped", context)
+
+    async def on_cycle_start(self, context: dict[str, Any]) -> None:
+        """Cycle lifecycle: cycle started"""
+        await self._emit_event("cycle_started", context)
+
+    async def on_cycle_end(self, context: dict[str, Any]) -> None:
+        """Cycle lifecycle: cycle ended"""
+        await self._emit_event("cycle_ended", context)
+
+    async def on_pulse_start(self, context: dict[str, Any]) -> None:
+        """Pulse lifecycle: pulse started"""
+        await self._emit_event("pulse_started", context)
+
+    async def on_pulse_end(self, context: dict[str, Any]) -> None:
+        """Pulse lifecycle: pulse ended"""
+        await self._emit_event("pulse_ended", context)
+
+    async def on_task_created(self, context: dict[str, Any]) -> None:
+        """Task lifecycle: task created"""
+        await self._emit_event("task_created", context)
+
+    async def on_task_start(self, context: dict[str, Any]) -> None:
+        """Task lifecycle: task started"""
+        await self._emit_event("task_started", context)
+
+    async def on_task_complete(self, context: dict[str, Any]) -> None:
+        """Task lifecycle: task completed"""
+        await self._emit_event("task_completed", context)
+
+    async def on_task_failed(self, context: dict[str, Any]) -> None:
+        """Task lifecycle: task failed"""
+        await self._emit_event("task_failed", context)
+
+    async def on_failure(self, context: dict[str, Any]) -> None:
+        """Failure & Exception: failure occurred"""
+        await self._emit_event("failure", context)
+
+    async def on_exception(self, context: dict[str, Any]) -> None:
+        """Failure & Exception: exception occurred"""
+        await self._emit_event("exception", context)
+
+    async def _emit_event(self, event_type: str, context: dict[str, Any]) -> None:
+        """Internal: emit structured event via EventEmitter"""
+        try:
+            from agents.utils.events import StructuredEvent
+
+            event = StructuredEvent(
+                event_type=event_type,
+                project_id=context.get("project_id", ""),
+                cycle_id=context.get("cycle_id", ""),
+                pulse_id=context.get("pulse_id", ""),
+                task_id=context.get("task_id"),
+                agent_id=context.get("agent_id", ""),
+                correlation_id=context.get("correlation_id", ""),
+                causation_id=context.get("causation_id", ""),
+                trace_id=context.get("trace_id", ""),
+                span_id=context.get("span_id", ""),
+                metadata={"error": context.get("error")} if context.get("error") else {},
+            )
+
+            # Emit asynchronously (non-blocking)
+            await self.event_emitter.emit(event)
+        except Exception as e:
+            # Fail-safe: event emission must not break execution
+            logger.debug(f"Event emission failed (non-fatal): {e}")
 
 
 @dataclass
@@ -92,9 +205,16 @@ class BaseAgent(ABC):
         self.db_pool = None  # Deprecated: Keep for legacy reads, will be removed in future
         self.redis_client = None
         self.agent_info = None  # Store agent_info.json data for metadata in heartbeats
+        self.current_pulse_context = (
+            None  # Current PulseContext for this task (SIP-Prefect-Pulse-Context)
+        )
 
         # Memory providers (SIP-042)
         self.memory_provider = None  # Mem0Adapter for agent-level memory
+
+        # ACI v0.8: Event emitter and lifecycle hooks manager
+        self._event_emitter = EventEmitter()
+        self._lifecycle_hooks = LifecycleHookManager(event_emitter=self._event_emitter)
         self.sql_adapter = None  # SqlAdapter for Squad Memory Pool promotion
 
         # Initialize unified configuration
@@ -244,17 +364,17 @@ class BaseAgent(ABC):
         from transitions import Machine
 
         # Define canonical lifecycle states
-        states = ['STARTING', 'READY', 'WORKING', 'BLOCKED', 'CRASHED', 'STOPPING']
+        states = ["STARTING", "READY", "WORKING", "BLOCKED", "CRASHED", "STOPPING"]
 
         # Define allowed transitions per SIP §6.2
         transitions = [
-            {'trigger': 'to_ready', 'source': 'STARTING', 'dest': 'READY'},
-            {'trigger': 'start_work', 'source': 'READY', 'dest': 'WORKING'},
-            {'trigger': 'complete_work', 'source': 'WORKING', 'dest': 'READY'},
-            {'trigger': 'block', 'source': 'WORKING', 'dest': 'BLOCKED'},
-            {'trigger': 'unblock', 'source': 'BLOCKED', 'dest': 'WORKING'},
-            {'trigger': 'crash', 'source': ['WORKING', 'BLOCKED'], 'dest': 'CRASHED'},
-            {'trigger': 'stop', 'source': ['READY', 'CRASHED'], 'dest': 'STOPPING'},
+            {"trigger": "to_ready", "source": "STARTING", "dest": "READY"},
+            {"trigger": "start_work", "source": "READY", "dest": "WORKING"},
+            {"trigger": "complete_work", "source": "WORKING", "dest": "READY"},
+            {"trigger": "block", "source": "WORKING", "dest": "BLOCKED"},
+            {"trigger": "unblock", "source": "BLOCKED", "dest": "WORKING"},
+            {"trigger": "crash", "source": ["WORKING", "BLOCKED"], "dest": "CRASHED"},
+            {"trigger": "stop", "source": ["READY", "CRASHED"], "dest": "STOPPING"},
         ]
 
         # Initialize FSM machine bound to this agent instance
@@ -262,9 +382,9 @@ class BaseAgent(ABC):
             model=self,
             states=states,
             transitions=transitions,
-            initial='STARTING',
+            initial="STARTING",
             auto_transitions=False,  # Disable auto-generated transitions for safety
-            ignore_invalid_triggers=False  # Raise MachineError on illegal transitions
+            ignore_invalid_triggers=False,  # Raise MachineError on illegal transitions
         )
 
         # Register state entry callbacks for logging
@@ -279,73 +399,78 @@ class BaseAgent(ABC):
     @property
     def lifecycle_state(self) -> str:
         """Get current lifecycle state from FSM
-        
+
         When Machine is bound to a model, Transitions library stores state on the model itself.
         """
-        return getattr(self, 'state', 'STARTING')  # Fallback to STARTING if state not set
+        return getattr(self, "state", "STARTING")  # Fallback to STARTING if state not set
 
     def _on_enter_READY(self, *args, **kwargs):
         """Callback when entering READY state"""
         # Transitions library passes event_data, but we can accept *args, **kwargs for flexibility
         event = args[0] if args else None
-        asyncio.create_task(self._log_lifecycle_transition('READY', event))
+        asyncio.create_task(self._log_lifecycle_transition("READY", event))
 
     def _on_enter_WORKING(self, *args, **kwargs):
         """Callback when entering WORKING state"""
         event = args[0] if args else None
-        asyncio.create_task(self._log_lifecycle_transition('WORKING', event))
+        asyncio.create_task(self._log_lifecycle_transition("WORKING", event))
 
     def _on_enter_BLOCKED(self, *args, **kwargs):
         """Callback when entering BLOCKED state"""
         event = args[0] if args else None
-        asyncio.create_task(self._log_lifecycle_transition('BLOCKED', event))
+        asyncio.create_task(self._log_lifecycle_transition("BLOCKED", event))
 
     def _on_enter_CRASHED(self, *args, **kwargs):
         """Callback when entering CRASHED state"""
         event = args[0] if args else None
-        asyncio.create_task(self._log_lifecycle_transition('CRASHED', event))
+        asyncio.create_task(self._log_lifecycle_transition("CRASHED", event))
 
     def _on_enter_STOPPING(self, *args, **kwargs):
         """Callback when entering STOPPING state"""
         event = args[0] if args else None
-        asyncio.create_task(self._log_lifecycle_transition('STOPPING', event))
+        asyncio.create_task(self._log_lifecycle_transition("STOPPING", event))
 
     async def _log_lifecycle_transition(self, new_state: str, event, reason: str | None = None):
         """Log lifecycle transition to Cycle Data Store
-        
+
         SIP-Agent-Lifecycle: Logs lifecycle transitions with required fields:
         agent_id, previous_lifecycle_state, new_lifecycle_state, timestamp, cycle_id, task_id, reason
         """
         try:
             # Extract previous state from event
-            previous_state = event.source if hasattr(event, 'source') else 'UNKNOWN'
+            previous_state = event.source if hasattr(event, "source") else "UNKNOWN"
 
             # Get current cycle and task context
-            cycle_id = getattr(self, '_current_cycle_id', None)
+            cycle_id = getattr(self, "_current_cycle_id", None)
             task_id = self.current_task if self.current_task else None
 
             # Build transition event for Cycle Data Store
             transition_event = {
-                'event_type': 'agent.lifecycle.transition',
-                'agent_id': self.name.lower(),  # Use lowercase identifier
-                'previous_lifecycle_state': previous_state,
-                'new_lifecycle_state': new_state,
-                'timestamp': datetime.utcnow().isoformat() + 'Z',
-                'cycle_id': cycle_id,
-                'task_id': task_id,
-                'reason': reason,
+                "event_type": "agent.lifecycle.transition",
+                "agent_id": self.name.lower(),  # Use lowercase identifier
+                "previous_lifecycle_state": previous_state,
+                "new_lifecycle_state": new_state,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "cycle_id": cycle_id,
+                "task_id": task_id,
+                "reason": reason,
             }
 
             # Log to Cycle Data Store if cycle_id is available
             if cycle_id:
                 try:
                     from agents.cycle_data import CycleDataStore
+
                     # Get cycle_data_root from config or use default
                     cycle_data_root = Path(os.getenv("CYCLE_DATA_ROOT", "/app/cycle_data"))
-                    project_id = getattr(self, '_current_project_id', 'warmboot_selftest')  # Default project
-                    
+                    project_id = getattr(
+                        self, "_current_project_id", "warmboot_selftest"
+                    )  # Default project
+
                     cycle_store = CycleDataStore(cycle_data_root, project_id, cycle_id)
-                    cycle_store.append_telemetry_event(transition_event, agent_name=self.name.lower())
+                    cycle_store.append_telemetry_event(
+                        transition_event, agent_name=self.name.lower()
+                    )
                 except Exception as cds_error:
                     logger.debug(f"{self.name}: Failed to log to Cycle Data Store: {cds_error}")
 
@@ -458,17 +583,9 @@ class BaseAgent(ABC):
         Detect runtime environment information.
 
         Returns:
-            Dictionary with python_version, prefect_version, cuda_enabled
+            Dictionary with python_version, cuda_enabled
         """
         runtime_env = {"python_version": sys.version.split()[0]}
-
-        # Try to detect Prefect version
-        try:
-            import prefect
-
-            runtime_env["prefect_version"] = prefect.__version__
-        except ImportError:
-            runtime_env["prefect_version"] = None
 
         # Try to detect CUDA availability
         cuda_enabled = False
@@ -614,7 +731,9 @@ class BaseAgent(ABC):
             # Transition to READY state after successful initialization
             try:
                 self.to_ready()
-                logger.info(f"{self.name} initialized successfully (lifecycle state: {self.lifecycle_state})")
+                logger.info(
+                    f"{self.name} initialized successfully (lifecycle state: {self.lifecycle_state})"
+                )
             except Exception as fsm_error:
                 logger.error(f"{self.name}: Failed to transition to READY state: {fsm_error}")
                 # Don't raise - initialization succeeded, just FSM transition failed
@@ -763,39 +882,39 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             reasoning_style, "This shapes how you approach problems and make decisions."
         )
 
-    def _extract_memory_context(self, task: dict[str, Any]) -> dict[str, str]:
+    def _extract_memory_context(self, envelope: "TaskEnvelope | dict[str, Any]") -> dict[str, str]:
         """
-        Extract PID and ECID from task context.
-        Handles various task formats (agent_task_log, message payload, etc.)
+        Extract PID and cycle_id from TaskEnvelope or legacy dict context.
+
+        ACI v0.8: Prefers TaskEnvelope, falls back to dict for memory context extraction only.
+        This method is used for memory recording and may receive dict context from other sources.
 
         Args:
-            task: Task dictionary (may be from various sources)
+            envelope: TaskEnvelope or dict context (legacy fallback for memory only)
 
         Returns:
             Dictionary with 'pid' and 'cycle_id' keys (SIP-0048: renamed from ecid)
         """
-        pid = None
-        cycle_id = None  # SIP-0048: renamed from ecid
+        from agents.tasks.models import TaskEnvelope
 
-        # Try direct keys first
-        if "pid" in task:
-            pid = task["pid"]
-        if "cycle_id" in task:  # SIP-0048: renamed from ecid
-            cycle_id = task["cycle_id"]
-
-        # Try context dict
-        if "context" in task and isinstance(task["context"], dict):
-            pid = pid or task["context"].get("pid")
-            cycle_id = cycle_id or task["context"].get("cycle_id")
-
-        # Try payload
-        if "payload" in task and isinstance(task["payload"], dict):
-            pid = pid or task["payload"].get("pid")
-            cycle_id = cycle_id or task["payload"].get("cycle_id")
+        if isinstance(envelope, TaskEnvelope):
+            # Extract from TaskEnvelope metadata
+            metadata = envelope.metadata if envelope.metadata else {}
+            pid = metadata.get("pid") or "unknown"
+            cycle_id = envelope.cycle_id or "unknown"
+        elif isinstance(envelope, dict):
+            # Legacy fallback for memory context only
+            pid = envelope.get("pid") or envelope.get("context", {}).get("pid") or "unknown"
+            cycle_id = (
+                envelope.get("cycle_id") or envelope.get("context", {}).get("cycle_id") or "unknown"
+            )
+        else:
+            pid = "unknown"
+            cycle_id = "unknown"
 
         return {
-            "pid": pid or "unknown",
-            "cycle_id": cycle_id or "unknown",  # SIP-0048: renamed from ecid
+            "pid": pid,
+            "cycle_id": cycle_id,
         }
 
     @property
@@ -1174,61 +1293,6 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             logger.error(f"{self.name} failed to update task status via API: {e}")
             raise
 
-    async def log_activity(self, activity: str, details: dict[str, Any] = None):
-        """
-        DEPRECATED: Log agent activity
-
-        This method writes to deprecated agent_task_logs table.
-        Use Task API endpoints (log_task_start, log_task_completion) instead.
-
-        Now gracefully handles missing table (for integration tests).
-        """
-        import warnings
-
-        warnings.warn(
-            f"log_activity() is deprecated for {self.name}. "
-            "Use Task API endpoints (log_task_start, log_task_completion) instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        # Keep legacy implementation but mark as deprecated
-        # Gracefully handle missing table (for integration tests)
-        if self.db_pool:
-            try:
-                async with self.db_pool.acquire() as conn:
-                    await conn.execute(
-                        """
-                        INSERT INTO agent_task_logs (task_id, agent_name, task_name, task_status, start_time, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6)
-                    """,
-                        f"{self.name}_{activity}_{int(time.time() * 1000)}",
-                        self.name,
-                        activity,
-                        "completed",
-                        datetime.utcnow(),
-                        datetime.utcnow(),
-                    )
-            except Exception as e:
-                # Gracefully handle missing table (integration tests, etc.)
-                logger.debug(f"{self.name} log_activity failed (table may not exist): {e}")
-                # Still log to communication log as fallback
-                self.communication_log.append(
-                    {
-                        "activity": activity,
-                        "details": details or {},
-                        "timestamp": datetime.utcnow().isoformat(),
-                    }
-                )
-        else:
-            # No db_pool - just log to communication log
-            self.communication_log.append(
-                {
-                    "activity": activity,
-                    "details": details or {},
-                    "timestamp": datetime.utcnow().isoformat(),
-                }
-            )
-
     async def create_execution_cycle(
         self,
         cycle_id: str,
@@ -1478,58 +1542,185 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
         """Handle agent request - must be implemented by each agent"""
         pass
 
-    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
-        """Process a task - DEPRECATED: Use handle_agent_request instead"""
-        # Convert old task format to AgentRequest for compatibility
+    async def _call_lifecycle_hook(
+        self, hook_name: str, envelope, error: str | None = None
+    ) -> None:
+        """
+        Call a lifecycle hook with full lineage context.
+
+        ACI v0.8: All hooks receive context with full lineage fields.
+        Hooks are async and non-blocking (fail-safe).
+        """
+        try:
+            # Build context with full lineage fields
+            context = {
+                "project_id": envelope.project_id,
+                "cycle_id": envelope.cycle_id,
+                "pulse_id": envelope.pulse_id,
+                "task_id": envelope.task_id,
+                "agent_id": envelope.agent_id,
+                "correlation_id": envelope.correlation_id,
+                "causation_id": envelope.causation_id,
+                "trace_id": envelope.trace_id,
+                "span_id": envelope.span_id,
+            }
+
+            if error:
+                context["error"] = error
+
+            # Call hook (async, but we await it - hooks are fast no-ops)
+            hook_method = getattr(self._lifecycle_hooks, hook_name, None)
+            if hook_method:
+                # Await but catch exceptions - hooks must not break execution
+                try:
+                    await hook_method(context)
+                except Exception as hook_error:
+                    # Fail-safe: hooks must not break execution
+                    logger.debug(
+                        f"{self.name}: Lifecycle hook {hook_name} error (non-fatal): {hook_error}"
+                    )
+        except Exception as e:
+            # Fail-safe: hooks must not break execution
+            logger.debug(f"{self.name}: Lifecycle hook {hook_name} setup error (non-fatal): {e}")
+
+    async def process_task(self, envelope) -> dict[str, Any]:
+        """
+        Process a task from ACI TaskEnvelope (strict contract).
+
+        ACI v0.8: Accepts TaskEnvelope only, returns TaskResult format.
+        """
+        from agents.tasks.models import TaskEnvelope, TaskResult
+        from agents.utils.task_envelope import validate_envelope
+
+        # Validate envelope structure - strict ACI v0.8 contract
+        if not isinstance(envelope, TaskEnvelope):
+            logger.error(
+                f"{self.name}: Invalid TaskEnvelope format: expected TaskEnvelope, got {type(envelope)}"
+            )
+            return TaskResult(
+                task_id="unknown",
+                status="FAILED",
+                error=f"Invalid TaskEnvelope format: expected TaskEnvelope, got {type(envelope)}",
+            ).model_dump()
+
+        # Validate envelope has all required fields
+        try:
+            validate_envelope(envelope)
+        except ValueError as e:
+            logger.error(f"{self.name}: TaskEnvelope validation failed: {e}")
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="FAILED",
+                error=f"TaskEnvelope validation failed: {e}",
+            ).model_dump()
+
+        # Call lifecycle hook: on_task_created
+        await self._call_lifecycle_hook("on_task_created", envelope)
+
         try:
             # Transition to WORKING state when task starts
             try:
-                if self.lifecycle_state == 'READY':
+                if self.lifecycle_state == "READY":
                     self.start_work()
             except Exception as fsm_error:
                 logger.warning(f"{self.name}: Failed to transition to WORKING: {fsm_error}")
 
+            # Call lifecycle hook: on_task_start
+            await self._call_lifecycle_hook("on_task_start", envelope)
+
+            # Load PulseContext if pulse_id is present
+            pulse_context = None
+            if envelope.pulse_id and envelope.cycle_id:
+                try:
+                    from agents.context import load_pulse_context
+
+                    pulse_context = await load_pulse_context(envelope.pulse_id, envelope.cycle_id)
+                    if pulse_context:
+                        self.current_pulse_context = pulse_context
+                        logger.debug(
+                            f"{self.name}: Loaded PulseContext {envelope.pulse_id} for cycle {envelope.cycle_id}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"{self.name}: Failed to load PulseContext {envelope.pulse_id}: {e}"
+                    )
+            else:
+                self.current_pulse_context = None
+
+            # Convert TaskEnvelope to AgentRequest for capability execution
             from agents.specs.agent_request import AgentRequest
 
-            # Try to convert task to AgentRequest
-            if "action" in task:
-                request = AgentRequest.from_dict(task)
-                response = await self.handle_agent_request(request)
-                result = response.to_dict()
-            else:
-                # Fallback for old format
-                logger.warning(f"{self.name}: Received old format task, converting...")
-                # Create minimal AgentRequest from old task
-                request = AgentRequest(
-                    action=task.get("type", "unknown"),
-                    payload=task,
-                    metadata={
-                        "pid": task.get("pid", "unknown"),
-                        "cycle_id": task.get(
-                            "cycle_id", "unknown"
-                        ),  # SIP-0048: ecid backward compatibility removed
-                    },
-                )
-                response = await self.handle_agent_request(request)
-                result = response.to_dict()
+            # Extract task_type as action, inputs as payload
+            # Handle metadata safely (may be None or not a dict)
+            envelope_metadata = envelope.metadata if envelope.metadata else {}
+            if not isinstance(envelope_metadata, dict):
+                envelope_metadata = {}
+
+            request = AgentRequest(
+                action=envelope.task_type,
+                payload=envelope.inputs,
+                metadata={
+                    "pid": envelope_metadata.get("pid", "unknown"),
+                    "cycle_id": envelope.cycle_id,
+                    "pulse_id": envelope.pulse_id,
+                    "project_id": envelope.project_id,
+                    "correlation_id": envelope.correlation_id,
+                    "causation_id": envelope.causation_id,
+                    "trace_id": envelope.trace_id,
+                    "span_id": envelope.span_id,
+                    **envelope_metadata,
+                },
+            )
+
+            response = await self.handle_agent_request(request)
+            result_dict = response.to_dict()
+
+            # Construct TaskResult
+            task_result = TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs=result_dict,
+            )
+
+            # Call lifecycle hook: on_task_complete
+            await self._call_lifecycle_hook("on_task_complete", envelope)
 
             # Transition back to READY state when task completes
             try:
-                if self.lifecycle_state == 'WORKING':
+                if self.lifecycle_state == "WORKING":
                     self.complete_work()
             except Exception as fsm_error:
                 logger.warning(f"{self.name}: Failed to transition to READY: {fsm_error}")
 
-            return result
+            # Clear PulseContext after task completion
+            self.current_pulse_context = None
+
+            return task_result.model_dump()
+
         except Exception as e:
             logger.error(f"{self.name}: Failed to process task: {e}", exc_info=True)
+
+            # Call lifecycle hook: on_task_failed
+            await self._call_lifecycle_hook("on_task_failed", envelope, error=str(e))
+
+            # Call lifecycle hook: on_exception
+            await self._call_lifecycle_hook("on_exception", envelope, error=str(e))
+
             # Transition to CRASHED state on fatal error
             try:
-                if self.lifecycle_state in ['WORKING', 'BLOCKED']:
+                if self.lifecycle_state in ["WORKING", "BLOCKED"]:
                     self.crash()
             except Exception:
                 pass  # Ignore FSM errors during crash
-            return {"status": "error", "error": str(e), "task_id": task.get("task_id", "unknown")}
+
+            # Clear PulseContext on error
+            self.current_pulse_context = None
+
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="FAILED",
+                error=str(e),
+            ).model_dump()
 
     async def handle_task_acknowledgment(self, message: AgentMessage) -> None:
         """Handle task acknowledgment from delegated agents"""
@@ -1826,26 +2017,36 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                     task_id = None
                     try:
                         logger.debug(f"{self.name} received message: {message.body.decode()}")
-                        task_data = json.loads(message.body.decode())
-                        logger.debug(f"{self.name} parsed task_data: {task_data}")
+
+                        # ACI v0.8: Deserialize TaskEnvelope from RabbitMQ JSON
+                        from agents.tasks.models import TaskResult
+                        from agents.utils.task_envelope import deserialize_envelope_from_json
+
+                        envelope = deserialize_envelope_from_json(message.body.decode())
+                        logger.debug(f"{self.name} parsed TaskEnvelope: {envelope.task_id}")
 
                         # Set current task before processing
-                        task_id = task_data.get("task_id", "unknown")
+                        task_id = envelope.task_id
                         self.current_task = task_id
                         logger.debug(
                             f"{self.name} processing task {task_id} (lifecycle state: {self.lifecycle_state})"
                         )
 
                         logger.debug(f"{self.name} about to call process_task")
-                        result = await self.process_task(task_data)
-                        logger.debug(f"{self.name} process_task completed: {result}")
+                        result_dict = await self.process_task(envelope)
+                        logger.debug(f"{self.name} process_task completed: {result_dict}")
 
-                        # Update task status
-                        logger.debug(f"{self.name} about to call update_task_status")
-                        await self.update_task_status(task_id, "Completed", progress=100.0)
-                        logger.debug(f"{self.name} update_task_status completed")
+                        # Validate result is TaskResult format
+                        result = TaskResult(**result_dict)
+                        if result.status == "SUCCEEDED":
+                            # Update task status
+                            logger.debug(f"{self.name} about to call update_task_status")
+                            await self.update_task_status(task_id, "Completed", progress=100.0)
+                            logger.debug(f"{self.name} update_task_status completed")
+                        elif result.status == "FAILED":
+                            logger.error(f"{self.name} task {task_id} failed: {result.error}")
 
-                        # Clear current task after successful completion
+                        # Clear current task after completion
                         self.current_task = None
                         logger.debug(f"{self.name} cleared current task after completion")
 
@@ -1856,7 +2057,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                         logger.error(f"{self.name} task processing error: {e}")
                         # Transition to CRASHED state on error
                         try:
-                            if self.lifecycle_state in ['WORKING', 'BLOCKED']:
+                            if self.lifecycle_state in ["WORKING", "BLOCKED"]:
                                 self.crash()
                         except Exception:
                             pass  # Ignore FSM errors during crash
@@ -2083,7 +2284,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
         """Cleanup resources"""
         # Transition to STOPPING state before cleanup
         try:
-            if self.lifecycle_state in ['READY', 'CRASHED']:
+            if self.lifecycle_state in ["READY", "CRASHED"]:
                 self.stop()
         except Exception as fsm_error:
             logger.warning(f"{self.name}: Failed to transition to STOPPING: {fsm_error}")

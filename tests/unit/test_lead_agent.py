@@ -685,12 +685,11 @@ class TestLeadAgent:
             message_id="msg-001",
         )
 
-        with patch.object(agent, "log_activity") as mock_log:
-            await agent.handle_escalation(message)
+        # log_activity removed - verify escalation is handled without it
+        await agent.handle_escalation(message)
 
-            mock_log.assert_called_once()
-            call_args = mock_log.call_args
-            assert call_args[0][0] == "escalation_received"
+        # Verify escalation was processed (check communication log or other side effects)
+        assert len(agent.communication_log) > 0
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -3700,24 +3699,14 @@ features:
             "requirements": {"action": "build", "description": "Complex task"},
         }
 
-        with patch.object(agent, "log_activity", new_callable=AsyncMock) as mock_log:
-            await agent.escalate_task("test-task-001", task)
+        # log_activity removed - verify escalation works without it
+        await agent.escalate_task("test-task-001", task)
 
-            # Should add to approval queue
-            assert len(agent.approval_queue) == 1
-            escalation = agent.approval_queue[0]
-            assert escalation["task_id"] == "test-task-001"
-            assert escalation["reason"] == "High complexity"
-
-            # Should log activity
-            mock_log.assert_called_once_with(
-                "task_escalated",
-                {
-                    "task_id": "test-task-001",
-                    "complexity": 0.9,
-                    "reason": "Premium consultation required",
-                },
-            )
+        # Should add to approval queue
+        assert len(agent.approval_queue) == 1
+        escalation = agent.approval_queue[0]
+        assert escalation["task_id"] == "test-task-001"
+        assert escalation["reason"] == "High complexity"
 
     @pytest.mark.asyncio
     async def test_log_warmboot_governance_success_path(self, mock_lead_agent):

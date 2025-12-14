@@ -143,17 +143,25 @@ class LeadAgent(BaseAgent):
     # Handler methods removed - capabilities are now executed via Loader
     # Duplicate logic has been moved to capability classes
 
-    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
+    async def process_task(self, task: dict[str, Any] | Any) -> dict[str, Any]:
         """
         Process tasks using generic capability routing.
 
         Uses CapabilityLoader.get_capability_for_task() to determine capability
         based on task_type or requirements.action, then executes it generically.
+        
+        ACI v0.8: Accepts TaskEnvelope (delegates to BaseAgent) or legacy dict format.
         """
+        from agents.tasks.models import TaskEnvelope
+        
+        # ACI v0.8: If TaskEnvelope, delegate to BaseAgent.process_task
+        if isinstance(task, TaskEnvelope):
+            return await super().process_task(task)
+        
         logger.debug(f"{self.name} process_task START - task: {task}")
 
         # Check if this is a new SIP-046 AgentRequest format
-        if "action" in task:
+        if isinstance(task, dict) and "action" in task:
             # Let BaseAgent handle the conversion to AgentRequest
             return await super().process_task(task)
 
@@ -174,6 +182,26 @@ class LeadAgent(BaseAgent):
                 )  # SIP-0048: renamed from ecid
             except Exception as e:
                 logger.warning(f"{self.name}: Failed to load WarmBoot memories: {e}")
+
+        # Load PulseContext if pulse_id is present in task (SIP-Prefect-Pulse-Context)
+        pulse_id = task.get("pulse_id") or task.get("metadata", {}).get("pulse_id")
+        if pulse_id and cycle_id:
+            try:
+                from agents.context import load_pulse_context
+
+                pulse_context = await load_pulse_context(pulse_id, cycle_id)
+                if pulse_context:
+                    # Attach PulseContext to agent instance for capability access
+                    self.current_pulse_context = pulse_context
+                    logger.debug(
+                        f"{self.name}: Loaded PulseContext {pulse_id} for cycle {cycle_id}"
+                    )
+            except Exception as e:
+                logger.warning(f"{self.name}: Failed to load PulseContext {pulse_id}: {e}")
+                # Continue without PulseContext - it's optional
+        else:
+            # Clear any previous PulseContext
+            self.current_pulse_context = None
 
         # Generic capability routing via loader
         if not self.capability_loader:
@@ -376,10 +404,12 @@ class LeadAgent(BaseAgent):
                 import aiohttp
 
                 async with aiohttp.ClientSession() as session:
-                    async with session.put(
-                        f"{self.runtime_api_url}/api/v1/tasks/{task_id}",  # SIP-0048: renamed from task_api_url
-                        json={"status": "in_progress"},
-                    ) as resp:
+                    async with (
+                        session.put(
+                            f"{self.runtime_api_url}/api/v1/tasks/{task_id}",  # SIP-0048: renamed from task_api_url
+                            json={"status": "in_progress"},
+                        ) as resp
+                    ):
                         if resp.status == 200:
                             logger.info(f"{self.name} marked task {task_id} as in_progress")
                         elif resp.status == 404:
@@ -434,7 +464,7 @@ class LeadAgent(BaseAgent):
             }
         )
 
-        # Log to communication log (deprecated log_activity may fail in integration tests)
+        # Log to communication log
         self.communication_log.append(
             {
                 "event": "task_escalated",
@@ -456,16 +486,6 @@ class LeadAgent(BaseAgent):
             },
             importance=0.8,
             task_context=task,
-        )
-
-        # Try deprecated log_activity (gracefully handles missing table)
-        await self.log_activity(
-            "task_escalated",
-            {
-                "task_id": task_id,
-                "complexity": task.get("complexity"),
-                "reason": "Premium consultation required",
-            },
         )
 
     def _load_role_to_agent_mapping(self) -> dict[str, str]:
@@ -545,7 +565,7 @@ class LeadAgent(BaseAgent):
 
         logger.info(f"{self.name} handling escalation for task: {task_id}, reason: {reason}")
 
-        # Log to communication log (deprecated log_activity may fail in integration tests)
+        # Log to communication log
         self.communication_log.append(
             {
                 "event": "escalation_received",
@@ -554,12 +574,6 @@ class LeadAgent(BaseAgent):
                 "reason": reason,
                 "timestamp": datetime.utcnow().isoformat(),
             }
-        )
-
-        # Try deprecated log_activity (gracefully handles missing table)
-        await self.log_activity(
-            "escalation_received",
-            {"task_id": task_id, "from_agent": message.sender, "reason": reason},
         )
 
     async def handle_status_query(self, message: AgentMessage):

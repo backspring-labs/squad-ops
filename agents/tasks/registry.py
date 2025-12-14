@@ -3,7 +3,6 @@ Tasks Adapter Registry - Factory for creating and managing task adapters
 """
 
 import logging
-import os
 
 import asyncpg
 
@@ -21,7 +20,7 @@ _test_adapter: TaskAdapterBase | None = None
 def set_adapter_for_testing(adapter: TaskAdapterBase) -> None:
     """
     Set adapter instance for testing (injection support).
-    
+
     Args:
         adapter: Adapter instance to use for tests
     """
@@ -35,54 +34,72 @@ def clear_test_adapter() -> None:
     _test_adapter = None
 
 
+def reset_registry() -> None:
+    """
+    Reset the adapter registry (clears both _adapter and _test_adapter).
+
+    Useful for test isolation to prevent state leakage between tests.
+    Note: This does not call shutdown() on adapters - use close_adapter() for that.
+    """
+    global _adapter, _test_adapter
+    _adapter = None
+    _test_adapter = None
+
+
 async def get_tasks_adapter() -> TaskAdapterBase:
     """
     Get the configured tasks adapter instance (singleton).
-    
+
     Reads TASKS_BACKEND env var (default: 'sql') and returns appropriate adapter.
     Supports test injection via set_adapter_for_testing().
-    
+
     Returns:
         TaskAdapterBase instance
-        
+
     Raises:
         ValueError: If backend is not supported or adapter creation fails
     """
     global _adapter, _test_adapter
-    
+
     # Test injection takes precedence
     if _test_adapter is not None:
         return _test_adapter
-    
+
     # Return existing singleton if available
     if _adapter is not None:
         return _adapter
-    
+
     # Create new adapter based on backend selection - Use centralized config
     config = get_config()
     backend = config.get_tasks_backend()
-    
+
     if backend == "sql":
         try:
             config = get_config()
             postgres_url = config.get_postgres_url()
-            
+
             # Create connection pool
-            db_pool = await asyncpg.create_pool(
-                postgres_url, min_size=1, max_size=10
-            )
-            
+            db_pool = await asyncpg.create_pool(postgres_url, min_size=1, max_size=10)
+
             _adapter = SqlTasksAdapter(db_pool)
             logger.info("Initialized SQL tasks adapter")
             return _adapter
         except Exception as e:
             logger.error(f"Failed to create SQL tasks adapter: {e}")
             raise ValueError(f"Failed to initialize SQL tasks adapter: {e}") from e
-    
+
     elif backend == "prefect":
         try:
             from agents.tasks.prefect_adapter import PrefectTasksAdapter
-            _adapter = PrefectTasksAdapter()
+
+            # Prefect adapter also needs DB access to write to SquadOps DB (source of truth)
+            config = get_config()
+            postgres_url = config.get_postgres_url()
+
+            # Create connection pool for SquadOps DB access
+            db_pool = await asyncpg.create_pool(postgres_url, min_size=1, max_size=10)
+
+            _adapter = PrefectTasksAdapter(db_pool)
             logger.info("Initialized Prefect tasks adapter")
             return _adapter
         except ImportError as e:
@@ -92,7 +109,7 @@ async def get_tasks_adapter() -> TaskAdapterBase:
         except Exception as e:
             logger.error(f"Failed to create Prefect tasks adapter: {e}")
             raise ValueError(f"Failed to initialize Prefect tasks adapter: {e}") from e
-    
+
     else:
         raise ValueError(
             f"Unsupported TASKS_BACKEND: {backend}. Supported values: 'sql', 'prefect'"
@@ -102,10 +119,14 @@ async def get_tasks_adapter() -> TaskAdapterBase:
 async def close_adapter() -> None:
     """Close adapter and cleanup resources"""
     global _adapter
-    if _adapter and hasattr(_adapter, "db_pool"):
-        # If it's a SQL adapter, close the pool
-        if hasattr(_adapter.db_pool, "close"):
+    if _adapter:
+        # Close database pool if adapter has one (SQL or Prefect adapters both use DB)
+        if hasattr(_adapter, "db_pool") and hasattr(_adapter.db_pool, "close"):
             await _adapter.db_pool.close()
+        # Call adapter shutdown if available
+        if hasattr(_adapter, "shutdown"):
+            try:
+                await _adapter.shutdown()
+            except Exception as e:
+                logger.warning(f"Error during adapter shutdown: {e}")
     _adapter = None
-
-

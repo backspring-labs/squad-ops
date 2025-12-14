@@ -46,12 +46,19 @@ class TaskFilters(BaseModel):
 
 
 class TaskCreate(BaseModel):
-    """DTO for creating a new task (SIP-0048: enhanced with agent_id, task_name)"""
+    """
+    DTO for creating a new task (ACI v0.8: enhanced with lineage fields).
+    
+    All lineage fields are required. If not provided, LineageGenerator will fill them.
+    task_type and inputs are required for ACI compliance.
+    """
     task_id: str
     cycle_id: str  # SIP-0048: renamed from ecid
     agent: str  # Kept for backward compatibility
     agent_id: str | None = None  # SIP-0048: Agent identifier (use agent_id, not role normalization)
-    task_name: str | None = None  # SIP-0048: Task name/type identifier
+    task_name: str | None = None  # Optional human-readable label
+    task_type: str  # Required standardized taxonomy/behavior category (ACI)
+    inputs: dict[str, Any] = Field(default_factory=dict)  # Required structured task inputs (ACI)
     status: str = "started"
     priority: str | None = "MEDIUM"
     description: str | None = None
@@ -60,6 +67,14 @@ class TaskCreate(BaseModel):
     delegated_to: str | None = None
     phase: str | None = None
     pid: str | None = None
+    
+    # ACI Lineage fields (required, will be generated if not provided)
+    project_id: str | None = None
+    pulse_id: str | None = None
+    correlation_id: str | None = None
+    causation_id: str | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
 
 
 class Task(BaseModel):
@@ -152,4 +167,48 @@ class TaskSummary(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TaskEnvelope(BaseModel):
+    """
+    ACI Task Envelope - Contract between SquadOps runtime and agent container.
+    
+    All fields are always present (never omitted). Lineage fields may be placeholders
+    when tracing is not enabled, but must be present.
+    
+    Identity and lineage fields (task_id, correlation_id, causation_id, trace_id, span_id)
+    are immutable once created.
+    """
+    # Required identity fields
+    task_id: str
+    agent_id: str
+    cycle_id: str
+    pulse_id: str
+    project_id: str
+    task_type: str  # Standardized taxonomy/behavior category
+    inputs: dict[str, Any] = Field(default_factory=dict)  # Execution-relevant data, must be present (can be {})
+    
+    # Lineage fields (always present; may be placeholders)
+    correlation_id: str  # Cycle-scoped, stable within cycle
+    causation_id: str  # Immediate parent event/message/decision
+    trace_id: str  # Distributed tracing identifier (may be placeholder)
+    span_id: str  # Current span identifier (may be placeholder)
+    
+    # Optional fields
+    priority: str | None = None
+    timeout: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)  # Orchestration/transport info, not used for execution
+    task_name: str | None = None  # Optional human-readable label
+
+
+class TaskResult(BaseModel):
+    """
+    ACI Task Result - Terminal result from agent container execution.
+    
+    Matches ACI Section 7.2: task_id, status, outputs or error.
+    """
+    task_id: str  # Must match original envelope task_id
+    status: str  # SUCCEEDED, FAILED, or CANCELED
+    outputs: dict[str, Any] | None = None  # Present when status=SUCCEEDED
+    error: str | None = None  # Present when status=FAILED or CANCELED
 

@@ -181,22 +181,37 @@ implements:
   FROM python:3.11-slim as builder
   WORKDIR /build
   
+  # Install build dependencies
+  RUN pip install --no-cache-dir pyyaml
+  
   # Copy source code
   COPY agents/ ./agents/
   COPY scripts/dev/build_agent.py ./scripts/
   COPY config/ ./config/
   
+  # Cache buster: ensures build runs with fresh files when source changes
+  ARG CACHE_BUST=default
+  RUN echo "Build cache bust: ${CACHE_BUST}"
+  
   # Build agent package
   ARG AGENT_ROLE=qa
-  RUN python scripts/build_agent.py ${AGENT_ROLE}
+  ARG GIT_COMMIT
+  RUN GIT_COMMIT=${GIT_COMMIT} python scripts/build_agent.py ${AGENT_ROLE}
   
   # Stage 2: Runtime image
   FROM python:3.11-slim
   WORKDIR /app
   ENV SQUADOPS_BASE_PATH=/app
   
+  ARG AGENT_ROLE=qa
+  ARG BUILD_HASH=unknown
+  ARG GIT_COMMIT
+  
   # Copy assembled agent package
   COPY --from=builder /build/dist/agents/${AGENT_ROLE}/ ./
+  
+  # Set Docker label for build hash
+  LABEL squadops.build_hash="${BUILD_HASH}"
   
   # Install dependencies
   RUN pip install --no-cache-dir -r requirements.txt
@@ -206,6 +221,9 @@ implements:
   
   CMD ["python", "agent.py"]
   ```
+  
+- **Cache Busting**: The `CACHE_BUST` build arg (source file hash) ensures Docker cache invalidates when source files change
+- **Build Hash**: The `BUILD_HASH` build arg (from manifest.json) is passed as a Docker label for verification
 
 #### ✅ Special Cases
 - **Dev Role:** Add Docker CLI installation in Stage 2 (before pip install):

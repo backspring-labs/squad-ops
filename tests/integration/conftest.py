@@ -487,6 +487,10 @@ async def clean_database(postgres_container):
                     pid TEXT,
                     cycle_id TEXT,
                     agent TEXT NOT NULL,
+                    agent_id TEXT,
+                    task_name TEXT,
+                    task_type TEXT,
+                    inputs JSONB DEFAULT '{}'::jsonb,
                     phase TEXT,
                     status TEXT NOT NULL,
                     priority TEXT,
@@ -499,6 +503,13 @@ async def clean_database(postgres_container):
                     error_log TEXT,
                     delegated_by TEXT,
                     delegated_to TEXT,
+                    project_id TEXT,
+                    pulse_id TEXT,
+                    correlation_id TEXT,
+                    causation_id TEXT,
+                    trace_id TEXT,
+                    span_id TEXT,
+                    metrics JSONB,
                     created_at TIMESTAMP DEFAULT now()
                 );
                 
@@ -587,6 +598,17 @@ async def clean_database(postgres_container):
                         EXECUTE 'ALTER SEQUENCE ' || seq_name || ' RESTART WITH 1';
                     END LOOP;
                 END $$;
+            """)
+            
+            # Create permanent placeholder project for smoke tests
+            # This satisfies FK constraints without requiring per-test project creation
+            await conn.execute("""
+                INSERT INTO projects (project_id, name, description)
+                VALUES ('smoke-test-placeholder-project', 'Smoke Test Placeholder Project', 
+                        'Permanent placeholder project for ACI smoke tests')
+                ON CONFLICT (project_id) DO UPDATE
+                SET name = EXCLUDED.name,
+                    description = EXCLUDED.description;
             """)
         
         yield

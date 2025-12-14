@@ -214,9 +214,10 @@ The `scripts/dev/build_agent.py` script:
 
 ### Multi-Stage Dockerfile Pattern
 All agents use a standard multi-stage build:
-- **Stage 1 (Builder)**: Runs build script to assemble agent package
+- **Stage 1 (Builder)**: Runs build script to assemble agent package with cache-busting
 - **Stage 2 (Runtime)**: Minimal runtime image with assembled package
-- **Benefits**: No forgotten files, deterministic builds, testable, cloud compatible
+- **Cache Busting**: Uses `CACHE_BUST` build arg (source file hash) to ensure fresh builds when source changes
+- **Benefits**: No forgotten files, deterministic builds, testable, cloud compatible, reliable cache invalidation
 
 ### Build Artifacts
 - **manifest.json**: Build artifact metadata (what was built, capabilities, skills, build hash)
@@ -225,12 +226,27 @@ All agents use a standard multi-stage build:
 
 ### Usage
 ```bash
-# Build agent package
+# Build agent package locally (required before Docker build)
 python scripts/dev/build_agent.py <role>
 
-# Build Docker image
-docker build -t squadops/<agent>:latest --build-arg AGENT_ROLE=<role> -f agents/roles/<role>/Dockerfile .
+# Build Docker image with cache busting
+# The rebuild script automatically calculates source hash and passes as CACHE_BUST
+docker build -t squadops/<agent>:latest \
+  --build-arg AGENT_ROLE=<role> \
+  --build-arg CACHE_BUST=<source_hash> \
+  -f agents/roles/<role>/Dockerfile .
+
+# Recommended: Use rebuild script for all 5 core agents
+./scripts/dev/ops/rebuild_and_deploy.sh agents
 ```
+
+### Rebuild Script Features
+The `scripts/dev/ops/rebuild_and_deploy.sh` script provides:
+- **Automatic source hash calculation**: Computes hash of all source files affecting the build
+- **Cache invalidation**: Uses source hash as `CACHE_BUST` to ensure fresh builds
+- **Hash verification**: Verifies container build hash matches expected hash from manifest
+- **Auto-retry**: Automatically retries with `--no-cache` if hash mismatch detected
+- **Fail-fast**: Exits immediately if build or verification fails
 
 ### Task Adapter Architecture
 

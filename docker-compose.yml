@@ -148,6 +148,7 @@ services:
     - 8001:8001
     environment:
       POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
+      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
     networks:
     - squadnet
     depends_on:

@@ -16,6 +16,7 @@ faker>=19.0.0
 freezegun>=1.2.0
 responses>=0.23.0
 httpx>=0.24.0
+requests>=2.31.0  # HTTP client for integration tests
 
 # Database testing
 pytest-postgresql>=5.0.0

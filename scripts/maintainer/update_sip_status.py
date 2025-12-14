@@ -219,6 +219,18 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         # Move file
         try:
             shutil.move(str(sip_file), str(new_path))
+            # Verify move succeeded
+            if sip_file.exists():
+                print(f"Warning: Source file still exists after move. Attempting to remove...")
+                try:
+                    sip_file.unlink()
+                    print(f"Removed duplicate source file: {sip_file.name}")
+                except Exception as e2:
+                    print(f"Error removing duplicate source file: {e2}")
+                    return False
+            if not new_path.exists():
+                print(f"Error: Destination file not found after move: {new_path}")
+                return False
             print(f"Moved: {sip_file.name} -> {new_path.name}")
         except Exception as e:
             print(f"Error moving file: {e}")
@@ -278,6 +290,18 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
             # Ensure target directory exists
             target_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(sip_file), str(new_path))
+            # Verify move succeeded
+            if sip_file.exists():
+                print(f"Warning: Source file still exists after move. Attempting to remove...")
+                try:
+                    sip_file.unlink()
+                    print(f"Removed duplicate source file: {sip_file.name}")
+                except Exception as e2:
+                    print(f"Error removing duplicate source file: {e2}")
+                    return False
+            if not new_path.exists():
+                print(f"Error: Destination file not found after move: {new_path}")
+                return False
             print(f"Moved: {sip_file.name} -> {new_path.name}")
         except Exception as e:
             print(f"Error moving file: {e}")

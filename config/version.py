@@ -7,16 +7,16 @@
 #   python scripts/maintainer/version_cli.py update <agent> <version> [notes]
 
 # Framework Version
-SQUADOPS_VERSION = "0.7.1"
+SQUADOPS_VERSION = "0.8.0"
 
 # Agent Versions (individual agent versions)
 AGENT_VERSIONS = {
-    "max": "0.7.1",  # Real agent with local LLM
-    "neo": "0.7.1",  # Real agent with file modification capabilities
-    "nat": "0.7.1",  # Real agent - Strategy role
+    "max": "0.8.0",  # Real agent with local LLM
+    "neo": "0.8.0",  # Real agent with file modification capabilities
+    "nat": "0.8.0",  # Real agent - Strategy role
     "joi": "0.0.0",  # Mock agent
-    "data": "0.7.1", # Real agent - Data role
-    "eve": "0.7.1",  # Real agent - QA role
+    "data": "0.8.0", # Real agent - Data role
+    "eve": "0.8.0",  # Real agent - QA role
     "quark": "0.0.0", # Mock agent
     "og": "0.0.0",   # Mock agent
     "glyph": "0.0.0", # Mock agent
@@ -44,23 +44,28 @@ VERSION_HISTORY = {
         {"version": "0.2.0", "date": "2025-10-11", "llm": "llama3.1:8b", "notes": "Test coverage validation + WarmBoot run-055"},
         {"version": "0.3.0", "date": "2025-11-01", "llm": "llama3.1:8b", "notes": "Run-110: Added target_directory to task requirements, production-grade task orchestration"},
         {"version": "0.5.0", "date": "2025-11-05", "llm": "llama3.1:8b", "notes": "v0.5.0 memory integration - LanceDB semantic memory, task delegation memory recording, manifest workflow improvements"},
-        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"},
+        {"version": "0.8.0", "date": "2025-12-13", "llm": "unknown", "notes": "ACI v0.8: Strict TaskEnvelope contract, forward-only implementation"}
     ],
     "neo": [
         {"version": "0.1.0", "date": "2025-10-05", "llm": "qwen2.5:7b", "notes": "Real agent with file modification capabilities"},
         {"version": "0.2.0", "date": "2025-10-11", "llm": "qwen2.5:7b", "notes": "Test coverage validation + WarmBoot run-055"},
         {"version": "0.3.0", "date": "2025-11-01", "llm": "qwen2.5:7b", "notes": "Run-110: Fixed FileManager path combination, proper target_directory usage, production-grade file generation"},
         {"version": "0.5.0", "date": "2025-11-05", "llm": "qwen2.5:7b", "notes": "v0.5.0 memory integration - LanceDB semantic memory, build/deploy success memory recording, manifest-based workflow"},
-        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"},
+        {"version": "0.8.0", "date": "2025-12-13", "llm": "unknown", "notes": "ACI v0.8: Strict TaskEnvelope contract, forward-only implementation"}
     ],
     "nat": [
-        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"},
+        {"version": "0.8.0", "date": "2025-12-13", "llm": "unknown", "notes": "ACI v0.8: Strict TaskEnvelope contract, forward-only implementation"}
     ],
     "data": [
-        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"},
+        {"version": "0.8.0", "date": "2025-12-13", "llm": "unknown", "notes": "ACI v0.8: Strict TaskEnvelope contract, forward-only implementation"}
     ],
     "eve": [
-        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"}
+        {"version": "0.7.1", "date": "2025-12-07", "llm": "unknown", "notes": "SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation"},
+        {"version": "0.8.0", "date": "2025-12-13", "llm": "unknown", "notes": "ACI v0.8: Strict TaskEnvelope contract, forward-only implementation"}
     ]
 }
 
@@ -114,6 +119,6 @@ def rollback_agent(agent_name, target_version):
 # 0.5.X - Production deployment (enterprise features)
 # 1.0.X - Stable release (external users + Backspring validation)
 
-# Current status: 0.7.1 (SIP-Agent-Lifecycle: Agent Lifecycle FSM implementation)
+# Current status: 0.8.0 (ACI v0.8: Strict TaskEnvelope contract, forward-only implementation, lineage support, 5-agent smoke test passing)
 # Previous: 0.1.4 (Task Management System complete)
 # Next major: 0.3.0 (Multi-agent expansion with EVE, Nat, Data, HAL)

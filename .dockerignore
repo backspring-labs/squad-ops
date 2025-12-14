@@ -1,0 +1,16 @@
+.git/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+htmlcov/
+.coverage
+.pytest_cache/
+*.md
+docs/
+tests/
+warm-boot/archive/
+.DS_Store
+*.log
+

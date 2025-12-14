@@ -178,13 +178,21 @@ class DevAgent(BaseAgent):
     # _handle_build_artifact removed - build.artifact is handled via process_task
     # All build logic is in process_task methods, no duplicate code needed
 
-    async def process_task(self, task: dict[str, Any]) -> dict[str, Any]:
+    async def process_task(self, task: dict[str, Any] | Any) -> dict[str, Any]:
         """
         Process tasks using generic capability routing.
 
         Uses CapabilityLoader.get_capability_for_task() to determine capability
         based on task_type or requirements.action, then executes it generically.
+        
+        ACI v0.8: Accepts TaskEnvelope (delegates to BaseAgent) or legacy dict format.
         """
+        from agents.tasks.models import TaskEnvelope
+        
+        # ACI v0.8: If TaskEnvelope, delegate to BaseAgent.process_task
+        if isinstance(task, TaskEnvelope):
+            return await super().process_task(task)
+        
         task_id = task.get("task_id", "unknown")
         task_type = task.get("type", task.get("task_type", "unknown"))
 

@@ -1,4 +1,4 @@
-last_assigned: 49
+last_assigned: 50
 sips:
 - sip_uid: '17642554775787694'
   sip_number: 3
@@ -472,3 +472,12 @@ sips:
   approver: jladd
   created_at: '2025-12-06T22:31:20Z'
   updated_at: '2025-12-07T19:47:42.152658Z'
+- sip_uid: 01KC6VW361J91NZR3C27074XDE
+  sip_number: 50
+  title: Agent Container Interface (ACI) – Clean Specification
+  path: sips/accepted/SIP-0050-Agent-Container-Interface-ACI.md
+  status: accepted
+  author: Unknown
+  approver: jladd
+  created_at: '2025-12-09T14:30:00Z'
+  updated_at: '2025-12-11T09:08:48.781425Z'

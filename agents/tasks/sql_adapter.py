@@ -156,20 +156,49 @@ class SqlTasksAdapter(TaskAdapterBase):
         try:
             async with self.db_pool.acquire() as conn:
                 try:
+                    # ACI v0.8: Generate missing lineage fields if not provided
+                    from agents.utils.lineage_generator import LineageGenerator
+                    
+                    lineage = LineageGenerator.ensure_lineage_fields(
+                        cycle_id=task.cycle_id,
+                        task_id=task.task_id,
+                        correlation_id=getattr(task, "correlation_id", None),
+                        causation_id=getattr(task, "causation_id", None),
+                        trace_id=getattr(task, "trace_id", None),
+                        span_id=getattr(task, "span_id", None),
+                        tracing_enabled=False,
+                    )
+                    
+                    # Get project_id and pulse_id
+                    project_id = getattr(task, "project_id", None)
+                    if not project_id:
+                        # Try to get from cycle
+                        flow = await self.get_flow(task.cycle_id)
+                        if flow and flow.project_id:
+                            project_id = flow.project_id
+                        else:
+                            project_id = "project-placeholder"
+                    
+                    pulse_id = getattr(task, "pulse_id", None) or f"pulse-placeholder-{task.task_id}"
+                    task_type = getattr(task, "task_type", None) or getattr(task, "task_name", None) or "unknown"
+                    inputs = getattr(task, "inputs", None) or {}
+                    
                     now = datetime.utcnow()
                     await conn.execute(
                         """
                         INSERT INTO agent_task_log 
-                        (task_id, cycle_id, agent, agent_id, task_name, status, priority, description, start_time, 
-                         dependencies, delegated_by, delegated_to, pid, phase, metrics, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                        (task_id, cycle_id, agent, agent_id, task_name, task_type, inputs, status, priority, description, start_time, 
+                         dependencies, delegated_by, delegated_to, pid, phase, metrics, created_at,
+                         project_id, pulse_id, correlation_id, causation_id, trace_id, span_id)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
                     """,
                         task.task_id,
-                        task.cycle_id,  # SIP-0048: renamed from ecid
-                        task.agent,  # Kept for backward compatibility
-                        getattr(task, "agent_id", None)
-                        or task.agent,  # SIP-0048: use agent_id, fallback to agent
-                        getattr(task, "task_name", None),  # SIP-0048: new field
+                        task.cycle_id,
+                        task.agent,
+                        getattr(task, "agent_id", None) or task.agent,
+                        getattr(task, "task_name", None),
+                        task_type,
+                        json.dumps(inputs),
                         task.status,
                         task.priority,
                         task.description,
@@ -179,10 +208,14 @@ class SqlTasksAdapter(TaskAdapterBase):
                         task.delegated_to,
                         task.pid,
                         task.phase,
-                        json.dumps(
-                            getattr(task, "metrics", None) or {}
-                        ),  # SIP-0048: new field (use getattr for TaskCreate compatibility)
+                        json.dumps(getattr(task, "metrics", None) or {}),
                         now,
+                        project_id,
+                        pulse_id,
+                        lineage["correlation_id"],
+                        lineage["causation_id"],
+                        lineage["trace_id"],
+                        lineage["span_id"],
                     )
                     result = await self.get_task(task.task_id)
                     if not result:
@@ -599,10 +632,11 @@ class SqlTasksAdapter(TaskAdapterBase):
         eta: str | None = None,
         agent_name: str | None = None,
     ) -> dict[str, Any]:
-        """Update task status in task_status table"""
+        """Update task status in task_status table and agent_task_log.status"""
         try:
             async with self.db_pool.acquire() as conn:
                 now = datetime.utcnow()
+                # Update task_status table
                 await conn.execute(
                     """
                     INSERT INTO task_status 
@@ -622,6 +656,17 @@ class SqlTasksAdapter(TaskAdapterBase):
                     progress,
                     eta,
                     now,
+                )
+                # Also update agent_task_log.status (normalize to lowercase for consistency)
+                normalized_status = status.lower()
+                await conn.execute(
+                    """
+                    UPDATE agent_task_log 
+                    SET status = $1
+                    WHERE task_id = $2
+                """,
+                    normalized_status,
+                    task_id,
                 )
                 return await self.get_task_status(task_id) or {}
         except (TaskAdapterError, TaskNotFoundError):

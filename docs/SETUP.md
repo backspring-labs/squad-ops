@@ -130,14 +130,35 @@ SquadOps uses a **build-time assembly approach** for creating agent containers:
 #### Build Process Details
 
 - **Build Script** (`scripts/dev/build_agent.py`): Automatically resolves dependencies from `config.yaml`, assembles only required files
-- **Multi-Stage Build**: Stage 1 runs build script, Stage 2 creates minimal runtime image
+- **Multi-Stage Build**: Stage 1 runs build script with cache-busting, Stage 2 creates minimal runtime image
+- **Cache Busting**: Source file hash passed as `CACHE_BUST` build arg ensures Docker cache invalidates when source changes
 - **Build Artifacts**: Generates `manifest.json` (build metadata) and `agent_info.json` (runtime identity)
 - **Deterministic Builds**: SHA256 build hash ensures reproducible builds
+- **Hash Verification**: Rebuild script verifies container hash matches expected hash, auto-retries with `--no-cache` on mismatch
+
+#### Rebuild and Deploy Script
+
+The recommended way to rebuild agents:
+```bash
+# Rebuild all 5 core agents (max, nat, neo, eve, data)
+./scripts/dev/ops/rebuild_and_deploy.sh agents
+
+# Force rebuild without cache
+FORCE_REBUILD=1 ./scripts/dev/ops/rebuild_and_deploy.sh agents
+```
+
+The script:
+1. Builds agent packages locally (required)
+2. Calculates source file hash for cache busting
+3. Builds Docker images with `CACHE_BUST` and `BUILD_HASH` args
+4. Verifies container build hash matches expected hash
+5. Auto-retries with `--no-cache` if verification fails
+6. Fails immediately if build or verification errors occur
 
 #### Special Cases
 
-- **Dev Role**: Requires Docker CLI installation (for Docker-in-Docker operations
-- **All Agents**: Use standard multi-stage pattern with build script
+- **Dev Role**: Requires Docker CLI installation (for Docker-in-Docker operations)
+- **All Agents**: Use standard multi-stage pattern with build script and cache-busting
 
 ## Troubleshooting
 
