@@ -42,7 +42,7 @@ class TestBaseAgent:
     @pytest.mark.unit
     def test_agent_initialization(self, mock_unified_config):
         """Test agent initialization with basic parameters"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             assert agent.name == "test-agent"
@@ -83,7 +83,7 @@ class TestBaseAgent:
         self, mock_database, mock_redis, mock_rabbitmq, mock_unified_config
     ):
         """Test agent startup sequence"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             # Mock the actual connections BaseAgent creates
@@ -162,7 +162,7 @@ class TestBaseAgent:
     @pytest.mark.asyncio
     async def test_update_task_status(self, mock_unified_config):
         """Test task status updates via Task API"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
             agent.runtime_api_url = "http://runtime-api:8001"  # SIP-0048: renamed from task_api_url
 
@@ -199,7 +199,7 @@ class TestBaseAgent:
     @pytest.mark.asyncio
     async def test_handle_agent_request(self, mock_unified_config):
         """Test handle_agent_request method"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             request = create_sample_agent_request(
@@ -217,7 +217,7 @@ class TestBaseAgent:
     @pytest.mark.asyncio
     async def test_handle_agent_request_with_validation_error(self, mock_unified_config):
         """Test handle_agent_request with invalid request"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             # Create request with missing required metadata
@@ -235,7 +235,7 @@ class TestBaseAgent:
         """Test that process_task with TaskEnvelope calls handle_agent_request"""
         from agents.tasks.models import TaskEnvelope
 
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             # ACI v0.8: process_task now requires TaskEnvelope
@@ -325,7 +325,7 @@ class TestBaseAgent:
     async def test_send_heartbeat(self, mock_unified_config):
         """Test heartbeat sending via Task API"""
         with (
-            patch("config.unified_config.get_config", return_value=mock_unified_config),
+            patch("infra.config.loader.load_config", return_value=mock_unified_config),
             patch("agents.base_agent.get_agent_version", return_value="1.0.0"),
         ):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
@@ -675,7 +675,7 @@ class TestBaseAgent:
     @pytest.mark.asyncio
     async def test_agent_run_initialization(self, mock_unified_config):
         """Test agent run initialization and queue setup"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             mock_channel = AsyncMock()
@@ -1288,7 +1288,7 @@ class TestBaseAgent:
     @pytest.mark.unit
     def test_load_agent_info_missing_file(self, mock_unified_config):
         """Test that _load_agent_info handles missing file gracefully"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             # Should return None without exception
@@ -1301,7 +1301,7 @@ class TestBaseAgent:
         import json
         from pathlib import Path
 
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             # Create agent_info.json at Docker path
@@ -1328,7 +1328,7 @@ class TestBaseAgent:
     @pytest.mark.unit
     def test_detect_runtime_env(self, mock_unified_config):
         """Test runtime environment detection"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             runtime_env = agent._detect_runtime_env()
@@ -1342,7 +1342,7 @@ class TestBaseAgent:
     @pytest.mark.unit
     def test_get_container_hash(self, mock_unified_config):
         """Test container hash detection"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             # Test with HOSTNAME env var
@@ -1360,7 +1360,7 @@ class TestBaseAgent:
     def test_fill_agent_info(self, mock_unified_config):
         """Test filling runtime fields in agent_info"""
 
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             agent_info_template = {
@@ -1387,7 +1387,7 @@ class TestBaseAgent:
     @pytest.mark.asyncio
     async def test_announce_agent_online(self, mock_unified_config):
         """Test agent_online announcement"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             agent_info = {
@@ -1416,7 +1416,7 @@ class TestBaseAgent:
     ):
         """Test that initialize() loads and processes agent_info.json"""
 
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             # Mock agent_info.json exists
@@ -1453,7 +1453,7 @@ class TestBaseAgent:
         self, mock_database, mock_redis, mock_rabbitmq, mock_unified_config
     ):
         """Test that initialize() works without agent_info.json (backward compatibility)"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             async def mock_create_pool(*args, **kwargs):
@@ -1485,7 +1485,7 @@ class TestBaseAgent:
         """Test that structured logging emits agent_runtime_identity event (Recommended)"""
         from agents.base_agent import logger
 
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
             agent_info_data = {

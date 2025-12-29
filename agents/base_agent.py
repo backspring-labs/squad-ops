@@ -217,18 +217,28 @@ class BaseAgent(ABC):
         self._lifecycle_hooks = LifecycleHookManager(event_emitter=self._event_emitter)
         self.sql_adapter = None  # SqlAdapter for Squad Memory Pool promotion
 
-        # Initialize unified configuration
-        from config.unified_config import get_config
+        # Initialize centralized configuration (SIP-051)
+        import os
+        from infra.config.loader import load_config
 
-        self.config = get_config()
+        strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+        self.config = load_config(strict=strict_mode)
 
-        # Configuration from unified config manager
-        self.rabbitmq_url = self.config.get_rabbitmq_url()
-        self.postgres_url = self.config.get_postgres_url()
-        self.redis_url = self.config.get_redis_url()
-        self.runtime_api_url = (
-            self.config.get_runtime_api_url()
-        )  # SIP-0048: renamed from task_api_url
+        # Log configuration at startup (SIP-051 requirement)
+        from infra.config.redaction import redact_config
+        from infra.config.fingerprint import config_fingerprint
+        config_dict = self.config.model_dump()
+        redacted_config = redact_config(config_dict)
+        fingerprint = config_fingerprint(redacted_config)
+        profile = getattr(self.config, '_profile', 'local')
+        logger.info(f"Configuration profile: {profile} (strict={strict_mode})")
+        logger.info(f"Configuration fingerprint: {fingerprint}")
+
+        # Configuration from AppConfig model
+        self.rabbitmq_url = self.config.comms.rabbitmq.url
+        self.postgres_url = self.config.db.url
+        self.redis_url = self.config.comms.redis.url
+        self.runtime_api_url = self.config.runtime_api_url  # SIP-0048: renamed from task_api_url
 
         # Initialize TaskLogger (SIP-0048) - unified task logging helper
         from agents.utils.task_logger import TaskLogger
@@ -461,8 +471,8 @@ class BaseAgent(ABC):
                 try:
                     from agents.cycle_data import CycleDataStore
 
-                    # Get cycle_data_root from config or use default
-                    cycle_data_root = Path(os.getenv("CYCLE_DATA_ROOT", "/app/cycle_data"))
+                    # Get cycle_data_root from config (SIP-051)
+                    cycle_data_root = self.config.cycle_data.root
                     project_id = getattr(
                         self, "_current_project_id", "warmboot_selftest"
                     )  # Default project
@@ -904,9 +914,18 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
             cycle_id = envelope.cycle_id or "unknown"
         elif isinstance(envelope, dict):
             # Legacy fallback for memory context only
-            pid = envelope.get("pid") or envelope.get("context", {}).get("pid") or "unknown"
+            # Check top-level, context dict, and payload dict
+            pid = (
+                envelope.get("pid")
+                or envelope.get("context", {}).get("pid")
+                or envelope.get("payload", {}).get("pid")
+                or "unknown"
+            )
             cycle_id = (
-                envelope.get("cycle_id") or envelope.get("context", {}).get("cycle_id") or "unknown"
+                envelope.get("cycle_id")
+                or envelope.get("context", {}).get("cycle_id")
+                or envelope.get("payload", {}).get("cycle_id")
+                or "unknown"
             )
         else:
             pid = "unknown"
@@ -1442,8 +1461,8 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                 except Exception as e:
                     logger.debug(f"{self.name} failed to get memory count: {e}")
 
-            # Use health-check service URL (defaults to health-check:8000 if HEALTH_CHECK_URL not set)
-            health_check_url = os.getenv("HEALTH_CHECK_URL", "http://health-check:8000")
+            # Use health-check service URL from config
+            health_check_url = self.config.observability.health_check.url
 
             # Send only operational data - health-check will use instances.yaml for display metadata
             # SIP-Agent-Lifecycle: Send agent_id and lifecycle_state (NOT status or network_status)
@@ -1985,7 +2004,7 @@ Your reasoning style is {role_definition.reasoning_style}. {reasoning_explanatio
                                 start_metrics_server = None
 
                         if start_metrics_server:
-                            prometheus_port = int(os.getenv("PROMETHEUS_METRICS_PORT", "8888"))
+                            prometheus_port = self.config.telemetry.prometheus_port
                             self.metrics_server = await start_metrics_server(
                                 port=prometheus_port,
                                 meter_provider=getattr(

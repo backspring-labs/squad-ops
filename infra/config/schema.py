@@ -1,0 +1,258 @@
+"""
+Pydantic models for SquadOps configuration schema.
+"""
+
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
+
+
+class TasksBackend(str, Enum):
+    """Task backend selection."""
+
+    SQL = "sql"
+    PREFECT = "prefect"
+
+
+class DBConfig(BaseModel):
+    """Database configuration."""
+
+    url: str = Field(..., description="PostgreSQL connection URL")
+    pool_size: int = Field(default=5, ge=1, le=100, description="Connection pool size")
+    max_overflow: int = Field(default=10, ge=0, description="Max pool overflow connections")
+    pool_timeout: int = Field(default=30, ge=1, description="Pool timeout in seconds")
+    echo: bool = Field(default=False, description="Enable SQL query logging")
+
+
+class RabbitMQConfig(BaseModel):
+    """RabbitMQ configuration."""
+
+    url: str = Field(..., description="RabbitMQ connection URL (amqp://...)")
+    host: str = Field(default="rabbitmq", description="RabbitMQ host")
+    port: int = Field(default=5672, ge=1, le=65535, description="RabbitMQ port")
+    user: str = Field(default="squadops", description="RabbitMQ username")
+    password: str | None = Field(default=None, description="RabbitMQ password (use secret:// reference)")
+    vhost: str = Field(default="/", description="RabbitMQ virtual host")
+
+
+class RedisConfig(BaseModel):
+    """Redis configuration."""
+
+    url: str = Field(..., description="Redis connection URL (redis://...)")
+    host: str = Field(default="redis", description="Redis host")
+    port: int = Field(default=6379, ge=1, le=65535, description="Redis port")
+    db: int = Field(default=0, ge=0, description="Redis database number")
+
+
+class CommsConfig(BaseModel):
+    """Communication services configuration."""
+
+    rabbitmq: RabbitMQConfig = Field(..., description="RabbitMQ configuration")
+    redis: RedisConfig = Field(..., description="Redis configuration")
+
+
+class SecretsConfig(BaseModel):
+    """Secrets management configuration (placeholder for future SIP)."""
+
+    provider: str = Field(default="env", description="Secrets provider (env, vault, etc.)")
+    # Additional fields will be added by future SIP-SECRETS-MANAGEMENT
+
+
+class AuthConfig(BaseModel):
+    """Authentication configuration (placeholder for future SIP)."""
+
+    enabled: bool = Field(default=False, description="Enable authentication")
+    # Additional fields will be added by future auth SIP
+
+
+class PrefectConfig(BaseModel):
+    """Prefect orchestration configuration."""
+
+    api_url: str = Field(default="http://prefect-server:4200/api", description="Prefect API URL")
+    api_key: str | None = Field(default=None, description="Prefect API key (use secret:// reference)")
+    timeout: int = Field(default=30, ge=1, description="Prefect API timeout in seconds")
+
+
+class LLMConfig(BaseModel):
+    """LLM provider configuration."""
+
+    url: str = Field(default="http://host.docker.internal:11434", description="LLM API URL (Ollama)")
+    model: str | None = Field(default=None, description="Default LLM model name")
+    use_local: bool = Field(default=True, description="Use local LLM provider")
+    timeout: int = Field(default=60, ge=1, description="LLM request timeout in seconds")
+
+
+class AgentConfig(BaseModel):
+    """Agent-specific configuration."""
+
+    id: str = Field(default="unknown_agent", description="Agent identifier")
+    role: str = Field(default="unknown", description="Agent role")
+    display_name: str | None = Field(default=None, description="Agent display name")
+    instances_file: Path = Field(default=Path("agents/instances/instances.yaml"), description="Agent instances file path")
+    heartbeat_timeout_window: int = Field(default=90, ge=1, description="Heartbeat timeout window in seconds")
+    reconciliation_interval: int = Field(default=45, ge=1, description="Reconciliation interval in seconds")
+
+    @field_validator("instances_file", mode="before")
+    @classmethod
+    def validate_instances_file_path(cls, v: Any) -> Any:
+        """Convert string paths to Path objects."""
+        if isinstance(v, str):
+            return Path(v)
+        return v
+
+
+class CycleDataConfig(BaseModel):
+    """Cycle data storage configuration."""
+
+    root: Path = Field(default=Path("cycle_data"), description="Root directory for cycle data")
+
+
+class AWSTelemetryConfig(BaseModel):
+    """AWS-specific telemetry configuration."""
+
+    region: str | None = Field(default=None, description="AWS region")
+    cloudwatch_logs_group: str = Field(default="squadops/agents", description="CloudWatch logs group")
+    xray_tracing_enabled: bool = Field(default=True, description="Enable X-Ray tracing")
+
+
+class AzureTelemetryConfig(BaseModel):
+    """Azure-specific telemetry configuration."""
+
+    connection_string: str | None = Field(default=None, description="Azure connection string")
+    instrumentation_key: str | None = Field(default=None, description="Azure instrumentation key")
+
+
+class GCPTelemetryConfig(BaseModel):
+    """GCP-specific telemetry configuration."""
+
+    project_id: str | None = Field(default=None, description="GCP project ID")
+    credentials_path: str | None = Field(default=None, description="Path to GCP credentials JSON")
+
+
+class TelemetryConfig(BaseModel):
+    """Telemetry and observability configuration."""
+
+    backend: str | None = Field(default=None, description="Telemetry backend override (opentelemetry, aws, azure, gcp)")
+    otlp_endpoint: str | None = Field(default=None, description="OTLP exporter endpoint")
+    prometheus_port: int = Field(default=8888, ge=1, le=65535, description="Prometheus metrics port")
+    aws: AWSTelemetryConfig | None = Field(default=None, description="AWS telemetry config")
+    azure: AzureTelemetryConfig | None = Field(default=None, description="Azure telemetry config")
+    gcp: GCPTelemetryConfig | None = Field(default=None, description="GCP telemetry config")
+
+
+class ServiceConfig(BaseModel):
+    """Generic service URL configuration."""
+
+    url: str = Field(..., description="Service URL")
+
+
+class OTelConfig(BaseModel):
+    """OpenTelemetry Collector configuration."""
+
+    url: str = Field(default="http://otel-collector:4318", description="OTLP endpoint URL")
+    health_url: str = Field(default="http://otel-collector:13133", description="Health check URL")
+    zpages_url: str = Field(default="http://otel-collector:55679", description="ZPages URL")
+    version: str | None = Field(default=None, description="OTel Collector version")
+
+
+class ObservabilityConfig(BaseModel):
+    """Observability service URLs for health checks."""
+
+    prometheus: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://prometheus:9090"))
+    grafana: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://grafana:3000"))
+    otel: OTelConfig = Field(default_factory=OTelConfig)
+    health_check: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://health-check:8000"), description="Health check service URL")
+
+
+class FileManagerConfig(BaseModel):
+    """File manager configuration."""
+
+    allowed_extensions: list[str] = Field(
+        default_factory=lambda: [".md", ".py", ".js", ".html", ".css", ".json", ".yaml", ".yml"],
+        description="Allowed file extensions",
+    )
+    max_file_size: int = Field(default=10485760, ge=1, description="Maximum file size in bytes (10MB)")
+
+
+class DockerConfig(BaseModel):
+    """Docker deployment configuration."""
+
+    network_name: str = Field(default="squad-ops_squadnet", description="Docker network name")
+    default_port: int = Field(default=8080, ge=1, le=65535, description="Default application port")
+    restart_policy: str = Field(default="unless-stopped", description="Docker restart policy")
+
+
+class DeploymentConfig(BaseModel):
+    """Deployment and infrastructure tooling configuration."""
+
+    file_manager: FileManagerConfig = Field(default_factory=FileManagerConfig)
+    docker: DockerConfig = Field(default_factory=DockerConfig)
+    warm_boot_dir: Path = Field(default=Path("/app/warm-boot"), description="Warm boot directory")
+
+    @field_validator("warm_boot_dir", mode="before")
+    @classmethod
+    def validate_warm_boot_dir_path(cls, v: Any) -> Any:
+        """Convert string paths to Path objects."""
+        if isinstance(v, str):
+            return Path(v)
+        return v
+
+
+class AppConfig(BaseModel):
+    """Main application configuration model."""
+
+    # Core infrastructure
+    db: DBConfig = Field(..., description="Database configuration")
+    comms: CommsConfig = Field(..., description="Communication services configuration")
+
+    # Runtime API
+    runtime_api_url: str = Field(default="http://runtime-api:8001", description="Runtime API URL")
+
+    # Task management
+    tasks_backend: TasksBackend = Field(default=TasksBackend.PREFECT, description="Task backend selection")
+
+    # Secrets and auth (placeholders)
+    secrets: SecretsConfig = Field(default_factory=SecretsConfig, description="Secrets management configuration")
+    auth: AuthConfig = Field(default_factory=AuthConfig, description="Authentication configuration")
+
+    # Orchestration
+    prefect: PrefectConfig = Field(default_factory=PrefectConfig, description="Prefect configuration")
+
+    # LLM
+    llm: LLMConfig = Field(default_factory=LLMConfig, description="LLM configuration")
+
+    # Agent
+    agent: AgentConfig = Field(default_factory=AgentConfig, description="Agent configuration")
+
+    # Cycle data
+    cycle_data: CycleDataConfig = Field(default_factory=CycleDataConfig, description="Cycle data configuration")
+
+    # Telemetry
+    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig, description="Telemetry configuration")
+
+    # Observability
+    observability: ObservabilityConfig = Field(
+        default_factory=ObservabilityConfig, description="Observability service URLs"
+    )
+
+    # Deployment
+    deployment: DeploymentConfig = Field(default_factory=DeploymentConfig, description="Deployment tooling configuration")
+
+    @field_validator("cycle_data", mode="before")
+    @classmethod
+    def validate_cycle_data_path(cls, v: Any) -> Any:
+        """Convert string paths to Path objects."""
+        if isinstance(v, dict) and "root" in v and isinstance(v["root"], str):
+            v["root"] = Path(v["root"])
+        return v
+
+    class Config:
+        """Pydantic model configuration."""
+
+        # Forbid extra fields - unknown keys will cause validation errors
+        extra = "forbid"
+        validate_assignment = True
+        use_enum_values = True
+

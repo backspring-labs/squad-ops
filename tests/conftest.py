@@ -349,30 +349,58 @@ def mock_lead_agent():
 
 @pytest.fixture
 def mock_unified_config():
-    """Mock unified configuration for testing"""
-    mock_config = MagicMock()
+    """Mock unified configuration for testing (SIP-051: AppConfig-based)"""
+    from infra.config.schema import AppConfig, DBConfig, CommsConfig, RabbitMQConfig, RedisConfig, AgentConfig, LLMConfig
     
-    # Mock infrastructure URLs
-    mock_config.get_rabbitmq_url.return_value = 'amqp://test:test@localhost:5672/'
-    mock_config.get_postgres_url.return_value = 'postgresql://test:test@localhost:5432/squadops'
-    mock_config.get_redis_url.return_value = 'redis://localhost:6379'
-    mock_config.get_runtime_api_url.return_value = 'http://runtime-api:8001'  # SIP-0048: renamed from get_task_api_url
+    # Create a proper AppConfig mock
+    mock_config = MagicMock(spec=AppConfig)
     
-    # Mock agent config
-    mock_config.get_agent_id.return_value = 'test-agent'
-    mock_config.get_agent_role.return_value = 'test'
-    mock_config.get_agent_display_name.return_value = 'Test Agent'
+    # Mock DB config
+    mock_config.db = MagicMock(spec=DBConfig)
+    mock_config.db.url = 'postgresql://test:test@localhost:5432/squadops'
+    mock_config.db.pool_size = 5
+    
+    # Mock Comms config
+    mock_config.comms = MagicMock(spec=CommsConfig)
+    mock_config.comms.rabbitmq = MagicMock(spec=RabbitMQConfig)
+    mock_config.comms.rabbitmq.url = 'amqp://test:test@localhost:5672/'
+    mock_config.comms.redis = MagicMock(spec=RedisConfig)
+    mock_config.comms.redis.url = 'redis://localhost:6379'
+    
+    # Mock Runtime API URL
+    mock_config.runtime_api_url = 'http://runtime-api:8001'
+    
+    # Mock Agent config
+    mock_config.agent = MagicMock(spec=AgentConfig)
+    mock_config.agent.id = 'test-agent'
+    mock_config.agent.role = 'test'
+    mock_config.agent.display_name = 'Test Agent'
     
     # Mock LLM config
-    mock_config.get_llm_config.return_value = {
-        'url': 'http://localhost:11434',
-        'model': 'test-model',
-        'use_local': True,
-        'timeout': 60
-    }
-    mock_config.get_ollama_url.return_value = 'http://localhost:11434'
-    mock_config.get_agent_model.return_value = 'test-model'
-    mock_config.get_use_local_llm.return_value = True
+    mock_config.llm = MagicMock(spec=LLMConfig)
+    mock_config.llm.url = 'http://localhost:11434'
+    mock_config.llm.model = 'test-model'
+    mock_config.llm.use_local = True
+    mock_config.llm.timeout = 60
+    
+    # Mock Telemetry config
+    from infra.config.schema import TelemetryConfig
+    from pathlib import Path
+    mock_config.telemetry = MagicMock(spec=TelemetryConfig)
+    mock_config.telemetry.backend = 'null'
+    mock_config.telemetry.otlp_endpoint = None
+    mock_config.telemetry.prometheus_port = 8888
+    
+    # Mock Observability config (including health_check)
+    from infra.config.schema import ObservabilityConfig, ServiceConfig
+    mock_config.observability = MagicMock(spec=ObservabilityConfig)
+    mock_config.observability.health_check = MagicMock(spec=ServiceConfig)
+    mock_config.observability.health_check.url = 'http://health-check:8000'
+    
+    # Mock CycleData config
+    from infra.config.schema import CycleDataConfig
+    mock_config.cycle_data = MagicMock(spec=CycleDataConfig)
+    mock_config.cycle_data.root = Path('/tmp/test-cycle-data')
     
     return mock_config
 

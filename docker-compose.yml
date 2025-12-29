@@ -187,16 +187,10 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-max
     environment:
-      AGENT_ID: max
-      AGENT_ROLE: lead
-      AGENT_DISPLAY_NAME: Max
-      USE_LOCAL_LLM: "true"
-      OLLAMA_URL: http://host.docker.internal:11434
+      SQUADOPS__AGENT__ID: max
+      SQUADOPS_PROFILE: dev
       # Note: Mem0 1.0.0 may require OPENAI_API_KEY env var even when using Ollama
       # Per MEM0-LOCAL-EMBEDDINGS-GUIDE.md - guide may be for different Mem0 version
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
     volumes:
       - ./warm-boot:/app/warm-boot
       - max_memory_data:/app/data/memory_db
@@ -218,12 +212,8 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-nat
     environment:
-      AGENT_ID: nat
-      AGENT_ROLE: strat
-      AGENT_DISPLAY_NAME: Nat
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
+      SQUADOPS__AGENT__ID: nat
+      SQUADOPS_PROFILE: dev
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -242,12 +232,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-glyph
     environment:
-      AGENT_ID: glyph
-      AGENT_ROLE: creative
-      AGENT_DISPLAY_NAME: Glyph
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
+      SQUADOPS__AGENT__ID: glyph
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -266,16 +251,10 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-neo
     environment:
-      AGENT_ID: neo
-      AGENT_ROLE: dev
-      AGENT_DISPLAY_NAME: Neo
-      USE_LOCAL_LLM: "true"
-      OLLAMA_URL: http://host.docker.internal:11434
+      SQUADOPS__AGENT__ID: neo
+      SQUADOPS_PROFILE: dev
       # Note: Mem0 1.0.0 may require OPENAI_API_KEY env var even when using Ollama
       # Per MEM0-LOCAL-EMBEDDINGS-GUIDE.md - guide may be for different Mem0 version
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
     volumes:
       - ./warm-boot:/app/warm-boot
       - ./docker-compose.yml:/app/docker-compose.yml
@@ -299,14 +278,8 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-eve
     environment:
-      AGENT_ID: eve
-      AGENT_ROLE: qa
-      AGENT_DISPLAY_NAME: EVE
-      USE_LOCAL_LLM: "true"
-      OLLAMA_URL: http://host.docker.internal:11434
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
+      SQUADOPS__AGENT__ID: eve
+      SQUADOPS_PROFILE: dev
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -325,15 +298,8 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-data
     environment:
-      AGENT_ID: data
-      AGENT_ROLE: data
-      AGENT_DISPLAY_NAME: Data
-      USE_LOCAL_LLM: "true"
-      OLLAMA_URL: http://host.docker.internal:11434
-      RUNTIME_API_URL: http://runtime-api:8001  # SIP-0048: renamed from TASK_API_URL
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
+      SQUADOPS__AGENT__ID: data
+      SQUADOPS_PROFILE: dev
     volumes:
       - ./warm-boot:/app/warm-boot
       - data_memory_data:/app/data/memory_db
@@ -357,12 +323,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-quark
     environment:
-      AGENT_ID: quark
-      AGENT_ROLE: finance
-      AGENT_DISPLAY_NAME: Quark
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
+      SQUADOPS__AGENT__ID: quark
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -381,12 +342,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-joi
     environment:
-      AGENT_ID: joi
-      AGENT_ROLE: comms
-      AGENT_DISPLAY_NAME: Joi
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
+      SQUADOPS__AGENT__ID: joi
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -405,12 +361,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-og
     environment:
-      AGENT_ID: og
-      AGENT_ROLE: curator
-      AGENT_DISPLAY_NAME: Og
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
+      SQUADOPS__AGENT__ID: og
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -429,12 +380,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
     container_name: squadops-hal
     environment:
-      AGENT_ID: hal
-      AGENT_ROLE: audit
-      AGENT_DISPLAY_NAME: HAL
-      RABBITMQ_URL: amqp://squadops:squadops123@rabbitmq:5672/
-      POSTGRES_URL: postgresql://squadops:squadops123@postgres:5432/squadops
-      REDIS_URL: redis://redis:6379
+      SQUADOPS__AGENT__ID: hal
     depends_on:
       rabbitmq:
         condition: service_healthy
