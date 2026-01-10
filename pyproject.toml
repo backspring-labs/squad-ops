@@ -2,6 +2,12 @@
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [project]
 name = "squadops"
 version = "0.0.1"
@@ -33,6 +39,7 @@ extend-exclude = [
     "docs",
     "htmlcov",
     "scripts/dev/migrations",
+    "_v0_legacy",
 ]
 
 [tool.ruff.lint]
@@ -68,7 +75,7 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 asyncio_mode = "auto"
-pythonpath = ["."]
+pythonpath = ["src"]
 
 markers = [
     "unit: Unit tests for individual components",
@@ -88,10 +95,7 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = [
-  "agents",
-  "config",
-  "infra/runtime-api",  # SIP-0048: renamed from task-api
-  "infra/health-check",
+  "src/squadops",
   "scripts",
 ]
 omit = [
@@ -103,6 +107,7 @@ omit = [
   "htmlcov/*",
   "sips/*",
   "docs/*",
+  "_v0_legacy/*",
 ]
 
 [tool.coverage.report]

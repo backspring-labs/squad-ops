@@ -1,6 +1,6 @@
-last_assigned: 52
+last_assigned: 53
 sips:
-- sip_uid: '17642554775787694'
+- sip_uid: '17642554775814171'
   sip_number: 3
   title: -SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol
   path: sips/deprecated/SIP-0003-v2-Paperclip-Protocol-Squad-Passive-Income-Flipping.md
@@ -9,18 +9,8 @@ sips:
   approver: None
   created_at: '2025-10-03T18:44:56.922290Z'
   updated_at: '2025-11-28T15:50:37.004438Z'
-  variant: null
-- sip_uid: '17642554775814171'
-  sip_number: 3
-  title: -SIP-00X-Paperclip-Protocol-Squad-Passive-Income-Flipping
-  path: sips/accepted/SIP-0003-v2-Paperclip-Protocol-Squad-Passive-Income-Flipping.md
-  status: accepted
-  author: Unknown
-  approver: None
-  created_at: bankroll.
-  updated_at: '2025-11-27T10:12:48.876482Z'
-  variant: 2
-- sip_uid: '17642554775828094'
+  variant: v3
+- sip_uid: '17642554775827032'
   sip_number: 4
   title: -SIP-004-Continuous-Adaptation-Protocol-CAP
   path: sips/deprecated/SIP-0004-v2-Continuous-Adaptation-Protocol-CAP.md
@@ -29,18 +19,8 @@ sips:
   approver: None
   created_at: '2025-10-03T18:44:56.923175Z'
   updated_at: '2025-11-28T15:50:37.892222Z'
-  variant: null
-- sip_uid: '17642554775827032'
-  sip_number: 4
-  title: Continuous-Adaptation-Protocol-CAP
-  path: sips/accepted/SIP-0004-v2-Continuous-Adaptation-Protocol-CAP.md
-  status: accepted
-  author: Unknown
-  approver: None
-  created_at: '2025-10-03T18:44:56.922945Z'
-  updated_at: '2025-11-27T10:12:48.878051Z'
-  variant: 2
-- sip_uid: '17642554775827020'
+  variant: v3
+- sip_uid: '17642554775832227'
   sip_number: 5
   title: -SIP-005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA
   path: sips/deprecated/SIP-0005-v2-Four-Layer-Metrics-RCA-Role-First.md
@@ -49,47 +29,17 @@ sips:
   approver: None
   created_at: '2025-10-03T18:44:56.923409Z'
   updated_at: '2025-11-28T15:52:39.980459Z'
-  variant: null
-- sip_uid: '17642554775832227'
-  sip_number: 5
-  title: Four-Layer-Metrics-RCA-Role-First
-  path: sips/accepted/SIP-0005-v2-Four-Layer-Metrics-RCA-Role-First.md
-  status: accepted
-  author: Unknown
-  approver: None
-  created_at: '2025-10-03T18:44:56.923652Z'
-  updated_at: '2025-11-27T10:12:48.879470Z'
-  variant: 2
-- sip_uid: '17642554775836297'
+  variant: v3
+- sip_uid: '17642554775836826'
   sip_number: 6
   title: -SIP-006-Warm-Boot-Analysis-Protocol-WBA
   path: sips/deprecated/SIP-0006-v3-Warm-Boot-Analysis-WBA.md
   status: deprecated
   author: Unknown
   approver: None
-  created_at: customer response heuristics.
-  updated_at: '2025-11-28T15:53:50.638088Z'
-  variant: null
-- sip_uid: '17642554775833100'
-  sip_number: 6
-  title: -SIP-0061-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode
-  path: sips/accepted/SIP-0006-v2-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode.md
-  status: accepted
-  author: Unknown
-  approver: None
-  created_at: FBA integration for better fulfillment tracking.
-  updated_at: '2025-11-27T10:12:48.880594Z'
-  variant: 2
-- sip_uid: '17642554775836826'
-  sip_number: 6
-  title: Warm-Boot-Analysis-WBA
-  path: sips/accepted/SIP-0006-v3-Warm-Boot-Analysis-WBA.md
-  status: accepted
-  author: Unknown
-  approver: None
   created_at: '2025-10-03T18:44:56.924084Z'
-  updated_at: '2025-11-27T10:12:48.881166Z'
-  variant: 3
+  updated_at: '2025-11-28T15:53:50.638088Z'
+  variant: v4
 - sip_uid: '17642554775849882'
   sip_number: 7
   title: -SIP-007-Armory-Protocol-Tool-Registry
@@ -107,7 +57,7 @@ sips:
   status: accepted
   author: Unknown
   approver: None
-  created_at: '**Role DNA** (baseline) or **Instance DNA** (delta) as needed (SIP-004).'
+  created_at: '2025-11-27T10:12:48.882287Z'
   updated_at: '2025-11-27T10:12:48.882287Z'
   variant: null
 - sip_uid: '17642554775845965'
@@ -117,9 +67,9 @@ sips:
   status: accepted
   author: Unknown
   approver: None
-  created_at: presence + expiry window (<7d → Warning, expired → Blocking).
+  created_at: '2025-11-27T10:12:48.882894Z'
   updated_at: '2025-11-27T10:12:48.882894Z'
-  variant: null
+  variant: v1
 - sip_uid: '17642554775858522'
   sip_number: 10
   title: Toolset-Readiness-Validation
@@ -127,7 +77,7 @@ sips:
   status: accepted
   author: Unknown
   approver: None
-  created_at: not expired (check TTL/expiry metadata).
+  created_at: '2025-11-27T10:12:48.883423Z'
   updated_at: '2025-11-27T10:12:48.883423Z'
   variant: 2
 - sip_uid: '17642554775857273'
@@ -137,7 +87,7 @@ sips:
   status: accepted
   author: Unknown
   approver: None
-  created_at: patterns in requirements doc.
+  created_at: '2025-11-27T10:12:48.883929Z'
   updated_at: '2025-11-27T10:12:48.883929Z'
   variant: null
 - sip_uid: '17642554775859172'
@@ -147,7 +97,7 @@ sips:
   status: accepted
   author: Unknown
   approver: None
-  created_at: extension/customization points.
+  created_at: '2025-11-27T10:12:48.884497Z'
   updated_at: '2025-11-27T10:12:48.884497Z'
   variant: null
 - sip_uid: '17642554775863171'
@@ -177,7 +127,7 @@ sips:
   status: accepted
   author: Unknown
   approver: None
-  created_at: early fixes** or reprioritize.
+  created_at: '2025-11-27T10:12:48.886498Z'
   updated_at: '2025-11-27T10:12:48.886498Z'
   variant: null
 - sip_uid: '17642554775865062'
@@ -189,7 +139,7 @@ sips:
   approver: None
   created_at: '2025-10-03T18:44:56.926641Z'
   updated_at: '2025-11-27T10:12:48.887066Z'
-  variant: null
+  variant: v1
 - sip_uid: '17642554775871506'
   sip_number: 17
   title: Usability-Service-Integration-Protocol
@@ -209,7 +159,7 @@ sips:
   approver: None
   created_at: '2025-10-03T18:44:56.927287Z'
   updated_at: '2025-11-27T10:12:48.888091Z'
-  variant: null
+  variant: v1
 - sip_uid: '17642554775871658'
   sip_number: 18
   title: -SIP-018-Squad-Context-Protocol
@@ -227,7 +177,7 @@ sips:
   status: implemented
   author: drafts SIP → commits PR to /protocols/.
   approver: None
-  created_at: SIP Registry automatically.
+  created_at: '2025-12-07T19:50:57.903937Z'
   updated_at: '2025-12-07T19:50:57.903937Z'
   variant: null
 - sip_uid: '17642554775888268'
@@ -237,8 +187,7 @@ sips:
   status: implemented
   author: Unknown
   approver: None
-  created_at: (modify existing), bug-fix (fix existing), refactor (improve existing),
-    deployment (deploy existing)
+  created_at: '2025-12-07T19:51:00.190894Z'
   updated_at: '2025-12-07T19:51:00.190894Z'
   variant: null
 - sip_uid: '17642554775883363'
@@ -258,7 +207,7 @@ sips:
   status: implemented
   author: Unknown
   approver: None
-  created_at: Lead Agent**
+  created_at: '2025-11-27T10:12:48.891105Z'
   updated_at: '2025-11-27T10:12:48.891105Z'
   variant: null
 - sip_uid: '17642554775906691'
@@ -268,8 +217,7 @@ sips:
   status: accepted
   author: Unknown
   approver: None
-  created_at: 'Challenges**: Domain knowledge updates require modifying core strategy
-    agent'
+  created_at: '2025-11-27T10:12:48.892116Z'
   updated_at: '2025-11-27T10:12:48.892116Z'
   variant: null
 - sip_uid: '17642554775902673'
@@ -299,7 +247,7 @@ sips:
   status: implemented
   author: Unknown
   approver: None
-  created_at: 'Process**: Explicit snapshot updates required'
+  created_at: '2025-12-07T19:51:07.193762Z'
   updated_at: '2025-12-07T19:51:07.193762Z'
   variant: null
 - sip_uid: '17642554775924932'
@@ -309,9 +257,9 @@ sips:
   status: implemented
   author: Unknown
   approver: None
-  created_at: Metrics Flow:**
+  created_at: '2025-11-27T10:12:48.894997Z'
   updated_at: '2025-11-27T10:12:48.894997Z'
-  variant: null
+  variant: v1
 - sip_uid: '17642554775914219'
   sip_number: 27
   title: Telemetry-Implementation-Execution-Plan-Multi-Cloud
@@ -319,7 +267,7 @@ sips:
   status: implemented
   author: Unknown
   approver: None
-  created_at: BaseAgent to Use TelemetryClient
+  created_at: '2025-11-27T10:12:48.895643Z'
   updated_at: '2025-11-27T10:12:48.895643Z'
   variant: 2
 - sip_uid: '17642554775922454'
@@ -329,7 +277,7 @@ sips:
   status: implemented
   author: Max (Governance)
   approver: None
-  created_at: January 2025
+  created_at: '2025-01-01T00:00:00Z'
   updated_at: '2025-11-27T10:12:48.896508Z'
   variant: 3
 - sip_uid: '17642554775939927'
@@ -362,7 +310,7 @@ sips:
   created_at: '2025-10-16T00:00:00Z'
   updated_at: '2025-11-27T10:12:48.898527Z'
   variant: null
-- sip_uid: '17642554775943561'
+- sip_uid: '17642554775959705'
   sip_number: 33
   title: -LLM-Client-Abstraction-Manifest-First-AppBuilder
   path: sips/implemented/SIP-0033-v3-A-Manifest-Integration-Addendum-P1-Neo-Max-Edition.md
@@ -371,7 +319,7 @@ sips:
   approver: None
   created_at: '2025-10-16T00:00:00Z'
   updated_at: '2025-12-07T19:51:02.287177Z'
-  variant: null
+  variant: v4
 - sip_uid: '17642554775942955'
   sip_number: 33
   title: -SIP-033A-Manifest-Integration-Addendum-P1-Neo-Max-Edition
@@ -382,16 +330,6 @@ sips:
   created_at: '2025-10-15T00:00:00Z'
   updated_at: '2025-11-27T10:12:48.899626Z'
   variant: 2
-- sip_uid: '17642554775959705'
-  sip_number: 33
-  title: SIP-033A-Manifest-Integration-Addendum-P1-Neo-Max-Edition
-  path: sips/accepted/SIP-0033-v3-A-Manifest-Integration-Addendum-P1-Neo-Max-Edition.md
-  status: accepted
-  author: Unknown
-  approver: None
-  created_at: '2025-10-18T10:58:47.253171Z'
-  updated_at: '2025-11-27T10:12:48.900242Z'
-  variant: 3
 - sip_uid: '17642554775954486'
   sip_number: 40
   title: Rev-2-Phase-0-Critical-Architectural-Fixes
@@ -399,9 +337,9 @@ sips:
   status: implemented
   author: SquadOps Build Partner
   approver: None
-  created_at: 2025-01-XX
+  created_at: '2025-01-01T00:00:00Z'
   updated_at: '2025-11-27T10:12:48.900946Z'
-  variant: null
+  variant: v1
 - sip_uid: '17642554775961541'
   sip_number: 40
   title: Rev-3-Decorator-Based-CapabilitySkillTool-System
@@ -409,7 +347,7 @@ sips:
   status: implemented
   author: SquadOps Build Partner
   approver: None
-  created_at: 2025-01-XX
+  created_at: '2025-01-01T00:00:00Z'
   updated_at: '2025-11-27T10:12:48.901774Z'
   variant: 2
 - sip_uid: '17642554775969559'
@@ -421,7 +359,7 @@ sips:
   approver: None
   created_at: '2025-11-03T22:53:48.633789Z'
   updated_at: '2025-11-27T10:12:48.902364Z'
-  variant: null
+  variant: v1
 - sip_uid: '17642554775973635'
   sip_number: 41
   title: -SquadOps-Naming-Correlation-cycle-pulse-channel
@@ -439,7 +377,7 @@ sips:
   status: implemented
   author: Jason Ladd
   approver: None
-  created_at: 2025‑11‑08
+  created_at: '2025-01-01T00:00:00Z'
   updated_at: '2025-12-07T19:51:05.580366Z'
   variant: null
 - sip_uid: 01KB4B74MN5BHXZH42ZRPEYVAG
@@ -499,3 +437,60 @@ sips:
   approver: jladd
   created_at: '2025-12-29T00:00:00Z'
   updated_at: '2026-01-10T09:29:09.433242Z'
+- sip_uid: 01KEM71ECNVNS63NBBGJ7RNPBG
+  sip_number: 53
+  title: Repository Reorganization for Domain-Driven Design (DDD) and Hexagonal Isolation
+  path: sips/accepted/SIP-0053-Repository-Reorganization-for-Domain-Driven.md
+  status: accepted
+  author: Gemini (AI Thought Partner)
+  approver: jladd
+  created_at: '2026-01-10T15:05:29Z'
+  updated_at: '2026-01-10T10:07:24.427880Z'
+- sip_number: 33
+  sip_uid: '17642554775943561'
+  title: -LLM-Client-Abstraction-Manifest-First-AppBuilder
+  status: implemented
+  path: sips/implemented/SIP-0033-LLM-Client-Abstraction-Manifest-First-AppBuilder.md
+  created_at: '2025-10-16T00:00:00Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v3
+- sip_number: 3
+  sip_uid: '17642554775787694'
+  title: -SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol
+  status: deprecated
+  path: sips/deprecated/SIP-0003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol.md
+  created_at: '2025-10-03T18:44:56.922290Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v2
+- sip_number: 6
+  sip_uid: '17642554775833100'
+  title: -SIP-0061-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode
+  status: deprecated
+  path: sips/deprecated/SIP-0006-v2-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode.md
+  created_at: '2026-01-10T10:32:53Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v2
+- sip_number: 4
+  sip_uid: '17642554775828094'
+  title: -SIP-004-Continuous-Adaptation-Protocol-CAP
+  status: deprecated
+  path: sips/deprecated/SIP-0004-Continuous-Adaptation-Protocol-CAP.md
+  created_at: '2025-10-03T18:44:56.923175Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v2
+- sip_number: 6
+  sip_uid: '17642554775836297'
+  title: -SIP-006-Warm-Boot-Analysis-Protocol-WBA
+  status: deprecated
+  path: sips/deprecated/SIP-0006-Warm-Boot-Analysis-Protocol-WBA.md
+  created_at: '2026-01-10T10:32:53Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v3
+- sip_number: 5
+  sip_uid: '17642554775827020'
+  title: -SIP-005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA
+  status: deprecated
+  path: sips/deprecated/SIP-0005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA.md
+  created_at: '2025-10-03T18:44:56.923409Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v2

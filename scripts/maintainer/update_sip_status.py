@@ -160,6 +160,97 @@ def find_sip_in_registry(registry: dict[str, Any], sip_number: int | None = None
     return None
 
 
+def find_duplicate_sip_files(
+    sip_uid: str | None,
+    sip_number: int | None,
+    canonical_file: Path,
+    registry: dict[str, Any]
+) -> list[Path]:
+    """
+    Find duplicate SIP files with the same sip_uid or sip_number.
+    
+    Scans all lifecycle directories and identifies files that match the given
+    sip_uid (preferred) or sip_number (fallback). Excludes the canonical file.
+    
+    Args:
+        sip_uid: SIP UID to match (preferred identifier)
+        sip_number: SIP number to match (fallback identifier)
+        canonical_file: The canonical file to exclude from duplicates
+        registry: The SIP registry dictionary
+        
+    Returns:
+        List of duplicate file paths
+    """
+    duplicates = []
+    canonical_file = canonical_file.resolve()
+    
+    # All lifecycle directories to scan
+    lifecycle_dirs = [PROPOSALS_DIR, ACCEPTED_DIR, IMPLEMENTED_DIR, DEPRECATED_DIR]
+    
+    for lifecycle_dir in lifecycle_dirs:
+        if not lifecycle_dir.exists():
+            continue
+            
+        # Find all .md files in this directory
+        for sip_file in lifecycle_dir.glob("*.md"):
+            # Skip the canonical file
+            if sip_file.resolve() == canonical_file:
+                continue
+            
+            # Extract metadata from file
+            metadata = extract_metadata_from_file(sip_file)
+            if not metadata:
+                # Skip files without metadata
+                continue
+            
+            # Match by sip_uid (preferred) or sip_number (fallback)
+            is_duplicate = False
+            if sip_uid and metadata.get('sip_uid') == sip_uid:
+                is_duplicate = True
+            elif sip_number is not None and metadata.get('sip_number') == sip_number:
+                is_duplicate = True
+            
+            if is_duplicate:
+                duplicates.append(sip_file)
+    
+    return duplicates
+
+
+def cleanup_duplicate_files(duplicate_files: list[Path]) -> int:
+    """
+    Safely remove duplicate SIP files.
+    
+    Args:
+        duplicate_files: List of file paths to remove
+        
+    Returns:
+        Number of files successfully removed
+    """
+    if not duplicate_files:
+        return 0
+    
+    removed_count = 0
+    failed_files = []
+    
+    print(f"\n🧹 Cleaning up duplicates...")
+    
+    for dup_file in duplicate_files:
+        try:
+            rel_path = dup_file.relative_to(REPO_ROOT)
+            dup_file.unlink()
+            print(f"   ✅ Removed: {rel_path}")
+            removed_count += 1
+        except Exception as e:
+            failed_files.append((dup_file, str(e)))
+            rel_path = dup_file.relative_to(REPO_ROOT) if dup_file.exists() else str(dup_file)
+            print(f"   ❌ Failed to remove: {rel_path} ({e})")
+    
+    if failed_files:
+        print(f"\n⚠️  Warning: {len(failed_files)} file(s) could not be removed")
+    
+    return removed_count
+
+
 def update_sip_status(sip_file: Path, new_status: str) -> bool:
     """Update SIP status and move to appropriate lifecycle folder."""
     if not sip_file.exists():
@@ -206,6 +297,27 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         sip_uid = metadata.get('sip_uid')
         author = metadata.get('author', 'Unknown')
         created_at = metadata.get('created_at', datetime.now().isoformat() + 'Z')
+        
+        # Check for and clean up duplicate files
+        print(f"\n🔍 Checking for duplicate SIP files...")
+        duplicates = find_duplicate_sip_files(
+            sip_uid=sip_uid,
+            sip_number=None,  # Not assigned yet for proposed SIPs
+            canonical_file=sip_file,
+            registry=registry
+        )
+        
+        if duplicates:
+            sip_identifier = f"sip_uid: {sip_uid}" if sip_uid else "proposed SIP"
+            print(f"   Found {len(duplicates)} duplicate(s) for {sip_identifier}:")
+            for dup in duplicates:
+                print(f"   - {dup.relative_to(REPO_ROOT)}")
+            
+            removed_count = cleanup_duplicate_files(duplicates)
+            if removed_count > 0:
+                print(f"\n✅ Cleanup complete: {removed_count} duplicate file(s) removed")
+        else:
+            print("   No duplicates found.")
         
         # Update file metadata
         if not update_sip_file_metadata(sip_file, {'sip_number': sip_number, 'status': new_status}):
@@ -271,6 +383,34 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         if not registry_entry:
             print(f"Error: SIP-{sip_number:04d} not found in registry")
             return False
+        
+        # Check for and clean up duplicate files
+        print(f"\n🔍 Checking for duplicate SIP files...")
+        duplicates = find_duplicate_sip_files(
+            sip_uid=metadata.get('sip_uid'),
+            sip_number=sip_number,
+            canonical_file=sip_file,
+            registry=registry
+        )
+        
+        if duplicates:
+            print(f"   Found {len(duplicates)} duplicate(s) for SIP-{sip_number:04d} (sip_uid: {metadata.get('sip_uid', 'N/A')}):")
+            for dup in duplicates:
+                print(f"   - {dup.relative_to(REPO_ROOT)}")
+            
+            # Check for registry path mismatch
+            registry_path = REPO_ROOT / registry_entry.get('path', '')
+            if registry_path.exists() and registry_path.resolve() != sip_file.resolve():
+                if registry_path not in duplicates:
+                    print(f"\n⚠️  Warning: Registry path ({registry_entry.get('path')}) doesn't match canonical file")
+                    print(f"   Registry points to: {registry_path.relative_to(REPO_ROOT)}")
+                    print(f"   Canonical file is: {sip_file.relative_to(REPO_ROOT)}")
+            
+            removed_count = cleanup_duplicate_files(duplicates)
+            if removed_count > 0:
+                print(f"\n✅ Cleanup complete: {removed_count} duplicate file(s) removed")
+        else:
+            print("   No duplicates found.")
         
         # Verify current file location matches current status
         expected_dir = STATUS_TO_FOLDER.get(current_status)
