@@ -43,7 +43,9 @@ for logger_name in pika_loggers:
     logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 sys.path.append("/Users/jladd/Code/squad-ops")
-from config.unified_config import get_config  # noqa: E402
+import os
+
+from infra.config.loader import load_config  # noqa: E402
 from config.version import SQUADOPS_VERSION, get_agent_version  # noqa: E402
 
 app = FastAPI(title="SquadOps Health Check Service", version=SQUADOPS_VERSION)
@@ -141,13 +143,23 @@ def generate_console_cycle_id() -> str:
     return f"CYCLE-CONSOLE-{timestamp}-{random_suffix}"
 
 
-# Configuration - Use centralized config system
-config = get_config()
-RABBITMQ_URL = config.get_rabbitmq_url()
-POSTGRES_URL = config.get_postgres_url()
-REDIS_URL = config.get_redis_url()
-# PREFECT_URL remains as direct env var (Prefect-specific, not core infrastructure)
-PREFECT_URL = os.getenv("PREFECT_URL", "http://prefect-server:4200/api")
+# Configuration - Use centralized config system (SIP-051)
+strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+config = load_config(strict=strict_mode)
+RABBITMQ_URL = config.comms.rabbitmq.url
+POSTGRES_URL = config.db.url
+REDIS_URL = config.comms.redis.url
+# PREFECT_URL uses AppConfig (SIP-051)
+PREFECT_URL = config.prefect.api_url
+
+# Log configuration at startup (SIP-051 requirement)
+from infra.config.redaction import redact_config
+from infra.config.fingerprint import config_fingerprint
+config_dict = config.model_dump()
+redacted_config = redact_config(config_dict)
+fingerprint = config_fingerprint(redacted_config)
+logger.info(f"Configuration profile: {config._profile} (strict={strict_mode})")
+logger.info(f"Configuration fingerprint: {fingerprint}")
 
 
 # Agent Gateway: Command Parser
@@ -472,7 +484,10 @@ class HealthChecker:
         self.pg_pool = None
         self._instances_cache = None
         self._instances_cache_mtime = None  # Track file modification time for cache invalidation
-        self.instances_file = os.getenv("INSTANCES_FILE", "agents/instances/instances.yaml")
+        # Use AppConfig for instances_file
+        from infra.config.loader import get_config
+        app_config = get_config()
+        self.instances_file = str(app_config.agent.instances_file)
         self.rabbitmq_connection = None
         self.rabbitmq_channel = None
         self.response_queue = None
@@ -866,7 +881,9 @@ class HealthChecker:
     async def check_prometheus(self) -> dict[str, Any]:
         """Check Prometheus health"""
         try:
-            prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+            from infra.config.loader import get_config
+            app_config = get_config()
+            prometheus_url = app_config.observability.prometheus.url
             async with aiohttp.ClientSession() as session:
                 # Check health endpoint
                 async with session.get(
@@ -910,7 +927,9 @@ class HealthChecker:
     async def check_grafana(self) -> dict[str, Any]:
         """Check Grafana health"""
         try:
-            grafana_url = os.getenv("GRAFANA_URL", "http://grafana:3000")
+            from infra.config.loader import get_config
+            app_config = get_config()
+            grafana_url = app_config.observability.grafana.url
             async with aiohttp.ClientSession() as session:
                 # Check health endpoint
                 async with session.get(
@@ -950,9 +969,11 @@ class HealthChecker:
         even with include_metadata: true. Version must come from deployment configuration.
         This is standard practice - version is a deployment-time concern, not runtime.
         """
+        from infra.config.loader import get_config
+        app_config = get_config()
         try:
-            otel_url = os.getenv("OTEL_COLLECTOR_URL", "http://otel-collector:4318")
-            health_check_url = os.getenv("OTEL_COLLECTOR_HEALTH_URL", "http://otel-collector:13133")
+            otel_url = app_config.observability.otel.url
+            health_check_url = app_config.observability.otel.health_url
 
             version = "Unknown"
             status = "online"
@@ -983,7 +1004,7 @@ class HealthChecker:
                 # Get version from zPages diagnostic endpoint (/debug/servicez)
                 # This is the OpenTelemetry Collector's built-in diagnostic API, similar to other services
                 # This is better than Docker API because it queries the service itself directly
-                zpages_url = os.getenv("OTEL_COLLECTOR_ZPAGES_URL", "http://otel-collector:55679")
+                zpages_url = app_config.observability.otel.zpages_url
                 try:
                     async with session.get(
                         f"{zpages_url}/debug/servicez", timeout=aiohttp.ClientTimeout(total=5)
@@ -1034,30 +1055,30 @@ class HealthChecker:
                                             f"Got OTel Collector version from zPages (fallback): {version}"
                                         )
 
-                            # Fall back to environment variable only if version parsing failed
+                            # Fall back to config version only if version parsing failed
                             if not version_match or version == "Unknown":
-                                env_version = os.getenv("OTEL_COLLECTOR_VERSION")
-                                if env_version:
-                                    version = env_version
+                                config_version = app_config.observability.otel.version
+                                if config_version:
+                                    version = config_version
                                 else:
                                     if version == "Unknown":
                                         logger.debug("Could not parse version from zPages response")
                         else:
-                            # zPages unavailable - fall back to environment variable
-                            env_version = os.getenv("OTEL_COLLECTOR_VERSION")
-                            if env_version:
-                                version = env_version
+                            # zPages unavailable - fall back to config
+                            config_version = app_config.observability.otel.version
+                            if config_version:
+                                version = config_version
                             else:
                                 version = "Unknown"
                                 logger.debug(
                                     f"zPages endpoint returned HTTP {zpages_response.status}"
                                 )
                 except (TimeoutError, aiohttp.ClientError) as e:
-                    # zPages endpoint not available - fall back to environment variable
+                    # zPages endpoint not available - fall back to config
                     logger.debug(f"Could not query zPages endpoint for OTel Collector version: {e}")
-                    env_version = os.getenv("OTEL_COLLECTOR_VERSION")
-                    if env_version:
-                        version = env_version
+                    config_version = app_config.observability.otel.version
+                    if config_version:
+                        version = config_version
                     else:
                         version = "Unknown"
 
@@ -1107,7 +1128,9 @@ class HealthChecker:
             return "offline"
         
         # Heartbeat timeout window: 2-3x heartbeat interval (default: 90 seconds for 30s heartbeat)
-        heartbeat_timeout_window = int(os.getenv("HEARTBEAT_TIMEOUT_WINDOW_SECONDS", "90"))
+        from infra.config.loader import get_config
+        app_config = get_config()
+        heartbeat_timeout_window = app_config.agent.heartbeat_timeout_window
         
         now = datetime.utcnow()
         time_since_heartbeat = (now - last_heartbeat).total_seconds()
@@ -1263,7 +1286,9 @@ class HealthChecker:
         1. Recompute network_status based on last_heartbeat timing
         2. Set lifecycle_state = UNKNOWN for agents where network_status = offline
         """
-        reconciliation_interval = int(os.getenv("RECONCILIATION_INTERVAL_SECONDS", "45"))
+        from infra.config.loader import get_config
+        app_config = get_config()
+        reconciliation_interval = app_config.agent.reconciliation_interval
         
         while self._reconciliation_running:
             try:
@@ -1280,7 +1305,9 @@ class HealthChecker:
                     """)
                     
                     now = datetime.utcnow()
-                    heartbeat_timeout_window = int(os.getenv("HEARTBEAT_TIMEOUT_WINDOW_SECONDS", "90"))
+                    from infra.config.loader import get_config
+                    app_config = get_config()
+                    heartbeat_timeout_window = app_config.agent.heartbeat_timeout_window
                     
                     updates = []
                     for row in rows:

@@ -9,7 +9,9 @@ from typing import Any
 
 import yaml
 
-from config.unified_config import get_config
+import os
+
+from infra.config.loader import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +102,7 @@ class DockerComposeGenerator:
                 "container_name": "squadops-prefect-server",
                 "ports": ["4200:4200"],
                 "environment": {
-                    "PREFECT_API_URL": "http://prefect-server:4200/api",
+                    "PREFECT_API_URL": load_config(strict=os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true").prefect.api_url,
                     "PREFECT_SERVER_API_HOST": "0.0.0.0",
                     "PREFECT_SERVER_API_PORT": "4200",
                     "PREFECT_API_DATABASE_CONNECTION_URL": "postgresql+asyncpg://squadops:squadops123@postgres:5432/squadops",
@@ -124,7 +126,7 @@ class DockerComposeGenerator:
                 "image": "prefecthq/prefect:2.14-python3.11",
                 "container_name": "squadops-prefect-ui",
                 "ports": ["4201:4201"],
-                "environment": {"PREFECT_API_URL": "http://prefect-server:4200/api"},
+                "environment": {"PREFECT_API_URL": load_config(strict=os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true").prefect.api_url},
                 "depends_on": {"prefect-server": {"condition": "service_healthy"}},
                 "networks": ["squadnet"],
                 "command": ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4201"],
@@ -134,10 +136,10 @@ class DockerComposeGenerator:
                 "container_name": "squadops-health-check",
                 "ports": ["8000:8000"],
                 "environment": {
-                    "RABBITMQ_URL": get_config().get_rabbitmq_url(),
-                    "POSTGRES_URL": get_config().get_postgres_url(),
-                    "REDIS_URL": get_config().get_redis_url(),
-                    "PREFECT_URL": "http://prefect-server:4200/api",  # Prefect-specific, not in unified_config
+                    "RABBITMQ_URL": load_config(strict=os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true").comms.rabbitmq.url,
+                    "POSTGRES_URL": load_config(strict=os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true").db.url,
+                    "REDIS_URL": load_config(strict=os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true").comms.redis.url,
+                    "PREFECT_URL": load_config(strict=os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true").prefect.api_url,
                 },
                 "depends_on": {
                     "rabbitmq": {"condition": "service_healthy"},
@@ -166,9 +168,9 @@ class DockerComposeGenerator:
                 "AGENT_ROLE": role,
                 "AGENT_DISPLAY_NAME": instance["display_name"],
                 "AGENT_MODEL": instance["model"],
-                "RABBITMQ_URL": get_config().get_rabbitmq_url(),
-                "POSTGRES_URL": get_config().get_postgres_url(),
-                "REDIS_URL": get_config().get_redis_url(),
+                "RABBITMQ_URL": load_config(strict=os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true").comms.rabbitmq.url,
+                "POSTGRES_URL": load_config(strict=os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true").db.url,
+                "REDIS_URL": load_config(strict=os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true").comms.redis.url,
             },
             "depends_on": {
                 "rabbitmq": {"condition": "service_healthy"},

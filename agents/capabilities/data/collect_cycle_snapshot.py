@@ -105,7 +105,7 @@ class CycleSnapshotCollector:
                 project_id = execution_cycle["project_id"]
             
             # Initialize CycleDataStore
-            cycle_data_root = self.agent.config.get_cycle_data_root()
+            cycle_data_root = self.agent.config.cycle_data.root
             cycle_store = CycleDataStore(cycle_data_root, project_id, cycle_id)
             
             # Save snapshot to meta area

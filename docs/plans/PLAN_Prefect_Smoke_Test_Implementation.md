@@ -230,3 +230,9 @@ Each role should produce simple JSON-like output:
 7. Can be run from Cursor, CI, and as first-line regression check
 
 
+
+
+
+
+
+

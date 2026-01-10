@@ -79,7 +79,7 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_handle_agent_request_validate_warmboot(self, mock_unified_config):
         """Test handle_agent_request for validate.warmboot capability"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent-001")
 
             request = create_sample_validate_warmboot_request(
@@ -158,7 +158,7 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_handle_agent_request_task_coordination(self, mock_unified_config):
         """Test handle_agent_request for governance.task_coordination capability"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent-001")
 
             request = AgentRequest(
@@ -212,7 +212,7 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_handle_agent_request_approval(self, mock_unified_config):
         """Test handle_agent_request for governance.approval capability"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent-001")
 
             request = AgentRequest(
@@ -258,7 +258,7 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_handle_agent_request_escalation(self, mock_unified_config):
         """Test handle_agent_request for governance.escalation capability"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent-001")
 
             request = AgentRequest(
@@ -634,7 +634,7 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_process_task_governance_without_prd(self, mock_database, mock_unified_config):
         """Test process_task for governance task without PRD path - routes to governance.task_coordination"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent-001")
             agent.db_pool = mock_database
             agent.runtime_api_url = "http://runtime-api:8001"
@@ -1152,10 +1152,13 @@ class TestLeadAgent:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_load_role_to_agent_mapping_file_error(self):
+    async def test_load_role_to_agent_mapping_file_error(self, mock_unified_config):
         """Test _load_role_to_agent_mapping with file read error"""
         # Mock the LLM client initialization to avoid config file issues
-        with patch.object(LeadAgent, "_initialize_llm_client", return_value=MagicMock()):
+        with (
+            patch.object(LeadAgent, "_initialize_llm_client", return_value=MagicMock()),
+            patch("infra.config.loader.load_config", return_value=mock_unified_config),
+        ):
             # Create agent with non-existent instances file
             with patch("builtins.open", side_effect=FileNotFoundError("Instances file not found")):
                 agent = LeadAgent("lead-agent-001", instances_file="/nonexistent/instances.yaml")
@@ -1172,10 +1175,13 @@ class TestLeadAgent:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_load_role_to_agent_mapping_yaml_error(self):
+    async def test_load_role_to_agent_mapping_yaml_error(self, mock_unified_config):
         """Test _load_role_to_agent_mapping with YAML parse error"""
         # Mock the LLM client initialization to avoid config file issues
-        with patch.object(LeadAgent, "_initialize_llm_client", return_value=MagicMock()):
+        with (
+            patch.object(LeadAgent, "_initialize_llm_client", return_value=MagicMock()),
+            patch("infra.config.loader.load_config", return_value=mock_unified_config),
+        ):
             with patch(
                 "builtins.open",
                 MagicMock(
@@ -1552,7 +1558,7 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_collect_telemetry(self, mock_unified_config):
         """Test SIP-027 Phase 1: Telemetry collection via Task API"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent")
             agent.runtime_api_url = "http://runtime-api:8001"
 
@@ -1691,7 +1697,7 @@ class TestLeadAgent:
     @pytest.mark.asyncio
     async def test_collect_telemetry_error_handling(self, mock_unified_config):
         """Test telemetry collection handles errors gracefully via Task API"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = LeadAgent("lead-agent")
             agent.runtime_api_url = "http://runtime-api:8001"
 
@@ -1804,14 +1810,17 @@ class TestLeadAgent:
         """Test SIP-027 Phase 1: Full wrap-up generation workflow"""
         agent = LeadAgent("lead-agent")
 
-        # Mock get_cycle_data_root to prevent MagicMock directory creation
+        # Mock cycle_data.root to prevent MagicMock directory creation
         # Use TemporaryDirectory context manager for automatic cleanup
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
         temp_dir_ctx = TemporaryDirectory()
         temp_dir = Path(temp_dir_ctx.name)
-        agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
+        # Update config to use new API (SIP-051)
+        from infra.config.schema import CycleDataConfig
+        agent.config.cycle_data = MagicMock(spec=CycleDataConfig)
+        agent.config.cycle_data.root = temp_dir
         # Store context manager for cleanup
         agent._temp_dir_ctx = temp_dir_ctx
 
@@ -1874,14 +1883,17 @@ class TestLeadAgent:
         """Test wrap-up generation handles errors gracefully"""
         agent = LeadAgent("lead-agent")
 
-        # Mock get_cycle_data_root to prevent MagicMock directory creation
+        # Mock cycle_data.root to prevent MagicMock directory creation
         # Use TemporaryDirectory context manager for automatic cleanup
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
         temp_dir_ctx = TemporaryDirectory()
         temp_dir = Path(temp_dir_ctx.name)
-        agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
+        # Update config to use new API (SIP-051)
+        from infra.config.schema import CycleDataConfig
+        agent.config.cycle_data = MagicMock(spec=CycleDataConfig)
+        agent.config.cycle_data.root = temp_dir
 
         try:
             # Mock telemetry to raise error

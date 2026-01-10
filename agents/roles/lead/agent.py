@@ -593,10 +593,12 @@ class LeadAgent(BaseAgent):
 
 async def main():
     """Main entry point for Lead agent"""
-    from config.unified_config import get_config
+    import os
+    from infra.config.loader import load_config
 
-    config = get_config()
-    identity = config.get_agent_id()
+    strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+    config = load_config(strict=strict_mode)
+    identity = config.agent.id
     agent = LeadAgent(identity=identity)
     await agent.run()
 

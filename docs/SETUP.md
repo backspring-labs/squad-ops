@@ -14,7 +14,46 @@ git clone https://github.com/jasonLadd/squad-ops.git
 cd squad-ops
 ```
 
-### 2. Start the SquadOps Framework
+### 2. Configure Secrets
+
+SquadOps uses centralized secrets management. You need to set up secrets before starting services.
+
+#### Option A: Environment Variables (Recommended for Local Development)
+
+Set environment variables for secrets:
+
+```bash
+export SQUADOPS_DB_PASSWORD=your_db_password
+export SQUADOPS_RABBITMQ_PASSWORD=your_rabbitmq_password
+```
+
+#### Option B: Docker Secrets (Recommended for Production)
+
+Create secret files:
+
+```bash
+mkdir -p secrets
+echo "your_db_password" > secrets/db_password.txt
+echo "your_rabbitmq_password" > secrets/rabbitmq_password.txt
+```
+
+Docker Compose will automatically mount these as Docker secrets for SquadOps services.
+
+#### Option C: File Provider
+
+Configure secrets in `config/local.yaml`:
+
+```yaml
+secrets:
+  provider: file
+  file_dir: ./secrets
+```
+
+Then create secret files in the `secrets/` directory.
+
+For more details, see [Secrets Management Documentation](../infra/secrets/README.md).
+
+### 3. Start the SquadOps Framework
 ```bash
 docker-compose up -d
 ```

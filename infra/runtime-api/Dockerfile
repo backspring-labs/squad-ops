@@ -19,5 +19,8 @@ COPY agents/utils ./agents/utils
 # Copy config directory (for unified_config)
 COPY config ./config
 
+# Copy infra directory (for config loader and secrets management)
+COPY infra/ ./infra/
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
 

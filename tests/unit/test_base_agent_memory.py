@@ -89,11 +89,14 @@ async def test_base_agent_record_memory():
 
 
 @pytest.mark.asyncio
-async def test_base_agent_extract_memory_context():
+async def test_base_agent_extract_memory_context(mock_unified_config):
     """Test _extract_memory_context method"""
     from unittest.mock import MagicMock
 
-    with patch.object(MemoryTestAgent, "_initialize_llm_client", return_value=MagicMock()):
+    with (
+        patch.object(MemoryTestAgent, "_initialize_llm_client", return_value=MagicMock()),
+        patch("infra.config.loader.load_config", return_value=mock_unified_config),
+    ):
         agent = MemoryTestAgent("TestAgent", "test", "test")
 
         # Test with direct keys (SIP-0048: renamed from ecid to cycle_id)

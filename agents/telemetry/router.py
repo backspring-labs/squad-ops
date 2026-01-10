@@ -50,26 +50,18 @@ class TelemetryRouter:
             TelemetryClient instance appropriate for the platform
         """
         try:
-            from config.unified_config import get_config
-            unified_config = get_config()
-            platform = unified_config.get_platform()
+            import os
+            from infra.config.loader import load_config
+            strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+            app_config = load_config(strict=strict_mode)
+            # Platform is not in AppConfig schema yet, use default
+            platform = "local"
             
-            # Check for telemetry config override
-            telemetry_backend = os.getenv('TELEMETRY_BACKEND')
-            if telemetry_backend:
-                logger.info(f"Using TELEMETRY_BACKEND override: {telemetry_backend}")
-            else:
-                # Try to get from unified config
-                try:
-                    telemetry_config = unified_config.get_telemetry_config()
-                    if telemetry_config:
-                        telemetry_backend = telemetry_config.get('backend')
-                except AttributeError:
-                    # get_telemetry_config() not implemented yet, use platform
-                    pass
+            # Get telemetry backend from AppConfig
+            telemetry_backend = app_config.telemetry.backend
             
             # Build telemetry config for the client
-            telemetry_config = cls._build_telemetry_config(unified_config, platform, telemetry_backend)
+            telemetry_config = cls._build_telemetry_config(app_config, platform, telemetry_backend)
             
             # Select TelemetryClient based on backend or platform
             backend = telemetry_backend or platform
@@ -99,12 +91,12 @@ class TelemetryRouter:
             return NullTelemetryClient()
     
     @staticmethod
-    def _build_telemetry_config(unified_config, platform: str, backend: str | None = None) -> dict[str, Any]:
+    def _build_telemetry_config(app_config, platform: str, backend: str | None = None) -> dict[str, Any]:
         """
-        Build telemetry configuration from unified config
+        Build telemetry configuration from AppConfig
         
         Args:
-            unified_config: SquadOpsConfig instance
+            app_config: AppConfig instance
             platform: Platform name
             backend: Optional backend override
         
@@ -116,42 +108,35 @@ class TelemetryRouter:
             'telemetry_backend': backend or platform,
         }
         
-        # Get agent info from unified config
+        # Get agent info from AppConfig
         try:
+            from config.version import SQUADOPS_VERSION
             config['service_name'] = 'squadops-agent'
-            config['service_version'] = unified_config.get_deployment_config('framework_version') or '0.3.0'
-            config['agent_name'] = unified_config.get_agent_id()
-            config['agent_type'] = unified_config.get_agent_role()
-            config['agent_llm'] = unified_config.get_agent_model() or 'unknown'
+            config['service_version'] = SQUADOPS_VERSION
+            config['agent_name'] = app_config.agent.id
+            config['agent_type'] = app_config.agent.role
+            config['agent_llm'] = app_config.llm.model or 'unknown'
         except Exception as e:
-            logger.debug(f"Failed to get agent info from unified config: {e}")
+            logger.debug(f"Failed to get agent info from AppConfig: {e}")
         
-        # Get OTLP endpoint from environment or unified config
-        otlp_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT')
-        if otlp_endpoint:
-            config['otlp_endpoint'] = otlp_endpoint
+        # Get OTLP endpoint from AppConfig
+        if app_config.telemetry.otlp_endpoint:
+            config['otlp_endpoint'] = app_config.telemetry.otlp_endpoint
         
-        # Get Prometheus port from environment
-        prometheus_port = os.getenv('PROMETHEUS_METRICS_PORT', '8888')
-        try:
-            config['prometheus_port'] = int(prometheus_port)
-        except ValueError:
-            config['prometheus_port'] = 8888
+        # Get Prometheus port from AppConfig
+        config['prometheus_port'] = app_config.telemetry.prometheus_port
         
-        # Platform-specific configuration (to be loaded from platform profiles)
-        if backend == 'aws':
-            # TODO: Load from config/environments/aws.yaml
-            config['aws_region'] = os.getenv('AWS_REGION')
-            config['cloudwatch_logs_group'] = os.getenv('CLOUDWATCH_LOGS_GROUP', 'squadops/agents')
-            config['xray_tracing_enabled'] = os.getenv('XRAY_TRACING_ENABLED', 'true').lower() == 'true'
-        elif backend == 'azure':
-            # TODO: Load from config/environments/azure.yaml
-            config['azure_connection_string'] = os.getenv('AZURE_CONNECTION_STRING')
-            config['azure_instrumentation_key'] = os.getenv('AZURE_INSTRUMENTATION_KEY')
-        elif backend == 'gcp':
-            # TODO: Load from config/environments/gcp.yaml
-            config['gcp_project_id'] = os.getenv('GCP_PROJECT_ID')
-            config['gcp_credentials_path'] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        # Platform-specific configuration from AppConfig
+        if backend == 'aws' and app_config.telemetry.aws:
+            config['aws_region'] = app_config.telemetry.aws.region
+            config['cloudwatch_logs_group'] = app_config.telemetry.aws.cloudwatch_logs_group
+            config['xray_tracing_enabled'] = app_config.telemetry.aws.xray_tracing_enabled
+        elif backend == 'azure' and app_config.telemetry.azure:
+            config['azure_connection_string'] = app_config.telemetry.azure.connection_string
+            config['azure_instrumentation_key'] = app_config.telemetry.azure.instrumentation_key
+        elif backend == 'gcp' and app_config.telemetry.gcp:
+            config['gcp_project_id'] = app_config.telemetry.gcp.project_id
+            config['gcp_credentials_path'] = app_config.telemetry.gcp.credentials_path
         
         return config
     

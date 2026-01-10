@@ -2,8 +2,12 @@
 # Minimal safe defaults for all services
 # Part of the "defaults tier" - applied after built-in defaults in schema.py
 
+secrets:
+  provider: env
+  env_prefix: SQUADOPS_
+
 db:
-  url: "postgresql://squadops:squadops123@postgres:5432/squadops"
+  url: "postgresql://squadops:secret://db_password@postgres:5432/squadops"
   pool_size: 5
   max_overflow: 10
   pool_timeout: 30
@@ -11,7 +15,7 @@ db:
 
 comms:
   rabbitmq:
-    url: "amqp://squadops:squadops123@rabbitmq:5672/"
+    url: "amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/"
     host: rabbitmq
     port: 5672
     user: squadops

@@ -123,9 +123,19 @@ class TestPrefectTasksAdapter:
     @pytest.mark.asyncio
     async def test_initialize(self, adapter):
         """Test adapter initialization"""
-        with patch("agents.tasks.prefect_adapter.get_config") as mock_config:
-            mock_config.return_value.get_prefect_api_url.return_value = "http://prefect:4200/api"
-            mock_config.return_value.get_prefect_api_key.return_value = None
+        from infra.config.loader import reset_config
+        reset_config()  # Clear singleton
+        
+        with patch("agents.tasks.prefect_adapter.load_config") as mock_load_config:
+            from infra.config.schema import AppConfig, DBConfig, CommsConfig, PrefectConfig
+            mock_config = MagicMock(spec=AppConfig)
+            # Ensure all required fields are present
+            mock_config.db = MagicMock(spec=DBConfig)
+            mock_config.comms = MagicMock(spec=CommsConfig)
+            mock_config.prefect = MagicMock(spec=PrefectConfig)
+            mock_config.prefect.api_url = "http://prefect:4200/api"
+            mock_config.prefect.api_key = None
+            mock_load_config.return_value = mock_config
 
             await adapter.initialize()
             assert adapter._initialized is True

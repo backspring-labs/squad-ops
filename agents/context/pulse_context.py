@@ -19,7 +19,9 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from agents.cycle_data import CycleDataStore
-from config.unified_config import get_config
+import os
+
+from infra.config.loader import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +82,9 @@ async def _get_cycle_data_store_async(
     Returns:
         CycleDataStore instance
     """
-    config = get_config()
-    cycle_data_root = config.get_cycle_data_root()
+    strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+    config = load_config(strict=strict_mode)
+    cycle_data_root = config.cycle_data.root
 
     # If project_id not provided, try to get it from the cycle
     if not project_id:
@@ -114,8 +117,9 @@ def _get_cycle_data_store(cycle_id: str, project_id: str | None = None) -> Cycle
     Returns:
         CycleDataStore instance
     """
-    config = get_config()
-    cycle_data_root = config.get_cycle_data_root()
+    strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+    config = load_config(strict=strict_mode)
+    cycle_data_root = config.cycle_data.root
 
     # Use provided project_id or default
     if not project_id:

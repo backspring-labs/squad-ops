@@ -4,7 +4,7 @@ Pydantic models for SquadOps configuration schema.
 
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -54,10 +54,20 @@ class CommsConfig(BaseModel):
 
 
 class SecretsConfig(BaseModel):
-    """Secrets management configuration (placeholder for future SIP)."""
+    """Secrets management configuration."""
 
-    provider: str = Field(default="env", description="Secrets provider (env, vault, etc.)")
-    # Additional fields will be added by future SIP-SECRETS-MANAGEMENT
+    provider: Literal["env", "file", "docker_secret"] = Field(..., description="Secrets provider (required)")
+    env_prefix: str | None = Field(default=None, description="Environment variable prefix (defaults to SQUADOPS_ for env provider, normalized to end with _)")
+    file_dir: Path | None = Field(default=None, description="File provider directory (required if provider=file)")
+    name_map: dict[str, str] | None = Field(default=None, description="Logical name to provider key mapping")
+
+    @field_validator("file_dir")
+    @classmethod
+    def validate_file_dir(cls, v, info):
+        """Validate that file_dir is provided when provider=file."""
+        if info.data.get("provider") == "file" and v is None:
+            raise ValueError("file_dir is required when provider=file")
+        return v
 
 
 class AuthConfig(BaseModel):
@@ -213,8 +223,8 @@ class AppConfig(BaseModel):
     # Task management
     tasks_backend: TasksBackend = Field(default=TasksBackend.PREFECT, description="Task backend selection")
 
-    # Secrets and auth (placeholders)
-    secrets: SecretsConfig = Field(default_factory=SecretsConfig, description="Secrets management configuration")
+    # Secrets and auth
+    secrets: SecretsConfig | None = Field(default=None, description="Secrets management configuration (optional)")
     auth: AuthConfig = Field(default_factory=AuthConfig, description="Authentication configuration")
 
     # Orchestration

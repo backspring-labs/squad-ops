@@ -8,7 +8,9 @@ import asyncpg
 
 from agents.tasks.base_adapter import TaskAdapterBase
 from agents.tasks.sql_adapter import SqlTasksAdapter
-from config.unified_config import get_config
+import os
+
+from infra.config.loader import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -69,14 +71,15 @@ async def get_tasks_adapter() -> TaskAdapterBase:
     if _adapter is not None:
         return _adapter
 
-    # Create new adapter based on backend selection - Use centralized config
-    config = get_config()
-    backend = config.get_tasks_backend()
+    # Create new adapter based on backend selection - Use centralized config (SIP-051)
+    config = load_config()
+    # Handle both enum and string (for backward compatibility)
+    backend = config.tasks_backend.value if hasattr(config.tasks_backend, 'value') else config.tasks_backend
 
     if backend == "sql":
         try:
-            config = get_config()
-            postgres_url = config.get_postgres_url()
+            config = load_config()
+            postgres_url = config.db.url
 
             # Create connection pool
             db_pool = await asyncpg.create_pool(postgres_url, min_size=1, max_size=10)
@@ -93,8 +96,8 @@ async def get_tasks_adapter() -> TaskAdapterBase:
             from agents.tasks.prefect_adapter import PrefectTasksAdapter
 
             # Prefect adapter also needs DB access to write to SquadOps DB (source of truth)
-            config = get_config()
-            postgres_url = config.get_postgres_url()
+            config = load_config()
+            postgres_url = config.db.url
 
             # Create connection pool for SquadOps DB access
             db_pool = await asyncpg.create_pool(postgres_url, min_size=1, max_size=10)

@@ -17,7 +17,7 @@ class TestDevAgent:
     @pytest.fixture
     def dev_agent(self, mock_unified_config):
         """Create DevAgent instance for testing."""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             agent = DevAgent("test-dev-agent")
             # Mock capability_loader.execute to avoid real capability execution
             agent.capability_loader = MagicMock()

@@ -27,6 +27,7 @@ wheels/
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .tox/
 .coverage.*
@@ -48,6 +49,13 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Configuration
+config/local.yaml
+
+# Secrets directory - ignore all files but allow .gitkeep
+secrets/*
+!secrets/.gitkeep
 
 .venv/
 .venv/

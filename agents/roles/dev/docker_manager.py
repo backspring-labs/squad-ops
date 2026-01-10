@@ -10,9 +10,8 @@ import os
 import sys
 from typing import Any
 
-# Add config path
-sys.path.append('/app')
-from config.deployment_config import get_deployment_config, get_docker_config
+# Deployment config removed (SIP-051) - using env vars with defaults
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +75,11 @@ class DockerManager:
             await self._cleanup_existing_containers(container_name, app_kebab)
             
             # Start new container
-            network_name = get_docker_config('network_name')
-            port = get_deployment_config('default_port')
-            restart_policy = get_docker_config('restart_policy')
+            from infra.config.loader import get_config
+            app_config = get_config()
+            network_name = app_config.deployment.docker.network_name
+            port = app_config.deployment.docker.default_port
+            restart_policy = app_config.deployment.docker.restart_policy
             
             run_cmd = f"docker run -d --name {container_name} --network {network_name} -p {port}:80 --restart {restart_policy} {app_kebab}:{version}"
             await self._execute_command(run_cmd)

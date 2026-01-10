@@ -97,7 +97,9 @@ class OpenTelemetryClient:
             self.tracer_provider = TracerProvider(resource=resource)
             
             # Configure OTLP exporter (if collector available)
-            otlp_endpoint = self.config.get('otlp_endpoint') or os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT')
+            from infra.config.loader import get_config
+            app_config = get_config()
+            otlp_endpoint = app_config.telemetry.otlp_endpoint
             if otlp_endpoint:
                 try:
                     otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)

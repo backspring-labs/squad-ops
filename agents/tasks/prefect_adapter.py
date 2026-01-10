@@ -30,7 +30,9 @@ from agents.tasks.models import (
     TaskState,
     TaskSummary,
 )
-from config.unified_config import get_config
+import os
+
+from infra.config.loader import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +90,9 @@ class PrefectTasksAdapter(TaskAdapterBase):
             return
 
         try:
-            config = get_config()
-            api_url = config.get_prefect_api_url()
-            api_key = config.get_prefect_api_key()
+            config = load_config()
+            api_url = config.prefect.api_url
+            api_key = config.prefect.api_key
 
             # Store Prefect configuration
             self._prefect_api_url = api_url
@@ -98,7 +100,6 @@ class PrefectTasksAdapter(TaskAdapterBase):
 
             # Set Prefect API URL in environment for Prefect client
             import os
-
             if api_url:
                 os.environ["PREFECT_API_URL"] = api_url
             if api_key:

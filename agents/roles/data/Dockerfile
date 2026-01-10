@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir pyyaml
 COPY agents/ ./agents/
 COPY scripts/dev/build_agent.py ./scripts/
 COPY config/ ./config/
+COPY infra/ ./infra/
 
 # Cache buster: ensures build runs with fresh files when source changes
 ARG CACHE_BUST=default

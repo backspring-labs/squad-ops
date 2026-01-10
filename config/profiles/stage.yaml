@@ -1,0 +1,30 @@
+# Staging Environment Profile
+# Staging service URLs and production-like settings
+
+secrets:
+  provider: env
+  env_prefix: SQUADOPS_
+
+db:
+  url: "postgresql://squadops:secret://db_password@postgres:5432/squadops"
+  pool_size: 10
+  max_overflow: 20
+
+comms:
+  rabbitmq:
+    url: "amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/"
+  redis:
+    url: "redis://redis:6379/0"
+
+runtime_api_url: "http://runtime-api:8001"
+
+prefect:
+  api_url: "http://prefect-server:4200/api"
+
+llm:
+  url: "http://ollama-service:11434"
+  use_local: false
+
+cycle_data:
+  root: "/var/lib/squadops/cycle_data"
+

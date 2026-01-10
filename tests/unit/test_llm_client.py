@@ -155,12 +155,19 @@ def test_js_validation():
 
 def test_llm_router_default_config():
     """Test LLM router with default config when file doesn't exist"""
-    from unittest.mock import patch
+    from unittest.mock import MagicMock, patch
+    from infra.config.schema import AppConfig, LLMConfig
 
     from agents.llm.router import LLMRouter
     
-    # Mock file not existing - should now fail with ValueError since model is required
-    with patch('builtins.open', side_effect=FileNotFoundError):
+    # Mock file not existing and config loader returning config without model
+    mock_config = MagicMock(spec=AppConfig)
+    mock_config.llm = MagicMock(spec=LLMConfig)
+    mock_config.llm.url = "http://localhost:11434"
+    mock_config.llm.model = None  # No model configured
+    
+    with patch('builtins.open', side_effect=FileNotFoundError), \
+         patch('infra.config.loader.load_config', return_value=mock_config):
         with pytest.raises(ValueError, match="LLM model not configured"):
             router = LLMRouter.from_config('nonexistent.yaml')
 
@@ -184,10 +191,18 @@ def test_llm_router_expand_env_vars_no_default():
     assert expanded == ''
 
 def test_llm_router_mock_client():
-    """Test mock client creation when USE_LOCAL_LLM=false"""
+    """Test mock client creation when use_local=false"""
+    from unittest.mock import MagicMock, patch
+    from infra.config.schema import AppConfig, LLMConfig
+
     from agents.llm.router import LLMRouter
     
-    with patch.dict('os.environ', {'USE_LOCAL_LLM': 'false'}):
+    # Mock config with use_local=False
+    mock_config = MagicMock(spec=AppConfig)
+    mock_config.llm = MagicMock(spec=LLMConfig)
+    mock_config.llm.use_local = False
+    
+    with patch('infra.config.loader.load_config', return_value=mock_config):
         router = LLMRouter({'default_provider': 'ollama', 'providers': {}})
         client = router.get_default_client()
         
@@ -335,15 +350,20 @@ async def test_app_builder_uses_router():
 
 @pytest.mark.asyncio
 async def test_app_builder_respects_use_local_llm():
-    """Test that AppBuilder respects USE_LOCAL_LLM setting via router"""
-    import os
-    from unittest.mock import patch
+    """Test that AppBuilder respects use_local setting via router"""
+    from unittest.mock import MagicMock, patch
+    from infra.config.schema import AppConfig, LLMConfig
 
     from agents.llm.router import LLMRouter
     from agents.tools.app_builder import AppBuilder
     
-    # Test with USE_LOCAL_LLM=false (should get mock client)
-    with patch.dict(os.environ, {'USE_LOCAL_LLM': 'false'}):
+    # Mock config with use_local=False
+    mock_config = MagicMock(spec=AppConfig)
+    mock_config.llm = MagicMock(spec=LLMConfig)
+    mock_config.llm.use_local = False
+    
+    # Test with use_local=false (should get mock client)
+    with patch('infra.config.loader.load_config', return_value=mock_config):
         router = LLMRouter({'default_provider': 'ollama', 'providers': {}})
         client = router.get_default_client()
         

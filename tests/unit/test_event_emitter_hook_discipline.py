@@ -97,7 +97,7 @@ class TestEventEmitterHookDiscipline:
     @pytest.mark.asyncio
     async def test_structured_event_contains_lineage_fields(self, mock_unified_config, sample_task_envelope):
         """Test StructuredEvent created in hooks contains all lineage fields"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
         # Spy on StructuredEvent creation by spying on _emit_event

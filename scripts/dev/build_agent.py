@@ -478,6 +478,7 @@ def build_agent_package(role: str, base_path: Path) -> None:
         ("agents/cycle_data", "cycle data store"),  # Required by agents.context
         ("agents/factory", "agent factory"),
         ("agents/instances", "agent instances"),
+        ("infra", "infrastructure modules (config, etc.)"),  # SIP-051: Required for centralized config
     ]
     
     for rel_path, description in shared_dirs:

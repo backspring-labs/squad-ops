@@ -12,7 +12,8 @@ from typing import Any
 
 # Add config path
 sys.path.append('/app')
-from config.deployment_config import get_filesystem_config
+# Deployment config removed (SIP-051) - using env vars with defaults
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -304,7 +305,9 @@ class FileManager:
                 }
             
             # Check file extension
-            allowed_extensions = get_filesystem_config('allowed_extensions')
+            from infra.config.loader import get_config
+            app_config = get_config()
+            allowed_extensions = app_config.deployment.file_manager.allowed_extensions
             file_ext = os.path.splitext(file_path)[1]
             
             if file_ext not in allowed_extensions:
@@ -318,7 +321,7 @@ class FileManager:
             # Check file size (if file exists)
             if await self.file_exists(file_path):
                 file_info = await self.get_file_info(file_path)
-                max_size = get_filesystem_config('max_file_size')
+                max_size = app_config.deployment.file_manager.max_file_size
                 
                 if file_info.get('size', 0) > max_size:
                     return {
@@ -346,7 +349,9 @@ class FileManager:
         """Clean up temporary files"""
         try:
             if not temp_dir:
-                temp_dir = get_filesystem_config('warm_boot_dir') + '/temp'
+                from infra.config.loader import get_config
+                app_config = get_config()
+                temp_dir = str(app_config.deployment.warm_boot_dir) + '/temp'
             
             if await self.directory_exists(temp_dir):
                 # Remove files older than 1 hour

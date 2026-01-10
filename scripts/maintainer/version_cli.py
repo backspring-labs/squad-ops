@@ -10,6 +10,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Add repo root to Python path
+script_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(script_dir))
+
 from config.version import (
     AGENT_VERSIONS,
     CONFIG_VERSIONS,

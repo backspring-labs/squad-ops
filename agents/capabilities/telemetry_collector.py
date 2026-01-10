@@ -199,8 +199,10 @@ class TelemetryCollector:
             total_messages_telemetry = 0
             try:
                 import aiohttp
+                from infra.config.loader import get_config
 
-                prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+                app_config = get_config()
+                prometheus_url = app_config.observability.prometheus.url
                 query = f'sum(rabbitmq_messages_total{{cycle_id="{cycle_id}"}})'
 
                 async with aiohttp.ClientSession() as session:
@@ -482,8 +484,10 @@ class TelemetryCollector:
             total_tokens_telemetry = 0
             try:
                 import aiohttp
+                from infra.config.loader import get_config
 
-                prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+                app_config = get_config()
+                prometheus_url = app_config.observability.prometheus.url
                 query_with_cycle_id = f'sum(agent_tokens_used_total{{cycle_id="{cycle_id}"}})'
                 query_without_cycle_id = "sum(agent_tokens_used_total)"
 

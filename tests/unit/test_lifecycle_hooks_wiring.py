@@ -53,7 +53,7 @@ class TestLifecycleHooksWiring:
     @pytest.mark.asyncio
     async def test_on_task_created_hook_invoked(self, mock_unified_config, sample_task_envelope):
         """Test on_task_created hook is called during process_task"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
         # Spy on on_task_created
@@ -82,7 +82,7 @@ class TestLifecycleHooksWiring:
     @pytest.mark.asyncio
     async def test_on_task_start_hook_invoked(self, mock_unified_config, sample_task_envelope):
         """Test on_task_start hook is called after on_task_created"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
         # Spy on hooks to track order
@@ -117,7 +117,7 @@ class TestLifecycleHooksWiring:
     @pytest.mark.asyncio
     async def test_on_task_complete_hook_invoked_on_success(self, mock_unified_config, sample_task_envelope):
         """Test on_task_complete hook is called when task succeeds"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
         # Spy on on_task_complete
@@ -144,7 +144,7 @@ class TestLifecycleHooksWiring:
     @pytest.mark.asyncio
     async def test_on_task_failed_hook_invoked_on_error(self, mock_unified_config, sample_task_envelope):
         """Test on_task_failed and on_exception hooks are called when task fails"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             agent = ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
         # Mock handle_agent_request to raise exception

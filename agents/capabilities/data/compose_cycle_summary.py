@@ -93,7 +93,7 @@ class CycleSummaryComposer:
                 logger.debug(f"Could not retrieve project_id from execution cycle, using default: {e}")
             
             # Initialize CycleDataStore
-            cycle_data_root = self.agent.config.get_cycle_data_root()
+            cycle_data_root = self.agent.config.cycle_data.root
             cycle_store = CycleDataStore(cycle_data_root, project_id, cycle_id)
             
             # Save summary to meta area

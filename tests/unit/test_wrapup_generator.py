@@ -29,7 +29,9 @@ class TestWrapupGenerator:
         temp_dir = Path(temp_dir_ctx.name)
         # Store context manager on agent so it persists for the test duration
         agent._temp_dir_ctx = temp_dir_ctx
-        agent.config.get_cycle_data_root = MagicMock(return_value=temp_dir)
+        from infra.config.schema import CycleDataConfig
+        agent.config.cycle_data = MagicMock(spec=CycleDataConfig)
+        agent.config.cycle_data.root = temp_dir
         yield agent
         # Cleanup temporary directory after test
         temp_dir_ctx.cleanup()

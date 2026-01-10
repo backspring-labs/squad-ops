@@ -18,6 +18,9 @@ COPY config ./config
 COPY agents/instances ./agents/instances
 COPY agents/utils ./agents/utils
 
+# Copy infra directory (for config loader and secrets management)
+COPY infra/ ./infra/
+
 # Expose port
 EXPOSE 8000
 

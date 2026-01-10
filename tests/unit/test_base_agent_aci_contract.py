@@ -36,7 +36,7 @@ class TestBaseAgentACIContract:
     @pytest.fixture
     def agent(self, mock_unified_config):
         """Create test agent instance"""
-        with patch("config.unified_config.get_config", return_value=mock_unified_config):
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             return ConcreteTestAgent(name="test-agent", agent_type="test", reasoning_style="test")
 
     @pytest.mark.asyncio

@@ -19,9 +19,11 @@ class OllamaClient:
         # Use unified config if url/model not provided
         if url is None or model is None:
             try:
-                from config.unified_config import get_config
-                config = get_config()
-                llm_config = config.get_llm_config()
+                import os
+                from infra.config.loader import load_config
+                strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+                config = load_config(strict=strict_mode)
+                llm_config = {"url": config.llm.url, "model": config.llm.model, "timeout": config.llm.timeout}
                 self.url = url or llm_config.get('url') if llm_config else None
                 self.model = model or llm_config.get('model') if llm_config else None
             except Exception as e:
@@ -32,14 +34,10 @@ class OllamaClient:
             self.url = url
             self.model = model
         
-        # Fallback to env vars if still not set
+        # Fallback to default if still not set
         if not self.url:
-            env_url = os.getenv('OLLAMA_URL')
-            if env_url:
-                self.url = env_url
-            else:
-                logger.info("Using default Ollama URL: http://host.docker.internal:11434 (set OLLAMA_URL to override)")
-                self.url = 'http://host.docker.internal:11434'
+            logger.info("Using default Ollama URL: http://host.docker.internal:11434")
+            self.url = 'http://host.docker.internal:11434'
         
         if not self.model:
             # Fail fast with informative error - no hardcoded fallback

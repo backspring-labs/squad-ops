@@ -19,7 +19,7 @@ class TestGPUDetection:
     @pytest.mark.asyncio
     async def test_gpu_utilization_available(self, mock_unified_config):
         """Test GPU utilization when nvidia-smi is available"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
             agent = LeadAgent('test-lead-agent')
@@ -77,7 +77,7 @@ Performance: Utilization = 45%, Memory = 8192 MiB / 24576 MiB
     @pytest.mark.asyncio
     async def test_gpu_utilization_unavailable(self, mock_unified_config):
         """Test GPU utilization gracefully handles when nvidia-smi is unavailable"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
             agent = LeadAgent('test-lead-agent')
@@ -136,7 +136,7 @@ class TestReasoningExtraction:
     @pytest.mark.unit
     def test_extract_real_ai_reasoning_with_entries(self, mock_unified_config):
         """Test _extract_real_ai_reasoning() with reasoning entries"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
             agent = LeadAgent('test-lead-agent')
@@ -182,7 +182,7 @@ class TestReasoningExtraction:
     @pytest.mark.unit
     def test_extract_real_ai_reasoning_filtered_by_agent(self, mock_unified_config):
         """Test _extract_real_ai_reasoning() with agent filter"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
             agent = LeadAgent('test-lead-agent')
@@ -218,7 +218,7 @@ class TestReasoningExtraction:
     @pytest.mark.unit
     def test_extract_real_ai_reasoning_no_entries(self, mock_unified_config):
         """Test _extract_real_ai_reasoning() when no reasoning entries exist"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
             agent = LeadAgent('test-lead-agent')
@@ -246,7 +246,7 @@ class TestExecutionDuration:
     @pytest.mark.asyncio
     async def test_execution_duration_calculation(self, mock_unified_config):
         """Test execution duration is calculated correctly"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
             agent = LeadAgent('test-lead-agent')
@@ -313,7 +313,7 @@ class TestBaseAgentTelemetryIntegration:
     @pytest.mark.asyncio
     async def test_base_agent_uses_telemetry_client(self, mock_unified_config):
         """Test that BaseAgent uses TelemetryClient abstraction"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.base_agent import BaseAgent
             
             class TestAgent(BaseAgent):
@@ -344,7 +344,7 @@ class TestBaseAgentTelemetryIntegration:
     @pytest.mark.asyncio
     async def test_base_agent_llm_response_creates_span(self, mock_unified_config):
         """Test that BaseAgent.llm_response() creates telemetry span"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.base_agent import BaseAgent
             
             class TestAgent(BaseAgent):

@@ -422,7 +422,8 @@ class TestSqlTasksAdapter:
         )
 
         assert result["status"] == "completed"
-        conn.execute.assert_called_once()
+        # update_task_status now updates both task_status and agent_task_log tables
+        assert conn.execute.call_count == 2
 
 
 class TestTasksAdapterRegistry:
@@ -439,18 +440,20 @@ class TestTasksAdapterRegistry:
     @pytest.mark.asyncio
     async def test_get_tasks_adapter_default_sql(self):
         """Test registry returns SQL adapter by default"""
+        from infra.config.loader import reset_config
+        reset_config()  # Clear singleton
+        
         with (
             patch("agents.tasks.registry.asyncpg.create_pool") as mock_pool,
-            patch("agents.tasks.registry.get_config") as mock_config,
+            patch("agents.tasks.registry.load_config") as mock_load_config,
         ):
-            mock_config_instance = MagicMock()
-            mock_config_instance.get_postgres_url.return_value = (
-                "postgresql://test:test@localhost/test"
-            )
-            mock_config_instance.get_tasks_backend.return_value = (
-                "sql"  # Explicitly set to sql for this test
-            )
-            mock_config.return_value = mock_config_instance
+            from infra.config.schema import AppConfig, DBConfig, CommsConfig, TasksBackend
+            mock_config_instance = MagicMock(spec=AppConfig)
+            mock_config_instance.db = MagicMock(spec=DBConfig)
+            mock_config_instance.db.url = "postgresql://test:test@localhost/test"
+            mock_config_instance.comms = MagicMock(spec=CommsConfig)
+            mock_config_instance.tasks_backend = TasksBackend.SQL
+            mock_load_config.return_value = mock_config_instance
 
             # Create a proper mock pool with async context manager
             mock_pool_instance = AsyncMock()
@@ -507,7 +510,17 @@ class TestTasksAdapterRegistry:
 
         registry_module._adapter = None
 
-        with patch("asyncpg.create_pool") as mock_pool:
+        with (
+            patch("asyncpg.create_pool") as mock_pool,
+            patch("agents.tasks.registry.load_config") as mock_load_config,
+        ):
+            from infra.config.schema import AppConfig, DBConfig, CommsConfig, TasksBackend
+            mock_config_instance = MagicMock(spec=AppConfig)
+            mock_config_instance.db = MagicMock(spec=DBConfig)
+            mock_config_instance.db.url = "postgresql://test:test@localhost/test"
+            mock_config_instance.comms = MagicMock(spec=CommsConfig)
+            mock_config_instance.tasks_backend = TasksBackend.PREFECT
+            mock_load_config.return_value = mock_config_instance
             mock_pool_instance = AsyncMock()
             mock_pool_instance.acquire = AsyncMock()
             mock_conn = AsyncMock()
@@ -531,16 +544,15 @@ class TestTasksAdapterRegistry:
 
             mock_pool.side_effect = create_pool_mock
 
-            with patch.dict("os.environ", {"TASKS_BACKEND": "prefect"}):
-                # Prefect adapter is now implemented
-                adapter = await get_tasks_adapter()
-                # Verify it's a Prefect adapter
-                from agents.tasks.prefect_adapter import PrefectTasksAdapter
+            # Prefect adapter is now implemented
+            adapter = await get_tasks_adapter()
+            # Verify it's a Prefect adapter
+            from agents.tasks.prefect_adapter import PrefectTasksAdapter
 
-                assert isinstance(adapter, PrefectTasksAdapter)
-                # Verify it can be initialized (doesn't raise NotImplementedError)
-                await adapter.initialize()
-                assert adapter._initialized is True
+            assert isinstance(adapter, PrefectTasksAdapter)
+            # Verify it can be initialized (doesn't raise NotImplementedError)
+            await adapter.initialize()
+            assert adapter._initialized is True
 
 
 class TestTasksModels:

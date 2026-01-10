@@ -57,13 +57,14 @@ class LLMRouter:
             logger = logging.getLogger(__name__)
             
             try:
-                from config.unified_config import get_config
-                unified_config = get_config()
-                llm_config = unified_config.get_llm_config()
-                # Fallbacks in .get() handle missing keys; these are ultimate fallbacks if config fails
-                default_url = llm_config.get('url') if llm_config else None
-                default_model = llm_config.get('model') if llm_config else None
-                default_timeout = llm_config.get('timeout') if llm_config else None
+                import os
+                from infra.config.loader import load_config
+                strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+                app_config = load_config(strict=strict_mode)
+                # Use AppConfig model attributes (SIP-051)
+                default_url = app_config.llm.url
+                default_model = app_config.llm.model
+                default_timeout = app_config.llm.timeout
             except Exception as e:
                 # If unified config fails entirely, fall back to environment vars and hardcoded defaults
                 logger.warning(f"Failed to load unified config, using fallbacks: {e}")
@@ -72,7 +73,8 @@ class LLMRouter:
                 default_timeout = None
             
             # Build config with clear logging for fallback usage
-            final_url = default_url or os.getenv('OLLAMA_URL')
+            # Use AppConfig LLM URL if available, otherwise fall back to default_url
+            final_url = default_url or (app_config.llm.url if app_config.llm.url else None)
             final_model = default_model  # No longer read from AGENT_MODEL env var
             final_timeout = default_timeout
             
@@ -140,13 +142,15 @@ class LLMRouter:
         
         # Check if local LLM is disabled - use unified config with fallback
         try:
-            from config.unified_config import get_config
-            config = get_config()
-            use_local_llm = config.get_use_local_llm()
+            import os
+            from infra.config.loader import load_config
+            strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+            config = load_config(strict=strict_mode)
+            use_local_llm = config.llm.use_local
         except Exception as e:
-            # Fallback to environment variable if unified config fails
-            logger.warning(f"Failed to load unified config for USE_LOCAL_LLM, using environment variable: {e}")
-            use_local_llm = os.getenv('USE_LOCAL_LLM', 'true').lower() == 'true'
+            # Fallback to default if config fails
+            logger.warning(f"Failed to load config for USE_LOCAL_LLM, using default: {e}")
+            use_local_llm = True  # Default to True
             if use_local_llm:
                 logger.info("Using default: USE_LOCAL_LLM=true (set USE_LOCAL_LLM=false to disable local LLM)")
         

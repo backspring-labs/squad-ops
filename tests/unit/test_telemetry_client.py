@@ -172,17 +172,17 @@ class TestTelemetryRouter:
     @pytest.mark.unit
     def test_telemetry_router_from_config_local(self):
         """Test TelemetryRouter.from_config() for local platform"""
-        with patch('config.unified_config.get_config') as mock_get_config:
-            mock_config = MagicMock()
-            mock_config.get_platform.return_value = 'local'
-            mock_config.get_telemetry_config.return_value = {
-                'backend': 'opentelemetry',
-                'otlp_endpoint': 'http://localhost:4317'
-            }
-            mock_config.get_deployment_config.return_value = '0.3.0'
-            mock_config.get_agent_id.return_value = 'test-agent'
-            mock_config.get_agent_role.return_value = 'test'
-            mock_config.get_agent_model.return_value = 'test-model'
+        with patch('infra.config.loader.load_config') as mock_get_config:
+            from infra.config.schema import AppConfig, AgentConfig, LLMConfig, TelemetryConfig
+            mock_config = MagicMock(spec=AppConfig)
+            mock_config.agent = MagicMock(spec=AgentConfig)
+            mock_config.agent.id = 'test-agent'
+            mock_config.agent.role = 'test'
+            mock_config.llm = MagicMock(spec=LLMConfig)
+            mock_config.llm.model = 'test-model'
+            mock_config.telemetry = MagicMock(spec=TelemetryConfig)
+            mock_config.telemetry.backend = 'opentelemetry'
+            mock_config.telemetry.otlp_endpoint = 'http://localhost:4317'
             mock_get_config.return_value = mock_config
             
             from agents.telemetry.router import TelemetryRouter
@@ -197,7 +197,7 @@ class TestTelemetryRouter:
     @pytest.mark.unit
     def test_telemetry_router_from_config_null_fallback(self):
         """Test TelemetryRouter falls back to NullTelemetryClient when backend unavailable"""
-        with patch('config.unified_config.get_config') as mock_get_config:
+        with patch('infra.config.loader.load_config') as mock_get_config:
             mock_config = MagicMock()
             mock_config.get_platform.return_value = 'unknown'
             mock_config.get_telemetry_config.return_value = {
@@ -216,18 +216,18 @@ class TestTelemetryRouter:
             assert isinstance(client, NullTelemetryClient)
     
     @pytest.mark.unit
-    def test_telemetry_router_env_var_override(self):
-        """Test TelemetryRouter respects TELEMETRY_BACKEND env var"""
-        import os
-
+    def test_telemetry_router_env_var_override(self, mock_unified_config):
+        """Test TelemetryRouter respects config telemetry backend"""
         from agents.telemetry.router import TelemetryRouter
         
-        # Set env var to force null client
-        with patch.dict(os.environ, {'TELEMETRY_BACKEND': 'null'}):
+        # Mock config to return null backend
+        mock_unified_config.telemetry.backend = 'null'
+        
+        with patch("infra.config.loader.load_config", return_value=mock_unified_config):
             client = TelemetryRouter.from_config()
             assert client is not None
             
-            # Should be NullTelemetryClient when env var is set to 'null'
+            # Should be NullTelemetryClient when backend is set to 'null'
             from agents.telemetry.providers.null_client import NullTelemetryClient
             assert isinstance(client, NullTelemetryClient)
 

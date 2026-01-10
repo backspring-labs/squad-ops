@@ -73,7 +73,7 @@ class TestTokenTracking:
     @pytest.mark.asyncio
     async def test_base_agent_tracks_tokens_in_communication_log(self, mock_unified_config):
         """Test that BaseAgent tracks token usage in communication log"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.base_agent import BaseAgent
             
             class TestAgent(BaseAgent):
@@ -134,7 +134,7 @@ class TestTokenTracking:
     @pytest.mark.asyncio
     async def test_lead_agent_collects_token_metrics(self, mock_unified_config):
         """Test that LeadAgent collects token metrics in telemetry"""
-        with patch('config.unified_config.get_config', return_value=mock_unified_config):
+        with patch('infra.config.loader.load_config', return_value=mock_unified_config):
             from agents.roles.lead.agent import LeadAgent
             
             with patch.object(LeadAgent, '_initialize_llm_client', return_value=MagicMock()):

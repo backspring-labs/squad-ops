@@ -4,7 +4,7 @@ Unit tests for FileManager class
 Tests file system operations and file management
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -373,15 +373,16 @@ class TestFileManager:
         """Test validating valid file path"""
         fm = FileManager()
         
-        with patch('agents.tools.file_manager.get_filesystem_config') as mock_config, \
+        with patch('infra.config.loader.get_config') as mock_get_config, \
              patch.object(fm, 'file_exists', new_callable=AsyncMock, return_value=True), \
              patch.object(fm, 'get_file_info', new_callable=AsyncMock, return_value={'size': 100}):
-            
-            # get_filesystem_config is called as a function with a key
-            mock_config.side_effect = lambda key: {
-                'allowed_extensions': ['.txt', '.json'],
-                'max_file_size': 10000
-            }.get(key, [])
+            from infra.config.schema import AppConfig, DeploymentConfig, FileManagerConfig
+            mock_config = MagicMock(spec=AppConfig)
+            mock_config.deployment = MagicMock(spec=DeploymentConfig)
+            mock_config.deployment.file_manager = MagicMock(spec=FileManagerConfig)
+            mock_config.deployment.file_manager.allowed_extensions = ['.txt', '.json']
+            mock_config.deployment.file_manager.max_file_size = 10000
+            mock_get_config.return_value = mock_config
             
             result = await fm.validate_file_path('test.txt')
             
@@ -415,7 +416,13 @@ class TestFileManager:
         """Test validating file path with invalid extension"""
         fm = FileManager()
         
-        with patch('agents.tools.file_manager.get_filesystem_config', return_value=['.txt', '.json']):
+        with patch('infra.config.loader.get_config') as mock_get_config:
+            from infra.config.schema import AppConfig, DeploymentConfig, FileManagerConfig
+            mock_config = MagicMock(spec=AppConfig)
+            mock_config.deployment = MagicMock(spec=DeploymentConfig)
+            mock_config.deployment.file_manager = MagicMock(spec=FileManagerConfig)
+            mock_config.deployment.file_manager.allowed_extensions = ['.txt', '.json']
+            mock_get_config.return_value = mock_config
             result = await fm.validate_file_path('test.exe')
             
             assert result['status'] == 'invalid'
@@ -427,9 +434,16 @@ class TestFileManager:
         """Test validating file path with file too large"""
         fm = FileManager()
         
-        with patch('agents.tools.file_manager.get_filesystem_config') as mock_config, \
+        with patch('infra.config.loader.get_config') as mock_get_config, \
              patch.object(fm, 'file_exists', new_callable=AsyncMock, return_value=True), \
              patch.object(fm, 'get_file_info', new_callable=AsyncMock, return_value={'size': 10000000}):
+            from infra.config.schema import AppConfig, DeploymentConfig, FileManagerConfig
+            mock_config = MagicMock(spec=AppConfig)
+            mock_config.deployment = MagicMock(spec=DeploymentConfig)
+            mock_config.deployment.file_manager = MagicMock(spec=FileManagerConfig)
+            mock_config.deployment.file_manager.allowed_extensions = ['.txt', '.json']
+            mock_config.deployment.file_manager.max_file_size = 10000
+            mock_get_config.return_value = mock_config
             
             mock_config.side_effect = lambda key: {
                 'allowed_extensions': ['.txt'],
@@ -447,9 +461,15 @@ class TestFileManager:
         """Test cleaning up temp files successfully"""
         fm = FileManager()
         
-        with patch('agents.tools.file_manager.get_filesystem_config', return_value='/test/temp'), \
+        with patch('infra.config.loader.get_config') as mock_get_config, \
              patch.object(fm, 'directory_exists', new_callable=AsyncMock, return_value=True), \
              patch.object(fm, '_execute_command', new_callable=AsyncMock):
+            from infra.config.schema import AppConfig, DeploymentConfig
+            from pathlib import Path
+            mock_config = MagicMock(spec=AppConfig)
+            mock_config.deployment = MagicMock(spec=DeploymentConfig)
+            mock_config.deployment.warm_boot_dir = Path('/test/temp')
+            mock_get_config.return_value = mock_config
             
             result = await fm.cleanup_temp_files()
             
@@ -462,7 +482,12 @@ class TestFileManager:
         """Test cleaning up temp files when directory doesn't exist"""
         fm = FileManager()
         
-        with patch('agents.tools.file_manager.get_filesystem_config', return_value='/test/temp'), \
+        from infra.config.schema import AppConfig, DeploymentConfig
+        mock_config = MagicMock(spec=AppConfig)
+        mock_config.deployment = MagicMock(spec=DeploymentConfig)
+        mock_config.deployment.warm_boot_dir = '/test/warm-boot'
+        
+        with patch('infra.config.loader.get_config', return_value=mock_config), \
              patch.object(fm, 'directory_exists', new_callable=AsyncMock, return_value=False):
             
             result = await fm.cleanup_temp_files()
@@ -489,7 +514,12 @@ class TestFileManager:
         """Test cleaning up temp files error handling"""
         fm = FileManager()
         
-        with patch('agents.tools.file_manager.get_filesystem_config', return_value='/test/temp'), \
+        from infra.config.schema import AppConfig, DeploymentConfig
+        mock_config = MagicMock(spec=AppConfig)
+        mock_config.deployment = MagicMock(spec=DeploymentConfig)
+        mock_config.deployment.warm_boot_dir = '/test/warm-boot'
+        
+        with patch('infra.config.loader.get_config', return_value=mock_config), \
              patch.object(fm, 'directory_exists', new_callable=AsyncMock, return_value=True), \
              patch.object(fm, '_execute_command', new_callable=AsyncMock, side_effect=Exception("Cleanup error")):
             

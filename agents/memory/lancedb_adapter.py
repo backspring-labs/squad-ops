@@ -12,7 +12,9 @@ from datetime import datetime
 from typing import Any
 
 from agents.memory.base import MemoryProvider
-from config.unified_config import get_config
+import os
+
+from infra.config.loader import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +56,9 @@ class LanceDBAdapter(MemoryProvider):
         self._table_name = f"{agent_name.lower()}_memories"
 
         # Embedding configuration - Use centralized config
-        config = get_config()
-        self._ollama_url = config.get_ollama_url()
+        strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+        config = load_config(strict=strict_mode)
+        self._ollama_url = config.llm.url
         self._embedding_model = None  # SentenceTransformers fallback
 
         # Initialize connection and table

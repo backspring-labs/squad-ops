@@ -206,9 +206,11 @@ class StratAgent(BaseAgent):
 
 async def main():
     """Main entry point for Strat agent"""
-    from config.unified_config import get_config
-    config = get_config()
-    identity = config.get_agent_id()
+    import os
+    from infra.config.loader import load_config
+    strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+    config = load_config(strict=strict_mode)
+    identity = config.agent.id
     agent = StratAgent(identity=identity)
     await agent.run()
 

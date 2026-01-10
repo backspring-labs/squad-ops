@@ -4,7 +4,7 @@ Unit tests for DockerManager class
 Tests Docker container operations and deployment
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -69,10 +69,17 @@ class TestDockerManager:
         """Test deploying container successfully"""
         dm = DockerManager()
         
-        with patch('agents.tools.docker_manager.get_docker_config', return_value='test-network'), \
-             patch('agents.tools.docker_manager.get_deployment_config', return_value=8080), \
+        with patch('infra.config.loader.get_config') as mock_get_config, \
              patch.object(dm, '_cleanup_existing_containers', new_callable=AsyncMock), \
              patch.object(dm, '_execute_command', new_callable=AsyncMock):
+            from infra.config.schema import AppConfig, DeploymentConfig, DockerConfig
+            mock_config = MagicMock(spec=AppConfig)
+            mock_config.deployment = MagicMock(spec=DeploymentConfig)
+            mock_config.deployment.docker = MagicMock(spec=DockerConfig)
+            mock_config.deployment.docker.network_name = 'test-network'
+            mock_config.deployment.docker.default_port = 8080
+            mock_config.deployment.docker.restart_policy = 'unless-stopped'
+            mock_get_config.return_value = mock_config
             
             result = await dm.deploy_container('HelloSquad', '1.0.0')
             
@@ -86,10 +93,17 @@ class TestDockerManager:
         """Test deploying container error handling"""
         dm = DockerManager()
         
-        with patch('agents.tools.docker_manager.get_docker_config', return_value='test-network'), \
-             patch('agents.tools.docker_manager.get_deployment_config', return_value=8080), \
+        with patch('infra.config.loader.get_config') as mock_get_config, \
              patch.object(dm, '_cleanup_existing_containers', new_callable=AsyncMock), \
              patch.object(dm, '_execute_command', new_callable=AsyncMock, side_effect=Exception("Deploy error")):
+            from infra.config.schema import AppConfig, DeploymentConfig, DockerConfig
+            mock_config = MagicMock(spec=AppConfig)
+            mock_config.deployment = MagicMock(spec=DeploymentConfig)
+            mock_config.deployment.docker = MagicMock(spec=DockerConfig)
+            mock_config.deployment.docker.network_name = 'test-network'
+            mock_config.deployment.docker.default_port = 8080
+            mock_config.deployment.docker.restart_policy = 'unless-stopped'
+            mock_get_config.return_value = mock_config
             
             result = await dm.deploy_container('HelloSquad', '1.0.0')
             

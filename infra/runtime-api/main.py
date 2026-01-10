@@ -22,16 +22,34 @@ from agents.tasks.errors import (
 )
 from agents.tasks.models import FlowState, TaskCreate, TaskFilters, TaskState
 
-# Initialize centralized configuration
-from config.unified_config import get_config
+# Initialize centralized configuration (SIP-051)
+import logging
+import os
+
+from infra.config.loader import load_config
+from infra.config.redaction import redact_config
+from infra.config.fingerprint import config_fingerprint
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="SquadOps Runtime API", version="1.0"
 )  # SIP-0048: renamed from Task Management API
 
-# Get PostgreSQL URL from centralized config system
-config = get_config()
-POSTGRES_URL = config.get_postgres_url()
+# Load configuration with profile selection and validation
+strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+config = load_config(strict=strict_mode)
+
+# Extract configuration values
+POSTGRES_URL = config.db.url
+RABBITMQ_URL = config.comms.rabbitmq.url
+
+# Log configuration at startup (SIP-051 requirement)
+# Profile is logged by load_config() itself, but we log fingerprint here
+config_dict = config.model_dump()
+redacted_config = redact_config(config_dict)
+fingerprint = config_fingerprint(redacted_config)
+logger.info(f"Configuration fingerprint: {fingerprint} (strict={strict_mode})")
 
 # Global connection pool (for memory endpoints only)
 pool = None
@@ -53,7 +71,7 @@ async def startup_event():
     try:
         import aio_pika
 
-        rabbitmq_url = config.get_rabbitmq_url()
+        rabbitmq_url = RABBITMQ_URL
         print("[STARTUP] Attempting to connect to RabbitMQ...", flush=True)
         global rabbitmq_connection, rabbitmq_channel  # Ensure we're modifying globals
         rabbitmq_connection = await aio_pika.connect_robust(rabbitmq_url)
@@ -487,7 +505,7 @@ async def start_task(
 
                 logger = logging.getLogger(__name__)
                 logger.warning("RabbitMQ channel not available, creating temporary connection")
-                rabbitmq_url = config.get_rabbitmq_url()
+                rabbitmq_url = RABBITMQ_URL
                 connection = await aio_pika.connect_robust(rabbitmq_url)
                 try:
                     channel = await connection.channel()
