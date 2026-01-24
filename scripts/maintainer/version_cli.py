@@ -13,6 +13,7 @@ from pathlib import Path
 # Add repo root to Python path
 script_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(script_dir))
+sys.path.insert(0, str(script_dir / "_v0_legacy"))
 
 from config.version import (
     AGENT_VERSIONS,
@@ -61,7 +62,7 @@ def show_agent_details(agent_name):
 
 def update_version(agent_name, new_version, llm=None, config=None, notes=""):
     """Update agent version in config/version.py"""
-    version_file = Path("config/version.py")
+    version_file = Path("_v0_legacy/config/version.py")
     
     if not version_file.exists():
         print("❌ config/version.py not found")
@@ -137,7 +138,7 @@ def rollback_to_version(agent_name, target_version):
 
 def update_framework_version(new_version, notes=""):
     """Update the framework version in config/version.py"""
-    version_file = Path("config/version.py")
+    version_file = Path("_v0_legacy/config/version.py")
     
     if not version_file.exists():
         print("❌ config/version.py not found")
