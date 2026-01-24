@@ -485,9 +485,9 @@ sips:
 - sip_uid: 01KEM71ECNND1QN05SFV5C2QZB
   sip_number: 55
   title: DB Deployment Profile — Postgres Portability via Deployment Profiles + infra/db/bootstrap
-  path: sips/accepted/SIP-0055-DB-Deployment-Profile-Postgres.md
-  status: accepted
+  path: sips/implemented/SIP-0055-DB-Deployment-Profile-Postgres.md
+  status: implemented
   author: Framework Committee
   approver: jladd
   created_at: '2026-01-10T15:05:29Z'
-  updated_at: '2026-01-10T11:42:29.135303Z'
+  updated_at: '2026-01-24T09:39:34.917844Z'
