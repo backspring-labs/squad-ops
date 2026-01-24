@@ -2,11 +2,11 @@
 sip_uid: 01KC6VW361J91NZR3C27074XDE
 sip_number: 50
 title: Agent Container Interface (ACI) – Clean Specification
-status: accepted
+status: implemented
 author: Unknown
 approver: null
 created_at: '2025-12-09T14:30:00Z'
-updated_at: '2025-12-12T00:00:00.000000Z'
+updated_at: '2026-01-10T11:15:29.748853Z'
 original_filename: SIP-AGENT-CONTAINER-INTERFACE.md
 ---
 # SIP-AGENT-CONTAINER-INTERFACE  

@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775865062"
+sip_uid: '17642554775865062'
 sip_number: 17
-title: "Usability-Feedback-Service-Integration-Protocol"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "2025-10-03T18:44:56.926641Z"
-updated_at: "2025-11-27T10:12:48.887066Z"
-original_filename: "SIP-017_Usability_Feedback_Service_Integration.md"
+title: Usability-Feedback-Service-Integration-Protocol
+status: deprecated
+author: Unknown
+approver: None
+created_at: '2025-10-03T18:44:56.926641Z'
+updated_at: '2026-01-10T11:15:39.977812Z'
+original_filename: SIP-017_Usability_Feedback_Service_Integration.md
 ---
-
 # SIP-017: Usability Feedback & Service Integration Protocol
 
 **Status:** Draft  

@@ -2,7 +2,7 @@
 sip_uid: "17642554775859172"
 sip_number: 13
 title: "Extensibility-Customization-Protocol"
-status: "accepted"
+status: "proposed"
 author: "Unknown"
 approver: "None"
 created_at: "extension/customization points."
@@ -12,7 +12,7 @@ original_filename: "SIP-013_Extensibility_Customization.md"
 
 # SIP-013: Extensibility & Customization Protocol
 
-**Status:** Draft  
+**Status:** Proposed  
 **Owner:** Max (Governance)  
 **Contributors:** Nat, Neo, Data, EVE, Joi  
 **Created:** 2025-09-27  

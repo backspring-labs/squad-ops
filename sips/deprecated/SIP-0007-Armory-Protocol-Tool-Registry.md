@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775849882"
+sip_uid: '17642554775849882'
 sip_number: 7
-title: "-SIP-007-Armory-Protocol-Tool-Registry"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "2025-10-03T18:44:56.924563Z"
-updated_at: "2025-11-27T10:12:48.881677Z"
-original_filename: "SIP-007-Armory-Protocol.md"
+title: -SIP-007-Armory-Protocol-Tool-Registry
+status: deprecated
+author: Unknown
+approver: None
+created_at: '2025-10-03T18:44:56.924563Z'
+updated_at: '2026-01-10T11:15:34.139406Z'
+original_filename: SIP-007-Armory-Protocol.md
 ---
-
 # ✅ SIP-007: Armory Protocol (Tool Registry)
 
 ## 📌 Purpose

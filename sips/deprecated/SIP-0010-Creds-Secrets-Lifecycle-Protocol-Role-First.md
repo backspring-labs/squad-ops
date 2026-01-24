@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775845965"
+sip_uid: '17642554775845965'
 sip_number: 10
-title: "Creds-Secrets-Lifecycle-Protocol-Role-First"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "presence + expiry window (<7d → Warning, expired → Blocking)."
-updated_at: "2025-11-27T10:12:48.882894Z"
-original_filename: "SIP-010-Creds-Secrets-Lifecycle-Protocol.md"
+title: Creds-Secrets-Lifecycle-Protocol-Role-First
+status: deprecated
+author: Unknown
+approver: None
+created_at: presence + expiry window (<7d → Warning, expired → Blocking).
+updated_at: '2026-01-10T11:15:37.187382Z'
+original_filename: SIP-010-Creds-Secrets-Lifecycle-Protocol.md
 ---
-
 # ✅ SIP-010: Creds & Secrets Lifecycle Protocol
 
 ---

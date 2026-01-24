@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775843527"
+sip_uid: '17642554775843527'
 sip_number: 9
-title: "Scout"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "**Role DNA** (baseline) or **Instance DNA** (delta) as needed (SIP-004)."
-updated_at: "2025-11-27T10:12:48.882287Z"
-original_filename: "SIP-009-Role-First-Practice-Range-Protocol.md"
+title: Scout
+status: deprecated
+author: Unknown
+approver: None
+created_at: '**Role DNA** (baseline) or **Instance DNA** (delta) as needed (SIP-004).'
+updated_at: '2026-01-10T11:15:35.323533Z'
+original_filename: SIP-009-Role-First-Practice-Range-Protocol.md
 ---
-
 # ✅ SIP-009: Practice Range (Agent Test Harness) — **Role-First Edition**
 
 ## 📌 Purpose

@@ -1,15 +1,14 @@
 ---
-sip_uid: "17642554775869299"
+sip_uid: '17642554775869299'
 sip_number: 15
-title: "Redesign-Watchlist-Reference-Framework"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "2025-10-03T18:44:56.926225Z"
-updated_at: "2025-11-27T10:12:48.885905Z"
-original_filename: "SIP-015_Redesign_Watchlist.md"
+title: Redesign-Watchlist-Reference-Framework
+status: deprecated
+author: Unknown
+approver: None
+created_at: '2025-10-03T18:44:56.926225Z'
+updated_at: '2026-01-10T11:15:39.064857Z'
+original_filename: SIP-015_Redesign_Watchlist.md
 ---
-
 # SIP-015: Redesign Watchlist & Reference Framework
 
 **Status:** Draft  

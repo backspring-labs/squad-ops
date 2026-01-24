@@ -1,5 +1,13 @@
-last_assigned: 53
+last_assigned: 55
 sips:
+- sip_number: 3
+  sip_uid: '17642554775787694'
+  title: -SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol
+  status: deprecated
+  path: sips/deprecated/SIP-0003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol.md
+  created_at: '2025-10-03T18:44:56.922290Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v2
 - sip_uid: '17642554775814171'
   sip_number: 3
   title: -SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol
@@ -10,6 +18,14 @@ sips:
   created_at: '2025-10-03T18:44:56.922290Z'
   updated_at: '2025-11-28T15:50:37.004438Z'
   variant: v3
+- sip_number: 4
+  sip_uid: '17642554775828094'
+  title: -SIP-004-Continuous-Adaptation-Protocol-CAP
+  status: deprecated
+  path: sips/deprecated/SIP-0004-Continuous-Adaptation-Protocol-CAP.md
+  created_at: '2025-10-03T18:44:56.923175Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v2
 - sip_uid: '17642554775827032'
   sip_number: 4
   title: -SIP-004-Continuous-Adaptation-Protocol-CAP
@@ -20,6 +36,14 @@ sips:
   created_at: '2025-10-03T18:44:56.923175Z'
   updated_at: '2025-11-28T15:50:37.892222Z'
   variant: v3
+- sip_number: 5
+  sip_uid: '17642554775827020'
+  title: -SIP-005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA
+  status: deprecated
+  path: sips/deprecated/SIP-0005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA.md
+  created_at: '2025-10-03T18:44:56.923409Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v2
 - sip_uid: '17642554775832227'
   sip_number: 5
   title: -SIP-005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA
@@ -29,6 +53,22 @@ sips:
   approver: None
   created_at: '2025-10-03T18:44:56.923409Z'
   updated_at: '2025-11-28T15:52:39.980459Z'
+  variant: v3
+- sip_number: 6
+  sip_uid: '17642554775833100'
+  title: -SIP-0061-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode
+  status: deprecated
+  path: sips/deprecated/SIP-0006-v2-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode.md
+  created_at: '2026-01-10T10:32:53Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v2
+- sip_number: 6
+  sip_uid: '17642554775836297'
+  title: -SIP-006-Warm-Boot-Analysis-Protocol-WBA
+  status: deprecated
+  path: sips/deprecated/SIP-0006-Warm-Boot-Analysis-Protocol-WBA.md
+  created_at: '2026-01-10T10:32:53Z'
+  updated_at: '2026-01-10T10:32:53Z'
   variant: v3
 - sip_uid: '17642554775836826'
   sip_number: 6
@@ -43,62 +83,52 @@ sips:
 - sip_uid: '17642554775849882'
   sip_number: 7
   title: -SIP-007-Armory-Protocol-Tool-Registry
-  path: sips/accepted/SIP-0007-Armory-Protocol-Tool-Registry.md
-  status: accepted
+  path: sips/deprecated/SIP-0007-Armory-Protocol-Tool-Registry.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-10-03T18:44:56.924563Z'
-  updated_at: '2025-11-27T10:12:48.881677Z'
+  updated_at: '2026-01-10T11:15:34.142438Z'
   variant: null
 - sip_uid: '17642554775843527'
   sip_number: 9
   title: Scout
-  path: sips/accepted/SIP-0009-Scout.md
-  status: accepted
+  path: sips/deprecated/SIP-0009-Scout.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.882287Z'
-  updated_at: '2025-11-27T10:12:48.882287Z'
+  updated_at: '2026-01-10T11:15:35.326379Z'
   variant: null
 - sip_uid: '17642554775845965'
   sip_number: 10
   title: Creds-Secrets-Lifecycle-Protocol-Role-First
-  path: sips/accepted/SIP-0010-Creds-Secrets-Lifecycle-Protocol-Role-First.md
-  status: accepted
+  path: sips/deprecated/SIP-0010-Creds-Secrets-Lifecycle-Protocol-Role-First.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.882894Z'
-  updated_at: '2025-11-27T10:12:48.882894Z'
+  updated_at: '2026-01-10T11:15:37.187887Z'
   variant: v1
-- sip_uid: '17642554775858522'
-  sip_number: 10
-  title: Toolset-Readiness-Validation
-  path: sips/accepted/SIP-0010-v2-Toolset-Readiness-Validation.md
-  status: accepted
-  author: Unknown
-  approver: None
-  created_at: '2025-11-27T10:12:48.883423Z'
-  updated_at: '2025-11-27T10:12:48.883423Z'
-  variant: 2
 - sip_uid: '17642554775857273'
   sip_number: 12
   title: Pattern-First-Development-Escalation-Protocol
-  path: sips/accepted/SIP-0012-Pattern-First-Development-Escalation-Protocol.md
-  status: accepted
+  path: sips/proposals/SIP-0012-Pattern-First-Development-Escalation-Protocol.md
+  status: proposed
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.883929Z'
-  updated_at: '2025-11-27T10:12:48.883929Z'
+  updated_at: '2026-01-10T12:00:00Z'
   variant: null
 - sip_uid: '17642554775859172'
   sip_number: 13
   title: Extensibility-Customization-Protocol
-  path: sips/accepted/SIP-0013-Extensibility-Customization-Protocol.md
-  status: accepted
+  path: sips/proposals/SIP-0013-Extensibility-Customization-Protocol.md
+  status: proposed
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.884497Z'
-  updated_at: '2025-11-27T10:12:48.884497Z'
+  updated_at: '2026-01-10T12:00:00Z'
   variant: null
 - sip_uid: '17642554775863171'
   sip_number: 14
@@ -113,63 +143,51 @@ sips:
 - sip_uid: '17642554775869299'
   sip_number: 15
   title: Redesign-Watchlist-Reference-Framework
-  path: sips/accepted/SIP-0015-Redesign-Watchlist-Reference-Framework.md
-  status: accepted
+  path: sips/deprecated/SIP-0015-Redesign-Watchlist-Reference-Framework.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-10-03T18:44:56.926225Z'
-  updated_at: '2025-11-27T10:12:48.885905Z'
+  updated_at: '2026-01-10T11:15:39.068485Z'
   variant: null
 - sip_uid: '17642554775868264'
   sip_number: 16
   title: HumanAgent-Hybrid-Squad-Operations
-  path: sips/accepted/SIP-0016-HumanAgent-Hybrid-Squad-Operations.md
-  status: accepted
+  path: sips/proposals/SIP-0016-HumanAgent-Hybrid-Squad-Operations.md
+  status: proposed
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.886498Z'
-  updated_at: '2025-11-27T10:12:48.886498Z'
+  updated_at: '2026-01-10T12:00:00Z'
   variant: null
 - sip_uid: '17642554775865062'
   sip_number: 17
   title: Usability-Feedback-Service-Integration-Protocol
-  path: sips/accepted/SIP-0017-Usability-Feedback-Service-Integration-Protocol.md
-  status: accepted
+  path: sips/deprecated/SIP-0017-Usability-Feedback-Service-Integration-Protocol.md
+  status: deprecated
   author: Unknown
   approver: None
   created_at: '2025-10-03T18:44:56.926641Z'
-  updated_at: '2025-11-27T10:12:48.887066Z'
+  updated_at: '2026-01-10T11:15:39.978320Z'
   variant: v1
-- sip_uid: '17642554775871506'
-  sip_number: 17
-  title: Usability-Service-Integration-Protocol
-  path: sips/accepted/SIP-0017-v2-Usability-Service-Integration-Protocol.md
-  status: accepted
-  author: Unknown
-  approver: None
-  created_at: '2025-10-03T18:44:56.927065Z'
-  updated_at: '2025-11-27T10:12:48.887600Z'
-  variant: 2
 - sip_uid: '17642554775877898'
   sip_number: 18
   title: -SIP-018-Enterprise-Process-CoE-Enablement
-  path: sips/accepted/SIP-0018-Enterprise-Process-CoE-Enablement.md
-  status: accepted
+  path: sips/proposals/SIP-0018-Enterprise-Process-CoE-Enablement.md
+  status: proposed
   author: Unknown
   approver: None
   created_at: '2025-10-03T18:44:56.927287Z'
-  updated_at: '2025-11-27T10:12:48.888091Z'
+  updated_at: '2026-01-10T12:00:00Z'
   variant: v1
-- sip_uid: '17642554775871658'
-  sip_number: 18
+- sip_number: 18
+  sip_uid: '17642554775871658'
   title: -SIP-018-Squad-Context-Protocol
-  path: sips/accepted/SIP-0018-v2-Squad-Context-Protocol.md
-  status: accepted
-  author: Unknown
-  approver: None
+  status: proposed
+  path: sips/proposals/SIP-0018-v2-Squad-Context-Protocol.md
   created_at: '2025-10-03T18:44:56.927519Z'
-  updated_at: '2025-11-27T10:12:48.888583Z'
-  variant: 2
+  updated_at: '2026-01-10T11:17:26Z'
+  variant: v2
 - sip_uid: '17642554775889002'
   sip_number: 19
   title: SIP-Management-Workflow-Protocol
@@ -213,12 +231,12 @@ sips:
 - sip_uid: '17642554775906691'
   sip_number: 23
   title: Domain-Expert-Architecture-for-Product-Strategy
-  path: sips/accepted/SIP-0023-Domain-Expert-Architecture-for-Product-Strategy.md
-  status: accepted
+  path: sips/proposals/SIP-0023-Domain-Expert-Architecture-for-Product-Strategy.md
+  status: proposed
   author: Unknown
   approver: None
   created_at: '2025-11-27T10:12:48.892116Z'
-  updated_at: '2025-11-27T10:12:48.892116Z'
+  updated_at: '2026-01-10T12:00:00Z'
   variant: null
 - sip_uid: '17642554775902673'
   sip_number: 24
@@ -283,12 +301,12 @@ sips:
 - sip_uid: '17642554775939927'
   sip_number: 28
   title: Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Deployments
-  path: sips/accepted/SIP-0028-Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Depl.md
-  status: accepted
+  path: sips/proposals/SIP-0028-Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Depl.md
+  status: proposed
   author: System Architecture
   approver: None
   created_at: '2025-10-13T00:00:00Z'
-  updated_at: '2025-11-27T10:12:48.897306Z'
+  updated_at: '2026-01-10T12:00:00Z'
   variant: null
 - sip_uid: '17642554775939368'
   sip_number: 31
@@ -310,6 +328,14 @@ sips:
   created_at: '2025-10-16T00:00:00Z'
   updated_at: '2025-11-27T10:12:48.898527Z'
   variant: null
+- sip_number: 33
+  sip_uid: '17642554775943561'
+  title: -LLM-Client-Abstraction-Manifest-First-AppBuilder
+  status: implemented
+  path: sips/implemented/SIP-0033-LLM-Client-Abstraction-Manifest-First-AppBuilder.md
+  created_at: '2025-10-16T00:00:00Z'
+  updated_at: '2026-01-10T10:32:53Z'
+  variant: v3
 - sip_uid: '17642554775959705'
   sip_number: 33
   title: -LLM-Client-Abstraction-Manifest-First-AppBuilder
@@ -413,12 +439,12 @@ sips:
 - sip_uid: 01KC6VW361J91NZR3C27074XDE
   sip_number: 50
   title: Agent Container Interface (ACI) – Clean Specification
-  path: sips/accepted/SIP-0050-Agent-Container-Interface-ACI.md
-  status: accepted
+  path: sips/implemented/SIP-0050-Agent-Container-Interface-ACI.md
+  status: implemented
   author: Unknown
   approver: jladd
   created_at: '2025-12-09T14:30:00Z'
-  updated_at: '2025-12-11T09:08:48.781425Z'
+  updated_at: '2026-01-10T11:15:29.749826Z'
 - sip_uid: 01KCY12K6D8SRH663DASX7MR9M
   sip_number: 51
   title: Config Profiles and Validation
@@ -440,57 +466,28 @@ sips:
 - sip_uid: 01KEM71ECNVNS63NBBGJ7RNPBG
   sip_number: 53
   title: Repository Reorganization for Domain-Driven Design (DDD) and Hexagonal Isolation
-  path: sips/accepted/SIP-0053-Repository-Reorganization-for-Domain-Driven.md
-  status: accepted
+  path: sips/implemented/SIP-0053-Repository-Reorganization-for-Domain-Driven.md
+  status: implemented
   author: Gemini (AI Thought Partner)
   approver: jladd
   created_at: '2026-01-10T15:05:29Z'
-  updated_at: '2026-01-10T10:07:24.427880Z'
-- sip_number: 33
-  sip_uid: '17642554775943561'
-  title: -LLM-Client-Abstraction-Manifest-First-AppBuilder
+  updated_at: '2026-01-10T11:26:01.486795Z'
+- sip_uid: 01KEMAH9QWAH9FWNZZ27NY1QCC
+  sip_number: 54
+  title: Hexagonal Secrets Isolation
   status: implemented
-  path: sips/implemented/SIP-0033-LLM-Client-Abstraction-Manifest-First-AppBuilder.md
-  created_at: '2025-10-16T00:00:00Z'
-  updated_at: '2026-01-10T10:32:53Z'
-  variant: v3
-- sip_number: 3
-  sip_uid: '17642554775787694'
-  title: -SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol
-  status: deprecated
-  path: sips/deprecated/SIP-0003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol.md
-  created_at: '2025-10-03T18:44:56.922290Z'
-  updated_at: '2026-01-10T10:32:53Z'
-  variant: v2
-- sip_number: 6
-  sip_uid: '17642554775833100'
-  title: -SIP-0061-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode
-  status: deprecated
-  path: sips/deprecated/SIP-0006-v2-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode.md
-  created_at: '2026-01-10T10:32:53Z'
-  updated_at: '2026-01-10T10:32:53Z'
-  variant: v2
-- sip_number: 4
-  sip_uid: '17642554775828094'
-  title: -SIP-004-Continuous-Adaptation-Protocol-CAP
-  status: deprecated
-  path: sips/deprecated/SIP-0004-Continuous-Adaptation-Protocol-CAP.md
-  created_at: '2025-10-03T18:44:56.923175Z'
-  updated_at: '2026-01-10T10:32:53Z'
-  variant: v2
-- sip_number: 6
-  sip_uid: '17642554775836297'
-  title: -SIP-006-Warm-Boot-Analysis-Protocol-WBA
-  status: deprecated
-  path: sips/deprecated/SIP-0006-Warm-Boot-Analysis-Protocol-WBA.md
-  created_at: '2026-01-10T10:32:53Z'
-  updated_at: '2026-01-10T10:32:53Z'
-  variant: v3
-- sip_number: 5
-  sip_uid: '17642554775827020'
-  title: -SIP-005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA
-  status: deprecated
-  path: sips/deprecated/SIP-0005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA.md
-  created_at: '2025-10-03T18:44:56.923409Z'
-  updated_at: '2026-01-10T10:32:53Z'
-  variant: v2
+  path: sips/implemented/SIP-0054-Hexagonal-Secrets-Isolation.md
+  author: Gemini (Design Partner)
+  approver: null
+  created_at: '2026-01-10T00:00:00Z'
+  updated_at: '2026-01-10T12:00:00Z'
+  variant: null
+- sip_uid: 01KEM71ECNND1QN05SFV5C2QZB
+  sip_number: 55
+  title: DB Deployment Profile — Postgres Portability via Deployment Profiles + infra/db/bootstrap
+  path: sips/accepted/SIP-0055-DB-Deployment-Profile-Postgres.md
+  status: accepted
+  author: Framework Committee
+  approver: jladd
+  created_at: '2026-01-10T15:05:29Z'
+  updated_at: '2026-01-10T11:42:29.135303Z'

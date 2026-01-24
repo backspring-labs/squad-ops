@@ -1,18 +1,17 @@
 ---
-sip_uid: "17642554775857273"
+sip_uid: '17642554775857273'
 sip_number: 12
-title: "Pattern-First-Development-Escalation-Protocol"
-status: "accepted"
-author: "Unknown"
-approver: "None"
-created_at: "patterns in requirements doc."
-updated_at: "2025-11-27T10:12:48.883929Z"
-original_filename: "SIP-012_Pattern_First_Dev_Escalation.md"
+title: Pattern-First-Development-Escalation-Protocol
+status: "proposed"
+author: Unknown
+approver: None
+created_at: patterns in requirements doc.
+updated_at: '2026-01-10T11:15:40.977978Z'
+original_filename: SIP-012_Pattern_First_Dev_Escalation.md
 ---
-
 # SIP-012: Pattern-First Development & Escalation Protocol
 
-**Status:** Draft  
+**Status:** Proposed  
 **Owner:** Max (Governance)  
 **Contributors:** Nat, Neo, EVE, Data, Claude (Expert Model)  
 **Created:** 2025-09-27  
