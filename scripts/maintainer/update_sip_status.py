@@ -160,6 +160,13 @@ def find_sip_in_registry(registry: dict[str, Any], sip_number: int | None = None
     return None
 
 
+def normalize_title(title: str) -> str:
+    """Normalize title for comparison (lowercase, strip whitespace)."""
+    if not title:
+        return ""
+    return title.lower().strip()
+
+
 def find_duplicate_sip_files(
     sip_uid: str | None,
     sip_number: int | None,
@@ -167,10 +174,14 @@ def find_duplicate_sip_files(
     registry: dict[str, Any]
 ) -> list[Path]:
     """
-    Find duplicate SIP files with the same sip_uid or sip_number.
+    Find duplicate SIP files with the same sip_uid, sip_number, original_filename, or title.
     
     Scans all lifecycle directories and identifies files that match the given
-    sip_uid (preferred) or sip_number (fallback). Excludes the canonical file.
+    sip_uid (preferred), sip_number, original_filename, or title. Excludes the canonical file.
+    
+    IMPORTANT: Excludes legitimate SIPs that are in the registry and in different lifecycle states.
+    A file with the same sip_number in a different lifecycle state is NOT a duplicate - it's a
+    legitimate SIP variant or progression.
     
     Args:
         sip_uid: SIP UID to match (preferred identifier)
@@ -183,6 +194,23 @@ def find_duplicate_sip_files(
     """
     duplicates = []
     canonical_file = canonical_file.resolve()
+    
+    # Extract metadata from canonical file to get original_filename and title
+    canonical_metadata = extract_metadata_from_file(canonical_file)
+    canonical_original_filename = canonical_metadata.get('original_filename') if canonical_metadata else None
+    canonical_title = normalize_title(canonical_metadata.get('title', '')) if canonical_metadata else None
+    canonical_status = canonical_metadata.get('status') if canonical_metadata else None
+    
+    # Build a set of legitimate SIP numbers from registry (to exclude from duplicates)
+    # A SIP number in the registry with a different status is legitimate, not a duplicate
+    legitimate_sip_numbers = set()
+    if sip_number is not None:
+        for sip_entry in registry.get('sips', []):
+            reg_sip_number = sip_entry.get('sip_number')
+            reg_status = sip_entry.get('status')
+            # If same number but different status, it's legitimate (not a duplicate)
+            if reg_sip_number == sip_number and reg_status != canonical_status:
+                legitimate_sip_numbers.add(reg_sip_number)
     
     # All lifecycle directories to scan
     lifecycle_dirs = [PROPOSALS_DIR, ACCEPTED_DIR, IMPLEMENTED_DIR, DEPRECATED_DIR]
@@ -203,12 +231,63 @@ def find_duplicate_sip_files(
                 # Skip files without metadata
                 continue
             
-            # Match by sip_uid (preferred) or sip_number (fallback)
+            file_sip_number = metadata.get('sip_number')
+            file_status = metadata.get('status')
+            file_sip_uid = metadata.get('sip_uid')
+            
+            # CRITICAL FIX: If this file has a sip_number that's in the registry with a different
+            # status, it's a legitimate SIP (not a duplicate). Check registry to confirm.
+            is_legitimate_sip = False
+            if file_sip_number is not None:
+                for sip_entry in registry.get('sips', []):
+                    reg_sip_number = sip_entry.get('sip_number')
+                    reg_status = sip_entry.get('status')
+                    reg_path_str = sip_entry.get('path', '')
+                    
+                    # If same number but different status, it's a legitimate SIP variant
+                    if reg_sip_number == file_sip_number and reg_status != canonical_status:
+                        # Verify this is the same SIP by checking path or sip_uid
+                        if reg_path_str:
+                            reg_path = REPO_ROOT / reg_path_str
+                            if reg_path.exists() and reg_path.resolve() == sip_file.resolve():
+                                is_legitimate_sip = True
+                                break
+                        # Also check by sip_uid if available
+                        if file_sip_uid and sip_entry.get('sip_uid') == file_sip_uid:
+                            is_legitimate_sip = True
+                            break
+            
+            # Skip legitimate SIPs - they are not duplicates
+            if is_legitimate_sip:
+                continue
+            
+            # Match by sip_uid (preferred), sip_number, original_filename, or title
             is_duplicate = False
+            
+            # Match by sip_uid (preferred) - but only if not in registry with different status
             if sip_uid and metadata.get('sip_uid') == sip_uid:
+                # Double-check: if this sip_uid is in registry with different status, it's legitimate
+                is_legitimate = False
+                for sip_entry in registry.get('sips', []):
+                    if (sip_entry.get('sip_uid') == sip_uid and 
+                        sip_entry.get('status') != canonical_status):
+                        is_legitimate = True
+                        break
+                if not is_legitimate:
+                    is_duplicate = True
+            # Match by sip_number (fallback) - but exclude if it's a legitimate SIP
+            elif sip_number is not None and file_sip_number == sip_number:
+                # Already checked above - if it's in legitimate_sip_numbers, we skip it
+                if file_sip_number not in legitimate_sip_numbers:
+                    is_duplicate = True
+            # Match by original_filename
+            elif canonical_original_filename and metadata.get('original_filename') == canonical_original_filename:
                 is_duplicate = True
-            elif sip_number is not None and metadata.get('sip_number') == sip_number:
-                is_duplicate = True
+            # Match by title (normalized)
+            elif canonical_title:
+                file_title = normalize_title(metadata.get('title', ''))
+                if file_title and file_title == canonical_title:
+                    is_duplicate = True
             
             if is_duplicate:
                 duplicates.append(sip_file)
@@ -319,34 +398,88 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         else:
             print("   No duplicates found.")
         
+        # Store original file info BEFORE any modifications
+        original_file_path = sip_file.resolve()
+        original_file_name = sip_file.name
+        original_file_dir = sip_file.parent
+
         # Update file metadata
         if not update_sip_file_metadata(sip_file, {'sip_number': sip_number, 'status': new_status}):
             return False
-        
+
         # Generate new filename
         new_filename = normalize_filename(sip_number, title)
         target_dir = STATUS_TO_FOLDER[new_status]
         new_path = target_dir / new_filename
-        
-        # Move file
+
+        # Move file using explicit copy+delete for reliability
+        # (shutil.move can leave orphaned files on some filesystems)
         try:
-            shutil.move(str(sip_file), str(new_path))
-            # Verify move succeeded
-            if sip_file.exists():
-                print(f"Warning: Source file still exists after move. Attempting to remove...")
-                try:
-                    sip_file.unlink()
-                    print(f"Removed duplicate source file: {sip_file.name}")
-                except Exception as e2:
-                    print(f"Error removing duplicate source file: {e2}")
-                    return False
+            # Ensure target directory exists
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            # Copy to destination first
+            shutil.copy2(str(sip_file), str(new_path))
+
+            # Verify copy succeeded
             if not new_path.exists():
-                print(f"Error: Destination file not found after move: {new_path}")
+                print(f"Error: Destination file not found after copy: {new_path}")
                 return False
-            print(f"Moved: {sip_file.name} -> {new_path.name}")
+
+            # Explicitly delete source
+            try:
+                sip_file.unlink()
+                print(f"Moved: {original_file_name} -> {new_path.name}")
+            except Exception as e_del:
+                print(f"Warning: Could not delete source file after copy: {e_del}")
+                print(f"   Source: {sip_file}")
+                print(f"   Destination exists and is valid, continuing...")
+                # Don't fail - destination is good, we'll clean up source later
+
         except Exception as e:
-            print(f"Error moving file: {e}")
+            print(f"Error copying file: {e}")
             return False
+
+        # HARDENED: Explicit check for orphaned source file by original path
+        if original_file_path.exists():
+            print(f"Warning: Original file still exists at {original_file_path}")
+            try:
+                original_file_path.unlink()
+                print(f"   ✅ Removed orphaned source file")
+            except Exception as e3:
+                print(f"   ❌ Failed to remove orphaned source: {e3}")
+                # Continue anyway - file can be manually cleaned
+        
+        # Post-move cleanup: Check for residual files in source directory
+        print(f"\n🔍 Checking for residual files in source directory...")
+        residual_duplicates = find_duplicate_sip_files(
+            sip_uid=sip_uid,
+            sip_number=sip_number,  # Now assigned
+            canonical_file=new_path,  # The moved file
+            registry=registry
+        )
+        if residual_duplicates:
+            print(f"   Found {len(residual_duplicates)} residual file(s):")
+            for dup in residual_duplicates:
+                print(f"   - {dup.relative_to(REPO_ROOT)}")
+            removed_count = cleanup_duplicate_files(residual_duplicates)
+            if removed_count > 0:
+                print(f"\n✅ Residual cleanup complete: {removed_count} file(s) removed")
+        else:
+            print("   No residual files found.")
+
+        # HARDENED: Final verification - check original directory for any file with original name
+        print(f"\n🔍 Final verification: checking for orphaned files by filename...")
+        orphaned_by_name = original_file_dir / original_file_name
+        if orphaned_by_name.exists() and orphaned_by_name.resolve() != new_path.resolve():
+            print(f"   Found orphaned file by original name: {orphaned_by_name.relative_to(REPO_ROOT)}")
+            try:
+                orphaned_by_name.unlink()
+                print(f"   ✅ Removed orphaned file: {original_file_name}")
+            except Exception as e_orphan:
+                print(f"   ❌ Failed to remove orphaned file: {e_orphan}")
+        else:
+            print("   No orphaned files found by filename.")
         
         # Add to registry
         registry_entry = {
@@ -364,8 +497,22 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         registry['sips'].append(registry_entry)
         registry['last_assigned'] = sip_number
         
-        # Sort registry by SIP number (handle None values)
-        registry['sips'].sort(key=lambda x: (x.get('sip_number') or 0, x.get('variant') or 1))
+        # Sort registry by SIP number (handle None values and variant types)
+        def sort_key(x):
+            sip_num = x.get('sip_number') or 0
+            variant = x.get('variant')
+            # Handle variant: None/1 -> 0, string variants -> parse number if possible, else 999
+            if variant is None or variant == 1:
+                variant_sort = 0
+            elif isinstance(variant, str) and variant.startswith('v'):
+                try:
+                    variant_sort = int(variant[1:])
+                except ValueError:
+                    variant_sort = 999
+            else:
+                variant_sort = 999
+            return (sip_num, variant_sort)
+        registry['sips'].sort(key=sort_key)
         
         print(f"\n✅ SIP-{sip_number:04d} status updated: {current_status} → {new_status}")
         print(f"   Title: {title}")
@@ -417,35 +564,53 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         if expected_dir and expected_dir not in sip_file.parents and sip_file.parent != expected_dir:
             print(f"Warning: SIP file location ({sip_file.parent}) doesn't match current status ({current_status})")
             print(f"Expected location: {expected_dir}")
-        
+
+        # Store original file info BEFORE any modifications
+        original_file_path = sip_file.resolve()
+        original_file_name = sip_file.name
+        original_file_dir = sip_file.parent
+
         # Update file metadata
         if not update_sip_file_metadata(sip_file, {'status': new_status}):
             return False
-        
-        # Move file to new lifecycle folder
+
+        # Move file to new lifecycle folder using explicit copy+delete for reliability
         target_dir = STATUS_TO_FOLDER[new_status]
         new_path = target_dir / sip_file.name
-        
+
         try:
             # Ensure target directory exists
             target_dir.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(sip_file), str(new_path))
-            # Verify move succeeded
-            if sip_file.exists():
-                print(f"Warning: Source file still exists after move. Attempting to remove...")
-                try:
-                    sip_file.unlink()
-                    print(f"Removed duplicate source file: {sip_file.name}")
-                except Exception as e2:
-                    print(f"Error removing duplicate source file: {e2}")
-                    return False
+
+            # Copy to destination first
+            shutil.copy2(str(sip_file), str(new_path))
+
+            # Verify copy succeeded
             if not new_path.exists():
-                print(f"Error: Destination file not found after move: {new_path}")
+                print(f"Error: Destination file not found after copy: {new_path}")
                 return False
-            print(f"Moved: {sip_file.name} -> {new_path.name}")
+
+            # Explicitly delete source
+            try:
+                sip_file.unlink()
+                print(f"Moved: {original_file_name} -> {new_path.name}")
+            except Exception as e_del:
+                print(f"Warning: Could not delete source file after copy: {e_del}")
+                print(f"   Source: {sip_file}")
+                print(f"   Destination exists and is valid, continuing...")
+
         except Exception as e:
-            print(f"Error moving file: {e}")
+            print(f"Error copying file: {e}")
             return False
+
+        # HARDENED: Explicit check for orphaned source file by original path
+        if original_file_path.exists():
+            print(f"Warning: Original file still exists at {original_file_path}")
+            try:
+                original_file_path.unlink()
+                print(f"   ✅ Removed orphaned source file")
+            except Exception as e3:
+                print(f"   ❌ Failed to remove orphaned source: {e3}")
         
         # Update registry
         registry_entry['status'] = new_status
