@@ -3,7 +3,7 @@
 ## 📌 Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.6.5) with Docker build process, task adapter architecture, comprehensive documentation, and proven execution history (163+ WarmBoot runs).
+**Current Status**: Production-ready framework (v0.8.4) with hexagonal architecture, Docker build process, task adapter architecture, comprehensive documentation, and proven execution history (163+ WarmBoot runs).
 
 ---
 
@@ -17,7 +17,7 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 ---
 
 ## 🧩 Core Components
-- **Agent Squad** – 4 functional agents (Max/Lead v0.6.5, Neo/Dev v0.6.5, Nat/Strategy v0.6.5, EVE/QA v0.6.5) with real LLM integration + 6 mock agents
+- **Agent Squad** – 4 functional agents (Max/Lead, Neo/Dev, Nat/Strategy, Eve/QA) v0.8.2 with real LLM integration + 6 mock agents
 - **SquadComms** – RabbitMQ messaging for inter-agent communication
 - **Runtime API** – FastAPI service with execution cycle tracking (SIP-0048, renamed from Task Management API)
 - **Task Adapter Architecture** – Pluggable backend system (SQL/Prefect) with DTO purity and connection pooling
@@ -37,7 +37,7 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 ## 📚 Documentation
 Comprehensive documentation and protocols are available in `/docs/`:
 
-- **SIPs (SquadOps Improvement Proposals)** – 46 protocol specifications in `sips/` directory including SIP-024/025 Task Management, SIP-033A JSON Workflow, SIP-041 Naming & Correlation, and SIP-031 A2A Envelope Standard
+- **SIPs (SquadOps Improvement Proposals)** – 56 protocol specifications in `sips/` directory including SIP-024/025 Task Management, SIP-033A JSON Workflow, SIP-041 Naming & Correlation, SIP-031 A2A Envelope Standard, and SIP-055 DB Deployment Profile
 - **IDEA Documents** – 25+ strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance, and Progressive Modular Build Framework
 - **Architecture Documents** – Design guides for agent implementations and handoff templates
 - **Book Chapters** – 9 chapters covering methodology, implementation, and operations
@@ -52,28 +52,36 @@ Comprehensive documentation and protocols are available in `/docs/`:
 
 ## 🏗️ Repo Structure
 ```
-/agents/              # Agent implementations
-├── base_agent.py     # Shared base class (514 lines)
-├── roles/            # Agent role implementations
-│   ├── lead/         # Max - Task orchestration (536 lines)
-│   ├── dev/          # Neo - Code generation (1,463 lines)
-│   └── ...           # 7 mock agents (template-based)
-├── factory/          # Agent instantiation system
-└── templates/        # Agent generation templates
-/infra/               # Infrastructure services
-├── health-check/     # FastAPI monitoring service (1,125 lines)
-├── runtime-api/      # Runtime API (SIP-0048, renamed from task-api)
-├── init.sql          # Database schema with execution cycles
-└── config.env        # Environment configuration
-/warm-boot/           # Application development
-├── apps/             # Generated applications
-├── prd/              # Product Requirements Documents
-└── runs/             # WarmBoot execution records
+/src/squadops/        # Core framework (hexagonal architecture)
+├── ports/            # Abstract interfaces (secrets, db, comms, observability)
+├── execution/        # Agent implementations with DI
+│   ├── agent.py      # BaseAgent with dependency injection
+│   └── squad/        # Role implementations (lead, dev, strat, qa, data)
+├── core/             # Core utilities (SecretManager)
+├── comms/            # Communication layer
+├── memory/           # LanceDB semantic memory
+└── observability/    # Telemetry & observability
+/adapters/            # Concrete implementations
+├── secrets/          # env, file, docker_secret providers
+├── comms/            # RabbitMQ adapter
+├── persistence/      # PostgreSQL runtime
+└── observability/    # HTTP health check
+/_v0_legacy/          # Legacy v0 infrastructure
+├── agents/roles/     # Legacy agent Dockerfiles
+├── config/           # Legacy config (version.py)
+└── infra/            # Legacy infrastructure services
+/sips/                # SquadOps Improvement Proposals
+├── proposals/        # Unnumbered drafts
+├── accepted/         # Numbered, approved
+├── implemented/      # Matched to code
+└── registry.yaml     # Canonical index
+/tests/               # Test suite
+├── unit/             # Unit tests (mocked deps)
+├── integration/      # Integration tests (real services)
+└── conftest.py       # Global fixtures
 /docs/                # Documentation and protocols
-├── reviews/          # Design reviews and recommendations
-├── SIPs/             # SquadOps Improvement Proposals
-└── retro/            # Retrospectives and analysis
-docker-compose.yml    # Multi-container setup (421 lines)
+/scripts/             # Development and maintainer scripts
+docker-compose.yml    # Multi-container setup
 ```
 
 ---
@@ -148,8 +156,9 @@ curl -X POST http://localhost:8000/warmboot/submit \
 ---
 
 ## ✅ Current Status
-**Framework Version**: 0.6.5  
-**Development Status**: Production-ready framework with Docker build process, task adapter architecture, and comprehensive documentation
+**Framework Version**: 0.8.4
+**Agent Version**: 0.8.2
+**Development Status**: Production-ready framework with hexagonal architecture, Docker build process, task adapter architecture, and comprehensive documentation
 
 ### Project Statistics
 - **~46,095 lines** of Python source code (171 files)
@@ -158,11 +167,11 @@ curl -X POST http://localhost:8000/warmboot/submit \
 - **163+ WarmBoot runs** completed with documented retrospectives
 
 ### Functional Components
-- ✅ **4 Functional Agents**:
-  - **Max (Lead)** v0.6.5 – Task orchestration with local LLM (llama3.1:8b)
-  - **Neo (Dev)** v0.6.5 – Code generation with file modification capabilities (qwen2.5:7b)
-  - **Nat (Strategy)** v0.6.5 – PRD capabilities and product domain features
-  - **EVE (QA)** v0.6.5 – Test design, development, and execution with counterfactual reasoning
+- ✅ **4 Functional Agents** (v0.8.2):
+  - **Max (Lead)** – Task orchestration with local LLM
+  - **Neo (Dev)** – Code generation with file modification capabilities
+  - **Nat (Strategy)** – PRD capabilities and product domain features
+  - **Eve (QA)** – Test design, development, and execution with counterfactual reasoning
 - ✅ **Task Management System** (SIP-024/025) with execution cycle tracking
 - ✅ **Task Adapter Architecture** – Pluggable backend system (SQL/Prefect) with DTO purity, connection pooling, and test injection support
 - ✅ **Memory System** (SIP-042) with LanceDB semantic memory
@@ -179,19 +188,20 @@ curl -X POST http://localhost:8000/warmboot/submit \
 - ✅ **Docker Compose** development environment
 - ✅ **Version Management** and archiving system
 
-### Recent Achievements (v0.6.5)
+### Recent Achievements (v0.8.x)
+- ✅ **Hexagonal Architecture**: Ports & adapters pattern with clear domain/infrastructure separation
+- ✅ **Dependency Injection**: Constructor-injected external dependencies for testability
 - ✅ **Docker Build Process**: Multi-stage Dockerfile pattern with build script for assembling agent packages
 - ✅ **Build Artifacts**: Deterministic builds with manifest.json and agent_info.json metadata
 - ✅ **Task Adapter Architecture**: Pluggable backend system with DTO purity principle, supporting SQL (PostgreSQL) and Prefect (future)
-- ✅ **Agent Expansion**: Nat (Strategy) v0.6.5 with PRD capabilities, EVE (QA) v0.6.5 with comprehensive testing capabilities
+- ✅ **DB Deployment Profile** (SIP-0055): Postgres portability across environments
 - ✅ **Connection Pooling**: Production-ready asyncpg connection pool management for task adapters
 - ✅ **Test Support**: Dependency injection for unit testing in task adapter system
 - ✅ **Telemetry Finalization**: Reasoning events, wrap-up summaries, trace correlation
 - ✅ **LLM Router Abstraction**: Dynamic provider registry supporting multiple backends
-- ✅ **Comprehensive Documentation**: 48K+ lines of documentation across 246 markdown files
 
 ### Documentation Milestones
-- ✅ **43 SIPs** – Standard Implementation Protocols
+- ✅ **56 SIPs** – SquadOps Improvement Proposals
 - ✅ **25+ IDEA Documents** – Strategic ideas and design patterns
 - ✅ **9 Book Chapters** – Methodology and implementation guides
 - ✅ **17 Retrospectives** – WarmBoot run analyses
@@ -234,7 +244,7 @@ python scripts/dev/build_agent.py <role>
 docker build -t squadops/<agent>:latest \
   --build-arg AGENT_ROLE=<role> \
   --build-arg CACHE_BUST=<source_hash> \
-  -f agents/roles/<role>/Dockerfile .
+  -f _v0_legacy/agents/roles/<role>/Dockerfile .
 
 # Recommended: Use rebuild script for all 5 core agents
 ./scripts/dev/ops/rebuild_and_deploy.sh agents
