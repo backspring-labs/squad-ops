@@ -49,7 +49,8 @@ python scripts/dev/build_agent.py <role>
 
 ### Docker
 ```bash
-docker-compose up -d   # Start all services
+docker-compose up -d                       # Start all services
+docker-compose up -d postgres redis rabbitmq  # Start core services only
 ```
 
 ## Architecture
@@ -133,3 +134,53 @@ python scripts/maintainer/update_sip_status.py sips/proposals/SIP-MyIdea.md acce
 - `tests/conftest.py` - Global fixtures with automatic LLM/config patching for unit tests
 - `tests/requirements.txt` - Test dependencies
 - `.env.example` - Environment template (SQUADOPS__* prefix, nested via double underscores)
+
+## Python Path Setup
+
+The project uses **editable install** for import resolution. Both `squadops` and `adapters` packages are discoverable:
+
+```bash
+# Required: Install in editable mode
+pip install -e .
+```
+
+This works because `pyproject.toml` configures setuptools to find packages in both locations:
+```toml
+[tool.setuptools.packages.find]
+where = ["src", "."]              # Search both src/ and project root
+include = ["squadops*", "adapters*"]  # Include both packages
+```
+
+**If imports fail** (e.g., `ModuleNotFoundError: No module named 'adapters'`):
+1. Verify editable install: `pip list | grep squadops` should show path to repo
+2. Re-install if needed: `pip install -e .`
+3. Ensure virtual environment is activated: `source .venv/bin/activate`
+
+## Docker Troubleshooting
+
+### Volume Mount Paths
+Infrastructure configs are in `_v0_legacy/infra/` (migration in progress). If containers fail with mount errors:
+- Check `docker-compose.yml` volume paths point to `_v0_legacy/infra/` not `infra/`
+- Key files: `init.sql`, `otel-collector/config.yaml`, `prometheus/prometheus.yml`, `grafana/`
+
+### Starting Core Services
+```bash
+# Start just the services needed for adapter integration tests
+docker-compose up -d postgres redis rabbitmq
+
+# Verify health
+docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "postgres|redis|rabbitmq"
+```
+
+### Integration Tests Without Agents
+Adapter tests (queue, persistence) don't need agent containers. Skip the agent health check:
+```bash
+SKIP_AGENT_CHECK=1 pytest tests/integration/adapters/ -v
+```
+
+### Common Issues
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Postgres won't start, mount error | `infra/init.sql` path wrong | Check docker-compose.yml points to `_v0_legacy/infra/init.sql` |
+| Tests skip with "agents not running" | Agent containers required by default | Set `SKIP_AGENT_CHECK=1` for adapter-only tests |
+| Import errors in pytest | Editable install missing | Run `pip install -e .` |
