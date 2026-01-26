@@ -2,11 +2,11 @@
 sip_uid: 01KEM71ECNSHEVZPZDPKGZK6ZV
 sip_number: 57
 title: Hexagonal Layered Prompt System — DDD-Patterned Deterministic Assembly
-status: accepted
+status: implemented
 author: Framework Committee
 approver: Jason F Ladd
 created_at: '2026-01-24T19:50:00Z'
-updated_at: '2026-01-25T21:42:09.134988Z'
+updated_at: '2026-01-25T22:02:22.128928Z'
 ---
 # SIP-0.8.5: Domain-Driven Layered Prompt System (Hexagonal Architecture)
 

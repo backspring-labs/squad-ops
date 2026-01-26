@@ -503,9 +503,9 @@ sips:
 - sip_uid: 01KEM71ECNSHEVZPZDPKGZK6ZV
   sip_number: 57
   title: Hexagonal Layered Prompt System — DDD-Patterned Deterministic Assembly
-  path: sips/accepted/SIP-0057-Hexagonal-Layered-Prompt-System.md
-  status: accepted
+  path: sips/implemented/SIP-0057-Hexagonal-Layered-Prompt-System.md
+  status: implemented
   author: Framework Committee
   approver: jladd
   created_at: '2026-01-24T19:50:00Z'
-  updated_at: '2026-01-25T21:42:09.153498Z'
+  updated_at: '2026-01-25T22:02:22.129646Z'
