@@ -15,6 +15,7 @@ from typing import Any, Callable
 from squadops.core.secrets import SecretManager
 from squadops.ports.db import DbRuntime
 from squadops.ports.observability.heartbeat import AgentHeartbeatReporter
+from squadops.ports.prompts.service import PromptService
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,13 @@ class BaseAgent:
         db_runtime: DbRuntime,
         heartbeat_reporter: AgentHeartbeatReporter,
         agent_id: str,
+        prompt_service: PromptService | None = None,
     ) -> None:
         self.secret_manager = secret_manager
         self.db_runtime = db_runtime
         self.heartbeat_reporter = heartbeat_reporter
         self.agent_id = agent_id
+        self.prompt_service = prompt_service
 
         logger.info("agent_initialized", extra={"agent_id": self.agent_id})
 
@@ -111,4 +114,21 @@ class BaseAgent:
             tps=tps,
             memory_count=memory_count,
         )
+
+    def get_system_prompt(self) -> str:
+        """
+        Get assembled system prompt for this agent's role.
+
+        Uses the injected PromptService to assemble a deterministic,
+        versioned prompt based on the agent's role (derived from agent_id).
+
+        Returns:
+            Assembled prompt content, or empty string if no service configured.
+        """
+        if self.prompt_service is None:
+            return ""
+        # Extract role from agent_id (e.g., "lead-001" -> "lead")
+        role = self.agent_id.split("-")[0] if "-" in self.agent_id else self.agent_id
+        assembled = self.prompt_service.get_system_prompt(role)
+        return assembled.content
 
