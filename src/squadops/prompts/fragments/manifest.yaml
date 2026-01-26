@@ -1,0 +1,58 @@
+version: 0.8.5
+updated_at: '2026-01-26T02:45:42.376194Z'
+fragments:
+- fragment_id: identity
+  path: roles/data/identity.md
+  layer: identity
+  roles:
+  - data
+  sha256: 944e8d7f2c7a21c216ec8375045d17e0932b47cfbfba6a53d0f0bd1e53e0070b
+- fragment_id: identity
+  path: roles/dev/identity.md
+  layer: identity
+  roles:
+  - dev
+  sha256: 82082e8890e558c5d01acff4c17a6edff347c1825b47a63342ee11bdcf37c491
+- fragment_id: identity
+  path: roles/lead/identity.md
+  layer: identity
+  roles:
+  - lead
+  sha256: 78f697582553d699d8834e4d4317f3bfc7f6167690a08f0e52b7fee5165bc13c
+- fragment_id: identity
+  path: roles/qa/identity.md
+  layer: identity
+  roles:
+  - qa
+  sha256: 00e5e4102d6ecd694ecc9fab21bca402ac24bc8df0bdec92ff1c2cf42a8b8be9
+- fragment_id: identity
+  path: roles/strat/identity.md
+  layer: identity
+  roles:
+  - strat
+  sha256: 18d9e4cd5fa35355758704d54a70c32471bb942d1fdfd9df600758ffb1574cdc
+- fragment_id: constraints.global
+  path: shared/constraints/constraints.global.md
+  layer: constraints
+  roles:
+  - '*'
+  sha256: c0b24622cc533ee27e767f618513354bcad62192f24f0968d14d64a8ac23dba0
+- fragment_id: identity
+  path: shared/identity/identity.md
+  layer: identity
+  roles:
+  - '*'
+  sha256: e3b676277d17256943809316aa99c8db7686f2036aec0ae6b7073d16f3b2448b
+- fragment_id: lifecycle.agent_start
+  path: shared/lifecycle/lifecycle.agent_start.md
+  layer: lifecycle
+  roles:
+  - '*'
+  sha256: f9e4844dd25e11609e3fcef7c03ffb4b07647026b45893af5a38c653626f6c90
+- fragment_id: lifecycle.task_complete
+  path: shared/lifecycle/lifecycle.task_complete.md
+  layer: lifecycle
+  roles:
+  - '*'
+  sha256: 662c6121db4d6651abfa4c31c030ee2e66434e7171a54b54be8d6efc52fcb59c
+manifest_hash: 9670b21a691286c1543740556d813cb8d5f45a321f6073f92e4534bc4b1918f0
