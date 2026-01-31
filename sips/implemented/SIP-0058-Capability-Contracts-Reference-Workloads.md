@@ -1,12 +1,12 @@
 ---
 sip_uid: 01KEM71ECNVQ8381E1Z63V7F5S
-sip_number: null
+sip_number: 58
 title: Capability Contracts + Reference Workloads for Delivery-Grade Artifact Proof
-status: proposed
+status: implemented
 author: Framework Committee
 approver: null
 created_at: '2026-01-10T15:05:29Z'
-updated_at: '2026-01-29T14:00:00Z'
+updated_at: '2026-01-31T10:05:04.031528Z'
 original_filename: SIP-AGENT-CAPABILITY-CONTRACTS-0_8_6.md
 ---
 # SIP-AGENT-CAPABILITY-CONTRACTS-0_8_6 — Version Target 0.8.6

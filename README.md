@@ -3,7 +3,7 @@
 ## 📌 Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.8.4) with hexagonal architecture, Docker build process, task adapter architecture, comprehensive documentation, and proven execution history (163+ WarmBoot runs).
+**Current Status**: Production-ready framework (v0.8.6) with hexagonal architecture, capability contracts, Docker build process, task adapter architecture, comprehensive documentation, and proven execution history (163+ WarmBoot runs).
 
 ---
 
@@ -21,6 +21,7 @@ SquadOps is designed as both a **practical toolkit** and a **thought leadership 
 - **SquadComms** – RabbitMQ messaging for inter-agent communication
 - **Runtime API** – FastAPI service with execution cycle tracking (SIP-0048, renamed from Task Management API)
 - **Task Adapter Architecture** – Pluggable backend system (SQL/Prefect) with DTO purity and connection pooling
+- **Capability Contracts** – Declarative delivery expectations with acceptance checks and reference workloads (SIP-0058)
 - **JSON Workflow Engine** – Structured LLM output with manifest-first development (SIP-033A)
 - **LLM Router Abstraction** – Dynamic provider registry supporting Ollama, Docker models, and future providers
 - **AppBuilder** – Architecture design before implementation with framework enforcement
@@ -53,7 +54,9 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ## 🏗️ Repo Structure
 ```
 /src/squadops/        # Core framework (hexagonal architecture)
-├── ports/            # Abstract interfaces (secrets, db, comms, observability)
+├── ports/            # Abstract interfaces (secrets, db, comms, observability, capabilities)
+├── capabilities/     # Capability contracts & workload runner (SIP-0058)
+│   └── manifests/    # Contracts, workloads, and JSON schemas
 ├── execution/        # Agent implementations with DI
 │   ├── agent.py      # BaseAgent with dependency injection
 │   └── squad/        # Role implementations (lead, dev, strat, qa, data)
@@ -65,6 +68,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── secrets/          # env, file, docker_secret providers
 ├── comms/            # RabbitMQ adapter
 ├── persistence/      # PostgreSQL runtime
+├── capabilities/     # Filesystem repository, ACI executor
 └── observability/    # HTTP health check
 /_v0_legacy/          # Legacy v0 infrastructure
 ├── agents/roles/     # Legacy agent Dockerfiles

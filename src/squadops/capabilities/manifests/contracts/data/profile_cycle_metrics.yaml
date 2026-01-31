@@ -1,0 +1,63 @@
+# Capability Contract: data.profile_cycle_metrics
+# SIP-0.8.6 compliant
+#
+# Computes metrics and statistics from a cycle snapshot.
+
+capability_id: data.profile_cycle_metrics
+version: 1.0.0
+description: >
+  Analyze a cycle snapshot to compute key metrics including task counts,
+  success rates, duration statistics, and artifact profiles. Produces
+  a metrics report for use in summaries and dashboards.
+
+owner_roles:
+  - data
+
+lifecycle_scope: cycle
+trigger: on_demand
+
+inputs:
+  - name: cycle_id
+    type: string
+    required: true
+    description: The cycle identifier to compute metrics for
+
+  - name: snapshot_path
+    type: string
+    required: true
+    description: Path to the cycle snapshot manifest
+
+outputs:
+  - name: total_tasks
+    type: number
+    description: Total number of tasks in the cycle
+
+  - name: success_rate
+    type: number
+    description: Task success rate as decimal (0.0-1.0)
+
+  - name: metrics_path
+    type: string
+    description: Path to the generated metrics report
+
+artifacts:
+  - name: metrics_report
+    path_template: runs/{cycle_id}/reports/cycle_metrics.json
+    description: JSON report with computed cycle metrics
+
+acceptance_checks:
+  - check_type: file_exists
+    target: runs/{cycle_id}/reports/cycle_metrics.json
+    description: Verify metrics report was created
+
+  - check_type: non_empty
+    target: runs/{cycle_id}/reports/cycle_metrics.json
+    description: Verify metrics report is not empty
+
+  - check_type: json_field_equals
+    target: runs/{cycle_id}/reports/cycle_metrics.json
+    field_path: metadata.cycle_id
+    expected_value: "{cycle_id}"
+    description: Verify metrics reference correct cycle
+
+timeout_seconds: 60

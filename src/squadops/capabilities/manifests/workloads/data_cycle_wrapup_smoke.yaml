@@ -1,0 +1,53 @@
+# Workload: data_cycle_wrapup_smoke
+# SIP-0.8.6 compliant
+#
+# Smoke test workload for the data agent's cycle wrap-up capabilities.
+# Demonstrates DAG composition with three sequential tasks.
+
+workload_id: data_cycle_wrapup_smoke
+version: 1.0.0
+description: >
+  Smoke test for the data agent's cycle wrap-up pipeline. Executes
+  snapshot collection, metrics profiling, and summary composition
+  in sequence, validating the full cycle-end reporting workflow.
+
+vars:
+  default_include_artifacts: true
+
+tasks:
+  - task_id: collect_snapshot
+    capability_id: data.collect_cycle_snapshot
+    inputs:
+      cycle_id: "{cycle_id}"
+      include_artifacts: "{vars.default_include_artifacts}"
+    depends_on: []
+
+  - task_id: profile_metrics
+    capability_id: data.profile_cycle_metrics
+    inputs:
+      cycle_id: "{cycle_id}"
+      snapshot_path: "{collect_snapshot.snapshot_path}"
+    depends_on:
+      - collect_snapshot
+
+  - task_id: compose_summary
+    capability_id: data.compose_cycle_summary
+    inputs:
+      cycle_id: "{cycle_id}"
+      snapshot_path: "{collect_snapshot.snapshot_path}"
+      metrics_path: "{profile_metrics.metrics_path}"
+    depends_on:
+      - collect_snapshot
+      - profile_metrics
+
+# Workload-level acceptance checks run after all tasks complete
+acceptance_checks:
+  - check_type: file_exists
+    target: runs/{cycle_id}/reports/cycle_summary.json
+    description: Final summary must exist
+
+  - check_type: json_field_equals
+    target: runs/{cycle_id}/reports/cycle_summary.json
+    field_path: metadata.workload_id
+    expected_value: "data_cycle_wrapup_smoke"
+    description: Summary must reference this workload

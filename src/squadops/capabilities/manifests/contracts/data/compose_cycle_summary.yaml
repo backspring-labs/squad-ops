@@ -1,0 +1,72 @@
+# Capability Contract: data.compose_cycle_summary
+# SIP-0.8.6 compliant
+#
+# Generates a human-readable summary of cycle results.
+
+capability_id: data.compose_cycle_summary
+version: 1.0.0
+description: >
+  Compose a human-readable summary of cycle execution results using
+  the snapshot manifest and metrics report. Produces both JSON and
+  Markdown formats for different consumption contexts.
+
+owner_roles:
+  - data
+
+lifecycle_scope: cycle
+trigger: on_demand
+
+inputs:
+  - name: cycle_id
+    type: string
+    required: true
+    description: The cycle identifier to summarize
+
+  - name: snapshot_path
+    type: string
+    required: true
+    description: Path to the cycle snapshot manifest
+
+  - name: metrics_path
+    type: string
+    required: true
+    description: Path to the cycle metrics report
+
+outputs:
+  - name: summary_path
+    type: string
+    description: Path to the generated summary
+
+  - name: summary_status
+    type: string
+    description: Overall status (passed, failed, partial)
+
+artifacts:
+  - name: summary_json
+    path_template: runs/{cycle_id}/reports/cycle_summary.json
+    description: JSON summary with structured cycle results
+
+  - name: summary_markdown
+    path_template: runs/{cycle_id}/reports/cycle_summary.md
+    description: Markdown summary for human consumption
+
+acceptance_checks:
+  - check_type: file_exists
+    target: runs/{cycle_id}/reports/cycle_summary.json
+    description: Verify JSON summary was created
+
+  - check_type: non_empty
+    target: runs/{cycle_id}/reports/cycle_summary.json
+    description: Verify JSON summary is not empty
+
+  - check_type: file_exists
+    target: runs/{cycle_id}/reports/cycle_summary.md
+    description: Verify Markdown summary was created
+
+  - check_type: json_field_equals
+    target: runs/{cycle_id}/reports/cycle_summary.json
+    field_path: metadata.cycle_id
+    expected_value: "{cycle_id}"
+    description: Verify summary references correct cycle
+
+timeout_seconds: 60

@@ -1,0 +1,60 @@
+# Capability Contract: data.collect_cycle_snapshot
+# SIP-0.8.6 compliant
+#
+# Collects a snapshot of all cycle artifacts and task results
+# for downstream analysis and reporting.
+
+capability_id: data.collect_cycle_snapshot
+version: 1.0.0
+description: >
+  Collect and aggregate all artifacts produced during a cycle into a
+  single snapshot manifest. This provides a foundation for cycle-end
+  analysis, metrics computation, and summary generation.
+
+owner_roles:
+  - data
+
+lifecycle_scope: cycle
+trigger: on_demand
+
+inputs:
+  - name: cycle_id
+    type: string
+    required: true
+    description: The cycle identifier to collect snapshot for
+
+  - name: include_artifacts
+    type: boolean
+    required: false
+    description: Whether to include artifact content in snapshot (default true)
+
+outputs:
+  - name: artifact_count
+    type: number
+    description: Total number of artifacts collected
+
+  - name: snapshot_path
+    type: string
+    description: Path to the generated snapshot manifest
+
+artifacts:
+  - name: snapshot_manifest
+    path_template: runs/{cycle_id}/snapshots/cycle_snapshot.json
+    description: JSON manifest listing all collected artifacts with metadata
+
+acceptance_checks:
+  - check_type: file_exists
+    target: runs/{cycle_id}/snapshots/cycle_snapshot.json
+    description: Verify snapshot manifest was created
+
+  - check_type: non_empty
+    target: runs/{cycle_id}/snapshots/cycle_snapshot.json
+    description: Verify snapshot manifest is not empty
+
+  - check_type: json_field_equals
+    target: runs/{cycle_id}/snapshots/cycle_snapshot.json
+    field_path: metadata.cycle_id
+    expected_value: "{cycle_id}"
+    description: Verify snapshot references correct cycle
+
+timeout_seconds: 120

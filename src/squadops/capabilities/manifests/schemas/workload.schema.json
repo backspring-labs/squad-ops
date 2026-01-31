@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://squadops.dev/schemas/workload.schema.json",
+  "title": "Workload",
+  "description": "SIP-0.8.6 workload schema composing capabilities into a DAG",
+  "type": "object",
+  "required": [
+    "workload_id",
+    "version",
+    "description",
+    "tasks"
+  ],
+  "properties": {
+    "workload_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Unique identifier for the workload"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the workload"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable description of the workload"
+    },
+    "vars": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "string"},
+          {"type": "number"},
+          {"type": "boolean"}
+        ]
+      },
+      "default": {},
+      "description": "Global variables available for template resolution"
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/WorkloadTask"
+      },
+      "minItems": 1,
+      "description": "Ordered sequence of tasks"
+    },
+    "acceptance_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AcceptanceCheck"
+      },
+      "default": [],
+      "description": "Workload-level acceptance checks (run after all tasks)"
+    }
+  },
+  "$defs": {
+    "WorkloadTask": {
+      "type": "object",
+      "required": ["task_id", "capability_id"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Unique identifier within the workload"
+        },
+        "capability_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+          "description": "Reference to a capability contract"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {"type": "string"},
+              {"type": "number"},
+              {"type": "boolean"}
+            ]
+          },
+          "default": {},
+          "description": "Input values (may contain {variable} templates)"
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "uniqueItems": true,
+          "description": "Task IDs this task depends on (for DAG ordering)"
+        },
+        "executor_override": {
+          "type": "string",
+          "description": "Optional executor to use instead of default"
+        }
+      }
+    },
+    "AcceptanceCheck": {
+      "type": "object",
+      "required": ["check_type", "target"],
+      "properties": {
+        "check_type": {
+          "type": "string",
+          "enum": ["file_exists", "non_empty", "json_field_equals"],
+          "description": "Type of acceptance check"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path template for the artifact to check"
+        },
+        "field_path": {
+          "type": "string",
+          "description": "Dot-path for json_field_equals (e.g., metadata.status)"
+        },
+        "expected_value": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "number"},
+            {"type": "boolean"}
+          ],
+          "description": "Expected value for json_field_equals (primitives only)"
+        },
+        "description": {
+          "type": "string",
+          "default": "",
+          "description": "Human-readable description of what this check validates"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "check_type": {"const": "json_field_equals"}
+            }
+          },
+          "then": {
+            "required": ["field_path", "expected_value"]
+          }
+        }
+      ]
+    }
+  }
+}

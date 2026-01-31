@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://squadops.dev/schemas/workload_run_report.schema.json",
+  "title": "Workload Run Report",
+  "description": "SIP-0.8.6 workload run report schema for execution results",
+  "type": "object",
+  "required": [
+    "workload_id",
+    "cycle_id",
+    "status",
+    "started_at",
+    "completed_at",
+    "task_records"
+  ],
+  "properties": {
+    "workload_id": {
+      "type": "string",
+      "description": "Workload that was executed"
+    },
+    "cycle_id": {
+      "type": "string",
+      "description": "Cycle identifier"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "running", "succeeded", "failed"],
+      "description": "Overall workload status"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When execution started (ISO timestamp)"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When execution completed (ISO timestamp)"
+    },
+    "task_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TaskRecord"
+      },
+      "description": "Records of all task executions"
+    },
+    "workload_acceptance_results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AcceptanceResult"
+      },
+      "default": [],
+      "description": "Results of workload-level acceptance checks"
+    },
+    "metrics": {
+      "$ref": "#/$defs/HeadlineMetrics",
+      "description": "Headline metrics"
+    },
+    "failure": {
+      "$ref": "#/$defs/FailureRecord",
+      "description": "Workload-level failure if applicable"
+    }
+  },
+  "$defs": {
+    "TaskStatus": {
+      "type": "string",
+      "enum": ["pending", "running", "succeeded", "failed", "skipped", "timed_out", "rejected"],
+      "description": "Status of a task within a workload run"
+    },
+    "TaskRecord": {
+      "type": "object",
+      "required": ["task_id", "capability_id", "status"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "description": "Task identifier"
+        },
+        "capability_id": {
+          "type": "string",
+          "description": "Capability contract that was invoked"
+        },
+        "status": {
+          "$ref": "#/$defs/TaskStatus"
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When execution started (ISO timestamp)"
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When execution completed (ISO timestamp)"
+        },
+        "task_result_ref": {
+          "type": "string",
+          "description": "Relative path to task result file"
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Relative paths to produced artifacts"
+        },
+        "acceptance_results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AcceptanceResult"
+          },
+          "default": [],
+          "description": "Results of acceptance checks"
+        },
+        "failure": {
+          "$ref": "#/$defs/FailureRecord",
+          "description": "Failure details if task failed"
+        }
+      }
+    },
+    "AcceptanceResult": {
+      "type": "object",
+      "required": ["check_type", "target", "passed", "resolved_path"],
+      "properties": {
+        "check_type": {
+          "type": "string",
+          "enum": ["file_exists", "non_empty", "json_field_equals"],
+          "description": "Type of check that was evaluated"
+        },
+        "target": {
+          "type": "string",
+          "description": "Original target template"
+        },
+        "passed": {
+          "type": "boolean",
+          "description": "Whether the check passed"
+        },
+        "resolved_path": {
+          "type": "string",
+          "description": "The resolved path after template substitution"
+        },
+        "actual_value": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "number"},
+            {"type": "boolean"},
+            {"type": "null"}
+          ],
+          "description": "Actual value found (for json_field_equals)"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if check failed"
+        }
+      }
+    },
+    "FailureRecord": {
+      "type": "object",
+      "required": ["error_type", "message", "timestamp"],
+      "properties": {
+        "error_type": {
+          "type": "string",
+          "description": "Type of error (e.g., timeout, execution_error)"
+        },
+        "message": {
+          "type": "string",
+          "description": "Error message"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the failure occurred"
+        }
+      }
+    },
+    "HeadlineMetrics": {
+      "type": "object",
+      "required": ["total_tasks", "succeeded", "failed", "skipped", "duration_seconds"],
+      "properties": {
+        "total_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of tasks in workload"
+        },
+        "succeeded": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of succeeded tasks"
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of failed tasks"
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of skipped tasks"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total execution duration"
+        }
+      }
+    }
+  }
+}

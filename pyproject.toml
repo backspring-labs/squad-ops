@@ -3,14 +3,15 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+# Note: No package-dir override - allows packages from both src/ and root
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]  # Search both src/ and project root
+include = ["squadops*", "adapters*"]  # Include both packages
 
 [project]
 name = "squadops"
-version = "0.0.1"
+version = "0.8.6"
 description = "SquadOps: a production-grade multi-agent orchestration framework."
 requires-python = ">=3.11"
 authors = [
@@ -75,7 +76,7 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 asyncio_mode = "auto"
-pythonpath = ["src"]
+pythonpath = ["src", "_v0_legacy"]
 
 markers = [
     "unit: Unit tests for individual components",

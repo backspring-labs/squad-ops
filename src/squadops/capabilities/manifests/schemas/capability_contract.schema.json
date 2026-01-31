@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://squadops.dev/schemas/capability_contract.schema.json",
+  "title": "Capability Contract",
+  "description": "SIP-0.8.6 capability contract schema defining delivery expectations",
+  "type": "object",
+  "required": [
+    "capability_id",
+    "version",
+    "description",
+    "owner_roles",
+    "lifecycle_scope",
+    "trigger"
+  ],
+  "properties": {
+    "capability_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "Unique identifier in domain.name format (e.g., data.collect_cycle_snapshot)"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the contract"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable description of the capability"
+    },
+    "owner_roles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["data", "dev", "qa", "strat", "lead"]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Agent roles that can fulfill this capability"
+    },
+    "lifecycle_scope": {
+      "type": "string",
+      "enum": ["cycle", "pulse", "project"],
+      "description": "Scope of the capability"
+    },
+    "trigger": {
+      "type": "string",
+      "enum": ["on_demand", "scheduled", "event_driven"],
+      "description": "When the capability is expected to be invoked"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/InputSpec"
+      },
+      "default": [],
+      "description": "Input parameter specifications"
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/OutputSpec"
+      },
+      "default": [],
+      "description": "Output value specifications"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ArtifactSpec"
+      },
+      "default": [],
+      "description": "Artifact (file) specifications"
+    },
+    "acceptance_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AcceptanceCheck"
+      },
+      "default": [],
+      "description": "Validation checks for artifacts"
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3600,
+      "default": 300,
+      "description": "Maximum execution time in seconds"
+    }
+  },
+  "$defs": {
+    "PrimitiveType": {
+      "type": "string",
+      "enum": ["string", "number", "boolean"],
+      "description": "v1 primitive types"
+    },
+    "InputSpec": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Parameter name"
+        },
+        "type": {
+          "$ref": "#/$defs/PrimitiveType"
+        },
+        "required": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether this input is mandatory"
+        },
+        "description": {
+          "type": "string",
+          "default": "",
+          "description": "Human-readable description"
+        }
+      }
+    },
+    "OutputSpec": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Output name"
+        },
+        "type": {
+          "$ref": "#/$defs/PrimitiveType"
+        },
+        "description": {
+          "type": "string",
+          "default": "",
+          "description": "Human-readable description"
+        }
+      }
+    },
+    "ArtifactSpec": {
+      "type": "object",
+      "required": ["name", "path_template"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Artifact name"
+        },
+        "path_template": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Template for artifact path, supports {variable} syntax"
+        },
+        "description": {
+          "type": "string",
+          "default": "",
+          "description": "Human-readable description"
+        }
+      }
+    },
+    "AcceptanceCheck": {
+      "type": "object",
+      "required": ["check_type", "target"],
+      "properties": {
+        "check_type": {
+          "type": "string",
+          "enum": ["file_exists", "non_empty", "json_field_equals"],
+          "description": "Type of acceptance check"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path template for the artifact to check"
+        },
+        "field_path": {
+          "type": "string",
+          "description": "Dot-path for json_field_equals (e.g., metadata.status)"
+        },
+        "expected_value": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "number"},
+            {"type": "boolean"}
+          ],
+          "description": "Expected value for json_field_equals (primitives only)"
+        },
+        "description": {
+          "type": "string",
+          "default": "",
+          "description": "Human-readable description of what this check validates"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "check_type": {"const": "json_field_equals"}
+            }
+          },
+          "then": {
+            "required": ["field_path", "expected_value"]
+          }
+        }
+      ]
+    }
+  }
+}
