@@ -85,9 +85,13 @@ def extract_url_credentials(content: str) -> list[tuple[str, str]]:
 
 def validate_password_component(password: str) -> bool:
     """
-    Validate that password component contains a valid secret:// reference.
-    
-    Returns True if password contains valid secret:// reference, False otherwise.
+    Validate that password component contains a valid secret reference.
+
+    Accepts:
+    - secret:// references (for SquadOps services with secret provider)
+    - ${VAR} environment variable references (for infrastructure services)
+
+    Returns True if password contains valid secret reference, False otherwise.
     """
     # Check if password contains secret:// reference
     match = SECRET_REF_PATTERN.search(password)
@@ -96,6 +100,14 @@ def validate_password_component(password: str) -> bool:
         # Validate logical name pattern
         if re.match(r"^[A-Za-z][A-Za-z0-9_]*$", logical_name):
             return True
+
+    # Check if password contains ${VAR} environment variable reference
+    # This is valid for infrastructure services (postgres, rabbitmq, prefect)
+    # that can't use the secret:// provider
+    env_var_pattern = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*")
+    if env_var_pattern.search(password):
+        return True
+
     return False
 
 
