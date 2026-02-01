@@ -1,12 +1,12 @@
 ---
 sip_uid: 01KG66J4NK2SW0MYMEVXX2HN8Y
-sip_number: null
+sip_number: 60
 title: Agent Migration — Hexagonal Application Layer & Legacy Retirement
-status: proposed
+status: implemented
 author: Framework Committee
 approver: null
 created_at: '2026-01-29T00:00:00Z'
-updated_at: '2026-01-29T00:00:00Z'
+updated_at: '2026-02-01T09:46:27.764693Z'
 original_filename: SIP-Agent-Migration-0-8-8.md
 ---
 # SIP-AGENT-MIGRATION-0_8_8 — Version Target 0.8.8
@@ -58,11 +58,19 @@ After SIP-0.8.7, the following remains in `_v0_legacy/`:
 | `agents/specs/` | 4 | Agent specifications |
 | `agents/utils/` | 5 | Shared utilities |
 | `agents/base_agent.py` | 1 | Legacy base agent class |
+| `agents/cycle_data/` | 2 | Cycle data management |
+| `agents/instances/` | 1 | Agent instance tracking |
+| `agents/templates/` | 3 | Legacy templates |
 | `infra/runtime-api/` | 3 | Runtime API (FastAPI) |
+| `infra/health-check/` | 2 | Health check service |
 | `infra/config/` | 6 | Configuration loading |
 | `config/` | 2 | Version and agent config |
+| `infra/grafana/` | — | Dashboards (non-Python, move only) |
+| `infra/otel-collector/` | — | OTel config (non-Python, move only) |
+| `infra/prometheus/` | — | Prometheus config (non-Python, move only) |
+| `infra/migrations/` | — | SQL migrations (non-Python, move only) |
 
-**Total: ~92 files** to migrate or retire.
+**Total: ~100 files** to migrate or retire, plus non-Python configs to relocate.
 
 ---
 
@@ -83,13 +91,29 @@ After SIP-0.8.7, the following remains in `_v0_legacy/`:
 - Migrate all skill implementations to `src/squadops/agents/skills/`.
 - Migrate capability handlers to `src/squadops/capabilities/handlers/` (aligned to SIP-0058).
 - Migrate Runtime API to `src/squadops/api/`.
+- Migrate health-check service to `src/squadops/api/` or dedicated health module.
+- Migrate `agents/cycle_data/` to `src/squadops/orchestration/`.
+- Migrate `agents/instances/` or retire if unused.
+- Migrate `agents/templates/` to prompt system or inline.
 - Update agent factory to use dependency injection with ports.
+- Move non-Python infra configs (`grafana/`, `otel-collector/`, `prometheus/`, `migrations/`) to root-level `infra/` directory.
 - Delete `_v0_legacy/` directory entirely.
+
+### 0.8.7 Deferral Pickup (Infrastructure Completion)
+
+The following items were explicitly deferred from SIP-0.8.7 to this SIP:
+
+1. **EmbeddingsPort**: SIP-0.8.7 introduced an `embed_fn` callable seam in `LanceDBAdapter`. This SIP introduces a proper `EmbeddingsPort` in `src/squadops/ports/embeddings/` and injects it into memory adapters, replacing the seam.
+
+2. **PrefectTaskAdapter**: SIP-0.8.7 provides a stub that raises `NotImplementedError`. This SIP implements the full Prefect adapter in `adapters/tasks/prefect.py`.
+
+3. **TaskEnvelope/TaskResult Migration**: SIP-0.8.7 uses a compatibility bridge (`squadops.tasks.types`) re-exporting Pydantic models from `_v0_legacy`. This SIP migrates `TaskEnvelope`, `TaskResult`, `TaskState`, and `FlowState` to frozen dataclasses in `src/squadops/tasks/models.py` and removes the bridge.
 
 ## Not Addressed
 - New agent roles or capabilities (feature freeze during migration).
 - Performance optimization (deferred to 0.9.x).
 - New observability features (deferred to 0.9.x).
+- New LLM providers (Anthropic, OpenAI) — deferred to 0.9.x unless explicitly requested.
 
 ---
 
@@ -206,6 +230,9 @@ src/squadops/
 │
 ├── core/                          # Existing core (secrets, etc.)
 ├── ports/                         # All port interfaces
+│   ├── embeddings/                # NEW in 0.8.8: EmbeddingsPort
+│   │   ├── __init__.py
+│   │   └── provider.py            # EmbeddingsPort ABC
 ├── prompts/                       # SIP-0057
 ├── comms/                         # SIP-0056
 └── ...
@@ -215,11 +242,21 @@ adapters/                          # All adapter implementations
 ├── tools/                         # SIP-0.8.7
 ├── memory/                        # SIP-0.8.7
 ├── telemetry/                     # SIP-0.8.7
-├── tasks/                         # SIP-0.8.7
+├── tasks/                         # SIP-0.8.7 (PrefectAdapter completed in 0.8.8)
+├── embeddings/                    # NEW in 0.8.8: EmbeddingsAdapter
+│   ├── __init__.py
+│   ├── ollama.py                  # OllamaEmbeddingsAdapter
+│   └── factory.py
 ├── comms/                         # SIP-0056
 ├── prompts/                       # SIP-0057
 ├── capabilities/                  # SIP-0058
 └── ...
+
+infra/                             # Non-Python configs (moved from _v0_legacy/infra/)
+├── grafana/                       # Dashboards and provisioning
+├── otel-collector/                # OTel collector config
+├── prometheus/                    # Prometheus config
+└── migrations/                    # SQL migrations
 ```
 
 ## 6.2 Agent Composition Model
@@ -307,7 +344,7 @@ class LeadAgent(BaseAgent):
 ```python
 # src/squadops/agents/skills/shared/task_analysis.py
 from squadops.agents.skills.base import Skill
-from squadops.ports.llm import LLMPort
+from squadops.agents.skills.context import SkillContext
 
 class TaskAnalysisSkill(Skill):
     """Analyzes incoming tasks and produces structured breakdowns."""
@@ -315,34 +352,34 @@ class TaskAnalysisSkill(Skill):
     SKILL_ID = "task_analysis"
     SUPPORTED_TASK_TYPES = ["analyze", "decompose", "estimate"]
 
-    async def execute(self, envelope: TaskEnvelope, agent: BaseAgent) -> TaskResult:
-        # Get system prompt from PromptService
-        prompt = agent.prompt_service.assemble(
-            role=agent.role_id,
+    async def execute(self, inputs: dict, context: SkillContext) -> dict:
+        """Execute skill with inputs dict and SkillContext (no agent required)."""
+        # Get system prompt from PromptService via context
+        prompt = context.prompt_service.assemble(
+            role=context.role_id,
             hook="task_execute",
             task_type="analyze"
         )
 
-        # Use LLM via port
-        response = await agent.llm.chat(
+        # Use LLM via port from context
+        response = await context.llm.chat(
             messages=[
                 {"role": "system", "content": prompt.content},
-                {"role": "user", "content": envelope.inputs.get("task_description")}
+                {"role": "user", "content": inputs.get("task_description")}
             ]
         )
 
-        # Store in memory via port
-        await agent.memory.store(MemoryEntry(
+        # Store in memory via port from context
+        await context.memory.store(MemoryEntry(
             content=response.content,
-            metadata={"task_id": envelope.task_id, "skill": self.SKILL_ID}
+            metadata={"task_id": context.task_id, "skill": self.SKILL_ID}
         ))
 
-        return TaskResult(
-            task_id=envelope.task_id,
-            status="completed",
-            outputs={"analysis": response.content}
-        )
+        # Return outputs dict (not TaskResult - agents wrap this)
+        return {"analysis": response.content}
 ```
+
+> **Note**: Skills receive `SkillContext` (which wraps ports), not `BaseAgent`. This makes skills testable without instantiating agents - unit tests create a `SkillContext` with mocked ports.
 
 ## 6.5 Capability Handler Pattern
 
@@ -382,6 +419,36 @@ class CollectCycleSnapshotHandler(CapabilityHandler):
 
 ---
 
+# 6.6 Definitions (Normative)
+
+The following definitions are normative for this SIP and the implementation plan:
+
+**Skill**: An atomic, reusable operation that produces outputs from inputs. Skills:
+- MUST implement `execute(inputs: dict, context: SkillContext) -> dict`
+- MUST NOT accept `TaskEnvelope` directly (agents map envelopes to inputs)
+- MUST NOT call Capabilities
+- MUST NOT contain acceptance logic or "task complete" semantics
+- MAY be nondeterministic (e.g., LLM calls) but MUST be observable and bounded in side effects
+
+**Capability**: A task-level deliverable that orchestrates Skills. Capabilities:
+- MUST produce certified artifacts
+- MUST own acceptance checks (via AcceptanceCheckEngine)
+- SHOULD compose Skills, not re-implement primitives
+- MAY invoke multiple Skills in sequence or parallel
+- Report completion status with acceptance evidence
+
+**Acceptance**: Validation that a Capability produced correct outputs. Acceptance:
+- Runs at the Capability boundary, not inside Skills
+- Uses AcceptanceCheckEngine with contract-defined checks
+- Produces an acceptance report attached to CapabilityResult
+
+**Composition Rule**: Capabilities orchestrate Skills; Skills MUST NOT call Capabilities. This ensures:
+- Skills remain atomic and reusable
+- Acceptance logic is centralized in Capabilities
+- Testing is simplified (Skills test with mocked ports; Capabilities test with mocked Skills)
+
+---
+
 # 7. Functional Requirements
 
 ## 7.1 Agent Role Requirements
@@ -397,8 +464,11 @@ class CollectCycleSnapshotHandler(CapabilityHandler):
 
 - Skills MUST be registered in `SkillRegistry` with unique SKILL_ID.
 - Skills MUST declare supported task types.
-- Skills MUST be stateless (all state flows through agent or ports).
-- Skills MUST return `TaskResult` conforming to ACI contract.
+- Skills MUST implement `execute(inputs: dict, context: SkillContext) -> dict`.
+- Skills MUST be stateless (all state flows through SkillContext ports).
+- Skills MUST return outputs dict (agents wrap this in TaskResult).
+- Skills MUST NOT accept TaskEnvelope directly (agents map envelopes to inputs).
+- Skills MUST NOT call Capabilities or contain acceptance logic.
 
 ## 7.3 Capability Handler Requirements
 
@@ -587,6 +657,9 @@ The `_v0_legacy/` directory MAY be deleted when:
 - [ ] All qa skills migrated
 - [ ] All strat skills migrated
 - [ ] All data skills migrated
+- [ ] No skill contains acceptance logic
+- [ ] No skill calls Capabilities
+- [ ] All skills testable with mocked SkillContext (no agent required)
 
 ### Capabilities
 - [ ] `CapabilityDispatcher` implemented
@@ -594,6 +667,8 @@ The `_v0_legacy/` directory MAY be deleted when:
 - [ ] All delivery handlers migrated
 - [ ] All ops handlers migrated
 - [ ] All product handlers migrated
+- [ ] Capabilities invoke skills via SkillRegistry (not re-implemented inline)
+- [ ] All capabilities own acceptance checks (via AcceptanceCheckEngine)
 
 ### API
 - [ ] Runtime API migrated to `src/squadops/api/`
@@ -604,6 +679,14 @@ The `_v0_legacy/` directory MAY be deleted when:
 - [ ] `AgentOrchestrator` implemented
 - [ ] Cycle/Pulse lifecycle management works
 
+### 0.8.7 Deferral Completion
+- [ ] `EmbeddingsPort` implemented in `src/squadops/ports/embeddings/`
+- [ ] `OllamaEmbeddingsAdapter` implemented in `adapters/embeddings/`
+- [ ] `LanceDBAdapter` updated to use injected `EmbeddingsPort` (remove `embed_fn` seam)
+- [ ] `PrefectTaskAdapter` fully implemented (replace stub)
+- [ ] `TaskEnvelope`/`TaskResult` migrated to frozen dataclasses
+- [ ] `squadops.tasks.types` compatibility bridge removed
+
 ### Migration Verification
 - [ ] Zero imports from `_v0_legacy/`
 - [ ] All agent containers build
@@ -613,6 +696,8 @@ The `_v0_legacy/` directory MAY be deleted when:
 
 ### Cleanup
 - [ ] `_v0_legacy/` directory deleted
+- [ ] Non-Python configs moved to root `infra/`
+- [ ] `docker-compose.yml` volume paths updated
 - [ ] Git history preserved for reference
 - [ ] Documentation updated
 
@@ -686,3 +771,18 @@ def get_lead_agent():
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+# 14. Changelog
+
+| Date | Change |
+|------|--------|
+| 2026-01-29 | Initial draft |
+| 2026-01-31 | Added 0.8.7 deferral pickup items (EmbeddingsPort, PrefectTaskAdapter, TaskEnvelope migration) |
+| 2026-01-31 | Added missing directories (cycle_data, instances, templates, health-check) |
+| 2026-01-31 | Added non-Python config relocation (grafana, otel, prometheus, migrations) |
+| 2026-01-31 | Updated Definition of Done with deferral completion checklist |
+| 2026-01-31 | Added Definitions (Normative) section with Skills, Capabilities, Acceptance, Composition Rule |
+| 2026-01-31 | Updated Skill pattern to use SkillContext (not agent) for testability |
+| 2026-01-31 | Added DoD checklist items enforcing composition rule |

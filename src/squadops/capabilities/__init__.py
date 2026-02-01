@@ -39,6 +39,12 @@ from squadops.capabilities.exceptions import (
     PathEscapeError,
     TemplateResolutionError,
 )
+from squadops.capabilities.handlers import (
+    CapabilityHandler,
+    HandlerResult,
+    HandlerEvidence,
+    ExecutionContext,
+)
 
 __all__ = [
     # Enums
@@ -71,4 +77,9 @@ __all__ = [
     "WorkloadNotFoundError",
     "PathEscapeError",
     "TemplateResolutionError",
+    # Handlers (SIP-0.8.8)
+    "CapabilityHandler",
+    "HandlerResult",
+    "HandlerEvidence",
+    "ExecutionContext",
 ]

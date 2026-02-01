@@ -1,4 +1,4 @@
-last_assigned: 59
+last_assigned: 60
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -527,3 +527,12 @@ sips:
   approver: jladd
   created_at: '2026-01-29T00:00:00Z'
   updated_at: '2026-01-31T21:57:11.607903Z'
+- sip_uid: 01KG66J4NK2SW0MYMEVXX2HN8Y
+  sip_number: 60
+  title: Agent Migration — Hexagonal Application Layer & Legacy Retirement
+  path: sips/implemented/SIP-0060-Agent-Migration-Hexagonal-Application.md
+  status: implemented
+  author: Framework Committee
+  approver: jladd
+  created_at: '2026-01-29T00:00:00Z'
+  updated_at: '2026-02-01T09:46:27.766913Z'
