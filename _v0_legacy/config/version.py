@@ -7,7 +7,7 @@
 #   python scripts/maintainer/version_cli.py update <agent> <version> [notes]
 
 # Framework Version
-SQUADOPS_VERSION = "0.8.6"
+SQUADOPS_VERSION = "0.8.7"
 
 # Agent Versions (individual agent versions)
 AGENT_VERSIONS = {
@@ -119,6 +119,6 @@ def rollback_agent(agent_name, target_version):
 # 0.5.X - Production deployment (enterprise features)
 # 1.0.X - Stable release (external users + Backspring validation)
 
-# Current status: 0.8.6 (SIP-0058: Capability Contracts + Reference Workloads)
+# Current status: 0.8.7 (SIP-0059: Infrastructure Ports Migration)
 # Previous: 0.1.4 (Task Management System complete)
 # Next major: 0.3.0 (Multi-agent expansion with EVE, Nat, Data, HAL)

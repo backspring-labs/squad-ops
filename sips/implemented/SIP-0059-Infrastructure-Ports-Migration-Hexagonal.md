@@ -1,12 +1,12 @@
 ---
 sip_uid: 01KG66D5R86Z875596CSRXVTEQ
-sip_number: null
+sip_number: 59
 title: Infrastructure Ports Migration — Hexagonal Foundation Layer
-status: proposed
+status: implemented
 author: Framework Committee
 approver: null
 created_at: '2026-01-29T00:00:00Z'
-updated_at: '2026-01-29T00:00:00Z'
+updated_at: '2026-01-31T21:57:11.607147Z'
 original_filename: SIP-Infrastructure-Ports-Migration-0-8-7.md
 ---
 # SIP-INFRASTRUCTURE-PORTS-MIGRATION-0_8_7 — Version Target 0.8.7
