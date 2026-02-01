@@ -661,11 +661,11 @@ def load_config(
         secrets_config = None
 
     # Step 3: MANDATORY: Scan secrets section for secret:// references (hard fail if found)
-    from infra.secrets.manager import SecretManager
+    from squadops.core.secrets import SecretManager
 
     if secrets_config_dict:
         # Scan ONLY the secrets section for secret:// references
-        has_secrets_in_secrets = SecretManager._has_secret_references(
+        has_secrets_in_secrets = SecretManager.has_secret_references(
             secrets_config_dict,  # Scan the secrets dict directly
             exclude_keys=[],  # No exclusions - scan everything in secrets section
         )
@@ -677,7 +677,7 @@ def load_config(
             )
 
     # Step 4: Scan for secret:// references (excluding secrets section)
-    has_references = SecretManager._has_secret_references(merged, exclude_keys=["secrets"])
+    has_references = SecretManager.has_secret_references(merged, exclude_keys=["secrets"])
 
     # Step 5: If references found but no config, hard error
     if has_references and not secrets_config:
@@ -689,7 +689,21 @@ def load_config(
 
     # Step 6: Resolve all secret:// references (excluding secrets section)
     if secrets_config:
-        manager = SecretManager.from_config(secrets_config)  # Normalizes name_map to {}
+        # Use factory to create provider (outside core), then pass to SecretManager
+        from adapters.secrets.factory import create_provider
+        
+        # Normalize name_map to {} if None
+        name_map = secrets_config.name_map if secrets_config.name_map is not None else {}
+        
+        # Create provider using factory
+        provider = create_provider(
+            provider=secrets_config.provider,
+            env_prefix=secrets_config.env_prefix,
+            file_dir=secrets_config.file_dir,
+        )
+        
+        # Create SecretManager with provider instance
+        manager = SecretManager(provider=provider, name_map=name_map)
         merged = manager.resolve_all_references(merged)  # Returns new dict, doesn't mutate
 
     # Step 7: Validate with Pydantic (full AppConfig) - done below
@@ -718,11 +732,29 @@ def load_config(
     # 12. Store resolved profile as private attribute for logging
     app_config._profile = resolved_profile
 
-    # 13. Set global singleton
+    # 13. Create DbRuntime instance using persistence factory (SIP-0.8.3)
+    # This happens after secret resolution, so the factory can resolve any secret://
+    # references that might still be in the DSN
+    db_runtime = None
+    if secrets_config:
+        try:
+            from adapters.persistence.factory import get_db_runtime
+            
+            # Create DbRuntime using the factory with the resolved config and SecretManager
+            # The factory will handle any remaining secret:// references in the DSN
+            db_runtime = get_db_runtime(merged, manager)
+            logger.info("Created DbRuntime instance via persistence factory")
+        except Exception as e:
+            logger.warning(f"Failed to create DbRuntime instance: {e}. Database access may be limited.")
+    
+    # Store DbRuntime as private attribute on AppConfig for backward compatibility
+    app_config._db_runtime = db_runtime
+
+    # 14. Set global singleton
     global _config_instance
     _config_instance = app_config
 
-    # 14. Log fingerprint (redacted)
+    # 15. Log fingerprint (redacted)
     redacted_config = redact_config(merged)
     fingerprint = config_fingerprint(redacted_config)
     logger.info(f"Configuration fingerprint: {fingerprint}")

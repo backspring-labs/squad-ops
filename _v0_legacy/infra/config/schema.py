@@ -16,14 +16,102 @@ class TasksBackend(str, Enum):
     PREFECT = "prefect"
 
 
+class SSLMode(str, Enum):
+    """SSL/TLS connection mode."""
+
+    DISABLE = "disable"
+    REQUIRE = "require"
+    VERIFY_FULL = "verify-full"
+
+
+class MigrationMode(str, Enum):
+    """Migration execution mode."""
+
+    OFF = "off"
+    STARTUP = "startup"
+    JOB = "job"
+
+
+class ConnectionMode(str, Enum):
+    """Database connection mode."""
+
+    DIRECT = "direct"
+    PROXY = "proxy"
+
+
+class SSLConfig(BaseModel):
+    """SSL/TLS configuration for database connections."""
+
+    mode: SSLMode = Field(default=SSLMode.DISABLE, description="SSL mode (disable, require, verify-full)")
+    ca_bundle_path: Path | None = Field(default=None, description="Path to CA bundle file (optional)")
+
+
+class PoolConfig(BaseModel):
+    """Connection pool configuration."""
+
+    size: int = Field(default=5, ge=1, le=100, description="Connection pool size")
+    max_overflow: int = Field(default=10, ge=0, description="Max pool overflow connections")
+    timeout_seconds: int = Field(default=30, ge=1, description="Pool timeout in seconds")
+
+
+class MigrationConfig(BaseModel):
+    """Migration execution configuration."""
+
+    mode: MigrationMode = Field(default=MigrationMode.OFF, description="Migration mode (off, startup, job)")
+
+
 class DBConfig(BaseModel):
     """Database configuration."""
 
-    url: str = Field(..., description="PostgreSQL connection URL")
-    pool_size: int = Field(default=5, ge=1, le=100, description="Connection pool size")
-    max_overflow: int = Field(default=10, ge=0, description="Max pool overflow connections")
-    pool_timeout: int = Field(default=30, ge=1, description="Pool timeout in seconds")
+    # Legacy fields (maintained for backward compatibility)
+    url: str | None = Field(default=None, description="PostgreSQL connection URL (legacy, use dsn)")
+    pool_size: int = Field(default=5, ge=1, le=100, description="Connection pool size (legacy, use pool.size)")
+    max_overflow: int = Field(default=10, ge=0, description="Max pool overflow connections (legacy, use pool.max_overflow)")
+    pool_timeout: int = Field(default=30, ge=1, description="Pool timeout in seconds (legacy, use pool.timeout_seconds)")
     echo: bool = Field(default=False, description="Enable SQL query logging")
+
+    # SIP-0.8.3: New deployment profile contract fields
+    dsn: str | None = Field(default=None, description="Full PostgreSQL connection string (supports secret:// references)")
+    ssl: SSLConfig | None = Field(default=None, description="SSL/TLS configuration")
+    pool: PoolConfig | None = Field(default=None, description="Connection pool configuration")
+    migrations: MigrationConfig | None = Field(default=None, description="Migration execution configuration")
+    connection: ConnectionMode | None = Field(default=None, description="Connection mode (direct, proxy)")
+
+    @field_validator("dsn", "url", mode="before")
+    @classmethod
+    def validate_dsn_or_url(cls, v: Any, info: Any) -> Any:
+        """Ensure at least one of dsn or url is provided."""
+        return v
+
+    def model_post_init(self, __context: Any) -> None:
+        """Post-initialization validation and backward compatibility."""
+        # Validate that at least one of dsn or url is provided
+        if self.dsn is None and self.url is None:
+            raise ValueError("Either 'dsn' or 'url' must be provided for database configuration")
+
+        # If dsn is not provided, use url as fallback (backward compatibility)
+        if self.dsn is None and self.url is not None:
+            self.dsn = self.url
+
+        # If pool config is not provided, use legacy fields (backward compatibility)
+        if self.pool is None:
+            self.pool = PoolConfig(
+                size=self.pool_size,
+                max_overflow=self.max_overflow,
+                timeout_seconds=self.pool_timeout,
+            )
+
+        # If ssl config is not provided, use default
+        if self.ssl is None:
+            self.ssl = SSLConfig()
+
+        # If migrations config is not provided, use default
+        if self.migrations is None:
+            self.migrations = MigrationConfig()
+
+        # If connection mode is not provided, default to direct
+        if self.connection is None:
+            self.connection = ConnectionMode.DIRECT
 
 
 class RabbitMQConfig(BaseModel):
