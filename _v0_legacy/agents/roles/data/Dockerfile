@@ -5,11 +5,10 @@ WORKDIR /build
 # Install build dependencies
 RUN pip install --no-cache-dir pyyaml
 
-# Copy source code
-COPY agents/ ./agents/
-COPY scripts/dev/build_agent.py ./scripts/
-COPY config/ ./config/
-COPY infra/ ./infra/
+# Copy source code (DDD migration: legacy sources are under _v0_legacy; DDD core under src/)
+COPY _v0_legacy/ ./_v0_legacy/
+COPY src/ ./src/
+COPY scripts/dev/build_agent.py ./scripts/build_agent.py
 
 # Cache buster: ensures build runs with fresh files when source changes
 ARG CACHE_BUST=default
