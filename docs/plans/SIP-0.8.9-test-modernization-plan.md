@@ -424,6 +424,8 @@ pytest tests/unit/config/ -v                    # ~30 tests, 2-3s
 
 > **Note:** Path-based test selection (Section 7.1) is the **primary** mechanism for scoped runs. Domain markers are **secondary** — use them only for cross-cutting concerns like `slow`, `stack_validation`, `docker`, or when you need to include/exclude tests across multiple directories.
 
+> **Naming convention:** All domain markers must be prefixed with `domain_` and registered in `pyproject.toml`. This single source of truth prevents marker drift.
+
 **Recommended approach:** Start simple with path-based selection. Add domain markers only if you find yourself needing marker-based filtering frequently.
 
 If you choose to add auto-markers, each domain directory can have a `conftest.py`:
@@ -496,10 +498,14 @@ For even finer-grained selection, map code changes to test domains:
 #   ./run_affected_tests.sh --staged  # Staged changes explicitly
 #   ./run_affected_tests.sh --branch  # All changes vs main (pre-push)
 #   ./run_affected_tests.sh --all     # Staged + unstaged (working dir)
+#
+# Environment:
+#   BASE_REF - Base branch for --branch mode (default: origin/main)
 
-set -e
+set -euo pipefail
 
 MODE="${1:---staged}"
+BASE_REF="${BASE_REF:-origin/main}"
 
 case "$MODE" in
     --staged)
@@ -507,7 +513,7 @@ case "$MODE" in
         shift || true  # Consume the mode arg
         ;;
     --branch)
-        CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+        CHANGED_FILES=$(git diff --name-only "${BASE_REF}...HEAD")
         shift || true
         ;;
     --all)
@@ -611,6 +617,8 @@ markers = [
 ```
 
 > **Important:** With `asyncio_mode = "auto"`, async test functions and fixtures work automatically. Without this setting, you'll get "coroutine was never awaited" errors. Alternatively, use explicit `@pytest.mark.asyncio` on each async test.
+
+> **Version requirement:** These options require `pytest-asyncio >= 0.21.0`. Ensure dev dependencies specify at least this version to avoid "unknown config option" errors across machines.
 
 ### 7.6 Definition of Done for Scoped Execution
 
@@ -1261,7 +1269,7 @@ Create `scripts/dev/verify_legacy_removal.sh`:
 # Run this before deleting _v0_legacy/
 # Exit code 0 = safe to delete, non-zero = legacy references remain
 
-set -e
+set -euo pipefail
 echo "=== Verifying safe to delete _v0_legacy/ ==="
 
 ERRORS=0
@@ -1273,11 +1281,12 @@ check_imports() {
     if rg "from _v0_legacy|import _v0_legacy" "$dir" --type py 2>/dev/null; then
         echo "  ERROR: Direct _v0_legacy imports found in $name"
         ERRORS=$((ERRORS + 1))
-    elif rg "^from agents\.|^import agents\." "$dir" --type py 2>/dev/null; then
-        echo "  ERROR: Legacy agents.* imports found in $name"
+    # Broader patterns to catch: "import agents", "from agents import X", "from agents.foo"
+    elif rg "^(from|import)\s+agents(\s|$|\.)" "$dir" --type py 2>/dev/null; then
+        echo "  ERROR: Legacy agents imports found in $name"
         ERRORS=$((ERRORS + 1))
-    elif rg "^from infra\.|^import infra\." "$dir" --type py 2>/dev/null; then
-        echo "  ERROR: Legacy infra.* imports found in $name"
+    elif rg "^(from|import)\s+infra(\s|$|\.)" "$dir" --type py 2>/dev/null; then
+        echo "  ERROR: Legacy infra imports found in $name"
         ERRORS=$((ERRORS + 1))
     else
         echo "  ✓ No legacy imports in $name"
@@ -1770,3 +1779,8 @@ These already follow new architecture patterns.
 | 2026-02-01 | Review round 3: Fixed shift bug in run_affected_tests.sh (removed erroneous 2>/dev/null) |
 | 2026-02-01 | Review round 3: Fixed conftest auto-marker example (comment matched to code, added .resolve()) |
 | 2026-02-01 | Review round 3: Fixed duplicate numbering in Phase 6 (two "3." items) |
+| 2026-02-01 | Review round 4: Made BASE_REF configurable in run_affected_tests.sh |
+| 2026-02-01 | Review round 4: Added pytest-asyncio >= 0.21.0 version requirement note |
+| 2026-02-01 | Review round 4: Broadened legacy-import regex to catch `import agents` (no dot) |
+| 2026-02-01 | Review round 4: Added `set -euo pipefail` to shell scripts |
+| 2026-02-01 | Review round 4: Added domain marker naming convention note (domain_* prefix) |
