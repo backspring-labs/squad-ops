@@ -434,13 +434,13 @@ import pytest
 from pathlib import Path
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-mark tests in this directory with domain_agents marker."""
-    agents_dir = Path(__file__).parent
+    """Auto-mark tests in this directory and subdirectories with domain_agents marker."""
+    # Resolve paths to avoid symlink/relative path surprises
+    agents_dir = Path(__file__).parent.resolve()
     for item in items:
-        # Only mark items actually in this directory (avoid double-marking)
-        # Check exact parent match, not just "in parents" to prevent nested conftest issues
-        item_path = Path(item.fspath)
-        if item_path.parent == agents_dir or agents_dir in item_path.parents:
+        item_path = Path(str(item.fspath)).resolve()
+        # Mark if item is in this directory or any subdirectory
+        if agents_dir in item_path.parents or item_path.parent == agents_dir:
             if not any(m.name == "domain_agents" for m in item.iter_markers()):
                 item.add_marker(pytest.mark.domain_agents)
 ```
@@ -504,22 +504,24 @@ MODE="${1:---staged}"
 case "$MODE" in
     --staged)
         CHANGED_FILES=$(git diff --cached --name-only)
-        shift 2>/dev/null || true  # Consume the mode arg
+        shift || true  # Consume the mode arg
         ;;
     --branch)
         CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
-        shift 2>/dev/null || true
+        shift || true
         ;;
     --all)
         CHANGED_FILES=$(git diff --name-only HEAD)
-        shift 2>/dev/null || true
+        shift || true
         ;;
     -*)
         # Unknown flag - assume --staged and DON'T shift (pass flag through to pytest)
+        MODE="--staged"  # Set for accurate "Mode:" output
         CHANGED_FILES=$(git diff --cached --name-only)
         ;;
     *)
         # No mode specified, default to staged
+        MODE="--staged"
         CHANGED_FILES=$(git diff --cached --name-only)
         ;;
 esac
@@ -613,7 +615,7 @@ markers = [
 ### 7.6 Definition of Done for Scoped Execution
 
 - [ ] All domain `conftest.py` files created with auto-markers
-- [ ] `pytest.ini` updated with domain markers
+- [ ] `pyproject.toml` updated with domain markers (canonical location)
 - [ ] `scripts/dev/run_affected_tests.sh` implemented
 - [ ] CLAUDE.md updated with scoped test commands
 - [ ] All domain markers verified working
@@ -806,9 +808,9 @@ rg "^(from|import)\s+(agents|infra)\." tests/ --type py  # Should find nothing
        fi
    ```
 3. Remove empty directories
-3. Update test documentation
-4. Update CLAUDE.md test section
-5. Final CI verification (3 consecutive passes)
+4. Update test documentation
+5. Update CLAUDE.md test section
+6. Final CI verification (3 consecutive passes)
 
 **Deliverable:** Test suite modernization complete, CI enforces no legacy imports.
 
@@ -1569,7 +1571,7 @@ def compare(baseline_file, current_file):
 
 ### Scoped Execution
 - [ ] All domain `conftest.py` files created with auto-markers
-- [ ] `pytest.ini` / `pyproject.toml` updated with domain markers
+- [ ] `pyproject.toml` updated with domain markers (canonical location)
 - [ ] `scripts/dev/run_affected_tests.sh` implemented
 - [ ] Domain marker coverage verified (all tests tagged)
 
@@ -1764,3 +1766,7 @@ These already follow new architecture patterns.
 | 2026-02-01 | Review round 2: Added metrics measurement procedure (11.1) and progress tracking (11.3) |
 | 2026-02-01 | Review round 2: Added STOP POINT checkpoints after each phase |
 | 2026-02-01 | Review round 2: Specified pyproject.toml as canonical pytest config location |
+| 2026-02-01 | Review round 3: Fixed DoD checkboxes to say pyproject.toml (§7.6, §10) |
+| 2026-02-01 | Review round 3: Fixed shift bug in run_affected_tests.sh (removed erroneous 2>/dev/null) |
+| 2026-02-01 | Review round 3: Fixed conftest auto-marker example (comment matched to code, added .resolve()) |
+| 2026-02-01 | Review round 3: Fixed duplicate numbering in Phase 6 (two "3." items) |
