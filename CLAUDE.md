@@ -13,23 +13,26 @@ SquadOps is a multi-agent orchestration framework for software development. It u
 
 ### Testing
 ```bash
-# Run all tests
-pytest tests/ -v
+# Run new architecture tests (recommended, always pass)
+./scripts/dev/run_new_arch_tests.sh -v
 
-# Run specific test suites
+# Run tests affected by your changes
+./scripts/dev/run_affected_tests.sh           # Staged changes
+./scripts/dev/run_affected_tests.sh --branch  # All changes vs main
+
+# Run domain-specific tests (SIP-0.8.9 structure)
+pytest tests/unit/agents/ -v          # Agent tests
+pytest tests/unit/agents/roles/ -v    # Role-specific tests
+pytest tests/unit/capabilities/ -v    # Capability tests
+pytest tests/unit/api/ -v             # API tests
+pytest tests/unit/tasks/ -v           # Task model tests
+pytest tests/unit/memory/ -v          # Memory tests
+
+# Run all unit tests (includes legacy tests, some may fail)
 pytest tests/unit -v
-pytest tests/integration -v
-
-# Run single test file
-pytest tests/unit/test_base_agent.py -v
 
 # Run with coverage
 pytest tests/ --cov=src/squadops --cov-report=term-missing
-
-# Using the test runner script
-./tests/run_tests.sh unit        # Unit tests
-./tests/run_tests.sh integration # Integration tests
-./tests/run_tests.sh all         # All tests
 ```
 
 ### Linting & Formatting
@@ -76,11 +79,42 @@ docker-compose up -d postgres redis rabbitmq  # Start core services only
 
 ## Test Markers
 ```python
+# Test type markers
 @pytest.mark.unit          # Unit tests (mocked deps)
 @pytest.mark.integration   # Integration tests (real services)
+@pytest.mark.smoke         # Quick validation tests
+@pytest.mark.slow          # Slow running tests
+
+# Infrastructure markers
 @pytest.mark.database      # Requires PostgreSQL
 @pytest.mark.rabbitmq      # Requires RabbitMQ
 @pytest.mark.redis         # Requires Redis
+@pytest.mark.docker        # Requires Docker
+
+# Domain markers (SIP-0.8.9)
+@pytest.mark.domain_agents       # Agent domain
+@pytest.mark.domain_capabilities # Capability domain
+@pytest.mark.domain_api          # API domain
+@pytest.mark.domain_memory       # Memory domain
+```
+
+## Test Directory Structure (SIP-0.8.9)
+```
+tests/unit/
+├── agents/           # BaseAgent, AgentFactory tests
+│   └── roles/        # Lead, Dev, QA, Strat, Data agent tests
+├── api/              # API service tests
+├── tasks/            # TaskEnvelope, TaskResult tests
+├── capabilities/     # Capability handler tests
+├── memory/           # Memory port/adapter tests
+├── llm/              # LLM port/adapter tests
+├── telemetry/        # Telemetry tests
+├── config/           # Config loader tests
+├── build/            # Build/Docker tests
+├── governance/       # Governance tests
+├── orchestration/    # Prefect/task orchestration tests
+├── skills/           # Agent skill tests
+└── agent_foundation/ # Foundation/bootstrap tests
 ```
 
 ## SIP System (SquadOps Improvement Proposals)

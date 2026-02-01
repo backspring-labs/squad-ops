@@ -76,17 +76,35 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 pythonpath = ["src", "_v0_legacy"]
 
 markers = [
+    # Test type markers
     "unit: Unit tests for individual components",
     "integration: Integration tests for component interactions",
     "regression: Regression tests for critical workflows",
     "performance: Performance and load tests",
     "slow: Slow running tests",
+    "smoke: Smoke tests for quick validation",
+    "stack_validation: Full stack validation tests (requires running containers)",
+    # Infrastructure markers
     "database: Tests that require database",
     "rabbitmq: Tests that require RabbitMQ",
     "redis: Tests that require Redis",
+    "docker: Tests that require Docker",
+    # Domain markers (SIP-0.8.9)
+    "domain_agents: Agent domain tests",
+    "domain_capabilities: Capability domain tests",
+    "domain_skills: Skill domain tests",
+    "domain_api: API domain tests",
+    "domain_memory: Memory domain tests",
+    "domain_config: Config domain tests",
+    "domain_build: Build/packaging domain tests",
+    "domain_governance: Governance domain tests",
+    "domain_orchestration: Orchestration domain tests",
+    "domain_adapters: Adapter domain tests",
+    "domain_telemetry: Telemetry domain tests",
 ]
 
 ###########################
