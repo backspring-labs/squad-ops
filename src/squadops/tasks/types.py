@@ -1,10 +1,18 @@
 """Tasks compatibility bridge.
 
-Single-source import point for legacy TaskEnvelope types.
-Full migration to frozen dataclasses deferred to 0.8.8.
+Single-source import point for task types.
+Combines new frozen dataclasses with legacy Pydantic models during migration.
 
-Part of SIP-0.8.7 Infrastructure Ports Migration.
+Part of SIP-0.8.7/0.8.8 Infrastructure Ports Migration.
 """
+# New frozen dataclass models (SIP-0.8.8)
+from squadops.tasks.models import (
+    TaskEnvelope,
+    TaskIdentity,
+    TaskResult,
+)
+
+# Legacy Pydantic models (still needed for DB operations)
 # This is the ONLY file allowed to import from _v0_legacy.agents.tasks.models
 # (enforced by CI legacy import checker)
 from _v0_legacy.agents.tasks.models import (
@@ -13,20 +21,23 @@ from _v0_legacy.agents.tasks.models import (
     Task,
     TaskCreate,
     TaskFilters,
-    TaskResult,
+    TaskResult as LegacyTaskResult,
     TaskState,
+    TaskEnvelope as LegacyTaskEnvelope,
 )
 
-# Type alias for documentation clarity
-LegacyTaskEnvelope = Task
-
 __all__ = [
+    # New frozen dataclass models
+    "TaskEnvelope",
+    "TaskIdentity",
+    "TaskResult",
+    # Legacy Pydantic models
     "Artifact",
     "FlowState",
     "LegacyTaskEnvelope",
+    "LegacyTaskResult",
     "Task",
     "TaskCreate",
     "TaskFilters",
-    "TaskResult",
     "TaskState",
 ]

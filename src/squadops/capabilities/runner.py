@@ -39,9 +39,8 @@ from squadops.capabilities.exceptions import (
 from squadops.ports.capabilities.repository import CapabilityRepository
 from squadops.ports.capabilities.executor import CapabilityExecutor
 
-# Import ACI models from v0_legacy (path added via pytest pythonpath)
-# [DEFERRED] Migrate TaskEnvelope/TaskResult to canonical location in future SIP
-from agents.tasks.models import TaskEnvelope, TaskResult
+# Import ACI models from core domain (SIP-0.8.8 migration)
+from squadops.tasks.models import TaskEnvelope, TaskResult
 
 logger = logging.getLogger(__name__)
 

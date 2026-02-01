@@ -9,9 +9,8 @@ execution mechanism (ACI queue, Prefect, etc.).
 from abc import ABC, abstractmethod
 from typing import Any
 
-# Import ACI models from v0_legacy (path added via pytest pythonpath)
-# [DEFERRED] Migrate TaskEnvelope/TaskResult to canonical location in future SIP
-from agents.tasks.models import TaskEnvelope, TaskResult
+# Import ACI models from core domain (SIP-0.8.8 migration)
+from squadops.tasks.models import TaskEnvelope, TaskResult
 
 
 class CapabilityExecutor(ABC):
