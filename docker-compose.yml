@@ -35,7 +35,7 @@ services:
     - max_connections=200
     volumes:
     - postgres_data:/var/lib/postgresql/data
-    - ./_v0_legacy/infra/init.sql:/docker-entrypoint-initdb.d/init.sql
+    - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
     - squadnet
     healthcheck:
@@ -117,7 +117,7 @@ services:
   health-check:
     build:
       context: .
-      dockerfile: _v0_legacy/infra/health-check/Dockerfile
+      dockerfile: src/squadops/api/Dockerfile
     container_name: squadops-health-check
     ports:
     - 8000:8000
@@ -191,7 +191,7 @@ services:
   max:
     build:
       context: .
-      dockerfile: _v0_legacy/agents/roles/lead/Dockerfile
+      dockerfile: agents/Dockerfile
       args:
         AGENT_ROLE: lead
         BUILD_HASH: ${BUILD_HASH:-unknown}
@@ -201,10 +201,9 @@ services:
       - rabbitmq_password
     environment:
       SQUADOPS__AGENT__ID: max
+      SQUADOPS_AGENT_ROLE: lead
       SQUADOPS_PROFILE: dev
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      # Note: Mem0 1.0.0 may require OPENAI_API_KEY env var even when using Ollama
-      # Per MEM0-LOCAL-EMBEDDINGS-GUIDE.md - guide may be for different Mem0 version
     volumes:
       - ./warm-boot:/app/warm-boot
       - max_memory_data:/app/data/memory_db
@@ -220,7 +219,7 @@ services:
   nat:
     build:
       context: .
-      dockerfile: _v0_legacy/agents/roles/strat/Dockerfile
+      dockerfile: agents/Dockerfile
       args:
         AGENT_ROLE: strat
         BUILD_HASH: ${BUILD_HASH:-unknown}
@@ -230,6 +229,7 @@ services:
       - rabbitmq_password
     environment:
       SQUADOPS__AGENT__ID: nat
+      SQUADOPS_AGENT_ROLE: strat
       SQUADOPS_PROFILE: dev
       SQUADOPS__SECRETS__PROVIDER: docker_secret
     depends_on:
@@ -241,29 +241,31 @@ services:
         condition: service_healthy
     networks:
     - squadnet
-  glyph:
-    build:
-      context: .
-      dockerfile: agents/roles/creative/Dockerfile
-      args:
-        AGENT_ROLE: creative
-        BUILD_HASH: ${BUILD_HASH:-unknown}
-    container_name: squadops-glyph
-    environment:
-      SQUADOPS__AGENT__ID: glyph
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - squadnet
+  # glyph (creative) - Disabled: Role not yet ported to new architecture (SIP-0.8.8)
+  # glyph:
+  #   build:
+  #     context: .
+  #     dockerfile: agents/Dockerfile
+  #     args:
+  #       AGENT_ROLE: creative
+  #       BUILD_HASH: ${BUILD_HASH:-unknown}
+  #   container_name: squadops-glyph
+  #   environment:
+  #     SQUADOPS__AGENT__ID: glyph
+  #     SQUADOPS_AGENT_ROLE: creative
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #   - squadnet
   neo:
     build:
       context: .
-      dockerfile: _v0_legacy/agents/roles/dev/Dockerfile
+      dockerfile: agents/Dockerfile
       args:
         AGENT_ROLE: dev
         BUILD_HASH: ${BUILD_HASH:-unknown}
@@ -273,10 +275,9 @@ services:
       - rabbitmq_password
     environment:
       SQUADOPS__AGENT__ID: neo
+      SQUADOPS_AGENT_ROLE: dev
       SQUADOPS_PROFILE: dev
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      # Note: Mem0 1.0.0 may require OPENAI_API_KEY env var even when using Ollama
-      # Per MEM0-LOCAL-EMBEDDINGS-GUIDE.md - guide may be for different Mem0 version
     volumes:
       - ./warm-boot:/app/warm-boot
       - ./docker-compose.yml:/app/docker-compose.yml
@@ -294,7 +295,7 @@ services:
   eve:
     build:
       context: .
-      dockerfile: _v0_legacy/agents/roles/qa/Dockerfile
+      dockerfile: agents/Dockerfile
       args:
         AGENT_ROLE: qa
         BUILD_HASH: ${BUILD_HASH:-unknown}
@@ -304,6 +305,7 @@ services:
       - rabbitmq_password
     environment:
       SQUADOPS__AGENT__ID: eve
+      SQUADOPS_AGENT_ROLE: qa
       SQUADOPS_PROFILE: dev
       SQUADOPS__SECRETS__PROVIDER: docker_secret
     depends_on:
@@ -318,7 +320,7 @@ services:
   data:
     build:
       context: .
-      dockerfile: _v0_legacy/agents/roles/data/Dockerfile
+      dockerfile: agents/Dockerfile
       args:
         AGENT_ROLE: data
         BUILD_HASH: ${BUILD_HASH:-unknown}
@@ -328,6 +330,7 @@ services:
       - rabbitmq_password
     environment:
       SQUADOPS__AGENT__ID: data
+      SQUADOPS_AGENT_ROLE: data
       SQUADOPS_PROFILE: dev
       SQUADOPS__SECRETS__PROVIDER: docker_secret
     volumes:
@@ -344,82 +347,93 @@ services:
         condition: service_started
     networks:
     - squadnet
-  quark:
-    build:
-      context: .
-      dockerfile: agents/roles/finance/Dockerfile
-      args:
-        AGENT_ROLE: finance
-        BUILD_HASH: ${BUILD_HASH:-unknown}
-    container_name: squadops-quark
-    environment:
-      SQUADOPS__AGENT__ID: quark
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - squadnet
-  joi:
-    build:
-      context: .
-      dockerfile: agents/roles/comms/Dockerfile
-      args:
-        AGENT_ROLE: comms
-        BUILD_HASH: ${BUILD_HASH:-unknown}
-    container_name: squadops-joi
-    environment:
-      SQUADOPS__AGENT__ID: joi
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - squadnet
-  og:
-    build:
-      context: .
-      dockerfile: agents/roles/curator/Dockerfile
-      args:
-        AGENT_ROLE: curator
-        BUILD_HASH: ${BUILD_HASH:-unknown}
-    container_name: squadops-og
-    environment:
-      SQUADOPS__AGENT__ID: og
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - squadnet
-  hal:
-    build:
-      context: .
-      dockerfile: agents/roles/audit/Dockerfile
-      args:
-        AGENT_ROLE: audit
-        BUILD_HASH: ${BUILD_HASH:-unknown}
-    container_name: squadops-hal
-    environment:
-      SQUADOPS__AGENT__ID: hal
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-    - squadnet
+  # quark (finance) - Disabled: Role not yet ported to new architecture (SIP-0.8.8)
+  # quark:
+  #   build:
+  #     context: .
+  #     dockerfile: agents/Dockerfile
+  #     args:
+  #       AGENT_ROLE: finance
+  #       BUILD_HASH: ${BUILD_HASH:-unknown}
+  #   container_name: squadops-quark
+  #   environment:
+  #     SQUADOPS__AGENT__ID: quark
+  #     SQUADOPS_AGENT_ROLE: finance
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #   - squadnet
+
+  # joi (comms) - Disabled: Role not yet ported to new architecture (SIP-0.8.8)
+  # joi:
+  #   build:
+  #     context: .
+  #     dockerfile: agents/Dockerfile
+  #     args:
+  #       AGENT_ROLE: comms
+  #       BUILD_HASH: ${BUILD_HASH:-unknown}
+  #   container_name: squadops-joi
+  #   environment:
+  #     SQUADOPS__AGENT__ID: joi
+  #     SQUADOPS_AGENT_ROLE: comms
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #   - squadnet
+
+  # og (curator) - Disabled: Role not yet ported to new architecture (SIP-0.8.8)
+  # og:
+  #   build:
+  #     context: .
+  #     dockerfile: agents/Dockerfile
+  #     args:
+  #       AGENT_ROLE: curator
+  #       BUILD_HASH: ${BUILD_HASH:-unknown}
+  #   container_name: squadops-og
+  #   environment:
+  #     SQUADOPS__AGENT__ID: og
+  #     SQUADOPS_AGENT_ROLE: curator
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #   - squadnet
+
+  # hal (audit) - Disabled: Role not yet ported to new architecture (SIP-0.8.8)
+  # hal:
+  #   build:
+  #     context: .
+  #     dockerfile: agents/Dockerfile
+  #     args:
+  #       AGENT_ROLE: audit
+  #       BUILD_HASH: ${BUILD_HASH:-unknown}
+  #   container_name: squadops-hal
+  #   environment:
+  #     SQUADOPS__AGENT__ID: hal
+  #     SQUADOPS_AGENT_ROLE: audit
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #   - squadnet
   otel-collector:
     image: otel/opentelemetry-collector:latest
     container_name: squadops-otel-collector
@@ -427,7 +441,7 @@ services:
     environment:
       OTEL_COLLECTOR_VERSION: "0.138.0"  # Set version for health check
     volumes:
-      - ./_v0_legacy/infra/otel-collector/config.yaml:/etc/otel-collector/config.yaml
+      - ./infra/otel-collector/config.yaml:/etc/otel-collector/config.yaml
     ports:
       - "4317:4317"   # OTLP gRPC receiver
       - "4318:4318"   # OTLP HTTP receiver
@@ -449,7 +463,7 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
     volumes:
-      - ./_v0_legacy/infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
@@ -464,8 +478,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin123
       - GF_INSTALL_PLUGINS=
     volumes:
-      - ./_v0_legacy/infra/grafana/provisioning:/etc/grafana/provisioning
-      - ./_v0_legacy/infra/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
       - grafana_data:/var/lib/grafana
     ports:
       - "3000:3000"
