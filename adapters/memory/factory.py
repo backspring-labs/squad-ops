@@ -2,25 +2,24 @@
 
 Factory function for creating memory adapters.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
+Updated in SIP-0.8.8 to use EmbeddingsPort instead of embed_fn seam.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from adapters.memory.lancedb import LanceDBAdapter
 from squadops.ports.memory.store import MemoryPort
 
 if TYPE_CHECKING:
     from squadops.core.secret_manager import SecretManager
-
-# Type alias for async embedding function
-EmbedFn = Callable[[str], Awaitable[list[float]]]
+    from squadops.ports.embeddings.provider import EmbeddingsPort
 
 
 def create_memory_provider(
     provider: str = "lancedb",
     secret_manager: SecretManager | None = None,
-    embed_fn: EmbedFn | None = None,
+    embeddings: EmbeddingsPort | None = None,
     db_path: str = "./data/memory.lancedb",
     **config,
 ) -> MemoryPort:
@@ -29,7 +28,7 @@ def create_memory_provider(
     Args:
         provider: Provider name ("lancedb")
         secret_manager: Optional secret manager for resolving secret:// refs
-        embed_fn: Async embedding function. If None, uses default Ollama embeddings.
+        embeddings: EmbeddingsPort for generating vectors. If None, creates default Ollama adapter.
         db_path: Path to database (may be secret:// ref for credentials)
         **config: Additional provider-specific configuration
 
@@ -43,10 +42,19 @@ def create_memory_provider(
     if secret_manager and db_path.startswith("secret://"):
         db_path = secret_manager.resolve(db_path[9:])
 
+    # Create default embeddings provider if not provided
+    if embeddings is None:
+        from adapters.embeddings.factory import create_embeddings_provider
+
+        embeddings = create_embeddings_provider(
+            provider="ollama",
+            secret_manager=secret_manager,
+        )
+
     if provider == "lancedb":
         return LanceDBAdapter(
             db_path=db_path,
-            embed_fn=embed_fn,
+            embeddings=embeddings,
             **config,
         )
 

@@ -1,13 +1,13 @@
 """LanceDB memory adapter.
 
-Vector-based memory storage using LanceDB with pluggable async embeddings.
+Vector-based memory storage using LanceDB with EmbeddingsPort injection.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
+Updated in SIP-0.8.8 to use EmbeddingsPort instead of embed_fn seam.
 """
 from __future__ import annotations
 
-import asyncio
 import uuid
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 from squadops.memory.exceptions import MemoryEmbeddingError, MemoryStoreError
 from squadops.memory.models import MemoryEntry, MemoryQuery, MemoryResult
@@ -16,67 +16,37 @@ from squadops.ports.memory.store import MemoryPort
 if TYPE_CHECKING:
     import lancedb
 
-# Type alias for async embedding function
-EmbedFn = Callable[[str], Awaitable[list[float]]]
+    from squadops.ports.embeddings.provider import EmbeddingsPort
 
 
 class LanceDBAdapter(MemoryPort):
-    """LanceDB-backed memory with pluggable async embedding function.
+    """LanceDB-backed memory with EmbeddingsPort injection.
 
-    Supports semantic search via vector embeddings. The embedding function
+    Supports semantic search via vector embeddings. The embeddings port
     is injectable for testing and to support different embedding providers.
     """
 
     def __init__(
         self,
         db_path: str,
-        embed_fn: EmbedFn | None = None,
+        embeddings: EmbeddingsPort,
         table_name: str = "memories",
-        embedding_dim: int = 384,
         **config,
     ):
         """Initialize LanceDB adapter.
 
         Args:
             db_path: Path to LanceDB database directory
-            embed_fn: Async embedding function. If None, uses default Ollama embeddings.
+            embeddings: EmbeddingsPort for generating vectors
             table_name: Name of the table to use
-            embedding_dim: Dimension of embedding vectors
             **config: Additional configuration
         """
         self._db_path = db_path
-        self._embed_fn = embed_fn or self._default_ollama_embed_async
+        self._embeddings = embeddings
         self._table_name = table_name
-        self._embedding_dim = embedding_dim
+        self._embedding_dim = embeddings.dimensions()
         self._db: lancedb.DBConnection | None = None
         self._table: Any = None
-
-    async def _default_ollama_embed_async(self, text: str) -> list[float]:
-        """Legacy Ollama embedding call wrapped for async.
-
-        Preserved for backward compatibility. Wraps sync HTTP call
-        via asyncio.to_thread() to avoid blocking the event loop.
-        """
-        return await asyncio.to_thread(self._ollama_embed_sync, text)
-
-    def _ollama_embed_sync(self, text: str) -> list[float]:
-        """Sync Ollama HTTP call (runs in thread pool).
-
-        Copied from legacy implementation for backward compatibility.
-        """
-        import httpx
-
-        try:
-            response = httpx.post(
-                "http://localhost:11434/api/embeddings",
-                json={"model": "nomic-embed-text", "prompt": text},
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("embedding", [])
-        except Exception as e:
-            raise MemoryEmbeddingError(f"Failed to generate embedding: {e}") from e
 
     def _ensure_db(self) -> None:
         """Ensure database connection is established."""
@@ -115,8 +85,8 @@ class LanceDBAdapter(MemoryPort):
         try:
             self._ensure_table()
 
-            # Generate embedding
-            embedding = await self._embed_fn(entry.content)
+            # Generate embedding via port
+            embedding = await self._embeddings.embed(entry.content)
 
             # Generate ID
             memory_id = str(uuid.uuid4())
@@ -150,8 +120,8 @@ class LanceDBAdapter(MemoryPort):
         try:
             self._ensure_table()
 
-            # Generate query embedding
-            query_embedding = await self._embed_fn(query.text)
+            # Generate query embedding via port
+            query_embedding = await self._embeddings.embed(query.text)
 
             # Search
             results = (
