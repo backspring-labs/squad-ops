@@ -9,16 +9,17 @@ from unittest.mock import patch
 
 import pytest
 
+from adapters.secrets.docker import DockerSecretProvider
+from adapters.secrets.env import EnvProvider
+from adapters.secrets.factory import create_provider
+from adapters.secrets.file import FileProvider
 from infra.config.schema import SecretsConfig
-from infra.secrets.docker_provider import DockerSecretProvider
-from infra.secrets.env_provider import EnvProvider
-from infra.secrets.exceptions import (
+from squadops.core.secrets import (
     InvalidSecretReferenceError,
+    SecretManager,
     SecretNotFoundError,
     SecretResolutionError,
 )
-from infra.secrets.file_provider import FileProvider
-from infra.secrets.manager import SecretManager
 
 
 class TestEnvProvider:
@@ -231,7 +232,13 @@ class TestSecretManager:
             name_map={"db_password": "DB_PASSWORD"},
         )
         
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         assert manager.provider.provider_name == "env"
         assert manager.name_map == {"db_password": "DB_PASSWORD"}
 
@@ -239,7 +246,13 @@ class TestSecretManager:
         """Test that env provider defaults prefix to SQUADOPS_."""
         config = SecretsConfig(provider="env")
         
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         assert manager.provider.provider_name == "env"
         assert manager.provider.env_prefix == "SQUADOPS_"
 
@@ -254,7 +267,13 @@ class TestSecretManager:
             name_map={"db_password": "db_pass"},
         )
         
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         assert manager.provider.provider_name == "file"
         assert manager.name_map == {"db_password": "db_pass"}
 
@@ -265,7 +284,13 @@ class TestSecretManager:
             name_map={"db_password": "db_pass"},
         )
         
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         assert manager.provider.provider_name == "docker_secret"
         assert manager.name_map == {"db_password": "db_pass"}
 
@@ -273,14 +298,26 @@ class TestSecretManager:
         """Test that name_map is normalized to {} if None."""
         config = SecretsConfig(provider="env", name_map=None)
         
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         assert manager.name_map == {}
         assert isinstance(manager.name_map, dict)
 
     def test_inline_string_replacement(self):
         """Test inline string replacement of secret:// references."""
         config = SecretsConfig(provider="env", env_prefix="TEST_")
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         os.environ["TEST_DB_PASSWORD"] = "secret123"
         
@@ -291,7 +328,13 @@ class TestSecretManager:
     def test_inline_string_replacement_multiple(self):
         """Test inline string replacement with multiple references."""
         config = SecretsConfig(provider="env", env_prefix="TEST_")
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         os.environ["TEST_DB_PASSWORD"] = "db123"
         os.environ["TEST_RABBITMQ_PASSWORD"] = "mq123"
@@ -303,7 +346,13 @@ class TestSecretManager:
     def test_logical_name_validation_valid(self):
         """Test that valid logical names are accepted."""
         config = SecretsConfig(provider="env", env_prefix="TEST_")
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         os.environ["TEST_VALID_NAME"] = "value"
         
@@ -317,7 +366,13 @@ class TestSecretManager:
     def test_logical_name_validation_invalid(self):
         """Test that invalid logical names raise InvalidSecretReferenceError."""
         config = SecretsConfig(provider="env", env_prefix="TEST_")
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         # Invalid names - these should fail validation in _resolve_reference
         invalid_names = ["123invalid", "_invalid", "invalid-name", "invalid.name", ""]
@@ -334,7 +389,13 @@ class TestSecretManager:
             env_prefix="TEST_",
             name_map={"db_password": "DB_PASS"},
         )
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         os.environ["TEST_DB_PASS"] = "mapped_value"
         
@@ -348,7 +409,13 @@ class TestSecretManager:
             env_prefix="TEST_",
             name_map={"other": "OTHER"},
         )
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         os.environ["TEST_DB_PASSWORD"] = "fallback_value"
         
@@ -358,7 +425,13 @@ class TestSecretManager:
     def test_recursive_reference_detection(self):
         """Test that recursive/chained references are detected."""
         config = SecretsConfig(provider="env", env_prefix="TEST_")
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         # Set up a secret that resolves to a value containing secret://
         os.environ["TEST_RECURSIVE"] = "secret://other_secret"
@@ -370,7 +443,13 @@ class TestSecretManager:
     def test_resolve_all_references_dict(self):
         """Test resolving references in a dictionary."""
         config = SecretsConfig(provider="env", env_prefix="TEST_")
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         os.environ["TEST_DB_PASSWORD"] = "db123"
         os.environ["TEST_RABBITMQ_PASSWORD"] = "mq123"
@@ -401,7 +480,13 @@ class TestSecretManager:
     def test_resolve_all_references_list(self):
         """Test resolving references in a list."""
         config = SecretsConfig(provider="env", env_prefix="TEST_")
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         os.environ["TEST_SECRET1"] = "value1"
         os.environ["TEST_SECRET2"] = "value2"
@@ -423,7 +508,13 @@ class TestSecretManager:
     def test_resolve_all_references_returns_new_dict(self):
         """Test that resolve_all_references returns a new dict."""
         config = SecretsConfig(provider="env", env_prefix="TEST_")
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         os.environ["TEST_SECRET"] = "value"
         
@@ -435,38 +526,44 @@ class TestSecretManager:
         assert original["key"] == "secret://secret"
 
     def test_has_secret_references(self):
-        """Test _has_secret_references method."""
+        """Test has_secret_references method."""
         config_dict = {
             "db": {"url": "postgresql://user:secret://db_password@host:5432/db"},
             "comms": {"rabbitmq": {"url": "amqp://user:pass@host:5672/"}},
         }
         
-        assert SecretManager._has_secret_references(config_dict) is True
+        assert SecretManager.has_secret_references(config_dict) is True
         
         config_dict_no_refs = {
             "db": {"url": "postgresql://user:pass@host:5432/db"},
         }
         
-        assert SecretManager._has_secret_references(config_dict_no_refs) is False
+        assert SecretManager.has_secret_references(config_dict_no_refs) is False
 
     def test_has_secret_references_exclude_keys(self):
-        """Test _has_secret_references with exclude_keys."""
+        """Test has_secret_references with exclude_keys."""
         config_dict = {
             "db": {"url": "postgresql://user:secret://db_password@host:5432/db"},
             "secrets": {"provider": "env"},
         }
         
         # Should find references when not excluding secrets
-        assert SecretManager._has_secret_references(config_dict, exclude_keys=[]) is True
+        assert SecretManager.has_secret_references(config_dict, exclude_keys=[]) is True
         
         # Should not find references when excluding secrets (but there are none in secrets section)
         # Actually, there are references in db section, so should still find them
-        assert SecretManager._has_secret_references(config_dict, exclude_keys=["secrets"]) is True
+        assert SecretManager.has_secret_references(config_dict, exclude_keys=["secrets"]) is True
 
     def test_error_propagation(self):
         """Test that provider errors are properly propagated."""
         config = SecretsConfig(provider="env", env_prefix="TEST_")
-        manager = SecretManager.from_config(config)
+        provider = create_provider(
+            provider=config.provider,
+            env_prefix=config.env_prefix,
+            file_dir=config.file_dir,
+        )
+        name_map = config.name_map if config.name_map is not None else {}
+        manager = SecretManager(provider=provider, name_map=name_map)
         
         # Missing secret should raise SecretNotFoundError
         with pytest.raises(SecretNotFoundError):
