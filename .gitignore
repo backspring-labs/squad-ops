@@ -57,5 +57,8 @@ config/local.yaml
 secrets/*
 !secrets/.gitkeep
 
+# Generated/Output files
+repomix-output.xml
+
 .venv/
 .venv/

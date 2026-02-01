@@ -1,0 +1,34 @@
+{
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml",
+    "removeComments": true
+  },
+  "include": {
+    "patterns": [
+      "**/*.{py,js,ts,md,txt,yaml,yml,json,toml}"
+    ]
+  },
+  "ignore": {
+    "customPatterns": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.cursor/**",
+      "**/.venv/**",
+      "**/__pycache__/**",
+      "**/.git/**",
+      "**/warm-boot/**",
+      "**/_v0_legacy/**"
+    ],
+    "useGitignore": true,
+    "useDefaultPatterns": true
+  },
+  "repository": {
+    "includeRepositoryFiles": true,
+    "includeDirectoryStructure": true
+  },
+  "sort": {
+    "by": "gitChangeCount"
+  }
+}
