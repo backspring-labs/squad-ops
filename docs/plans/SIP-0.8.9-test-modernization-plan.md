@@ -40,6 +40,24 @@ This plan details the test suite modernization required after SIP-0.8.8 complete
 | Scoped run time (single domain) | 5-20s |
 | Full suite run time | 60-90s |
 
+### 1.1 Scope & Non-Goals
+
+**In Scope:**
+- Test file pruning, migration, and reorganization
+- Import path updates from legacy to canonical
+- Test infrastructure (conftest.py, markers, fixtures)
+- Health Check app refactor to use new architecture
+- Build infrastructure cleanup (Dockerfiles, docker-compose, build scripts)
+- Legacy directory deletion
+
+**Non-Goals (out of scope for 0.8.9):**
+- Broad behavior refactors beyond import updates
+- New feature development
+- Performance tuning beyond target times stated above
+- Test framework migration (e.g., switching from pytest)
+- Adding new test categories or coverage for untested code
+- Refactoring production code (that's SIP-0.8.8)
+
 ---
 
 ## 2. Test Inventory Analysis
@@ -404,7 +422,11 @@ pytest tests/unit/config/ -v                    # ~30 tests, 2-3s
 
 ### 7.2 Domain Markers
 
-Each domain directory will have a `conftest.py` that auto-marks tests:
+> **Note:** Path-based test selection (Section 7.1) is the **primary** mechanism for scoped runs. Domain markers are **secondary** — use them only for cross-cutting concerns like `slow`, `stack_validation`, `docker`, or when you need to include/exclude tests across multiple directories.
+
+**Recommended approach:** Start simple with path-based selection. Add domain markers only if you find yourself needing marker-based filtering frequently.
+
+If you choose to add auto-markers, each domain directory can have a `conftest.py`:
 
 ```python
 # tests/unit/agents/conftest.py
@@ -416,8 +438,11 @@ def pytest_collection_modifyitems(config, items):
     agents_dir = Path(__file__).parent
     for item in items:
         # Only mark items actually in this directory (avoid double-marking)
-        if agents_dir in Path(item.fspath).parents:
-            item.add_marker(pytest.mark.domain_agents)
+        # Check exact parent match, not just "in parents" to prevent nested conftest issues
+        item_path = Path(item.fspath)
+        if item_path.parent == agents_dir or agents_dir in item_path.parents:
+            if not any(m.name == "domain_agents" for m in item.iter_markers()):
+                item.add_marker(pytest.mark.domain_agents)
 ```
 
 **Available markers after migration:**
@@ -479,16 +504,23 @@ MODE="${1:---staged}"
 case "$MODE" in
     --staged)
         CHANGED_FILES=$(git diff --cached --name-only)
+        shift 2>/dev/null || true  # Consume the mode arg
         ;;
     --branch)
         CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+        shift 2>/dev/null || true
         ;;
     --all)
         CHANGED_FILES=$(git diff --name-only HEAD)
+        shift 2>/dev/null || true
+        ;;
+    -*)
+        # Unknown flag - assume --staged and DON'T shift (pass flag through to pytest)
+        CHANGED_FILES=$(git diff --cached --name-only)
         ;;
     *)
-        echo "Usage: $0 [--staged|--branch|--all]"
-        exit 1
+        # No mode specified, default to staged
+        CHANGED_FILES=$(git diff --cached --name-only)
         ;;
 esac
 
@@ -543,28 +575,40 @@ pytest $UNIQUE_TESTS -v "$@"
 | Pre-push validation | `pytest tests/unit/ -v` | ~800 | 60-90s |
 | CI/CD pipeline | `pytest tests/ -v` | ~900 | 90-120s |
 
-### 7.5 pytest.ini Configuration
+### 7.5 pytest Configuration
 
-Update `pytest.ini` (or `pyproject.toml`) to register domain markers:
+**Canonical location:** Use `pyproject.toml` (not `pytest.ini`) for all pytest configuration to avoid drift.
 
-```ini
-[pytest]
-markers =
-    unit: Unit tests (mocked dependencies)
-    integration: Integration tests (real services)
-    regression: Regression tests
-    domain_agents: Agent domain tests
-    domain_capabilities: Capability domain tests
-    domain_skills: Skill domain tests
-    domain_api: API domain tests
-    domain_memory: Memory domain tests
-    domain_config: Config domain tests
-    domain_build: Build/packaging domain tests
-    domain_governance: Governance domain tests
-    domain_orchestration: Orchestration domain tests
-    domain_adapters: Adapter domain tests
-    domain_telemetry: Telemetry domain tests
+Update `pyproject.toml` to configure pytest-asyncio and register markers:
+
+```toml
+[tool.pytest.ini_options]
+# Enable pytest-asyncio auto mode - async tests work without explicit markers
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+markers = [
+    "unit: Unit tests (mocked dependencies)",
+    "integration: Integration tests (real services)",
+    "regression: Regression tests",
+    "stack_validation: Full stack validation tests (requires running containers)",
+    "slow: Tests that take >5s to run",
+    "docker: Tests that require Docker",
+    "domain_agents: Agent domain tests",
+    "domain_capabilities: Capability domain tests",
+    "domain_skills: Skill domain tests",
+    "domain_api: API domain tests",
+    "domain_memory: Memory domain tests",
+    "domain_config: Config domain tests",
+    "domain_build: Build/packaging domain tests",
+    "domain_governance: Governance domain tests",
+    "domain_orchestration: Orchestration domain tests",
+    "domain_adapters: Adapter domain tests",
+    "domain_telemetry: Telemetry domain tests",
+]
 ```
+
+> **Important:** With `asyncio_mode = "auto"`, async test functions and fixtures work automatically. Without this setting, you'll get "coroutine was never awaited" errors. Alternatively, use explicit `@pytest.mark.asyncio` on each async test.
 
 ### 7.6 Definition of Done for Scoped Execution
 
@@ -590,16 +634,20 @@ markers =
 - No shim needed; tests always pass against current code
 
 **Option B: Temporary re-export package**
-Create `tests/_compat/agents/__init__.py` that explicitly re-exports:
+
+> **Naming:** Use a distinctive name like `_legacy_import_shims` to avoid shadowing real modules and make it obvious this is temporary infrastructure.
+
+Create `tests/_legacy_import_shims/agents/__init__.py` that explicitly re-exports:
 
 ```python
-# tests/_compat/agents/__init__.py
-# TEMPORARY: Remove after 0.8.9 migration complete
+# tests/_legacy_import_shims/agents/__init__.py
+# TEMPORARY: Remove after 0.8.9 Phase 5 complete
 # This package provides legacy import paths for test migration
+# CI will fail if this directory exists after migration is complete
 
 import warnings
 warnings.warn(
-    "Importing from tests._compat.agents is deprecated. "
+    "Importing from tests._legacy_import_shims.agents is deprecated. "
     "Migrate to squadops.agents imports.",
     DeprecationWarning,
     stacklevel=2
@@ -613,7 +661,12 @@ from squadops.agents.factory import AgentFactory
 Then in `conftest.py`:
 ```python
 import sys
-sys.path.insert(0, str(Path(__file__).parent / "_compat"))
+from pathlib import Path
+
+# TEMPORARY: Legacy import shim - remove after migration
+_shim_path = str(Path(__file__).parent / "_legacy_import_shims")
+if _shim_path not in sys.path:
+    sys.path.insert(0, _shim_path)
 ```
 
 **Option C: sys.modules shim (last resort)**
@@ -645,6 +698,8 @@ for old, new in _LEGACY_MAPPINGS.items():
 4. Run test suite, verify no regressions
 5. Update CI metrics
 
+**STOP POINT:** Run `pytest tests/unit/ -v` — must pass before proceeding.
+
 **Deliverable:** ~15-19 test files deleted, ~8,000 lines removed.
 
 ### Phase 3: Split conftest.py
@@ -664,6 +719,8 @@ tests/
 2. Keep integration fixtures in `tests/integration/conftest.py` (already exists)
 3. Reduce root `conftest.py` to shared config only
 4. Domain-level conftests only when truly needed (avoid proliferation)
+
+**STOP POINT:** Run `pytest tests/unit/ -v` — must pass before proceeding.
 
 **Deliverable:** conftest.py reduced from 652 lines to ~100 lines.
 
@@ -691,6 +748,8 @@ git commit -m "refactor(tests): restructure test directories"
 3. Update CI test discovery patterns
 4. Commit structure changes separately
 
+**STOP POINT:** Run `pytest tests/unit/ --collect-only` — verify all tests discovered. Then run `pytest tests/unit/agents/ -v` to verify a subset passes.
+
 **Deliverable:** Tests organized by domain, git history preserved.
 
 ### Phase 5: Reconciliation + Import Migration
@@ -707,6 +766,12 @@ Combine reconciliation and import updates (now easier with domain-aligned struct
 8. Update conftest.py fixtures
 9. Remove compatibility shim (if used)
 
+**STOP POINT:** Run full CI-equivalent locally:
+```bash
+pytest tests/unit/ -v && pytest tests/integration/ -v
+rg "^(from|import)\s+(agents|infra)\." tests/ --type py  # Should find nothing
+```
+
 **Deliverable:** Redundancy eliminated, zero legacy imports.
 
 ### Phase 6: CI Gate + Documentation
@@ -716,12 +781,31 @@ Combine reconciliation and import updates (now easier with domain-aligned struct
    # .github/workflows/ci.yml
    - name: Check no legacy imports
      run: |
-       if rg "from agents\.|from infra\.|from _v0_legacy" tests/ --type py; then
-         echo "ERROR: Legacy imports found in tests"
+       # Anchored patterns to avoid false positives in comments/strings
+       # Exclude compat shim directory if temporarily in use
+       if rg "^(from|import)\s+agents\." tests/ --type py --glob '!tests/_legacy_import_shims/**'; then
+         echo "ERROR: Legacy agents.* imports found in tests"
+         exit 1
+       fi
+       if rg "^(from|import)\s+infra\." tests/ --type py --glob '!tests/_legacy_import_shims/**'; then
+         echo "ERROR: Legacy infra.* imports found in tests"
+         exit 1
+       fi
+       if rg "^(from|import)\s+_v0_legacy" tests/ --type py; then
+         echo "ERROR: Direct _v0_legacy imports found in tests"
          exit 1
        fi
    ```
-2. Remove empty directories
+2. Add CI check that compat shim is removed after Phase 5:
+   ```yaml
+   - name: Verify compat shim removed
+     run: |
+       if [ -d "tests/_legacy_import_shims" ]; then
+         echo "ERROR: Compat shim directory still exists - should be removed after migration"
+         exit 1
+       fi
+   ```
+3. Remove empty directories
 3. Update test documentation
 4. Update CLAUDE.md test section
 5. Final CI verification (3 consecutive passes)
@@ -832,6 +916,7 @@ async def wait_for_agents_online(client: httpx.AsyncClient, timeout: int = 60) -
 
 @pytest.mark.integration
 @pytest.mark.stack_validation
+@pytest.mark.asyncio  # Required if not using asyncio_mode=auto
 class TestStackValidation:
     """End-to-end stack validation tests."""
 
@@ -949,6 +1034,16 @@ class TestStackValidation:
 ```
 
 #### 7.3 Running the Stack Validation Test
+
+**CI Posture (explicit rule):** Stack validation tests are **NOT** run in standard CI by default because they require running containers. Choose one:
+
+| Option | When | How |
+|--------|------|-----|
+| **A. Manual gate (recommended)** | Pre-release, post-major-merge | Run locally or in dedicated workflow |
+| **B. Nightly job** | Continuous confidence | Separate CI workflow on schedule |
+| **C. Dedicated CI job** | Every PR (expensive) | Workflow that spins up compose stack |
+
+**Recommended:** Option A for now. Add to release checklist. Consider Option B once migration stabilizes.
 
 ```bash
 # Prerequisites
@@ -1237,6 +1332,43 @@ else
 fi
 
 echo ""
+echo "=== Step 6: Check CI workflows ==="
+if [ -d ".github/workflows" ]; then
+    if rg "_v0_legacy" .github/workflows/ 2>/dev/null; then
+        echo "  ERROR: Legacy references in CI workflows"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  ✓ No legacy references in CI workflows"
+    fi
+else
+    echo "  ✓ No .github/workflows directory"
+fi
+
+echo ""
+echo "=== Step 7: Check documentation ==="
+for doc in README.md CLAUDE.md CONTRIBUTING.md; do
+    if [ -f "$doc" ]; then
+        if rg "_v0_legacy" "$doc" 2>/dev/null | grep -v "was removed\|has been deleted\|previously at" >/dev/null; then
+            echo "  WARNING: Legacy references in $doc (may be intentional historical note)"
+        fi
+    fi
+done
+echo "  ✓ Documentation check complete"
+
+echo ""
+echo "=== Step 8: Check Makefile ==="
+if [ -f "Makefile" ]; then
+    if rg "_v0_legacy" Makefile 2>/dev/null; then
+        echo "  ERROR: Legacy references in Makefile"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  ✓ No legacy references in Makefile"
+    fi
+else
+    echo "  ✓ No Makefile"
+fi
+
+echo ""
 echo "=========================================="
 if [ $ERRORS -gt 0 ]; then
     echo "FAILED: $ERRORS legacy reference(s) found"
@@ -1485,11 +1617,34 @@ def compare(baseline_file, current_file):
 
 ## 11. Metrics Summary
 
+### 11.1 How to Measure
+
+**Runtime measurements:**
+- Machine: Standard dev machine (M1/M2 Mac or equivalent)
+- Command: `time pytest <path> -v --tb=short`
+- Conditions: Cold cache (first run after `pytest --cache-clear`)
+- Report: Median of 3 runs
+
+**File/line counts:**
+```bash
+# Test files
+find tests/ -name "test_*.py" | wc -l
+
+# Test lines
+find tests/ -name "test_*.py" -exec wc -l {} + | tail -1
+
+# Legacy imports remaining
+rg "^(from|import)\s+(agents|infra)\." tests/ --type py -c | wc -l
+```
+
+### 11.2 Metrics Table
+
 | Metric | Before | After | Change |
 |--------|--------|-------|--------|
 | Test files | 121 | ~95 | -26 |
 | Test lines | ~37,000 | ~30,000 | -7,000 |
 | Legacy imports | 80 files | 0 | -80 |
+| **Files migrated** | 0 | ~50 | +50 |
 | Avg file size | 306 lines | 316 lines | +10 |
 | Max file size | 10,518 lines | ~2,000 lines | -8,500 |
 | Redundant coverage | ~15% | 0% | -15% |
@@ -1501,6 +1656,18 @@ def compare(baseline_file, current_file):
 | Build script (build_agent.py) | 736 lines | ~500 lines | -32% (DDD bridge removed) |
 | Agent Dockerfiles | 11 files (mixed paths) | 11 files (consistent) | Standardized |
 | `_v0_legacy/` references | ~50 locations | 0 | Fully removed |
+
+### 11.3 Progress Tracking
+
+Track migration progress by **files migrated per phase**, not lines changed:
+
+| Phase | Files to Process | Cumulative % |
+|-------|------------------|--------------|
+| Phase 2 (Prune) | ~15-19 deleted | 20% |
+| Phase 3 (Split conftest) | 3 files | 23% |
+| Phase 4 (Restructure) | ~50 moved | 65% |
+| Phase 5 (Migrate imports) | ~50 updated | 95% |
+| Phase 6-9 (CI, Health, Build, Delete) | Varies | 100% |
 
 ---
 
@@ -1586,3 +1753,14 @@ These already follow new architecture patterns.
 | 2026-02-01 | Review feedback: Resequenced phases (prune → split conftest → restructure → migrate) |
 | 2026-02-01 | Added Phase 8: Build Infrastructure Cleanup (build_agent.py, Dockerfiles, docker-compose) |
 | 2026-02-01 | Added Phase 9: Legacy Directory Deletion with verification script and recovery instructions |
+| 2026-02-01 | Review round 2: Added Scope/Non-goals section (1.1) |
+| 2026-02-01 | Review round 2: Added pytest-asyncio configuration (asyncio_mode=auto) |
+| 2026-02-01 | Review round 2: Simplified domain marker strategy (path-based primary, markers secondary) |
+| 2026-02-01 | Review round 2: Updated compat shim naming to `_legacy_import_shims` |
+| 2026-02-01 | Review round 2: Added explicit Stack Validation CI posture (manual gate recommended) |
+| 2026-02-01 | Review round 2: Tightened CI gate rg patterns (anchored, exclude shim dir) |
+| 2026-02-01 | Review round 2: Fixed run_affected_tests.sh shift bug for pass-through args |
+| 2026-02-01 | Review round 2: Expanded legacy verification to check CI workflows, docs, Makefile |
+| 2026-02-01 | Review round 2: Added metrics measurement procedure (11.1) and progress tracking (11.3) |
+| 2026-02-01 | Review round 2: Added STOP POINT checkpoints after each phase |
+| 2026-02-01 | Review round 2: Specified pyproject.toml as canonical pytest config location |
