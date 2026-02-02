@@ -1,286 +1,222 @@
 #!/usr/bin/env python3
 """
 SquadOps Version Management CLI
-Manages framework and agent versions, configurations, and rollbacks
+
+Manages framework version across pyproject.toml and src/squadops/__init__.py.
+Agent configurations are managed via agents/instances/instances.yaml.
+
+Usage:
+    python scripts/maintainer/version_cli.py version          # Show current version
+    python scripts/maintainer/version_cli.py bump <version>   # Bump framework version
+    python scripts/maintainer/version_cli.py list             # List all agents
+    python scripts/maintainer/version_cli.py show <agent>     # Show agent details
 """
 
-import json
 import re
 import sys
-from datetime import datetime
 from pathlib import Path
 
-# Add repo root to Python path
-script_dir = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(script_dir))
-sys.path.insert(0, str(script_dir / "_v0_legacy"))
+import yaml
 
-from config.version import (
-    AGENT_VERSIONS,
-    CONFIG_VERSIONS,
-    get_agent_config,
-    get_agent_version,
-    get_framework_version,
-    get_version_history,
-    rollback_agent,
-)
+# Resolve paths relative to repo root
+REPO_ROOT = Path(__file__).parent.parent.parent
+PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
+INIT_PATH = REPO_ROOT / "src" / "squadops" / "__init__.py"
+INSTANCES_PATH = REPO_ROOT / "agents" / "instances" / "instances.yaml"
+
+
+def get_framework_version() -> str:
+    """Get framework version from squadops package."""
+    try:
+        # Try importing directly
+        sys.path.insert(0, str(REPO_ROOT / "src"))
+        from squadops import __version__
+        return __version__
+    except ImportError:
+        # Fall back to parsing pyproject.toml
+        content = PYPROJECT_PATH.read_text()
+        match = re.search(r'version\s*=\s*"([^"]+)"', content)
+        return match.group(1) if match else "unknown"
+
+
+def get_agents() -> list[dict]:
+    """Load agent instances from instances.yaml."""
+    if not INSTANCES_PATH.exists():
+        return []
+
+    with open(INSTANCES_PATH) as f:
+        data = yaml.safe_load(f)
+
+    return data.get("instances", [])
 
 
 def show_framework_version():
-    """Show current framework version"""
-    print(f"🚀 SquadOps Framework Version: {get_framework_version()}")
-    print()
+    """Show current framework version."""
+    version = get_framework_version()
+    print(f"SquadOps Framework v{version}")
+
 
 def list_agents():
-    """List all agents and their current versions"""
-    print(f"🚀 SquadOps Framework v{get_framework_version()}")
-    print()
-    print("🤖 Agent Versions")
-    print("=" * 50)
-    for agent, version in AGENT_VERSIONS.items():
-        config = CONFIG_VERSIONS.get(agent, {})
-        print(f"{agent.upper():<8} | v{version:<8} | {config.get('llm', 'unknown'):<20} | {config.get('config', 'unknown')}")
-    print()
+    """List all agents and their configurations."""
+    version = get_framework_version()
+    agents = get_agents()
 
-def show_agent_details(agent_name):
-    """Show detailed information for a specific agent"""
-    version = get_agent_version(agent_name)
-    config = get_agent_config(agent_name)
-    history = get_version_history(agent_name)
-    
-    print(f"🤖 {agent_name.upper()} Agent Details")
-    print("=" * 50)
-    print(f"Current Version: {version}")
-    print(f"LLM Model: {config.get('llm', 'unknown')}")
-    print(f"Configuration: {config.get('config', 'unknown')}")
+    print(f"SquadOps Framework v{version}")
     print()
-    
-    print("📋 Version History:")
-    for entry in reversed(history[-5:]):  # Show last 5 versions
-        print(f"  v{entry['version']:<8} | {entry['date']:<12} | {entry['llm']:<20} | {entry['notes']}")
-    print()
+    print("Agent Instances")
+    print("=" * 70)
+    print(f"{'ID':<12} {'NAME':<15} {'ROLE':<8} {'MODEL':<25} {'ENABLED'}")
+    print("-" * 70)
 
-def update_version(agent_name, new_version, llm=None, config=None, notes=""):
-    """Update agent version in config/version.py"""
-    version_file = Path("_v0_legacy/config/version.py")
-    
-    if not version_file.exists():
-        print("❌ config/version.py not found")
+    for agent in agents:
+        agent_id = agent.get("id", "?")
+        name = agent.get("display_name", "?")
+        role = agent.get("role", "?")
+        model = agent.get("model", "?")
+        enabled = "yes" if agent.get("enabled", False) else "no"
+        print(f"{agent_id:<12} {name:<15} {role:<8} {model:<25} {enabled}")
+
+    print()
+    print(f"Total: {len(agents)} agents")
+
+
+def show_agent_details(agent_id: str):
+    """Show detailed information for a specific agent."""
+    agents = get_agents()
+
+    agent = next((a for a in agents if a.get("id") == agent_id), None)
+    if not agent:
+        print(f"Agent '{agent_id}' not found")
+        print()
+        print("Available agents:")
+        for a in agents:
+            print(f"  - {a.get('id')}")
+        return
+
+    print(f"Agent: {agent.get('display_name', agent_id)}")
+    print("=" * 50)
+    print(f"  ID:          {agent.get('id')}")
+    print(f"  Role:        {agent.get('role')}")
+    print(f"  Model:       {agent.get('model')}")
+    print(f"  Enabled:     {agent.get('enabled', False)}")
+    print(f"  Description: {agent.get('description', 'N/A')}")
+    print()
+    print(f"Config file: {INSTANCES_PATH}")
+
+
+def bump_version(new_version: str):
+    """Bump framework version in pyproject.toml and __init__.py."""
+    old_version = get_framework_version()
+
+    # Validate version format
+    if not re.match(r'^\d+\.\d+\.\d+(-[\w.]+)?$', new_version):
+        print(f"Invalid version format: {new_version}")
+        print("Expected format: X.Y.Z or X.Y.Z-suffix")
         return False
-    
-    # Read the file
-    content = version_file.read_text()
-    agent_key = agent_name.lower()
-    
-    # Update AGENT_VERSIONS
-    pattern = rf'"{agent_key}":\s*"[^"]+"'
-    replacement = f'"{agent_key}": "{new_version}"'
-    
-    if not re.search(pattern, content):
-        print(f"❌ Could not find agent '{agent_key}' in AGENT_VERSIONS")
-        return False
-    
-    new_content = re.sub(pattern, replacement, content)
-    
-    # Update VERSION_HISTORY if notes are provided
-    if notes:
-        # Find the VERSION_HISTORY section and add new entry
-        history_pattern = rf'"{agent_key}":\s*\[\s*(.*?)\s*\]'
-        match = re.search(history_pattern, new_content, re.DOTALL)
-        
-        if match:
-            existing_history = match.group(1).strip()
-            new_entry = f'{{"version": "{new_version}", "date": "{datetime.now().strftime("%Y-%m-%d")}", "llm": "{llm or "unknown"}", "notes": "{notes}"}}'
-            
-            # Remove trailing comma if present to avoid double comma
-            if existing_history and existing_history.endswith(','):
-                existing_history = existing_history[:-1]
-            
-            if existing_history:
-                # Properly format with newlines and indentation
-                updated_history = f'\n        {existing_history},\n        {new_entry}\n    '
-            else:
-                updated_history = f'\n        {new_entry}\n    '
-            
-            new_content = re.sub(history_pattern, f'"{agent_key}": [{updated_history}]', new_content, flags=re.DOTALL)
+
+    errors = []
+
+    # Update pyproject.toml
+    if PYPROJECT_PATH.exists():
+        content = PYPROJECT_PATH.read_text()
+        new_content = re.sub(
+            r'(version\s*=\s*")[^"]+(")',
+            rf'\g<1>{new_version}\g<2>',
+            content
+        )
+        if new_content != content:
+            PYPROJECT_PATH.write_text(new_content)
+            print(f"  Updated: pyproject.toml")
         else:
-            # Add new history entry if agent not in VERSION_HISTORY yet
-            history_end_pattern = r'(VERSION_HISTORY = \{.*?)(\n\})'
-            new_entry = f'    "{agent_key}": [\n        {{"version": "{new_version}", "date": "{datetime.now().strftime("%Y-%m-%d")}", "llm": "{llm or "unknown"}", "notes": "{notes}"}}\n    ],\n'
-            new_content = re.sub(history_end_pattern, rf'\1\n{new_entry}\2', new_content, flags=re.DOTALL)
-    
-    # Write back
-    version_file.write_text(new_content)
-    
-    print(f"✅ Updated {agent_name} to version {new_version}")
-    if llm:
-        print(f"   LLM: {llm}")
-    if config:
-        print(f"   Config: {config}")
-    if notes:
-        print(f"   Notes: {notes}")
-    print("   Updated: config/version.py")
-    print()
-    print("⚠️  Remember to commit this change:")
-    print('   git add config/version.py')
-    print(f'   git commit -m "chore: bump {agent_name} to {new_version}"')
-    
-    return True
-
-def rollback_to_version(agent_name, target_version):
-    """Rollback agent to a previous version"""
-    success = rollback_agent(agent_name, target_version)
-    if success:
-        print(f"✅ Rolled back {agent_name} to version {target_version}")
+            errors.append("pyproject.toml: version pattern not found")
     else:
-        print(f"❌ Failed to rollback {agent_name} to version {target_version}")
-        print("   Version not found in history")
+        errors.append("pyproject.toml: file not found")
 
-def update_framework_version(new_version, notes=""):
-    """Update the framework version in config/version.py"""
-    version_file = Path("_v0_legacy/config/version.py")
-    
-    if not version_file.exists():
-        print("❌ config/version.py not found")
-        return False
-    
-    # Read the file
-    content = version_file.read_text()
-    
-    # Update SQUADOPS_VERSION
-    pattern = r'SQUADOPS_VERSION = "[^"]+"'
-    replacement = f'SQUADOPS_VERSION = "{new_version}"'
-    
-    if not re.search(pattern, content):
-        print("❌ Could not find SQUADOPS_VERSION in config/version.py")
-        return False
-    
-    new_content = re.sub(pattern, replacement, content)
-    
-    # Update the status comment
-    status_pattern = r'# Current status: .*'
-    status_replacement = f'# Current status: {new_version} ({notes})' if notes else f'# Current status: {new_version}'
-    new_content = re.sub(status_pattern, status_replacement, new_content)
-    
-    # Write back
-    version_file.write_text(new_content)
-    
-    print(f"✅ Updated framework version to {new_version}")
-    if notes:
-        print(f"   Notes: {notes}")
-    print("   Updated: config/version.py")
+    # Update src/squadops/__init__.py
+    if INIT_PATH.exists():
+        content = INIT_PATH.read_text()
+
+        # Update __version__
+        new_content = re.sub(
+            r'(__version__\s*=\s*")[^"]+(")',
+            rf'\g<1>{new_version}\g<2>',
+            content
+        )
+
+        # Update docstring version
+        new_content = re.sub(
+            r'(Framework Version:\s*)\S+',
+            rf'\g<1>{new_version}',
+            new_content
+        )
+
+        if new_content != content:
+            INIT_PATH.write_text(new_content)
+            print(f"  Updated: src/squadops/__init__.py")
+        else:
+            errors.append("__init__.py: version pattern not found")
+    else:
+        errors.append("src/squadops/__init__.py: file not found")
+
+    if errors:
+        print()
+        print("Warnings:")
+        for err in errors:
+            print(f"  - {err}")
+
     print()
-    print("⚠️  Remember to commit this change:")
-    print('   git add config/version.py')
-    print(f'   git commit -m "chore: bump version to {new_version}"')
-    
+    print(f"Version bumped: {old_version} -> {new_version}")
+    print()
+    print("Next steps:")
+    print("  git add pyproject.toml src/squadops/__init__.py")
+    print(f"  git commit -m 'chore: bump framework version to {new_version}'")
+
     return True
 
-def export_versions():
-    """Export current version configuration"""
-    config = {
-        "framework_version": get_framework_version(),
-        "agent_versions": AGENT_VERSIONS,
-        "config_versions": CONFIG_VERSIONS,
-        "export_date": datetime.now().isoformat()
-    }
-    
-    with open("version_config.json", "w") as f:
-        json.dump(config, f, indent=2)
-    
-    print("✅ Exported version configuration to version_config.json")
-
-def import_versions(filename):
-    """Import version configuration from file"""
-    try:
-        with open(filename) as f:
-            config = json.load(f)
-        
-        # Update global variables
-        AGENT_VERSIONS.update(config.get("agent_versions", {}))
-        CONFIG_VERSIONS.update(config.get("config_versions", {}))
-        
-        print(f"✅ Imported version configuration from {filename}")
-    except FileNotFoundError:
-        print(f"❌ File {filename} not found")
-    except json.JSONDecodeError:
-        print(f"❌ Invalid JSON in {filename}")
 
 def main():
     if len(sys.argv) < 2:
         print("SquadOps Version Management CLI")
         print()
-        print("Framework Version Commands:")
-        print("  python scripts/maintainer/version_cli.py version                       # Show framework version")
-        print("  python scripts/maintainer/version_cli.py bump <version> [notes]        # Update framework version")
+        print("Commands:")
+        print("  version              Show current framework version")
+        print("  bump <version>       Bump framework version (e.g., 0.9.0)")
+        print("  list                 List all agent instances")
+        print("  show <agent_id>      Show agent details (e.g., max, neo)")
         print()
-        print("Agent Version Commands:")
-        print("  python scripts/maintainer/version_cli.py list                          # List all agents")
-        print("  python scripts/maintainer/version_cli.py show <agent>                  # Show agent details")
-        print("  python version_cli.py update <agent> <version> [llm] [config] [notes]")
-        print("  python version_cli.py rollback <agent> <version>    # Rollback agent version")
-        print()
-        print("Export/Import Commands:")
-        print("  python version_cli.py export                        # Export config")
-        print("  python version_cli.py import <file>                 # Import config")
+        print("Examples:")
+        print("  python scripts/maintainer/version_cli.py version")
+        print("  python scripts/maintainer/version_cli.py bump 0.9.0")
+        print("  python scripts/maintainer/version_cli.py list")
+        print("  python scripts/maintainer/version_cli.py show max")
         return
-    
+
     command = sys.argv[1].lower()
-    
+
     if command == "version":
         show_framework_version()
-    
+
     elif command == "bump":
         if len(sys.argv) < 3:
-            print("❌ Usage: bump <version> [notes]")
-            print("   Example: python version_cli.py bump 0.3.0 'Multi-agent expansion'")
+            print("Usage: bump <version>")
+            print("Example: python scripts/maintainer/version_cli.py bump 0.9.0")
             return
-        version = sys.argv[2]
-        notes = sys.argv[3] if len(sys.argv) > 3 else ""
-        update_framework_version(version, notes)
-    
+        bump_version(sys.argv[2])
+
     elif command == "list":
         list_agents()
-    
+
     elif command == "show":
         if len(sys.argv) < 3:
-            print("❌ Please specify agent name")
+            print("Usage: show <agent_id>")
+            print("Example: python scripts/maintainer/version_cli.py show max")
             return
         show_agent_details(sys.argv[2])
-    
-    elif command == "update":
-        if len(sys.argv) < 4:
-            print("❌ Usage: update <agent> <version> [llm] [config] [notes]")
-            return
-        
-        agent = sys.argv[2]
-        version = sys.argv[3]
-        llm = sys.argv[4] if len(sys.argv) > 4 else None
-        config = sys.argv[5] if len(sys.argv) > 5 else None
-        notes = sys.argv[6] if len(sys.argv) > 6 else ""
-        
-        update_version(agent, version, llm, config, notes)
-    
-    elif command == "rollback":
-        if len(sys.argv) < 4:
-            print("❌ Usage: rollback <agent> <version>")
-            return
-        
-        agent = sys.argv[2]
-        version = sys.argv[3]
-        rollback_to_version(agent, version)
-    
-    elif command == "export":
-        export_versions()
-    
-    elif command == "import":
-        if len(sys.argv) < 3:
-            print("❌ Please specify filename")
-            return
-        import_versions(sys.argv[2])
-    
+
     else:
-        print(f"❌ Unknown command: {command}")
+        print(f"Unknown command: {command}")
+        print("Run without arguments to see usage.")
+
 
 if __name__ == "__main__":
     main()
