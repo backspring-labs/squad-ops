@@ -11,7 +11,7 @@ include = ["squadops*", "adapters*"]  # Include both packages
 
 [project]
 name = "squadops"
-version = "0.8.6"
+version = "0.8.9"
 description = "SquadOps: a production-grade multi-agent orchestration framework."
 requires-python = ">=3.11"
 authors = [
@@ -77,7 +77,7 @@ python_classes = "Test*"
 python_functions = "test_*"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-pythonpath = ["src", "_v0_legacy"]
+pythonpath = ["src"]
 
 markers = [
     # Test type markers
