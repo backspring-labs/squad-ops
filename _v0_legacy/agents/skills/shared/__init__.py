@@ -1,2 +1,0 @@
-"""Shared skills across domains"""
-
