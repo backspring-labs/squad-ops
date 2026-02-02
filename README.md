@@ -24,7 +24,7 @@
 - **Unified Agent Build** – Single multi-stage Dockerfile for all agent roles
 
 ### Agent Framework
-- **Agent Squad** – 4 functional agents (Max/Lead, Neo/Dev, Nat/Strategy, Eve/QA) + 6 mock agents
+- **Agent Squad** – 5 agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics)
 - **BaseAgent** – DI-enabled base class with SecretManager, DbRuntime, and port injection
 - **Capability Contracts** – Declarative delivery expectations with acceptance checks (SIP-0058)
 
@@ -178,11 +178,12 @@ curl -X POST http://localhost:8000/warmboot/submit \
 - **163+ WarmBoot runs** completed with documented retrospectives
 
 ### Functional Components
-- ✅ **4 Functional Agents** (v0.8.2):
-  - **Max (Lead)** – Task orchestration with local LLM
-  - **Neo (Dev)** – Code generation with file modification capabilities
-  - **Nat (Strategy)** – PRD capabilities and product domain features
-  - **Eve (QA)** – Test design, development, and execution with counterfactual reasoning
+- ✅ **5 Agents**:
+  - **Max (Lead)** – Task orchestration
+  - **Neo (Dev)** – Code generation
+  - **Nat (Strategy)** – PRD and product domain
+  - **Eve (QA)** – Test design and counterfactual reasoning
+  - **Data (Analytics)** – Inductive reasoning
 - ✅ **Task Management System** (SIP-024/025) with execution cycle tracking
 - ✅ **Task Adapter Architecture** – Pluggable backend system (SQL/Prefect) with DTO purity, connection pooling, and test injection support
 - ✅ **Memory System** (SIP-042) with LanceDB semantic memory
