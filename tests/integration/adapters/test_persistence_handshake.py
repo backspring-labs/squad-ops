@@ -101,40 +101,40 @@ class TestPersistenceHandshake:
     def test_engine_contains_resolved_password(self, secret_manager, mock_profile_with_secret_dsn, mock_db_password):
         """Test 4: Verify engine contains resolved password (redacted in logs)."""
         runtime = get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
-        
+
         # Get the engine's URL (this is safe to check in tests)
         engine_url = str(runtime.engine.url)
-        
-        # Verify the resolved password is in the URL (not the secret:// reference)
+
+        # Verify the secret:// reference is NOT in the URL (i.e., it was resolved)
         assert "secret://" not in engine_url, "Engine URL should not contain secret:// references"
-        assert mock_db_password in engine_url, "Engine URL should contain resolved password"
+
+        # Access actual password via SQLAlchemy's URL object (str() masks it for security)
+        # SQLAlchemy 2.0 hides password in __str__ with *** but stores it in url.password
+        actual_password = runtime.engine.url.password
+        assert actual_password == mock_db_password, "Engine URL should contain resolved password"
 
     def test_no_legacy_infrastructure_loaded(self, secret_manager, mock_profile_with_secret_dsn):
         """Test 5: Invariance check - no legacy infra.db or infra.secrets modules loaded."""
-        # Track modules before
-        modules_before = set(sys.modules.keys())
-        
-        # Create runtime
+        # Create runtime (this triggers all necessary imports)
         runtime = get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
-        
-        # Track modules after
-        modules_after = set(sys.modules.keys())
-        new_modules = modules_after - modules_before
-        
-        # Check for legacy module imports
+
+        # Check ALL loaded modules for legacy infrastructure
+        all_modules = set(sys.modules.keys())
+
+        # Check for legacy module imports (these should NOT exist after v0 removal)
         legacy_modules = [
-            mod for mod in new_modules
+            mod for mod in all_modules
             if mod.startswith("infra.db") or mod.startswith("infra.secrets")
         ]
-        
+
         assert len(legacy_modules) == 0, (
             f"Legacy infrastructure modules should not be loaded. "
             f"Found: {legacy_modules}"
         )
-        
-        # Verify we're using new architecture
+
+        # Verify we're using new architecture (check all modules, not just new ones)
         new_arch_modules = [
-            mod for mod in new_modules
+            mod for mod in all_modules
             if mod.startswith("squadops.") or mod.startswith("adapters.")
         ]
         assert len(new_arch_modules) > 0, "New architecture modules should be loaded"
