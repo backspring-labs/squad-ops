@@ -3,16 +3,16 @@
 ## 📌 Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.8.6) with hexagonal architecture, capability contracts, Docker build process, task adapter architecture, comprehensive documentation, and proven execution history (163+ WarmBoot runs).
+**Current Status**: Production-ready framework (v0.8.9) with hexagonal architecture, capability contracts, Docker build process, task adapter architecture, comprehensive documentation, and proven execution history (163+ WarmBoot runs).
 
 ---
 
 ## 🚀 Mission
-- **Build the squad that builds the system**  
-- **Operate the business that proves the model**  
-- **Publish the guide that teaches others to do the same**
+- **Learn**
+- **Build**
+- **Benchmark**
 
-SquadOps is designed as both a **practical toolkit** and a **thought leadership reference** for agent-based software engineering.
+*repeat.*
 
 ---
 
@@ -70,10 +70,9 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── persistence/      # PostgreSQL runtime
 ├── capabilities/     # Filesystem repository, ACI executor
 └── observability/    # HTTP health check
-/_v0_legacy/          # Legacy v0 infrastructure
-├── agents/roles/     # Legacy agent Dockerfiles
-├── config/           # Legacy config (version.py)
-└── infra/            # Legacy infrastructure services
+/agents/              # Agent definitions and Dockerfile
+├── Dockerfile        # Unified multi-stage agent build
+└── instances/        # Agent instance configurations
 /sips/                # SquadOps Improvement Proposals
 ├── proposals/        # Unnumbered drafts
 ├── accepted/         # Numbered, approved
@@ -160,7 +159,7 @@ curl -X POST http://localhost:8000/warmboot/submit \
 ---
 
 ## ✅ Current Status
-**Framework Version**: 0.8.4
+**Framework Version**: 0.8.9
 **Agent Version**: 0.8.2
 **Development Status**: Production-ready framework with hexagonal architecture, Docker build process, task adapter architecture, and comprehensive documentation
 
@@ -248,7 +247,7 @@ python scripts/dev/build_agent.py <role>
 docker build -t squadops/<agent>:latest \
   --build-arg AGENT_ROLE=<role> \
   --build-arg CACHE_BUST=<source_hash> \
-  -f _v0_legacy/agents/roles/<role>/Dockerfile .
+  -f agents/Dockerfile .
 
 # Recommended: Use rebuild script for all 5 core agents
 ./scripts/dev/ops/rebuild_and_deploy.sh agents
