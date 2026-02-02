@@ -13,8 +13,7 @@ import pytest_asyncio
 import requests
 
 # Import agent manager for container management
-# agent_manager.py is in the same directory, so no path manipulation needed
-from agent_manager import AgentManager
+from tests.integration.agent_manager import AgentManager
 from testcontainers.postgres import PostgresContainer
 
 # from testcontainers.rabbitmq import RabbitMQContainer  # TODO: Fix testcontainers version

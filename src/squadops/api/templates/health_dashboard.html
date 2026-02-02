@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SquadOps Health Dashboard</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Meta refresh disabled to prevent console tab crashes -->
+    <!-- <meta http-equiv="refresh" content="60"> -->
+    <style>
+        .table th, .table td {
+            white-space: nowrap;
+            padding: 8px 12px;
+        }
+        .table th:nth-child(1), .table td:nth-child(1) { width: 15%; }
+        .table th:nth-child(2), .table td:nth-child(2) { width: 20%; }
+        .table th:nth-child(3), .table td:nth-child(3) { width: 15%; }
+        .table th:nth-child(4), .table td:nth-child(4) { width: 15%; }
+        .table th:nth-child(5), .table td:nth-child(5) { width: 10%; }
+        .table th:nth-child(6), .table td:nth-child(6) { width: 10%; }
+        #consoleOutput {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            padding: 15px;
+            height: calc(100vh - 400px);
+            min-height: 300px;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #consoleInput {
+            background-color: #252526;
+            color: #d4d4d4;
+            border: 1px solid #3e3e3e;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        #consolePrompt {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+        .console-line {
+            margin: 2px 0;
+        }
+        #consoleSubmitBtn {
+            background-color: #0e639c;
+            color: #ffffff;
+            border: 1px solid #3e3e3e;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            padding: 8px 20px;
+            cursor: pointer;
+        }
+        #consoleSubmitBtn:hover {
+            background-color: #1177bb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">🚀 SquadOps Health Dashboard</h1>
+        <p class="text-muted">Last updated: {{ timestamp }}</p>
+        
+        <!-- Tab Navigation -->
+        <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab">Dashboard</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="warmboot-tab" data-bs-toggle="tab" data-bs-target="#warmboot" type="button" role="tab">WarmBoot</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="console-tab" data-bs-toggle="tab" data-bs-target="#console" type="button" role="tab">Agent Console</button>
+            </li>
+        </ul>
+        
+        <!-- Tab Content -->
+        <div class="tab-content" id="dashboardTabContent">
+            <!-- Dashboard Tab -->
+            <div class="tab-pane fade show active" id="dashboard" role="tabpanel">
+        
+        <div class="row">
+            <div class="col-12">
+                <h2>Infrastructure Status</h2>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Component</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Version</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for component in infra_status %}
+                            <tr class="{% if component.status == 'online' %}table-success{% else %}table-danger{% endif %}">
+                                <td>{{ component.component }}</td>
+                                <td>{{ component.type }}</td>
+                                <td>{% if component.status == 'online' %}✅{% else %}❌{% endif %} {{ component.status }}</td>
+                                <td>{{ component.version }}</td>
+                                <td>{{ component.notes }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <h2>Agent Status</h2>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Agent</th>
+                                <th>Role</th>
+                                <th>Network Status</th>
+                                <th>Lifecycle State</th>
+                                <th>Version</th>
+                                <th>TPS</th>
+                                <th>Memories</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for agent in agent_status %}
+                            <tr class="{% if agent.network_status == 'online' %}table-success{% else %}table-danger{% endif %}">
+                                <td>{{ agent.agent_name }}</td>
+                                <td>{{ agent.role }}</td>
+                                <td>
+                                    {% if agent.network_status == 'online' %}✅{% else %}❌{% endif %} 
+                                    {{ agent.network_status }}
+                                </td>
+                                <td>
+                                    {% if agent.network_status == 'offline' and agent.lifecycle_state == 'UNKNOWN' %}
+                                        <span class="badge bg-secondary text-white">UNKNOWN</span>
+                                    {% elif agent.lifecycle_state == 'READY' %}
+                                        <span class="badge bg-success">READY</span>
+                                    {% elif agent.lifecycle_state == 'WORKING' %}
+                                        <span class="badge bg-primary">WORKING</span>
+                                    {% elif agent.lifecycle_state == 'BLOCKED' %}
+                                        <span class="badge bg-warning">BLOCKED</span>
+                                    {% elif agent.lifecycle_state == 'CRASHED' %}
+                                        <span class="badge bg-danger">CRASHED</span>
+                                    {% elif agent.lifecycle_state == 'STOPPING' %}
+                                        <span class="badge bg-secondary">STOPPING</span>
+                                    {% elif agent.lifecycle_state == 'STARTING' %}
+                                        <span class="badge bg-info">STARTING</span>
+                                    {% elif agent.lifecycle_state == 'UNKNOWN' %}
+                                        <span class="badge bg-secondary text-muted">UNKNOWN</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ agent.lifecycle_state }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ agent.version }}</td>
+                                <td>{{ agent.tps }}</td>
+                                <td>{{ agent.memory_count|default(0) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+                <div class="mt-4">
+                    <h3>Quick Actions</h3>
+                    <a href="/warmboot/form" class="btn btn-success">🚀 Submit WarmBoot Request</a>
+                    <a href="/health/infra" class="btn btn-primary">Infrastructure JSON</a>
+                    <a href="/health/agents" class="btn btn-secondary">Agents JSON</a>
+                </div>
+            </div>
+            
+            <!-- WarmBoot Tab -->
+            <div class="tab-pane fade" id="warmboot" role="tabpanel">
+                <div class="mt-4">
+                    <h3 class="mb-4">🚀 SquadOps WarmBoot Request</h3>
+                    <p class="text-muted">Submit a WarmBoot request directly to agents - no AI scripting, real agent communication only.</p>
+                    
+                    <form id="warmbootForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="run_id" class="form-label">Run ID</label>
+                                    <input type="text" class="form-control" id="run_id" name="run_id" required>
+                                    <div class="form-text">e.g., run-007, feature-auth, bug-fix-001</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="application" class="form-label">Application</label>
+                                    <select class="form-select" id="application" name="application">
+                                        <option value="">Select Application</option>
+                                        <option value="HelloSquad">HelloSquad</option>
+                                        <option value="SquadOps-Framework">SquadOps Framework</option>
+                                        <option value="Health-Check">Health Check Service</option>
+                                        <option value="Custom">Custom Application</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="request_type" class="form-label">Request Type</label>
+                                    <select class="form-select" id="request_type" name="request_type" required>
+                                        <option value="">Select Type</option>
+                                        <option value="from-scratch">From-Scratch Build (archive previous, build new)</option>
+                                        <option value="feature-update">Feature Update (modify existing)</option>
+                                        <option value="bug-fix">Bug Fix (fix existing)</option>
+                                        <option value="refactor">Refactor (improve existing)</option>
+                                        <option value="deployment">Deployment (deploy existing)</option>
+                                        <option value="testing">Testing (test existing)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="priority" class="form-label">Priority</label>
+                                    <select class="form-select" id="priority" name="priority" required>
+                                        <option value="">Select Priority</option>
+                                        <option value="HIGH">High</option>
+                                        <option value="MEDIUM">Medium</option>
+                                        <option value="LOW">Low</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Input Method Selection -->
+                        <div class="mb-3">
+                            <label class="form-label">Input Method</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="input_method" id="input_method_prd" value="prd" checked>
+                                <label class="form-check-label" for="input_method_prd">
+                                    Use PRD
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="input_method" id="input_method_requirements" value="requirements">
+                                <label class="form-check-label" for="input_method_requirements">
+                                    Use Requirements
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- PRD Selection Section -->
+                        <div id="prdSection" class="mb-3">
+                            <label for="prd_select" class="form-label">PRD</label>
+                            <select class="form-select" id="prd_select" name="prd_select">
+                                <option value="">Select PRD</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Requirements Textarea Section -->
+                        <div id="requirementsSection" class="mb-3" style="display: none;">
+                            <label for="requirements_text" class="form-label">Requirements</label>
+                            <textarea class="form-control" id="requirements_text" name="requirements_text" rows="8" placeholder="Enter full requirements for the warm boot..."></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="agents" class="form-label">Agents</label>
+                            <div class="row" id="agentsContainer">
+                                <!-- Agent checkboxes will be populated by JavaScript -->
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="4" required placeholder="Describe what you want the agents to build or accomplish..."></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="requirements" class="form-label">Additional Requirements (Optional)</label>
+                            <textarea class="form-control" id="requirements" name="requirements" rows="3" placeholder="Additional technical requirements, constraints, or specifications..."></textarea>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">Submit WarmBoot Request</button>
+                        </div>
+                    </form>
+                    
+                    <div class="mt-4">
+                        <h4>Live Agent Communication</h4>
+                        <div class="agent-chat-container">
+                            <textarea id="agentChat" class="form-control" rows="15" readonly 
+                                      style="font-family: monospace; font-size: 12px; background-color: #f8f9fa;"
+                                      placeholder="Agent communication will appear here after submitting a WarmBoot request..."></textarea>
+                            <div class="chat-controls mt-2">
+                                <button id="clearChat" class="btn btn-sm btn-outline-secondary">Clear</button>
+                                <span id="chatStatus" class="badge bg-secondary ms-2">Waiting</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="statusContainer" class="status-container mt-4" style="display: none;">
+                        <div id="statusMessage"></div>
+                        <div id="statusDetails" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Agent Console Tab -->
+            <div class="tab-pane fade" id="console" role="tabpanel">
+                <div class="mt-4">
+                    <h3>Agent Console</h3>
+                    <p class="text-muted">Interactive console for communicating with agents</p>
+                    <div id="consoleOutput" class="mb-3"></div>
+                    <form id="consoleForm" onsubmit="return false;">
+                        <div class="input-group">
+                            <span class="input-group-text" id="consolePrompt">console></span>
+                            <input type="text" class="form-control" id="consoleInput" placeholder="Type a command or message..." autocomplete="off">
+                            <button class="btn" type="button" id="consoleSubmitBtn">Send</button>
+                        </div>
+                    </form>
+                    <small class="text-muted mt-2 d-block">Type 'help' for available commands. Use 'chat &lt;agent&gt;' to start chatting with an agent.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Console JavaScript - Simple input box and submit button
+        let consoleSessionId = null;
+        let consoleHistory = [];
+        let consoleHistoryIndex = -1;
+        let responsePollInterval = null;
+        let responsePollTimeout = null;
+        
+        async function initializeConsole() {
+            try {
+                const response = await fetch('/console/session');
+                const data = await response.json();
+                consoleSessionId = data.session_id;
+                appendOutput('Agent Console initialized. Type "help" for available commands.');
+            } catch (error) {
+                appendOutput('Error initializing console: ' + (error.message || error));
+            }
+        }
+        
+        async function handleCommand() {
+            const input = document.getElementById('consoleInput');
+            const command = input.value.trim();
+            
+            if (!command) {
+                return;
+            }
+            
+            // Handle clear command
+            if (command.toLowerCase() === 'clear') {
+                clearConsole();
+                input.value = '';
+                return;
+            }
+            
+            // Add to history
+            consoleHistory.push(command);
+            consoleHistoryIndex = consoleHistory.length;
+            
+            // Clear input
+            input.value = '';
+            
+            if (!consoleSessionId) {
+                appendOutput('Error: Console session not initialized. Please refresh the page.');
+                return;
+            }
+            
+            try {
+                const requestBody = '{"session_id":"' + consoleSessionId + '","command":"' + command.replace(/"/g, '\\"') + '"}';
+                const fetchHeaders = new Headers();
+                fetchHeaders.append('Content-Type', 'application/json');
+                const fetchOptions = {method: 'POST', headers: fetchHeaders, body: requestBody};
+                const response = await fetch('/console/command', fetchOptions);
+                
+                if (!response.ok) {
+                    throw new Error('HTTP error: ' + response.status);
+                }
+                
+                const data = await response.json();
+                
+                // Defensive checks
+                if (!data) {
+                    throw new Error('Invalid response from server');
+                }
+                
+                // Display response lines (backend already includes command echo)
+                if (data.lines && Array.isArray(data.lines)) {
+                    data.lines.forEach(function(line) {
+                        if (line && typeof line === 'string') {
+                            // Sanitize line to prevent any HTML/JS injection
+                            const sanitizedLine = line.replace(/<script[^>]*>.*?<\/script>/gi, '').replace(/javascript:/gi, '');
+                            appendOutput(sanitizedLine);
+                        }
+                    });
+                }
+                
+                // Ensure we stay on console tab after response
+                try {
+                    const consoleTabElement = document.getElementById('console-tab');
+                    const consolePane = document.getElementById('console');
+                    const dashboardTab = document.getElementById('dashboard-tab');
+                    const warmbootTab = document.getElementById('warmboot-tab');
+                    const dashboardPane = document.getElementById('dashboard');
+                    const warmbootPane = document.getElementById('warmboot');
+                    
+                    if (consoleTabElement && consolePane) {
+                        // Deactivate other tabs
+                        if (dashboardTab) dashboardTab.classList.remove('active');
+                        if (warmbootTab) warmbootTab.classList.remove('active');
+                        if (dashboardPane) dashboardPane.classList.remove('active', 'show');
+                        if (warmbootPane) warmbootPane.classList.remove('active', 'show');
+                        
+                        // Activate console tab
+                        consoleTabElement.classList.add('active');
+                        consolePane.classList.add('active', 'show');
+                    }
+                } catch (e) {
+                    console.error('Error maintaining console tab:', e);
+                }
+                
+                // Update prompt if mode changed
+                try {
+                    if (data.mode || data.bound_agent) {
+                        updatePrompt(data.mode, data.bound_agent);
+                    }
+                } catch (e) {
+                    console.error('Error updating prompt:', e);
+                }
+                
+                // If in chat mode, start polling for agent responses
+                try {
+                    if (data.mode === 'chat' && data.bound_agent) {
+                        startResponsePolling();
+                    }
+                } catch (e) {
+                    console.error('Error starting response polling:', e);
+                }
+                
+            } catch (error) {
+                console.error('Console command error:', error);
+                appendOutput('Error: ' + (error.message || 'Unknown error occurred'));
+            }
+        }
+        
+        function updatePrompt(mode, boundAgent) {
+            const prompt = document.getElementById('consolePrompt');
+            if (mode === 'chat' && boundAgent) {
+                prompt.textContent = 'console @' + boundAgent + '>';
+            } else {
+                prompt.textContent = 'console>';
+            }
+        }
+        
+        function getPrompt() {
+            const prompt = document.getElementById('consolePrompt');
+            return prompt.textContent;
+        }
+        
+        function appendOutput(text) {
+            try {
+                if (!text) return;
+                const output = document.getElementById('consoleOutput');
+                if (!output) {
+                    console.error('Console output element not found');
+                    return;
+                }
+                const line = document.createElement('div');
+                line.className = 'console-line';
+                line.textContent = String(text);
+                output.appendChild(line);
+                output.scrollTop = output.scrollHeight;
+            } catch (error) {
+                console.error('Error appending output:', error);
+            }
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (consoleHistoryIndex > 0) {
+                    consoleHistoryIndex--;
+                    document.getElementById('consoleInput').value = consoleHistory[consoleHistoryIndex];
+                }
+            } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (consoleHistoryIndex < consoleHistory.length - 1) {
+                    consoleHistoryIndex++;
+                    document.getElementById('consoleInput').value = consoleHistory[consoleHistoryIndex];
+                } else {
+                    consoleHistoryIndex = consoleHistory.length;
+                    document.getElementById('consoleInput').value = '';
+                }
+            }
+        }
+        
+        function clearConsole() {
+            const output = document.getElementById('consoleOutput');
+            output.innerHTML = '';
+            stopResponsePolling();
+        }
+        
+        function startResponsePolling() {
+            stopResponsePolling();
+            
+            responsePollTimeout = setTimeout(function() {
+                stopResponsePolling();
+            }, 30000);
+            
+            responsePollInterval = setInterval(async function() {
+                try {
+                    const response = await fetch('/console/responses/' + consoleSessionId);
+                    if (!response.ok) {
+                        throw new Error('HTTP error: ' + response.status);
+                    }
+                    const data = await response.json();
+                    
+                    if (data.responses && Array.isArray(data.responses) && data.responses.length > 0) {
+                        data.responses.forEach(function(resp) {
+                            if (resp && resp.response_text) {
+                                const agentName = resp.agent_name || 'Agent';
+                                const status = resp.status || 'available';
+                                
+                                if (status === 'busy') {
+                                    appendOutput('[' + agentName + ' is busy]: ' + resp.response_text);
+                                } else {
+                                    appendOutput('[' + agentName + ' → You]: ' + resp.response_text);
+                                }
+                            } else if (resp) {
+                                appendOutput('[Response]: ' + JSON.stringify(resp));
+                            }
+                        });
+                        
+                        // Ensure console tab stays active after receiving response
+                        try {
+                            const consoleTabElement = document.getElementById('console-tab');
+                            const consolePane = document.getElementById('console');
+                            const dashboardTab = document.getElementById('dashboard-tab');
+                            const warmbootTab = document.getElementById('warmboot-tab');
+                            const dashboardPane = document.getElementById('dashboard');
+                            const warmbootPane = document.getElementById('warmboot');
+                            
+                            if (consoleTabElement && consolePane) {
+                                // Deactivate other tabs
+                                if (dashboardTab) dashboardTab.classList.remove('active');
+                                if (warmbootTab) warmbootTab.classList.remove('active');
+                                if (dashboardPane) dashboardPane.classList.remove('active', 'show');
+                                if (warmbootPane) warmbootPane.classList.remove('active', 'show');
+                                
+                                // Activate console tab
+                                consoleTabElement.classList.add('active');
+                                consolePane.classList.add('active', 'show');
+                            }
+                        } catch (e) {
+                            console.error('Error maintaining console tab after response:', e);
+                        }
+                        
+                        stopResponsePolling();
+                    }
+                } catch (error) {
+                    // Log error but don't crash - just stop polling
+                    console.error('Response polling error:', error);
+                    stopResponsePolling();
+                }
+            }, 2000);
+        }
+        
+        function stopResponsePolling() {
+            if (responsePollInterval) {
+                clearInterval(responsePollInterval);
+                responsePollInterval = null;
+            }
+            if (responsePollTimeout) {
+                clearTimeout(responsePollTimeout);
+                responsePollTimeout = null;
+            }
+        }
+        
+        // Prevent accidental navigation and tab switching
+        window.addEventListener('beforeunload', function(event) {
+            // Only prevent if we're actively using the console
+            if (consoleSessionId && responsePollInterval) {
+                // Don't prevent, but log
+                console.log('Page unloading while console is active');
+            }
+        });
+        
+        // Prevent Bootstrap from switching tabs unexpectedly
+        const dashboardTabs = document.getElementById('dashboardTabs');
+        if (dashboardTabs) {
+            dashboardTabs.addEventListener('hide.bs.tab', function(event) {
+                // If console tab is being hidden and we're actively using it, prevent it
+                if (event.target.id === 'console-tab' && consoleSessionId && responsePollInterval) {
+                    console.log('Attempted to hide console tab while active - preventing');
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return false;
+                }
+            });
+        }
+        
+        // Set up event listeners when console tab is shown (only once)
+        let consoleHandlersAttached = false;
+        const consoleTab = document.getElementById('console-tab');
+        if (consoleTab) {
+            consoleTab.addEventListener('shown.bs.tab', function(event) {
+                // Prevent default tab switching if there's an error
+                try {
+                    setTimeout(function() {
+                        const input = document.getElementById('consoleInput');
+                        const submitBtn = document.getElementById('consoleSubmitBtn');
+                        
+                        if (!input || !submitBtn) {
+                            return;
+                        }
+                        
+                        // Only attach handlers once to avoid duplicates
+                        if (!consoleHandlersAttached) {
+                            // Enter key handler
+                            input.addEventListener('keydown', async function(event) {
+                                if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    try {
+                                        await handleCommand();
+                                    } catch (error) {
+                                        console.error('Command handler error:', error);
+                                        appendOutput('Error executing command: ' + (error.message || 'Unknown error'));
+                                    }
+                                } else {
+                                    handleKeyPress(event);
+                                }
+                            });
+                            
+                            // Submit button handler
+                            submitBtn.addEventListener('click', async function(event) {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                try {
+                                    await handleCommand();
+                                } catch (error) {
+                                    console.error('Command handler error:', error);
+                                    appendOutput('Error executing command: ' + (error.message || 'Unknown error'));
+                                }
+                            });
+                            
+                            consoleHandlersAttached = true;
+                        }
+                        
+                        // Initialize session if needed
+                        if (!consoleSessionId) {
+                            initializeConsole();
+                        }
+                    }, 100);
+                } catch (error) {
+                    console.error('Error setting up console handlers:', error);
+                }
+            });
+        }
+        
+        // Global error handler to prevent page crashes
+        window.addEventListener('error', function(event) {
+            console.error('Global error caught:', event.error);
+            event.preventDefault();
+            // Don't let errors cause page reload
+            return false;
+        });
+        
+        // Prevent unhandled promise rejections from crashing
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+            event.preventDefault();
+            // Don't let promise rejections cause page reload
+            return false;
+        });
+        
+        // WarmBoot Form JavaScript
+        let warmbootCurrentRunId = null;
+        let warmbootChatRefreshInterval = null;
+        let warmbootLastMessageTime = null;
+        
+        // Initialize WarmBoot form when tab is shown
+        const warmbootTab = document.getElementById('warmboot-tab');
+        if (warmbootTab) {
+            warmbootTab.addEventListener('shown.bs.tab', function(event) {
+                initializeWarmbootForm();
+            });
+        }
+        
+        // Handle input method toggle
+        const inputMethodRadios = document.querySelectorAll('input[name="input_method"]');
+        inputMethodRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                toggleInputMethod();
+            });
+        });
+        
+        function toggleInputMethod() {
+            const selectedMethod = document.querySelector('input[name="input_method"]:checked').value;
+            const prdSection = document.getElementById('prdSection');
+            const requirementsSection = document.getElementById('requirementsSection');
+            const prdSelect = document.getElementById('prd_select');
+            const requirementsText = document.getElementById('requirements_text');
+            
+            if (selectedMethod === 'prd') {
+                prdSection.style.display = 'block';
+                requirementsSection.style.display = 'none';
+                prdSelect.required = true;
+                requirementsText.required = false;
+                requirementsText.value = '';
+            } else {
+                prdSection.style.display = 'none';
+                requirementsSection.style.display = 'block';
+                prdSelect.required = false;
+                prdSelect.value = '';
+                requirementsText.required = true;
+            }
+        }
+        
+        async function initializeWarmbootForm() {
+            // Generate Run ID
+            await generateWarmbootRunId();
+            
+            // Populate PRD dropdown
+            await populateWarmbootPrdDropdown();
+            
+            // Set up agent checkboxes
+            await setupWarmbootAgentCheckboxes();
+            
+            // Set up chat controls
+            setupWarmbootChatControls();
+            
+            // Initialize input method toggle
+            toggleInputMethod();
+        }
+        
+        async function generateWarmbootRunId() {
+            try {
+                const response = await fetch('/warmboot/next-run-id');
+                const result = await response.json();
+                document.getElementById('run_id').value = result.run_id;
+                warmbootCurrentRunId = result.run_id;
+            } catch (error) {
+                console.error('Failed to generate Run ID:', error);
+                document.getElementById('run_id').value = 'run-001';
+                warmbootCurrentRunId = 'run-001';
+            }
+        }
+        
+        async function populateWarmbootPrdDropdown() {
+            try {
+                const response = await fetch('/warmboot/prds');
+                const prds = await response.json();
+                const prdSelect = document.getElementById('prd_select');
+                
+                // Clear existing options except the first one
+                prdSelect.innerHTML = '<option value="">Select PRD</option>';
+                
+                // Add PRD options
+                prds.forEach(prd => {
+                    const option = document.createElement('option');
+                    option.value = prd.file_path;
+                    option.textContent = `${prd.title} (${prd.pid})`;
+                    option.title = prd.description;
+                    prdSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load PRDs:', error);
+            }
+        }
+        
+        async function setupWarmbootAgentCheckboxes() {
+            try {
+                const response = await fetch('/warmboot/agents');
+                const agents = await response.json();
+                const container = document.getElementById('agentsContainer');
+                
+                // Clear container
+                container.innerHTML = '';
+                
+                // Group agents into rows of 3
+                for (let i = 0; i < agents.length; i += 3) {
+                    const row = document.createElement('div');
+                    row.className = i > 0 ? 'row mt-2' : 'row';
+                    
+                    for (let j = i; j < Math.min(i + 3, agents.length); j++) {
+                        const agent = agents[j];
+                        const agentId = agent.agent_id ? agent.agent_id.toLowerCase() : (agent.agent ? agent.agent.toLowerCase() : 'unknown');
+                        const displayName = agent.agent_name || agent.agent || agentId;
+                        const role = agent.role || 'unknown';
+                        // Use network_status (online/offline) instead of status
+                        const checked = agent.network_status === 'online';
+                        const disabled = false;
+                        
+                        const col = document.createElement('div');
+                        col.className = 'col-md-4';
+                        col.innerHTML = `
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="warmboot_agent_${agentId}" name="agents" value="${agentId}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+                                <label class="form-check-label" for="warmboot_agent_${agentId}">${displayName} (${role.charAt(0).toUpperCase() + role.slice(1)})</label>
+                            </div>
+                        `;
+                        row.appendChild(col);
+                    }
+                    
+                    container.appendChild(row);
+                }
+            } catch (error) {
+                console.error('Failed to load agent status:', error);
+            }
+        }
+        
+        function setupWarmbootChatControls() {
+            const clearChatBtn = document.getElementById('clearChat');
+            if (clearChatBtn) {
+                clearChatBtn.addEventListener('click', function() {
+                    document.getElementById('agentChat').value = '';
+                    warmbootLastMessageTime = null;
+                });
+            }
+        }
+        
+        function startWarmbootChatFeed() {
+            if (warmbootChatRefreshInterval) {
+                clearInterval(warmbootChatRefreshInterval);
+            }
+            
+            const chatStatus = document.getElementById('chatStatus');
+            if (chatStatus) {
+                chatStatus.className = 'badge bg-success ms-2';
+                chatStatus.textContent = 'Live';
+            }
+            
+            warmbootChatRefreshInterval = setInterval(async () => {
+                try {
+                    const sinceParam = warmbootLastMessageTime ? `?since=${warmbootLastMessageTime}` : '';
+                    const response = await fetch(`/warmboot/messages${sinceParam}`);
+                    const messages = await response.json();
+                    
+                    if (messages.length > 0) {
+                        const chatArea = document.getElementById('agentChat');
+                        
+                        messages.forEach(msg => {
+                            const formattedMsg = formatWarmbootMessage(msg);
+                            chatArea.value += formattedMsg + '\n';
+                        });
+                        
+                        // Auto-scroll to bottom
+                        chatArea.scrollTop = chatArea.scrollHeight;
+                        
+                        // Update last message time
+                        warmbootLastMessageTime = messages[messages.length - 1].timestamp;
+                    }
+                } catch (error) {
+                    console.error('Chat feed error:', error);
+                }
+            }, 1000);
+        }
+        
+        function formatWarmbootMessage(msg) {
+            const timestamp = new Date(msg.timestamp).toLocaleTimeString();
+            const icon = getWarmbootMessageIcon(msg.message_type);
+            const direction = msg.sender === 'warmboot-orchestrator' ? '←' : '→';
+            
+            return `[${timestamp}] ${icon} ${msg.message_type}: ${msg.recipient} ${direction} ${msg.sender}\n           "${msg.content}"`;
+        }
+        
+        function getWarmbootMessageIcon(messageType) {
+            const icons = {
+                'WARMBOOT_REQUEST': '🚀',
+                'TASK_ASSIGNMENT': '📋', 
+                'TASK_ACKNOWLEDGED': '✅',
+                'TASK_UPDATE': '🔄',
+                'PROGRESS_UPDATE': '📝',
+                'BUILD_START': '🏗️',
+                'TASK_COMPLETED': '✅',
+                'TASK_FAILED': '❌'
+            };
+            return icons[messageType] || '💬';
+        }
+        
+        // Form submission
+        const warmbootForm = document.getElementById('warmbootForm');
+        if (warmbootForm) {
+            warmbootForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(e.target);
+                const agents = Array.from(document.querySelectorAll('input[name="agents"]:checked')).map(cb => cb.value);
+                const inputMethod = document.querySelector('input[name="input_method"]:checked').value;
+                
+                // Determine prd_path or requirements_text based on input method
+                let prd_path = null;
+                let requirements_text = null;
+                
+                if (inputMethod === 'prd') {
+                    prd_path = document.getElementById('prd_select').value;
+                    if (!prd_path) {
+                        alert('Please select a PRD or switch to Requirements input method.');
+                        return;
+                    }
+                } else {
+                    requirements_text = document.getElementById('requirements_text').value;
+                    if (!requirements_text || requirements_text.trim() === '') {
+                        alert('Please enter requirements.');
+                        return;
+                    }
+                }
+                
+                const requestData = {
+                    run_id: formData.get('run_id'),
+                    application: formData.get('application') || 'Custom',
+                    request_type: formData.get('request_type'),
+                    agents: agents,
+                    priority: formData.get('priority'),
+                    description: formData.get('description'),
+                    requirements: formData.get('requirements') || null,
+                    prd_path: prd_path,
+                    requirements_text: requirements_text
+                };
+                
+                try {
+                    const response = await fetch('/warmboot/submit', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    const statusContainer = document.getElementById('statusContainer');
+                    const statusMessage = document.getElementById('statusMessage');
+                    const statusDetails = document.getElementById('statusDetails');
+                    
+                    if (result.status === 'success') {
+                        statusContainer.className = 'status-container status-success';
+                        statusContainer.style.display = 'block';
+                        statusMessage.innerHTML = '<strong>✅ Success!</strong> ' + result.message;
+                        statusDetails.innerHTML = `
+                            <strong>Run ID:</strong> ${result.run_id}<br>
+                            <strong>Agents Notified:</strong> ${result.agents_notified.join(', ')}<br>
+                            <strong>Timestamp:</strong> ${result.timestamp}<br>
+                            <a href="/warmboot/status/${requestData.run_id}" class="btn btn-sm btn-outline-success mt-2">View Status</a>
+                        `;
+                        
+                        // Start live chat feed
+                        startWarmbootChatFeed();
+                        
+                    } else {
+                        statusContainer.className = 'status-container status-error';
+                        statusContainer.style.display = 'block';
+                        statusMessage.innerHTML = '<strong>❌ Error!</strong> ' + result.message;
+                        statusDetails.innerHTML = `<strong>Timestamp:</strong> ${result.timestamp}`;
+                    }
+                    
+                    statusContainer.scrollIntoView({ behavior: 'smooth' });
+                    
+                } catch (error) {
+                    const statusContainer = document.getElementById('statusContainer');
+                    const statusMessage = document.getElementById('statusMessage');
+                    
+                    statusContainer.className = 'status-container status-error';
+                    statusContainer.style.display = 'block';
+                    statusMessage.innerHTML = '<strong>❌ Network Error!</strong> ' + error.message;
+                    statusContainer.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
+        
+        // Add CSS for status container
+        const style = document.createElement('style');
+        style.textContent = `
+            .status-container {
+                margin-top: 20px;
+                padding: 15px;
+                border-radius: 5px;
+            }
+            .status-success {
+                background-color: #d4edda;
+                border: 1px solid #c3e6cb;
+                color: #155724;
+            }
+            .status-error {
+                background-color: #f8d7da;
+                border: 1px solid #f5c6cb;
+                color: #721c24;
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
+

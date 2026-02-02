@@ -35,6 +35,40 @@ if TYPE_CHECKING:
     from squadops.bootstrap.system import SquadOpsSystem
 
 
+def load_instance_config(agent_id: str) -> dict | None:
+    """Load instance configuration for the given agent.
+
+    Args:
+        agent_id: Agent identifier (e.g., 'max', 'neo')
+
+    Returns:
+        Instance configuration dict or None if not found
+    """
+    import yaml
+    from pathlib import Path
+
+    # Try multiple paths for instances.yaml
+    search_paths = [
+        Path("/app/agents/instances/instances.yaml"),  # Container path
+        Path("agents/instances/instances.yaml"),  # Local path
+        Path(os.getenv("SQUADOPS_BASE_PATH", ".")) / "agents/instances/instances.yaml",
+    ]
+
+    for instances_path in search_paths:
+        if instances_path.exists():
+            try:
+                with open(instances_path) as f:
+                    data = yaml.safe_load(f)
+
+                for instance in data.get("instances", []):
+                    if instance.get("id") == agent_id:
+                        return instance
+            except Exception as e:
+                logger.warning(f"Failed to load instances from {instances_path}: {e}")
+
+    return None
+
+
 class AgentRunner:
     """Runs an agent within a container.
 
@@ -58,6 +92,37 @@ class AgentRunner:
         self.system: SquadOpsSystem | None = None
         self._shutdown_event = asyncio.Event()
         self._heartbeat_task: asyncio.Task | None = None
+        self._heartbeat_reporter = None
+        self._lifecycle_state = "STARTING"
+        self._queue = None
+
+        # Load instance-specific configuration (required)
+        self._instance_config = load_instance_config(self.agent_id)
+        if not self._instance_config:
+            raise ValueError(
+                f"No instance configuration found for agent '{self.agent_id}'. "
+                "Ensure the agent is defined in agents/instances/instances.yaml"
+            )
+
+        self._display_name = self._instance_config.get("display_name", self.agent_id)
+        self._llm_model = self._instance_config.get("model")
+        self._description = self._instance_config.get("description", "")
+
+        if not self._llm_model:
+            raise ValueError(
+                f"No model configured for agent '{self.agent_id}' in instances.yaml. "
+                "Each agent must have a 'model' field specified."
+            )
+
+        logger.info(
+            "Loaded instance config",
+            extra={
+                "agent_id": self.agent_id,
+                "display_name": self._display_name,
+                "model": self._llm_model,
+                "description": self._description,
+            },
+        )
 
         logger.info(
             "Initializing agent runner",
@@ -70,6 +135,10 @@ class AgentRunner:
         Bootstraps the system, connects to queue, and starts consuming tasks.
         """
         try:
+            # Create heartbeat reporter
+            from adapters.observability.healthcheck_http import HealthCheckHttpReporter
+            self._heartbeat_reporter = HealthCheckHttpReporter()
+
             # Bootstrap system
             self.system = await self._create_system()
             logger.info(
@@ -79,6 +148,9 @@ class AgentRunner:
                     "handlers": len(self.system.handler_registry.list_capabilities()),
                 },
             )
+
+            # Update lifecycle state to READY and send initial heartbeat
+            self._lifecycle_state = "READY"
 
             # Start heartbeat task
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -149,17 +221,29 @@ class AgentRunner:
         from adapters.memory.factory import create_memory_provider
         from adapters.tools.local_filesystem import LocalFileSystemAdapter
 
-        # For ports without adapters yet, use no-op implementations
-        from squadops.ports.comms import NoOpQueuePort
-        from squadops.ports.prompts import PromptService
+        # Import adapters
+        from adapters.comms.rabbitmq import RabbitMQAdapter
+        from squadops.prompts.assembler import PromptAssembler
         from adapters.prompts import create_prompt_repository
         from adapters.telemetry.factory import create_telemetry_provider
 
         # Create LLM adapter
+        # Priority: instance config model > env var > config
+        llm_model = (
+            self._llm_model  # From instances.yaml for this agent
+            or os.getenv("LLM_MODEL")  # Environment override
+            or config.llm.model  # From app config
+        )
+        if not llm_model:
+            raise ValueError(
+                f"No LLM model configured for agent '{self.agent_id}'. "
+                "Set model in instances.yaml, LLM_MODEL env var, or config.llm.model"
+            )
+        logger.info(f"Using LLM model: {llm_model}", extra={"agent_id": self.agent_id})
         llm = create_llm_provider(
             base_url=config.llm.url,
-            model=config.llm.model,
-            timeout=config.llm.timeout,
+            default_model=llm_model,
+            timeout_seconds=config.llm.timeout,
         )
 
         # Create memory adapter
@@ -170,18 +254,20 @@ class AgentRunner:
 
         # Create prompt service
         prompt_repo = create_prompt_repository()
-        prompt_service = PromptService(prompt_repo)
+        prompt_service = PromptAssembler(prompt_repo)
+        self._prompt_service = prompt_service  # Store for use in chat
 
         # Create telemetry (metrics + events)
-        metrics, events = create_telemetry_provider(config.telemetry)
+        telemetry_backend = config.telemetry.backend if config.telemetry.backend else "otel"
+        metrics, events = create_telemetry_provider(telemetry_backend)
 
         # Create filesystem adapter
-        filesystem = LocalFileSystemAdapter(
-            root_path=os.getenv("SQUADOPS_BASE_PATH", "/app"),
-        )
+        filesystem = LocalFileSystemAdapter()
 
-        # Queue port - use NoOp for now, will be replaced with real adapter
-        queue = NoOpQueuePort()
+        # Create RabbitMQ queue adapter
+        rabbitmq_url = config.comms.rabbitmq.url
+        queue = RabbitMQAdapter(url=rabbitmq_url)
+        self._queue = queue  # Store for use in _consume_tasks
 
         return {
             "llm": llm,
@@ -198,17 +284,170 @@ class AgentRunner:
 
         Connects to RabbitMQ and processes incoming tasks through the orchestrator.
         """
+        import json
+
+        # Queue name for this agent's communications
+        comms_queue = f"{self.agent_id}_comms"
+
         logger.info(
             "Starting task consumer",
-            extra={"agent_id": self.agent_id, "role": self.role},
+            extra={"agent_id": self.agent_id, "role": self.role, "queue": comms_queue},
         )
 
-        # For now, just wait for shutdown
-        # TODO: Implement actual queue consumption when QueuePort adapter is ready
         while not self._shutdown_event.is_set():
-            await asyncio.sleep(1)
+            try:
+                # Consume messages from the comms queue
+                messages = await self._queue.consume(comms_queue, max_messages=1)
+
+                for message in messages:
+                    try:
+                        # Parse the message payload
+                        payload = json.loads(message.payload)
+                        action = payload.get("action", "")
+                        metadata = payload.get("metadata", {})
+
+                        logger.info(
+                            "Received message",
+                            extra={
+                                "agent_id": self.agent_id,
+                                "action": action,
+                                "message_id": message.message_id,
+                            },
+                        )
+
+                        # Handle different action types
+                        if action == "comms.chat":
+                            await self._handle_chat_message(payload, metadata)
+                        else:
+                            logger.warning(
+                                f"Unknown action: {action}",
+                                extra={"agent_id": self.agent_id},
+                            )
+
+                        # Acknowledge the message
+                        await self._queue.ack(message)
+
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to process message: {e}",
+                            extra={"agent_id": self.agent_id, "message_id": message.message_id},
+                        )
+                        # Acknowledge anyway to avoid infinite retries
+                        await self._queue.ack(message)
+
+            except Exception as e:
+                logger.error(
+                    f"Queue consumption error: {e}",
+                    extra={"agent_id": self.agent_id},
+                )
+
+            # Small delay between consumption cycles
+            await asyncio.sleep(0.5)
+
+        # Close queue connection on shutdown
+        if self._queue:
+            await self._queue.close()
 
         logger.info("Task consumer stopped")
+
+    def _build_system_prompt(self) -> str:
+        """Build system prompt using PromptService for role-specific identity.
+
+        Returns:
+            Assembled system prompt with role-specific context
+
+        Raises:
+            ValueError: If PromptService is not available or returns invalid prompt
+        """
+        if not hasattr(self, '_prompt_service') or not self._prompt_service:
+            raise ValueError(
+                f"PromptService not initialized for agent '{self.agent_id}'. "
+                "Cannot build system prompt without proper configuration."
+            )
+
+        assembled = self._prompt_service.get_system_prompt(self.role)
+        if not assembled or not assembled.content:
+            raise ValueError(
+                f"No system prompt configured for role '{self.role}'. "
+                f"Ensure prompt fragments exist in prompts/fragments/roles/{self.role}/"
+            )
+
+        # Add agent-specific context
+        agent_context = f"\n\nYou are {self._display_name} (agent ID: {self.agent_id})."
+        if self._description:
+            agent_context += f"\nRole: {self._description}"
+
+        return assembled.content + agent_context
+
+    async def _handle_chat_message(self, payload: dict, metadata: dict) -> None:
+        """Handle incoming chat message from console.
+
+        Args:
+            payload: Message payload containing action and message data
+            metadata: Message metadata including response_queue and correlation_id
+        """
+        import json
+
+        message_data = payload.get("payload", {})
+        user_message = message_data.get("message", "")
+        session_id = message_data.get("session_id", "")
+        response_queue = metadata.get("response_queue", "console_responses")
+        correlation_id = metadata.get("correlation_id", session_id)
+
+        logger.info(
+            f"Processing chat message: {user_message[:50]}...",
+            extra={"agent_id": self.agent_id, "session_id": session_id},
+        )
+
+        try:
+            # Generate response using the LLM
+            if self.system and self.system.ports.llm:
+                from squadops.llm.models import LLMRequest
+
+                # Get role-specific system prompt from PromptService
+                system_prompt = self._build_system_prompt()
+
+                # Build full prompt with role context and user message
+                full_prompt = f"{system_prompt}\n\nUser: {user_message}\n\nAssistant:"
+
+                # Generate response via LLMRequest
+                request = LLMRequest(prompt=full_prompt)
+                response = await self.system.ports.llm.generate(request)
+                response_text = response.text if hasattr(response, 'text') else str(response)
+            else:
+                response_text = f"Hello! I'm {self._display_name}. My system is still initializing."
+
+            # Build response message in the format expected by health-check
+            from datetime import datetime
+            response_message = {
+                "action": "comms.chat.response",
+                "metadata": {
+                    "correlation_id": correlation_id,
+                },
+                "payload": {
+                    "status": "ok",
+                    "result": {
+                        "response_text": response_text,
+                        "agent_name": self.agent_id,
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "status": "available",
+                    },
+                },
+            }
+
+            # Send response to the response queue
+            await self._queue.publish(response_queue, json.dumps(response_message))
+
+            logger.info(
+                f"Sent chat response to {response_queue}",
+                extra={"agent_id": self.agent_id, "session_id": session_id},
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to handle chat message: {e}",
+                extra={"agent_id": self.agent_id, "session_id": session_id},
+            )
 
     async def _heartbeat_loop(self) -> None:
         """Send periodic heartbeats.
@@ -237,8 +476,17 @@ class AgentRunner:
 
     async def _send_heartbeat(self) -> None:
         """Send a single heartbeat."""
-        # TODO: Implement actual heartbeat sending via HeartbeatReporter
-        logger.debug("Heartbeat", extra={"agent_id": self.agent_id})
+        if not self._heartbeat_reporter:
+            return
+
+        from squadops import __version__ as SQUADOPS_VERSION
+
+        await self._heartbeat_reporter.send_status(
+            agent_id=self.agent_id,
+            lifecycle_state=self._lifecycle_state,
+            version=SQUADOPS_VERSION,
+        )
+        logger.debug("Heartbeat sent", extra={"agent_id": self.agent_id, "state": self._lifecycle_state})
 
 
 def setup_signal_handlers(runner: AgentRunner) -> None:
@@ -293,3 +541,4 @@ async def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
+

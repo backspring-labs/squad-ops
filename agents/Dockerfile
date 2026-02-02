@@ -58,15 +58,22 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files and install
+# Copy dependency files FIRST (for better layer caching)
 COPY pyproject.toml ./
 COPY requirements.txt ./
+
+# Install dependencies (this layer is cached when requirements don't change)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
 COPY adapters/ ./adapters/
 
-# Install dependencies first, then package
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -e .
+# Copy agent configuration (instances.yaml for role-specific config)
+COPY agents/instances/ ./agents/instances/
+
+# Install package in editable mode (fast - just creates .egg-info)
+RUN pip install --no-cache-dir -e .
 
 # Create required directories
 RUN mkdir -p /app/logs /app/data/memory_db /app/warm-boot

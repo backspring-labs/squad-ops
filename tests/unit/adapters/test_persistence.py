@@ -5,11 +5,10 @@ Unit tests for persistence adapters.
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
-from squadops.core.secrets import SecretManager, SecretNotFoundError
+from squadops.core.secrets import SecretManager
 from squadops.ports.db import DbRuntime, HealthResult
 
-from adapters.persistence.factory import get_db_runtime, validate_db_config
-from adapters.persistence.postgres import PostgresRuntime
+from adapters.persistence.factory import validate_db_config
 
 
 class TestValidateDBConfig:
@@ -63,53 +62,99 @@ class TestGetDBRuntime:
             }
         }
 
-    def test_create_runtime_with_basic_profile(self, basic_profile, mock_secret_manager):
+    @patch("adapters.persistence.factory.PostgresRuntime")
+    def test_create_runtime_with_basic_profile(self, mock_runtime_class, basic_profile, mock_secret_manager):
         """Test creating runtime with basic profile."""
+        from adapters.persistence.factory import get_db_runtime
+
+        mock_runtime = Mock()
+        mock_runtime.connection_mode = "direct"
+        mock_runtime.migration_mode = "off"
+        mock_runtime_class.return_value = mock_runtime
+
         runtime = get_db_runtime(basic_profile, mock_secret_manager)
-        assert isinstance(runtime, PostgresRuntime)
+
         assert runtime.connection_mode == "direct"
         assert runtime.migration_mode == "off"
+        mock_runtime_class.assert_called_once()
 
-    def test_create_runtime_with_secret_reference(self, mock_secret_manager):
+    @patch("adapters.persistence.factory.PostgresRuntime")
+    def test_create_runtime_with_secret_reference(self, mock_runtime_class, mock_secret_manager):
         """Test creating runtime with secret:// reference in DSN."""
+        from adapters.persistence.factory import get_db_runtime
+
         profile = {
             "db": {
                 "dsn": "postgresql://user:secret://db_pass@localhost/testdb",
                 "pool": {"size": 5},
             }
         }
-        runtime = get_db_runtime(profile, mock_secret_manager)
-        assert isinstance(runtime, PostgresRuntime)
-        # Verify secret manager was called
-        mock_secret_manager._replace_in_string.assert_called()
 
-    def test_create_runtime_with_legacy_fields(self, mock_secret_manager):
-        """Test creating runtime with legacy url/pool_size fields."""
+        mock_runtime = Mock()
+        mock_runtime_class.return_value = mock_runtime
+
+        runtime = get_db_runtime(profile, mock_secret_manager)
+
+        mock_runtime_class.assert_called_once()
+        # Verify the DSN was passed (secret resolution happens in PostgresRuntime)
+        call_kwargs = mock_runtime_class.call_args[1]
+        assert "secret://db_pass" in call_kwargs["dsn"]
+
+    @patch("adapters.persistence.factory.PostgresRuntime")
+    def test_create_runtime_with_legacy_url(self, mock_runtime_class, mock_secret_manager):
+        """Test creating runtime with legacy url field (instead of dsn)."""
+        from adapters.persistence.factory import get_db_runtime
+
         profile = {
             "db": {
                 "url": "postgresql://user:pass@localhost/db",
-                "pool_size": 10,
-                "max_overflow": 5,
-                "pool_timeout": 60,
             }
         }
-        runtime = get_db_runtime(profile, mock_secret_manager)
-        assert isinstance(runtime, PostgresRuntime)
 
-    def test_create_runtime_with_ssl_config(self, mock_secret_manager):
+        mock_runtime = Mock()
+        mock_runtime_class.return_value = mock_runtime
+
+        runtime = get_db_runtime(profile, mock_secret_manager)
+
+        mock_runtime_class.assert_called_once()
+        call_kwargs = mock_runtime_class.call_args[1]
+        # url should be passed as dsn
+        assert call_kwargs["dsn"] == "postgresql://user:pass@localhost/db"
+
+    @patch("adapters.persistence.factory.PostgresRuntime")
+    def test_create_runtime_with_ssl_config(self, mock_runtime_class, mock_secret_manager):
         """Test creating runtime with SSL configuration."""
+        from adapters.persistence.factory import get_db_runtime
+
         profile = {
             "db": {
                 "dsn": "postgresql://user:pass@localhost/db",
                 "ssl": {"mode": "require", "ca_bundle_path": "/path/to/ca.crt"},
             }
         }
-        runtime = get_db_runtime(profile, mock_secret_manager)
-        assert isinstance(runtime, PostgresRuntime)
 
-    def test_create_runtime_invalid_config(self, mock_secret_manager):
-        """Test creating runtime with invalid config raises error."""
-        profile = {"db": {}}  # Missing dsn/url
+        mock_runtime = Mock()
+        mock_runtime_class.return_value = mock_runtime
+
+        runtime = get_db_runtime(profile, mock_secret_manager)
+
+        call_kwargs = mock_runtime_class.call_args[1]
+        assert call_kwargs["ssl_mode"] == "require"
+        assert call_kwargs["ssl_ca_bundle_path"] == "/path/to/ca.crt"
+
+    def test_create_runtime_missing_db_section(self, mock_secret_manager):
+        """Test creating runtime without db section raises error."""
+        from adapters.persistence.factory import get_db_runtime
+
+        profile = {"other": {}}  # Missing db section
+        with pytest.raises(ValueError, match="Database configuration"):
+            get_db_runtime(profile, mock_secret_manager)
+
+    def test_create_runtime_missing_dsn(self, mock_secret_manager):
+        """Test creating runtime without dsn/url raises error."""
+        from adapters.persistence.factory import get_db_runtime
+
+        profile = {"db": {"pool_size": 5}}  # Has db section but no dsn/url
         with pytest.raises(ValueError, match="Either 'db.dsn' or 'db.url' must be provided"):
             get_db_runtime(profile, mock_secret_manager)
 
@@ -129,29 +174,65 @@ class TestPostgresRuntime:
         """Fixture for a basic DSN."""
         return "postgresql://user:password@localhost/testdb"
 
-    def test_init_with_basic_dsn(self, basic_dsn):
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_init_with_basic_dsn(self, mock_sessionmaker, mock_create_engine, basic_dsn):
         """Test initialization with basic DSN."""
+        from adapters.persistence.postgres import PostgresRuntime
+
+        mock_engine = Mock()
+        mock_create_engine.return_value = mock_engine
+
         runtime = PostgresRuntime(dsn=basic_dsn)
-        assert runtime.engine is not None
-        assert runtime.session_factory is not None
+
+        assert runtime.engine is mock_engine
         assert runtime.connection_mode == "direct"
         assert runtime.migration_mode == "off"
+        mock_create_engine.assert_called_once()
 
-    def test_init_with_secret_reference(self, basic_dsn, mock_secret_manager):
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_init_with_secret_reference(self, mock_sessionmaker, mock_create_engine, basic_dsn, mock_secret_manager):
         """Test initialization with secret:// reference."""
+        from adapters.persistence.postgres import PostgresRuntime
+
         dsn_with_secret = "postgresql://user:secret://db_pass@localhost/testdb"
+
+        mock_engine = Mock()
+        mock_create_engine.return_value = mock_engine
+
         runtime = PostgresRuntime(dsn=dsn_with_secret, secret_manager=mock_secret_manager)
-        assert runtime.engine is not None
+
         # Verify secret manager was called
-        mock_secret_manager._replace_in_string.assert_called()
+        mock_secret_manager._replace_in_string.assert_called_once_with(dsn_with_secret)
+        # Verify engine was created with resolved DSN
+        call_args = mock_create_engine.call_args
+        assert "resolved_password" in call_args[0][0]
 
-    def test_init_with_ssl_mode(self, basic_dsn):
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_init_with_ssl_mode(self, mock_sessionmaker, mock_create_engine, basic_dsn):
         """Test initialization with SSL mode."""
-        runtime = PostgresRuntime(dsn=basic_dsn, ssl_mode="require")
-        assert runtime.engine is not None
+        from adapters.persistence.postgres import PostgresRuntime
 
-    def test_init_with_pool_config(self, basic_dsn):
+        mock_engine = Mock()
+        mock_create_engine.return_value = mock_engine
+
+        runtime = PostgresRuntime(dsn=basic_dsn, ssl_mode="require")
+
+        # Verify SSL mode was added to connection URL
+        call_args = mock_create_engine.call_args
+        assert "sslmode=require" in call_args[0][0]
+
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_init_with_pool_config(self, mock_sessionmaker, mock_create_engine, basic_dsn):
         """Test initialization with pool configuration."""
+        from adapters.persistence.postgres import PostgresRuntime
+
+        mock_engine = Mock()
+        mock_create_engine.return_value = mock_engine
+
         runtime = PostgresRuntime(
             dsn=basic_dsn,
             pool_size=10,
@@ -159,43 +240,100 @@ class TestPostgresRuntime:
             pool_timeout=60,
             pool_pre_ping=True,
         )
-        assert runtime.engine is not None
 
-    def test_db_health_check_success(self, basic_dsn):
+        call_kwargs = mock_create_engine.call_args[1]
+        assert call_kwargs["pool_size"] == 10
+        assert call_kwargs["max_overflow"] == 5
+        assert call_kwargs["pool_timeout"] == 60
+        assert call_kwargs["pool_pre_ping"] is True
+
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_db_health_check_success(self, mock_sessionmaker, mock_create_engine, basic_dsn):
         """Test successful health check."""
-        runtime = PostgresRuntime(dsn=basic_dsn)
-        # Note: This will fail if no actual database is available
-        # In a real test environment, you'd use a test database or mock
-        result = runtime.db_health_check()
-        assert isinstance(result, HealthResult)
-        assert result.status in ["healthy", "unhealthy"]  # Depends on DB availability
+        from adapters.persistence.postgres import PostgresRuntime
 
-    def test_db_health_check_failure(self):
-        """Test health check with invalid DSN."""
-        runtime = PostgresRuntime(dsn="postgresql://invalid:invalid@nonexistent:9999/nonexistent")
+        mock_engine = Mock()
+        mock_conn = Mock()
+        mock_result = Mock()
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=False)
+        mock_conn.execute.return_value = mock_result
+        mock_create_engine.return_value = mock_engine
+
+        runtime = PostgresRuntime(dsn=basic_dsn)
         result = runtime.db_health_check()
+
+        assert isinstance(result, HealthResult)
+        assert result.status == "healthy"
+
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_db_health_check_failure(self, mock_sessionmaker, mock_create_engine, basic_dsn):
+        """Test health check failure."""
+        from adapters.persistence.postgres import PostgresRuntime
+
+        mock_engine = Mock()
+        mock_engine.connect.side_effect = Exception("Connection failed")
+        mock_create_engine.return_value = mock_engine
+
+        runtime = PostgresRuntime(dsn=basic_dsn)
+        result = runtime.db_health_check()
+
         assert isinstance(result, HealthResult)
         assert result.status == "unhealthy"
-        assert result.message is not None
+        assert "Connection failed" in result.message
 
-    def test_dispose(self, basic_dsn):
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_dispose(self, mock_sessionmaker, mock_create_engine, basic_dsn):
         """Test resource disposal."""
+        from adapters.persistence.postgres import PostgresRuntime
+
+        mock_engine = Mock()
+        mock_create_engine.return_value = mock_engine
+
         runtime = PostgresRuntime(dsn=basic_dsn)
-        # Should not raise
         runtime.dispose()
 
-    def test_connection_mode_property(self, basic_dsn):
+        mock_engine.dispose.assert_called_once()
+
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_connection_mode_property(self, mock_sessionmaker, mock_create_engine, basic_dsn):
         """Test connection_mode property."""
+        from adapters.persistence.postgres import PostgresRuntime
+
+        mock_engine = Mock()
+        mock_create_engine.return_value = mock_engine
+
         runtime = PostgresRuntime(dsn=basic_dsn, connection_mode="proxy")
         assert runtime.connection_mode == "proxy"
 
-    def test_migration_mode_property(self, basic_dsn):
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_migration_mode_property(self, mock_sessionmaker, mock_create_engine, basic_dsn):
         """Test migration_mode property."""
+        from adapters.persistence.postgres import PostgresRuntime
+
+        mock_engine = Mock()
+        mock_create_engine.return_value = mock_engine
+
         runtime = PostgresRuntime(dsn=basic_dsn, migration_mode="startup")
         assert runtime.migration_mode == "startup"
 
-    def test_build_connection_url_with_ssl(self, basic_dsn):
-        """Test _build_connection_url with SSL parameters."""
+    @patch("adapters.persistence.postgres.runtime.create_engine")
+    @patch("adapters.persistence.postgres.runtime.sessionmaker")
+    def test_build_connection_url_with_ssl(self, mock_sessionmaker, mock_create_engine, basic_dsn):
+        """Test initialization with SSL parameters."""
+        from adapters.persistence.postgres import PostgresRuntime
+
+        mock_engine = Mock()
+        mock_create_engine.return_value = mock_engine
+
         runtime = PostgresRuntime(dsn=basic_dsn, ssl_mode="verify-full", ssl_ca_bundle_path="/path/to/ca.crt")
-        # Verify URL was built with SSL parameters
-        assert runtime.engine is not None
+
+        call_args = mock_create_engine.call_args
+        dsn_used = call_args[0][0]
+        assert "sslmode=verify-full" in dsn_used
+        assert "sslrootcert" in dsn_used

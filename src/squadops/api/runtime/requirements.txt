@@ -1,0 +1,17 @@
+# Runtime API Dependencies
+# Part of SIP-0.8.8 migration
+
+# Core frameworks
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic>=2.7.3
+
+# Database
+asyncpg==0.29.0
+
+# Message queue
+aio-pika==9.3.1
+
+# Configuration
+pyyaml==6.0.1
+python-dotenv==1.0.0
