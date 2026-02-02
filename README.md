@@ -17,21 +17,29 @@
 ---
 
 ## 🧩 Core Components
-- **Agent Squad** – 4 functional agents (Max/Lead, Neo/Dev, Nat/Strategy, Eve/QA) v0.8.2 with real LLM integration + 6 mock agents
-- **SquadComms** – RabbitMQ messaging for inter-agent communication
-- **Runtime API** – FastAPI service with execution cycle tracking (SIP-0048, renamed from Task Management API)
-- **Task Adapter Architecture** – Pluggable backend system (SQL/Prefect) with DTO purity and connection pooling
-- **Capability Contracts** – Declarative delivery expectations with acceptance checks and reference workloads (SIP-0058)
-- **JSON Workflow Engine** – Structured LLM output with manifest-first development (SIP-033A)
-- **LLM Router Abstraction** – Dynamic provider registry supporting Ollama, Docker models, and future providers
-- **AppBuilder** – Architecture design before implementation with framework enforcement
-- **Telemetry & Observability** – OpenTelemetry integration with reasoning events, trace correlation, and wrap-up summaries
-- **Docker Build System** – Multi-stage builds with build script, deterministic builds, and build artifacts
+
+### Architecture
+- **Hexagonal Architecture** – Ports & adapters pattern with clean domain/infrastructure separation
+- **Dependency Injection** – Constructor-injected dependencies for testability
+- **Unified Agent Build** – Single multi-stage Dockerfile for all agent roles
+
+### Agent Framework
+- **Agent Squad** – 4 functional agents (Max/Lead, Neo/Dev, Nat/Strategy, Eve/QA) + 6 mock agents
+- **BaseAgent** – DI-enabled base class with SecretManager, DbRuntime, and port injection
+- **Capability Contracts** – Declarative delivery expectations with acceptance checks (SIP-0058)
+
+### Infrastructure Adapters
+- **Secrets** – Pluggable providers (env, file, docker_secret) with `secret://` URI resolution
+- **Persistence** – PostgresRuntime with connection pooling, SSL, and health checks
+- **Comms** – RabbitMQ adapter for inter-agent messaging
+- **Telemetry** – OpenTelemetry with metrics, events, and trace correlation
+
+### Services
+- **Runtime API** – FastAPI service with execution cycle tracking (SIP-0048)
+- **Health Check** – FastAPI monitoring and WarmBoot API
 - **PostgreSQL** – Task logging, execution cycles, and state persistence
 - **Redis** – Caching and performance optimization
-- **Health Check Service** – FastAPI monitoring and WarmBoot API
 - **Docker Compose** – Multi-container development environment
-- **Version Management** – Dynamic versioning (framework + run sequence)
 
 ---
 
