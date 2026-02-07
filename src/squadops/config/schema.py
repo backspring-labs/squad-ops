@@ -240,6 +240,23 @@ class TelemetryConfig(BaseModel):
     gcp: GCPTelemetryConfig | None = Field(default=None, description="GCP telemetry config")
 
 
+class LangFuseConfig(BaseModel):
+    """LangFuse LLM observability configuration (SIP-0061).
+
+    Sibling to TelemetryConfig, NOT nested inside it.
+    """
+
+    enabled: bool = Field(default=False, description="Enable LangFuse integration")
+    host: str = Field(default="http://localhost:3000", description="LangFuse host URL")
+    public_key: str = Field(default="", description="LangFuse public key (supports secret:// references)")
+    secret_key: str = Field(default="", description="LangFuse secret key (supports secret:// references)")
+    redaction_mode: str = Field(default="standard", description="Redaction mode: 'standard' or 'strict' (recommended for prod)")
+    sample_rate_percent: int = Field(default=100, ge=0, le=100, description="Generation sampling rate (0-100). Applies to record_generation only; spans/events always emit.")
+    flush_interval_seconds: int = Field(default=5, ge=1, description="Background flush interval in seconds")
+    buffer_max_size: int = Field(default=1000, ge=1, description="Maximum buffer size before drop-oldest overflow")
+    shutdown_flush_timeout_seconds: int = Field(default=5, ge=1, description="Max time budget for shutdown flush")
+
+
 class ServiceConfig(BaseModel):
     """Generic service URL configuration."""
 
@@ -329,6 +346,9 @@ class AppConfig(BaseModel):
 
     # Telemetry
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig, description="Telemetry configuration")
+
+    # LangFuse LLM Observability (SIP-0061) — sibling to telemetry, not nested
+    langfuse: LangFuseConfig = Field(default_factory=LangFuseConfig, description="LangFuse LLM observability configuration")
 
     # Observability
     observability: ObservabilityConfig = Field(

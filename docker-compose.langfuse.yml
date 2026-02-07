@@ -1,0 +1,22 @@
+# SIP-0061: LangFuse local dev / CI stack
+# Uses the shared squadops-postgres instance (langfuse database).
+# ⚠ LOCAL DEV / CI ONLY — hardcoded secrets below are NOT production-grade.
+
+services:
+  langfuse:
+    container_name: squadops-langfuse
+    image: langfuse/langfuse:2
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@postgres:5432/langfuse
+      NEXTAUTH_SECRET: mysecret            # ⚠ local dev only
+      NEXTAUTH_URL: http://localhost:3001
+      SALT: mysalt                         # ⚠ local dev only
+    ports:
+      - "3001:3000"
+    networks:
+      - squadnet
+
+networks:
+  squadnet:
+    external: true
+    name: squad-ops_squadnet

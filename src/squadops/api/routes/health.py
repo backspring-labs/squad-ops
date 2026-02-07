@@ -42,6 +42,7 @@ async def health_infra():
         _health_checker.check_prometheus(),
         _health_checker.check_grafana(),
         _health_checker.check_otel_collector(),
+        _health_checker.check_langfuse(),
     )
     return infra_checks
 

@@ -1132,6 +1132,40 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}",
             }
 
+    async def check_langfuse(self) -> dict[str, Any]:
+        """Check LangFuse health"""
+        try:
+            app_config = get_config()
+            langfuse_url = app_config.langfuse.host
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{langfuse_url}/api/public/health",
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as response:
+                    if response.status == 200:
+                        health_data = await response.json()
+                        version = health_data.get("version", "Unknown")
+                        api_status = health_data.get("status", "unknown")
+                        return {
+                            "component": "LangFuse",
+                            "type": "LLM Observability",
+                            "status": "online" if api_status == "OK" else "degraded",
+                            "version": version,
+                            "purpose": "LLM call tracking and tracing (SIP-0061)",
+                            "notes": f"API responding, status: {api_status}",
+                        }
+                    else:
+                        raise Exception(f"HTTP {response.status}")
+        except Exception as e:
+            return {
+                "component": "LangFuse",
+                "type": "LLM Observability",
+                "status": "offline",
+                "version": "Unknown",
+                "purpose": "LLM call tracking and tracing (SIP-0061)",
+                "notes": f"Error: {str(e)}",
+            }
+
     def _compute_network_status(self, last_heartbeat: datetime | None) -> str:
         """Compute network_status from last_heartbeat timestamp
         

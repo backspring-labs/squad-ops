@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from squadops.ports.memory.store import MemoryPort
     from squadops.ports.prompts.service import PromptService
     from squadops.ports.telemetry.events import EventPort
+    from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.ports.telemetry.metrics import MetricsPort
     from squadops.ports.tools.filesystem import FileSystemPort
 
@@ -40,6 +41,7 @@ class PortsBundle:
     metrics: MetricsPort
     events: EventPort
     filesystem: FileSystemPort
+    llm_observability: LLMObservabilityPort | None = None
 
 
 class BaseAgent(ABC):
@@ -69,6 +71,7 @@ class BaseAgent(ABC):
         metrics: MetricsPort,
         events: EventPort,
         filesystem: FileSystemPort,
+        llm_observability: LLMObservabilityPort | None = None,
         skill_registry: SkillRegistry | None = None,
     ):
         """Initialize agent with injected ports.
@@ -83,6 +86,7 @@ class BaseAgent(ABC):
             metrics: Metrics collection port
             events: Event/tracing port
             filesystem: Filesystem operations port
+            llm_observability: Optional LLM observability port (SIP-0061)
             skill_registry: Optional skill registry for skill execution
         """
         self._agent_id = agent_id
@@ -96,6 +100,7 @@ class BaseAgent(ABC):
         self._metrics = metrics
         self._events = events
         self._filesystem = filesystem
+        self._llm_observability = llm_observability
 
         # Store bundle for easy context building
         self._ports = PortsBundle(
@@ -106,6 +111,7 @@ class BaseAgent(ABC):
             metrics=metrics,
             events=events,
             filesystem=filesystem,
+            llm_observability=llm_observability,
         )
 
         # Skill registry (optional)
@@ -164,6 +170,11 @@ class BaseAgent(ABC):
     def filesystem(self) -> FileSystemPort:
         """Filesystem operations port."""
         return self._filesystem
+
+    @property
+    def llm_observability(self) -> LLMObservabilityPort | None:
+        """LLM observability port (SIP-0061)."""
+        return self._llm_observability
 
     @property
     def ports(self) -> PortsBundle:

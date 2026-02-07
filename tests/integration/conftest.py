@@ -12,12 +12,35 @@ import pytest
 import pytest_asyncio
 import requests
 
+# ---------------------------------------------------------------------------
+# SIP-0061: LangFuse env-var gating for contract/integration/resilience tests
+# ---------------------------------------------------------------------------
+
+_langfuse_available = all([
+    os.getenv("SQUADOPS__LANGFUSE__ENABLED", "").lower() == "true",
+    os.getenv("SQUADOPS__LANGFUSE__HOST", ""),
+    os.getenv("SQUADOPS__LANGFUSE__PUBLIC_KEY", ""),
+    os.getenv("SQUADOPS__LANGFUSE__SECRET_KEY", ""),
+])
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip @pytest.mark.langfuse tests when env vars are absent."""
+    if not _langfuse_available:
+        skip_langfuse = pytest.mark.skip(
+            reason="LangFuse not configured (need SQUADOPS__LANGFUSE__ENABLED=true + HOST + keys)"
+        )
+        for item in items:
+            if "langfuse" in item.keywords:
+                item.add_marker(skip_langfuse)
+
 # Import agent manager for container management
-from tests.integration.agent_manager import AgentManager
 from testcontainers.postgres import PostgresContainer
 
 # from testcontainers.rabbitmq import RabbitMQContainer  # TODO: Fix testcontainers version
 from testcontainers.redis import RedisContainer
+
+from tests.integration.agent_manager import AgentManager
 
 
 def load_test_config():

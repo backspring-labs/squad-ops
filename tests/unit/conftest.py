@@ -14,7 +14,6 @@ import pytest
 
 from squadops.tasks.models import TaskEnvelope
 
-
 # =============================================================================
 # Mock Infrastructure Fixtures
 # =============================================================================
@@ -92,7 +91,16 @@ def mock_ports():
         "metrics": MagicMock(),
         "events": MagicMock(),
         "filesystem": MagicMock(),
+        "llm_observability": MagicMock(),
     }
+
+
+@pytest.fixture
+def mock_llm_observability():
+    """Mock LLMObservabilityPort for testing (SIP-0061)."""
+    mock = MagicMock()
+    mock.health = AsyncMock(return_value={"status": "ok", "backend": "mock", "details": {}})
+    return mock
 
 
 # =============================================================================

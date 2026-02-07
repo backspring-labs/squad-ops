@@ -1,4 +1,4 @@
-last_assigned: 60
+last_assigned: 61
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -536,3 +536,12 @@ sips:
   approver: jladd
   created_at: '2026-01-29T00:00:00Z'
   updated_at: '2026-02-01T09:46:27.766913Z'
+- sip_uid: null
+  sip_number: 61
+  title: LangFuse Integration Foundation
+  path: sips/accepted/SIP-0061-LangFuse-Integration-Foundation.md
+  status: accepted
+  author: Framework Committee
+  approver: jladd
+  created_at: '2025-12-01T00:00:00Z'
+  updated_at: '2026-02-06T19:37:53.381999Z'

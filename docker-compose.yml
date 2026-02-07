@@ -139,6 +139,7 @@ services:
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
     depends_on:
       rabbitmq:
         condition: service_healthy

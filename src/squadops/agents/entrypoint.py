@@ -225,7 +225,7 @@ class AgentRunner:
         from adapters.comms.rabbitmq import RabbitMQAdapter
         from squadops.prompts.assembler import PromptAssembler
         from adapters.prompts import create_prompt_repository
-        from adapters.telemetry.factory import create_telemetry_provider
+        from adapters.telemetry.factory import create_telemetry_provider, create_llm_observability_provider
 
         # Create LLM adapter
         # Priority: instance config model > env var > config
@@ -261,6 +261,9 @@ class AgentRunner:
         telemetry_backend = config.telemetry.backend if config.telemetry.backend else "otel"
         metrics, events = create_telemetry_provider(telemetry_backend)
 
+        # Create LLM observability (SIP-0061)
+        llm_observability = create_llm_observability_provider(config=config.langfuse)
+
         # Create filesystem adapter
         filesystem = LocalFileSystemAdapter()
 
@@ -277,6 +280,7 @@ class AgentRunner:
             "metrics": metrics,
             "events": events,
             "filesystem": filesystem,
+            "llm_observability": llm_observability,
         }
 
     async def _consume_tasks(self) -> None:

@@ -16,6 +16,7 @@ from squadops.core.secrets import SecretManager
 from squadops.ports.db import DbRuntime
 from squadops.ports.observability.heartbeat import AgentHeartbeatReporter
 from squadops.ports.prompts.service import PromptService
+from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,20 @@ class BaseAgent:
         heartbeat_reporter: AgentHeartbeatReporter,
         agent_id: str,
         prompt_service: PromptService | None = None,
+        llm_observability: LLMObservabilityPort | None = None,
     ) -> None:
         self.secret_manager = secret_manager
         self.db_runtime = db_runtime
         self.heartbeat_reporter = heartbeat_reporter
         self.agent_id = agent_id
         self.prompt_service = prompt_service
+
+        # SIP-0061: Always inject NoOp when None — self.llm_observability is never None
+        if llm_observability is None:
+            from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter
+
+            llm_observability = NoOpLLMObservabilityAdapter()
+        self.llm_observability = llm_observability
 
         logger.info("agent_initialized", extra={"agent_id": self.agent_id})
 

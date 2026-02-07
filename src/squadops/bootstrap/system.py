@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.telemetry.metrics import MetricsPort
     from squadops.ports.telemetry.events import EventPort
+    from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.ports.tools.filesystem import FileSystemPort
 
 logger = logging.getLogger(__name__)
@@ -147,6 +148,7 @@ def create_system(
     metrics: MetricsPort,
     events: EventPort,
     filesystem: FileSystemPort,
+    llm_observability: LLMObservabilityPort | None = None,
     config: SystemConfig | None = None,
 ) -> SquadOpsSystem:
     """Create a fully configured SquadOps system.
@@ -192,6 +194,7 @@ def create_system(
         metrics=metrics,
         events=events,
         filesystem=filesystem,
+        llm_observability=llm_observability,
     )
 
     # Create registries
@@ -203,6 +206,7 @@ def create_system(
         handler_registry=handler_registry,
         skill_registry=skill_registry,
         ports=ports,
+        llm_observability=llm_observability,
     )
 
     # Create API services

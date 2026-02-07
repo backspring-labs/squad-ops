@@ -1,8 +1,11 @@
 """Unit tests for telemetry port interfaces."""
-import pytest
+
 from unittest.mock import MagicMock
 
+import pytest
+
 from squadops.ports.telemetry.events import EventPort
+from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 from squadops.ports.telemetry.metrics import MetricsPort
 from squadops.telemetry.models import Span, StructuredEvent
 
@@ -110,3 +113,35 @@ class TestEventPortSpanWrapper:
 
         # end_span should still be called
         adapter.end_span.assert_called_once()
+
+
+class TestLLMObservabilityPort:
+    """Tests for LLMObservabilityPort interface (SIP-0061)."""
+
+    def test_cannot_instantiate_directly(self):
+        """LLMObservabilityPort is abstract and cannot be instantiated."""
+        with pytest.raises(TypeError):
+            LLMObservabilityPort()  # type: ignore
+
+    def test_has_all_required_methods(self):
+        required_methods = [
+            "start_cycle_trace",
+            "end_cycle_trace",
+            "start_pulse_span",
+            "end_pulse_span",
+            "start_task_span",
+            "end_task_span",
+            "record_generation",
+            "record_event",
+            "flush",
+            "close",
+            "health",
+        ]
+        for method_name in required_methods:
+            assert hasattr(LLMObservabilityPort, method_name), (
+                f"LLMObservabilityPort missing method: {method_name}"
+            )
+
+    def test_has_exactly_11_abstract_methods(self):
+        abstract_methods = getattr(LLMObservabilityPort, "__abstractmethods__", set())
+        assert len(abstract_methods) == 11

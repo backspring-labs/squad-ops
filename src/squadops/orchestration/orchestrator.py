@@ -5,23 +5,25 @@ across the agent squad.
 
 Part of SIP-0.8.8 Phase 6.
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from squadops.orchestration.handler_registry import HandlerRegistry
 from squadops.orchestration.handler_executor import HandlerExecutor
-from squadops.capabilities.handlers.context import ExecutionContext
+from squadops.orchestration.handler_registry import HandlerRegistry
 from squadops.tasks.models import TaskEnvelope, TaskResult
+from squadops.telemetry.models import CorrelationContext, StructuredEvent
 
 if TYPE_CHECKING:
     from squadops.agents.base import BaseAgent, PortsBundle
-    from squadops.agents.skills.registry import SkillRegistry
     from squadops.agents.factory import AgentFactory
+    from squadops.agents.skills.registry import SkillRegistry
+    from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,7 @@ class AgentOrchestrator:
         skill_registry: SkillRegistry,
         ports: PortsBundle,
         agent_factory: AgentFactory | None = None,
+        llm_observability: LLMObservabilityPort | None = None,
     ) -> None:
         """Initialize orchestrator.
 
@@ -101,12 +104,20 @@ class AgentOrchestrator:
             skill_registry: Registry of skills
             ports: PortsBundle for port access
             agent_factory: Optional factory for agent creation
+            llm_observability: LLM observability port (SIP-0061)
         """
         self._handler_registry = handler_registry
         self._skill_registry = skill_registry
         self._ports = ports
         self._agent_factory = agent_factory
         self._state = OrchestratorState()
+
+        # SIP-0061: Always inject NoOp when None
+        if llm_observability is None:
+            from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter
+
+            llm_observability = NoOpLLMObservabilityAdapter()
+        self._llm_observability = llm_observability
 
         # Create default executor
         self._executor = HandlerExecutor(
@@ -128,7 +139,7 @@ class AgentOrchestrator:
         self._agents[agent.agent_id] = agent
         self._state.agent_states[agent.agent_id] = {
             "role": agent.role_id,
-            "registered_at": datetime.now(timezone.utc).isoformat(),
+            "registered_at": datetime.now(UTC).isoformat(),
             "status": "available",
         }
         logger.info(
@@ -278,22 +289,75 @@ class AgentOrchestrator:
         Returns:
             List of TaskResults in order
         """
-        results = []
-        for envelope in envelopes:
-            result = await self.submit_task(envelope, timeout_seconds)
-            results.append(result)
+        # SIP-0061: Derive cycle_id from the first envelope (batch shares a cycle)
+        cycle_id = envelopes[0].cycle_id if envelopes else "batch-unknown"
+        ctx_cycle = CorrelationContext.for_cycle(cycle_id=cycle_id)
 
-            # Stop on failure if desired (fail-fast)
-            if result.status != "SUCCEEDED":
-                # Mark remaining as skipped
-                for remaining in envelopes[len(results):]:
-                    results.append(TaskResult(
-                        task_id=remaining.task_id,
-                        status="SKIPPED",
-                        outputs=None,
-                        error=f"Skipped due to prior failure: {result.task_id}",
-                    ))
-                break
+        # SIP-0061: Start cycle trace
+        self._llm_observability.start_cycle_trace(ctx_cycle)
+        self._llm_observability.record_event(
+            ctx_cycle,
+            StructuredEvent(
+                name="cycle.started",
+                message=f"Cycle {cycle_id} started ({len(envelopes)} tasks)",
+            ),
+        )
+
+        results = []
+        try:
+            for envelope in envelopes:
+                # SIP-0061: Start pulse span per-task
+                ctx_pulse = CorrelationContext.for_pulse(
+                    cycle_id=cycle_id, pulse_id=envelope.pulse_id
+                )
+                self._llm_observability.start_pulse_span(ctx_pulse)
+                self._llm_observability.record_event(
+                    ctx_pulse,
+                    StructuredEvent(
+                        name="pulse.started",
+                        message=f"Pulse {envelope.pulse_id} started",
+                    ),
+                )
+
+                result = await self.submit_task(envelope, timeout_seconds)
+                results.append(result)
+
+                # SIP-0061: End pulse span
+                self._llm_observability.record_event(
+                    ctx_pulse,
+                    StructuredEvent(
+                        name="pulse.completed",
+                        message=f"Pulse {envelope.pulse_id} completed",
+                    ),
+                )
+                self._llm_observability.end_pulse_span(ctx_pulse)
+
+                # Stop on failure if desired (fail-fast)
+                if result.status != "SUCCEEDED":
+                    # Mark remaining as skipped
+                    for remaining in envelopes[len(results) :]:
+                        results.append(
+                            TaskResult(
+                                task_id=remaining.task_id,
+                                status="SKIPPED",
+                                outputs=None,
+                                error=f"Skipped due to prior failure: {result.task_id}",
+                            )
+                        )
+                    break
+
+        finally:
+            # SIP-0061: Deterministic shutdown sequence
+            self._llm_observability.record_event(
+                ctx_cycle,
+                StructuredEvent(
+                    name="cycle.completed",
+                    message=f"Cycle {cycle_id} completed ({len(results)} results)",
+                ),
+            )
+            self._llm_observability.end_cycle_trace(ctx_cycle)
+            self._llm_observability.flush()
+            self._llm_observability.close()
 
         return results
 

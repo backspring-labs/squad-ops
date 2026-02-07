@@ -1,12 +1,11 @@
 """Unit tests for telemetry adapters."""
-import pytest
+
 from io import StringIO
 
 from adapters.telemetry.console import ConsoleAdapter
 from adapters.telemetry.null import NullAdapter
 from adapters.telemetry.otel import OTelAdapter
 from squadops.telemetry.models import StructuredEvent
-
 
 # Test fixtures for error handling verification
 
@@ -28,10 +27,10 @@ class BrokenWriter:
     """File-like object that raises on write."""
 
     def write(self, *args):
-        raise IOError("Simulated stdout failure")
+        raise OSError("Simulated stdout failure")
 
     def flush(self):
-        raise IOError("Simulated flush failure")
+        raise OSError("Simulated flush failure")
 
 
 class TestNullAdapter:
@@ -177,3 +176,66 @@ class TestOTelAdapter:
     def test_histogram_with_labels(self):
         adapter = OTelAdapter()
         adapter.histogram("test", 1.5, {"env": "test"})  # Must not raise
+
+
+# ---------------------------------------------------------------------------
+# SIP-0061: NoOpLLMObservabilityAdapter tests
+# ---------------------------------------------------------------------------
+
+from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter
+from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
+from squadops.telemetry.models import (
+    CorrelationContext,
+    GenerationRecord,
+    PromptLayer,
+    PromptLayerMetadata,
+)
+
+
+class TestNoOpLLMObservabilityAdapter:
+    """Tests for NoOpLLMObservabilityAdapter (SIP-0061)."""
+
+    def test_satisfies_port_contract(self):
+        adapter = NoOpLLMObservabilityAdapter()
+        assert isinstance(adapter, LLMObservabilityPort)
+
+    def test_all_methods_are_noop(self):
+        adapter = NoOpLLMObservabilityAdapter()
+        ctx = CorrelationContext(cycle_id="c1", pulse_id="p1", task_id="t1")
+        record = GenerationRecord(generation_id="g1", model="m", prompt_text="p", response_text="r")
+        layers = PromptLayerMetadata(
+            prompt_layer_set_id="PLS-1",
+            layers=(PromptLayer(layer_type="system", layer_id="sys-1"),),
+        )
+        event = StructuredEvent(name="test", message="msg")
+
+        # None of these should raise
+        adapter.start_cycle_trace(ctx)
+        adapter.end_cycle_trace(ctx)
+        adapter.start_pulse_span(ctx)
+        adapter.end_pulse_span(ctx)
+        adapter.start_task_span(ctx)
+        adapter.end_task_span(ctx)
+        adapter.record_generation(ctx, record, layers)
+        adapter.record_event(ctx, event)
+        adapter.flush()
+        adapter.close()
+
+    def test_health_returns_ok_by_default(self):
+        import asyncio
+
+        adapter = NoOpLLMObservabilityAdapter()
+        result = asyncio.get_event_loop().run_until_complete(adapter.health())
+        assert result["status"] == "ok"
+        assert result["backend"] == "noop"
+        assert result["details"] == {}
+
+    def test_health_returns_degraded_when_configured(self):
+        import asyncio
+
+        adapter = NoOpLLMObservabilityAdapter(
+            health_status="degraded", health_reason="langfuse SDK not installed"
+        )
+        result = asyncio.get_event_loop().run_until_complete(adapter.health())
+        assert result["status"] == "degraded"
+        assert result["details"]["reason"] == "langfuse SDK not installed"

@@ -183,8 +183,13 @@ def test_no_plaintext_secrets_in_docker_compose():
     
     # Find all docker-compose files
     compose_files = list(repo_root.glob("docker-compose*.yml"))
-    
+
+    # Third-party dev-only compose files with intentional hardcoded secrets (SIP-0061)
+    third_party_compose_files = {"docker-compose.langfuse.yml"}
+
     for file_path in compose_files:
+        if file_path.name in third_party_compose_files:
+            continue
         try:
             content = file_path.read_text(encoding="utf-8")
             
@@ -203,8 +208,9 @@ def test_no_plaintext_secrets_in_docker_compose():
             lines = content.split("\n")
             in_env_section = False
             current_service = None
-            third_party_services = {"rabbitmq", "postgres", "redis", "grafana", "prometheus", 
-                                     "otel-collector", "prefect-server", "prefect-ui"}
+            third_party_services = {"rabbitmq", "postgres", "redis", "grafana", "prometheus",
+                                     "otel-collector", "prefect-server", "prefect-ui",
+                                     "langfuse", "langfuse-db"}
             
             for line_num, line in enumerate(lines, 1):
                 # Detect service name
@@ -346,7 +352,11 @@ def test_no_url_credentials():
                 )
     
     # Scan docker-compose*.yml
+    # Third-party dev-only compose files with intentional hardcoded secrets (SIP-0061)
+    third_party_compose_files = {"docker-compose.langfuse.yml"}
     for file_path in repo_root.glob("docker-compose*.yml"):
+        if file_path.name in third_party_compose_files:
+            continue
         try:
             content = file_path.read_text(encoding="utf-8")
             lines = content.split("\n")

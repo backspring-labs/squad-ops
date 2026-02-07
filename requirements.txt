@@ -42,6 +42,9 @@ opentelemetry-exporter-otlp-proto-grpc>=1.22.0
 opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions
 
+# LLM Observability (SIP-0061)
+langfuse>=2.0
+
 # Validation
 jsonschema>=4.20.0
 

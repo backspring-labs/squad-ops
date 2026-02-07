@@ -11,7 +11,7 @@ include = ["squadops*", "adapters*"]  # Include both packages
 
 [project]
 name = "squadops"
-version = "0.8.9"
+version = "0.9.0"
 description = "SquadOps: a production-grade multi-agent orchestration framework."
 requires-python = ">=3.11"
 authors = [
@@ -21,12 +21,15 @@ readme = "README.md"
 license = { text = "MIT" }
 # You can add dependencies here later if you want to publish as a package.
 
+[project.optional-dependencies]
+langfuse = ["langfuse>=2.0"]
+
 #######################################
 # Ruff - Linting & basic code hygiene #
 #######################################
 
 [tool.ruff]
-target-version = "py311"
+target-version = "0.9.0"
 line-length = 100
 
 extend-exclude = [
@@ -105,6 +108,8 @@ markers = [
     "domain_orchestration: Orchestration domain tests",
     "domain_adapters: Adapter domain tests",
     "domain_telemetry: Telemetry domain tests",
+    # LangFuse (SIP-0061)
+    "langfuse: Tests that require a running LangFuse instance",
 ]
 
 ###########################
@@ -139,7 +144,7 @@ fail_under = 0
 ###########################
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "0.9.0"
 ignore_missing_imports = true
 disallow_untyped_defs = false
 disallow_untyped_calls = false

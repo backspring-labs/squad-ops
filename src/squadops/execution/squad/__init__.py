@@ -12,4 +12,3 @@ from squadops.execution.squad.qa import QaAgent
 from squadops.execution.squad.strat import StrategyAgent
 
 __all__ = ["LeadAgent", "StrategyAgent", "DevAgent", "QaAgent", "DataAgent"]
-

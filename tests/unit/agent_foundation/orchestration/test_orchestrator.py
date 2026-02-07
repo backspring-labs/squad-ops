@@ -3,14 +3,16 @@
 Tests multi-agent coordination and task routing.
 Part of SIP-0.8.8 Phase 6.
 """
-import pytest
-from unittest.mock import MagicMock, AsyncMock
 
-from squadops.orchestration.orchestrator import AgentOrchestrator, TaskRouting
-from squadops.orchestration.handler_registry import HandlerRegistry
-from squadops.capabilities.handlers.base import CapabilityHandler, HandlerResult, HandlerEvidence
+from unittest.mock import MagicMock
+
+import pytest
+
 from squadops.agents.base import BaseAgent, PortsBundle
 from squadops.agents.skills.registry import SkillRegistry
+from squadops.capabilities.handlers.base import CapabilityHandler, HandlerEvidence, HandlerResult
+from squadops.orchestration.handler_registry import HandlerRegistry
+from squadops.orchestration.orchestrator import AgentOrchestrator
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 
@@ -363,3 +365,24 @@ class TestEnvelopeCreation:
 
         assert envelope.agent_id == "specific-agent"
         assert envelope.cycle_id == "specific-cycle"
+
+
+class TestOrchestratorCallSiteBoundary:
+    """SIP-0061: Orchestrator MUST NOT call record_generation."""
+
+    @pytest.mark.asyncio
+    async def test_orchestrator_does_not_call_record_generation(
+        self, handler_registry, skill_registry, mock_ports
+    ):
+        """Orchestrator lifecycle code never calls record_generation."""
+        mock_obs = MagicMock()
+        orchestrator = AgentOrchestrator(
+            handler_registry=handler_registry,
+            skill_registry=skill_registry,
+            ports=mock_ports,
+            llm_observability=mock_obs,
+        )
+        envelopes = [create_envelope("governance.task_analysis")]
+        await orchestrator.submit_batch(envelopes)
+
+        mock_obs.record_generation.assert_not_called()
