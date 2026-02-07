@@ -406,6 +406,8 @@ class AgentRunner:
         try:
             # Generate response using the LLM
             if self.system and self.system.ports.llm:
+                import time
+                import uuid
                 from squadops.llm.models import LLMRequest
 
                 # Get role-specific system prompt from PromptService
@@ -416,8 +418,48 @@ class AgentRunner:
 
                 # Generate response via LLMRequest
                 request = LLMRequest(prompt=full_prompt)
+                t0 = time.monotonic()
                 response = await self.system.ports.llm.generate(request)
+                latency_ms = (time.monotonic() - t0) * 1000
                 response_text = response.text if hasattr(response, 'text') else str(response)
+
+                # Record generation in LangFuse (SIP-0061)
+                llm_obs = self.system.ports.llm_observability
+                if llm_obs is not None:
+                    from squadops.telemetry.models import (
+                        CorrelationContext,
+                        GenerationRecord,
+                        PromptLayer,
+                        PromptLayerMetadata,
+                    )
+
+                    ctx = CorrelationContext(
+                        cycle_id=f"chat-{session_id or correlation_id}",
+                        task_id=f"chat-{correlation_id}",
+                        agent_id=self.agent_id,
+                        agent_role=self.role,
+                    )
+                    record = GenerationRecord(
+                        generation_id=str(uuid.uuid4()),
+                        model=self._llm_model,
+                        prompt_text=full_prompt,
+                        response_text=response_text,
+                        latency_ms=latency_ms,
+                    )
+                    layers = PromptLayerMetadata(
+                        prompt_layer_set_id=f"{self.role}-chat",
+                        layers=(
+                            PromptLayer(layer_type="system", layer_id=f"{self.role}-system"),
+                            PromptLayer(layer_type="user", layer_id="console-chat"),
+                        ),
+                    )
+                    # Open trace → task span → generation → close
+                    llm_obs.start_cycle_trace(ctx)
+                    llm_obs.start_task_span(ctx)
+                    llm_obs.record_generation(ctx, record, layers)
+                    llm_obs.end_task_span(ctx)
+                    llm_obs.end_cycle_trace(ctx)
+                    llm_obs.flush()
             else:
                 response_text = f"Hello! I'm {self._display_name}. My system is still initializing."
 

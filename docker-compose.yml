@@ -218,6 +218,10 @@ services:
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+      SQUADOPS__LANGFUSE__ENABLED: "true"
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
+      SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
+      SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
     volumes:
       - ./warm-boot:/app/warm-boot
       - max_memory_data:/app/data/memory_db
@@ -251,6 +255,10 @@ services:
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+      SQUADOPS__LANGFUSE__ENABLED: "true"
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
+      SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
+      SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -302,6 +310,10 @@ services:
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+      SQUADOPS__LANGFUSE__ENABLED: "true"
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
+      SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
+      SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
     volumes:
       - ./warm-boot:/app/warm-boot
       - ./docker-compose.yml:/app/docker-compose.yml
@@ -337,6 +349,10 @@ services:
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+      SQUADOPS__LANGFUSE__ENABLED: "true"
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
+      SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
+      SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -367,6 +383,10 @@ services:
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+      SQUADOPS__LANGFUSE__ENABLED: "true"
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
+      SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
+      SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
     volumes:
       - ./warm-boot:/app/warm-boot
       - data_memory_data:/app/data/memory_db
