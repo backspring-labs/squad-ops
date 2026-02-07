@@ -1,9 +1,9 @@
 ---
 title: LangFuse Integration Foundation
-status: accepted
+status: implemented
 author: Framework Committee
 created_at: '2025-12-01T00:00:00Z'
-updated_at: '2026-02-06T19:37:53.364399Z'
+updated_at: '2026-02-07T09:48:26.616743Z'
 original_filename: SIP-LANGFUSE-INTEGRATION-0_9_0.md
 sip_number: 61
 ---
