@@ -347,8 +347,12 @@ class Cycle:
 
     # --- Execution mechanics ---
     build_strategy: str  # "fresh" | "incremental"
-    execution_overrides: dict  # caller-provided overrides
+    applied_defaults: dict  # system-applied defaults for this project/context
+    execution_overrides: dict  # caller-provided overrides (explicit intent)
     expected_artifact_types: tuple[str, ...]
+    # The API merges applied_defaults + execution_overrides to produce the
+    # resolved config. Analysis can diff the two to distinguish "system chose"
+    # from "operator chose" for any parameter.
 
     # --- Extensible experiment context (no schema migration for new dimensions) ---
     experiment_context: dict  # e.g., {"infra_profile": "gpu-a100-4x", "region": "us-east-1"}
@@ -384,6 +388,7 @@ class Run:
     status: str  # RunStatus enum value
     initiated_by: str  # "api" | "cli" | "retry" | "system"
     resolved_config_hash: str  # SHA-256 of the full merged config for comparison/dedup
+    resolved_config_ref: str | None = None  # artifact_id of vault-stored config snapshot (deep inspection)
     started_at: datetime | None = None
     finished_at: datetime | None = None
     gate_decisions: tuple[GateDecision, ...] = ()
@@ -558,8 +563,12 @@ Cycles MUST declare one of the supported flow policies. Runs persist the declare
 
 ### 10.3 Reproducibility Enforcement
 Every Run MUST store:
-- `resolved_config_hash` (SHA-256 of the full merged configuration)
-- Cycle record carries `squad_profile_id` + `squad_profile_snapshot_ref` + `execution_overrides` + `experiment_context`
+- `resolved_config_hash` (SHA-256 of the full merged configuration — `applied_defaults` + `execution_overrides`)
+- `resolved_config_ref` (OPTIONAL) — artifact_id of the full resolved config snapshot stored in the vault. When present, enables deep inspection beyond the hash.
+- Cycle record carries `squad_profile_id` + `squad_profile_snapshot_ref` + `applied_defaults` + `execution_overrides` + `experiment_context`
+
+### 10.3.1 Defaults vs Overrides (Analysis)
+The Cycle stores both `applied_defaults` (what the system filled in) and `execution_overrides` (what the caller explicitly provided). This enables retrospective analysis: "the system defaulted to sequential, but the operator overrode to fan_out_fan_in." The API merges both to produce the resolved config; the two fields are preserved separately for diffing.
 
 ### 10.4 Artifact Integrity
 ArtifactRefs MUST include `content_hash` (SHA-256). `vault_uri` is `None` only during the brief ingestion window (artifact created but not yet stored); once `ArtifactVaultPort.store()` returns, `vault_uri` MUST be populated. ArtifactRefs returned by API endpoints always have `vault_uri` populated.
