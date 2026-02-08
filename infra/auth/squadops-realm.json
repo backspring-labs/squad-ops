@@ -1,5 +1,5 @@
 {
-  "realm": "squadops",
+  "realm": "squadops-local",
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": false,
@@ -8,6 +8,7 @@
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
+  "eventsEnabled": true,
   "roles": {
     "realm": [
       {
@@ -28,7 +29,29 @@
         "composite": false,
         "clientRole": false
       }
-    ]
+    ],
+    "client": {
+      "squadops-runtime": [
+        {
+          "name": "admin",
+          "description": "Full administrative access via runtime API",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "operator",
+          "description": "Operational access via runtime API",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "viewer",
+          "description": "Read-only access via runtime API",
+          "composite": false,
+          "clientRole": true
+        }
+      ]
+    }
   },
   "clients": [
     {

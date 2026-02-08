@@ -1,0 +1,258 @@
+{
+  "realm": "squadops-prod",
+  "enabled": true,
+  "sslRequired": "all",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "maxFailureWaitSeconds": 900,
+  "waitIncrementSeconds": 60,
+  "maxLoginFailures": 5,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "eventsEnabled": true,
+  "adminEventsEnabled": true,
+  "otpPolicyType": "totp",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Full administrative access to SquadOps",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "operator",
+        "description": "Operational access — start/stop cycles, manage tasks",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "viewer",
+        "description": "Read-only access to dashboards and status",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "mfa-required",
+        "description": "Composite role that triggers MFA enforcement for admin and operator users",
+        "composite": true,
+        "clientRole": false,
+        "composites": {
+          "realm": [
+            "admin",
+            "operator"
+          ]
+        }
+      }
+    ],
+    "client": {
+      "squadops-runtime": [
+        {
+          "name": "admin",
+          "description": "Full administrative access via runtime API",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "operator",
+          "description": "Operational access via runtime API",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "viewer",
+          "description": "Read-only access via runtime API",
+          "composite": false,
+          "clientRole": true
+        }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "squadops-console",
+      "name": "SquadOps Console",
+      "description": "Public client for the SquadOps web console (PKCE)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "rootUrl": "https://console.squadops.example",
+      "baseUrl": "/",
+      "redirectUris": [
+        "https://console.squadops.example/*",
+        "https://api.squadops.example/*"
+      ],
+      "webOrigins": [
+        "https://console.squadops.example",
+        "https://api.squadops.example"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "runtime-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "squadops-runtime",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ],
+      "authenticationFlowBindingOverrides": {
+        "browser": "squadops-browser-with-mfa"
+      }
+    },
+    {
+      "clientId": "squadops-runtime",
+      "name": "SquadOps Runtime API",
+      "description": "Confidential client for service-to-service authentication",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "secret": "squadops-runtime-secret",
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ]
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "squadops-browser-with-mfa",
+      "description": "Browser flow with conditional MFA for privileged roles",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "flowAlias": "squadops-username-password-mfa",
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "autheticatorFlow": true
+        }
+      ]
+    },
+    {
+      "alias": "squadops-username-password-mfa",
+      "description": "Username/password with conditional MFA subflow",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "flowAlias": "squadops-conditional-otp",
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "autheticatorFlow": true
+        }
+      ]
+    },
+    {
+      "alias": "squadops-conditional-otp",
+      "description": "Conditional OTP based on user role",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "authenticatorConfig": "squadops-mfa-role-condition",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "squadops-mfa-role-condition",
+      "config": {
+        "condUserRole": "mfa-required",
+        "negate": "false"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "squadops-admin",
+      "email": "admin@squadops.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "SquadOps",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin",
+        "operator",
+        "viewer",
+        "mfa-required"
+      ]
+    }
+  ],
+  "scopeMappings": [],
+  "defaultDefaultClientScopes": [
+    "openid",
+    "profile",
+    "email",
+    "roles"
+  ]
+}

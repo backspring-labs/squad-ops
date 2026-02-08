@@ -143,9 +143,9 @@ services:
       # Auth (SIP-0062) - for Keycloak health check + console OIDC
       SQUADOPS__AUTH__ENABLED: "true"
       SQUADOPS__AUTH__PROVIDER: keycloak
-      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/squadops
-      SQUADOPS__AUTH__OIDC__ISSUER_PUBLIC_URL: http://localhost:8180/realms/squadops
-      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-console
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/squadops-local
+      SQUADOPS__AUTH__OIDC__ISSUER_PUBLIC_URL: http://localhost:8180/realms/squadops-local
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
       SQUADOPS__AUTH__CONSOLE__CLIENT_ID: squadops-console
       SQUADOPS__AUTH__CONSOLE__REDIRECT_URI: http://localhost:8000/health
       SQUADOPS__AUTH__CONSOLE__POST_LOGOUT_REDIRECT_URI: http://localhost:8000/health
@@ -181,8 +181,8 @@ services:
       # Auth (SIP-0062)
       SQUADOPS__AUTH__ENABLED: "true"
       SQUADOPS__AUTH__PROVIDER: keycloak
-      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/squadops
-      SQUADOPS__AUTH__OIDC__ISSUER_PUBLIC_URL: http://localhost:8180/realms/squadops
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/squadops-local
+      SQUADOPS__AUTH__OIDC__ISSUER_PUBLIC_URL: http://localhost:8180/realms/squadops-local
       SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
       SQUADOPS__AUTH__EXPOSE_DOCS: "true"
       SQUADOPS__AUTH__CONSOLE__CLIENT_ID: squadops-console
@@ -242,6 +242,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Auth not needed for agents (no HTTP server)
+      SQUADOPS__AUTH__ENABLED: "false"
     volumes:
       - ./warm-boot:/app/warm-boot
       - max_memory_data:/app/data/memory_db
@@ -279,6 +281,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Auth not needed for agents (no HTTP server)
+      SQUADOPS__AUTH__ENABLED: "false"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -334,6 +338,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Auth not needed for agents (no HTTP server)
+      SQUADOPS__AUTH__ENABLED: "false"
     volumes:
       - ./warm-boot:/app/warm-boot
       - ./docker-compose.yml:/app/docker-compose.yml
@@ -373,6 +379,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Auth not needed for agents (no HTTP server)
+      SQUADOPS__AUTH__ENABLED: "false"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -407,6 +415,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Auth not needed for agents (no HTTP server)
+      SQUADOPS__AUTH__ENABLED: "false"
     volumes:
       - ./warm-boot:/app/warm-boot
       - data_memory_data:/app/data/memory_db

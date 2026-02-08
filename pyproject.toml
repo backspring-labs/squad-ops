@@ -110,6 +110,8 @@ markers = [
     "domain_telemetry: Telemetry domain tests",
     # LangFuse (SIP-0061)
     "langfuse: Tests that require a running LangFuse instance",
+    # Auth (SIP-0062/0063)
+    "auth: Tests that exercise authentication/authorization logic",
 ]
 
 ###########################

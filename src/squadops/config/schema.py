@@ -6,7 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class TasksBackend(str, Enum):
@@ -204,6 +204,117 @@ class ServiceClientConfig(BaseModel):
     client_secret: str = Field(..., description="Service client secret (supports secret:// references)")
 
 
+class KeycloakTokenPolicyConfig(BaseModel):
+    """Keycloak token lifetime policy (SIP-0063)."""
+
+    access_token_minutes: int = Field(default=10, ge=1)
+    refresh_token_minutes: int = Field(default=1440, ge=1)
+    refresh_token_rotation: bool = True
+
+
+class KeycloakSessionPolicyConfig(BaseModel):
+    """Keycloak session timeout policy (SIP-0063)."""
+
+    idle_minutes: int = Field(default=30, ge=1)
+    max_minutes: int = Field(default=480, ge=1)
+
+
+class KeycloakTotpPolicyConfig(BaseModel):
+    """Keycloak TOTP policy (SIP-0063)."""
+
+    algorithm: str = "HmacSHA1"
+    digits: int = Field(default=6, ge=6, le=8)
+    period: int = Field(default=30, ge=20, le=60)
+
+
+class KeycloakSecurityConfig(BaseModel):
+    """Keycloak security settings (SIP-0063)."""
+
+    mfa_required_for_admin: bool = True
+    mfa_required_for_operator: bool = True
+    mfa_method: str = "totp"  # "totp" | "webauthn" | "totp+webauthn"
+    totp_policy: KeycloakTotpPolicyConfig = Field(default_factory=KeycloakTotpPolicyConfig)
+    brute_force_protection: bool = True
+    max_login_failures: int = Field(default=5, ge=1)
+    wait_increment_seconds: int = Field(default=60, ge=1)
+    max_wait_seconds: int = Field(default=900, ge=1)
+
+
+class KeycloakLoggingConfig(BaseModel):
+    """Keycloak event logging settings (SIP-0063)."""
+
+    admin_events_enabled: bool = True
+    login_events_enabled: bool = True
+
+
+class KeycloakAdminConfig(BaseModel):
+    """Keycloak admin account configuration (SIP-0063)."""
+
+    username: str = "admin"
+    password: str  # Supports secret:// references
+    allowed_networks: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_cidr_networks(self) -> "KeycloakAdminConfig":
+        """Validate allowed_networks entries are valid CIDRs."""
+        import ipaddress
+
+        for cidr in self.allowed_networks:
+            try:
+                ipaddress.ip_network(cidr, strict=False)
+            except ValueError as e:
+                raise ValueError(f"Invalid CIDR in allowed_networks: {cidr!r} — {e}")
+        return self
+
+
+class KeycloakOperationalConfig(BaseModel):
+    """Keycloak operational deployment configuration (SIP-0063)."""
+
+    realm: str = "squadops-local"
+    base_url: str = "http://localhost:8180"
+    public_url: str | None = None
+    db_dsn: str | None = None  # secret:// ref
+    proxy_mode: str = "none"  # "none" | "edge" | "reencrypt" | "passthrough"
+    external_tls_termination: bool = False
+    hostname_strict: bool = False
+    admin: KeycloakAdminConfig
+    token_policy: KeycloakTokenPolicyConfig = Field(default_factory=KeycloakTokenPolicyConfig)
+    session_policy: KeycloakSessionPolicyConfig = Field(default_factory=KeycloakSessionPolicyConfig)
+    security: KeycloakSecurityConfig = Field(default_factory=KeycloakSecurityConfig)
+    logging: KeycloakLoggingConfig = Field(default_factory=KeycloakLoggingConfig)
+
+    def model_post_init(self, __context: Any) -> None:
+        """Cross-field validation for staging/prod environments."""
+        _LOOPBACK = ("localhost", "127.0.0.1", "::1")
+        is_staging_or_prod = "staging" in self.realm or "prod" in self.realm
+
+        if is_staging_or_prod:
+            if self.db_dsn is None:
+                raise ValueError("db_dsn required for staging/prod realms")
+            if self.proxy_mode == "none":
+                raise ValueError("proxy_mode must not be 'none' for staging/prod")
+            if not self.hostname_strict:
+                raise ValueError("hostname_strict must be true for staging/prod")
+            if self.public_url and not self.public_url.startswith("https://"):
+                raise ValueError("public_url must use HTTPS for staging/prod")
+            if any(lb in self.base_url for lb in _LOOPBACK):
+                raise ValueError("base_url must not reference loopback for staging/prod")
+
+        # Proxy + TLS mutual consistency
+        if self.proxy_mode == "edge" and not self.external_tls_termination:
+            raise ValueError(
+                "external_tls_termination must be true when proxy_mode is 'edge'"
+            )
+        if self.proxy_mode == "none" and self.external_tls_termination:
+            raise ValueError(
+                "external_tls_termination must be false when proxy_mode is 'none'"
+            )
+        if self.external_tls_termination and not self.public_url:
+            raise ValueError("public_url required when external_tls_termination is true")
+        if self.proxy_mode in ("edge", "reencrypt", "passthrough") and not self.public_url:
+            raise ValueError("public_url required when proxy_mode is not 'none'")
+
+
 class AuthConfig(BaseModel):
     """Authentication and authorization configuration (SIP-0062)."""
 
@@ -227,6 +338,9 @@ class AuthConfig(BaseModel):
         default=False,
         description="Allow unauthenticated access to /docs and /openapi.json",
     )
+    keycloak: KeycloakOperationalConfig | None = Field(
+        default=None, description="Keycloak operational configuration (SIP-0063)"
+    )
 
     def model_post_init(self, __context: Any) -> None:
         """Post-initialization validation."""
@@ -236,6 +350,8 @@ class AuthConfig(BaseModel):
             raise ValueError(f"Unknown auth provider: {self.provider}")
         if self.enabled and self.provider != "disabled" and self.oidc is None:
             raise ValueError("oidc configuration is required when auth is enabled and provider != 'disabled'")
+        if self.enabled and self.provider == "keycloak" and self.keycloak is None:
+            pass  # keycloak operational config is optional — only needed for deploy profiles
 
 
 class PrefectConfig(BaseModel):

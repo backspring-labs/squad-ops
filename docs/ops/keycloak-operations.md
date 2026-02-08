@@ -1,0 +1,166 @@
+# Keycloak Operations Runbook (SIP-0063)
+
+Operational procedures for the SquadOps Keycloak deployment.
+
+## Deployment Profiles
+
+| Profile | Realm | MFA | Token TTL | Proxy | TLS |
+|---------|-------|-----|-----------|-------|-----|
+| `local` | `squadops-local` | Off | Defaults | none | none |
+| `staging` | `squadops-staging` | Admin only | 10 min | edge | external |
+| `prod` | `squadops-prod` | Admin + operator | 5 min | edge | external |
+
+Config profiles: `config/profiles/{local,staging,prod}.yaml`
+Realm exports: `infra/auth/squadops-realm{,-staging,-prod}.json`
+
+## Starting Keycloak (Local Dev)
+
+```bash
+# Start core services + Keycloak
+docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d postgres squadops-keycloak
+
+# Verify realm imported
+curl -s http://localhost:8180/realms/squadops-local | jq .realm
+# Expected: "squadops-local"
+```
+
+## Backup & Restore
+
+### Export Realm
+
+```bash
+# Export from running instance
+docker compose -f docker-compose.yml -f docker-compose.keycloak.yml exec squadops-keycloak \
+  /opt/keycloak/bin/kc.sh export --realm squadops-local --file /tmp/realm-export.json
+
+# Copy to host
+docker cp squadops-keycloak:/tmp/realm-export.json ./backups/realm-$(date +%Y%m%d).json
+```
+
+### Import Realm
+
+```bash
+# Import to fresh instance (use --override flag to replace existing)
+docker compose -f docker-compose.yml -f docker-compose.keycloak.yml exec squadops-keycloak \
+  /opt/keycloak/bin/kc.sh import --file /opt/keycloak/data/import/squadops-realm.json
+```
+
+### Database Backup (Staging/Prod)
+
+```bash
+# PostgreSQL dump of Keycloak database
+pg_dump -h <db-host> -U keycloak -d keycloak > keycloak-db-$(date +%Y%m%d).sql
+
+# Restore
+psql -h <db-host> -U keycloak -d keycloak < keycloak-db-20250101.sql
+```
+
+## Upgrade Strategy
+
+**Pin version**: `quay.io/keycloak/keycloak:24.0.5` (current)
+
+### Upgrade Process
+
+1. **Read release notes** for the target version
+2. **Test in staging first** — deploy new version to staging, soak for 48h minimum
+3. **Verify realm export/import roundtrip** — export from old version, import to new
+4. **Check breaking changes** in authentication flows and token formats
+5. **Update image tag** in `docker-compose.keycloak.yml` and deployment configs
+6. **Deploy to prod** after staging soak period passes
+
+### Version Compatibility
+
+- Keycloak 24.x realm exports are forward-compatible within the 24.x line
+- Major version upgrades (24 -> 25) may require realm export migration
+- Always test with `--import-realm` on a fresh instance before upgrading prod
+
+## Signing Key Rotation
+
+Keycloak automatically rotates RSA signing keys. The overlap period must exceed the maximum token lifetime to avoid validation failures.
+
+**Overlap calculation:**
+```
+overlap >= access_token_minutes + session_policy.max_minutes
+staging: >= 10 + 480 = 490 minutes (~8.2 hours)
+prod:    >= 5 + 480 = 485 minutes (~8.1 hours)
+```
+
+### Manual Key Rotation
+
+1. Navigate to **Realm Settings > Keys** in the Keycloak admin console
+2. Click **Add Keystore > rsa-generated**
+3. Set priority higher than the existing key
+4. Wait for the overlap period to elapse
+5. Disable the old key (do NOT delete until all tokens signed with it have expired)
+
+## Admin Role Separation
+
+### Keycloak Admin vs Realm Admin
+
+| Role | Access | Credentials |
+|------|--------|-------------|
+| Keycloak Admin | Full server admin, all realms | `KEYCLOAK_ADMIN` / `KEYCLOAK_ADMIN_PASSWORD` |
+| Realm Admin | `admin` realm role in squadops-{staging,prod} | Per-user credentials + MFA |
+
+**Best practice**: The Keycloak server admin account should only be used for:
+- Initial setup and realm creation
+- Keycloak version upgrades
+- Emergency recovery
+
+Day-to-day operations should use realm-level admin accounts with MFA enabled.
+
+### Admin Network Restrictions
+
+The `allowed_networks` field in `KeycloakAdminConfig` restricts admin API access by source IP:
+
+```yaml
+admin:
+  allowed_networks: ["10.0.0.0/8"]  # Internal network only
+```
+
+## MFA Enrollment Rollout
+
+### Phase 1: Admin accounts (staging first)
+1. Deploy staging realm with `squadops-browser-with-mfa` flow
+2. Notify admin users to enroll TOTP via **Account Console > Security > Signing In**
+3. Monitor for enrollment issues over 1-2 weeks
+4. Deploy to prod
+
+### Phase 2: Operator accounts
+1. Update prod profile: `mfa_required_for_operator: true`
+2. Notify operator users with enrollment instructions
+3. Set a grace period if needed (Keycloak supports conditional OTP setup)
+
+### TOTP Enrollment Steps (for users)
+1. Log in to Keycloak Account Console: `https://auth.squadops.example/realms/squadops-prod/account`
+2. Navigate to **Security > Signing In > Two-Factor Authentication**
+3. Click **Set up Authenticator Application**
+4. Scan QR code with authenticator app (Google Authenticator, Authy, etc.)
+5. Enter verification code to confirm
+
+## Realm Export Linting
+
+Run the lint script before deploying realm changes:
+
+```bash
+python scripts/dev/lint_realm_exports.py
+```
+
+The linter checks staging/prod realm exports for:
+- No localhost in redirect URIs or web origins
+- Correct `sslRequired` (`external` for staging, `all` for prod)
+- Refresh token rotation enabled (`revokeRefreshToken: true`, `refreshTokenMaxReuse: 0`)
+- Event logging enabled
+- Brute force protection enabled
+- MFA authentication flow present
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `401 Unauthorized` after Keycloak restart | JWKS cache stale | Wait for `jwks_cache_ttl_seconds` (default 3600s) or restart Runtime API |
+| MFA prompt not appearing | User missing `mfa-required` composite role | Assign `admin` or `operator` realm role (composites auto-assign `mfa-required`) |
+| Token audience mismatch | Missing `runtime-api-audience` mapper | Verify mapper exists on `squadops-console` client |
+| `Invalid redirect_uri` | Redirect URI not in client allowlist | Update `redirectUris` in realm export |
+| Realm import fails | Realm already exists | Use `--override` flag or delete existing realm first |
+| Connection refused to Keycloak | Service not ready or wrong port | Check `8180:8080` port mapping, verify health endpoint |

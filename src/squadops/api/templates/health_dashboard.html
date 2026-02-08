@@ -360,9 +360,28 @@
         let responsePollInterval = null;
         let responsePollTimeout = null;
         
+        function consoleAuthHeaders() {
+            const h = {};
+            // accessToken is declared in the OIDC script block below;
+            // it's hoisted onto window so we can access it cross-block.
+            const tok = window._oidcAccessToken;
+            if (tok) {
+                h['Authorization'] = 'Bearer ' + tok;
+            }
+            return h;
+        }
+
         async function initializeConsole() {
             try {
-                const response = await fetch('/console/session');
+                const response = await fetch('/console/session', {headers: consoleAuthHeaders()});
+                if (response.status === 401) {
+                    appendOutput('Authentication required. Please log in using the Auth tab, then reopen the Console tab.');
+                    return;
+                }
+                if (!response.ok) {
+                    appendOutput('Error initializing console: server returned ' + response.status);
+                    return;
+                }
                 const data = await response.json();
                 consoleSessionId = data.session_id;
                 appendOutput('Agent Console initialized. Type "help" for available commands.');
@@ -402,6 +421,8 @@
                 const requestBody = '{"session_id":"' + consoleSessionId + '","command":"' + command.replace(/"/g, '\\"') + '"}';
                 const fetchHeaders = new Headers();
                 fetchHeaders.append('Content-Type', 'application/json');
+                const authH = consoleAuthHeaders();
+                if (authH['Authorization']) fetchHeaders.append('Authorization', authH['Authorization']);
                 const fetchOptions = {method: 'POST', headers: fetchHeaders, body: requestBody};
                 const response = await fetch('/console/command', fetchOptions);
                 
@@ -541,7 +562,7 @@
             
             responsePollInterval = setInterval(async function() {
                 try {
-                    const response = await fetch('/console/responses/' + consoleSessionId);
+                    const response = await fetch('/console/responses/' + consoleSessionId, {headers: consoleAuthHeaders()});
                     if (!response.ok) {
                         throw new Error('HTTP error: ' + response.status);
                     }
@@ -1034,7 +1055,9 @@
         const REFRESH_MARGIN_SECONDS = 30;
 
         // Token storage — in-memory only (SIP Section 6.8)
+        // Also mirror to window._oidcAccessToken for cross-script-block access (console)
         let accessToken = null;
+        window._oidcAccessToken = null;
         let refreshToken = null;
         let idToken = null;
         let tokenExpiresAt = 0;
@@ -1086,6 +1109,7 @@
 
         function clearTokens() {
             accessToken = null;
+            window._oidcAccessToken = null;
             refreshToken = null;
             idToken = null;
             tokenExpiresAt = 0;
@@ -1115,6 +1139,7 @@
                 if (!resp.ok) { clearTokens(); return; }
                 const data = await resp.json();
                 accessToken = data.access_token;
+                window._oidcAccessToken = accessToken;
                 refreshToken = data.refresh_token || refreshToken;
                 idToken = data.id_token || idToken;
                 tokenExpiresAt = Date.now() + data.expires_in * 1000;
@@ -1213,6 +1238,7 @@
                 if (!resp.ok) { console.error('Token exchange failed'); return; }
                 const data = await resp.json();
                 accessToken = data.access_token;
+                window._oidcAccessToken = accessToken;
                 refreshToken = data.refresh_token;
                 idToken = data.id_token;
                 tokenExpiresAt = Date.now() + data.expires_in * 1000;

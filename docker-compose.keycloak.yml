@@ -1,6 +1,14 @@
-# SIP-0062: Keycloak OIDC Identity Provider for local dev / CI
+# SIP-0062/0063: Keycloak OIDC Identity Provider for local dev / CI
 # Uses the shared squadops-postgres instance (keycloak database).
+# Realm: squadops-local (renamed from "squadops" in SIP-0063)
 # ⚠ LOCAL DEV / CI ONLY — hardcoded secrets below are NOT production-grade.
+#
+# Staging/prod operational env vars (not used here, for reference):
+#   KC_PROXY_HEADERS: xforwarded          # when behind reverse proxy
+#   KC_HOSTNAME_STRICT: "true"            # enforce hostname matching
+#   KC_HOSTNAME: auth.squadops.example    # public hostname
+#   KC_DB_URL: jdbc:postgresql://...      # external database
+#   KC_FEATURES: token-exchange           # optional features
 
 services:
   squadops-keycloak:
