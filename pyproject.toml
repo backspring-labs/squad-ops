@@ -11,7 +11,7 @@ include = ["squadops*", "adapters*"]  # Include both packages
 
 [project]
 name = "squadops"
-version = "0.9.2"
+version = "0.9.3"
 description = "SquadOps: a production-grade multi-agent orchestration framework."
 requires-python = ">=3.11"
 authors = [
@@ -29,7 +29,7 @@ langfuse = ["langfuse>=2.0"]
 #######################################
 
 [tool.ruff]
-target-version = "0.9.2"
+target-version = "py311"
 line-length = 100
 
 extend-exclude = [
@@ -146,7 +146,7 @@ fail_under = 0
 ###########################
 
 [tool.mypy]
-python_version = "0.9.2"
+python_version = "3.11"
 ignore_missing_imports = true
 disallow_untyped_defs = false
 disallow_untyped_calls = false

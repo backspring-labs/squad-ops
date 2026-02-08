@@ -1,0 +1,184 @@
+"""
+Pydantic DTOs for SIP-0064 cycle API request/response serialization.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+
+# =============================================================================
+# Nested DTOs
+# =============================================================================
+
+
+class GateDTO(BaseModel):
+    name: str
+    description: str
+    after_task_types: list[str] = Field(default_factory=list)
+
+
+class TaskFlowPolicyDTO(BaseModel):
+    mode: Literal["sequential", "fan_out_fan_in", "fan_out_soft_gates"] = "sequential"
+    gates: list[GateDTO] = Field(default_factory=list)
+
+
+# =============================================================================
+# Request DTOs
+# =============================================================================
+
+
+class CycleCreateRequest(BaseModel):
+    """Create a new cycle + first run (T17: atomic)."""
+
+    prd_ref: str | None = None
+    squad_profile_id: str
+    task_flow_policy: TaskFlowPolicyDTO = Field(
+        default_factory=lambda: TaskFlowPolicyDTO()
+    )
+    build_strategy: Literal["fresh", "incremental"] = "fresh"  # T13
+    execution_overrides: dict = Field(default_factory=dict)
+    expected_artifact_types: list[str] = Field(default_factory=list)
+    experiment_context: dict = Field(default_factory=dict)
+    notes: str | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class GateDecisionRequest(BaseModel):
+    """Gate decision (T4+T13: normalized vocab, typed)."""
+
+    decision: Literal["approved", "rejected"]
+    notes: str | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class SetActiveProfileRequest(BaseModel):
+    profile_id: str
+
+    class Config:
+        extra = "forbid"
+
+
+class BaselinePromoteRequest(BaseModel):
+    artifact_id: str
+
+    class Config:
+        extra = "forbid"
+
+
+# =============================================================================
+# Response DTOs
+# =============================================================================
+
+
+class ProjectResponse(BaseModel):
+    project_id: str
+    name: str
+    description: str
+    created_at: datetime
+    tags: list[str]
+
+
+class GateDecisionResponse(BaseModel):
+    gate_name: str
+    decision: str
+    decided_by: str
+    decided_at: datetime
+    notes: str | None = None
+
+
+class RunResponse(BaseModel):
+    run_id: str
+    cycle_id: str
+    run_number: int
+    status: str
+    initiated_by: str
+    resolved_config_hash: str
+    resolved_config_ref: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    gate_decisions: list[GateDecisionResponse] = Field(default_factory=list)
+    artifact_refs: list[str] = Field(default_factory=list)
+
+
+class CycleResponse(BaseModel):
+    cycle_id: str
+    project_id: str
+    created_at: datetime
+    created_by: str
+    prd_ref: str | None = None
+    squad_profile_id: str
+    squad_profile_snapshot_ref: str
+    task_flow_policy: TaskFlowPolicyDTO
+    build_strategy: str
+    applied_defaults: dict = Field(default_factory=dict)
+    execution_overrides: dict = Field(default_factory=dict)
+    expected_artifact_types: list[str] = Field(default_factory=list)
+    experiment_context: dict = Field(default_factory=dict)
+    notes: str | None = None
+    status: str  # Derived CycleStatus
+    runs: list[RunResponse] = Field(default_factory=list)
+
+
+class CycleCreateResponse(BaseModel):
+    """Response for cycle creation — includes first run_id."""
+
+    cycle_id: str
+    project_id: str
+    run_id: str
+    run_number: int
+    status: str
+    prd_ref: str | None = None
+    squad_profile_id: str
+    squad_profile_snapshot_ref: str
+    task_flow_policy: TaskFlowPolicyDTO
+    resolved_config_hash: str
+
+
+class AgentProfileEntryResponse(BaseModel):
+    agent_id: str
+    role: str
+    model: str
+    enabled: bool
+    config_overrides: dict = Field(default_factory=dict)
+
+
+class SquadProfileResponse(BaseModel):
+    profile_id: str
+    name: str
+    description: str
+    version: int
+    agents: list[AgentProfileEntryResponse]
+    created_at: datetime
+
+
+class ArtifactRefResponse(BaseModel):
+    artifact_id: str
+    project_id: str
+    cycle_id: str | None = None
+    run_id: str | None = None
+    artifact_type: str
+    filename: str
+    content_hash: str
+    size_bytes: int
+    media_type: str
+    created_at: datetime
+    metadata: dict = Field(default_factory=dict)
+    vault_uri: str | None = None
+
+
+class ErrorDetail(BaseModel):
+    code: str
+    message: str
+    details: Any = None
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorDetail

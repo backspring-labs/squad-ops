@@ -116,13 +116,16 @@ def bump_version(new_version: str):
 
     errors = []
 
-    # Update pyproject.toml
+    # Update pyproject.toml — only the [project] version line, not tool config
+    # like target-version (ruff) or python_version (mypy).
     if PYPROJECT_PATH.exists():
         content = PYPROJECT_PATH.read_text()
         new_content = re.sub(
-            r'(version\s*=\s*")[^"]+(")',
+            r'^(version\s*=\s*")[^"]+(")',
             rf'\g<1>{new_version}\g<2>',
-            content
+            content,
+            count=1,
+            flags=re.MULTILINE,
         )
         if new_content != content:
             PYPROJECT_PATH.write_text(new_content)

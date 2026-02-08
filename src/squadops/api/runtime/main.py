@@ -32,7 +32,13 @@ from squadops.tasks.legacy_models import (
     TaskState,
 )
 
-from .deps import get_tasks_adapter_dep, set_audit_port, set_auth_ports, set_tasks_adapter
+from .deps import (
+    get_tasks_adapter_dep,
+    set_audit_port,
+    set_auth_ports,
+    set_cycle_ports,
+    set_tasks_adapter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +105,21 @@ app.add_middleware(RequestIDMiddleware)
 from squadops.api.routes.auth import router as auth_router
 
 app.include_router(auth_router)
+
+# SIP-0064: Include cycle execution routes
+from squadops.api.routes.cycles import (
+    artifacts_router,
+    cycles_router,
+    profiles_router,
+    projects_router,
+    runs_router,
+)
+
+app.include_router(projects_router)
+app.include_router(cycles_router)
+app.include_router(runs_router)
+app.include_router(profiles_router)
+app.include_router(artifacts_router)
 
 # Global connection pool (for memory endpoints only)
 pool: asyncpg.Pool | None = None
@@ -195,6 +216,27 @@ async def startup_event():
         logger.info("Tasks adapter initialized")
     except Exception as e:
         logger.error(f"Failed to initialize tasks adapter during startup: {e}")
+
+    # Initialize SIP-0064 cycle ports
+    try:
+        from adapters.cycles.factory import (
+            create_artifact_vault,
+            create_cycle_registry,
+            create_flow_executor,
+            create_project_registry,
+            create_squad_profile_port,
+        )
+
+        set_cycle_ports(
+            project_registry=create_project_registry("config"),
+            cycle_registry=create_cycle_registry("memory"),
+            squad_profile=create_squad_profile_port("config"),
+            artifact_vault=create_artifact_vault("filesystem"),
+            flow_executor=create_flow_executor("in_process"),
+        )
+        logger.info("SIP-0064 cycle ports initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize cycle ports: {e}")
 
 
 @app.on_event("shutdown")
