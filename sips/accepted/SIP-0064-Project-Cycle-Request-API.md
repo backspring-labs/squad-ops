@@ -43,7 +43,7 @@ This SIP also **deprecates WarmBoot** as a standalone execution concept. All exe
 
 - All execution is represented as **Project → PCR → Cycle → Run → Tasks**.
 - "Power-on self test" and example workloads are implemented as **built-in Example Projects with default PCRs**, executed via `POST /cycles` (not `/warmboot/submit`).
-- Existing WarmBoot API routes (`/warmboot/*`) remain **functional but frozen** — no new features, no bug fixes. They will be removed in a future release.
+- Existing WarmBoot API routes (`/warmboot/*`) remain **functional but frozen** — no new features, no bug fixes. **WarmBoot routes will be removed no later than v0.9.5; WarmBoot models will be removed at v1.0.**
 - Historical WarmBoot data is **not migrated** into Cycle+Run records. It remains queryable via legacy routes for continuity but is not promoted into the new model.
 
 ### 2.2 Pulse / Surge Vocabulary
@@ -134,6 +134,8 @@ Every Run MUST reference:
 
 A Cycle MAY have multiple Runs (retry/replay). If execution parameters change, that is a **new Cycle** (new intent), not a new Run.
 
+**Execution parameter set (immutable per Cycle):** `(pcr_id, pcr_version, squad_profile_id, resolved_overrides, task_flow_policy)`. Any change to these constitutes a new Cycle. Environmental differences (infrastructure state, LLM temperature drift, external service availability) do not require a new Cycle — they are recorded as a new Run of the same Cycle.
+
 ### 5.6 Squad Profile
 
 A saved, versioned squad configuration (models per role, tools, concurrency defaults, etc.). There is an "active" profile and optional recommended profiles per PCR, but PCR does not hard-bind to a profile.
@@ -199,7 +201,7 @@ running → cancelled
 | `failed`          | `failed`            |
 | `cancelled`       | see below           |
 
-When a Run is cancelled: if the Cycle has been explicitly cancelled (no further Runs permitted), CycleStatus = `cancelled`. Otherwise CycleStatus reverts to `created` (another Run may be started).
+**Cancelled Run derivation:** CycleStatus is derived from the latest *non-cancelled* Run. If the Cycle itself has been explicitly cancelled (no further Runs permitted), CycleStatus = `cancelled`. If all Runs are cancelled but the Cycle is not, CycleStatus reverts to `created` (another Run may be started). A cancelled Run never masks a prior successful or failed Run's status.
 
 ---
 
@@ -214,9 +216,9 @@ The SIP defines API shapes (inbound adapter: FastAPI) and requires the following
 | `ProjectRegistryPort` | List/get projects | Config-file loader (YAML/JSON); DB later |
 | `PCRRegistryPort` | List/get PCRs; resolve PCR version for cycle creation | Config-file loader (YAML/JSON); DB later |
 | `CycleRegistryPort` | Create/query cycles; create/update Runs; record Run lifecycle transitions | PostgreSQL adapter |
-| `SquadProfilePort` | Profile CRUD; active selection; resolve immutable snapshot (hash) for a Run | Config-file loader + hash; DB later |
+| `SquadProfilePort` | Read-only profile access; active selection; resolve immutable snapshot (hash) for a Run | Config-file loader + hash; full CRUD deferred |
 | `ArtifactVaultPort` | Ingest/retrieve/list artifacts; baseline promotion | Filesystem adapter; S3 later |
-| `FlowExecutionPort` | Interpret TaskFlowPolicy; construct task execution plan; report Run/task events back to CycleRegistryPort; manage gate decisions | Orchestrator adapter (wraps AgentOrchestrator + optional Prefect) |
+| `FlowExecutionPort` | Interpret TaskFlowPolicy; construct task execution plan; report Run/task events back to CycleRegistryPort; manage gate decisions | In-process executor (wraps AgentOrchestrator); Prefect adapter deferred |
 
 ### 7.2 Hex Boundaries
 
@@ -253,8 +255,8 @@ The SIP defines API shapes (inbound adapter: FastAPI) and requires the following
 ### 7.3 Adapter Notes
 
 - **ProjectRegistryPort** and **PCRRegistryPort** are read-only for v0.9.3. Projects and PCRs are pre-registered via config files (YAML/JSON), not created via API. This keeps the first adapter simple. DB-backed CRUD can be added later without changing the port interface.
-- **SquadProfilePort** loads profiles from config files and computes a deterministic hash as the snapshot identifier. Profile CRUD via API is v0.9.3; profile creation via API may be deferred if config-file loading is sufficient.
-- **FlowExecutionPort** wraps `AgentOrchestrator` and interprets `TaskFlowPolicy` at runtime. For v0.9.3: `sequential` = submit tasks one at a time; `fan_out_fan_in` = submit all, await all; `fan_out_soft_gates` = submit with pause points where the Run enters `paused` status and awaits operator approval via API.
+- **SquadProfilePort** loads profiles from config files and computes a deterministic hash as the snapshot identifier. Profiles are **read-only in v0.9.3** (config-loaded); only "set active" is a mutable operation. Full CRUD (create/update/delete via API) is deferred until runtime profile management is needed.
+- **FlowExecutionPort** interprets `TaskFlowPolicy` at runtime. The **v0.9.3 default adapter is an in-process executor delegating to `AgentOrchestrator`** with sequential task dispatch. Prefect is a future adapter option, not a v0.9.3 deliverable. For v0.9.3: `sequential` = submit tasks one at a time; `fan_out_fan_in` = submit all, await all; `fan_out_soft_gates` = submit with pause points where the Run enters `paused` status and awaits operator approval via API.
 
 ---
 
@@ -305,6 +307,8 @@ class Gate:
     name: str
     description: str
     after_task_types: tuple[str, ...]  # gate triggers after these tasks complete
+    # Gate evaluation matches after_task_types against TaskEnvelope.task_type
+    # values persisted on completed task records within the current Run.
 ```
 
 ### 8.4 Cycle
@@ -364,7 +368,7 @@ class ArtifactRef:
     media_type: str  # MIME type
     created_at: datetime
     metadata: dict = field(default_factory=dict)
-    vault_uri: str | None = None  # retrieval URI (filesystem path, S3 key, etc.)
+    vault_uri: str | None = None  # None only during ingestion; populated by ArtifactVaultPort.store()
 ```
 
 ### 8.7 SquadProfile
@@ -407,7 +411,7 @@ All API routes are under `/api/v1/` on the runtime-api service. Error responses 
 ### 9.2 PCRs
 
 - `GET /api/v1/projects/{project_id}/pcrs` — Lists PCR templates for a project.
-- `GET /api/v1/projects/{project_id}/pcrs/{pcr_id}` — Returns full PCR definition.
+- `GET /api/v1/projects/{project_id}/pcrs/{pcr_id}` — Returns full PCR definition. **Version resolution:** returns the latest version by default; use `?version=N` to fetch a specific version.
 
 ### 9.3 Squad Profiles
 
@@ -431,11 +435,28 @@ All API routes are under `/api/v1/` on the runtime-api service. Error responses 
 - `POST /api/v1/cycles/{cycle_id}/runs/{run_id}/cancel` — Cancels a Run.
 - `POST /api/v1/cycles/{cycle_id}/runs/{run_id}/gates/{gate_name}` — Approve/reject a gate.
 
+**Gate decision request payload:**
+```json
+{
+  "decision": "approve",
+  "notes": "QA review passed, approving deployment gate"
+}
+```
+`decision` is required: `"approve"` or `"reject"`. `notes` is optional.
+
+**Gate idempotency rules:**
+- Double-approve (same gate, same decision): returns `200 OK` (no-op).
+- Approve after already rejected (or vice versa): returns `409 Conflict` (`GATE_ALREADY_DECIDED`).
+- Gate decision after Run is in a terminal state (`completed`/`failed`/`cancelled`): returns `409 Conflict` (`RUN_TERMINAL`).
+
+**PCR version resolution at cycle creation:** If `pcr_version` is omitted, the system resolves to the latest published version at creation time and records it on the Cycle. Callers may provide an explicit `pcr_version` for reproducibility.
+
 **Cycle creation request payload:**
 ```json
 {
   "project_id": "hello_squad",
   "pcr_id": "default",
+  "pcr_version": null,
   "execution_overrides": {},
   "squad_profile_id": null,
   "notes": "Benchmark run after model upgrade"
@@ -463,8 +484,9 @@ All API routes are under `/api/v1/` on the runtime-api service. Error responses 
 - `GET /api/v1/artifacts/{artifact_id}/download` — Retrieves artifact bytes or signed URL.
 - `GET /api/v1/projects/{project_id}/artifacts` — Lists artifacts for a project (filterable by cycle, run).
 - `GET /api/v1/cycles/{cycle_id}/artifacts` — Lists artifacts produced by a cycle.
-- `POST /api/v1/projects/{project_id}/baseline` — Promotes an artifact as the baseline (incremental builds only).
-- `GET /api/v1/projects/{project_id}/baseline` — Gets current baseline artifact ref.
+- `POST /api/v1/projects/{project_id}/baseline/{artifact_type}` — Promotes an artifact as the baseline for the given type (incremental builds only).
+- `GET /api/v1/projects/{project_id}/baseline/{artifact_type}` — Gets current baseline artifact ref for the given type.
+- `GET /api/v1/projects/{project_id}/baseline` — Lists all current baselines (keyed by artifact_type).
 
 **Baseline rules (normative):**
 - Baseline promotion is only valid when the cycle's build strategy is `incremental`.
@@ -487,7 +509,7 @@ Every Run MUST store:
 - `task_flow_policy_ref`
 
 ### 10.4 Artifact Integrity
-ArtifactRefs MUST include `content_hash` (SHA-256) and `vault_uri` for stable retrieval.
+ArtifactRefs MUST include `content_hash` (SHA-256). `vault_uri` is `None` only during the brief ingestion window (artifact created but not yet stored); once `ArtifactVaultPort.store()` returns, `vault_uri` MUST be populated. ArtifactRefs returned by API endpoints always have `vault_uri` populated.
 
 ### 10.5 State Transition Enforcement
 Cycle and Run status transitions MUST follow the legal transition rules defined in Section 6. Invalid transitions return `409 Conflict`.
@@ -522,6 +544,8 @@ All API errors use a standard JSON shape for machine-parseability (CLI and futur
 | Invalid override value (schema) | 422 | `OVERRIDE_VALIDATION_ERROR` |
 | Illegal state transition | 409 | `ILLEGAL_STATE_TRANSITION` |
 | Baseline promotion on fresh build | 409 | `BASELINE_NOT_ALLOWED` |
+| Gate already decided (conflicting decision) | 409 | `GATE_ALREADY_DECIDED` |
+| Gate decision on terminal Run | 409 | `RUN_TERMINAL` |
 | Artifact not found | 404 | `ARTIFACT_NOT_FOUND` |
 | Missing required field | 422 | `VALIDATION_ERROR` |
 | Authentication required | 401 | `AUTH_REQUIRED` |
