@@ -1,11 +1,11 @@
 ---
 sip_number: 62
 title: OIDC-Based Authentication & Authorization Boundary (Keycloak-First, Provider-Portable)
-status: accepted
+status: implemented
 author: Jason Ladd
 approver: jladd
 created_at: '2026-02-07T00:00:00Z'
-updated_at: '2026-02-07T18:00:00Z'
+updated_at: '2026-02-07T20:19:45.902321Z'
 original_filename: SIP-AUTH-BOUNDARY-0_9_1.md
 ---
 # SIP-0062 — OIDC Authentication & Authorization Boundary
