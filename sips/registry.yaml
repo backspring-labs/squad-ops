@@ -1,4 +1,4 @@
-last_assigned: 63
+last_assigned: 64
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -564,3 +564,12 @@ sips:
   approver: jladd
   created_at: '2026-02-07T00:00:00Z'
   updated_at: '2026-02-08T08:34:23.705657Z'
+- sip_uid: null
+  sip_number: 64
+  title: Project Cycle Request API Foundation
+  path: sips/accepted/SIP-0064-Project-Cycle-Request-API.md
+  status: accepted
+  author: Jason Ladd
+  approver: jladd
+  created_at: '2026-02-08T00:00:00Z'
+  updated_at: '2026-02-08T09:57:22.661824Z'
