@@ -1166,11 +1166,61 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}",
             }
 
+    async def _fetch_keycloak_version(self, base_url: str, session: aiohttp.ClientSession) -> str:
+        """Fetch Keycloak server version via admin API (best-effort).
+
+        Reads admin credentials from config (auth.keycloak.admin) or env vars
+        SQUADOPS__AUTH__KEYCLOAK__ADMIN__USERNAME / PASSWORD. Returns "Unknown"
+        if credentials are unavailable or the API call fails.
+        """
+        try:
+            app_config = get_config()
+            kc_cfg = getattr(app_config.auth, "keycloak", None)
+            if kc_cfg and kc_cfg.admin:
+                admin_user = kc_cfg.admin.username
+                admin_pass = kc_cfg.admin.password
+            else:
+                admin_user = os.environ.get("SQUADOPS__AUTH__KEYCLOAK__ADMIN__USERNAME")
+                admin_pass = os.environ.get("SQUADOPS__AUTH__KEYCLOAK__ADMIN__PASSWORD")
+            if not admin_user or not admin_pass:
+                return "Unknown"
+
+            token_url = f"{base_url}/realms/master/protocol/openid-connect/token"
+            async with session.post(
+                token_url,
+                data={
+                    "grant_type": "password",
+                    "client_id": "admin-cli",
+                    "username": admin_user,
+                    "password": admin_pass,
+                },
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as token_resp:
+                if token_resp.status != 200:
+                    return "Unknown"
+                token_data = await token_resp.json()
+                admin_token = token_data.get("access_token")
+                if not admin_token:
+                    return "Unknown"
+
+            async with session.get(
+                f"{base_url}/admin/serverinfo",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as info_resp:
+                if info_resp.status != 200:
+                    return "Unknown"
+                info = await info_resp.json()
+                return info.get("systemInfo", {}).get("version", "Unknown")
+        except Exception:
+            return "Unknown"
+
     async def check_keycloak(self) -> dict[str, Any]:
         """Check Keycloak OIDC health (SIP-0062).
 
         Primary: OIDC discovery endpoint.
         Fallback: /health/ready (KC_HEALTH_ENABLED=true).
+        Version: fetched from /admin/serverinfo (best-effort).
         """
         try:
             app_config = get_config()
@@ -1196,6 +1246,7 @@ class HealthChecker:
                 }
 
             issuer_url = auth_config.oidc.issuer_url.rstrip("/")
+            base_url = issuer_url.split("/realms/")[0] if "/realms/" in issuer_url else issuer_url
             discovery_url = f"{issuer_url}/.well-known/openid-configuration"
 
             async with aiohttp.ClientSession() as session:
@@ -1207,33 +1258,35 @@ class HealthChecker:
                     ) as response:
                         if response.status == 200:
                             discovery = await response.json()
+                            issuer = discovery.get("issuer", "")
+                            realm_name = issuer.rsplit("/realms/", 1)[-1] if "/realms/" in issuer else "unknown"
+                            version = await self._fetch_keycloak_version(base_url, session)
                             return {
                                 "component": "Keycloak",
                                 "type": "Identity Provider",
                                 "status": "online",
-                                "version": "Unknown",
+                                "version": version,
                                 "purpose": "OIDC authentication (SIP-0062)",
-                                "notes": f"Realm: {discovery.get('issuer', 'unknown')}",
+                                "notes": f"Realm: {realm_name}, OIDC discovery OK",
                             }
                 except Exception:
                     pass
 
                 # Fallback: Keycloak health endpoint
-                # Extract base URL from issuer (remove /realms/xxx)
-                base_url = issuer_url.split("/realms/")[0] if "/realms/" in issuer_url else issuer_url
                 try:
                     async with session.get(
                         f"{base_url}/health/ready",
                         timeout=aiohttp.ClientTimeout(total=5),
                     ) as response:
                         if response.status == 200:
+                            version = await self._fetch_keycloak_version(base_url, session)
                             return {
                                 "component": "Keycloak",
                                 "type": "Identity Provider",
                                 "status": "online",
-                                "version": "Unknown",
+                                "version": version,
                                 "purpose": "OIDC authentication (SIP-0062)",
-                                "notes": "OIDC discovery failed, health endpoint OK",
+                                "notes": "Health endpoint responding",
                             }
                 except Exception:
                     pass
