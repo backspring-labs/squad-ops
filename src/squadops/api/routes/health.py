@@ -43,6 +43,7 @@ async def health_infra():
         _health_checker.check_grafana(),
         _health_checker.check_otel_collector(),
         _health_checker.check_langfuse(),
+        _health_checker.check_keycloak(),
     )
     return infra_checks
 
@@ -59,6 +60,19 @@ async def health_dashboard(request: Request):
     infra_status = await health_infra()
     agent_status = await health_agents()
 
+    # SIP-0062 Phase 3a: Pass OIDC config to template for Auth tab
+    from squadops.config import get_config
+
+    config = get_config()
+    oidc_context = {}
+    if config.auth.enabled and config.auth.console and config.auth.oidc:
+        oidc_context = {
+            "oidc_issuer": config.auth.oidc.issuer_public_url or config.auth.oidc.issuer_url,
+            "oidc_client_id": config.auth.console.client_id,
+            "oidc_redirect_uri": config.auth.console.redirect_uri,
+            "runtime_api_url": config.runtime_api_url,
+        }
+
     return _templates.TemplateResponse(
         "health_dashboard.html",
         {
@@ -66,5 +80,6 @@ async def health_dashboard(request: Request):
             "infra_status": infra_status,
             "agent_status": agent_status,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            **oidc_context,
         },
     )

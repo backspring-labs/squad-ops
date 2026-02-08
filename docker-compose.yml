@@ -140,6 +140,16 @@ services:
       SQUADOPS__TELEMETRY__BACKEND: otel
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
+      # Auth (SIP-0062) - for Keycloak health check + console OIDC
+      SQUADOPS__AUTH__ENABLED: "true"
+      SQUADOPS__AUTH__PROVIDER: keycloak
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/squadops
+      SQUADOPS__AUTH__OIDC__ISSUER_PUBLIC_URL: http://localhost:8180/realms/squadops
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-console
+      SQUADOPS__AUTH__CONSOLE__CLIENT_ID: squadops-console
+      SQUADOPS__AUTH__CONSOLE__REDIRECT_URI: http://localhost:8000/health
+      SQUADOPS__AUTH__CONSOLE__POST_LOGOUT_REDIRECT_URI: http://localhost:8000/health
+      SQUADOPS__RUNTIME_API_URL: http://localhost:8001
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -168,6 +178,16 @@ services:
       SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
+      # Auth (SIP-0062)
+      SQUADOPS__AUTH__ENABLED: "true"
+      SQUADOPS__AUTH__PROVIDER: keycloak
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/squadops
+      SQUADOPS__AUTH__OIDC__ISSUER_PUBLIC_URL: http://localhost:8180/realms/squadops
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
+      SQUADOPS__AUTH__EXPOSE_DOCS: "true"
+      SQUADOPS__AUTH__CONSOLE__CLIENT_ID: squadops-console
+      SQUADOPS__AUTH__CONSOLE__REDIRECT_URI: http://localhost:8000/health
+      SQUADOPS__AUTH__CONSOLE__POST_LOGOUT_REDIRECT_URI: http://localhost:8000/health
     networks:
     - squadnet
     depends_on:

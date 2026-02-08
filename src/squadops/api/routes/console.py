@@ -7,7 +7,7 @@ Part of SIP-0.8.9 Health Check refactor.
 import logging
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -23,6 +23,14 @@ _parse_command: Any = None
 _create_console_session: Any = None
 _get_console_session: Any = None
 _CommandHandler: type | None = None
+_auth_dependency: Any = None
+
+
+async def _check_console_auth(request: "Request"):
+    """Dynamic auth dependency — delegates to injected dependency or no-op."""
+    if _auth_dependency is not None:
+        return await _auth_dependency(request)
+    return None
 
 
 def init_routes(
@@ -32,16 +40,19 @@ def init_routes(
     create_console_session,
     get_console_session,
     command_handler_cls: type,
+    auth_dependency=None,
 ) -> None:
     """Initialize routes with dependencies."""
     global _health_checker, _console_sessions, _parse_command
     global _create_console_session, _get_console_session, _CommandHandler
+    global _auth_dependency
     _health_checker = health_checker
     _console_sessions = console_sessions
     _parse_command = parse_command
     _create_console_session = create_console_session
     _get_console_session = get_console_session
     _CommandHandler = command_handler_cls
+    _auth_dependency = auth_dependency
 
 
 class ConsoleCommandRequest(BaseModel):
@@ -62,7 +73,9 @@ class ConsoleCommandResponse(BaseModel):
 
 
 @router.post("/command")
-async def console_command(request: ConsoleCommandRequest):
+async def console_command(
+    request: ConsoleCommandRequest, _identity=Depends(_check_console_auth)
+):
     """Agent Gateway: Handle console command"""
     if not _health_checker or not _CommandHandler:
         raise RuntimeError("Console routes not initialized")
@@ -239,7 +252,7 @@ async def _handle_chat_command(request, session, handler, args) -> ConsoleComman
 
 
 @router.get("/session")
-async def create_console_session_endpoint():
+async def create_console_session_endpoint(_identity=Depends(_check_console_auth)):
     """Agent Gateway: Create new console session"""
     if not _create_console_session:
         raise RuntimeError("Console routes not initialized")
@@ -249,7 +262,7 @@ async def create_console_session_endpoint():
 
 
 @router.get("/responses/{session_id}")
-async def get_console_responses(session_id: str):
+async def get_console_responses(session_id: str, _identity=Depends(_check_console_auth)):
     """Agent Gateway: Get and clear pending responses for session"""
     if not _get_console_session:
         raise RuntimeError("Console routes not initialized")

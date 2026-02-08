@@ -25,6 +25,28 @@ $$;
 
 GRANT ALL PRIVILEGES ON DATABASE langfuse TO langfuse;
 
+-- Keycloak database (SIP-0062) - shared Postgres instance
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak') THEN
+        PERFORM dblink_exec('dbname=' || current_database(), 'CREATE DATABASE keycloak');
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'keycloak database may already exist or dblink not available - skipping';
+END
+$$;
+
+-- Create keycloak role if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'keycloak') THEN
+        CREATE USER keycloak WITH PASSWORD 'keycloak';
+    END IF;
+END
+$$;
+
+GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
+
 -- Drop old table
 DROP TABLE IF EXISTS agent_task_logs CASCADE;
 

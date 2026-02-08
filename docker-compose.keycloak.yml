@@ -1,0 +1,31 @@
+# SIP-0062: Keycloak OIDC Identity Provider for local dev / CI
+# Uses the shared squadops-postgres instance (keycloak database).
+# ⚠ LOCAL DEV / CI ONLY — hardcoded secrets below are NOT production-grade.
+
+services:
+  squadops-keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: squadops-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123           # ⚠ local dev only
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./infra/auth/squadops-realm.json:/opt/keycloak/data/import/squadops-realm.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - squadnet
+
+networks:
+  squadnet:
+    external: true
+    name: squad-ops_squadnet

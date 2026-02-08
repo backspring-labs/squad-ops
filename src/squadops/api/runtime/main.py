@@ -12,10 +12,12 @@ import logging
 import os
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import aio_pika
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from squadops import __version__ as SQUADOPS_VERSION
@@ -30,7 +32,7 @@ from squadops.tasks.legacy_models import (
     TaskState,
 )
 
-from .deps import get_tasks_adapter_dep, set_tasks_adapter
+from .deps import get_tasks_adapter_dep, set_audit_port, set_auth_ports, set_tasks_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,50 @@ config_dict = config.model_dump()
 redacted_config_dict = redact_config(config_dict)
 fingerprint = config_fingerprint(redacted_config_dict)
 logger.info(f"Configuration fingerprint: {fingerprint} (strict={strict_mode})")
+
+
+def _extract_origin(uri: str) -> str:
+    """Extract scheme://host:port from a URI (no path)."""
+    parsed = urlparse(uri)
+    origin = f"{parsed.scheme}://{parsed.hostname}"
+    if parsed.port:
+        origin += f":{parsed.port}"
+    return origin
+
+
+# SIP-0062 Phase 3a: CORS middleware for browser-based clients
+auth_config = config.auth
+_cors_origins: set[str] = set()
+if auth_config.console:
+    _cors_origins.add(_extract_origin(auth_config.console.redirect_uri))
+    if auth_config.console.post_logout_redirect_uri:
+        _cors_origins.add(_extract_origin(auth_config.console.post_logout_redirect_uri))
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(_cors_origins),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# SIP-0062: Add middleware in correct order (Request-ID → Auth → exception handling)
+# Middleware is added in reverse order because Starlette processes them LIFO.
+from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
+
+if auth_config.enabled:
+    app.add_middleware(
+        AuthMiddleware,
+        auth_port=None,  # Port set at startup via deps; middleware uses deps.get_auth_port()
+        provider=auth_config.provider,
+        expose_docs=auth_config.expose_docs,
+    )
+app.add_middleware(RequestIDMiddleware)
+
+# SIP-0062 Phase 3a: Include auth routes
+from squadops.api.routes.auth import router as auth_router
+
+app.include_router(auth_router)
 
 # Global connection pool (for memory endpoints only)
 pool: asyncpg.Pool | None = None
@@ -79,6 +125,63 @@ async def startup_event():
     except Exception as e:
         # Log error but don't fail startup - connection will be retried on first use
         logger.error(f"Failed to initialize RabbitMQ connection during startup: {e}", exc_info=True)
+
+    # Initialize auth adapters (SIP-0062)
+    try:
+        auth_config = config.auth
+        if auth_config.enabled and auth_config.provider != "disabled":
+            from adapters.auth.factory import create_auth_provider, create_authorization_provider
+
+            auth_port = create_auth_provider(
+                auth_config.provider,
+                issuer_url=auth_config.oidc.issuer_url,
+                audience=auth_config.oidc.audience,
+                jwks_url=auth_config.oidc.jwks_url,
+                roles_claim_path=auth_config.oidc.roles_claim_path,
+                jwks_cache_ttl_seconds=auth_config.oidc.jwks_cache_ttl_seconds,
+                jwks_forced_refresh_min_interval_seconds=auth_config.oidc.jwks_forced_refresh_min_interval_seconds,
+                clock_skew_seconds=auth_config.oidc.clock_skew_seconds,
+                issuer_public_url=auth_config.oidc.issuer_public_url,
+            )
+            authz_port = create_authorization_provider(
+                auth_config.provider,
+                roles_mode=auth_config.roles_mode,
+                roles_client_id=auth_config.roles_client_id,
+            )
+            set_auth_ports(auth=auth_port, authz=authz_port)
+            logger.info("Auth adapters initialized (provider=%s)", auth_config.provider)
+        elif auth_config.enabled and auth_config.provider == "disabled":
+            logger.info("Auth enabled but provider=disabled — protected endpoints return 503")
+        else:
+            logger.info("Auth disabled — no middleware attached")
+    except Exception as e:
+        logger.error(f"Failed to initialize auth adapters during startup: {e}")
+
+    # Initialize audit adapter (SIP-0062 Phase 3b)
+    try:
+        from adapters.audit.factory import create_audit_provider
+
+        audit = create_audit_provider("logging")
+        set_audit_port(audit)
+        logger.info("Audit adapter initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize audit adapter during startup: {e}")
+
+    # Initialize service token clients (SIP-0062 Phase 3b)
+    try:
+        auth_config = config.auth
+        if auth_config.service_clients and auth_config.oidc:
+            from adapters.auth.factory import create_service_token_client
+
+            for svc_name, svc_config in auth_config.service_clients.items():
+                # secret_manager=None is correct: config loader pre-resolves
+                # all secret:// references before AppConfig is created.
+                create_service_token_client(
+                    svc_name, svc_config, auth_config.oidc, secret_manager=None,
+                )
+                logger.info("Service token client initialized: %s", svc_name)
+    except Exception as e:
+        logger.error(f"Failed to initialize service token clients: {e}")
 
     # Initialize tasks adapter
     try:

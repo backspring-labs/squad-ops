@@ -158,11 +158,84 @@ class SecretsConfig(BaseModel):
         return v
 
 
-class AuthConfig(BaseModel):
-    """Authentication configuration (placeholder for future SIP)."""
+class OIDCConfig(BaseModel):
+    """OIDC provider configuration (SIP-0062)."""
 
-    enabled: bool = Field(default=False, description="Enable authentication")
-    # Additional fields will be added by future auth SIP
+    issuer_url: str = Field(..., description="OIDC issuer URL (e.g. http://keycloak:8080/realms/squadops)")
+    issuer_public_url: str | None = Field(
+        default=None,
+        description="Browser-facing issuer URL (e.g. http://localhost:8180/realms/squadops). "
+        "Defaults to issuer_url if not set. Required when issuer_url uses a Docker-internal hostname.",
+    )
+    audience: str = Field(..., description="Expected token audience (client ID)")
+    jwks_url: str | None = Field(
+        default=None,
+        description="JWKS endpoint URL (defaults to {issuer_url}/protocol/openid-connect/certs)",
+    )
+    roles_claim_path: str = Field(
+        default="realm_access.roles",
+        description="Dot-delimited path to roles in JWT claims",
+    )
+    jwks_cache_ttl_seconds: int = Field(default=3600, ge=60, description="JWKS cache TTL in seconds")
+    jwks_forced_refresh_min_interval_seconds: int = Field(
+        default=30, ge=5, description="Minimum interval between forced JWKS refreshes (stampede protection)"
+    )
+    clock_skew_seconds: int = Field(default=60, ge=0, description="Allowed clock skew for token expiry checks")
+
+
+class ConsoleAuthConfig(BaseModel):
+    """Console OIDC configuration — deferred to Phase 3a (SIP-0062)."""
+
+    client_id: str = Field(..., description="OIDC client ID for console (public client)")
+    redirect_uri: str = Field(
+        default="http://localhost:3000/auth/callback",
+        description="OAuth2 redirect URI",
+    )
+    post_logout_redirect_uri: str = Field(
+        default="http://localhost:3000",
+        description="Post-logout redirect URI",
+    )
+
+
+class ServiceClientConfig(BaseModel):
+    """Service-to-service client credentials (SIP-0062)."""
+
+    client_id: str = Field(..., description="Service client ID")
+    client_secret: str = Field(..., description="Service client secret (supports secret:// references)")
+
+
+class AuthConfig(BaseModel):
+    """Authentication and authorization configuration (SIP-0062)."""
+
+    enabled: bool = Field(default=True, description="Enable authentication")
+    provider: str = Field(default="keycloak", description="Auth provider: 'keycloak' or 'disabled'")
+    oidc: OIDCConfig | None = Field(default=None, description="OIDC provider configuration")
+    console: ConsoleAuthConfig | None = Field(
+        default=None, description="Console OIDC configuration (Phase 3a)"
+    )
+    service_clients: dict[str, ServiceClientConfig] = Field(
+        default_factory=dict, description="Named service client configurations"
+    )
+    roles_mode: str = Field(
+        default="realm", description="Role extraction mode: 'realm' or 'client'"
+    )
+    roles_client_id: str | None = Field(
+        default=None,
+        description="Client ID for role extraction when roles_mode='client'",
+    )
+    expose_docs: bool = Field(
+        default=False,
+        description="Allow unauthenticated access to /docs and /openapi.json",
+    )
+
+    def model_post_init(self, __context: Any) -> None:
+        """Post-initialization validation."""
+        if self.roles_mode == "client" and not self.roles_client_id:
+            raise ValueError("roles_client_id is required when roles_mode='client'")
+        if self.enabled and self.provider not in ("keycloak", "disabled"):
+            raise ValueError(f"Unknown auth provider: {self.provider}")
+        if self.enabled and self.provider != "disabled" and self.oidc is None:
+            raise ValueError("oidc configuration is required when auth is enabled and provider != 'disabled'")
 
 
 class PrefectConfig(BaseModel):
@@ -330,7 +403,7 @@ class AppConfig(BaseModel):
 
     # Secrets and auth
     secrets: SecretsConfig | None = Field(default=None, description="Secrets management configuration (optional)")
-    auth: AuthConfig = Field(default_factory=AuthConfig, description="Authentication configuration")
+    auth: AuthConfig = Field(default_factory=AuthConfig, description="Authentication configuration (SIP-0062)")
 
     # Orchestration
     prefect: PrefectConfig = Field(default_factory=PrefectConfig, description="Prefect configuration")

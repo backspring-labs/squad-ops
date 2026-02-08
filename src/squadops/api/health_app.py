@@ -1166,6 +1166,89 @@ class HealthChecker:
                 "notes": f"Error: {str(e)}",
             }
 
+    async def check_keycloak(self) -> dict[str, Any]:
+        """Check Keycloak OIDC health (SIP-0062).
+
+        Primary: OIDC discovery endpoint.
+        Fallback: /health/ready (KC_HEALTH_ENABLED=true).
+        """
+        try:
+            app_config = get_config()
+            auth_config = app_config.auth
+            if not auth_config.enabled or auth_config.provider == "disabled":
+                return {
+                    "component": "Keycloak",
+                    "type": "Identity Provider",
+                    "status": "disabled",
+                    "version": "N/A",
+                    "purpose": "OIDC authentication (SIP-0062)",
+                    "notes": "Auth disabled or provider=disabled",
+                }
+
+            if auth_config.oidc is None:
+                return {
+                    "component": "Keycloak",
+                    "type": "Identity Provider",
+                    "status": "not configured",
+                    "version": "N/A",
+                    "purpose": "OIDC authentication (SIP-0062)",
+                    "notes": "OIDC config not set",
+                }
+
+            issuer_url = auth_config.oidc.issuer_url.rstrip("/")
+            discovery_url = f"{issuer_url}/.well-known/openid-configuration"
+
+            async with aiohttp.ClientSession() as session:
+                # Primary: OIDC discovery document
+                try:
+                    async with session.get(
+                        discovery_url,
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    ) as response:
+                        if response.status == 200:
+                            discovery = await response.json()
+                            return {
+                                "component": "Keycloak",
+                                "type": "Identity Provider",
+                                "status": "online",
+                                "version": "Unknown",
+                                "purpose": "OIDC authentication (SIP-0062)",
+                                "notes": f"Realm: {discovery.get('issuer', 'unknown')}",
+                            }
+                except Exception:
+                    pass
+
+                # Fallback: Keycloak health endpoint
+                # Extract base URL from issuer (remove /realms/xxx)
+                base_url = issuer_url.split("/realms/")[0] if "/realms/" in issuer_url else issuer_url
+                try:
+                    async with session.get(
+                        f"{base_url}/health/ready",
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    ) as response:
+                        if response.status == 200:
+                            return {
+                                "component": "Keycloak",
+                                "type": "Identity Provider",
+                                "status": "online",
+                                "version": "Unknown",
+                                "purpose": "OIDC authentication (SIP-0062)",
+                                "notes": "OIDC discovery failed, health endpoint OK",
+                            }
+                except Exception:
+                    pass
+
+                raise Exception("Both OIDC discovery and health endpoints unreachable")
+        except Exception as e:
+            return {
+                "component": "Keycloak",
+                "type": "Identity Provider",
+                "status": "offline",
+                "version": "Unknown",
+                "purpose": "OIDC authentication (SIP-0062)",
+                "notes": f"Error: {str(e)}",
+            }
+
     def _compute_network_status(self, last_heartbeat: datetime | None) -> str:
         """Compute network_status from last_heartbeat timestamp
         
@@ -1849,6 +1932,48 @@ async def startup_event():
     # Start periodic reconciliation loop for network_status
     asyncio.create_task(health_checker.reconciliation_loop())
 
+    # SIP-0062 Phase 3a: Initialize auth for console routes
+    auth_dep = None
+    auth_config = config.auth
+    try:
+        if auth_config.provider == "disabled":
+            # Protected endpoints return 503 when auth is disabled
+            async def _disabled_dependency(request):
+                from fastapi import HTTPException
+
+                raise HTTPException(503, "Authentication service unavailable")
+
+            auth_dep = _disabled_dependency
+        elif auth_config.enabled and auth_config.provider != "disabled":
+            from adapters.auth.factory import create_auth_provider, create_authorization_provider
+            from squadops.api.health_deps import set_health_auth_ports
+            from squadops.api.middleware.auth import require_auth
+
+            auth_port = create_auth_provider(
+                auth_config.provider,
+                issuer_url=auth_config.oidc.issuer_url,
+                audience=auth_config.oidc.audience,
+                jwks_url=auth_config.oidc.jwks_url,
+                roles_claim_path=auth_config.oidc.roles_claim_path,
+                jwks_cache_ttl_seconds=auth_config.oidc.jwks_cache_ttl_seconds,
+                jwks_forced_refresh_min_interval_seconds=auth_config.oidc.jwks_forced_refresh_min_interval_seconds,
+                clock_skew_seconds=auth_config.oidc.clock_skew_seconds,
+                issuer_public_url=auth_config.oidc.issuer_public_url,
+            )
+            authz_port = create_authorization_provider(
+                auth_config.provider,
+                roles_mode=auth_config.roles_mode,
+                roles_client_id=auth_config.roles_client_id,
+            )
+            set_health_auth_ports(auth=auth_port, authz=authz_port)
+            from squadops.api.health_deps import get_health_auth_port
+
+            auth_dep = require_auth(get_health_auth_port)
+            logger.info("Health app auth initialized (provider=%s)", auth_config.provider)
+        # else: auth.enabled=False → auth_dep remains None (no auth on console routes)
+    except Exception as e:
+        logger.error("Failed to initialize health app auth: %s", e)
+
     # Initialize modular routes with dependencies
     health_routes.init_routes(health_checker, templates)
     agents_routes.init_routes(health_checker)
@@ -1859,6 +1984,7 @@ async def startup_event():
         create_console_session=create_console_session,
         get_console_session=get_console_session,
         command_handler_cls=CommandHandler,
+        auth_dependency=auth_dep,
     )
     warmboot_routes.init_routes(health_checker)
 

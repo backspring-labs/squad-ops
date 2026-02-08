@@ -78,6 +78,9 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="console-tab" data-bs-toggle="tab" data-bs-target="#console" type="button" role="tab">Agent Console</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="auth-tab" data-bs-toggle="tab" data-bs-target="#auth" type="button" role="tab">Auth</button>
+            </li>
         </ul>
         
         <!-- Tab Content -->
@@ -324,6 +327,26 @@
                         </div>
                     </form>
                     <small class="text-muted mt-2 d-block">Type 'help' for available commands. Use 'chat &lt;agent&gt;' to start chatting with an agent.</small>
+                </div>
+            </div>
+
+            <!-- Auth Tab (SIP-0062 Phase 3a PoC) -->
+            <div class="tab-pane fade" id="auth" role="tabpanel">
+                <div class="mt-4">
+                    <h3>Authentication</h3>
+                    <p class="text-muted">OIDC authentication proof-of-concept (PKCE flow)</p>
+                    <div class="mb-3">
+                        <button class="btn btn-primary" id="authLoginBtn" onclick="oidcLogin()">Login</button>
+                        <button class="btn btn-outline-secondary" id="authLogoutBtn" onclick="oidcLogout()" style="display:none;">Logout</button>
+                        <button class="btn btn-outline-info ms-2" id="authTestBtn" onclick="testApiCall()" style="display:none;">Test API Call</button>
+                    </div>
+                    <div id="authStatus" class="p-3 border rounded bg-light">
+                        <strong>Status:</strong> Not logged in
+                    </div>
+                    <div id="authApiResult" class="p-3 border rounded bg-light mt-2" style="display:none;">
+                        <strong>API Response:</strong>
+                        <pre id="authApiResultContent" class="mb-0 mt-1"></pre>
+                    </div>
                 </div>
             </div>
         </div>
@@ -998,6 +1021,211 @@
             }
         `;
         document.head.appendChild(style);
+    </script>
+
+    <!-- SIP-0062 Phase 3a: OIDC PKCE Authentication PoC -->
+    <script>
+    (function() {
+        // OIDC config from server-side template
+        const OIDC_ISSUER = '{{ oidc_issuer | default("") }}';
+        const OIDC_CLIENT_ID = '{{ oidc_client_id | default("") }}';
+        const OIDC_REDIRECT_URI = '{{ oidc_redirect_uri | default("") }}';
+        const RUNTIME_API_URL = '{{ runtime_api_url | default("http://localhost:8001") }}';
+        const REFRESH_MARGIN_SECONDS = 30;
+
+        // Token storage — in-memory only (SIP Section 6.8)
+        let accessToken = null;
+        let refreshToken = null;
+        let idToken = null;
+        let tokenExpiresAt = 0;
+        let refreshTimerId = null;
+
+        if (!OIDC_ISSUER) return; // Auth not configured
+
+        // PKCE helpers
+        function generateRandom(len) {
+            const arr = new Uint8Array(len);
+            crypto.getRandomValues(arr);
+            return Array.from(arr, b => b.toString(36).padStart(2, '0')).join('').slice(0, len);
+        }
+
+        async function sha256(plain) {
+            const enc = new TextEncoder().encode(plain);
+            const hash = await crypto.subtle.digest('SHA-256', enc);
+            return btoa(String.fromCharCode(...new Uint8Array(hash)))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function updateUI() {
+            const statusEl = document.getElementById('authStatus');
+            const loginBtn = document.getElementById('authLoginBtn');
+            const logoutBtn = document.getElementById('authLogoutBtn');
+            const testBtn = document.getElementById('authTestBtn');
+            if (accessToken) {
+                try {
+                    const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                    const exp = new Date(payload.exp * 1000).toLocaleTimeString();
+                    const roles = (payload.realm_access && payload.realm_access.roles) || [];
+                    statusEl.innerHTML = '<strong>Status:</strong> Logged in as <code>' +
+                        (payload.preferred_username || payload.sub) + '</code><br>' +
+                        '<strong>Roles:</strong> ' + roles.join(', ') + '<br>' +
+                        '<strong>Token expires:</strong> ' + exp;
+                } catch(e) {
+                    statusEl.innerHTML = '<strong>Status:</strong> Logged in (token present)';
+                }
+                loginBtn.style.display = 'none';
+                logoutBtn.style.display = '';
+                testBtn.style.display = '';
+            } else {
+                statusEl.innerHTML = '<strong>Status:</strong> Not logged in';
+                loginBtn.style.display = '';
+                logoutBtn.style.display = 'none';
+                testBtn.style.display = 'none';
+            }
+        }
+
+        function clearTokens() {
+            accessToken = null;
+            refreshToken = null;
+            idToken = null;
+            tokenExpiresAt = 0;
+            if (refreshTimerId) { clearTimeout(refreshTimerId); refreshTimerId = null; }
+            updateUI();
+        }
+
+        function scheduleRefresh(expiresIn) {
+            if (refreshTimerId) clearTimeout(refreshTimerId);
+            const ms = Math.max((expiresIn - REFRESH_MARGIN_SECONDS) * 1000, 1000);
+            refreshTimerId = setTimeout(doRefresh, ms);
+        }
+
+        async function doRefresh() {
+            if (!refreshToken) { clearTokens(); return; }
+            const tokenEndpoint = OIDC_ISSUER + '/protocol/openid-connect/token';
+            try {
+                const resp = await fetch(tokenEndpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams({
+                        grant_type: 'refresh_token',
+                        client_id: OIDC_CLIENT_ID,
+                        refresh_token: refreshToken,
+                    }),
+                });
+                if (!resp.ok) { clearTokens(); return; }
+                const data = await resp.json();
+                accessToken = data.access_token;
+                refreshToken = data.refresh_token || refreshToken;
+                idToken = data.id_token || idToken;
+                tokenExpiresAt = Date.now() + data.expires_in * 1000;
+                scheduleRefresh(data.expires_in);
+                updateUI();
+            } catch(e) {
+                clearTokens();
+            }
+        }
+
+        // Login: PKCE authorization code flow
+        window.oidcLogin = async function() {
+            const codeVerifier = generateRandom(64);
+            const codeChallenge = await sha256(codeVerifier);
+            const state = generateRandom(32);
+            const nonce = generateRandom(32);
+            sessionStorage.setItem('oidc_code_verifier', codeVerifier);
+            sessionStorage.setItem('oidc_state', state);
+            sessionStorage.setItem('oidc_nonce', nonce);
+            const authUrl = OIDC_ISSUER + '/protocol/openid-connect/auth?' +
+                new URLSearchParams({
+                    response_type: 'code',
+                    client_id: OIDC_CLIENT_ID,
+                    redirect_uri: OIDC_REDIRECT_URI,
+                    scope: 'openid profile email',
+                    state: state,
+                    nonce: nonce,
+                    code_challenge: codeChallenge,
+                    code_challenge_method: 'S256',
+                }).toString();
+            window.location.href = authUrl;
+        };
+
+        // Logout
+        window.oidcLogout = function() {
+            const logoutUrl = OIDC_ISSUER + '/protocol/openid-connect/logout?' +
+                new URLSearchParams({
+                    client_id: OIDC_CLIENT_ID,
+                    post_logout_redirect_uri: OIDC_REDIRECT_URI,
+                    id_token_hint: idToken || '',
+                }).toString();
+            clearTokens();
+            window.location.href = logoutUrl;
+        };
+
+        // Test API call
+        window.testApiCall = async function() {
+            const resultEl = document.getElementById('authApiResult');
+            const contentEl = document.getElementById('authApiResultContent');
+            resultEl.style.display = '';
+            contentEl.textContent = 'Loading...';
+            try {
+                const resp = await fetch(RUNTIME_API_URL + '/auth/userinfo', {
+                    headers: {'Authorization': 'Bearer ' + accessToken},
+                });
+                const data = await resp.json();
+                contentEl.textContent = JSON.stringify(data, null, 2);
+            } catch(e) {
+                contentEl.textContent = 'Error: ' + e.message;
+            }
+        };
+
+        // Callback: check for authorization code on page load
+        (async function handleCallback() {
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+            const returnedState = params.get('state');
+            if (!code) return;
+
+            const savedState = sessionStorage.getItem('oidc_state');
+            if (returnedState !== savedState) {
+                console.error('OIDC state mismatch — possible CSRF');
+                return;
+            }
+            const codeVerifier = sessionStorage.getItem('oidc_code_verifier');
+            sessionStorage.removeItem('oidc_state');
+            sessionStorage.removeItem('oidc_code_verifier');
+            sessionStorage.removeItem('oidc_nonce');
+
+            // Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            const tokenEndpoint = OIDC_ISSUER + '/protocol/openid-connect/token';
+            try {
+                const resp = await fetch(tokenEndpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams({
+                        grant_type: 'authorization_code',
+                        client_id: OIDC_CLIENT_ID,
+                        code: code,
+                        redirect_uri: OIDC_REDIRECT_URI,
+                        code_verifier: codeVerifier,
+                    }),
+                });
+                if (!resp.ok) { console.error('Token exchange failed'); return; }
+                const data = await resp.json();
+                accessToken = data.access_token;
+                refreshToken = data.refresh_token;
+                idToken = data.id_token;
+                tokenExpiresAt = Date.now() + data.expires_in * 1000;
+                scheduleRefresh(data.expires_in);
+                updateUI();
+                // Switch to auth tab
+                const authTab = document.getElementById('auth-tab');
+                if (authTab) { new bootstrap.Tab(authTab).show(); }
+            } catch(e) {
+                console.error('OIDC callback error:', e);
+            }
+        })();
+    })();
     </script>
 </body>
 </html>
