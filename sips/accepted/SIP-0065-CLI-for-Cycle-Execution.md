@@ -5,7 +5,7 @@ author: Jason Ladd
 created_at: '2026-02-08T00:00:00Z'
 original_filename: SIP_PROPOSAL_0_9_4_CLI_CYCLE_REQUEST_PROFILES.md
 sip_number: 65
-updated_at: '2026-02-10T00:38:51.316278Z'
+updated_at: '2026-02-10T00:49:48.606605Z'
 ---
 # SIP-0065
 ## CLI for Cycle Execution and CycleRequestProfiles (CRP)
@@ -65,7 +65,7 @@ squadops = "squadops.cli.main:app"
 cli = ["typer>=0.9", "httpx>=0.25", "rich>=13.0"]
 ```
 
-The entry point resolves to the Typer `app` object in `src/squadops/cli/main.py`. Typer handles `console_scripts` dispatch natively — no wrapper `main()` function is needed.
+The entry point resolves to the Typer `app` object in `src/squadops/cli/main.py` (i.e., `app = typer.Typer()` with all command groups registered). Typer handles `console_scripts` dispatch natively — no `if __name__ == "__main__": app()` guard is needed for normal operation; the entry point works via import alone.
 
 Install for operators: `pip install squadops[cli]`
 
@@ -75,7 +75,7 @@ This avoids version sync issues between CLI and server packages. **Operators sho
 
 The CLI bundles its own CRP pack. There is no `GET /api/v1/contracts/cycle-request-profiles` endpoint in v0.9.4. The CLI is authoritative for defaults and prompts.
 
-Because `applied_defaults` is client-supplied, the server treats it as **untrusted metadata** — it is stored for analysis but never used to derive execution behavior. All execution parameters are determined by the merged config (`merge(applied_defaults, execution_overrides)`) which the server validates via its own Pydantic DTOs.
+Because `applied_defaults` is client-supplied, the server treats it as **untrusted metadata** — it is stored for analysis but never used to derive execution behavior. All execution parameters are determined by the merged config (`merge(applied_defaults, execution_overrides)`) which the server validates via its own Pydantic DTOs. The server computes `resolved_config_hash` only **after** validating the merged payload against the server-side DTO schema, so the hash always corresponds to an accepted, valid configuration.
 
 If a future version requires server-side CRP parity checking (e.g., multi-version environments), an optional read-only endpoint can be added then. For now, this is unnecessary complexity.
 
@@ -194,8 +194,8 @@ format = "table"         # "table" | "json"
 ### 6.3 Core commands
 
 **Meta**
-- `squadops version` — show CLI version and (if reachable) server version
-- `squadops status` — check API connectivity and version compatibility
+- `squadops version` — show CLI version (local only; no server call)
+- `squadops status` — check API connectivity by hitting `GET /health/infra` (existing endpoint). Reports reachable/unreachable and response time. Does **not** report server version — no version endpoint exists in SIP-0064; adding one is out of scope for v0.9.4
 
 **Projects**
 - `squadops projects list`
@@ -221,7 +221,7 @@ format = "table"         # "table" | "json"
 - `squadops squad-profiles set-active <profile_id>`
 
 **Artifacts**
-- `squadops artifacts ingest --project <project_id> --type prd --file prd.md`
+- `squadops artifacts ingest --project <project_id> --type prd --file prd.md` — sends `multipart/form-data` matching SIP-0064 T16 (fields: `file`, `artifact_type`, `filename`, `media_type`)
 - `squadops artifacts get <artifact_id>`
 - `squadops artifacts download <artifact_id> --out <path>`
 - `squadops artifacts list --project <project_id> [--cycle <cycle_id>] [--type prd|code|test_report|...]`
@@ -243,6 +243,7 @@ Example: `squadops cycles ls hello_squad` is equivalent to `squadops cycles list
 
 - Default output: readable table for list commands; structured detail for show commands.
 - `--format table|json` flag (global) selects output format. `--json` is a shorthand alias for `--format json`.
+- `--quiet` flag suppresses table chrome and status indicators; outputs only data lines (useful for CI/scripting pipelines).
 - Consistent status indicators using Rich formatting.
 
 ### 6.6 Exit codes
@@ -350,7 +351,7 @@ This is the canonical proof that the CLI and server agree on the canonical JSON 
 ## 11. Acceptance Criteria
 
 1. `squadops` CLI can operate all core SIP-0064 flows (projects/cycles/runs/artifacts/profiles) against a running runtime-api.
-2. `squadops version` and `squadops status` report CLI version and API connectivity.
+2. `squadops version` reports CLI version; `squadops status` reports API connectivity (reachable/unreachable via `/health/infra`).
 3. CRP pack exists in-repo and ships with the CLI under `src/squadops/contracts/`.
 4. `squadops cycles create` applies CRP defaults and computes overrides correctly.
 5. `applied_defaults` and `execution_overrides` are persisted distinctly on the Cycle for analysis.
