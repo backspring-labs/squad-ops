@@ -25,6 +25,8 @@ NEW_ARCH_DIRS=(
     "tests/unit/agent_foundation/"
     "tests/unit/capabilities/"
     "tests/unit/cycles/"
+    "tests/unit/cli/"
+    "tests/unit/contracts/"
 )
 
 echo "Running new architecture tests (SIP-0.8.9)..."
