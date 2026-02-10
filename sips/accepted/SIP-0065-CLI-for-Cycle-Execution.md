@@ -5,12 +5,12 @@ author: Jason Ladd
 created_at: '2026-02-08T00:00:00Z'
 original_filename: SIP_PROPOSAL_0_9_4_CLI_CYCLE_REQUEST_PROFILES.md
 sip_number: 65
-updated_at: '2026-02-08T18:20:40.657940Z'
+updated_at: '2026-02-10T00:38:51.316278Z'
 ---
 # SIP-0065
 ## CLI for Cycle Execution and CycleRequestProfiles (CRP)
 
-**Status:** Proposed
+**Status:** Accepted
 **Target Release:** SquadOps v0.9.4
 **Scope:** CLI + request-shaping contracts (CycleRequestProfiles) aligned to SIP-0064 (Cycle/Run model)
 **Impact:** Medium–High (new CLI entry point; new contract pack; no new API endpoints required)
@@ -59,34 +59,41 @@ The CLI is tightly coupled to the API domain (same models, same version). It shi
 
 ```toml
 [project.scripts]
-squadops = "squadops.cli:main"
+squadops = "squadops.cli.main:app"
 
 [project.optional-dependencies]
 cli = ["typer>=0.9", "httpx>=0.25", "rich>=13.0"]
 ```
 
+The entry point resolves to the Typer `app` object in `src/squadops/cli/main.py`. Typer handles `console_scripts` dispatch natively — no wrapper `main()` function is needed.
+
 Install for operators: `pip install squadops[cli]`
 
-This avoids version sync issues between CLI and server packages.
+This avoids version sync issues between CLI and server packages. **Operators should install the `[cli]` extra in a separate virtualenv** — CLI dependencies (`typer`, `httpx`, `rich`) must not be injected into the server runtime where they are unnecessary.
 
 ### 2.4 CLI-authoritative CRP (no server endpoint)
 
 The CLI bundles its own CRP pack. There is no `GET /api/v1/contracts/cycle-request-profiles` endpoint in v0.9.4. The CLI is authoritative for defaults and prompts.
 
+Because `applied_defaults` is client-supplied, the server treats it as **untrusted metadata** — it is stored for analysis but never used to derive execution behavior. All execution parameters are determined by the merged config (`merge(applied_defaults, execution_overrides)`) which the server validates via its own Pydantic DTOs.
+
 If a future version requires server-side CRP parity checking (e.g., multi-version environments), an optional read-only endpoint can be added then. For now, this is unnecessary complexity.
 
 ### 2.5 FlowExecutionPort scope: records-only in v0.9.4
 
-The `InProcessFlowExecutor` remains a stub in v0.9.4. The CLI operates the **lifecycle record surface** (create/cancel/gate cycles and runs). Actual task dispatch wiring is deferred to a future release.
+The `InProcessFlowExecutor` remains a stub in v0.9.4. Actual task dispatch wiring is deferred to a future release. The CLI operates the **lifecycle record surface** only. Per command:
 
-The CLI can:
-- Create cycles and runs (experiment records)
-- Cancel cycles and runs
-- Record gate decisions
-- Manage artifacts and baselines
-- View status and history
+| Command | Record operation | Calls FlowExecutionPort? |
+|---------|-----------------|--------------------------|
+| `cycles create` | Creates Cycle + first Run records | No |
+| `cycles cancel` | Sets CycleStatus → CANCELLED | No |
+| `runs retry` | Creates new Run record | No |
+| `runs cancel` | Sets RunStatus → CANCELLED | No |
+| `runs gate` | Stores GateDecision on Run | No |
+| `artifacts ingest` | Stores ArtifactRef + bytes | No |
+| `baseline set` | Updates baseline pointer | No |
 
-The CLI cannot (yet):
+The CLI **cannot** (yet):
 - Trigger actual task execution via FlowExecutionPort
 - Monitor live task progress
 
@@ -154,7 +161,7 @@ For `POST /api/v1/projects/{project_id}/cycles`:
    - Other required fields (`squad_profile_id`, `prd_ref`, `task_flow_policy`, etc.)
 5. Server stores both fields as-is and computes `resolved_config_hash = SHA-256(canonical_json(merge(D, O)))`.
 
-**Critical rule:** If the user supplies a value that differs from `D`, it must appear in `O` so analysis can distinguish "default" from "chosen."
+**Critical rule:** `O` contains **exactly** the fields where the user-supplied value differs from `D`. A field whose user-supplied value equals the default MUST NOT appear in `O`. Conversely, any field where the user-supplied value differs from `D` MUST appear in `O`. This ensures analysis can distinguish "accepted default" from "explicitly chosen."
 
 ---
 
@@ -164,7 +171,7 @@ For `POST /api/v1/projects/{project_id}/cycles`:
 
 - Module: `src/squadops/cli/` (new package within existing `squadops`)
 - Command framework: Typer
-- Entry point: `squadops` (via `console_scripts`)
+- Entry point: `squadops` → `squadops.cli.main:app` (via `console_scripts`)
 - Optional dependency group: `pip install squadops[cli]`
 
 ### 6.2 Configuration
@@ -177,7 +184,7 @@ base_url = "http://localhost:8001"
 timeout = 30
 
 [auth]
-mode = "token"           # "token" | "oidc_device" (pluggable, OIDC deferred)
+mode = "token"           # "token" (v0.9.4) | "oidc_device" (stub — not implemented until OIDC CLI flow ships)
 token_env = "SQUADOPS_TOKEN"
 
 [output]
@@ -221,13 +228,24 @@ format = "table"         # "table" | "json"
 - `squadops baseline get <project_id> <artifact_type>`
 - `squadops baseline set <project_id> <artifact_type> <artifact_id>`
 
-### 6.4 Output conventions
+### 6.4 Command aliases
+
+For operator convenience, common subcommands have short aliases:
+
+| Canonical | Alias |
+|-----------|-------|
+| `list` | `ls` |
+| `show` | `cat` |
+
+Example: `squadops cycles ls hello_squad` is equivalent to `squadops cycles list hello_squad`.
+
+### 6.5 Output conventions
 
 - Default output: readable table for list commands; structured detail for show commands.
-- `--json` flag prints machine-readable JSON for scripting.
+- `--format table|json` flag (global) selects output format. `--json` is a shorthand alias for `--format json`.
 - Consistent status indicators using Rich formatting.
 
-### 6.5 Exit codes
+### 6.6 Exit codes
 
 Standard shell conventions, with application-specific codes in the 10+ range:
 
@@ -280,6 +298,17 @@ End-to-end tests using httpx against a running runtime-api (or TestClient):
 - All bundled CRP profiles are loadable and valid against schema
 - Golden tests: `canonical_merge(defaults, overrides)` produces identical `resolved_config_hash` as `compute_config_hash()` from `squadops.cycles.lifecycle`
 
+### 8.4 Hash round-trip golden test
+
+End-to-end test that proves CLI and server compute the same hash:
+
+1. CLI loads CRP defaults `D`, applies overrides `O`, computes `resolved_config_hash` locally.
+2. CLI sends `POST /api/v1/projects/{id}/cycles` with `applied_defaults=D`, `execution_overrides=O`.
+3. Server stores the Cycle and computes `resolved_config_hash` via `compute_config_hash()`.
+4. Test asserts `response.resolved_config_hash == locally_computed_hash`.
+
+This is the canonical proof that the CLI and server agree on the canonical JSON merge and hashing algorithm.
+
 ---
 
 ## 9. Migration / Compatibility
@@ -327,6 +356,6 @@ End-to-end tests using httpx against a running runtime-api (or TestClient):
 5. `applied_defaults` and `execution_overrides` are persisted distinctly on the Cycle for analysis.
 6. `resolved_config_hash` is deterministic and matches the server-side computation (golden tests pass).
 7. CLI provides both human-readable (table) and JSON outputs.
-8. Exit codes follow §6.5 conventions and are stable for scripting.
+8. Exit codes follow §6.6 conventions and are stable for scripting.
 9. All CLI unit tests and integration tests pass.
 10. No changes to SIP-0064 API endpoints or domain models required.
