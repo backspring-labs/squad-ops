@@ -1,0 +1,37 @@
+name: play-a-game
+description: >
+  Cycle request profile for the Play-a-Game sample project.
+  Builds a terminal Tic-Tac-Toe game from scratch using the full
+  5-agent squad in sequential mode with a quality gate after code
+  and tests are produced.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: quality-review
+        description: >
+          Verify the game is playable, AI difficulty levels work,
+          and test coverage meets the 90% acceptance criterion.
+        after_task_types:
+          - code
+          - test_report
+  expected_artifact_types:
+    - code
+    - test_report
+    - metrics
+    - documentation
+  experiment_context:
+    sample_app: play-a-game
+    selftest: true
+  notes: "Play-a-Game sample project — platform selftest cycle"
+prompts:
+  build_strategy:
+    label: Build Strategy
+    help_text: "fresh = build from scratch, incremental = iterate on baseline."
+    choices:
+      - fresh
+      - incremental
+  notes:
+    label: Cycle Notes
+    help_text: Optional notes for this cycle run.
