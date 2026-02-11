@@ -1,6 +1,6 @@
-# Play-a-Game: Terminal Tic-Tac-Toe
+# Play Game: Terminal Tic-Tac-Toe
 
-**Project:** play-a-game
+**Project:** play_game
 **Version:** 0.1.0
 **Status:** Draft
 
@@ -65,7 +65,7 @@ Three difficulty levels selectable at game start:
 
 - **Language:** Python 3.11+
 - **Dependencies:** Standard library only (no pip packages)
-- **Entry point:** `python -m play_a_game` or `python play_a_game/main.py`
+- **Entry point:** `python -m play_game` or `python play_game/main.py`
 - **Structure:** Separate modules for board, AI logic, game loop, and entry point
 - **No global mutable state** — pass game state explicitly
 
@@ -74,7 +74,7 @@ Three difficulty levels selectable at game start:
 ## File Structure
 
 ```
-play_a_game/
+play_game/
     __init__.py
     __main__.py       # Entry point
     board.py          # Board representation, rendering, win detection

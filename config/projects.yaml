@@ -13,3 +13,8 @@ projects:
     name: "Group Run"
     description: "Full squad parallel execution"
     tags: [benchmark]
+
+  - project_id: play_game
+    name: "Play Game"
+    description: "Terminal Tic-Tac-Toe — canonical sample app and platform selftest"
+    tags: [example, selftest]

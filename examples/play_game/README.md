@@ -1,4 +1,4 @@
-# Play-a-Game: SquadOps Sample Project
+# Play Game: SquadOps Sample Project
 
 > "Shall we play a game?"
 
@@ -11,31 +11,27 @@ canonical sample application and platform selftest.
 # Authenticate
 squadops login -u squadops-admin
 
-# Create the project
-squadops projects create play-a-game \
-  --description "Terminal Tic-Tac-Toe built by the agent squad"
-
 # Submit the PRD as an artifact
-squadops artifacts ingest examples/play-a-game/prd.md \
-  --project play-a-game \
+squadops artifacts ingest examples/play_game/prd.md \
+  --project play_game \
   --type documentation \
   --media-type text/markdown
 
 # Create a cycle using the sample PCR profile
-squadops cycles create play-a-game \
-  --profile examples/play-a-game/pcr.yaml
+squadops cycles create play_game \
+  --profile examples/play_game/pcr.yaml
 
 # Watch it run
-squadops runs status play-a-game <cycle_id> --follow
+squadops runs status play_game <cycle_id> --follow
 
 # Review and approve the quality gate
 squadops cycles gate <cycle_id> quality-review --approve
 
 # Download the built game
-squadops artifacts download <artifact_id> -o ./play-a-game-output/
+squadops artifacts download <artifact_id> -o ./play_game_output/
 
 # Play!
-python ./play-a-game-output/play_a_game/main.py
+python ./play_game_output/play_game/main.py
 ```
 
 ## Files

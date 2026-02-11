@@ -1,6 +1,6 @@
-name: play-a-game
+name: play_game
 description: >
-  Cycle request profile for the Play-a-Game sample project.
+  Cycle request profile for the Play Game sample project.
   Builds a terminal Tic-Tac-Toe game from scratch using the full
   5-agent squad in sequential mode with a quality gate after code
   and tests are produced.
@@ -22,9 +22,9 @@ defaults:
     - metrics
     - documentation
   experiment_context:
-    sample_app: play-a-game
+    sample_app: play_game
     selftest: true
-  notes: "Play-a-Game sample project — platform selftest cycle"
+  notes: "Play Game sample project — platform selftest cycle"
 prompts:
   build_strategy:
     label: Build Strategy
