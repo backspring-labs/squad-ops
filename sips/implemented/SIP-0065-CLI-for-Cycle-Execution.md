@@ -1,11 +1,11 @@
 ---
 title: CLI for Cycle Execution + CycleRequestProfiles
-status: accepted
+status: implemented
 author: Jason Ladd
 created_at: '2026-02-08T00:00:00Z'
 original_filename: SIP_PROPOSAL_0_9_4_CLI_CYCLE_REQUEST_PROFILES.md
 sip_number: 65
-updated_at: '2026-02-10T00:49:48.606605Z'
+updated_at: '2026-02-10T20:35:12.130852Z'
 ---
 # SIP-0065
 ## CLI for Cycle Execution and CycleRequestProfiles (CRP)

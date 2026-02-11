@@ -576,9 +576,9 @@ sips:
 - sip_uid: null
   sip_number: 65
   title: CLI for Cycle Execution + CycleRequestProfiles
-  path: sips/accepted/SIP-0065-CLI-for-Cycle-Execution.md
-  status: accepted
+  path: sips/implemented/SIP-0065-CLI-for-Cycle-Execution.md
+  status: implemented
   author: Jason Ladd
   approver: jladd
   created_at: '2026-02-08T00:00:00Z'
-  updated_at: '2026-02-08T18:20:40.676222Z'
+  updated_at: '2026-02-10T20:35:12.131629Z'
