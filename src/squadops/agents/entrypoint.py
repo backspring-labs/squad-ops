@@ -322,6 +322,8 @@ class AgentRunner:
                         # Handle different action types
                         if action == "comms.chat":
                             await self._handle_chat_message(payload, metadata)
+                        elif action == "comms.task":
+                            await self._handle_task_envelope(payload, metadata)
                         else:
                             logger.warning(
                                 f"Unknown action: {action}",
@@ -493,6 +495,53 @@ class AgentRunner:
             logger.error(
                 f"Failed to handle chat message: {e}",
                 extra={"agent_id": self.agent_id, "session_id": session_id},
+            )
+
+    async def _handle_task_envelope(self, payload: dict, metadata: dict) -> None:
+        """Handle incoming task envelope from cycle executor.
+
+        Deserializes the TaskEnvelope, submits to local orchestrator,
+        and publishes TaskResult to the reply queue.
+        """
+        import json
+        from squadops.tasks.models import TaskEnvelope, TaskResult
+
+        envelope_data = payload.get("payload", {})
+        reply_queue = metadata.get("reply_queue")
+
+        envelope = TaskEnvelope.from_dict(envelope_data)
+
+        logger.info(
+            "Processing task envelope",
+            extra={
+                "agent_id": self.agent_id,
+                "task_id": envelope.task_id,
+                "task_type": envelope.task_type,
+            },
+        )
+
+        try:
+            result = await self.system.orchestrator.submit_task(envelope)
+        except Exception as e:
+            logger.error(f"Task execution failed: {e}", extra={"task_id": envelope.task_id})
+            result = TaskResult(
+                task_id=envelope.task_id,
+                status="FAILED",
+                error=str(e),
+            )
+
+        # Publish result to reply queue
+        if reply_queue:
+            response = {
+                "action": "comms.task.result",
+                "metadata": {"correlation_id": envelope.correlation_id},
+                "payload": result.to_dict(),
+            }
+            await self._queue.publish(reply_queue, json.dumps(response))
+        else:
+            logger.warning(
+                "No reply_queue in metadata, result dropped",
+                extra={"task_id": envelope.task_id},
             )
 
     async def _heartbeat_loop(self) -> None:

@@ -68,10 +68,17 @@ def mock_squad_profile():
 
 
 @pytest.fixture
+def mock_flow_executor():
+    mock = AsyncMock()
+    return mock
+
+
+@pytest.fixture
 def client(
     mock_project_registry,
     mock_cycle_registry,
     mock_squad_profile,
+    mock_flow_executor,
     monkeypatch,
 ):
     app = FastAPI()
@@ -81,6 +88,7 @@ def client(
     monkeypatch.setattr(deps_mod, "_project_registry", mock_project_registry)
     monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
     monkeypatch.setattr(deps_mod, "_squad_profile", mock_squad_profile)
+    monkeypatch.setattr(deps_mod, "_flow_executor", mock_flow_executor)
     return TestClient(app)
 
 

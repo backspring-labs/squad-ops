@@ -1,0 +1,13 @@
+name: selftest
+description: Power-on self-test defaults for minimal validation.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates: []
+  expected_artifact_types:
+    - test_report
+  execution_overrides: {}
+  experiment_context:
+    selftest: true
+prompts: {}

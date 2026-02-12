@@ -217,7 +217,7 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize tasks adapter during startup: {e}")
 
-    # Initialize SIP-0064 cycle ports
+    # Initialize SIP-0064 cycle ports + SIP-0066 orchestrator bootstrap
     try:
         from adapters.cycles.factory import (
             create_artifact_vault,
@@ -227,14 +227,35 @@ async def startup_event():
             create_squad_profile_port,
         )
 
-        set_cycle_ports(
-            project_registry=create_project_registry("config"),
-            cycle_registry=create_cycle_registry("memory"),
-            squad_profile=create_squad_profile_port("config"),
-            artifact_vault=create_artifact_vault("filesystem"),
-            flow_executor=create_flow_executor("in_process"),
+        project_registry = create_project_registry("config")
+        cycle_registry = create_cycle_registry("memory")
+        squad_profile = create_squad_profile_port("config")
+        artifact_vault = create_artifact_vault("filesystem")
+
+        # Distributed executor: dispatch tasks to agent containers via RabbitMQ.
+        # Each agent uses its own LLM model and PromptService — no orchestrator
+        # or handler registry needed in the runtime-api container.
+        from adapters.comms.rabbitmq import RabbitMQAdapter
+
+        queue_adapter = RabbitMQAdapter(url=RABBITMQ_URL)
+
+        flow_executor = create_flow_executor(
+            "distributed",
+            cycle_registry=cycle_registry,
+            artifact_vault=artifact_vault,
+            squad_profile=squad_profile,
+            project_registry=project_registry,
+            queue=queue_adapter,
         )
-        logger.info("SIP-0064 cycle ports initialized")
+
+        set_cycle_ports(
+            project_registry=project_registry,
+            cycle_registry=cycle_registry,
+            squad_profile=squad_profile,
+            artifact_vault=artifact_vault,
+            flow_executor=flow_executor,
+        )
+        logger.info("SIP-0064 cycle ports + SIP-0066 orchestrator initialized")
     except Exception as e:
         logger.error(f"Failed to initialize cycle ports: {e}")
 

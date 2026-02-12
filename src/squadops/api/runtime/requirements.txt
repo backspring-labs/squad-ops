@@ -12,6 +12,9 @@ asyncpg==0.29.0
 # Message queue
 aio-pika==9.3.1
 
+# Multipart form data (artifact ingestion)
+python-multipart==0.0.6
+
 # Configuration
 pyyaml==6.0.1
 python-dotenv==1.0.0

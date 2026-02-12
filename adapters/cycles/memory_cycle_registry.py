@@ -113,6 +113,20 @@ class MemoryCycleRegistry(CycleRegistryPort):
         validate_run_transition(RunStatus(data["status"]), RunStatus.CANCELLED)
         data["status"] = RunStatus.CANCELLED.value
 
+    async def append_artifact_refs(self, run_id: str, artifact_ids: tuple[str, ...]) -> Run:
+        """Append artifact refs to a run, de-duplicating."""
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        data = self._runs[run_id]
+        existing = list(data.get("artifact_refs", []))
+        existing_set = set(existing)
+        for aid in artifact_ids:
+            if aid not in existing_set:
+                existing.append(aid)
+                existing_set.add(aid)
+        data["artifact_refs"] = existing
+        return self._to_run(data)
+
     async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:
         """Record a gate decision (T11: single enforcement point)."""
         if run_id not in self._runs:

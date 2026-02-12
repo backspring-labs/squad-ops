@@ -18,3 +18,4 @@ projects:
     name: "Play Game"
     description: "Terminal Tic-Tac-Toe — canonical sample app and platform selftest"
     tags: [example, selftest]
+    prd_path: examples/play_game/prd.md

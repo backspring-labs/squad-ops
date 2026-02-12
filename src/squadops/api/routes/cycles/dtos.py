@@ -40,6 +40,7 @@ class CycleCreateRequest(BaseModel):
         default_factory=lambda: TaskFlowPolicyDTO()
     )
     build_strategy: Literal["fresh", "incremental"] = "fresh"  # T13
+    applied_defaults: dict = Field(default_factory=dict)  # SIP-0065 D2: CRP defaults from CLI
     execution_overrides: dict = Field(default_factory=dict)
     expected_artifact_types: list[str] = Field(default_factory=list)
     experiment_context: dict = Field(default_factory=dict)

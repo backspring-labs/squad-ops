@@ -47,6 +47,7 @@ class ConfigProjectRegistry(ProjectRegistryPort):
                 description=entry.get("description", ""),
                 created_at=entry.get("created_at", now),
                 tags=tuple(entry.get("tags", ())),
+                prd_path=entry.get("prd_path"),
             )
             self._projects[project.project_id] = project
 

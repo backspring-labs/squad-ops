@@ -251,6 +251,34 @@ class TestMemoryCycleRegistry:
         with pytest.raises(IllegalStateTransitionError, match="cancelled cycle"):
             await registry.create_run(run)
 
+    # --- append_artifact_refs tests (SIP-0066) ---
+
+    async def test_append_artifact_refs(self, registry, cycle, run):
+        await registry.create_cycle(cycle)
+        await registry.create_run(run)
+        updated = await registry.append_artifact_refs("run_001", ("art_001", "art_002"))
+        assert "art_001" in updated.artifact_refs
+        assert "art_002" in updated.artifact_refs
+
+    async def test_append_artifact_refs_deduplicates(self, registry, cycle, run):
+        await registry.create_cycle(cycle)
+        await registry.create_run(run)
+        await registry.append_artifact_refs("run_001", ("art_001",))
+        updated = await registry.append_artifact_refs("run_001", ("art_001", "art_002"))
+        assert updated.artifact_refs.count("art_001") == 1
+        assert "art_002" in updated.artifact_refs
+
+    async def test_append_artifact_refs_not_found(self, registry):
+        with pytest.raises(RunNotFoundError):
+            await registry.append_artifact_refs("nonexistent", ("art_001",))
+
+    async def test_append_artifact_refs_returns_updated_run(self, registry, cycle, run):
+        await registry.create_cycle(cycle)
+        await registry.create_run(run)
+        updated = await registry.append_artifact_refs("run_001", ("art_x",))
+        assert isinstance(updated, Run)
+        assert updated.run_id == "run_001"
+
     # --- Gate decision tests (T11) ---
 
     async def test_record_gate_decision(self, registry, cycle, run):

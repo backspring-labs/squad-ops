@@ -5,6 +5,9 @@ Migrated from Pydantic BaseModel in SIP-0.8.8.
 
 Part of SIP-0.8.7/0.8.8 Infrastructure Ports Migration.
 """
+from __future__ import annotations
+
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -59,6 +62,15 @@ class TaskEnvelope:
     metadata: dict[str, Any] = field(default_factory=dict)
     task_name: str | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dict for JSON transport."""
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TaskEnvelope:
+        """Deserialize from dict."""
+        return cls(**data)
+
 
 @dataclass(frozen=True)
 class TaskResult:
@@ -75,3 +87,12 @@ class TaskResult:
     outputs: dict[str, Any] | None = None
     error: str | None = None
     execution_evidence: dict[str, Any] | None = None  # SIP-0.8.8
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dict for JSON transport."""
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TaskResult:
+        """Deserialize from dict."""
+        return cls(**data)

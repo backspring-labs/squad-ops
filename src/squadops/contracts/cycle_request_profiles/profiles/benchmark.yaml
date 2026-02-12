@@ -1,0 +1,21 @@
+name: benchmark
+description: Benchmark-focused defaults with metrics artifact collection.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates: []
+  expected_artifact_types:
+    - code
+    - test_report
+    - metrics
+  execution_overrides: {}
+  experiment_context:
+    benchmark: true
+prompts:
+  build_strategy:
+    label: Build Strategy
+    help_text: "How to build artifacts: fresh (from scratch) or incremental (delta)."
+    choices:
+      - fresh
+      - incremental

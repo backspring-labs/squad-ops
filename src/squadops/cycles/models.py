@@ -143,6 +143,7 @@ class Project:
     description: str
     created_at: datetime
     tags: tuple[str, ...] = ()
+    prd_path: str | None = None
 
 
 @dataclass(frozen=True)

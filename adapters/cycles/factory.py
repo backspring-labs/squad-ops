@@ -47,10 +47,39 @@ def create_artifact_vault(provider: str = "filesystem", **kwargs) -> ArtifactVau
     raise ValueError(f"Unknown artifact vault provider: {provider}")
 
 
-def create_flow_executor(provider: str = "in_process", **kwargs) -> FlowExecutionPort:
-    """Create a FlowExecutionPort adapter."""
+def create_flow_executor(
+    provider: str = "in_process",
+    *,
+    cycle_registry: CycleRegistryPort | None = None,
+    artifact_vault: ArtifactVaultPort | None = None,
+    orchestrator: "AgentOrchestrator | None" = None,
+    squad_profile: SquadProfilePort | None = None,
+    project_registry: ProjectRegistryPort | None = None,
+    **kwargs,
+) -> FlowExecutionPort:
+    """Create a FlowExecutionPort adapter.
+
+    SIP-0066: Accepts injected dependencies for executor wiring.
+    """
     if provider == "in_process":
         from adapters.cycles.in_process_flow_executor import InProcessFlowExecutor
 
-        return InProcessFlowExecutor(**kwargs)
+        return InProcessFlowExecutor(
+            cycle_registry=cycle_registry,
+            artifact_vault=artifact_vault,
+            orchestrator=orchestrator,
+            squad_profile=squad_profile,
+            project_registry=project_registry,
+        )
+    elif provider == "distributed":
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        return DistributedFlowExecutor(
+            cycle_registry=cycle_registry,
+            artifact_vault=artifact_vault,
+            queue=kwargs.get("queue"),
+            squad_profile=squad_profile,
+            project_registry=project_registry,
+            task_timeout=kwargs.get("task_timeout", 300.0),
+        )
     raise ValueError(f"Unknown flow executor provider: {provider}")

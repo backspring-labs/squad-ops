@@ -5,7 +5,7 @@ Cycle API routes (SIP-0064 §9.3).
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 
 from squadops.api.routes.cycles.dtos import CycleCreateRequest, CycleCreateResponse
 from squadops.api.routes.cycles.errors import handle_cycle_error
@@ -26,10 +26,16 @@ router = APIRouter(
 
 
 @router.post("")
-async def create_cycle(project_id: str, body: CycleCreateRequest):
-    """Create a Cycle + first Run (T17: atomic)."""
+async def create_cycle(
+    project_id: str, body: CycleCreateRequest, background_tasks: BackgroundTasks
+):
+    """Create a Cycle + first Run (T17: atomic).
+
+    SIP-0066: After persisting, enqueues execute_run as a background task.
+    """
     from squadops.api.runtime.deps import (
         get_cycle_registry,
+        get_flow_executor,
         get_project_registry,
         get_squad_profile_port,
     )
@@ -60,8 +66,8 @@ async def create_cycle(project_id: str, body: CycleCreateRequest):
         )
         policy = TaskFlowPolicy(mode=body.task_flow_policy.mode, gates=gates)
 
-        # Compute applied defaults (placeholder — real defaults come from project config)
-        applied_defaults = {}
+        # SIP-0065 D2: use client-supplied applied_defaults (CRP defaults from CLI)
+        applied_defaults = body.applied_defaults
         config_hash = compute_config_hash(applied_defaults, body.execution_overrides)
 
         cycle = Cycle(
@@ -94,6 +100,15 @@ async def create_cycle(project_id: str, body: CycleCreateRequest):
         cycle_registry = get_cycle_registry()
         await cycle_registry.create_cycle(cycle)
         await cycle_registry.create_run(run)
+
+        # SIP-0066: Enqueue execution as background task
+        flow_executor = get_flow_executor()
+        background_tasks.add_task(
+            flow_executor.execute_run,
+            cycle.cycle_id,
+            run.run_id,
+            body.squad_profile_id,
+        )
 
         return CycleCreateResponse(
             cycle_id=cycle.cycle_id,

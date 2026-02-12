@@ -1,28 +1,13 @@
 profiles:
   - profile_id: full-squad
     name: "Full Squad"
-    description: "All 5 agents with default models"
+    description: "All 5 agents with per-role models"
     version: 1
     agents:
-      - agent_id: max
-        role: lead
-        model: gpt-4
-        enabled: true
-      - agent_id: neo
-        role: dev
-        model: gpt-4
-        enabled: true
-      - agent_id: nat
-        role: strategy
-        model: gpt-4
-        enabled: true
-      - agent_id: eve
-        role: qa
-        model: gpt-4
-        enabled: true
-      - agent_id: data
-        role: analytics
-        model: gpt-4
-        enabled: true
+      - { agent_id: max, role: lead, model: "llama3.1:8b", enabled: true }
+      - { agent_id: neo, role: dev, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: nat, role: strat, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: eve, role: qa, model: "qwen2.5:3b-instruct", enabled: true }
+      - { agent_id: data, role: data, model: "qwen2.5:3b-instruct", enabled: true }
 
 active_profile: full-squad

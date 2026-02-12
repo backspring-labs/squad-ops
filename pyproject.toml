@@ -11,7 +11,7 @@ include = ["squadops*", "adapters*"]  # Include both packages
 
 [project]
 name = "squadops"
-version = "0.9.3"
+version = "0.9.5"
 description = "SquadOps: a production-grade multi-agent orchestration framework."
 requires-python = ">=3.11"
 authors = [
@@ -21,8 +21,12 @@ readme = "README.md"
 license = { text = "MIT" }
 # You can add dependencies here later if you want to publish as a package.
 
+[project.scripts]
+squadops = "squadops.cli.main:app"
+
 [project.optional-dependencies]
 langfuse = ["langfuse>=2.0"]
+cli = ["typer>=0.9", "httpx>=0.25", "rich>=13.0"]
 
 #######################################
 # Ruff - Linting & basic code hygiene #
@@ -112,6 +116,9 @@ markers = [
     "langfuse: Tests that require a running LangFuse instance",
     # Auth (SIP-0062/0063)
     "auth: Tests that exercise authentication/authorization logic",
+    # CLI + Contracts (SIP-0065)
+    "domain_cli: CLI domain tests",
+    "domain_contracts: Contract domain tests",
 ]
 
 ###########################

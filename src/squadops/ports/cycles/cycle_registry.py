@@ -81,6 +81,16 @@ class CycleRegistryPort(ABC):
         """
 
     @abstractmethod
+    async def append_artifact_refs(self, run_id: str, artifact_ids: tuple[str, ...]) -> Run:
+        """Append artifact references to a run record.
+
+        De-duplicates: IDs already present on the run are not re-added.
+
+        Raises:
+            RunNotFoundError: If the run_id is not found.
+        """
+
+    @abstractmethod
     async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:
         """Record a gate decision on a run (T11).
 

@@ -33,6 +33,13 @@ from squadops.capabilities.handlers.warmboot import (
     WarmbootHandler,
     ContextSyncHandler,
 )
+from squadops.capabilities.handlers.cycle_tasks import (
+    StrategyAnalyzeHandler,
+    DevelopmentImplementHandler,
+    QAValidateHandler,
+    DataReportHandler,
+    GovernanceReviewHandler,
+)
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.base import CapabilityHandler
@@ -57,6 +64,12 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     # Warmboot handlers (all roles can warmboot)
     (WarmbootHandler, ("lead", "dev", "qa", "strat", "data")),
     (ContextSyncHandler, ("lead", "dev", "qa", "strat", "data")),
+    # Cycle task handlers (SIP-0066: pinned task_types for cycle execution pipeline)
+    (StrategyAnalyzeHandler, ("strat",)),
+    (DevelopmentImplementHandler, ("dev",)),
+    (QAValidateHandler, ("qa",)),
+    (DataReportHandler, ("data",)),
+    (GovernanceReviewHandler, ("lead",)),
 ]
 
 
