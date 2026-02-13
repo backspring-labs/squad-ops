@@ -17,6 +17,7 @@ from squadops.agents.skills.registry import SkillRegistry
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
     from squadops.agents.skills.base import SkillResult
+    from squadops.telemetry.models import CorrelationContext
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ class ExecutionContext:
     cycle_id: str
     ports: PortsBundle
     skill_registry: SkillRegistry
+    correlation_context: CorrelationContext | None = None
     _skill_executions: list[SkillExecutionRecord] = field(default_factory=list)
 
     @classmethod
@@ -89,6 +91,7 @@ class ExecutionContext:
         cycle_id: str,
         ports: PortsBundle,
         skill_registry: SkillRegistry,
+        correlation_context: CorrelationContext | None = None,
     ) -> ExecutionContext:
         """Factory method for creating execution context.
 
@@ -99,6 +102,7 @@ class ExecutionContext:
             cycle_id: Current cycle ID
             ports: PortsBundle from agent
             skill_registry: SkillRegistry with available skills
+            correlation_context: Optional LangFuse correlation context
 
         Returns:
             ExecutionContext instance
@@ -110,6 +114,7 @@ class ExecutionContext:
             cycle_id=cycle_id,
             ports=ports,
             skill_registry=skill_registry,
+            correlation_context=correlation_context,
         )
 
     def create_skill_context(self) -> SkillContext:

@@ -15,6 +15,11 @@ class LLMPort(ABC):
     Adapters must implement generate, chat, list_models, refresh_models, and health.
     """
 
+    @property
+    def default_model(self) -> str:
+        """Return the default model name used by this provider."""
+        return "unknown"
+
     @abstractmethod
     async def generate(self, request: LLMRequest) -> LLMResponse:
         """Generate text from a prompt.

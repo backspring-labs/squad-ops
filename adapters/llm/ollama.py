@@ -45,6 +45,11 @@ class OllamaAdapter(LLMPort):
         self._models_cache: list[str] = []
         self._client: httpx.AsyncClient | None = None
 
+    @property
+    def default_model(self) -> str:
+        """Return the default model name."""
+        return self._default_model
+
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create async HTTP client."""
         if self._client is None:

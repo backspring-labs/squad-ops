@@ -502,6 +502,10 @@ class AgentRunner:
 
         Deserializes the TaskEnvelope, submits to local orchestrator,
         and publishes TaskResult to the reply queue.
+
+        Wraps execution with LangFuse lifecycle (SIP-0061 Option B):
+        each agent opens a trace+task span keyed by the shared trace_id
+        so all 5 agents' spans merge into one LangFuse trace.
         """
         import json
         from squadops.tasks.models import TaskEnvelope, TaskResult
@@ -520,7 +524,21 @@ class AgentRunner:
             },
         )
 
+        # Build correlation context for LangFuse tracing
+        from squadops.telemetry.models import CorrelationContext
+
+        ctx = CorrelationContext.from_envelope(
+            envelope, agent_id=self.agent_id, agent_role=self.role,
+        )
+        llm_obs = self.system.ports.llm_observability if self.system else None
+
+        if llm_obs:
+            llm_obs.start_cycle_trace(ctx)
+            llm_obs.start_task_span(ctx)
+
         try:
+            if not self.system:
+                raise RuntimeError("AgentRunner.system not initialized")
             result = await self.system.orchestrator.submit_task(envelope)
         except Exception as e:
             logger.error(f"Task execution failed: {e}", extra={"task_id": envelope.task_id})
@@ -529,6 +547,11 @@ class AgentRunner:
                 status="FAILED",
                 error=str(e),
             )
+        finally:
+            if llm_obs:
+                llm_obs.end_task_span(ctx)
+                llm_obs.end_cycle_trace(ctx)
+                llm_obs.flush()
 
         # Publish result to reply queue
         if reply_queue:

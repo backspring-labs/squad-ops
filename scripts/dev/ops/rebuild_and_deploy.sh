@@ -175,7 +175,7 @@ echo -e "${BLUE}📊 Step 2: Ensuring Docker Compose infrastructure is running..
 
 # Always start infrastructure services (they're dependencies)
 echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
-docker-compose up -d rabbitmq postgres redis prefect-server prefect-ui
+docker-compose up -d rabbitmq postgres redis prefect-server
 
 # Conditionally start runtime-api and health-check if they're being rebuilt
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then

@@ -117,6 +117,37 @@ class _CycleTaskHandler(CapabilityHandler):
             )
 
         content = response.content
+        llm_duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # Record LLM generation for LangFuse tracing (SIP-0061 Option B)
+        llm_obs = getattr(context.ports, "llm_observability", None)
+        if llm_obs and context.correlation_context:
+            import uuid
+
+            from squadops.telemetry.models import (
+                GenerationRecord,
+                PromptLayer,
+                PromptLayerMetadata,
+            )
+
+            gen_record = GenerationRecord(
+                generation_id=str(uuid.uuid4()),
+                model=context.ports.llm.default_model,
+                prompt_text=user_prompt[:2000],
+                response_text=content[:2000],
+                latency_ms=llm_duration_ms,
+            )
+            layers = PromptLayerMetadata(
+                prompt_layer_set_id=f"{self._role}-cycle",
+                layers=(
+                    PromptLayer(layer_type="system", layer_id=f"{self._role}-system"),
+                    PromptLayer(
+                        layer_type="user", layer_id=f"cycle-{self._capability_id}"
+                    ),
+                ),
+            )
+            llm_obs.record_generation(context.correlation_context, gen_record, layers)
+
         prd_summary = str(prd)[:80] if prd else "(no PRD)"
 
         outputs = {

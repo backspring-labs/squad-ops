@@ -321,71 +321,72 @@ class LangFuseAdapter(LLMObservabilityPort):
     def _process_entry(self, entry: _BufferEntry) -> None:
         """Dispatch a single buffer entry to the LangFuse SDK."""
         ctx = entry.ctx
+        tk = self._resolve_trace_key(ctx)
 
         if entry.event_type == _EventType.START_CYCLE:
             trace = self._client.trace(
-                id=ctx.cycle_id,
+                id=tk,
                 name=f"cycle-{ctx.cycle_id}",
                 metadata=self._ctx_metadata(ctx),
             )
             with self._lock:
-                self._span_state[f"cycle:{ctx.cycle_id}"] = trace
+                self._span_state[f"cycle:{tk}"] = trace
 
         elif entry.event_type == _EventType.END_CYCLE:
             with self._lock:
-                trace = self._span_state.pop(f"cycle:{ctx.cycle_id}", None)
+                trace = self._span_state.pop(f"cycle:{tk}", None)
             if trace is not None:
                 trace.update(metadata={"ended": True})
 
         elif entry.event_type == _EventType.START_PULSE:
             with self._lock:
-                trace = self._span_state.get(f"cycle:{ctx.cycle_id}")
+                trace = self._span_state.get(f"cycle:{tk}")
             if trace is not None:
                 span = trace.span(
                     name=f"pulse-{ctx.pulse_id}",
                     metadata=self._ctx_metadata(ctx),
                 )
                 with self._lock:
-                    self._span_state[f"pulse:{ctx.cycle_id}:{ctx.pulse_id}"] = span
+                    self._span_state[f"pulse:{tk}:{ctx.pulse_id}"] = span
 
         elif entry.event_type == _EventType.END_PULSE:
             with self._lock:
                 span = self._span_state.pop(
-                    f"pulse:{ctx.cycle_id}:{ctx.pulse_id}", None
+                    f"pulse:{tk}:{ctx.pulse_id}", None
                 )
             if span is not None:
                 span.end()
 
         elif entry.event_type == _EventType.START_TASK:
-            pulse_key = f"pulse:{ctx.cycle_id}:{ctx.pulse_id}"
+            pulse_key = f"pulse:{tk}:{ctx.pulse_id}"
             with self._lock:
                 parent = self._span_state.get(pulse_key)
                 if parent is None:
                     # Fall back to cycle trace if no pulse span
-                    parent = self._span_state.get(f"cycle:{ctx.cycle_id}")
+                    parent = self._span_state.get(f"cycle:{tk}")
             if parent is not None:
                 span = parent.span(
                     name=f"task-{ctx.task_id}",
                     metadata=self._ctx_metadata(ctx),
                 )
                 with self._lock:
-                    self._span_state[f"task:{ctx.cycle_id}:{ctx.task_id}"] = span
+                    self._span_state[f"task:{tk}:{ctx.task_id}"] = span
 
         elif entry.event_type == _EventType.END_TASK:
             with self._lock:
                 span = self._span_state.pop(
-                    f"task:{ctx.cycle_id}:{ctx.task_id}", None
+                    f"task:{tk}:{ctx.task_id}", None
                 )
             if span is not None:
                 span.end()
 
         elif entry.event_type == _EventType.GENERATION:
             record, prompt_layers = entry.payload
-            task_key = f"task:{ctx.cycle_id}:{ctx.task_id}"
+            task_key = f"task:{tk}:{ctx.task_id}"
             with self._lock:
                 parent = self._span_state.get(task_key)
                 if parent is None:
-                    parent = self._span_state.get(f"cycle:{ctx.cycle_id}")
+                    parent = self._span_state.get(f"cycle:{tk}")
             if parent is not None:
                 parent.generation(
                     id=record.generation_id,
@@ -433,21 +434,27 @@ class LangFuseAdapter(LLMObservabilityPort):
     # Internal: helpers
     # -------------------------------------------------------------------
 
+    @staticmethod
+    def _resolve_trace_key(ctx: CorrelationContext) -> str:
+        """Return the canonical trace key: prefer trace_id, fall back to cycle_id."""
+        return ctx.trace_id or ctx.cycle_id
+
     def _find_active_span(self, ctx: CorrelationContext) -> Any:
         """Find the most specific active span for a context."""
+        tk = self._resolve_trace_key(ctx)
         with self._lock:
             # Try task → pulse → cycle
             if ctx.task_id:
-                span = self._span_state.get(f"task:{ctx.cycle_id}:{ctx.task_id}")
+                span = self._span_state.get(f"task:{tk}:{ctx.task_id}")
                 if span is not None:
                     return span
             if ctx.pulse_id:
                 span = self._span_state.get(
-                    f"pulse:{ctx.cycle_id}:{ctx.pulse_id}"
+                    f"pulse:{tk}:{ctx.pulse_id}"
                 )
                 if span is not None:
                     return span
-            return self._span_state.get(f"cycle:{ctx.cycle_id}")
+            return self._span_state.get(f"cycle:{tk}")
 
     @staticmethod
     def _ctx_metadata(ctx: CorrelationContext) -> dict[str, Any]:

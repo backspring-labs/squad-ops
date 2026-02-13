@@ -128,6 +128,9 @@ pool: asyncpg.Pool | None = None
 rabbitmq_connection: aio_pika.Connection | None = None
 rabbitmq_channel: aio_pika.Channel | None = None
 
+# PrefectReporter for shutdown cleanup
+_prefect_reporter = None
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -236,8 +239,17 @@ async def startup_event():
         # Each agent uses its own LLM model and PromptService — no orchestrator
         # or handler registry needed in the runtime-api container.
         from adapters.comms.rabbitmq import RabbitMQAdapter
+        from adapters.telemetry.factory import create_llm_observability_provider
 
         queue_adapter = RabbitMQAdapter(url=RABBITMQ_URL)
+        llm_obs = create_llm_observability_provider(config=config.langfuse)
+
+        # Create PrefectReporter with module-level ref for shutdown cleanup
+        global _prefect_reporter
+        if config.prefect.api_url:
+            from adapters.cycles.prefect_reporter import PrefectReporter
+
+            _prefect_reporter = PrefectReporter(api_url=config.prefect.api_url)
 
         flow_executor = create_flow_executor(
             "distributed",
@@ -246,6 +258,8 @@ async def startup_event():
             squad_profile=squad_profile,
             project_registry=project_registry,
             queue=queue_adapter,
+            llm_observability=llm_obs,
+            prefect_reporter=_prefect_reporter,
         )
 
         set_cycle_ports(
@@ -268,6 +282,8 @@ async def shutdown_event():
         await pool.close()
     if rabbitmq_connection:
         await rabbitmq_connection.close()
+    if _prefect_reporter:
+        await _prefect_reporter.close()
 
 
 # Pydantic models (for backward compatibility with existing API clients)

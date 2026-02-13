@@ -27,11 +27,13 @@ from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 if TYPE_CHECKING:
+    from adapters.cycles.prefect_reporter import PrefectReporter
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
     from squadops.ports.cycles.squad_profile import SquadProfilePort
+    from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,8 @@ class DistributedFlowExecutor(FlowExecutionPort):
         squad_profile: SquadProfilePort | None = None,
         project_registry: ProjectRegistryPort | None = None,
         task_timeout: float = 300.0,
+        llm_observability: LLMObservabilityPort | None = None,
+        prefect_reporter: PrefectReporter | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
@@ -67,6 +71,8 @@ class DistributedFlowExecutor(FlowExecutionPort):
         self._squad_profile = squad_profile
         self._project_registry = project_registry
         self._task_timeout = task_timeout
+        self._llm_observability = llm_observability
+        self._prefect = prefect_reporter
         self._cancelled: set[str] = set()
 
     # ------------------------------------------------------------------
@@ -77,6 +83,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
         self, cycle_id: str, run_id: str, profile_id: str | None = None
     ) -> None:
         """Execute a run by dispatching tasks to agent containers via RabbitMQ."""
+        obs_ctx = None
+        flow_run_id = None
+        terminal_status = "COMPLETED"
+
         try:
             cycle = await self._cycle_registry.get_cycle(cycle_id)
             run = await self._cycle_registry.get_run(run_id)
@@ -95,6 +105,36 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
             plan = generate_task_plan(cycle, run, profile)
 
+            # LangFuse: open cycle trace keyed by shared trace_id
+            trace_id = plan[0].trace_id if plan else None
+            if self._llm_observability:
+                from squadops.telemetry.models import CorrelationContext, StructuredEvent
+
+                obs_ctx = CorrelationContext(cycle_id=cycle_id, trace_id=trace_id)
+                self._llm_observability.start_cycle_trace(obs_ctx)
+                self._llm_observability.record_event(
+                    obs_ctx,
+                    StructuredEvent(
+                        name="cycle.started",
+                        message=f"Cycle {cycle_id} started ({len(plan)} tasks, distributed)",
+                    ),
+                )
+
+            # Prefect: create flow run
+            if self._prefect:
+                try:
+                    flow_id = await self._prefect.ensure_flow()
+                    flow_run_id = await self._prefect.create_flow_run(
+                        flow_id,
+                        run_name=f"{cycle.project_id}/{cycle_id[:12]}/{run_id[:12]}",
+                        parameters={"cycle_id": cycle_id, "run_id": run_id, "project_id": cycle.project_id},
+                    )
+                    await self._prefect.set_flow_run_state(
+                        flow_run_id, "RUNNING", "Running"
+                    )
+                except Exception:
+                    logger.warning("Prefect flow run creation failed", exc_info=True)
+
             logger.info(
                 "Executing run %s for cycle %s (%d tasks, mode=%s, dispatch=distributed)",
                 run_id, cycle_id, len(plan), cycle.task_flow_policy.mode,
@@ -103,29 +143,56 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # Dispatch based on policy mode
             mode = cycle.task_flow_policy.mode
             if mode == "sequential":
-                await self._execute_sequential(plan, run_id, cycle)
+                await self._execute_sequential(plan, run_id, cycle, flow_run_id)
             elif mode == "fan_out_fan_in":
-                await self._execute_fan_out(plan, run_id, cycle)
+                await self._execute_fan_out(plan, run_id, cycle, flow_run_id)
             elif mode == "fan_out_soft_gates":
-                await self._execute_sequential(plan, run_id, cycle)
+                await self._execute_sequential(plan, run_id, cycle, flow_run_id)
             else:
-                await self._execute_sequential(plan, run_id, cycle)
+                await self._execute_sequential(plan, run_id, cycle, flow_run_id)
 
             # Success -> completed
             await self._cycle_registry.update_run_status(run_id, RunStatus.COMPLETED)
             logger.info("Run %s completed successfully", run_id)
 
         except _CancellationError:
+            terminal_status = "CANCELLED"
             await self._safe_transition(run_id, RunStatus.CANCELLED)
             logger.info("Run %s cancelled", run_id)
 
         except _ExecutionError as exc:
+            terminal_status = "FAILED"
             await self._safe_transition(run_id, RunStatus.FAILED)
             logger.error("Run %s failed: %s", run_id, exc)
 
         except Exception as exc:
+            terminal_status = "FAILED"
             await self._safe_transition(run_id, RunStatus.FAILED)
             logger.exception("Run %s failed with unexpected error: %s", run_id, exc)
+
+        finally:
+            # LangFuse: close cycle trace
+            if self._llm_observability and obs_ctx:
+                from squadops.telemetry.models import StructuredEvent
+
+                self._llm_observability.record_event(
+                    obs_ctx,
+                    StructuredEvent(
+                        name="cycle.completed",
+                        message=f"Cycle {cycle_id} reached {terminal_status}",
+                    ),
+                )
+                self._llm_observability.end_cycle_trace(obs_ctx)
+                self._llm_observability.flush()
+
+            # Prefect: set terminal state
+            if self._prefect and flow_run_id:
+                try:
+                    await self._prefect.set_flow_run_state(
+                        flow_run_id, terminal_status, terminal_status.title()
+                    )
+                except Exception:
+                    logger.warning("Prefect terminal state update failed", exc_info=True)
 
     async def cancel_run(self, run_id: str) -> None:
         """Cancel an in-progress run."""
@@ -191,6 +258,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         plan: list[TaskEnvelope],
         run_id: str,
         cycle: Cycle,
+        flow_run_id: str | None = None,
     ) -> None:
         """Sequential: dispatch one task at a time, fail-fast."""
         import dataclasses
@@ -212,8 +280,34 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 },
             )
 
+            # Prefect: create task run
+            task_run_id = None
+            if self._prefect and flow_run_id:
+                try:
+                    role = envelope.metadata.get("role", "unknown")
+                    task_run_id = await self._prefect.create_task_run(
+                        flow_run_id,
+                        task_key=envelope.task_type,
+                        task_name=f"{role}: {envelope.task_type}",
+                    )
+                    await self._prefect.set_task_run_state(
+                        task_run_id, "RUNNING", "Running"
+                    )
+                except Exception:
+                    logger.warning("Prefect task run creation failed", exc_info=True)
+
             # Dispatch through RabbitMQ
             result = await self._dispatch_task(enriched, run_id)
+
+            # Prefect: update task state
+            if self._prefect and task_run_id:
+                try:
+                    state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
+                    await self._prefect.set_task_run_state(
+                        task_run_id, state, state.title()
+                    )
+                except Exception:
+                    logger.warning("Prefect task state update failed", exc_info=True)
 
             # Fail-fast
             if result.status != "SUCCEEDED":
@@ -246,12 +340,30 @@ class DistributedFlowExecutor(FlowExecutionPort):
         plan: list[TaskEnvelope],
         run_id: str,
         cycle: Cycle,
+        flow_run_id: str | None = None,
     ) -> None:
         """Fan-out/fan-in: dispatch all tasks concurrently, await all."""
         import dataclasses
 
         if await self._is_cancelled(run_id):
             raise _CancellationError(run_id)
+
+        # Prefect: pre-create task runs for all concurrent tasks
+        task_run_ids: list[str | None] = [None] * len(plan)
+        if self._prefect and flow_run_id:
+            for i, envelope in enumerate(plan):
+                try:
+                    role = envelope.metadata.get("role", "unknown")
+                    task_run_ids[i] = await self._prefect.create_task_run(
+                        flow_run_id,
+                        task_key=envelope.task_type,
+                        task_name=f"{role}: {envelope.task_type}",
+                    )
+                    await self._prefect.set_task_run_state(
+                        task_run_ids[i], "RUNNING", "Running"
+                    )
+                except Exception:
+                    logger.warning("Prefect task run creation failed", exc_info=True)
 
         tasks = []
         for envelope in plan:
@@ -266,9 +378,25 @@ class DistributedFlowExecutor(FlowExecutionPort):
         all_artifact_refs: list[str] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
+                if self._prefect and task_run_ids[i]:
+                    try:
+                        await self._prefect.set_task_run_state(
+                            task_run_ids[i], "FAILED", "Failed"
+                        )
+                    except Exception:
+                        logger.warning("Prefect task state update failed", exc_info=True)
                 raise _ExecutionError(
                     f"Task {plan[i].task_id} raised exception: {result}"
                 )
+            # Prefect: update task state
+            if self._prefect and task_run_ids[i]:
+                try:
+                    state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
+                    await self._prefect.set_task_run_state(
+                        task_run_ids[i], state, state.title()
+                    )
+                except Exception:
+                    logger.warning("Prefect task state update failed", exc_info=True)
             if result.status != "SUCCEEDED":
                 raise _ExecutionError(
                     f"Task {plan[i].task_id} failed: {result.error}"

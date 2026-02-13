@@ -94,26 +94,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-  prefect-ui:
-    image: prefecthq/prefect:2.14-python3.11
-    container_name: squadops-prefect-ui
-    ports:
-    - 4201:4201
-    environment:
-      PREFECT_API_URL: http://prefect-server:4200/api
-    depends_on:
-      prefect-server:
-        condition: service_healthy
-    networks:
-    - squadnet
-    command:
-    - prefect
-    - server
-    - start
-    - --host
-    - 0.0.0.0
-    - --port
-    - '4201'
   health-check:
     build:
       context: .

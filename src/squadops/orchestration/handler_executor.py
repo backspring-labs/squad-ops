@@ -106,7 +106,12 @@ class HandlerExecutor(CapabilityExecutor):
                     execution_evidence={"error": "handler_not_found"},
                 )
 
-            # Create execution context
+            # Create execution context with correlation for LangFuse tracing
+            from squadops.telemetry.models import CorrelationContext
+
+            corr_ctx = CorrelationContext.from_envelope(
+                envelope, agent_id=envelope.agent_id,
+            )
             context = ExecutionContext.create(
                 agent_id=envelope.agent_id,
                 role_id=self._default_role,
@@ -114,6 +119,7 @@ class HandlerExecutor(CapabilityExecutor):
                 cycle_id=envelope.cycle_id,
                 ports=self._ports,
                 skill_registry=self._skill_registry,
+                correlation_context=corr_ctx,
             )
 
             # Validate inputs
