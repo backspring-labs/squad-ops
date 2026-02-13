@@ -48,7 +48,12 @@ class MemoryCycleRegistry(CycleRegistryPort):
         return self._to_cycle(self._cycles[cycle_id])
 
     async def list_cycles(
-        self, project_id: str, *, status: CycleStatus | None = None
+        self,
+        project_id: str,
+        *,
+        status: CycleStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> list[Cycle]:
         from squadops.cycles.lifecycle import derive_cycle_status
 
@@ -69,7 +74,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
                 if derived != status:
                     continue
             results.append(cycle)
-        return results
+        return results[offset : offset + limit]
 
     async def cancel_cycle(self, cycle_id: str) -> None:
         if cycle_id not in self._cycles:
@@ -91,12 +96,15 @@ class MemoryCycleRegistry(CycleRegistryPort):
             raise RunNotFoundError(f"Run not found: {run_id}")
         return self._to_run(self._runs[run_id])
 
-    async def list_runs(self, cycle_id: str) -> list[Run]:
-        return [
+    async def list_runs(
+        self, cycle_id: str, *, limit: int = 50, offset: int = 0
+    ) -> list[Run]:
+        results = [
             self._to_run(data)
             for data in self._runs.values()
             if data["cycle_id"] == cycle_id
         ]
+        return results[offset : offset + limit]
 
     async def update_run_status(self, run_id: str, status: RunStatus) -> Run:
         if run_id not in self._runs:

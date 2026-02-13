@@ -38,6 +38,7 @@ COPY src/ ./src/
 COPY adapters/ ./adapters/
 COPY config/ ./config/
 COPY examples/ ./examples/
+COPY infra/ ./infra/
 
 # Install dependencies and package
 RUN pip install --no-cache-dir -r requirements.txt && \

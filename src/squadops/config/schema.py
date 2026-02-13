@@ -76,6 +76,10 @@ class DBConfig(BaseModel):
     pool: PoolConfig | None = Field(default=None, description="Connection pool configuration")
     migrations: MigrationConfig | None = Field(default=None, description="Migration execution configuration")
     connection: ConnectionMode | None = Field(default=None, description="Connection mode (direct, proxy)")
+    migrations_dir: str = Field(
+        default="infra/migrations",
+        description="Path to SQL migrations directory",
+    )
 
     @field_validator("dsn", "url", mode="before")
     @classmethod
@@ -354,6 +358,15 @@ class AuthConfig(BaseModel):
             pass  # keycloak operational config is optional — only needed for deploy profiles
 
 
+class CyclesConfig(BaseModel):
+    """Cycle registry configuration."""
+
+    registry_provider: str = Field(
+        default="memory",
+        description="Cycle registry provider: 'memory' or 'postgres'",
+    )
+
+
 class PrefectConfig(BaseModel):
     """Prefect orchestration configuration."""
 
@@ -520,6 +533,9 @@ class AppConfig(BaseModel):
     # Secrets and auth
     secrets: SecretsConfig | None = Field(default=None, description="Secrets management configuration (optional)")
     auth: AuthConfig = Field(default_factory=AuthConfig, description="Authentication configuration (SIP-0062)")
+
+    # Cycles
+    cycles: CyclesConfig = Field(default_factory=CyclesConfig, description="Cycle registry configuration")
 
     # Orchestration
     prefect: PrefectConfig = Field(default_factory=PrefectConfig, description="Prefect configuration")

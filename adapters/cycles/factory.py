@@ -25,7 +25,14 @@ def create_cycle_registry(provider: str = "memory", **kwargs) -> CycleRegistryPo
     if provider == "memory":
         from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 
-        return MemoryCycleRegistry(**kwargs)
+        return MemoryCycleRegistry()
+    elif provider == "postgres":
+        pool = kwargs.get("pool")
+        if pool is None:
+            raise ValueError("pool is required for postgres cycle registry provider")
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        return PostgresCycleRegistry(pool=pool)
     raise ValueError(f"Unknown cycle registry provider: {provider}")
 
 

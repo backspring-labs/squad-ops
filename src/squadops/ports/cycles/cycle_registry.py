@@ -32,7 +32,12 @@ class CycleRegistryPort(ABC):
 
     @abstractmethod
     async def list_cycles(
-        self, project_id: str, *, status: CycleStatus | None = None
+        self,
+        project_id: str,
+        *,
+        status: CycleStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> list[Cycle]:
         """List cycles for a project, optionally filtered by status."""
 
@@ -59,8 +64,10 @@ class CycleRegistryPort(ABC):
         """
 
     @abstractmethod
-    async def list_runs(self, cycle_id: str) -> list[Run]:
-        """List all runs for a cycle."""
+    async def list_runs(
+        self, cycle_id: str, *, limit: int = 50, offset: int = 0
+    ) -> list[Run]:
+        """List runs for a cycle, with pagination."""
 
     @abstractmethod
     async def update_run_status(self, run_id: str, status: RunStatus) -> Run:

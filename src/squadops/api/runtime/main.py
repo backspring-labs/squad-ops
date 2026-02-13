@@ -220,6 +220,19 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize tasks adapter during startup: {e}")
 
+    # Apply database migrations (idempotent, SIP-Postgres-Cycle-Registry §1.4)
+    try:
+        from pathlib import Path
+
+        from squadops.api.runtime.migrations import apply_migrations
+
+        migrations_dir = Path(config.db.migrations_dir)
+        applied = await apply_migrations(pool, migrations_dir)
+        if applied:
+            logger.info("Applied %d migration(s) from %s", applied, migrations_dir)
+    except Exception as e:
+        logger.error("Failed to apply migrations during startup: %s", e)
+
     # Initialize SIP-0064 cycle ports + SIP-0066 orchestrator bootstrap
     try:
         from adapters.cycles.factory import (
@@ -231,7 +244,10 @@ async def startup_event():
         )
 
         project_registry = create_project_registry("config")
-        cycle_registry = create_cycle_registry("memory")
+        cycle_registry = create_cycle_registry(
+            config.cycles.registry_provider,
+            **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
+        )
         squad_profile = create_squad_profile_port("config")
         artifact_vault = create_artifact_vault("filesystem")
 

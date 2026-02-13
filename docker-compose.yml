@@ -171,6 +171,9 @@ services:
       SQUADOPS__AUTH__CONSOLE__CLIENT_ID: squadops-console
       SQUADOPS__AUTH__CONSOLE__REDIRECT_URI: http://localhost:8000/health
       SQUADOPS__AUTH__CONSOLE__POST_LOGOUT_REDIRECT_URI: http://localhost:8000/health
+      # Cycle registry (SIP-Postgres-Cycle-Registry)
+      SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres
+      SQUADOPS__DB__MIGRATIONS_DIR: /app/infra/migrations
       # LLM (SIP-0066: cycle task handlers)
       SQUADOPS__LLM__MODEL: "llama3.1:8b"
     networks:
