@@ -595,9 +595,9 @@ sips:
   sip_number: 67
   title: Postgres Cycle Registry — Durable Persistence for Cycles, Runs, and Gate
     Decisions
-  path: sips/accepted/SIP-0067-Postgres-Cycle-Registry-Durable.md
-  status: accepted
+  path: sips/implemented/SIP-0067-Postgres-Cycle-Registry-Durable.md
+  status: implemented
   author: Jason Ladd
   approver: jladd
   created_at: '2026-02-12T00:00:00Z'
-  updated_at: '2026-02-12T21:52:08.271720Z'
+  updated_at: '2026-02-12T22:10:34.935800Z'

@@ -1,10 +1,10 @@
 ---
 title: Postgres Cycle Registry — Durable Persistence for Cycles, Runs, and Gate Decisions
-status: accepted
+status: implemented
 author: Jason Ladd
 created_at: '2026-02-12T00:00:00Z'
 sip_number: 67
-updated_at: '2026-02-12T21:52:08.252634Z'
+updated_at: '2026-02-12T22:10:34.934970Z'
 ---
 # SIP-00XX: Postgres Cycle Registry — Durable Persistence for Cycles, Runs, and Gate Decisions
 
