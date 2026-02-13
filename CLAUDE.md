@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 0.8.9
+**Framework Version**: 0.9.6
 **Python Requirement**: 3.11+
 
 ## Commands
 
 ### Testing
 ```bash
-# Run new architecture tests (recommended, always pass)
+# Run new architecture tests (recommended, 1328+ tests always pass)
 ./scripts/dev/run_new_arch_tests.sh -v
 
 # Run tests affected by your changes
@@ -31,6 +31,10 @@ pytest tests/unit/capabilities/ -v    # Capability tests
 pytest tests/unit/api/ -v             # API tests
 pytest tests/unit/tasks/ -v           # Task model tests
 pytest tests/unit/memory/ -v          # Memory tests
+pytest tests/unit/cycles/ -v          # Cycle execution tests
+pytest tests/unit/telemetry/ -v       # LangFuse/telemetry tests
+pytest tests/unit/auth/ -v            # Auth tests
+pytest tests/unit/cli/ -v             # CLI tests
 
 # Run all unit tests (includes legacy tests, some may fail)
 pytest tests/unit -v
@@ -49,6 +53,8 @@ ruff format .         # Format code
 ```bash
 python scripts/dev/build_agent.py <role>           # Build agent package locally (required before Docker build)
 ./scripts/dev/ops/rebuild_and_deploy.sh agents      # Rebuild and deploy all agents
+./scripts/dev/ops/rebuild_and_deploy.sh runtime-api # Rebuild runtime API
+./scripts/dev/ops/rebuild_and_deploy.sh all         # Rebuild everything
 ```
 
 ### Docker
@@ -57,47 +63,73 @@ docker-compose up -d                       # Start all services
 docker-compose up -d postgres redis rabbitmq  # Start core services only
 ```
 
+### CLI (Cycle Execution)
+```bash
+squadops auth login                        # Authenticate via Keycloak
+squadops cycles create <project> --squad-profile full-squad --profile selftest
+squadops cycles show <cycle-id>            # Show cycle status + runs
+squadops cycles list <project-id>          # List cycles for project
+squadops runs list <cycle-id>              # List runs for cycle
+squadops gate decide <run-id> <gate-name> --approve  # Approve a gate
+squadops artifacts list <run-id>           # List artifacts for run
+```
+
 ## Architecture
 
 ### Hexagonal Structure (Ports & Adapters)
 - **`src/squadops/`** - Core domain
-  - `ports/` - Abstract interfaces (SecretProvider, DbRuntime, QueuePort)
-  - `execution/` - Agent implementations with DI; role implementations in `execution/squad/`
+  - `ports/` - Abstract interfaces (SecretProvider, DbRuntime, QueuePort, CycleRegistryPort, AuthPort, AuditPort, LLMObservabilityPort)
+  - `agents/` - BaseAgent with DI, entrypoint for RabbitMQ message handling
   - `tasks/` - TaskEnvelope, TaskResult models (A2A message format with lineage per SIP-031)
-  - `capabilities/` - Capability contracts and workload runner (SIP-0058)
-  - `api/` - FastAPI runtime API service (SIP-0048)
+  - `capabilities/` - Capability contracts, workload runner, cycle task handlers (SIP-0058)
+  - `orchestration/` - AgentOrchestrator, HandlerExecutor
+  - `cycles/` - Cycle/Run/Gate domain models, lifecycle state machine, task planning (SIP-0064)
+  - `auth/` - Auth models, JWT validation helpers, middleware (SIP-0062)
+  - `cli/` - Typer CLI commands, CRP contract packs (SIP-0065)
+  - `api/` - FastAPI runtime API service with routes, DTOs, DI wiring (SIP-0048)
+  - `telemetry/` - LLM observability models, CorrelationContext, NoOp adapter (SIP-0061)
   - `memory/` - LanceDB semantic memory (SIP-042)
   - `llm/` - LLM router abstraction with dynamic provider registry
-  - `telemetry/` & `observability/` - OpenTelemetry with trace correlation
   - `config/` - Configuration loading (`SQUADOPS__*` env vars, double underscores for nesting)
   - `core/` - Core utilities (SecretManager)
 - **`adapters/`** - Concrete implementations
   - `secrets/` - env, file, docker_secret providers
   - `comms/` - RabbitMQ adapter
   - `persistence/` - PostgreSQL runtime with connection pooling
+  - `cycles/` - DistributedFlowExecutor, MemoryCycleRegistry, PostgresCycleRegistry, factory
+  - `telemetry/` - LangFuse adapter (buffered, with redaction) and factory
+  - `auth/` - Keycloak adapter, JWT middleware
+  - `llm/` - Ollama adapter
   - `capabilities/` - Filesystem repository, ACI executor
-- **`_v0_legacy/`** - Legacy v0 infrastructure (avoid modifying)
+- **`infra/`** - Database migrations and DDL
 
 ### Key Patterns
 - **Dependency Injection**: `BaseAgent` receives `SecretManager`, `DbRuntime`, `AgentHeartbeatReporter` via constructor
 - **Factory Pattern**: Adapters use factories for provider selection based on environment
 - **Task Envelope**: A2A message format with lineage (correlation_id, causation_id, trace_id) per SIP-031
 - **DTO Purity**: Task adapters return canonical DTOs; API formatting happens in FastAPI layer
+- **Frozen Dataclasses**: Cycle/Run/Gate models use `@dataclass(frozen=True)` with `dataclasses.replace()` for mutation
+- **Always-inject NoOp**: `BaseAgent` and `AgentOrchestrator` auto-inject `NoOpLLMObservabilityAdapter` when `llm_observability=None`
+- **Config-driven Selection**: Registry provider (memory vs postgres), auth, LangFuse all selected via config
 
 ### Agent Squad
-5 agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics). Implementations in `src/squadops/execution/squad/`.
+5 agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics). Implementations in `src/squadops/agents/`.
 
 ## Test Configuration
 
 - Tests auto-receive `unit`/`integration` markers based on file location (`tests/conftest.py`)
 - Unit test fixtures (mock_database, mock_redis, mock_ports, sample_task_envelope) are in `tests/unit/conftest.py`
 - `asyncio_mode = "auto"` in pyproject.toml — async tests work without `@pytest.mark.asyncio`
+- `--strict-markers` is enabled — any new `@pytest.mark.X` must be registered in `pyproject.toml`
 
 ### Key Markers
 ```python
 @pytest.mark.unit / @pytest.mark.integration / @pytest.mark.smoke / @pytest.mark.slow
 @pytest.mark.database / @pytest.mark.rabbitmq / @pytest.mark.redis / @pytest.mark.docker
-@pytest.mark.domain_agents / @pytest.mark.domain_capabilities / @pytest.mark.domain_api / @pytest.mark.domain_memory
+@pytest.mark.domain_agents / @pytest.mark.domain_capabilities / @pytest.mark.domain_api
+@pytest.mark.domain_memory / @pytest.mark.domain_orchestration / @pytest.mark.domain_telemetry
+@pytest.mark.domain_cli / @pytest.mark.domain_contracts
+@pytest.mark.langfuse / @pytest.mark.auth
 ```
 
 ## SIP System (SquadOps Improvement Proposals)
@@ -108,16 +140,29 @@ SIPs govern architectural decisions. Located in `sips/` with lifecycle:
 - `sips/implemented/` - Matched to code
 - `sips/registry.yaml` - Canonical index
 
+Key implemented SIPs:
+- **SIP-0061** – LangFuse LLM Observability Foundation
+- **SIP-0062** – Auth Boundary (Keycloak OIDC)
+- **SIP-0064** – Project Cycle Request API
+- **SIP-0065** – CLI for Cycle Execution
+- **SIP-0066** – Distributed Cycle Execution Pipeline
+- **SIP-0067** – Postgres Cycle Registry
+
 To move a SIP (maintainer only):
 ```bash
 export SQUADOPS_MAINTAINER=1
+
+# Promote a proposal to accepted (assigns a number)
 python scripts/maintainer/update_sip_status.py sips/proposals/SIP-MyIdea.md accepted
+
+# Promote an accepted SIP to implemented (after code is merged)
+python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature.md implemented
 ```
 
 ## Repository Rules
 
 **Read-Only Areas**:
-- Never modify `dist/`, `_v0_legacy/config/version.py`, or generated metadata (`manifest.json`, `agent_info.json`)
+- Never modify `dist/` or generated metadata (`manifest.json`, `agent_info.json`)
 - Version bumps via `scripts/maintainer/version_cli.py` only
 
 **Structure**:
@@ -137,12 +182,20 @@ python scripts/maintainer/update_sip_status.py sips/proposals/SIP-MyIdea.md acce
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| rabbitmq | 5672, 15672 | Message queue |
-| postgres | 5432 | Database |
+| rabbitmq | 5672, 15672 | Message queue (inter-agent comms) |
+| postgres | 5432 | Database (cycle registry, task logging) |
 | redis | 6379 | Cache |
-| runtime-api | 8001 | SIP-0048 runtime API |
+| runtime-api | 8001 | Cycle execution API (SIP-0048/0064) |
 | health-check | 8000 | Health monitoring |
 | prefect-server | 4200 | Workflow orchestration |
+| keycloak | 8180 | OIDC identity provider (SIP-0062) |
+| langfuse-server | 3001 | LLM observability UI (SIP-0061) |
+| langfuse-db | 5433 | LangFuse Postgres |
+| grafana | 3000 | Metrics dashboards |
+| prometheus | 9090 | Metrics collection |
+| otel-collector | 4317, 4318 | OpenTelemetry collector |
+| ollama | 11434 | Local LLM inference |
+| max/neo/nat/eve/data | — | Agent containers |
 
 ## Key Files
 
@@ -150,6 +203,8 @@ python scripts/maintainer/update_sip_status.py sips/proposals/SIP-MyIdea.md acce
 - `tests/conftest.py` - Global fixtures, session event loop, auto-markers by file location
 - `tests/unit/conftest.py` - Unit-specific mock fixtures (mock_database, mock_ports, sample_task_envelope)
 - `.env.example` - Environment template (`SQUADOPS__*` prefix, double underscores for nesting)
+- `docker-compose.yml` - 14-service development environment
+- `infra/migrations/` - Postgres DDL migrations (applied at runtime-api startup)
 
 ## Python Path Setup
 
@@ -168,11 +223,13 @@ pip install -e .  # Required: install in editable mode
 
 ## Docker Troubleshooting
 
-- Infrastructure configs are in `_v0_legacy/infra/` (migration in progress). Volume mount paths in `docker-compose.yml` should point there, not `infra/`.
+- Database migrations are baked into the runtime-api Docker image (`infra/migrations/`)
 - Adapter integration tests don't need agent containers: `SKIP_AGENT_CHECK=1 pytest tests/integration/adapters/ -v`
 
 | Symptom | Fix |
 |---------|-----|
-| Postgres mount error | Check docker-compose.yml points to `_v0_legacy/infra/init.sql` |
+| Postgres mount error | Verify `docker-compose.yml` volume paths |
 | Tests skip with "agents not running" | Set `SKIP_AGENT_CHECK=1` |
 | Import errors in pytest | Run `pip install -e .` |
+| JSONB round-trip errors | asyncpg returns JSONB as strings; use `_parse_jsonb()` helper |
+| Auth 401 errors | Run `squadops auth login` first |

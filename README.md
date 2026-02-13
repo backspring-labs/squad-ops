@@ -1,13 +1,13 @@
 # SquadOps – Agent Squad Framework
 
-## 📌 Overview
+## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.8.9) with hexagonal architecture, capability contracts, Docker build process, task adapter architecture, comprehensive documentation, and proven execution history (163+ WarmBoot runs).
+**Current Status**: Production-ready framework (v0.9.6) with hexagonal architecture, distributed cycle execution pipeline, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, and 1,328+ passing tests.
 
 ---
 
-## 🚀 Mission
+## Mission
 - **Learn**
 - **Build**
 - **Benchmark**
@@ -16,68 +16,92 @@
 
 ---
 
-## 🧩 Core Components
+## Core Components
 
 ### Architecture
 - **Hexagonal Architecture** – Ports & adapters pattern with clean domain/infrastructure separation
 - **Dependency Injection** – Constructor-injected dependencies for testability
 - **Unified Agent Build** – Single multi-stage Dockerfile for all agent roles
+- **Distributed Execution** – RabbitMQ-based task dispatch across 5 agent containers
 
 ### Agent Framework
 - **Agent Squad** – 5 agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics)
 - **BaseAgent** – DI-enabled base class with SecretManager, DbRuntime, and port injection
 - **Capability Contracts** – Declarative delivery expectations with acceptance checks (SIP-0058)
 
+### Cycle Execution Pipeline (SIP-0064/0066)
+- **Cycle API** – Create, monitor, and manage execution cycles via REST API
+- **Task Planning** – Automatic task plan generation from PRD references
+- **Distributed Flow Executor** – Sequential task dispatch to agent containers via RabbitMQ
+- **Gate Decisions** – Human-in-the-loop approval gates between pipeline stages
+- **Artifact Management** – Typed artifact ingestion and retrieval per run
+
 ### Infrastructure Adapters
 - **Secrets** – Pluggable providers (env, file, docker_secret) with `secret://` URI resolution
 - **Persistence** – PostgresRuntime with connection pooling, SSL, and health checks
+- **Cycle Registry** – Postgres-backed durable cycle/run/gate storage (SIP-0067)
 - **Comms** – RabbitMQ adapter for inter-agent messaging
-- **Telemetry** – OpenTelemetry with metrics, events, and trace correlation
+- **Telemetry** – OpenTelemetry + LangFuse LLM observability (SIP-0061)
+- **Auth** – Keycloak OIDC with JWT validation and audit logging (SIP-0062)
 
 ### Services
-- **Runtime API** – FastAPI service with execution cycle tracking (SIP-0048)
-- **Health Check** – FastAPI monitoring and WarmBoot API
-- **PostgreSQL** – Task logging, execution cycles, and state persistence
+- **Runtime API** – FastAPI service with cycle execution, auth middleware, and Postgres migrations (SIP-0048)
+- **CLI** – Typer-based CLI for cycle management (`squadops cycles create/show/list/gate`) (SIP-0065)
+- **Health Check** – FastAPI monitoring service
+- **PostgreSQL** – Cycle registry, task logging, and state persistence
 - **Redis** – Caching and performance optimization
-- **Docker Compose** – Multi-container development environment
+- **RabbitMQ** – Inter-agent message queue
+- **Keycloak** – OIDC identity provider with realm auto-provisioning
+- **LangFuse** – LLM observability with cross-process trace linking
+- **Prefect** – Workflow orchestration and DAG visibility
+- **Ollama** – Local LLM inference
+- **Docker Compose** – 14-service development environment
 
 ---
 
-## 📚 Documentation
+## Documentation
 Comprehensive documentation and protocols are available in `/docs/`:
 
-- **SIPs (SquadOps Improvement Proposals)** – 56 protocol specifications in `sips/` directory including SIP-024/025 Task Management, SIP-033A JSON Workflow, SIP-041 Naming & Correlation, SIP-031 A2A Envelope Standard, and SIP-055 DB Deployment Profile
-- **IDEA Documents** – 25+ strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance, and Progressive Modular Build Framework
+- **SIPs (SquadOps Improvement Proposals)** – 63 protocol specifications in `sips/` directory (40 implemented, 1 accepted, 7 proposals, 15 deprecated)
+- **IDEA Documents** – 25+ strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance
 - **Architecture Documents** – Design guides for agent implementations and handoff templates
 - **Book Chapters** – 9 chapters covering methodology, implementation, and operations
-- **Design Reviews** – Technical architecture assessments
-- **Retrospectives** – 17 WarmBoot run analyses and lessons learned
+- **Plans** – Implementation plans for major SIPs in `docs/plans/`
+- **Retrospectives** – WarmBoot run analyses and lessons learned
 - **Protocols** – Testing, data governance, communication patterns
-- **Roadmaps** – Development plans and strategic direction
 
-**Total Documentation**: ~48,741 lines across 246 markdown files
+**Total Documentation**: ~61,665 lines across 215+ markdown files
 
 ---
 
-## 🏗️ Repo Structure
+## Repo Structure
 ```
 /src/squadops/        # Core framework (hexagonal architecture)
-├── ports/            # Abstract interfaces (secrets, db, comms, observability, capabilities)
+├── ports/            # Abstract interfaces (secrets, db, comms, cycles, auth, telemetry)
+├── agents/           # BaseAgent with DI, entrypoint, role definitions
 ├── capabilities/     # Capability contracts & workload runner (SIP-0058)
-│   └── manifests/    # Contracts, workloads, and JSON schemas
-├── execution/        # Agent implementations with DI
-│   ├── agent.py      # BaseAgent with dependency injection
-│   └── squad/        # Role implementations (lead, dev, strat, qa, data)
-├── core/             # Core utilities (SecretManager)
-├── comms/            # Communication layer
+│   └── handlers/     # Cycle task handlers (strategy, dev, QA, data, governance)
+├── orchestration/    # AgentOrchestrator, HandlerExecutor
+├── cycles/           # Cycle models, lifecycle state machine, task planning
+├── auth/             # Auth models, JWT validation, middleware
+├── cli/              # Typer CLI commands and CRP contract packs
+├── api/              # FastAPI runtime API service (SIP-0048)
+│   └── runtime/      # Routes, DTOs, DI wiring, migrations
+├── telemetry/        # LLM observability models and NoOp adapter
 ├── memory/           # LanceDB semantic memory
-└── observability/    # Telemetry & observability
+├── llm/              # LLM router abstraction with dynamic provider registry
+├── config/           # Configuration loading (SQUADOPS__* env vars)
+├── tasks/            # TaskEnvelope, TaskResult models (A2A message format)
+└── core/             # Core utilities (SecretManager)
 /adapters/            # Concrete implementations
 ├── secrets/          # env, file, docker_secret providers
 ├── comms/            # RabbitMQ adapter
 ├── persistence/      # PostgreSQL runtime
+├── cycles/           # DistributedFlowExecutor, MemoryCycleRegistry, PostgresCycleRegistry
+├── telemetry/        # LangFuse adapter with buffering, flush, redaction
+├── auth/             # Keycloak adapter, JWT middleware
 ├── capabilities/     # Filesystem repository, ACI executor
-└── observability/    # HTTP health check
+└── llm/              # Ollama adapter
 /agents/              # Agent definitions and Dockerfile
 ├── Dockerfile        # Unified multi-stage agent build
 └── instances/        # Agent instance configurations
@@ -86,144 +110,119 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── accepted/         # Numbered, approved
 ├── implemented/      # Matched to code
 └── registry.yaml     # Canonical index
-/tests/               # Test suite
+/tests/               # Test suite (1,328+ tests)
 ├── unit/             # Unit tests (mocked deps)
 ├── integration/      # Integration tests (real services)
 └── conftest.py       # Global fixtures
 /docs/                # Documentation and protocols
 /scripts/             # Development and maintainer scripts
-docker-compose.yml    # Multi-container setup
+/infra/               # Database migrations and DDL
+docker-compose.yml    # 14-service development environment
 ```
 
 ---
 
-## 🧪 Reference Application: HelloSquad
-- **HelloSquad** is a web application generated by the agent collaboration system
-- Demonstrates end-to-end workflow: PRD → Task Planning → Code Generation → Deployment
-- Deployed at `http://localhost:8080/hello-squad/` with proper versioning and archiving
-- Shows real AI agent collaboration for software development tasks
+## Reference Application: play_game
+- **play_game** is a sample project that demonstrates the full cycle execution pipeline
+- Ships with a PRD (`examples/play_game/prd.md`) and PCR (Project Cycle Request)
+- Exercises all 5 agents: strategy analysis, implementation, QA, data reporting, governance review
+- Run via CLI: `squadops cycles create play_game --squad-profile full-squad --profile selftest`
 
 ---
 
-## 🛠️ Getting Started
+## Getting Started
 
 ### Prerequisites
 
 - **Python 3.11+** (required for local development and testing)
   - Recommended: Use [pyenv](https://github.com/pyenv/pyenv) for version management
-  - See [CONTRIBUTING.md](CONTRIBUTING.md#local-development-setup) for setup instructions
 - **Docker** and **Docker Compose** (required for running agents and services)
-- **Ollama** (for local LLMs) - Optional, can use cloud LLMs instead
+- **Ollama** (for local LLMs) - Required for agent task execution
 
 ### Quick Start
 
-1. **Set up Python environment** (if running tests locally):
+1. **Set up Python environment**:
    ```bash
-   # Install pyenv and Python 3.11.14
    brew install pyenv
    pyenv install 3.11.14
    pyenv local 3.11.14
    python -m venv .venv
    source .venv/bin/activate
+   pip install -e .
    pip install -r tests/requirements.txt
    ```
 
 2. **Start Infrastructure**: `docker-compose up -d`
-3. **Verify Health**: Visit `http://localhost:8000/health` for system status
-4. **Test WarmBoot**: Submit PRD via `http://localhost:8000/warmboot/submit`
-5. **View Application**: Generated apps available at `http://localhost:8080/`
 
-**Quick Test**:
-```bash
-curl -X POST http://localhost:8000/warmboot/submit \
-  -H "Content-Type: application/json" \
-  -d '{
-    "run_id": "run-001",
-    "application": "HelloSquad",
-    "request_type": "prd_request",
-    "agents": ["max", "neo"],
-    "priority": "HIGH",
-    "description": "Test application",
-    "prd_path": "warm-boot/prd/PRD-001-HelloSquad.md"
-  }'
-```
+3. **Login** (Keycloak auth required):
+   ```bash
+   squadops auth login
+   ```
+
+4. **Run a cycle**:
+   ```bash
+   squadops cycles create play_game --squad-profile full-squad --profile selftest
+   squadops cycles show <cycle-id>
+   ```
+
+5. **Monitor**: Check LangFuse UI at `http://localhost:3001` and Prefect UI at `http://localhost:4201`
 
 ---
 
-## 📈 Development Roadmap
-**Current Phase**: JSON Workflow Foundation Complete ✅
-- **✅ COMPLETED**: SIP-024/025 Task Management System with API-first architecture
-- **✅ COMPLETED**: SIP-033A JSON Workflow with structured LLM output
-- **✅ COMPLETED**: Manifest-first development eliminating markdown parsing issues
-- **✅ COMPLETED**: Framework enforcement (vanilla_js) and agent coordination
-- **✅ COMPLETED**: Comprehensive testing (46/46 unit tests passing, 100% coverage)
+## Development Roadmap
 
-**Next Phase**: Integration Testing & Production Validation
-- Fix integration tests to work with real Ollama API
-- Run actual WarmBoot with JSON workflow
-- Validate production readiness
-- Scale to multi-agent coordination
+**Current Phase**: Distributed Cycle Execution Pipeline Complete
+
+### Implemented (v0.9.x)
+- **SIP-0061** – LangFuse LLM Observability Foundation (buffered trace/span/generation recording)
+- **SIP-0062** – Auth Boundary (Keycloak OIDC, JWT middleware, service identities, audit logging)
+- **SIP-0064** – Project Cycle Request API (cycles, runs, gates, artifacts via REST)
+- **SIP-0065** – CLI for Cycle Execution (Typer CLI with CRP contract packs)
+- **SIP-0066** – Distributed Cycle Execution Pipeline (RabbitMQ dispatch, Prefect DAG, LangFuse traces)
+- **SIP-0067** – Postgres Cycle Registry (durable cycle/run/gate persistence with migrations)
+
+### Implemented (v0.8.x)
+- **SIP-0048** – Runtime API with FastAPI
+- **SIP-0055** – DB Deployment Profile
+- **SIP-0058** – Capability Contracts
+
+### Next Phase
+- Multi-cycle orchestration and pipeline chaining
+- Enhanced gate decision workflows
+- Production deployment hardening
 
 ---
 
-## ✅ Current Status
-**Framework Version**: 0.8.9
-**Agent Version**: 0.8.2
-**Development Status**: Production-ready framework with hexagonal architecture, Docker build process, task adapter architecture, and comprehensive documentation
+## Current Status
+**Framework Version**: 0.9.6
+**Development Status**: Production-ready distributed cycle execution with durable persistence, authentication, CLI tooling, and full observability stack.
 
 ### Project Statistics
-- **~46,095 lines** of Python source code (171 files)
-- **~48,741 lines** of documentation (246 markdown files)
-- **~99,942 total lines** across all file types
-- **163+ WarmBoot runs** completed with documented retrospectives
+- **~34,578 lines** of Python source code (271 files)
+- **~28,133 lines** of test code (160 files)
+- **~61,665 lines** of documentation (215 markdown files)
+- **1,328+ tests** passing in regression suite
+- **63 SIPs** (40 implemented, 1 accepted, 7 proposals, 15 deprecated)
 
 ### Functional Components
-- ✅ **5 Agents**:
-  - **Max (Lead)** – Task orchestration
-  - **Neo (Dev)** – Code generation
-  - **Nat (Strategy)** – PRD and product domain
-  - **Eve (QA)** – Test design and counterfactual reasoning
-  - **Data (Analytics)** – Inductive reasoning
-- ✅ **Task Management System** (SIP-024/025) with execution cycle tracking
-- ✅ **Task Adapter Architecture** – Pluggable backend system (SQL/Prefect) with DTO purity, connection pooling, and test injection support
-- ✅ **Memory System** (SIP-042) with LanceDB semantic memory
-- ✅ **JSON Workflow Engine** (SIP-033A) with structured LLM output
-- ✅ **LLM Router Abstraction** – Dynamic provider registry (Ollama, Docker models, extensible)
-- ✅ **Docker Build System** – Multi-stage builds with build script (`scripts/dev/build_agent.py`), deterministic builds, and build artifacts (manifest.json, agent_info.json)
-- ✅ **AppBuilder Integration** – Uses LLM router abstraction, no direct HTTP calls
-- ✅ **Telemetry & Observability** – OpenTelemetry with reasoning events, trace correlation
-- ✅ **Manifest-First Development** eliminating markdown parsing issues
-- ✅ **Framework Enforcement** (vanilla_js) and agent coordination
-- ✅ **Runtime API** with connection pooling and error handling (SIP-0048)
-- ✅ **Infrastructure Services** (RabbitMQ, PostgreSQL, Redis, Prefect, Health Check, Runtime API)
-- ✅ **End-to-End Workflow** (PRD → Task Planning → Code Generation → Deployment)
-- ✅ **Docker Compose** development environment
-- ✅ **Version Management** and archiving system
-
-### Recent Achievements (v0.8.x)
-- ✅ **Hexagonal Architecture**: Ports & adapters pattern with clear domain/infrastructure separation
-- ✅ **Dependency Injection**: Constructor-injected external dependencies for testability
-- ✅ **Docker Build Process**: Multi-stage Dockerfile pattern with build script for assembling agent packages
-- ✅ **Build Artifacts**: Deterministic builds with manifest.json and agent_info.json metadata
-- ✅ **Task Adapter Architecture**: Pluggable backend system with DTO purity principle, supporting SQL (PostgreSQL) and Prefect (future)
-- ✅ **DB Deployment Profile** (SIP-0055): Postgres portability across environments
-- ✅ **Connection Pooling**: Production-ready asyncpg connection pool management for task adapters
-- ✅ **Test Support**: Dependency injection for unit testing in task adapter system
-- ✅ **Telemetry Finalization**: Reasoning events, wrap-up summaries, trace correlation
-- ✅ **LLM Router Abstraction**: Dynamic provider registry supporting multiple backends
-
-### Documentation Milestones
-- ✅ **56 SIPs** – SquadOps Improvement Proposals
-- ✅ **25+ IDEA Documents** – Strategic ideas and design patterns
-- ✅ **9 Book Chapters** – Methodology and implementation guides
-- ✅ **17 Retrospectives** – WarmBoot run analyses
-- ✅ **46+ WarmBoot Runs** – Documented execution history
-
-**Next Focus**: Multi-agent expansion, production deployment validation, and continuous improvement cycles.
+- 5 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics)
+- Cycle Execution API with runs, gates, and artifact management (SIP-0064)
+- Distributed flow execution via RabbitMQ (SIP-0066)
+- Postgres-backed cycle registry with migrations (SIP-0067)
+- LangFuse LLM observability with cross-process trace linking (SIP-0061)
+- Keycloak OIDC authentication with JWT middleware and audit logging (SIP-0062)
+- CLI for cycle management with CRP contract packs (SIP-0065)
+- Capability contracts with declarative acceptance checks (SIP-0058)
+- Task planning with automatic task flow generation
+- LLM router abstraction with Ollama adapter
+- LanceDB semantic memory (SIP-042)
+- OpenTelemetry with trace correlation
+- Docker build system with deterministic multi-stage builds
+- 14-service Docker Compose development environment
 
 ---
 
-## 🐳 Docker Build Process
+## Docker Build Process
 
 SquadOps uses a **build-time assembly approach** for creating agent containers:
 
@@ -234,54 +233,20 @@ The `scripts/dev/build_agent.py` script:
 - Generates build artifacts (`manifest.json`, `agent_info.json`)
 - Creates deterministic builds with SHA256 build hash
 
-### Multi-Stage Dockerfile Pattern
-All agents use a standard multi-stage build:
-- **Stage 1 (Builder)**: Runs build script to assemble agent package with cache-busting
-- **Stage 2 (Runtime)**: Minimal runtime image with assembled package
-- **Cache Busting**: Uses `CACHE_BUST` build arg (source file hash) to ensure fresh builds when source changes
-- **Benefits**: No forgotten files, deterministic builds, testable, cloud compatible, reliable cache invalidation
-
-### Build Artifacts
-- **manifest.json**: Build artifact metadata (what was built, capabilities, skills, build hash)
-- **agent_info.json**: Runtime identity metadata (who is running, container hash, startup time)
-- **Build Hash**: SHA256 hash of all files for deterministic builds
-
 ### Usage
 ```bash
 # Build agent package locally (required before Docker build)
 python scripts/dev/build_agent.py <role>
 
-# Build Docker image with cache busting
-# The rebuild script automatically calculates source hash and passes as CACHE_BUST
-docker build -t squadops/<agent>:latest \
-  --build-arg AGENT_ROLE=<role> \
-  --build-arg CACHE_BUST=<source_hash> \
-  -f agents/Dockerfile .
-
-# Recommended: Use rebuild script for all 5 core agents
+# Rebuild and deploy all agents
 ./scripts/dev/ops/rebuild_and_deploy.sh agents
+
+# Rebuild runtime-api only
+./scripts/dev/ops/rebuild_and_deploy.sh runtime-api
+
+# Rebuild everything
+./scripts/dev/ops/rebuild_and_deploy.sh all
 ```
-
-### Rebuild Script Features
-The `scripts/dev/ops/rebuild_and_deploy.sh` script provides:
-- **Automatic source hash calculation**: Computes hash of all source files affecting the build
-- **Cache invalidation**: Uses source hash as `CACHE_BUST` to ensure fresh builds
-- **Hash verification**: Verifies container build hash matches expected hash from manifest
-- **Auto-retry**: Automatically retries with `--no-cache` if hash mismatch detected
-- **Fail-fast**: Exits immediately if build or verification fails
-
-### Task Adapter Architecture
-
-SquadOps implements a **pluggable task adapter system**:
-
-- **Abstract Base Class**: `TaskAdapterBase` defines the interface for all task operations
-- **DTO Purity Principle**: Adapters return canonical DTOs only; API formatting happens in FastAPI layer
-- **Backend Selection**: Configurable via `TASKS_BACKEND` environment variable (sql/prefect)
-- **SQL Adapter**: Production-ready PostgreSQL implementation with asyncpg connection pooling
-- **Prefect Adapter**: Stub for future orchestration integration
-- **Test Support**: Dependency injection for unit testing
-
-**Benefits**: Clean architecture, easy backend switching, production-ready connection management, testable design.
 
 ---
 
