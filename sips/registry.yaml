@@ -1,4 +1,4 @@
-last_assigned: 66
+last_assigned: 67
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -591,3 +591,13 @@ sips:
   approver: jladd
   created_at: '2026-02-11T00:00:00Z'
   updated_at: '2026-02-11T23:37:54.687248Z'
+- sip_uid: null
+  sip_number: 67
+  title: Postgres Cycle Registry — Durable Persistence for Cycles, Runs, and Gate
+    Decisions
+  path: sips/accepted/SIP-0067-Postgres-Cycle-Registry-Durable.md
+  status: accepted
+  author: Jason Ladd
+  approver: jladd
+  created_at: '2026-02-12T00:00:00Z'
+  updated_at: '2026-02-12T21:52:08.271720Z'
