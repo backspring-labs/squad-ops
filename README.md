@@ -10,7 +10,7 @@
 ## Mission
 - **Learn**
 - **Build**
-- **Benchmark**
+- **Experiment**
 
 *repeat.*
 
