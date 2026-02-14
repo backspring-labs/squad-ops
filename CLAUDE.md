@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 0.9.6
+**Framework Version**: 0.9.7
 **Python Requirement**: 3.11+
 
 ## Commands
 
 ### Testing
 ```bash
-# Run new architecture tests (recommended, 1328+ tests always pass)
+# Run new architecture tests (recommended, 1422+ tests always pass)
 ./scripts/dev/run_new_arch_tests.sh -v
 
 # Run tests affected by your changes
@@ -81,7 +81,7 @@ squadops artifacts list <run-id>           # List artifacts for run
   - `ports/` - Abstract interfaces (SecretProvider, DbRuntime, QueuePort, CycleRegistryPort, AuthPort, AuditPort, LLMObservabilityPort)
   - `agents/` - BaseAgent with DI, entrypoint for RabbitMQ message handling
   - `tasks/` - TaskEnvelope, TaskResult models (A2A message format with lineage per SIP-031)
-  - `capabilities/` - Capability contracts, workload runner, cycle task handlers (SIP-0058)
+  - `capabilities/` - Capability contracts, workload runner, cycle task handlers, build handlers (SIP-0058, SIP-0068)
   - `orchestration/` - AgentOrchestrator, HandlerExecutor
   - `cycles/` - Cycle/Run/Gate domain models, lifecycle state machine, task planning (SIP-0064)
   - `auth/` - Auth models, JWT validation helpers, middleware (SIP-0062)
@@ -147,6 +147,7 @@ Key implemented SIPs:
 - **SIP-0065** – CLI for Cycle Execution
 - **SIP-0066** – Distributed Cycle Execution Pipeline
 - **SIP-0067** – Postgres Cycle Registry
+- **SIP-0068** – Enhanced Agent Build Capabilities
 
 To move a SIP (maintainer only):
 ```bash

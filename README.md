@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.9.6) with hexagonal architecture, distributed cycle execution pipeline, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, and 1,328+ passing tests.
+**Current Status**: Production-ready framework (v0.9.7) with hexagonal architecture, distributed cycle execution pipeline, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, and 1,422+ passing tests.
 
 ---
 
@@ -29,12 +29,14 @@
 - **BaseAgent** – DI-enabled base class with SecretManager, DbRuntime, and port injection
 - **Capability Contracts** – Declarative delivery expectations with acceptance checks (SIP-0058)
 
-### Cycle Execution Pipeline (SIP-0064/0066)
+### Cycle Execution Pipeline (SIP-0064/0066/0068)
 - **Cycle API** – Create, monitor, and manage execution cycles via REST API
 - **Task Planning** – Automatic task plan generation from PRD references
 - **Distributed Flow Executor** – Sequential task dispatch to agent containers via RabbitMQ
 - **Gate Decisions** – Human-in-the-loop approval gates between pipeline stages
 - **Artifact Management** – Typed artifact ingestion and retrieval per run
+- **Build Capabilities** – Agents produce executable source code, tests, and config from plans (SIP-0068)
+- **Assembly** – CLI command to assemble build artifacts into a runnable project directory
 
 ### Infrastructure Adapters
 - **Secrets** – Pluggable providers (env, file, docker_secret) with `secret://` URI resolution
@@ -80,7 +82,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── ports/            # Abstract interfaces (secrets, db, comms, cycles, auth, telemetry)
 ├── agents/           # BaseAgent with DI, entrypoint, role definitions
 ├── capabilities/     # Capability contracts & workload runner (SIP-0058)
-│   └── handlers/     # Cycle task handlers (strategy, dev, QA, data, governance)
+│   └── handlers/     # Cycle task handlers (strategy, dev, QA, data, governance, build)
 ├── orchestration/    # AgentOrchestrator, HandlerExecutor
 ├── cycles/           # Cycle models, lifecycle state machine, task planning
 ├── auth/             # Auth models, JWT validation, middleware
@@ -110,7 +112,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── accepted/         # Numbered, approved
 ├── implemented/      # Matched to code
 └── registry.yaml     # Canonical index
-/tests/               # Test suite (1,328+ tests)
+/tests/               # Test suite (1,422+ tests)
 ├── unit/             # Unit tests (mocked deps)
 ├── integration/      # Integration tests (real services)
 └── conftest.py       # Global fixtures
@@ -122,11 +124,20 @@ docker-compose.yml    # 14-service development environment
 
 ---
 
-## Reference Application: play_game
-- **play_game** is a sample project that demonstrates the full cycle execution pipeline
-- Ships with a PRD (`examples/play_game/prd.md`) and PCR (Project Cycle Request)
-- Exercises all 5 agents: strategy analysis, implementation, QA, data reporting, governance review
-- Run via CLI: `squadops cycles create play_game --squad-profile full-squad --profile selftest`
+## Reference Applications
+- **play_game** – Tic-Tac-Toe game built end-to-end by the agent squad (plan + build + test)
+- **hello_squad** – Minimal CLI greeting script (simplest build-capable example)
+- **group_run** – Multi-module running activity logger (multi-file build example)
+
+Each ships with a PRD (`examples/<project>/prd.md`) and PCR (Project Cycle Request).
+
+```bash
+# Run a full plan-then-build cycle
+squadops cycles create play_game --squad-profile full-squad --profile build
+squadops cycles show play_game <cycle-id>
+squadops runs gate play_game <cycle-id> <run-id> plan-review --approve
+squadops runs assemble play_game <cycle-id> <run-id> --out ./output
+```
 
 ---
 
@@ -180,6 +191,7 @@ docker-compose.yml    # 14-service development environment
 - **SIP-0065** – CLI for Cycle Execution (Typer CLI with CRP contract packs)
 - **SIP-0066** – Distributed Cycle Execution Pipeline (RabbitMQ dispatch, Prefect DAG, LangFuse traces)
 - **SIP-0067** – Postgres Cycle Registry (durable cycle/run/gate persistence with migrations)
+- **SIP-0068** – Enhanced Agent Build Capabilities (code generation, test generation, assembly)
 
 ### Implemented (v0.8.x)
 - **SIP-0048** – Runtime API with FastAPI
@@ -194,15 +206,15 @@ docker-compose.yml    # 14-service development environment
 ---
 
 ## Current Status
-**Framework Version**: 0.9.6
-**Development Status**: Production-ready distributed cycle execution with durable persistence, authentication, CLI tooling, and full observability stack.
+**Framework Version**: 0.9.7
+**Development Status**: Production-ready distributed cycle execution with agent build capabilities, durable persistence, authentication, CLI tooling, and full observability stack.
 
 ### Project Statistics
-- **~34,578 lines** of Python source code (271 files)
-- **~28,133 lines** of test code (160 files)
-- **~61,665 lines** of documentation (215 markdown files)
-- **1,328+ tests** passing in regression suite
-- **63 SIPs** (40 implemented, 1 accepted, 7 proposals, 15 deprecated)
+- **~38,000 lines** of Python source code
+- **~31,000 lines** of test code
+- **~62,000 lines** of documentation
+- **1,422+ tests** passing in regression suite
+- **64 SIPs** (41 implemented, 7 proposals, 15 deprecated)
 
 ### Functional Components
 - 5 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics)
@@ -213,7 +225,9 @@ docker-compose.yml    # 14-service development environment
 - Keycloak OIDC authentication with JWT middleware and audit logging (SIP-0062)
 - CLI for cycle management with CRP contract packs (SIP-0065)
 - Capability contracts with declarative acceptance checks (SIP-0058)
-- Task planning with automatic task flow generation
+- Task planning with automatic task flow generation (plan + build modes)
+- Agent build capabilities: source code, tests, and config generation (SIP-0068)
+- Assembly CLI command for extracting build artifacts into runnable projects
 - LLM router abstraction with Ollama adapter
 - LanceDB semantic memory (SIP-042)
 - OpenTelemetry with trace correlation
