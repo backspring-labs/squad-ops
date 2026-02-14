@@ -1,8 +1,10 @@
 ---
 title: Enhanced Agent Build Capabilities
-status: proposed
+status: implemented
 author: Jason Ladd
 created_at: '2026-02-12T00:00:00Z'
+sip_number: 68
+updated_at: '2026-02-14T11:54:38.489307Z'
 ---
 # SIP-00XX: Enhanced Agent Build Capabilities
 

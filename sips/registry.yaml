@@ -1,4 +1,4 @@
-last_assigned: 67
+last_assigned: 68
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -601,3 +601,12 @@ sips:
   approver: jladd
   created_at: '2026-02-12T00:00:00Z'
   updated_at: '2026-02-12T22:10:34.935800Z'
+- sip_uid: null
+  sip_number: 68
+  title: Enhanced Agent Build Capabilities
+  path: sips/implemented/SIP-0068-Enhanced-Agent-Build-Capabilities.md
+  status: implemented
+  author: Jason Ladd
+  approver: jladd
+  created_at: '2026-02-12T00:00:00Z'
+  updated_at: '2026-02-14T11:54:38.490047Z'
