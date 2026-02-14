@@ -39,8 +39,9 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         # Compute content hash
         content_hash = hashlib.sha256(content).hexdigest()
 
-        # Write content
+        # Write content (ensure parent dirs exist for nested filenames like pkg/module.py)
         content_path = art_dir / artifact.filename
+        content_path.parent.mkdir(parents=True, exist_ok=True)
         content_path.write_bytes(content)
 
         vault_uri = str(content_path)

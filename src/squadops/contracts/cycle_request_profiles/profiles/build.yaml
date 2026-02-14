@@ -1,0 +1,21 @@
+name: build
+description: Plan-then-build cycle with optional gate between plan and build phases.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: plan-review
+        description: Review planning artifacts before build begins.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - documentation
+    - source
+    - test
+    - config
+  build_tasks:
+    - development.build
+    - qa.build_validate
+  experiment_context: {}
+  notes: "Plan-then-build cycle"

@@ -1,0 +1,17 @@
+name: build-only
+description: Build-only cycle that consumes plan artifacts from a prior cycle.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates: []
+  expected_artifact_types:
+    - source
+    - test
+    - config
+  plan_tasks: false
+  build_tasks:
+    - development.build
+    - qa.build_validate
+  experiment_context: {}
+  notes: "Build-only cycle — requires plan_artifact_refs in execution_overrides"

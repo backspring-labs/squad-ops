@@ -14,13 +14,18 @@ defaults:
           Verify the game is playable, AI difficulty levels work,
           and test coverage meets the 90% acceptance criterion.
         after_task_types:
-          - code
-          - test_report
+          - governance.review
   expected_artifact_types:
     - code
     - test_report
     - metrics
     - documentation
+    - source
+    - test
+    - config
+  build_tasks:
+    - development.build
+    - qa.build_validate
   experiment_context:
     sample_app: play_game
     selftest: true

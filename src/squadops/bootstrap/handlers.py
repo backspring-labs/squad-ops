@@ -39,6 +39,8 @@ from squadops.capabilities.handlers.cycle_tasks import (
     QAValidateHandler,
     DataReportHandler,
     GovernanceReviewHandler,
+    DevelopmentBuildHandler,
+    QABuildValidateHandler,
 )
 
 if TYPE_CHECKING:
@@ -70,6 +72,9 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (QAValidateHandler, ("qa",)),
     (DataReportHandler, ("data",)),
     (GovernanceReviewHandler, ("lead",)),
+    # Build handlers (SIP-Enhanced-Agent-Build-Capabilities)
+    (DevelopmentBuildHandler, ("dev",)),
+    (QABuildValidateHandler, ("qa",)),
 ]
 
 

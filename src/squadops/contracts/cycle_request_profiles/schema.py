@@ -15,6 +15,12 @@ from squadops.api.routes.cycles.dtos import CycleCreateRequest
 # Ground truth for allowed default keys — derived from the server DTO (D9).
 _ALLOWED_DEFAULT_KEYS = set(CycleCreateRequest.model_fields.keys())
 
+# Keys that are valid in CRP defaults but flow into applied_defaults (not top-level DTO).
+# These control task plan generation and are consumed by the executor, not the API.
+_APPLIED_DEFAULTS_EXTRA_KEYS = {"build_tasks", "plan_tasks"}
+
+_ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS
+
 
 class PromptMeta(BaseModel):
     """CLI prompt metadata for interactive mode."""
@@ -39,8 +45,8 @@ class CycleRequestProfile(BaseModel):
     @field_validator("defaults")
     @classmethod
     def validate_known_keys(cls, v: dict) -> dict:
-        """Fail fast if defaults contain keys not in CycleCreateRequest."""
-        unknown = set(v.keys()) - _ALLOWED_DEFAULT_KEYS
+        """Fail fast if defaults contain keys not in CycleCreateRequest or applied_defaults."""
+        unknown = set(v.keys()) - _ALL_ALLOWED_KEYS
         if unknown:
-            raise ValueError(f"Unknown default keys not in CycleCreateRequest: {unknown}")
+            raise ValueError(f"Unknown default keys: {unknown}")
         return v

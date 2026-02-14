@@ -398,7 +398,8 @@ class TestSequentialHappyPath:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        assert mock_vault.store.call_count == 5
+        # 5 task artifacts + 1 run report = 6
+        assert mock_vault.store.call_count == 6
 
 
 # ---------------------------------------------------------------------------
@@ -523,5 +524,9 @@ class TestArtifactStorage:
         for call_item in mock_vault.store.call_args_list:
             ref = call_item.args[0]
             assert isinstance(ref, ArtifactRef)
+            # Skip run_report.md — it has report_type metadata, not task_id
+            if ref.filename == "run_report.md":
+                assert "report_type" in ref.metadata
+                continue
             assert "task_id" in ref.metadata
             assert "role" in ref.metadata

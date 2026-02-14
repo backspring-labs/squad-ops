@@ -31,18 +31,22 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files and install
+# Copy dependency files FIRST (for better layer caching)
 COPY pyproject.toml ./
 COPY requirements.txt ./
+
+# Install dependencies (this layer is cached when requirements don't change)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
 COPY adapters/ ./adapters/
 COPY config/ ./config/
 COPY examples/ ./examples/
 COPY infra/ ./infra/
 
-# Install dependencies and package
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -e .
+# Install package in editable mode (fast - deps already installed)
+RUN pip install --no-cache-dir -e .
 
 # Expose port
 EXPOSE 8001

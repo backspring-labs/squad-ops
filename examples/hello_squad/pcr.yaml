@@ -1,0 +1,25 @@
+name: hello_squad
+description: >
+  Cycle request profile for the Hello Squad sample project.
+  Builds a minimal CLI greeting script — one source file, one test file.
+  Uses the build profile for plan-then-build execution.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: plan-review
+        description: >
+          Review planning artifacts before building the greeting script.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - documentation
+    - source
+    - test
+  build_tasks:
+    - development.build
+    - qa.build_validate
+  experiment_context:
+    sample_app: hello_squad
+  notes: "Hello Squad — minimal build-capable sample project"

@@ -14,6 +14,7 @@ from squadops.contracts.cycle_request_profiles import (
     load_profile,
     merge_config,
 )
+from squadops.contracts.cycle_request_profiles.schema import _APPLIED_DEFAULTS_EXTRA_KEYS
 from squadops.cycles.lifecycle import compute_config_hash
 
 
@@ -22,9 +23,9 @@ class TestProfileDTOCompatibility:
 
     @pytest.mark.parametrize("profile_name", list_profiles())
     def test_profile_defaults_valid_for_dto(self, profile_name):
-        """CRP defaults must only contain keys known to CycleCreateRequest."""
+        """CRP defaults must only contain keys known to CycleCreateRequest or applied_defaults."""
         profile = load_profile(profile_name)
-        allowed = set(CycleCreateRequest.model_fields.keys())
+        allowed = set(CycleCreateRequest.model_fields.keys()) | _APPLIED_DEFAULTS_EXTRA_KEYS
         unknown = set(profile.defaults.keys()) - allowed
         assert unknown == set(), f"Profile {profile_name!r} has unknown keys: {unknown}"
 

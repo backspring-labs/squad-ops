@@ -4,6 +4,7 @@ Run commands (SIP-0065 §6.3).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -192,3 +193,94 @@ def gate_decision(
         print_json(data)
     else:
         print_success(f"Gate {gate_name!r} {decision}")
+
+
+# Build artifact types eligible for assembly (D9)
+_BUILD_ARTIFACT_TYPES = {"source", "test", "config"}
+
+
+@app.command("assemble")
+def assemble_run(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(..., help="Project ID"),
+    cycle_id: str = typer.Argument(..., help="Cycle ID"),
+    run_id: str = typer.Argument(..., help="Run ID"),
+    out: Path = typer.Option(
+        Path("./output"), "--out", help="Output directory",
+    ),
+):
+    """Assemble build artifacts from a completed run into a local directory.
+
+    Downloads source, test, and config artifacts and writes them
+    preserving their original filenames.
+    """
+    try:
+        client = _get_client(ctx)
+
+        # 1. Fetch cycle metadata for output directory naming
+        cycle_data = client.get(
+            f"/api/v1/projects/{project_id}/cycles/{cycle_id}"
+        )
+        pid = cycle_data.get("project_id") or ""
+        output_dir_name = pid if pid else cycle_id[:12]
+
+        # 2. Fetch run to get artifact_refs
+        run_data = client.get(
+            f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}"
+        )
+        artifact_refs = run_data.get("artifact_refs", [])
+
+        if not artifact_refs:
+            client.close()
+            print_error("No artifacts found for this run")
+            raise typer.Exit(code=exit_codes.NOT_FOUND)
+
+        # 3. Fetch metadata for each artifact, filter to build types
+        build_artifacts: list[dict] = []
+        for ref_id in artifact_refs:
+            meta = client.get(f"/api/v1/artifacts/{ref_id}")
+            if meta.get("artifact_type") in _BUILD_ARTIFACT_TYPES:
+                build_artifacts.append(meta)
+
+        if not build_artifacts:
+            client.close()
+            print_error(
+                "No build artifacts (source/test/config) found — "
+                "this run may only contain planning artifacts"
+            )
+            raise typer.Exit(code=exit_codes.NOT_FOUND)
+
+        # 4. Create output directory and download each artifact
+        target_dir = out / output_dir_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        written_files: list[str] = []
+        for meta in build_artifacts:
+            content, _ = client.download(
+                f"/api/v1/artifacts/{meta['artifact_id']}/download"
+            )
+            filepath = target_dir / meta["filename"]
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            filepath.write_bytes(content)
+            written_files.append(meta["filename"])
+
+        client.close()
+
+        # 5. Print file tree and README content (if present)
+        print_success(f"Assembled {len(written_files)} file(s) to {target_dir}")
+        rows = [
+            [meta["filename"], meta.get("artifact_type", ""), str(meta.get("size_bytes", ""))]
+            for meta in build_artifacts
+        ]
+        quiet = ctx.obj.get("quiet", False) if ctx.obj else False
+        print_table(["Filename", "Type", "Size"], rows, quiet=quiet)
+
+        # Print README content if one was assembled
+        readme_path = target_dir / "README.md"
+        if readme_path.exists():
+            typer.echo(f"\n--- {readme_path.name} ---")
+            typer.echo(readme_path.read_text(encoding="utf-8"))
+
+    except CLIError as e:
+        print_error(str(e))
+        raise typer.Exit(code=e.exit_code)

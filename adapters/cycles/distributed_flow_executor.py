@@ -105,6 +105,19 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
             plan = generate_task_plan(cycle, run, profile)
 
+            # Build-only validation (D6): require plan_artifact_refs
+            include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
+            include_build = bool(cycle.applied_defaults.get("build_tasks"))
+            seed_artifact_refs: list[str] = []
+            if include_build and not include_plan:
+                plan_refs = cycle.execution_overrides.get("plan_artifact_refs")
+                if not plan_refs:
+                    raise _ExecutionError(
+                        "plan_artifact_refs required for build-only cycle"
+                    )
+                # Seed working set so pre-resolution can find plan artifacts
+                seed_artifact_refs = list(plan_refs)
+
             # LangFuse: open cycle trace keyed by shared trace_id
             trace_id = plan[0].trace_id if plan else None
             if self._llm_observability:
@@ -143,13 +156,19 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # Dispatch based on policy mode
             mode = cycle.task_flow_policy.mode
             if mode == "sequential":
-                await self._execute_sequential(plan, run_id, cycle, flow_run_id)
+                await self._execute_sequential(
+                    plan, run_id, cycle, flow_run_id, seed_artifact_refs,
+                )
             elif mode == "fan_out_fan_in":
                 await self._execute_fan_out(plan, run_id, cycle, flow_run_id)
             elif mode == "fan_out_soft_gates":
-                await self._execute_sequential(plan, run_id, cycle, flow_run_id)
+                await self._execute_sequential(
+                    plan, run_id, cycle, flow_run_id, seed_artifact_refs,
+                )
             else:
-                await self._execute_sequential(plan, run_id, cycle, flow_run_id)
+                await self._execute_sequential(
+                    plan, run_id, cycle, flow_run_id, seed_artifact_refs,
+                )
 
             # Success -> completed
             await self._cycle_registry.update_run_status(run_id, RunStatus.COMPLETED)
@@ -193,6 +212,18 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     )
                 except Exception:
                     logger.warning("Prefect terminal state update failed", exc_info=True)
+
+            # Run report: best-effort (D10)
+            try:
+                if cycle_id and run_id:
+                    cycle_obj = locals().get("cycle")
+                    plan_obj = locals().get("plan")
+                    await self._generate_run_report(
+                        cycle_id, run_id, terminal_status,
+                        cycle=cycle_obj, plan=plan_obj,
+                    )
+            except Exception:
+                logger.warning("Run report generation failed", exc_info=True)
 
     async def cancel_run(self, run_id: str) -> None:
         """Cancel an in-progress run."""
@@ -253,30 +284,142 @@ class DistributedFlowExecutor(FlowExecutionPort):
     # Execution strategies
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Build task artifact filter (D3, §2.2)
+    # ------------------------------------------------------------------
+
+    # Maps build task_type → which prior artifacts to inject.
+    # by_producing_task: match on producing_task_type metadata
+    # by_type / by_type_fallback: match on artifact_type for artifacts without provenance
+    _BUILD_ARTIFACT_FILTER: dict[str, dict[str, list[str]]] = {
+        "development.build": {
+            "by_producing_task": ["strategy.analyze_prd", "development.implement"],
+            "by_type_fallback": ["document", "documentation"],
+        },
+        "qa.build_validate": {
+            "by_producing_task": ["qa.validate"],
+            "by_type": ["source", "config"],
+        },
+    }
+
+    async def _resolve_artifact_contents(
+        self,
+        task_type: str,
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+    ) -> dict[str, str]:
+        """Pre-resolve artifact content for build tasks (D3).
+
+        Args:
+            task_type: The build task type being dispatched.
+            stored_artifacts: List of (artifact_id, ArtifactRef) from prior tasks.
+
+        Returns:
+            Dict of filename → content string. Empty if task_type not a build task.
+        """
+        filter_spec = self._BUILD_ARTIFACT_FILTER.get(task_type)
+        if not filter_spec:
+            return {}
+
+        producing_tasks = set(filter_spec.get("by_producing_task", []))
+        type_filter = set(filter_spec.get("by_type", []))
+        type_fallback = set(filter_spec.get("by_type_fallback", []))
+
+        selected_ids: list[str] = []
+        for art_id, ref in stored_artifacts:
+            producing_task = ref.metadata.get("producing_task_type", "")
+            if producing_task and producing_task in producing_tasks:
+                selected_ids.append(art_id)
+            elif producing_task and producing_task in type_filter:
+                # by_type filter applies to all artifacts with matching type
+                pass  # handled below
+            elif not producing_task and ref.artifact_type in type_fallback:
+                # Fallback for artifacts without provenance (e.g., injected plan refs)
+                selected_ids.append(art_id)
+
+            # by_type: match artifact_type regardless of producing_task
+            if type_filter and ref.artifact_type in type_filter:
+                if art_id not in selected_ids:
+                    selected_ids.append(art_id)
+
+        # Resolve content (D3: 512KB limit)
+        contents: dict[str, str] = {}
+        total_bytes = 0
+        limit = 512 * 1024
+
+        for art_id in selected_ids:
+            try:
+                ref, content_bytes = await self._artifact_vault.retrieve(art_id)
+                decoded = content_bytes.decode(errors="replace")
+                total_bytes += len(content_bytes)
+                if total_bytes > limit:
+                    logger.warning(
+                        "Artifact content limit exceeded (%d bytes) for %s, "
+                        "stopping pre-resolution",
+                        total_bytes, task_type,
+                    )
+                    break
+                contents[ref.filename] = decoded
+            except Exception:
+                logger.warning(
+                    "Failed to retrieve artifact %s for build task %s",
+                    art_id, task_type, exc_info=True,
+                )
+
+        return contents
+
     async def _execute_sequential(
         self,
         plan: list[TaskEnvelope],
         run_id: str,
         cycle: Cycle,
         flow_run_id: str | None = None,
+        seed_artifact_refs: list[str] | None = None,
     ) -> None:
         """Sequential: dispatch one task at a time, fail-fast."""
         import dataclasses
 
         prior_outputs: dict[str, Any] = {}
         all_artifact_refs: list[str] = []
+        # Track stored artifacts with their refs for build pre-resolution
+        stored_artifacts: list[tuple[str, ArtifactRef]] = []
+
+        # Seed from prior plan artifacts for build-only runs (§2.3)
+        if seed_artifact_refs:
+            for art_id in seed_artifact_refs:
+                try:
+                    ref, _ = await self._artifact_vault.retrieve(art_id)
+                    stored_artifacts.append((art_id, ref))
+                    all_artifact_refs.append(art_id)
+                except Exception:
+                    logger.warning(
+                        "Failed to seed artifact %s for build-only run", art_id,
+                        exc_info=True,
+                    )
 
         for envelope in plan:
             if await self._is_cancelled(run_id):
                 raise _CancellationError(run_id)
+
+            # Build extra inputs for chain context
+            extra_inputs: dict[str, Any] = {
+                "prior_outputs": prior_outputs,
+                "artifact_refs": list(all_artifact_refs),
+            }
+
+            # Pre-resolve artifact contents for build tasks (D3)
+            if envelope.task_type in self._BUILD_ARTIFACT_FILTER:
+                artifact_contents = await self._resolve_artifact_contents(
+                    envelope.task_type, stored_artifacts,
+                )
+                if artifact_contents:
+                    extra_inputs["artifact_contents"] = artifact_contents
 
             # Inject chain context
             enriched = dataclasses.replace(
                 envelope,
                 inputs={
                     **envelope.inputs,
-                    "prior_outputs": prior_outputs,
-                    "artifact_refs": list(all_artifact_refs),
+                    **extra_inputs,
                 },
             )
 
@@ -315,12 +458,16 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     f"Task {envelope.task_id} ({envelope.task_type}) failed: {result.error}"
                 )
 
-            # Collect artifacts
+            # Collect artifacts (with producing_task_type metadata)
             new_refs: list[str] = []
             for art in (result.outputs or {}).get("artifacts", []):
-                ref = await self._store_artifact(art, cycle, run_id, envelope)
+                ref = await self._store_artifact(
+                    art, cycle, run_id, envelope,
+                    producing_task_type=envelope.task_type,
+                )
                 new_refs.append(ref.artifact_id)
                 all_artifact_refs.append(ref.artifact_id)
+                stored_artifacts.append((ref.artifact_id, ref))
 
             if new_refs:
                 await self._cycle_registry.append_artifact_refs(run_id, tuple(new_refs))
@@ -473,9 +620,16 @@ class DistributedFlowExecutor(FlowExecutionPort):
         cycle: Cycle,
         run_id: str,
         envelope: TaskEnvelope,
+        producing_task_type: str | None = None,
     ) -> ArtifactRef:
         """Store a task output artifact in the vault."""
         content = art_dict.get("content", "").encode("utf-8")
+        metadata: dict[str, Any] = {
+            "task_id": envelope.task_id,
+            "role": envelope.metadata.get("role"),
+        }
+        if producing_task_type:
+            metadata["producing_task_type"] = producing_task_type
         ref = ArtifactRef(
             artifact_id=f"art_{uuid4().hex[:12]}",
             project_id=cycle.project_id,
@@ -487,10 +641,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
             created_at=datetime.now(timezone.utc),
             cycle_id=cycle.cycle_id,
             run_id=run_id,
-            metadata={
-                "task_id": envelope.task_id,
-                "role": envelope.metadata.get("role"),
-            },
+            metadata=metadata,
         )
         return await self._artifact_vault.store(ref, content)
 
@@ -522,3 +673,104 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 "Failed to transition run %s to %s", run_id, status.value,
                 exc_info=True,
             )
+
+    async def _generate_run_report(
+        self,
+        cycle_id: str,
+        run_id: str,
+        terminal_status: str,
+        cycle: Cycle | None = None,
+        plan: list[TaskEnvelope] | None = None,
+    ) -> None:
+        """Generate run_report.md and store as a documentation artifact (D10).
+
+        Best-effort: called in finally block, failures are logged but
+        never affect the run's terminal status.
+        """
+        # Fetch latest run state for gate decisions and artifact refs
+        run = await self._cycle_registry.get_run(run_id)
+
+        lines = [
+            "# Run Report",
+            "",
+            "## Metadata",
+            f"- **Cycle ID:** {cycle_id}",
+            f"- **Run ID:** {run_id}",
+            f"- **Run Number:** {run.run_number}",
+            f"- **Status:** {terminal_status}",
+        ]
+
+        if cycle:
+            lines.append(f"- **Project ID:** {cycle.project_id}")
+            lines.append(f"- **Build Strategy:** {cycle.build_strategy}")
+            lines.append(f"- **Squad Profile:** {cycle.squad_profile_id}")
+
+        if run.started_at:
+            lines.append(f"- **Started:** {run.started_at.isoformat()}")
+        if run.finished_at:
+            lines.append(f"- **Finished:** {run.finished_at.isoformat()}")
+
+        # Task breakdown
+        if plan:
+            lines.append("")
+            lines.append("## Task Plan")
+            lines.append(f"Total tasks: {len(plan)}")
+            lines.append("")
+            for i, envelope in enumerate(plan):
+                role = envelope.metadata.get("role", "unknown")
+                lines.append(
+                    f"{i + 1}. **{envelope.task_type}** (agent: {envelope.agent_id}, role: {role})"
+                )
+
+        # Gate decisions
+        if run.gate_decisions:
+            lines.append("")
+            lines.append("## Gate Decisions")
+            for gd in run.gate_decisions:
+                lines.append(
+                    f"- **{gd.gate_name}:** {gd.decision}"
+                    + (f" — {gd.notes}" if gd.notes else "")
+                )
+
+        # Artifact inventory
+        if run.artifact_refs:
+            lines.append("")
+            lines.append("## Artifacts")
+            lines.append(f"Total artifacts: {len(run.artifact_refs)}")
+
+        # Quality notes
+        lines.append("")
+        lines.append("## Quality Notes")
+        if terminal_status == "COMPLETED":
+            lines.append("All tasks completed successfully.")
+        elif terminal_status == "FAILED":
+            lines.append("One or more tasks failed. Check task artifacts for details.")
+        elif terminal_status == "CANCELLED":
+            lines.append("Run was cancelled before completion.")
+        else:
+            lines.append(f"Terminal status: {terminal_status}")
+
+        lines.append("")
+
+        content = "\n".join(lines)
+        content_bytes = content.encode("utf-8")
+
+        # Note: uses direct vault.store() instead of _store_artifact() because
+        # the report is generated outside of any task context (no TaskEnvelope).
+        ref = ArtifactRef(
+            artifact_id=f"art_{uuid4().hex[:12]}",
+            project_id=cycle.project_id if cycle else "unknown",
+            artifact_type="documentation",
+            filename="run_report.md",
+            content_hash=sha256(content_bytes).hexdigest(),
+            size_bytes=len(content_bytes),
+            media_type="text/markdown",
+            created_at=datetime.now(timezone.utc),
+            cycle_id=cycle_id,
+            run_id=run_id,
+            metadata={"report_type": "run_report"},
+        )
+
+        await self._artifact_vault.store(ref, content_bytes)
+        await self._cycle_registry.append_artifact_refs(run_id, (ref.artifact_id,))
+        logger.info("Run report generated for %s", run_id)
