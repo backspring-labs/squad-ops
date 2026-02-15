@@ -1,0 +1,24 @@
+[plugin]
+id = "squadops.agents"
+name = "Agents"
+version = "0.1.0"
+description = "Agent status monitoring and task history (view-only)."
+required = false
+
+[plugin.ui]
+tag_prefix = "squadops-agents"
+bundle = "plugin.js"
+
+# No nav entry, no commands — view-only plugin
+
+[[contributions.panel]]
+slot = "ui.slot.right_rail"
+perspective = "signal"
+component = "squadops-agents-status"
+priority = 800
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "signal"
+component = "squadops-agents-tasks"
+priority = 300

@@ -1,3 +1,12 @@
+"""DEPRECATED — Replaced by SquadOps Console (SIP-Console-Control-Plane, Phase 4).
+
+This module is kept for rollback purposes only. The health-check service has been
+replaced by the squadops.system console plugin + Caddy reverse proxy.
+
+To restore the standalone health-check service, uncomment the 'health-check'
+service block in docker-compose.yml.
+"""
+
 import asyncio
 import json
 import logging

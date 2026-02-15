@@ -1,0 +1,252 @@
+<svelte:options customElement="squadops-home-summary" />
+
+<script>
+  import { onMount, onDestroy } from 'svelte';
+
+  let projects = $state([]);
+  let recentRuns = $state([]);
+  let agentStatus = $state([]);
+  let loading = $state(true);
+  let error = $state(null);
+  let pollTimer = $state(null);
+
+  const config = window.__SQUADOPS_CONFIG__ || {};
+  const apiBase = config.apiBaseUrl || '';
+
+  async function apiFetch(url, opts) {
+    if (window.squadops?.apiFetch) {
+      return window.squadops.apiFetch(url, opts);
+    }
+    return fetch(url, opts);
+  }
+
+  async function fetchData() {
+    try {
+      // Fetch projects
+      const projResp = await apiFetch(`${apiBase}/api/v1/projects`);
+      if (projResp.ok) {
+        const allProjects = await projResp.json();
+        projects = allProjects;
+
+        // Fetch active cycles for first 10 projects (cap per D14)
+        const projectSlice = allProjects.slice(0, 10);
+        const runs = [];
+        for (const proj of projectSlice) {
+          try {
+            const cyclesResp = await apiFetch(
+              `${apiBase}/api/v1/projects/${proj.project_id}/cycles`
+            );
+            if (cyclesResp.ok) {
+              const cycles = await cyclesResp.json();
+              for (const cycle of cycles.slice(0, 5)) {
+                runs.push({
+                  project_id: proj.project_id,
+                  cycle_id: cycle.cycle_id,
+                  status: cycle.status || 'unknown',
+                  created_at: cycle.created_at,
+                });
+              }
+            }
+          } catch {
+            // Skip failed project fetches
+          }
+        }
+        recentRuns = runs.slice(0, 5);
+      }
+
+      // Fetch agent status (optional endpoint — degrade gracefully)
+      try {
+        const agentResp = await apiFetch(`${apiBase}/health/agents`);
+        if (agentResp.ok) {
+          agentStatus = await agentResp.json();
+        } else {
+          agentStatus = [];
+        }
+      } catch {
+        agentStatus = [];
+      }
+
+      loading = false;
+      error = null;
+    } catch (err) {
+      error = err.message;
+      loading = false;
+    }
+  }
+
+  onMount(() => {
+    fetchData();
+    pollTimer = setInterval(fetchData, 30000);
+  });
+
+  onDestroy(() => {
+    if (pollTimer) clearInterval(pollTimer);
+  });
+
+  function statusColor(status) {
+    const colors = {
+      completed: 'var(--continuum-accent-success, #22c55e)',
+      running: 'var(--continuum-accent-primary, #6366f1)',
+      failed: 'var(--continuum-accent-danger, #ef4444)',
+      paused: 'var(--continuum-accent-warning, #f59e0b)',
+      queued: 'var(--continuum-text-muted, #94a3b8)',
+    };
+    return colors[status] || colors.queued;
+  }
+</script>
+
+<div class="home-summary">
+  <h2 class="title">SquadOps Dashboard</h2>
+
+  {#if loading}
+    <div class="loading">Loading...</div>
+  {:else if error}
+    <div class="error">Error: {error}</div>
+  {:else}
+    <div class="cards">
+      <!-- Active Cycles -->
+      <div class="card">
+        <div class="card-header">Active Cycles</div>
+        <div class="card-value">{recentRuns.filter(r => r.status === 'running' || r.status === 'paused').length}</div>
+        <div class="card-label">across {projects.length} projects</div>
+      </div>
+
+      <!-- Agent Status -->
+      <div class="card">
+        <div class="card-header">Agents</div>
+        <div class="card-value">{agentStatus.length || 5}</div>
+        <div class="card-label">
+          {#if agentStatus.length > 0}
+            {agentStatus.filter(a => a.status === 'healthy').length} healthy
+          {:else}
+            status unavailable
+          {/if}
+        </div>
+      </div>
+
+      <!-- Pending Gates -->
+      <div class="card">
+        <div class="card-header">Pending Gates</div>
+        <div class="card-value">{recentRuns.filter(r => r.status === 'paused').length}</div>
+        <div class="card-label">awaiting decision</div>
+      </div>
+    </div>
+
+    <!-- Recent Runs -->
+    <div class="section">
+      <h3 class="section-title">Recent Runs</h3>
+      {#if recentRuns.length === 0}
+        <div class="empty">No recent runs</div>
+      {:else}
+        <div class="run-list">
+          {#each recentRuns as run}
+            <div class="run-item">
+              <span class="run-badge" style="background: {statusColor(run.status)}">{run.status}</span>
+              <span class="run-project">{run.project_id}</span>
+              <span class="run-id">{run.cycle_id?.slice(0, 12)}</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+      {#if projects.length > 10}
+        <div class="more">+{projects.length - 10} more projects</div>
+      {/if}
+    </div>
+  {/if}
+</div>
+
+<style>
+  .home-summary {
+    padding: var(--continuum-space-lg, 24px);
+    font-family: var(--continuum-font-sans, system-ui, sans-serif);
+    color: var(--continuum-text-primary, #e2e8f0);
+  }
+
+  .title {
+    font-size: var(--continuum-font-size-lg, 1.25rem);
+    font-weight: 600;
+    margin: 0 0 var(--continuum-space-lg, 24px) 0;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--continuum-space-md, 16px);
+    margin-bottom: var(--continuum-space-lg, 24px);
+  }
+
+  .card {
+    background: var(--continuum-bg-secondary, #1e293b);
+    border: 1px solid var(--continuum-border, #334155);
+    border-radius: var(--continuum-radius-md, 8px);
+    padding: var(--continuum-space-md, 16px);
+  }
+
+  .card-header {
+    font-size: var(--continuum-font-size-sm, 0.875rem);
+    color: var(--continuum-text-muted, #94a3b8);
+    margin-bottom: var(--continuum-space-xs, 4px);
+  }
+
+  .card-value {
+    font-size: 2rem;
+    font-weight: 700;
+    font-family: var(--continuum-font-mono, monospace);
+  }
+
+  .card-label {
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+    color: var(--continuum-text-muted, #94a3b8);
+  }
+
+  .section { margin-top: var(--continuum-space-lg, 24px); }
+
+  .section-title {
+    font-size: var(--continuum-font-size-md, 1rem);
+    font-weight: 600;
+    margin: 0 0 var(--continuum-space-sm, 8px) 0;
+  }
+
+  .run-list { display: flex; flex-direction: column; gap: var(--continuum-space-xs, 4px); }
+
+  .run-item {
+    display: flex;
+    align-items: center;
+    gap: var(--continuum-space-sm, 8px);
+    padding: var(--continuum-space-sm, 8px);
+    background: var(--continuum-bg-secondary, #1e293b);
+    border-radius: var(--continuum-radius-sm, 4px);
+  }
+
+  .run-badge {
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+    padding: 2px 8px;
+    border-radius: var(--continuum-radius-sm, 4px);
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .run-project { font-weight: 500; }
+
+  .run-id {
+    font-family: var(--continuum-font-mono, monospace);
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+    color: var(--continuum-text-muted, #94a3b8);
+  }
+
+  .loading, .error, .empty {
+    padding: var(--continuum-space-lg, 24px);
+    text-align: center;
+    color: var(--continuum-text-muted, #94a3b8);
+  }
+
+  .error { color: var(--continuum-accent-danger, #ef4444); }
+
+  .more {
+    margin-top: var(--continuum-space-sm, 8px);
+    font-size: var(--continuum-font-size-sm, 0.875rem);
+    color: var(--continuum-text-muted, #94a3b8);
+    text-align: center;
+  }
+</style>

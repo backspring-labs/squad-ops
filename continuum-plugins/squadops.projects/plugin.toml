@@ -1,0 +1,38 @@
+[plugin]
+id = "squadops.projects"
+name = "Projects"
+version = "0.1.0"
+description = "Project browsing and squad profile management."
+required = false
+
+[plugin.ui]
+tag_prefix = "squadops-projects"
+bundle = "plugin.js"
+
+[[contributions.nav]]
+slot = "ui.slot.left_nav"
+label = "Projects"
+icon = "folder"
+priority = 600
+
+[contributions.nav.target]
+type = "panel"
+panel_id = "discovery"
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "discovery"
+component = "squadops-projects-list"
+priority = 800
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "discovery"
+component = "squadops-projects-profiles"
+priority = 600
+
+[[contributions.command]]
+id = "squadops.set_active_profile"
+label = "Set Active Profile"
+action = "squadops.set_active_profile"
+danger_level = "confirm"

@@ -64,14 +64,16 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
-      "rootUrl": "http://localhost:3000",
+      "rootUrl": "http://localhost:4040",
       "baseUrl": "/",
       "redirectUris": [
+        "http://localhost:4040/*",
         "http://localhost:3000/*",
         "http://localhost:3001/*",
         "http://localhost:8000/*"
       ],
       "webOrigins": [
+        "http://localhost:4040",
         "http://localhost:3000",
         "http://localhost:3001",
         "http://localhost:8000"

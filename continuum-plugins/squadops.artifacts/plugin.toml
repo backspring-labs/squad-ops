@@ -1,0 +1,48 @@
+[plugin]
+id = "squadops.artifacts"
+name = "Artifacts"
+version = "0.1.0"
+description = "Artifact browsing, ingestion, baseline management, and download."
+required = false
+
+[plugin.ui]
+tag_prefix = "squadops-artifacts"
+bundle = "plugin.js"
+
+# No nav entry — artifacts are accessed from cycle/run context
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "signal"
+component = "squadops-artifacts-list"
+priority = 400
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "discovery"
+component = "squadops-artifacts-browser"
+priority = 500
+
+[[contributions.panel]]
+slot = "ui.slot.right_rail"
+perspective = "signal"
+component = "squadops-artifacts-detail"
+priority = 500
+
+[[contributions.command]]
+id = "squadops.ingest_artifact"
+label = "Ingest Artifact"
+action = "squadops.ingest_artifact"
+danger_level = "safe"
+
+[[contributions.command]]
+id = "squadops.set_baseline"
+label = "Set Baseline"
+action = "squadops.set_baseline"
+danger_level = "confirm"
+
+[[contributions.command]]
+id = "squadops.download_artifact"
+label = "Download Artifact"
+action = "squadops.download_artifact"
+danger_level = "safe"

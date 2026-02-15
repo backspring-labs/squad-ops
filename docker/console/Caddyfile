@@ -1,0 +1,61 @@
+# SquadOps Console — Caddy reverse proxy (Phase 4)
+# Single-origin routing: all traffic through :4040
+#
+# Route precedence (most specific first):
+# 1. /api/v1/* → runtime-api (REST API)
+# 2. /auth/userinfo → runtime-api (explicit exception)
+# 3. /auth/* → squadops-console (BFF: login, callback, refresh, logout)
+# 4. /health/infra → runtime-api
+# 5. /health/agents* → runtime-api (matches /health/agents and /health/agents/*)
+# 6. /prefect/* → prefect-server (strip prefix)
+# 7. /langfuse/* → squadops-langfuse (strip prefix)
+# 8. Everything else → squadops-console (shell, plugins, registry)
+
+:4040 {
+	# Security headers
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+
+	# Runtime API — all /api/v1 routes (preserve path)
+	handle /api/v1/* {
+		reverse_proxy runtime-api:8001
+	}
+
+	# Auth userinfo — explicit exception (goes to runtime-api, not BFF)
+	handle /auth/userinfo {
+		reverse_proxy runtime-api:8001
+	}
+
+	# Auth BFF — login, callback, refresh, logout
+	handle /auth/* {
+		reverse_proxy squadops-console:4040
+	}
+
+	# Health infra — runtime-api
+	handle /health/infra {
+		reverse_proxy runtime-api:8001
+	}
+
+	# Health agents — runtime-api (matches both /health/agents and /health/agents/*)
+	handle /health/agents* {
+		reverse_proxy runtime-api:8001
+	}
+
+	# Prefect UI proxy (strip /prefect prefix)
+	handle_path /prefect/* {
+		reverse_proxy prefect-server:4200
+	}
+
+	# LangFuse UI proxy (strip /langfuse prefix)
+	handle_path /langfuse/* {
+		reverse_proxy squadops-langfuse:3000
+	}
+
+	# Everything else → console backend (shell, plugins, registry, health)
+	handle {
+		reverse_proxy squadops-console:4040
+	}
+}

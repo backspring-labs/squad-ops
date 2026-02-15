@@ -1,0 +1,44 @@
+[plugin]
+id = "squadops.system"
+name = "Systems"
+version = "0.1.0"
+description = "System health, plugin status, and infrastructure diagnostics."
+required = false
+
+[plugin.ui]
+tag_prefix = "squadops-system"
+bundle = "plugin.js"
+
+[[contributions.nav]]
+slot = "ui.slot.left_nav"
+label = "Systems"
+icon = "settings"
+priority = 400
+
+[contributions.nav.target]
+type = "panel"
+panel_id = "systems"
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "systems"
+component = "squadops-system-health"
+priority = 800
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "systems"
+component = "squadops-system-plugins"
+priority = 600
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "systems"
+component = "squadops-system-infra"
+priority = 400
+
+[[contributions.command]]
+id = "squadops.health_check"
+label = "Health Check"
+action = "squadops.health_check"
+danger_level = "safe"

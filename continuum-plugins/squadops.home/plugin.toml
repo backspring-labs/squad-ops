@@ -1,0 +1,26 @@
+[plugin]
+id = "squadops.home"
+name = "Home"
+version = "0.1.0"
+description = "SquadOps home dashboard — active cycles, recent runs, agent status."
+required = true
+
+[plugin.ui]
+tag_prefix = "squadops-home"
+bundle = "plugin.js"
+
+[[contributions.nav]]
+slot = "ui.slot.left_nav"
+label = "Home"
+icon = "home"
+priority = 999
+
+[contributions.nav.target]
+type = "panel"
+panel_id = "signal"
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "signal"
+component = "squadops-home-summary"
+priority = 999

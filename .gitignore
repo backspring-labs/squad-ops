@@ -49,6 +49,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
+.env.console
 
 # Configuration
 config/local.yaml
@@ -61,4 +62,6 @@ secrets/*
 repomix-output.xml
 
 .venv/
-.venv/
+
+# Continuum plugin built assets (built during Docker build / local dev)
+continuum-plugins/*/dist/
