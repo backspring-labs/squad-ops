@@ -29,7 +29,7 @@ Quick Start:
     result = await system.task_service.execute_task(request)
 """
 
-__version__ = "0.9.7"
+__version__ = "0.9.8"
 
 # Core exports for quick access
 from squadops.bootstrap import (

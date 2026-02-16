@@ -20,5 +20,5 @@ priority = 800
 [[contributions.panel]]
 slot = "ui.slot.main"
 perspective = "signal"
-component = "squadops-agents-tasks"
+component = "squadops-agents-run-activity"
 priority = 300

@@ -2,7 +2,7 @@
 id = "squadops.observability"
 name = "Observability"
 version = "0.1.0"
-description = "Prefect flow metrics, LangFuse LLM traces, and cost summary."
+description = "Build artifacts, gate decisions, and cycle stats."
 required = false
 
 [plugin.ui]
@@ -14,17 +14,17 @@ bundle = "plugin.js"
 [[contributions.panel]]
 slot = "ui.slot.main"
 perspective = "signal"
-component = "squadops-obs-flow-metrics"
+component = "squadops-obs-artifacts"
 priority = 200
 
 [[contributions.panel]]
 slot = "ui.slot.main"
 perspective = "signal"
-component = "squadops-obs-llm-traces"
+component = "squadops-obs-gate-decisions"
 priority = 100
 
 [[contributions.panel]]
 slot = "ui.slot.right_rail"
 perspective = "signal"
-component = "squadops-obs-cost-summary"
+component = "squadops-obs-cycle-stats"
 priority = 300

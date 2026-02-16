@@ -298,12 +298,10 @@ class TestIngestArtifactHandler:
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with (
             patch.object(main, "_get_service_token", new_callable=AsyncMock, return_value="tok"),
-            patch.object(main.httpx, "AsyncClient", return_value=mock_client),
+            patch.object(main, "_api_client", mock_client),
         ):
             result = await main.squadops_ingest_artifact({
                 "project_id": "proj1",
@@ -330,14 +328,12 @@ class TestIngestArtifactHandler:
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
 
         b64 = base64.b64encode(b"binary content").decode()
 
         with (
             patch.object(main, "_get_service_token", new_callable=AsyncMock, return_value=""),
-            patch.object(main.httpx, "AsyncClient", return_value=mock_client),
+            patch.object(main, "_api_client", mock_client),
         ):
             result = await main.squadops_ingest_artifact({
                 "project_id": "proj1",
@@ -361,12 +357,10 @@ class TestIngestArtifactHandler:
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with (
             patch.object(main, "_get_service_token", new_callable=AsyncMock, return_value=""),
-            patch.object(main.httpx, "AsyncClient", return_value=mock_client),
+            patch.object(main, "_api_client", mock_client),
         ):
             result = await main.squadops_ingest_artifact({
                 "project_id": "proj1",

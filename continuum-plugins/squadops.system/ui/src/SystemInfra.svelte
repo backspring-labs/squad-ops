@@ -7,17 +7,9 @@
   let loading = $state(true);
   let pollTimer = $state(null);
 
-  const config = window.__SQUADOPS_CONFIG__ || {};
-  const apiBase = config.apiBaseUrl || '';
-
-  async function apiFetch(url, opts) {
-    if (window.squadops?.apiFetch) return window.squadops.apiFetch(url, opts);
-    return fetch(url, opts);
-  }
-
   async function fetchInfra() {
     try {
-      const resp = await apiFetch(`${apiBase}/health/infra`);
+      const resp = await fetch('/api/health/infra');
       if (resp.ok) infra = await resp.json();
     } catch {
       // Best-effort
@@ -44,24 +36,32 @@
     <div class="empty">Infrastructure data unavailable</div>
   {:else}
     <div class="infra-grid">
-      {#each Object.entries(infra.services || infra) as [name, details]}
+      {#each infra as svc}
         <div class="infra-card">
           <div class="infra-header">
-            <span class="infra-name">{name}</span>
-            <span class="infra-status {(details.healthy ?? details === 'ok') ? 'healthy' : 'unhealthy'}">
-              {(details.healthy ?? details === 'ok') ? 'connected' : 'disconnected'}
+            <span class="infra-name">{svc.component}</span>
+            <span class="infra-status {svc.status === 'online' ? 'healthy' : 'unhealthy'}">
+              {svc.status}
             </span>
           </div>
-          {#if typeof details === 'object'}
-            <div class="infra-details">
-              {#each Object.entries(details).filter(([k]) => k !== 'healthy' && k !== 'status') as [key, val]}
-                <div class="detail-row">
-                  <span class="detail-key">{key}:</span>
-                  <span class="detail-val">{typeof val === 'object' ? JSON.stringify(val) : val}</span>
-                </div>
-              {/each}
+          <div class="infra-details">
+            <div class="detail-row">
+              <span class="detail-key">type:</span>
+              <span class="detail-val">{svc.type}</span>
             </div>
-          {/if}
+            {#if svc.version}
+              <div class="detail-row">
+                <span class="detail-key">version:</span>
+                <span class="detail-val">{svc.version}</span>
+              </div>
+            {/if}
+            {#if svc.notes}
+              <div class="detail-row">
+                <span class="detail-key">notes:</span>
+                <span class="detail-val">{svc.notes}</span>
+              </div>
+            {/if}
+          </div>
         </div>
       {/each}
     </div>

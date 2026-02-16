@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import time
 
-import httpx
 import typer
 
 from squadops.cli import exit_codes
@@ -29,17 +28,6 @@ def version(ctx: typer.Context):
         typer.echo(f"squadops {__version__}")
 
 
-def _fetch_health_data(url: str, path: str, timeout: int) -> list[dict] | None:
-    """Fetch JSON list from health-check service. Returns None on failure."""
-    try:
-        resp = httpx.get(f"{url}{path}", timeout=timeout)
-        if resp.status_code == 200:
-            return resp.json()
-    except (httpx.ConnectError, httpx.TimeoutException, Exception):
-        pass
-    return None
-
-
 @app.command()
 def status(ctx: typer.Context):
     """Check API and infrastructure status."""
@@ -49,12 +37,12 @@ def status(ctx: typer.Context):
 
     # --- Runtime API connectivity ---
     runtime_result: dict | None = None
+    client: APIClient | None = None
     try:
         client = APIClient(config)
         start = time.monotonic()
         data = client.get("/health")
         elapsed_ms = (time.monotonic() - start) * 1000
-        client.close()
         runtime_result = {
             "status": "connected",
             "server_status": data.get("status", "unknown"),
@@ -69,11 +57,24 @@ def status(ctx: typer.Context):
             "error": str(e),
         }
 
-    # --- Infrastructure health (health-check service) ---
-    infra_data = _fetch_health_data(config.health_url, "/health/infra", config.timeout)
+    # --- Infrastructure health (now served from runtime-api) ---
+    infra_data: list[dict] | None = None
+    if client and runtime_result.get("status") == "connected":
+        try:
+            infra_data = client.get("/health/infra")
+        except CLIError:
+            infra_data = None
 
-    # --- Agent status (health-check service) ---
-    agents_data = _fetch_health_data(config.health_url, "/health/agents", config.timeout)
+    # --- Agent status (now served from runtime-api) ---
+    agents_data: list[dict] | None = None
+    if client and runtime_result.get("status") == "connected":
+        try:
+            agents_data = client.get("/health/agents")
+        except CLIError:
+            agents_data = None
+
+    if client:
+        client.close()
 
     # --- Render ---
     if fmt == "json":
@@ -110,7 +111,7 @@ def status(ctx: typer.Context):
         )
     else:
         typer.echo()
-        print_error(f"Infrastructure status unavailable (health-check at {config.health_url})")
+        print_error(f"Infrastructure status unavailable (runtime-api at {config.base_url})")
 
     if agents_data is not None:
         typer.echo()
@@ -134,7 +135,7 @@ def status(ctx: typer.Context):
         )
     else:
         typer.echo()
-        print_error(f"Agent status unavailable (health-check at {config.health_url})")
+        print_error(f"Agent status unavailable (runtime-api at {config.base_url})")
 
     if runtime_result.get("status") != "connected":
         raise typer.Exit(code=exit_codes.NETWORK_ERROR)

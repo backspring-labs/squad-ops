@@ -8,14 +8,6 @@
   let loading = $state(true);
   let pollTimer = $state(null);
 
-  const config = window.__SQUADOPS_CONFIG__ || {};
-  const apiBase = config.apiBaseUrl || '';
-
-  async function apiFetch(url, opts) {
-    if (window.squadops?.apiFetch) return window.squadops.apiFetch(url, opts);
-    return fetch(url, opts);
-  }
-
   async function fetchHealth() {
     try {
       // Console self-health (local backend)
@@ -23,7 +15,7 @@
       if (consoleResp.ok) consoleHealth = await consoleResp.json();
 
       // Runtime infrastructure health
-      const infraResp = await apiFetch(`${apiBase}/health/infra`);
+      const infraResp = await fetch('/api/health/infra');
       if (infraResp.ok) infraHealth = await infraResp.json();
     } catch {
       // Best-effort
@@ -65,12 +57,12 @@
       </div>
 
       <!-- Infrastructure services from /health/infra -->
-      {#if infraHealth}
-        {#each Object.entries(infraHealth.services || infraHealth) as [name, status]}
+      {#if infraHealth && Array.isArray(infraHealth)}
+        {#each infraHealth as svc}
           <div class="service-card">
-            <div class="service-name">{name}</div>
-            <div class="service-status {statusClass(status.healthy ?? status === 'ok')}">
-              {statusIcon(status.healthy ?? status === 'ok')} {status.status || status}
+            <div class="service-name">{svc.component}</div>
+            <div class="service-status {statusClass(svc.status === 'online')}">
+              {statusIcon(svc.status === 'online')} {svc.status}
             </div>
           </div>
         {/each}

@@ -71,6 +71,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy console application code
 COPY docker/console/main.py ./main.py
 COPY docker/console/auth_bff.py ./auth_bff.py
+COPY docker/console/session_store.py ./session_store.py
 
 # Copy built SvelteKit shell and inject config.js loader
 COPY --from=shell-builder /build/web/build ./web/build/

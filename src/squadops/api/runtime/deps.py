@@ -6,6 +6,8 @@ Part of SIP-0.8.8 migration from _v0_legacy/infra/runtime-api/deps.py
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from squadops.ports.auth.authentication import AuthPort
 from squadops.ports.auth.authorization import AuthorizationPort
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
@@ -15,11 +17,15 @@ from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
 from squadops.ports.tasks.registry import TaskRegistryPort
 
+if TYPE_CHECKING:
+    from squadops.api.runtime.health_checker import HealthChecker
+
 # Global adapter instances (initialized at startup)
 _adapter: TaskRegistryPort | None = None
 _auth_port: AuthPort | None = None
 _authz_port: AuthorizationPort | None = None
 _audit_port = None  # AuditPort | None
+_health_checker: HealthChecker | None = None
 
 # SIP-0064 cycle port singletons
 _project_registry: ProjectRegistryPort | None = None
@@ -142,3 +148,21 @@ def get_flow_executor() -> FlowExecutionPort:
     if _flow_executor is None:
         raise RuntimeError("FlowExecutionPort not configured")
     return _flow_executor
+
+
+# =============================================================================
+# Health checker singleton
+# =============================================================================
+
+
+def set_health_checker(checker: HealthChecker) -> None:
+    """Set the HealthChecker instance for dependency injection."""
+    global _health_checker
+    _health_checker = checker
+
+
+def get_health_checker() -> HealthChecker:
+    """Return the HealthChecker instance."""
+    if _health_checker is None:
+        raise RuntimeError("HealthChecker not configured")
+    return _health_checker

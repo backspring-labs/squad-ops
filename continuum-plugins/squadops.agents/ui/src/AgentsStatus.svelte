@@ -10,21 +10,21 @@
   let loading = $state(true);
   let pollTimer = $state(null);
 
-  const config = window.__SQUADOPS_CONFIG__ || {};
-  const apiBase = config.apiBaseUrl || '';
-
-  async function apiFetch(url, opts) {
-    if (window.squadops?.apiFetch) return window.squadops.apiFetch(url, opts);
-    return fetch(url, opts);
+  function mapAgent(a) {
+    return {
+      name: a.agent_name || a.agent_id || a.name,
+      status: a.network_status || a.lifecycle_state || a.status || 'unknown',
+      role: AGENT_ROLES[a.agent_id] || a.role || '',
+      current_task: a.current_task_id || a.current_task || null,
+    };
   }
 
   async function fetchStatus() {
     try {
-      const resp = await apiFetch(`${apiBase}/health/agents`);
+      const resp = await fetch('/api/health/agents');
       if (resp.ok) {
-        agents = await resp.json();
+        agents = (await resp.json()).map(mapAgent);
       } else {
-        // Graceful degradation — show default agent list
         agents = AGENTS.map(name => ({ name, status: 'unknown', role: AGENT_ROLES[name] }));
       }
     } catch {
@@ -43,8 +43,9 @@
   });
 
   function statusClass(status) {
-    if (status === 'healthy' || status === 'idle') return 'healthy';
-    if (status === 'busy') return 'busy';
+    const s = (status || '').toLowerCase();
+    if (s === 'healthy' || s === 'idle' || s === 'online' || s === 'ready') return 'healthy';
+    if (s === 'busy') return 'busy';
     return 'unhealthy';
   }
 </script>

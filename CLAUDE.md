@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 0.9.7
+**Framework Version**: 0.9.8
 **Python Requirement**: 3.11+
 
 ## Commands
@@ -148,6 +148,7 @@ Key implemented SIPs:
 - **SIP-0066** – Distributed Cycle Execution Pipeline
 - **SIP-0067** – Postgres Cycle Registry
 - **SIP-0068** – Enhanced Agent Build Capabilities
+- **SIP-0069** – Console Control-Plane UI (Continuum Plugins)
 
 To move a SIP (maintainer only):
 ```bash

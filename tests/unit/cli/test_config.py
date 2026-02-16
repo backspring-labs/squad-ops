@@ -28,9 +28,6 @@ class TestCLIConfigDefaults:
     def test_default_output_format(self):
         assert CLIConfig().output_format == "table"
 
-    def test_default_health_url(self):
-        assert CLIConfig().health_url == "http://localhost:8000"
-
     def test_default_tls_verify(self):
         assert CLIConfig().tls_verify is True
 
@@ -73,7 +70,7 @@ class TestLoadConfig:
     def test_partial_config_merges_with_defaults(self, tmp_path, monkeypatch):
         config_dir = tmp_path / "squadops"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text('[api]\ntimeout = 99\n')
+        (config_dir / "config.toml").write_text("[api]\ntimeout = 99\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         cfg = load_config()
         assert cfg.timeout == 99
@@ -82,18 +79,10 @@ class TestLoadConfig:
     def test_tls_verify_false(self, tmp_path, monkeypatch):
         config_dir = tmp_path / "squadops"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text('[api]\ntls_verify = false\n')
+        (config_dir / "config.toml").write_text("[api]\ntls_verify = false\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         cfg = load_config()
         assert cfg.tls_verify is False
-
-    def test_health_url_from_toml(self, tmp_path, monkeypatch):
-        config_dir = tmp_path / "squadops"
-        config_dir.mkdir()
-        (config_dir / "config.toml").write_text('[api]\nhealth_url = "http://remote:8000"\n')
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        cfg = load_config()
-        assert cfg.health_url == "http://remote:8000"
 
 
 class TestResolveToken:
@@ -131,41 +120,47 @@ class TestResolveTokenCachedFile:
     def test_returns_cached_token_when_valid(self, tmp_path, monkeypatch):
         monkeypatch.delenv("SQUADOPS_TOKEN", raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        save_token(CachedToken(
-            access_token="cached_access",
-            refresh_token="ref",
-            expires_at=time.time() + 300,
-            token_endpoint="http://kc/token",
-            client_id="cli",
-            grant_type="password",
-        ))
+        save_token(
+            CachedToken(
+                access_token="cached_access",
+                refresh_token="ref",
+                expires_at=time.time() + 300,
+                token_endpoint="http://kc/token",
+                client_id="cli",
+                grant_type="password",
+            )
+        )
         token = resolve_token(CLIConfig())
         assert token == "cached_access"
 
     def test_env_var_wins_over_cached_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SQUADOPS_TOKEN", "env_token")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        save_token(CachedToken(
-            access_token="cached_access",
-            refresh_token=None,
-            expires_at=time.time() + 300,
-            token_endpoint="http://kc/token",
-            client_id="cli",
-            grant_type="password",
-        ))
+        save_token(
+            CachedToken(
+                access_token="cached_access",
+                refresh_token=None,
+                expires_at=time.time() + 300,
+                token_endpoint="http://kc/token",
+                client_id="cli",
+                grant_type="password",
+            )
+        )
         assert resolve_token(CLIConfig()) == "env_token"
 
     def test_expired_token_triggers_refresh(self, tmp_path, monkeypatch):
         monkeypatch.delenv("SQUADOPS_TOKEN", raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        save_token(CachedToken(
-            access_token="old",
-            refresh_token="ref",
-            expires_at=time.time() - 100,
-            token_endpoint="http://kc/token",
-            client_id="cli",
-            grant_type="password",
-        ))
+        save_token(
+            CachedToken(
+                access_token="old",
+                refresh_token="ref",
+                expires_at=time.time() - 100,
+                token_endpoint="http://kc/token",
+                client_id="cli",
+                grant_type="password",
+            )
+        )
         refreshed = CachedToken(
             access_token="refreshed_access",
             refresh_token="new_ref",
@@ -181,26 +176,30 @@ class TestResolveTokenCachedFile:
     def test_expired_no_refresh_returns_none(self, tmp_path, monkeypatch):
         monkeypatch.delenv("SQUADOPS_TOKEN", raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        save_token(CachedToken(
-            access_token="old",
-            refresh_token=None,
-            expires_at=time.time() - 100,
-            token_endpoint="http://kc/token",
-            client_id="cli",
-            grant_type="password",
-        ))
+        save_token(
+            CachedToken(
+                access_token="old",
+                refresh_token=None,
+                expires_at=time.time() - 100,
+                token_endpoint="http://kc/token",
+                client_id="cli",
+                grant_type="password",
+            )
+        )
         assert resolve_token(CLIConfig()) is None
 
     def test_refresh_failure_returns_none(self, tmp_path, monkeypatch):
         monkeypatch.delenv("SQUADOPS_TOKEN", raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        save_token(CachedToken(
-            access_token="old",
-            refresh_token="ref",
-            expires_at=time.time() - 100,
-            token_endpoint="http://kc/token",
-            client_id="cli",
-            grant_type="password",
-        ))
+        save_token(
+            CachedToken(
+                access_token="old",
+                refresh_token="ref",
+                expires_at=time.time() - 100,
+                token_endpoint="http://kc/token",
+                client_id="cli",
+                grant_type="password",
+            )
+        )
         with patch("squadops.cli.auth.refresh_access_token", return_value=None):
             assert resolve_token(CLIConfig()) is None

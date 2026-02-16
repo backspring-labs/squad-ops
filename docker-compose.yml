@@ -175,6 +175,8 @@ services:
       # Cycle registry (SIP-Postgres-Cycle-Registry)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres
       SQUADOPS__DB__MIGRATIONS_DIR: /app/infra/migrations
+      # LangFuse (health probe)
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       # LLM (SIP-0066: cycle task handlers)
       SQUADOPS__LLM__MODEL: "llama3.1:8b"
     networks:
@@ -533,11 +535,14 @@ services:
       CONSOLE_REDIRECT_URI: http://localhost:4040/auth/callback
       SERVICE_CLIENT_ID: squadops-console-service
       SERVICE_CLIENT_SECRET: ${CONSOLE_SERVICE_CLIENT_SECRET:-}
+      REDIS_URL: redis://redis:6379/1
     env_file:
       - .env.console
     depends_on:
       runtime-api:
         condition: service_started
+      redis:
+        condition: service_healthy
     networks:
       - squadnet
     restart: unless-stopped

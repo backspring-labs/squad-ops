@@ -6,7 +6,7 @@ def register(ctx):
     ctx.register_contribution("nav", {
         "slot": "ui.slot.left_nav",
         "label": "Home",
-        "icon": "home",
+        "icon": "activity",
         "priority": 999,
         "target": {"type": "panel", "panel_id": "signal"},
     })

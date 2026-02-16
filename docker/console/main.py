@@ -12,14 +12,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from auth_bff import configure as configure_auth
+from auth_bff import router as auth_bff_router
+from auth_bff import shutdown as shutdown_auth
+from continuum.adapters.web.api import router as continuum_api_router
+from continuum.app.runtime import ContinuumRuntime
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-
-from continuum.app.runtime import ContinuumRuntime
-from continuum.adapters.web.api import router as continuum_api_router
-
-from auth_bff import router as auth_bff_router, configure as configure_auth
+from session_store import MemorySessionStore, RedisSessionStore
 
 logger = logging.getLogger("squadops.console")
 
@@ -35,8 +36,11 @@ KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://squadops-keycloak:8080/rea
 KEYCLOAK_PUBLIC_URL = os.environ.get(
     "KEYCLOAK_PUBLIC_URL", "http://localhost:8180/realms/squadops-local"
 )
+# Legacy — kept for backward compat but no longer used in config.js
+HEALTH_CHECK_PUBLIC_URL = os.environ.get("HEALTH_CHECK_PUBLIC_URL", "http://localhost:8000")
 CONSOLE_CLIENT_ID = os.environ.get("CONSOLE_CLIENT_ID", "squadops-console")
 CONSOLE_REDIRECT_URI = os.environ.get("CONSOLE_REDIRECT_URI", "http://localhost:4040/auth/callback")
+REDIS_URL = os.environ.get("REDIS_URL", "")
 
 # Service token for internal runtime-api calls (client-credentials grant)
 SERVICE_CLIENT_ID = os.environ.get("SERVICE_CLIENT_ID", "squadops-console-service")
@@ -46,6 +50,7 @@ SERVICE_CLIENT_SECRET = os.environ.get("SERVICE_CLIENT_SECRET", "")
 
 _service_token: str | None = None
 _service_token_expires_at: float = 0
+_api_client: httpx.AsyncClient | None = None
 
 
 async def _get_service_token() -> str:
@@ -64,16 +69,16 @@ async def _get_service_token() -> str:
         logger.warning("SERVICE_CLIENT_SECRET not set — command handlers will run unauthenticated")
         return ""
 
+    assert _api_client is not None
     token_url = f"{KEYCLOAK_URL}/protocol/openid-connect/token"
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            token_url,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": SERVICE_CLIENT_ID,
-                "client_secret": SERVICE_CLIENT_SECRET,
-            },
-        )
+    resp = await _api_client.post(
+        token_url,
+        data={
+            "grant_type": "client_credentials",
+            "client_id": SERVICE_CLIENT_ID,
+            "client_secret": SERVICE_CLIENT_SECRET,
+        },
+    )
 
     if resp.status_code != 200:
         logger.error("Failed to obtain service token: %s", resp.text)
@@ -85,17 +90,15 @@ async def _get_service_token() -> str:
     return _service_token
 
 
-async def _api_request(
-    method: str, path: str, *, json: dict | None = None
-) -> httpx.Response:
+async def _api_request(method: str, path: str, *, json: dict | None = None) -> httpx.Response:
     """Make an authenticated request to the runtime API."""
     token = await _get_service_token()
     headers = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    async with httpx.AsyncClient(base_url=SQUADOPS_API_URL) as client:
-        return await client.request(method, path, json=json, headers=headers)
+    assert _api_client is not None
+    return await _api_client.request(method, path, json=json, headers=headers)
 
 
 # ── Command handlers ────────────────────────────────────────────────────────
@@ -134,9 +137,7 @@ async def squadops_cancel_cycle(args: dict, context: dict) -> dict:
     """Cancel a cycle."""
     project_id = args["project_id"]
     cycle_id = args["cycle_id"]
-    resp = await _api_request(
-        "POST", f"/api/v1/projects/{project_id}/cycles/{cycle_id}/cancel"
-    )
+    resp = await _api_request("POST", f"/api/v1/projects/{project_id}/cycles/{cycle_id}/cancel")
     if resp.status_code >= 400:
         return {"error": resp.text, "status_code": resp.status_code}
     return resp.json()
@@ -209,17 +210,17 @@ async def squadops_ingest_artifact(args: dict, context: dict) -> dict:
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    async with httpx.AsyncClient(base_url=SQUADOPS_API_URL) as client:
-        resp = await client.post(
-            f"/api/v1/projects/{project_id}/artifacts/ingest",
-            files={"file": (filename, file_bytes, media_type)},
-            data={
-                "artifact_type": artifact_type,
-                "filename": filename,
-                "media_type": media_type,
-            },
-            headers=headers,
-        )
+    assert _api_client is not None
+    resp = await _api_client.post(
+        f"/api/v1/projects/{project_id}/artifacts/ingest",
+        files={"file": (filename, file_bytes, media_type)},
+        data={
+            "artifact_type": artifact_type,
+            "filename": filename,
+            "media_type": media_type,
+        },
+        headers=headers,
+    )
 
     if resp.status_code >= 400:
         return {"error": resp.text, "status_code": resp.status_code}
@@ -290,7 +291,31 @@ _runtime: ContinuumRuntime | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _runtime
+    global _runtime, _api_client
+
+    # Create shared httpx client for runtime-api calls
+    _api_client = httpx.AsyncClient(base_url=SQUADOPS_API_URL)
+
+    # Create session stores — try Redis, fall back to memory
+    session_store: MemorySessionStore | RedisSessionStore
+    login_store: MemorySessionStore | RedisSessionStore
+    if REDIS_URL:
+        try:
+            import redis.asyncio as aioredis
+
+            redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+            await redis_client.ping()
+            session_store = RedisSessionStore(redis_client, prefix="squadops:session:")
+            login_store = RedisSessionStore(redis_client, prefix="squadops:login:")
+            logger.info("Session store: Redis (%s)", REDIS_URL)
+        except Exception:
+            logger.warning("Redis connection failed — falling back to in-memory sessions")
+            session_store = MemorySessionStore()
+            login_store = MemorySessionStore()
+    else:
+        session_store = MemorySessionStore()
+        login_store = MemorySessionStore()
+        logger.info("Session store: in-memory (set REDIS_URL for persistence)")
 
     # Configure auth BFF
     configure_auth(
@@ -298,6 +323,9 @@ async def lifespan(app: FastAPI):
         keycloak_public_url=KEYCLOAK_PUBLIC_URL,
         client_id=CONSOLE_CLIENT_ID,
         redirect_uri=CONSOLE_REDIRECT_URI,
+        session_store=session_store,
+        login_store=login_store,
+        secure_cookies=CONSOLE_REDIRECT_URI.startswith("https://"),
     )
 
     # Boot Continuum runtime with SquadOps plugins
@@ -310,6 +338,18 @@ async def lifespan(app: FastAPI):
 
     await _runtime.boot()
 
+    # Register custom perspectives not built into the Continuum shell
+    from continuum.domain.perspectives import PerspectiveSpec
+
+    _runtime._registry.perspectives.append(
+        PerspectiveSpec(
+            id="cycles",
+            label="Cycles",
+            route_prefix="/cycles",
+            description="Cycle lifecycle management and run monitoring",
+        )
+    )
+
     # Attach runtime to app state so Continuum API routes can access it
     app.state.runtime = _runtime
 
@@ -318,6 +358,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    await shutdown_auth()
+    if _api_client:
+        await _api_client.aclose()
+        _api_client = None
     if _runtime:
         await _runtime.shutdown()
     logger.info("SquadOps Console stopped")
@@ -333,11 +377,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:4040",
         "http://localhost:5173",
-        "http://localhost:8001",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Continuum API routes (/health, /api/registry, /plugins/{id}/assets/...)
@@ -345,6 +388,57 @@ app.include_router(continuum_api_router)
 
 # Auth BFF routes (/auth/login, /auth/callback, /auth/refresh, /auth/logout)
 app.include_router(auth_bff_router)
+
+
+# Health proxy routes (same-origin for console plugins)
+@app.get("/api/health/infra")
+async def proxy_health_infra():
+    """Proxy infrastructure health from runtime-api."""
+    resp = await _api_request("GET", "/health/infra")
+    return resp.json()
+
+
+@app.get("/api/health/agents")
+async def proxy_health_agents():
+    """Proxy agent health status from runtime-api."""
+    resp = await _api_request("GET", "/health/agents")
+    return resp.json()
+
+
+# Runtime API proxy — same-origin passthrough so plugins avoid cross-origin issues
+@app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_runtime_api(path: str, request: Request):
+    """Reverse-proxy /api/v1/* to the runtime-api."""
+    from fastapi.responses import Response as FastAPIResponse
+
+    token = await _get_service_token()
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    # Forward user's auth token if present (prefer user identity over service token)
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
+    body = await request.body()
+    content_type = request.headers.get("content-type")
+    if content_type:
+        headers["Content-Type"] = content_type
+
+    assert _api_client is not None
+    resp = await _api_client.request(
+        request.method,
+        f"/api/v1/{path}",
+        content=body if body else None,
+        headers=headers,
+    )
+
+    return FastAPIResponse(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type"),
+    )
 
 
 # Inject SquadOps config into shell HTML
@@ -355,7 +449,7 @@ async def config_js():
 
     js = f"""
 window.__SQUADOPS_CONFIG__ = {{
-    apiBaseUrl: "{SQUADOPS_API_PUBLIC_URL}",
+    apiBaseUrl: "",
     prefectBaseUrl: "{PREFECT_API_PUBLIC_URL}",
     langfuseBaseUrl: "{LANGFUSE_API_PUBLIC_URL}",
     keycloakPublicUrl: "{KEYCLOAK_PUBLIC_URL}",
@@ -366,6 +460,33 @@ window.__SQUADOPS_CONFIG__ = {{
 window.squadops = window.squadops || {{}};
 (function() {{
     let _accessToken = null;
+    const MAX_LOOPS = 3;
+    const LOOP_KEY = '__squadops_auth_loop_count';
+
+    function _getLoopCount() {{
+        return parseInt(sessionStorage.getItem(LOOP_KEY) || '0', 10);
+    }}
+
+    function _incrementLoop() {{
+        const count = _getLoopCount() + 1;
+        sessionStorage.setItem(LOOP_KEY, String(count));
+        return count;
+    }}
+
+    function _clearLoopCount() {{
+        sessionStorage.removeItem(LOOP_KEY);
+    }}
+
+    function _showLoopError() {{
+        _clearLoopCount();
+        document.body.innerHTML =
+            '<div style="max-width:480px;margin:80px auto;font-family:sans-serif;text-align:center">' +
+            '<h2>Authentication Error</h2>' +
+            '<p>Unable to establish a session after multiple attempts.</p>' +
+            '<p>This usually means your session expired during a server restart.</p>' +
+            '<p><a href="/auth/logout" style="color:#4f46e5">Click here to logout</a> and try again.</p>' +
+            '</div>';
+    }}
 
     async function apiFetch(url, options = {{}}) {{
         options.headers = options.headers || {{}};
@@ -375,8 +496,8 @@ window.squadops = window.squadops || {{}};
 
         let resp = await fetch(url, options);
 
-        // On 401, try refreshing the token once
-        if (resp.status === 401 && _accessToken) {{
+        // On 401, try refreshing the token (handles expired token AND bootstrap race)
+        if (resp.status === 401) {{
             const refreshResp = await fetch('/auth/refresh', {{
                 method: 'POST',
                 credentials: 'include',
@@ -385,11 +506,17 @@ window.squadops = window.squadops || {{}};
             if (refreshResp.ok) {{
                 const data = await refreshResp.json();
                 _accessToken = data.access_token;
+                _clearLoopCount();
                 options.headers['Authorization'] = 'Bearer ' + _accessToken;
                 resp = await fetch(url, options);
             }} else {{
                 // Refresh failed — redirect to login
                 _accessToken = null;
+                if (_getLoopCount() >= MAX_LOOPS) {{
+                    _showLoopError();
+                    return resp;
+                }}
+                _incrementLoop();
                 const loginResp = await fetch('/auth/login');
                 const loginData = await loginResp.json();
                 window.location = loginData.auth_url;
@@ -416,8 +543,14 @@ window.squadops = window.squadops || {{}};
             if (resp.ok) {{
                 const data = await resp.json();
                 _accessToken = data.access_token;
+                _clearLoopCount();
             }} else {{
-                // No session — redirect to Keycloak login
+                // No session — redirect to Keycloak login (with loop detection)
+                if (_getLoopCount() >= MAX_LOOPS) {{
+                    _showLoopError();
+                    return;
+                }}
+                _incrementLoop();
                 const loginResp = await fetch('/auth/login');
                 const loginData = await loginResp.json();
                 window.location = loginData.auth_url;

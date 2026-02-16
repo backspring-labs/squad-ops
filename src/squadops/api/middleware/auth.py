@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -18,8 +18,8 @@ from squadops.ports.auth.authentication import AuthPort
 
 logger = logging.getLogger(__name__)
 
-# Always allowlisted paths (no token required)
-_ALWAYS_ALLOWLISTED = {"/health", "/health/infra"}
+# Always allowlisted path prefixes (no token required)
+_ALWAYS_ALLOWLISTED_PREFIXES = ("/health",)
 
 # Conditionally allowlisted paths (only when expose_docs=True)
 _DOCS_PATHS = {"/docs", "/openapi.json", "/redoc"}
@@ -108,8 +108,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path.rstrip("/") or "/"
         request_id = getattr(request.state, "request_id", "unknown")
 
-        # Always-allowlisted paths
-        if path in _ALWAYS_ALLOWLISTED:
+        # Always-allowlisted paths (prefix match)
+        if any(path.startswith(prefix) for prefix in _ALWAYS_ALLOWLISTED_PREFIXES):
             return await call_next(request)
 
         # Conditionally allowlisted docs paths

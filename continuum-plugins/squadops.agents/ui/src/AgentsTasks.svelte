@@ -1,12 +1,11 @@
-<svelte:options customElement="squadops-agents-tasks" />
+<svelte:options customElement="squadops-agents-run-activity" />
 
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
 
-  const AGENTS = ['max', 'neo', 'nat', 'eve', 'data'];
-  let tasksByAgent = $state({});
+  let runs = $state([]);
   let loading = $state(true);
-  let unavailable = $state({});
+  let pollTimer = $state(null);
 
   const config = window.__SQUADOPS_CONFIG__ || {};
   const apiBase = config.apiBaseUrl || '';
@@ -16,77 +15,145 @@
     return fetch(url, opts);
   }
 
-  async function fetchTasks() {
-    const results = {};
-    const unavailableMap = {};
-    for (const agent of AGENTS) {
-      try {
-        const resp = await apiFetch(`${apiBase}/api/v1/tasks/agent/${agent}`);
-        if (resp.ok) {
-          results[agent] = await resp.json();
-          unavailableMap[agent] = false;
-        } else {
-          results[agent] = [];
-          unavailableMap[agent] = true;
-        }
-      } catch {
-        results[agent] = [];
-        unavailableMap[agent] = true;
+  function statusColor(status) {
+    const colors = {
+      completed: 'var(--continuum-accent-success, #22c55e)',
+      in_progress: 'var(--continuum-accent-primary, #6366f1)',
+      failed: 'var(--continuum-accent-danger, #ef4444)',
+      paused: 'var(--continuum-accent-warning, #f59e0b)',
+      queued: 'var(--continuum-text-muted, #94a3b8)',
+    };
+    return colors[status] || colors.queued;
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return '';
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  }
+
+  function duration(start, end) {
+    if (!start || !end) return null;
+    const ms = new Date(end).getTime() - new Date(start).getTime();
+    const secs = Math.floor(ms / 1000);
+    if (secs < 60) return `${secs}s`;
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m ${secs % 60}s`;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+
+  async function fetchData() {
+    try {
+      const projResp = await apiFetch(`${apiBase}/api/v1/projects`);
+      if (!projResp.ok) { loading = false; return; }
+      const projects = await projResp.json();
+
+      const allRuns = [];
+      for (const proj of projects.slice(0, 10)) {
+        try {
+          const cyclesResp = await apiFetch(`${apiBase}/api/v1/projects/${proj.project_id}/cycles`);
+          if (!cyclesResp.ok) continue;
+          const cycles = await cyclesResp.json();
+          for (const cycle of cycles) {
+            for (const run of (cycle.runs || [])) {
+              allRuns.push({
+                ...run,
+                project_name: proj.name || proj.project_id,
+                cycle_id_short: cycle.cycle_id?.slice(0, 12),
+              });
+            }
+          }
+        } catch { /* skip failed project */ }
       }
-    }
-    tasksByAgent = results;
-    unavailable = unavailableMap;
+
+      allRuns.sort((a, b) => {
+        const ta = a.started_at || a.created_at || '';
+        const tb = b.started_at || b.created_at || '';
+        return tb.localeCompare(ta);
+      });
+
+      runs = allRuns.slice(0, 10);
+    } catch { /* API unavailable */ }
     loading = false;
   }
 
-  onMount(fetchTasks);
+  onMount(() => {
+    fetchData();
+    pollTimer = setInterval(fetchData, 30000);
+  });
+
+  onDestroy(() => {
+    if (pollTimer) clearInterval(pollTimer);
+  });
 </script>
 
-<div class="agents-tasks">
-  <h3 class="title">Agent Task History</h3>
+<div class="run-activity">
+  <h3 class="title">Recent Run Activity</h3>
 
   {#if loading}
-    <div class="loading">Loading task history...</div>
+    <div class="loading">Loading runs...</div>
+  {:else if runs.length === 0}
+    <div class="empty">No recent runs</div>
   {:else}
-    {#each AGENTS as agent}
-      <div class="agent-section">
-        <h4 class="agent-name">{agent}</h4>
-        {#if unavailable[agent]}
-          <div class="unavailable">Endpoint unavailable</div>
-        {:else if (tasksByAgent[agent] || []).length === 0}
-          <div class="empty">No recent tasks</div>
-        {:else}
-          <div class="task-list">
-            {#each (tasksByAgent[agent] || []).slice(0, 10) as task}
-              <div class="task-item">
-                <span class="task-type">{task.task_type || task.type || '--'}</span>
-                <span class="task-status">{task.status || '--'}</span>
-              </div>
-            {/each}
+    <div class="run-list">
+      {#each runs as run}
+        <div class="run-item">
+          <span class="run-badge" style="background: {statusColor(run.status)}">{run.status?.replace('_', ' ') || '?'}</span>
+          <div class="run-info">
+            <span class="run-project">{run.project_name}</span>
+            <span class="run-meta">
+              {run.cycle_id_short} &middot; run #{run.run_number}
+              {#if run.gate_decisions?.length}
+                &middot; {run.gate_decisions.length} gate{run.gate_decisions.length > 1 ? 's' : ''}
+              {/if}
+              {#if run.artifact_refs?.length}
+                &middot; {run.artifact_refs.length} artifact{run.artifact_refs.length > 1 ? 's' : ''}
+              {/if}
+            </span>
           </div>
-        {/if}
-      </div>
-    {/each}
+          <div class="run-time">
+            {#if duration(run.started_at, run.finished_at)}
+              <span class="run-duration">{duration(run.started_at, run.finished_at)}</span>
+            {/if}
+            <span class="run-age">{timeAgo(run.started_at)}</span>
+          </div>
+        </div>
+      {/each}
+    </div>
   {/if}
 </div>
 
 <style>
-  .agents-tasks {
+  .run-activity {
     padding: var(--continuum-space-lg, 24px);
     font-family: var(--continuum-font-sans, system-ui, sans-serif);
     color: var(--continuum-text-primary, #e2e8f0);
   }
   .title { font-size: var(--continuum-font-size-md, 1rem); font-weight: 600; margin: 0 0 var(--continuum-space-md, 16px) 0; }
-  .agent-section { margin-bottom: var(--continuum-space-md, 16px); }
-  .agent-name { font-size: var(--continuum-font-size-sm, 0.875rem); font-weight: 600; text-transform: capitalize; margin: 0 0 var(--continuum-space-xs, 4px) 0; }
-  .task-list { display: flex; flex-direction: column; gap: 2px; }
-  .task-item {
-    display: flex; justify-content: space-between; padding: 4px var(--continuum-space-sm, 8px);
+  .run-list { display: flex; flex-direction: column; gap: var(--continuum-space-xs, 4px); }
+  .run-item {
+    display: flex; align-items: center; gap: var(--continuum-space-sm, 8px);
+    padding: var(--continuum-space-sm, 8px) var(--continuum-space-md, 16px);
     background: var(--continuum-bg-secondary, #1e293b); border-radius: var(--continuum-radius-sm, 4px);
-    font-size: var(--continuum-font-size-xs, 0.75rem);
   }
-  .task-type { font-family: var(--continuum-font-mono, monospace); }
-  .task-status { color: var(--continuum-text-muted, #94a3b8); }
-  .loading, .empty { color: var(--continuum-text-muted, #94a3b8); font-size: var(--continuum-font-size-sm, 0.875rem); }
-  .unavailable { color: var(--continuum-accent-warning, #f59e0b); font-size: var(--continuum-font-size-sm, 0.875rem); font-style: italic; }
+  .run-badge {
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+    padding: 2px 8px; border-radius: var(--continuum-radius-sm, 4px);
+    color: #fff; font-weight: 600; text-transform: uppercase; white-space: nowrap; flex-shrink: 0;
+  }
+  .run-info { flex: 1; min-width: 0; }
+  .run-project { display: block; font-weight: 500; font-size: var(--continuum-font-size-sm, 0.875rem); }
+  .run-meta {
+    display: block; font-size: var(--continuum-font-size-xs, 0.75rem);
+    color: var(--continuum-text-muted, #94a3b8); font-family: var(--continuum-font-mono, monospace);
+  }
+  .run-time { text-align: right; flex-shrink: 0; }
+  .run-duration { display: block; font-size: var(--continuum-font-size-xs, 0.75rem); font-family: var(--continuum-font-mono, monospace); }
+  .run-age { display: block; font-size: var(--continuum-font-size-xs, 0.75rem); color: var(--continuum-text-muted, #94a3b8); }
+  .loading, .empty { color: var(--continuum-text-muted, #94a3b8); font-size: var(--continuum-font-size-sm, 0.875rem); padding: var(--continuum-space-md, 16px); }
 </style>

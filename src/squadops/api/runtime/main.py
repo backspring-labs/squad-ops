@@ -8,6 +8,7 @@ Usage:
     uvicorn squadops.api.runtime.main:app --host 0.0.0.0 --port 8001
 """
 
+import asyncio
 import logging
 import os
 from datetime import datetime
@@ -37,6 +38,7 @@ from .deps import (
     set_audit_port,
     set_auth_ports,
     set_cycle_ports,
+    set_health_checker,
     set_tasks_adapter,
 )
 
@@ -73,25 +75,19 @@ def _extract_origin(uri: str) -> str:
 
 
 # SIP-0062 Phase 3a: CORS middleware for browser-based clients
+# Middleware is added in reverse order because Starlette processes them LIFO.
+# CORS must be outermost (added LAST) so it adds headers to ALL responses,
+# including 401s from AuthMiddleware. Order: Auth → RequestID → CORS (outermost).
 auth_config = config.auth
 _cors_origins: set[str] = set()
 if auth_config.console:
     _cors_origins.add(_extract_origin(auth_config.console.redirect_uri))
     if auth_config.console.post_logout_redirect_uri:
         _cors_origins.add(_extract_origin(auth_config.console.post_logout_redirect_uri))
-if _cors_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(_cors_origins),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
 
-# SIP-0062: Add middleware in correct order (Request-ID → Auth → exception handling)
-# Middleware is added in reverse order because Starlette processes them LIFO.
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
 
+# Inner middleware first (Auth checks tokens)
 if auth_config.enabled:
     app.add_middleware(
         AuthMiddleware,
@@ -100,6 +96,16 @@ if auth_config.enabled:
         expose_docs=auth_config.expose_docs,
     )
 app.add_middleware(RequestIDMiddleware)
+
+# CORS outermost (added last) — ensures CORS headers on 401/403 responses too
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(_cors_origins),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # SIP-0062 Phase 3a: Include auth routes
 from squadops.api.routes.auth import router as auth_router
@@ -121,6 +127,11 @@ app.include_router(runs_router)
 app.include_router(profiles_router)
 app.include_router(artifacts_router)
 
+# Platform health routes (replaces legacy health-check service)
+from squadops.api.routes.platform_health import router as platform_health_router
+
+app.include_router(platform_health_router)
+
 # Global connection pool (for memory endpoints only)
 pool: asyncpg.Pool | None = None
 
@@ -130,6 +141,11 @@ rabbitmq_channel: aio_pika.Channel | None = None
 
 # PrefectReporter for shutdown cleanup
 _prefect_reporter = None
+
+# Redis client + health checker for platform health routes
+_redis_client = None
+_health_checker_instance = None
+_reconciliation_task = None
 
 
 @app.on_event("startup")
@@ -289,11 +305,40 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize cycle ports: {e}")
 
+    # Initialize platform health checker (replaces legacy health-check service)
+    global _redis_client, _health_checker_instance, _reconciliation_task
+    try:
+        import redis.asyncio as aioredis
+
+        from squadops.api.runtime.health_checker import HealthChecker
+
+        redis_url = config.comms.redis.url
+        _redis_client = aioredis.from_url(redis_url)
+        _health_checker_instance = HealthChecker(
+            pg_pool=pool, redis_client=_redis_client, config=config,
+        )
+        await _health_checker_instance.init_connections()
+        set_health_checker(_health_checker_instance)
+        _reconciliation_task = asyncio.create_task(
+            _health_checker_instance.reconciliation_loop()
+        )
+        logger.info("Platform health checker initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize health checker: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up connections."""
     global pool, rabbitmq_connection
+    if _health_checker_instance:
+        _health_checker_instance._reconciliation_running = False
+    if _reconciliation_task:
+        _reconciliation_task.cancel()
+    if _health_checker_instance:
+        await _health_checker_instance.close()
+    if _redis_client:
+        await _redis_client.aclose()
     if pool:
         await pool.close()
     if rabbitmq_connection:

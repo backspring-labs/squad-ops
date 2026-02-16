@@ -13,6 +13,6 @@ def register(ctx):
     ctx.register_contribution("panel", {
         "slot": "ui.slot.main",
         "perspective": "signal",
-        "component": "squadops-agents-tasks",
+        "component": "squadops-agents-run-activity",
         "priority": 300,
     })

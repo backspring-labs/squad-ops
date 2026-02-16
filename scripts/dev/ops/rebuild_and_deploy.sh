@@ -6,11 +6,11 @@
 # Usage:
 #   ./scripts/dev/ops/rebuild_and_deploy.sh                           # Rebuild everything (default)
 #   ./scripts/dev/ops/rebuild_and_deploy.sh all                       # Rebuild everything
-#   ./scripts/dev/ops/rebuild_and_deploy.sh health-check              # Rebuild only health-check service
+#   ./scripts/dev/ops/rebuild_and_deploy.sh console                   # Rebuild only console service
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents                    # Rebuild default 5 core agents (max, nat, neo, eve, data)
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents max neo            # Rebuild only specified agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents max nat neo eve data glyph  # Rebuild specified agents
-#   ./scripts/dev/ops/rebuild_and_deploy.sh health-check agents       # Rebuild health-check and default agents
+#   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api agents        # Rebuild runtime-api and default agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api               # Rebuild only runtime-api
 #
 # Environment variables:
@@ -23,7 +23,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO_ROOT"
 
 # Parse command-line arguments
-REBUILD_HEALTH_CHECK=false
+REBUILD_CONSOLE=false
 REBUILD_AGENTS=false
 REBUILD_RUNTIME_API=false
 REBUILD_ALL=true
@@ -36,8 +36,8 @@ if [ $# -gt 0 ]; then
         i=$((i + 1))
         arg="${!i}"
         case "$arg" in
-            health-check|health_check)
-                REBUILD_HEALTH_CHECK=true
+            console)
+                REBUILD_CONSOLE=true
                 ;;
             agents)
                 REBUILD_AGENTS=true
@@ -46,7 +46,7 @@ if [ $# -gt 0 ]; then
                 while [ $i -le $# ]; do
                     next_arg="${!i}"
                     case "$next_arg" in
-                        health-check|health_check|runtime-api|runtime_api|task-api|task_api|all)
+                        console|runtime-api|runtime_api|task-api|task_api|all)
                             # Hit another service keyword, back up and break
                             i=$((i - 1))
                             break
@@ -65,24 +65,25 @@ if [ $# -gt 0 ]; then
                 ;;
             all)
                 REBUILD_ALL=true
-                REBUILD_HEALTH_CHECK=true
+                REBUILD_CONSOLE=true
                 REBUILD_AGENTS=true
                 REBUILD_RUNTIME_API=true
                 ;;
             *)
                 echo "Unknown argument: $arg"
-                echo "Usage: $0 [health-check] [agents [agent1 agent2 ...]] [runtime-api] [all]"
+                echo "Usage: $0 [console] [agents [agent1 agent2 ...]] [runtime-api] [all]"
                 echo "  Examples:"
+                echo "    $0 console                   # Build only console"
                 echo "    $0 agents                    # Build default 5 core agents (max, nat, neo, eve, data)"
                 echo "    $0 agents max neo            # Build only max and neo"
-                echo "    $0 agents max nat neo eve data glyph  # Build specified agents"
+                echo "    $0 runtime-api console       # Build runtime-api and console"
                 exit 1
                 ;;
         esac
     done
 else
     # Default: rebuild everything
-    REBUILD_HEALTH_CHECK=true
+    REBUILD_CONSOLE=true
     REBUILD_AGENTS=true
     REBUILD_RUNTIME_API=true
 fi
@@ -110,11 +111,11 @@ echo -e "${BLUE}🚀 SquadOps Rebuild & Deploy${NC}"
 echo "================================"
 echo -e "${BLUE}Target services:${NC}"
 if [ "$REBUILD_ALL" = true ]; then
-    echo -e "  ${YELLOW}✓${NC} All services (health-check, agents, runtime-api)"
+    echo -e "  ${YELLOW}✓${NC} All services (runtime-api, console, agents)"
 else
-    [ "$REBUILD_HEALTH_CHECK" = true ] && echo -e "  ${YELLOW}✓${NC} health-check"
-    [ "$REBUILD_AGENTS" = true ] && echo -e "  ${YELLOW}✓${NC} agents"
     [ "$REBUILD_RUNTIME_API" = true ] && echo -e "  ${YELLOW}✓${NC} runtime-api"
+    [ "$REBUILD_CONSOLE" = true ] && echo -e "  ${YELLOW}✓${NC} console"
+    [ "$REBUILD_AGENTS" = true ] && echo -e "  ${YELLOW}✓${NC} agents"
 fi
 echo ""
 
@@ -177,15 +178,15 @@ echo -e "${BLUE}📊 Step 2: Ensuring Docker Compose infrastructure is running..
 echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
 docker-compose up -d rabbitmq postgres redis prefect-server
 
-# Conditionally start runtime-api and health-check if they're being rebuilt
+# Conditionally start runtime-api and console if they're being rebuilt
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo "Starting runtime-api..."
     docker-compose up -d runtime-api || true
 fi
 
-if [ "$REBUILD_HEALTH_CHECK" = true ] || [ "$REBUILD_ALL" = true ]; then
-    echo "Starting health-check..."
-    docker-compose up -d health-check || true
+if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo "Starting console..."
+    docker-compose up -d squadops-console || true
 fi
 
 echo "⏳ Waiting for infrastructure to be healthy (30 seconds)..."
@@ -240,16 +241,16 @@ if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "${GREEN}✅ Runtime API rebuilt and restarted${NC}"
 fi
 
-# Rebuild Health Check if requested
-if [ "$REBUILD_HEALTH_CHECK" = true ] || [ "$REBUILD_ALL" = true ]; then
-    echo -e "${YELLOW}📦 Rebuilding health-check...${NC}"
+# Rebuild Console if requested
+if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "${YELLOW}📦 Rebuilding console...${NC}"
     if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-        docker-compose build --no-cache health-check || echo -e "${RED}  ⚠️  Build failed for health-check${NC}"
+        docker-compose build --no-cache squadops-console || echo -e "${RED}  ⚠️  Build failed for console${NC}"
     else
-        docker-compose build health-check || echo -e "${RED}  ⚠️  Build failed for health-check${NC}"
+        docker-compose build squadops-console || echo -e "${RED}  ⚠️  Build failed for console${NC}"
     fi
-    docker-compose up -d health-check
-    echo -e "${GREEN}✅ Health Check rebuilt and restarted${NC}"
+    docker-compose up -d squadops-console
+    echo -e "${GREEN}✅ Console rebuilt and restarted${NC}"
 fi
 
 # Function to get agent role from agent ID
@@ -548,10 +549,10 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
 fi
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "  2. Check Runtime API health: ${YELLOW}curl http://localhost:8001/health${NC}"
+    echo -e "  3. Check infra probes: ${YELLOW}curl http://localhost:8001/health/infra${NC}"
 fi
-if [ "$REBUILD_HEALTH_CHECK" = true ] || [ "$REBUILD_ALL" = true ]; then
-    echo -e "  3. Check Health Check dashboard: ${YELLOW}curl http://localhost:8000/health${NC}"
-    echo -e "  4. Open Agent Console: ${YELLOW}http://localhost:8000/health${NC} (click 'Agent Console' tab)"
+if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
+    echo -e "  4. Open Console: ${YELLOW}http://localhost:4040${NC}"
 fi
 if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "  5. Run smoke tests: ${YELLOW}python3 -m pytest tests/smoke/ -v${NC}"

@@ -7,29 +7,29 @@ def register(ctx):
     ctx.register_contribution("nav", {
         "slot": "ui.slot.left_nav",
         "label": "Cycles",
-        "icon": "zap",
+        "icon": "clock",
         "priority": 800,
-        "target": {"type": "panel", "panel_id": "signal"},
+        "target": {"type": "panel", "panel_id": "cycles"},
     })
 
     # ── Panels ──────────────────────────────────────────────────
     ctx.register_contribution("panel", {
         "slot": "ui.slot.main",
-        "perspective": "signal",
+        "perspective": "cycles",
         "component": "squadops-cycles-list",
         "priority": 800,
     })
 
     ctx.register_contribution("panel", {
         "slot": "ui.slot.main",
-        "perspective": "signal",
+        "perspective": "cycles",
         "component": "squadops-cycles-run-timeline",
         "priority": 700,
     })
 
     ctx.register_contribution("panel", {
         "slot": "ui.slot.main",
-        "perspective": "signal",
+        "perspective": "cycles",
         "component": "squadops-cycles-run-detail",
         "priority": 600,
     })

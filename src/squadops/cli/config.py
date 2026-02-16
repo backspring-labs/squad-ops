@@ -18,7 +18,6 @@ class CLIConfig:
     """CLI configuration with sensible defaults."""
 
     base_url: str = "http://localhost:8001"
-    health_url: str = "http://localhost:8000"
     timeout: int = 30
     auth_mode: str = "token"  # "token" only in v0.9.4
     token_env: str = "SQUADOPS_TOKEN"
@@ -57,8 +56,6 @@ def load_config() -> CLIConfig:
     api = raw.get("api", {})
     if "base_url" in api:
         kwargs["base_url"] = api["base_url"]
-    if "health_url" in api:
-        kwargs["health_url"] = api["health_url"]
     if "timeout" in api:
         kwargs["timeout"] = api["timeout"]
     if "tls_verify" in api:

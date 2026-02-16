@@ -1,10 +1,10 @@
 ---
 title: SquadOps Console — Control Plane UI via Continuum Plugins
-status: accepted
+status: implemented
 author: J. Ladd
 created_at: '2026-02-06T00:00:00Z'
 sip_number: 69
-updated_at: '2026-02-14T22:19:10.364255Z'
+updated_at: '2026-02-16T12:25:04.463384Z'
 ---
 # SIP — SquadOps Console: Control Plane UI via Continuum Plugins
 

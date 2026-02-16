@@ -5,7 +5,6 @@
 
   let projects = $state([]);
   let recentRuns = $state([]);
-  let agentStatus = $state([]);
   let loading = $state(true);
   let error = $state(null);
   let pollTimer = $state(null);
@@ -21,14 +20,13 @@
   }
 
   async function fetchData() {
+    // Fetch projects + cycles (degrade gracefully on failure)
     try {
-      // Fetch projects
       const projResp = await apiFetch(`${apiBase}/api/v1/projects`);
       if (projResp.ok) {
         const allProjects = await projResp.json();
         projects = allProjects;
 
-        // Fetch active cycles for first 10 projects (cap per D14)
         const projectSlice = allProjects.slice(0, 10);
         const runs = [];
         for (const proj of projectSlice) {
@@ -53,25 +51,12 @@
         }
         recentRuns = runs.slice(0, 5);
       }
-
-      // Fetch agent status (optional endpoint — degrade gracefully)
-      try {
-        const agentResp = await apiFetch(`${apiBase}/health/agents`);
-        if (agentResp.ok) {
-          agentStatus = await agentResp.json();
-        } else {
-          agentStatus = [];
-        }
-      } catch {
-        agentStatus = [];
-      }
-
-      loading = false;
-      error = null;
-    } catch (err) {
-      error = err.message;
-      loading = false;
+    } catch {
+      // Projects API unavailable — show dashboard with agent data only
     }
+
+    loading = false;
+    error = null;
   }
 
   onMount(() => {
@@ -109,19 +94,6 @@
         <div class="card-header">Active Cycles</div>
         <div class="card-value">{recentRuns.filter(r => r.status === 'running' || r.status === 'paused').length}</div>
         <div class="card-label">across {projects.length} projects</div>
-      </div>
-
-      <!-- Agent Status -->
-      <div class="card">
-        <div class="card-header">Agents</div>
-        <div class="card-value">{agentStatus.length || 5}</div>
-        <div class="card-label">
-          {#if agentStatus.length > 0}
-            {agentStatus.filter(a => a.status === 'healthy').length} healthy
-          {:else}
-            status unavailable
-          {/if}
-        </div>
       </div>
 
       <!-- Pending Gates -->

@@ -1,9 +1,10 @@
 """
-HTTP adapter for reporting agent heartbeats to the health-check service.
+HTTP adapter for reporting agent heartbeats to the runtime-api service.
 
 Env:
-- SQUADOPS_HEALTH_CHECK_URL: base URL for the health-check service
-  (default: http://health-check:8000)
+- SQUADOPS_RUNTIME_API_URL: base URL for the runtime API
+  (default: http://runtime-api:8001)
+- SQUADOPS_HEALTH_CHECK_URL: legacy env var (fallback)
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import logging
 import os
 from typing import Any
 
-import aiohttp
+import httpx
 
 from squadops.ports.observability.heartbeat import AgentHeartbeatReporter
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class HealthCheckHttpReporter(AgentHeartbeatReporter):
-    """Posts agent status updates to the health-check service."""
+    """Posts agent status updates to the runtime-api health endpoints."""
 
     def __init__(
         self,
@@ -29,9 +30,12 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
         timeout_seconds: int = 5,
         fail_silently: bool = True,
     ) -> None:
-        self._base_url = (base_url or os.getenv("SQUADOPS_HEALTH_CHECK_URL") or "http://health-check:8000").rstrip(
-            "/"
-        )
+        self._base_url = (
+            base_url
+            or os.getenv("SQUADOPS_RUNTIME_API_URL")
+            or os.getenv("SQUADOPS_HEALTH_CHECK_URL")
+            or "http://runtime-api:8001"
+        ).rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._fail_silently = fail_silently
 
@@ -51,24 +55,24 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
             "lifecycle_state": lifecycle_state,
             "current_task_id": current_task_id,
             "version": version,
-            # Health-check expects an int; be forgiving and coerce.
             "tps": int(tps) if tps is not None else 0,
             "memory_count": memory_count,
         }
 
         try:
-            timeout = aiohttp.ClientTimeout(total=self._timeout_seconds)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(url, json=payload) as resp:
-                    if resp.status >= 400:
-                        body = await resp.text()
-                        raise RuntimeError(f"health-check responded {resp.status}: {body}")
+            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code >= 400:
+                    raise RuntimeError(f"runtime-api responded {resp.status_code}: {resp.text}")
         except Exception as e:
             if self._fail_silently:
                 logger.warning(
                     "heartbeat_send_failed",
-                    extra={"agent_id": agent_id, "lifecycle_state": lifecycle_state, "error": str(e)},
+                    extra={
+                        "agent_id": agent_id,
+                        "lifecycle_state": lifecycle_state,
+                        "error": str(e),
+                    },
                 )
                 return
             raise
-
