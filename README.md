@@ -182,39 +182,23 @@ squadops runs assemble play_game <cycle-id> <run-id> --out ./output
 
 ## Development Roadmap
 
-**Current Phase**: Distributed Cycle Execution Pipeline Complete
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline from v0.1.x through v0.9.8.
 
-### Implemented (v0.9.x)
-- **SIP-0061** – LangFuse LLM Observability Foundation (buffered trace/span/generation recording)
-- **SIP-0062** – Auth Boundary (Keycloak OIDC, JWT middleware, service identities, audit logging)
-- **SIP-0064** – Project Cycle Request API (cycles, runs, gates, artifacts via REST)
-- **SIP-0065** – CLI for Cycle Execution (Typer CLI with CRP contract packs)
-- **SIP-0066** – Distributed Cycle Execution Pipeline (RabbitMQ dispatch, Prefect DAG, LangFuse traces)
-- **SIP-0067** – Postgres Cycle Registry (durable cycle/run/gate persistence with migrations)
-- **SIP-0068** – Enhanced Agent Build Capabilities (code generation, test generation, assembly)
-
-### Implemented (v0.8.x)
-- **SIP-0048** – Runtime API with FastAPI
-- **SIP-0055** – DB Deployment Profile
-- **SIP-0058** – Capability Contracts
-
-### Next Phase
-- Multi-cycle orchestration and pipeline chaining
-- Enhanced gate decision workflows
-- Production deployment hardening
+**Current**: v0.9.8 — Console Control-Plane UI (SIP-0069)
+**Next**: SIP-0070 — Pulse Checks and Verification Framework
 
 ---
 
 ## Current Status
-**Framework Version**: 0.9.7
-**Development Status**: Production-ready distributed cycle execution with agent build capabilities, durable persistence, authentication, CLI tooling, and full observability stack.
+**Framework Version**: 0.9.8
+**Development Status**: Production-ready multi-agent orchestration with console UI, distributed cycle execution, agent build capabilities, durable persistence, authentication, CLI tooling, and full observability stack.
 
 ### Project Statistics
 - **~38,000 lines** of Python source code
 - **~31,000 lines** of test code
 - **~62,000 lines** of documentation
-- **1,422+ tests** passing in regression suite
-- **64 SIPs** (41 implemented, 7 proposals, 15 deprecated)
+- **1,447+ tests** passing in regression suite
+- **64 SIPs** (42 implemented, 1 accepted, 6 proposals, 15 deprecated)
 
 ### Functional Components
 - 5 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics)
@@ -231,8 +215,9 @@ squadops runs assemble play_game <cycle-id> <run-id> --out ./output
 - LLM router abstraction with Ollama adapter
 - LanceDB semantic memory (SIP-042)
 - OpenTelemetry with trace correlation
+- Console Control-Plane UI with Continuum plugin shell and auth BFF (SIP-0069)
 - Docker build system with deterministic multi-stage builds
-- 14-service Docker Compose development environment
+- 15-service Docker Compose development environment
 
 ---
 
