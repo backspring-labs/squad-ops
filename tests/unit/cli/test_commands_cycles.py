@@ -140,6 +140,90 @@ class TestCyclesCreate:
         assert result.exit_code == exit_codes.NOT_FOUND
 
 
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_create_with_prd_file_auto_ingests(self, mock_get_client, tmp_path):
+        """--prd with a file path auto-ingests via upload and uses returned artifact ID."""
+        prd_file = tmp_path / "prd.md"
+        prd_file.write_text("# My PRD\nSome content")
+
+        mock_client = _mock_client(post_val={
+            "cycle_id": "cyc_prd",
+            "run_id": "run_prd",
+            "status": "queued",
+            "resolved_config_hash": "abc",
+        })
+        mock_client.upload.return_value = {"artifact_id": "art_prd_123"}
+        mock_get_client.return_value = mock_client
+
+        result = runner.invoke(app, [
+            "cycles", "create", "proj1",
+            "--squad-profile", "sp1",
+            "--prd", str(prd_file),
+        ])
+        assert result.exit_code == 0
+
+        # Verify upload was called with correct args
+        upload_call = mock_client.upload.call_args
+        assert "/artifacts/ingest" in upload_call[0][0]
+        assert upload_call.kwargs["fields"]["artifact_type"] == "prd"
+
+        # Verify the POST body uses the returned artifact ID
+        post_call = mock_client.post.call_args
+        body = post_call.kwargs.get("json") or post_call[1].get("json")
+        assert body["prd_ref"] == "art_prd_123"
+
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_create_with_prd_artifact_id(self, mock_get_client):
+        """--prd with an artifact ID passes it through without upload."""
+        mock_client = _mock_client(post_val={
+            "cycle_id": "cyc_1",
+            "run_id": "run_1",
+            "status": "queued",
+            "resolved_config_hash": "abc",
+        })
+        mock_get_client.return_value = mock_client
+
+        result = runner.invoke(app, [
+            "cycles", "create", "proj1",
+            "--squad-profile", "sp1",
+            "--prd", "art_existing",
+        ])
+        assert result.exit_code == 0
+
+        # No upload call
+        mock_client.upload.assert_not_called()
+
+        # Verify body has the artifact ID as-is
+        post_call = mock_client.post.call_args
+        body = post_call.kwargs.get("json") or post_call[1].get("json")
+        assert body["prd_ref"] == "art_existing"
+
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_create_with_prd_file_not_found(self, mock_get_client):
+        """--prd with a nonexistent file path treats it as an artifact ID."""
+        mock_client = _mock_client(post_val={
+            "cycle_id": "cyc_1",
+            "run_id": "run_1",
+            "status": "queued",
+            "resolved_config_hash": "abc",
+        })
+        mock_get_client.return_value = mock_client
+
+        result = runner.invoke(app, [
+            "cycles", "create", "proj1",
+            "--squad-profile", "sp1",
+            "--prd", "/nonexistent/prd.md",
+        ])
+        assert result.exit_code == 0
+
+        # No upload — treated as artifact ID
+        mock_client.upload.assert_not_called()
+
+        post_call = mock_client.post.call_args
+        body = post_call.kwargs.get("json") or post_call[1].get("json")
+        assert body["prd_ref"] == "/nonexistent/prd.md"
+
+
 class TestCyclesList:
     @patch("squadops.cli.commands.cycles._get_client")
     def test_list(self, mock_get_client):

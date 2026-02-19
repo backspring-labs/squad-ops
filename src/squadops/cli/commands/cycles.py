@@ -4,6 +4,8 @@ Cycle commands (SIP-0065 §6.3).
 
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -49,7 +51,7 @@ def create_cycle(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
     profile: str = typer.Option("default", "--profile", help="CRP profile name"),
-    prd: Optional[str] = typer.Option(None, "--prd", help="PRD artifact ID"),
+    prd: Optional[str] = typer.Option(None, "--prd", help="PRD file path or artifact ID"),
     squad_profile_id: str = typer.Option(..., "--squad-profile", help="Squad profile ID"),
     set_flags: Optional[list[str]] = typer.Option(None, "--set", help="Override: key=value"),
     notes: Optional[str] = typer.Option(None, "--notes", help="Experiment notes"),
@@ -80,6 +82,31 @@ def create_cycle(
     # 5. Compute local hash for verification
     local_hash = compute_config_hash(crp.defaults, overrides)
 
+    # 5b. Resolve --prd: file path → auto-ingest, artifact ID → pass through
+    prd_ref = None
+    if prd:
+        prd_path = Path(prd)
+        if prd_path.is_file():
+            try:
+                client = _get_client(ctx)
+                media_type, _ = mimetypes.guess_type(str(prd_path))
+                fields = {
+                    "artifact_type": "prd",
+                    "filename": prd_path.name,
+                    "media_type": media_type or "text/markdown",
+                }
+                art_data = client.upload(
+                    f"/api/v1/projects/{project_id}/artifacts/ingest",
+                    file_path=prd_path,
+                    fields=fields,
+                )
+                prd_ref = art_data["artifact_id"]
+            except CLIError as e:
+                print_error(str(e))
+                raise typer.Exit(code=e.exit_code)
+        else:
+            prd_ref = prd
+
     # 6. Build request body
     body = {
         "squad_profile_id": squad_profile_id,
@@ -87,8 +114,8 @@ def create_cycle(
         "execution_overrides": overrides,
         "notes": notes,
     }
-    if prd:
-        body["prd_ref"] = prd
+    if prd_ref:
+        body["prd_ref"] = prd_ref
 
     # Merge known CRP defaults into body where they map to top-level DTO fields
     if "build_strategy" in merged:
