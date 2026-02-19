@@ -622,12 +622,12 @@ sips:
 - sip_uid: null
   sip_number: 70
   title: Pulse Checks and Verification Framework
-  path: sips/accepted/SIP-0070-Pulse-Checks-and-Verification.md
-  status: accepted
+  path: sips/implemented/SIP-0070-Pulse-Checks-and-Verification.md
+  status: implemented
   author: SquadOps Architecture
   approver: jladd
   created_at: '2026-02-15T00:00:00Z'
-  updated_at: '2026-02-15T21:20:00.647871Z'
+  updated_at: '2026-02-18T22:23:20.096435Z'
 - sip_uid: null
   sip_number: null
   title: Intelligent Delegation Protocols for SquadOps

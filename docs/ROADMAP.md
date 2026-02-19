@@ -4,6 +4,16 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
+### v0.9.9 (2026-02-18) — Pulse Checks and Verification
+- **SIP-0070** Pulse Checks and Verification Framework
+  - Milestone and cadence-based pulse checks in the cycle execution pipeline
+  - Repair loops with acceptance engine integration
+  - Verification record persistence (memory + Postgres)
+  - Pulse check cycle request profiles (pulse-check, pulse-check-build)
+- CLI `--prd` accepts file paths (auto-ingest) in addition to artifact IDs
+- Fix: PRD content resolution in executor (artifact ID → full text)
+- BuildKit cache mounts for all Dockerfiles
+
 ### v0.9.8 (2026-02-16) — Console Control-Plane UI
 - **SIP-0069** Console Control-Plane UI via Continuum Plugins
   - SvelteKit shell with 7 plugins (home, agents, cycles, projects, artifacts, observability, system)
@@ -80,9 +90,7 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Accepted (Next Up)
 
-| SIP | Title | Notes |
-|-----|-------|-------|
-| SIP-0070 | Pulse Checks and Verification Framework | Accepted, plan in progress |
+(none — all accepted SIPs are implemented)
 
 ## Proposals (Backlog)
 
@@ -101,8 +109,8 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Stats
 
-- **Framework version**: 0.9.8
-- **SIPs**: 42 implemented, 1 accepted, 8 proposals, 15 deprecated
-- **Tests**: 1,447+ passing
+- **Framework version**: 0.9.9
+- **SIPs**: 43 implemented, 0 accepted, 8 proposals, 15 deprecated
+- **Tests**: 1,648+ passing
 - **Python source**: ~38,000 lines
 - **5 months** from initial repo to production-grade console UI
