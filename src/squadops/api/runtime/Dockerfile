@@ -36,7 +36,8 @@ COPY pyproject.toml ./
 COPY requirements.txt ./
 
 # Install dependencies (this layer is cached when requirements don't change)
-RUN pip install --no-cache-dir -r requirements.txt
+# BuildKit cache mount preserves pip download cache across builds
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
@@ -46,7 +47,7 @@ COPY examples/ ./examples/
 COPY infra/ ./infra/
 
 # Install package in editable mode (fast - deps already installed)
-RUN pip install --no-cache-dir -e .
+RUN --mount=type=cache,target=/root/.cache/pip pip install -e .
 
 # Expose port
 EXPOSE 8001

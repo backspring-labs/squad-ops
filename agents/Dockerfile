@@ -16,16 +16,12 @@ FROM python:3.11-slim AS builder
 WORKDIR /build
 
 # Install build dependencies
-RUN pip install --no-cache-dir pyyaml
+RUN --mount=type=cache,target=/root/.cache/pip pip install pyyaml
 
 # Copy source code
 COPY src/ ./src/
 COPY adapters/ ./adapters/
 COPY scripts/dev/build_agent.py ./scripts/build_agent.py
-
-# Cache buster: ensures build runs with fresh files when source changes
-ARG CACHE_BUST=default
-RUN echo "Build cache bust: ${CACHE_BUST}"
 
 # Validate agent build (new architecture mode)
 ARG AGENT_ROLE=lead
@@ -63,7 +59,8 @@ COPY pyproject.toml ./
 COPY requirements.txt ./
 
 # Install dependencies (this layer is cached when requirements don't change)
-RUN pip install --no-cache-dir -r requirements.txt
+# BuildKit cache mount preserves pip download cache across builds
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
@@ -73,7 +70,7 @@ COPY adapters/ ./adapters/
 COPY agents/instances/ ./agents/instances/
 
 # Install package in editable mode (fast - just creates .egg-info)
-RUN pip install --no-cache-dir -e .
+RUN --mount=type=cache,target=/root/.cache/pip pip install -e .
 
 # Create required directories
 RUN mkdir -p /app/logs /app/data/memory_db /app/warm-boot

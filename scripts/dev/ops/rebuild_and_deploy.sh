@@ -18,6 +18,9 @@
 
 set -e
 
+# Enable BuildKit for cache mount support in Dockerfiles
+export DOCKER_BUILDKIT=1
+
 # Get repository root directory (parent of scripts/)
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO_ROOT"
@@ -272,19 +275,6 @@ get_agent_role() {
     esac
 }
 
-# Function to calculate source file hash for cache busting
-get_source_hash() {
-    local role=$1
-    # Hash all source files that affect the build for this role
-    # Include: agents/, build script, config/, and role-specific files
-    {
-        find agents/ -type f \( -name "*.py" -o -name "*.yaml" -o -name "*.txt" \) 2>/dev/null | sort
-        find scripts/dev/build_agent.py -type f 2>/dev/null
-        find config/ -type f 2>/dev/null | sort
-        find agents/roles/${role}/ -type f 2>/dev/null | sort
-    } | xargs sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1
-}
-
 # Function to extract build hash from manifest.json
 get_build_hash_from_manifest() {
     local role=$1
@@ -414,48 +404,26 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         if docker-compose config --services | grep -q "^${agent}$"; then
             role=$(get_agent_role "$agent")
             build_hash=$(get_build_hash_from_manifest "$role")
-            source_hash=$(get_source_hash "$role")
-            
+
             echo -e "  🔨 Rebuilding ${agent} [${CURRENT_AGENT}/${TOTAL_AGENTS}]..."
             if [ -n "$build_hash" ] && [ "$build_hash" != "unknown" ]; then
                 echo -e "     Build hash: ${build_hash:0:30}...${NC}"
-                echo -e "     Source hash: ${source_hash:0:30}...${NC}"
-                
-                if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-                echo -e "     ${BLUE}Building Docker image (no cache)...${NC}"
-                if CACHE_BUST="$source_hash" BUILD_HASH="$build_hash" \
-                    docker-compose build --no-cache --build-arg CACHE_BUST="$source_hash" $agent; then
-                    echo -e "     ${GREEN}✅ ${agent} built successfully${NC}"
-                else
-                    echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
-                    exit 1
-                fi
-                else
-                echo -e "     ${BLUE}Building Docker image...${NC}"
-                if CACHE_BUST="$source_hash" BUILD_HASH="$build_hash" \
-                    docker-compose build --build-arg CACHE_BUST="$source_hash" $agent; then
-                    echo -e "     ${GREEN}✅ ${agent} built successfully${NC}"
-                else
-                    echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
-                    exit 1
-                fi
-                fi
-                unset BUILD_HASH CACHE_BUST
-            else
-                echo -e "${YELLOW}     ⚠️  Build hash not available, building without hash verification${NC}"
-                if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-                    CACHE_BUST="$source_hash" docker-compose build --no-cache --build-arg CACHE_BUST="$source_hash" $agent || {
-                        echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
-                        exit 1
-                    }
-                else
-                    CACHE_BUST="$source_hash" docker-compose build --build-arg CACHE_BUST="$source_hash" $agent || {
-                        echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
-                        exit 1
-                    }
-                fi
-                unset CACHE_BUST
             fi
+
+            if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+                echo -e "     ${BLUE}Building Docker image (no cache)...${NC}"
+                docker-compose build --no-cache $agent || {
+                    echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
+                    exit 1
+                }
+            else
+                echo -e "     ${BLUE}Building Docker image...${NC}"
+                docker-compose build $agent || {
+                    echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
+                    exit 1
+                }
+            fi
+            echo -e "     ${GREEN}✅ ${agent} built successfully${NC}"
         fi
     done
 
@@ -498,17 +466,12 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         
         # Retry failed agents with --no-cache
         for agent in "${FAILED_AGENTS[@]}"; do
-            role=$(get_agent_role "$agent")
-            build_hash=$(get_build_hash_from_manifest "$role")
-            source_hash=$(get_source_hash "$role")
-            
             echo -e "  🔨 Rebuilding ${agent} with --no-cache..."
-            CACHE_BUST="$source_hash" BUILD_HASH="$build_hash" \
-                docker-compose build --no-cache --build-arg CACHE_BUST="$source_hash" $agent || {
+            docker-compose build --no-cache $agent || {
                 echo -e "${RED}  ❌ Rebuild failed for ${agent}${NC}"
                 exit 1
             }
-            
+
             docker-compose up -d $agent
         done
         

@@ -35,7 +35,7 @@ FROM node:20-slim AS shell-builder
 
 COPY --from=continuum-source /continuum/web /build/web
 WORKDIR /build/web
-RUN npm ci && npm run build
+RUN --mount=type=cache,target=/root/.npm npm ci && npm run build
 
 # ── Stage 2: Build plugin UIs ────────────────────────────────────────────────
 FROM node:20-slim AS plugin-builder
@@ -44,7 +44,8 @@ FROM node:20-slim AS plugin-builder
 COPY continuum-plugins/ /plugins-src/
 
 WORKDIR /plugins-src
-RUN set -e && \
+RUN --mount=type=cache,target=/root/.npm \
+    set -e && \
     for plugin_dir in squadops.*/ui; do \
         if [ -d "${plugin_dir}" ]; then \
             echo "Building plugin UI: ${plugin_dir}" && \
@@ -62,11 +63,11 @@ WORKDIR /app
 
 # Install Continuum Python package (pinned, immutable)
 COPY --from=continuum-source /continuum /tmp/continuum
-RUN pip install --no-cache-dir /tmp/continuum && rm -rf /tmp/continuum
+RUN --mount=type=cache,target=/root/.cache/pip pip install /tmp/continuum && rm -rf /tmp/continuum
 
 # Install console application dependencies
 COPY docker/console/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
 # Copy console application code
 COPY docker/console/main.py ./main.py
