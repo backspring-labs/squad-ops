@@ -22,6 +22,7 @@ from squadops.cycles.models import (
     RunTerminalError,
     ValidationError,
 )
+from squadops.cycles.pulse_models import PulseVerificationRecord
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
 
@@ -33,6 +34,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         self._cycles: dict[str, dict] = {}
         self._runs: dict[str, dict] = {}
         self._cancelled_cycles: set[str] = set()
+        self._pulse_verifications: dict[str, list[dict]] = {}
 
     # --- Cycle CRUD ---
 
@@ -177,6 +179,37 @@ class MemoryCycleRegistry(CycleRegistryPort):
         existing.append(dataclasses.asdict(decision))
         run_data["gate_decisions"] = existing
         return self._to_run(run_data)
+
+    # --- Pulse Verification (SIP-0070) ---
+
+    async def record_pulse_verification(
+        self, run_id: str, record: PulseVerificationRecord
+    ) -> Run:
+        """Persist a pulse verification record."""
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        data = self._runs[run_id]
+        current_status = RunStatus(data["status"])
+        if current_status in TERMINAL_STATES:
+            raise RunTerminalError(
+                f"Cannot record pulse verification on terminal run "
+                f"(status={current_status.value})"
+            )
+        # Serialize and store
+        rec = {
+            "suite_id": record.suite_id,
+            "boundary_id": record.boundary_id,
+            "cadence_interval_id": record.cadence_interval_id,
+            "run_id": record.run_id,
+            "suite_outcome": record.suite_outcome.value,
+            "check_results": list(record.check_results),
+            "repair_attempt_number": record.repair_attempt_number,
+            "recorded_at": record.recorded_at.isoformat(),
+            "repair_task_refs": list(record.repair_task_refs),
+            "notes": record.notes,
+        }
+        self._pulse_verifications.setdefault(run_id, []).append(rec)
+        return self._to_run(data)
 
     # --- Internal helpers ---
 

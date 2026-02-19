@@ -628,3 +628,21 @@ sips:
   approver: jladd
   created_at: '2026-02-15T00:00:00Z'
   updated_at: '2026-02-15T21:20:00.647871Z'
+- sip_uid: null
+  sip_number: null
+  title: Intelligent Delegation Protocols for SquadOps
+  path: sips/proposals/SIP-intelligent-delegation-protocols.md
+  status: proposed
+  author: SquadOps Core Team
+  approver: null
+  created_at: '2026-02-16T00:00:00Z'
+  updated_at: '2026-02-16T00:00:00Z'
+- sip_uid: null
+  sip_number: null
+  title: Cycle Event System — Canonical Lifecycle Event Bus
+  path: sips/proposals/SIP-Cycle-Event-System.md
+  status: proposed
+  author: SquadOps Architecture
+  approver: null
+  created_at: '2026-02-16T00:00:00Z'
+  updated_at: '2026-02-16T00:00:00Z'

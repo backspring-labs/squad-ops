@@ -111,6 +111,7 @@ squadops artifacts list <run-id>           # List artifacts for run
 - **Frozen Dataclasses**: Cycle/Run/Gate models use `@dataclass(frozen=True)` with `dataclasses.replace()` for mutation
 - **Always-inject NoOp**: `BaseAgent` and `AgentOrchestrator` auto-inject `NoOpLLMObservabilityAdapter` when `llm_observability=None`
 - **Config-driven Selection**: Registry provider (memory vs postgres), auth, LangFuse all selected via config
+- **CRP Applied Defaults**: Extra keys in CRP `defaults` flow into `applied_defaults`: `build_tasks`, `plan_tasks`, `pulse_checks`, `cadence_policy`
 
 ### Agent Squad
 5 agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics). Implementations in `src/squadops/agents/`.
@@ -128,7 +129,7 @@ squadops artifacts list <run-id>           # List artifacts for run
 @pytest.mark.database / @pytest.mark.rabbitmq / @pytest.mark.redis / @pytest.mark.docker
 @pytest.mark.domain_agents / @pytest.mark.domain_capabilities / @pytest.mark.domain_api
 @pytest.mark.domain_memory / @pytest.mark.domain_orchestration / @pytest.mark.domain_telemetry
-@pytest.mark.domain_cli / @pytest.mark.domain_contracts
+@pytest.mark.domain_cli / @pytest.mark.domain_contracts / @pytest.mark.domain_pulse_checks
 @pytest.mark.langfuse / @pytest.mark.auth
 ```
 
@@ -149,6 +150,7 @@ Key implemented SIPs:
 - **SIP-0067** – Postgres Cycle Registry
 - **SIP-0068** – Enhanced Agent Build Capabilities
 - **SIP-0069** – Console Control-Plane UI (Continuum Plugins)
+- **SIP-0070** – Pulse Checks and Verification Framework
 
 To move a SIP (maintainer only):
 ```bash

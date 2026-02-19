@@ -1,0 +1,51 @@
+name: pulse-check-build
+description: Plan-then-build cycle with pulse verification at dev and build boundaries.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: plan-review
+        description: Review planning artifacts before build begins.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - documentation
+    - source
+    - test
+    - config
+  build_tasks:
+    - development.build
+    - qa.build_validate
+  pulse_checks:
+    - suite_id: post_dev_smoke
+      boundary_id: post_dev
+      binding_mode: milestone
+      after_task_types:
+        - development
+      checks:
+        - check_type: command_exit_code
+          target: post_dev_smoke
+          command:
+            - echo
+            - post_dev_ok
+          expected_exit_code: 0
+        - check_type: file_exists
+          target: "{run_root}/prd.md"
+    - suite_id: post_build_verify
+      boundary_id: post_build
+      binding_mode: milestone
+      after_task_types:
+        - development.build
+      checks:
+        - check_type: command_exit_code
+          target: build_smoke
+          command:
+            - echo
+            - build_ok
+          expected_exit_code: 0
+  cadence_policy:
+    max_tasks_per_pulse: 5
+    max_pulse_seconds: 600
+  experiment_context: {}
+  notes: "Plan-then-build cycle with pulse checks at dev and build boundaries"

@@ -5,43 +5,50 @@ with all handlers auto-discovered and registered.
 
 Part of SIP-0.8.8 Phase 7.
 """
+
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
 
-from squadops.orchestration.handler_registry import HandlerRegistry
+from squadops.capabilities.handlers.cycle_tasks import (
+    DataReportHandler,
+    DevelopmentBuildHandler,
+    DevelopmentImplementHandler,
+    GovernanceReviewHandler,
+    QABuildValidateHandler,
+    QAValidateHandler,
+    StrategyAnalyzeHandler,
+)
+from squadops.capabilities.handlers.data import (
+    DataAnalysisHandler,
+    MetricsCollectionHandler,
+)
+from squadops.capabilities.handlers.development import (
+    CodeAnalysisHandler,
+    CodeGenerationHandler,
+)
 
 # Import handlers
 from squadops.capabilities.handlers.governance import (
     TaskAnalysisHandler,
     TaskDelegationHandler,
 )
-from squadops.capabilities.handlers.development import (
-    CodeGenerationHandler,
-    CodeAnalysisHandler,
-)
 from squadops.capabilities.handlers.qa import (
     TestExecutionHandler,
     ValidationHandler,
 )
-from squadops.capabilities.handlers.data import (
-    DataAnalysisHandler,
-    MetricsCollectionHandler,
+from squadops.capabilities.handlers.repair_tasks import (
+    DataAnalyzeVerificationHandler,
+    DevelopmentRepairHandler,
+    GovernanceRootCauseHandler,
+    StrategyCorrectivePlanHandler,
 )
 from squadops.capabilities.handlers.warmboot import (
-    WarmbootHandler,
     ContextSyncHandler,
+    WarmbootHandler,
 )
-from squadops.capabilities.handlers.cycle_tasks import (
-    StrategyAnalyzeHandler,
-    DevelopmentImplementHandler,
-    QAValidateHandler,
-    DataReportHandler,
-    GovernanceReviewHandler,
-    DevelopmentBuildHandler,
-    QABuildValidateHandler,
-)
+from squadops.orchestration.handler_registry import HandlerRegistry
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.base import CapabilityHandler
@@ -75,6 +82,11 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     # Build handlers (SIP-Enhanced-Agent-Build-Capabilities)
     (DevelopmentBuildHandler, ("dev",)),
     (QABuildValidateHandler, ("qa",)),
+    # Repair handlers (SIP-0070: Pulse Check Verification)
+    (DataAnalyzeVerificationHandler, ("data",)),
+    (GovernanceRootCauseHandler, ("lead",)),
+    (StrategyCorrectivePlanHandler, ("strat",)),
+    (DevelopmentRepairHandler, ("dev",)),
 ]
 
 
@@ -110,14 +122,10 @@ def create_handler_registry(
         try:
             handler = handler_class()
             registry.register(handler, roles=handler_roles)
-            logger.debug(
-                f"Registered handler: {handler.capability_id} for roles {handler_roles}"
-            )
+            logger.debug(f"Registered handler: {handler.capability_id} for roles {handler_roles}")
         except Exception as e:
             logger.warning(f"Failed to register handler {handler_class}: {e}")
 
-    logger.info(
-        f"Created handler registry with {len(registry.list_capabilities())} handlers"
-    )
+    logger.info(f"Created handler registry with {len(registry.list_capabilities())} handlers")
 
     return registry

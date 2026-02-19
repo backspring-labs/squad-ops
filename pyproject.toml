@@ -27,6 +27,7 @@ squadops = "squadops.cli.main:app"
 [project.optional-dependencies]
 langfuse = ["langfuse>=2.0"]
 cli = ["typer>=0.9", "httpx>=0.25", "rich>=13.0"]
+pulse = ["jsonschema>=4.0", "httpx>=0.25"]
 
 #######################################
 # Ruff - Linting & basic code hygiene #
@@ -119,6 +120,8 @@ markers = [
     # CLI + Contracts (SIP-0065)
     "domain_cli: CLI domain tests",
     "domain_contracts: Contract domain tests",
+    # Pulse Checks (SIP-0070)
+    "domain_pulse_checks: Pulse check verification domain tests",
 ]
 
 ###########################

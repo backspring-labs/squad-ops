@@ -28,6 +28,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
     ValidationError,
 )
+from squadops.cycles.pulse_models import PulseVerificationRecord
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
 logger = logging.getLogger(__name__)
@@ -343,6 +344,44 @@ class PostgresCycleRegistry(CycleRegistryPort):
                         f"Gate {decision.gate_name!r} already decided (concurrent race)"
                     )
 
+        return await self.get_run(run_id)
+
+    # --- Pulse Verification (SIP-0070) ---
+
+    async def record_pulse_verification(
+        self, run_id: str, record: PulseVerificationRecord
+    ) -> Run:
+        """Persist a pulse verification record to Postgres."""
+        async with self._pool.acquire() as conn:
+            # Validate run exists and is not terminal
+            row = await conn.fetchrow(
+                "SELECT status FROM cycle_runs WHERE run_id = $1", run_id
+            )
+            if row is None:
+                raise RunNotFoundError(f"Run not found: {run_id}")
+            if RunStatus(row["status"]) in TERMINAL_STATES:
+                raise RunTerminalError(
+                    f"Cannot record pulse verification on terminal run "
+                    f"(status={row['status']})"
+                )
+
+            await conn.execute(
+                "INSERT INTO pulse_verification_records "
+                "(run_id, suite_id, boundary_id, cadence_interval_id, "
+                "suite_outcome, repair_attempt, check_results, "
+                "repair_task_refs, notes, recorded_at) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+                run_id,
+                record.suite_id,
+                record.boundary_id,
+                record.cadence_interval_id,
+                record.suite_outcome.value,
+                record.repair_attempt_number,
+                json.dumps(list(record.check_results)),
+                list(record.repair_task_refs),
+                record.notes,
+                record.recorded_at,
+            )
         return await self.get_run(run_id)
 
     # --- Internal helpers ---

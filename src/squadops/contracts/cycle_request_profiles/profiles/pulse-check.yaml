@@ -1,0 +1,30 @@
+name: pulse-check
+description: Standard cycle with pulse verification at the post-dev boundary.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates: []
+  expected_artifact_types:
+    - code
+    - test_report
+  pulse_checks:
+    - suite_id: post_dev_smoke
+      boundary_id: post_dev
+      binding_mode: milestone
+      after_task_types:
+        - development
+      checks:
+        - check_type: command_exit_code
+          target: post_dev_smoke
+          command:
+            - echo
+            - post_dev_ok
+          expected_exit_code: 0
+        - check_type: file_exists
+          target: "{run_root}/prd.md"
+  cadence_policy:
+    max_tasks_per_pulse: 5
+    max_pulse_seconds: 600
+  experiment_context: {}
+  notes: "Cycle with pulse verification at post-dev boundary"

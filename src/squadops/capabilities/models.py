@@ -10,11 +10,11 @@ Per SIP-0.8.6 v1 semantics:
 - Type comparison is strict
 """
 
+import os
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
+from pathlib import PurePosixPath
 from typing import Any
-
 
 # =============================================================================
 # Enums
@@ -27,6 +27,10 @@ class CheckType(str, Enum):
     FILE_EXISTS = "file_exists"
     NON_EMPTY = "non_empty"
     JSON_FIELD_EQUALS = "json_field_equals"
+    HTTP_STATUS = "http_status"
+    PROCESS_RUNNING = "process_running"
+    JSON_SCHEMA = "json_schema"
+    COMMAND_EXIT_CODE = "command_exit_code"
 
 
 class LifecycleScope(str, Enum):
@@ -168,11 +172,20 @@ class AcceptanceCheck:
     Acceptance check definition for validating artifacts.
 
     Attributes:
-        check_type: Type of check (file_exists, non_empty, json_field_equals)
+        check_type: Type of check (file_exists, non_empty, json_field_equals,
+            http_status, process_running, json_schema, command_exit_code)
         target: Path template for the artifact to check
         field_path: Dot-path for json_field_equals (e.g., "metadata.status")
         expected_value: Expected value for json_field_equals (primitives only)
         description: Human-readable description of what this check validates
+        url: URL template for http_status checks
+        expected_status: Expected HTTP status code for http_status checks
+        container_name: Docker container name for process_running checks
+        command: Command argv tuple for command_exit_code checks
+        expected_exit_code: Expected exit code (default 0)
+        cwd: Working directory for command_exit_code (relative path only)
+        env: Allowlist-only env vars for command_exit_code (no host env inheritance)
+        schema: Relative path to JSON schema file for json_schema checks
     """
 
     check_type: CheckType
@@ -180,6 +193,14 @@ class AcceptanceCheck:
     field_path: str | None = None
     expected_value: Any = None
     description: str = ""
+    url: str | None = None
+    expected_status: int | None = None
+    container_name: str | None = None
+    command: tuple[str, ...] | None = None
+    expected_exit_code: int = 0
+    cwd: str | None = None
+    env: tuple[tuple[str, str], ...] = ()
+    schema: str | None = None
 
     def __post_init__(self) -> None:
         """Validate acceptance check on creation."""
@@ -193,6 +214,35 @@ class AcceptanceCheck:
                 raise ValueError(
                     f"expected_value must be a primitive, got {type(self.expected_value).__name__}"
                 )
+        elif self.check_type == CheckType.HTTP_STATUS:
+            if not self.url:
+                raise ValueError("http_status check requires url")
+            if self.expected_status is None:
+                raise ValueError("http_status check requires expected_status")
+        elif self.check_type == CheckType.PROCESS_RUNNING:
+            if not self.container_name:
+                raise ValueError("process_running check requires container_name")
+        elif self.check_type == CheckType.JSON_SCHEMA:
+            if not self.target:
+                raise ValueError("json_schema check requires target (document path)")
+            if not self.schema:
+                raise ValueError("json_schema check requires schema (schema path)")
+            if os.path.isabs(self.schema):
+                raise ValueError(
+                    f"json_schema schema path must be relative, got absolute: {self.schema}"
+                )
+        elif self.check_type == CheckType.COMMAND_EXIT_CODE:
+            if not self.command or len(self.command) == 0:
+                raise ValueError("command_exit_code check requires non-empty command tuple")
+            if self.cwd is not None:
+                if os.path.isabs(self.cwd):
+                    raise ValueError(
+                        f"command_exit_code cwd must be relative, got absolute: {self.cwd}"
+                    )
+                if ".." in PurePosixPath(self.cwd).parts:
+                    raise ValueError(
+                        f"command_exit_code cwd must not contain '..' segments: {self.cwd}"
+                    )
 
 
 @dataclass(frozen=True)
@@ -343,6 +393,7 @@ class AcceptanceContext:
     workload_id: str
     task_outputs: tuple[tuple[str, dict[str, Any]], ...] = field(default_factory=tuple)
     vars: tuple[tuple[str, Any], ...] = field(default_factory=tuple)
+    run_id: str = ""
 
     def get_task_output(self, task_id: str, output_name: str) -> Any:
         """Get a specific output from a task."""
@@ -377,6 +428,8 @@ class AcceptanceResult:
     resolved_path: str
     actual_value: Any = None
     error: str | None = None
+    reason_code: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

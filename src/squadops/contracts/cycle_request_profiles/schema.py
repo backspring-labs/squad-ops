@@ -17,7 +17,7 @@ _ALLOWED_DEFAULT_KEYS = set(CycleCreateRequest.model_fields.keys())
 
 # Keys that are valid in CRP defaults but flow into applied_defaults (not top-level DTO).
 # These control task plan generation and are consumed by the executor, not the API.
-_APPLIED_DEFAULTS_EXTRA_KEYS = {"build_tasks", "plan_tasks"}
+_APPLIED_DEFAULTS_EXTRA_KEYS = {"build_tasks", "plan_tasks", "pulse_checks", "cadence_policy"}
 
 _ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS
 

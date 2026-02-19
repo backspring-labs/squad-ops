@@ -2,6 +2,8 @@
 CycleRegistryPort — abstract interface for cycle and run persistence (SIP-0064 §7.1).
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 from squadops.cycles.models import (
@@ -11,6 +13,7 @@ from squadops.cycles.models import (
     Run,
     RunStatus,
 )
+from squadops.cycles.pulse_models import PulseVerificationRecord
 
 
 class CycleRegistryPort(ABC):
@@ -112,4 +115,21 @@ class CycleRegistryPort(ABC):
             ValidationError: If gate_name is not in the policy.
             RunTerminalError: If the run is in a terminal state.
             GateAlreadyDecidedError: If a conflicting decision exists.
+        """
+
+    # --- Pulse Verification (SIP-0070) ---
+
+    @abstractmethod
+    async def record_pulse_verification(
+        self, run_id: str, record: PulseVerificationRecord
+    ) -> Run:
+        """Persist a pulse verification record for a run.
+
+        Each record is per-suite: contains suite_id + suite_outcome.
+        The composite key (run_id, boundary_id, cadence_interval_id,
+        suite_id, repair_attempt) uniquely identifies each record.
+
+        Raises:
+            RunNotFoundError: If the run_id is not found.
+            RunTerminalError: If the run is in a terminal state.
         """

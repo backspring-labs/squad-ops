@@ -94,13 +94,15 @@ Living document tracking the implementation progression from initial prototype t
 | SIP-0018 | Enterprise Process CoE Enablement |
 | SIP-0023 | Domain Expert Architecture for Product Strategy |
 | SIP-0028 | Hybrid Deployment Model (Multi-Environment) |
+| (unnumbered) | Intelligent Delegation Protocols |
+| (unnumbered) | Cycle Event System |
 
 ---
 
 ## Stats
 
 - **Framework version**: 0.9.8
-- **SIPs**: 42 implemented, 1 accepted, 6 proposals, 15 deprecated
+- **SIPs**: 42 implemented, 1 accepted, 8 proposals, 15 deprecated
 - **Tests**: 1,447+ passing
 - **Python source**: ~38,000 lines
 - **5 months** from initial repo to production-grade console UI

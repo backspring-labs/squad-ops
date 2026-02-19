@@ -206,3 +206,126 @@ async def test_list_cycles_with_pagination(registry):
     # All returned cycles belong to the correct project
     for cycle in page:
         assert cycle.project_id == "proj_1"
+
+
+# ---------------------------------------------------------------------------
+# Pulse Verification contract tests (SIP-0070, Phase 1.9)
+# ---------------------------------------------------------------------------
+
+
+class TestRecordPulseVerification:
+    """Contract tests for record_pulse_verification (D8)."""
+
+    async def _setup_running_run(self, registry):
+        await registry.create_cycle(_make_cycle())
+        await registry.create_run(_make_run())
+        await registry.update_run_status("run_001", RunStatus.RUNNING)
+
+    async def test_record_pass(self, registry):
+        """Record a PASS verification and get Run back."""
+        from squadops.cycles.pulse_models import PulseVerificationRecord, SuiteOutcome
+
+        await self._setup_running_run(registry)
+        record = PulseVerificationRecord(
+            suite_id="smoke",
+            boundary_id="post_dev",
+            cadence_interval_id=1,
+            run_id="run_001",
+            suite_outcome=SuiteOutcome.PASS,
+        )
+        run = await registry.record_pulse_verification("run_001", record)
+        assert run.run_id == "run_001"
+
+    async def test_record_fail(self, registry):
+        """Record a FAIL verification."""
+        from squadops.cycles.pulse_models import PulseVerificationRecord, SuiteOutcome
+
+        await self._setup_running_run(registry)
+        record = PulseVerificationRecord(
+            suite_id="smoke",
+            boundary_id="post_dev",
+            cadence_interval_id=1,
+            run_id="run_001",
+            suite_outcome=SuiteOutcome.FAIL,
+            check_results=({"check_type": "file_exists", "passed": False},),
+        )
+        run = await registry.record_pulse_verification("run_001", record)
+        assert run.run_id == "run_001"
+
+    async def test_multiple_suites_same_boundary(self, registry):
+        """Multiple suites can be recorded for the same boundary."""
+        from squadops.cycles.pulse_models import PulseVerificationRecord, SuiteOutcome
+
+        await self._setup_running_run(registry)
+        for sid in ("suite_a", "suite_b"):
+            record = PulseVerificationRecord(
+                suite_id=sid,
+                boundary_id="post_dev",
+                cadence_interval_id=1,
+                run_id="run_001",
+                suite_outcome=SuiteOutcome.PASS,
+            )
+            await registry.record_pulse_verification("run_001", record)
+        # Verify both were stored
+        assert len(registry._pulse_verifications.get("run_001", [])) == 2
+
+    async def test_multiple_repair_attempts(self, registry):
+        """Records with different repair_attempt_number are distinct."""
+        from squadops.cycles.pulse_models import PulseVerificationRecord, SuiteOutcome
+
+        await self._setup_running_run(registry)
+        for attempt in (0, 1, 2):
+            record = PulseVerificationRecord(
+                suite_id="smoke",
+                boundary_id="post_dev",
+                cadence_interval_id=1,
+                run_id="run_001",
+                suite_outcome=SuiteOutcome.FAIL if attempt < 2 else SuiteOutcome.PASS,
+                repair_attempt_number=attempt,
+            )
+            await registry.record_pulse_verification("run_001", record)
+        assert len(registry._pulse_verifications.get("run_001", [])) == 3
+
+    async def test_run_not_found_raises(self, registry):
+        """RunNotFoundError for nonexistent run_id."""
+        from squadops.cycles.pulse_models import PulseVerificationRecord, SuiteOutcome
+
+        record = PulseVerificationRecord(
+            suite_id="s", boundary_id="b", cadence_interval_id=0,
+            run_id="nonexistent", suite_outcome=SuiteOutcome.PASS,
+        )
+        with pytest.raises(RunNotFoundError):
+            await registry.record_pulse_verification("nonexistent", record)
+
+    async def test_terminal_run_raises(self, registry):
+        """RunTerminalError when recording on a completed run."""
+        from squadops.cycles.pulse_models import PulseVerificationRecord, SuiteOutcome
+
+        await self._setup_running_run(registry)
+        await registry.update_run_status("run_001", RunStatus.COMPLETED)
+
+        record = PulseVerificationRecord(
+            suite_id="s", boundary_id="b", cadence_interval_id=0,
+            run_id="run_001", suite_outcome=SuiteOutcome.PASS,
+        )
+        with pytest.raises(RunTerminalError):
+            await registry.record_pulse_verification("run_001", record)
+
+    async def test_record_with_repair_task_refs(self, registry):
+        """Record with repair_task_refs populated."""
+        from squadops.cycles.pulse_models import PulseVerificationRecord, SuiteOutcome
+
+        await self._setup_running_run(registry)
+        record = PulseVerificationRecord(
+            suite_id="smoke",
+            boundary_id="post_dev",
+            cadence_interval_id=1,
+            run_id="run_001",
+            suite_outcome=SuiteOutcome.FAIL,
+            repair_attempt_number=1,
+            repair_task_refs=("task_repair_001", "task_repair_002"),
+        )
+        run = await registry.record_pulse_verification("run_001", record)
+        assert run.run_id == "run_001"
+        stored = registry._pulse_verifications["run_001"][-1]
+        assert stored["repair_task_refs"] == ["task_repair_001", "task_repair_002"]

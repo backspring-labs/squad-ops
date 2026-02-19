@@ -10,8 +10,8 @@ of mocked AgentOrchestrator.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -25,10 +25,10 @@ from squadops.cycles.models import (
     SquadProfile,
     TaskFlowPolicy,
 )
+from squadops.cycles.pulse_models import CADENCE_BOUNDARY_ID, SuiteOutcome
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
-
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -52,11 +52,13 @@ def _make_result_message(
         outputs=outputs,
         error=error,
     )
-    payload = json.dumps({
-        "action": "comms.task.result",
-        "metadata": {"correlation_id": "corr"},
-        "payload": result.to_dict(),
-    })
+    payload = json.dumps(
+        {
+            "action": "comms.task.result",
+            "metadata": {"correlation_id": "corr"},
+            "payload": result.to_dict(),
+        }
+    )
     return QueueMessage(
         message_id=f"msg_{task_id}",
         queue_name=queue_name,
@@ -124,9 +126,7 @@ def mock_squad_profile():
             AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
         ),
         created_at=NOW,
@@ -201,11 +201,13 @@ class TestDispatchTask:
                 if last_publish_call:
                     msg_data = json.loads(last_publish_call.args[1])
                     task_id = msg_data["payload"]["task_id"]
-                    return [_make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )]
+                    return [
+                        _make_result_message(
+                            task_id=task_id,
+                            outputs={"summary": "ok", "artifacts": []},
+                            queue_name=queue_name,
+                        )
+                    ]
             return []
 
         mock_queue.consume.side_effect = consume_side_effect
@@ -240,9 +242,7 @@ class TestDispatchTask:
         assert published["metadata"]["reply_queue"] == "cycle_results_run_001"
         assert published["payload"]["task_id"] == "task_abc"
 
-    async def test_consumes_result_from_reply_queue(
-        self, executor, mock_queue
-    ) -> None:
+    async def test_consumes_result_from_reply_queue(self, executor, mock_queue) -> None:
         """Result is consumed from cycle_results_{run_id}."""
         result_msg = _make_result_message(
             task_id="task_abc",
@@ -312,6 +312,7 @@ class TestSequentialHappyPath:
     @staticmethod
     def _make_queue_side_effects(mock_queue):
         """Build a consume side_effect that returns matching results."""
+
         async def consume_side_effect(queue_name, max_messages=1):
             if not queue_name.startswith("cycle_results_"):
                 return []
@@ -320,22 +321,24 @@ class TestSequentialHappyPath:
             if last_call:
                 msg_data = json.loads(last_call.args[1])
                 task_id = msg_data["payload"]["task_id"]
-                return [_make_result_message(
-                    task_id=task_id,
-                    outputs={
-                        "summary": "stub output",
-                        "role": "strat",
-                        "artifacts": [
-                            {
-                                "name": "output.md",
-                                "content": "# Output",
-                                "media_type": "text/markdown",
-                                "type": "document",
-                            }
-                        ],
-                    },
-                    queue_name=queue_name,
-                )]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={
+                            "summary": "stub output",
+                            "role": "strat",
+                            "artifacts": [
+                                {
+                                    "name": "output.md",
+                                    "content": "# Output",
+                                    "media_type": "text/markdown",
+                                    "type": "document",
+                                }
+                            ],
+                        },
+                        queue_name=queue_name,
+                    )
+                ]
             return []
 
         return consume_side_effect
@@ -377,15 +380,13 @@ class TestSequentialHappyPath:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        published_queues = [
-            call.args[0] for call in mock_queue.publish.call_args_list
-        ]
+        published_queues = [call.args[0] for call in mock_queue.publish.call_args_list]
         assert published_queues == [
-            "nat_comms",     # strategy.analyze_prd -> strat -> nat
-            "neo_comms",     # development.implement -> dev -> neo
-            "eve_comms",     # qa.validate -> qa -> eve
+            "nat_comms",  # strategy.analyze_prd -> strat -> nat
+            "neo_comms",  # development.implement -> dev -> neo
+            "eve_comms",  # qa.validate -> qa -> eve
             "data-agent_comms",  # data.report -> data -> data-agent
-            "max_comms",     # governance.review -> lead -> max
+            "max_comms",  # governance.review -> lead -> max
         ]
 
     async def test_artifacts_stored(self, executor, mock_vault, mock_queue) -> None:
@@ -410,10 +411,9 @@ class TestSequentialHappyPath:
 class TestFailFast:
     """Sequential fail-fast: first failure stops the pipeline."""
 
-    async def test_first_failure_stops_pipeline(
-        self, executor, mock_queue, mock_registry
-    ) -> None:
+    async def test_first_failure_stops_pipeline(self, executor, mock_queue, mock_registry) -> None:
         """First task FAILED -> run transitions to FAILED, remaining skipped."""
+
         async def consume_side_effect(queue_name, max_messages=1):
             if not queue_name.startswith("cycle_results_"):
                 return []
@@ -421,10 +421,14 @@ class TestFailFast:
             if last_call:
                 msg_data = json.loads(last_call.args[1])
                 task_id = msg_data["payload"]["task_id"]
-                return [_make_result_message(
-                    task_id=task_id, status="FAILED", error="boom",
-                    queue_name=queue_name,
-                )]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        status="FAILED",
+                        error="boom",
+                        queue_name=queue_name,
+                    )
+                ]
             return []
 
         mock_queue.consume.side_effect = consume_side_effect
@@ -456,9 +460,7 @@ class TestCancellation:
         assert "run_001" in executor._cancelled
         mock_registry.cancel_run.assert_awaited_once_with("run_001")
 
-    async def test_cancel_before_first_task(
-        self, executor, mock_registry, mock_queue
-    ) -> None:
+    async def test_cancel_before_first_task(self, executor, mock_registry, mock_queue) -> None:
         """If registry returns cancelled, no tasks published."""
         mock_registry.get_run.return_value = Run(
             run_id="run_001",
@@ -485,10 +487,9 @@ class TestCancellation:
 class TestArtifactStorage:
     """Artifact ref creation from distributed results."""
 
-    async def test_artifact_ref_has_metadata(
-        self, executor, mock_vault, mock_queue
-    ) -> None:
+    async def test_artifact_ref_has_metadata(self, executor, mock_vault, mock_queue) -> None:
         """ArtifactRef passed to vault.store has task_id and role in metadata."""
+
         async def consume_side_effect(queue_name, max_messages=1):
             if not queue_name.startswith("cycle_results_"):
                 return []
@@ -496,21 +497,23 @@ class TestArtifactStorage:
             if last_call:
                 msg_data = json.loads(last_call.args[1])
                 task_id = msg_data["payload"]["task_id"]
-                return [_make_result_message(
-                    task_id=task_id,
-                    outputs={
-                        "summary": "ok",
-                        "artifacts": [
-                            {
-                                "name": "output.md",
-                                "content": "# Output",
-                                "media_type": "text/markdown",
-                                "type": "document",
-                            }
-                        ],
-                    },
-                    queue_name=queue_name,
-                )]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={
+                            "summary": "ok",
+                            "artifacts": [
+                                {
+                                    "name": "output.md",
+                                    "content": "# Output",
+                                    "media_type": "text/markdown",
+                                    "type": "document",
+                                }
+                            ],
+                        },
+                        queue_name=queue_name,
+                    )
+                ]
             return []
 
         mock_queue.consume.side_effect = consume_side_effect
@@ -530,3 +533,2038 @@ class TestArtifactStorage:
                 continue
             assert "task_id" in ref.metadata
             assert "role" in ref.metadata
+
+
+# ---------------------------------------------------------------------------
+# SIP-0070: Pulse verification integration
+# ---------------------------------------------------------------------------
+
+
+def _cycle_with_pulse_checks(
+    pulse_checks: list[dict],
+    cadence_policy: dict | None = None,
+) -> Cycle:
+    """Create a Cycle with pulse_checks in applied_defaults."""
+    defaults: dict = {"pulse_checks": pulse_checks}
+    if cadence_policy:
+        defaults["cadence_policy"] = cadence_policy
+    return Cycle(
+        cycle_id="cyc_001",
+        project_id="hello_squad",
+        created_at=NOW,
+        created_by="system",
+        prd_ref="prd_ref_123",
+        squad_profile_id="full-squad",
+        squad_profile_snapshot_ref="sha256:abc",
+        task_flow_policy=TaskFlowPolicy(mode="sequential"),
+        build_strategy="fresh",
+        applied_defaults=defaults,
+    )
+
+
+class TestPulseVerificationBackwardCompat:
+    """No pulse_checks = unchanged behavior."""
+
+    async def test_no_pulse_checks_completes_normally(self, executor, mock_queue, mock_registry):
+        """Run with no pulse_checks in applied_defaults completes as before."""
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
+
+
+class TestPulseVerificationMilestone:
+    """Milestone-bound suites fire at correct plan indices."""
+
+    @staticmethod
+    def _make_executor_with_pulse(
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        cycle,
+    ):
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
+        return DistributedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+        )
+
+    async def test_milestone_pass_continues(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """Milestone-bound suite PASS: run completes normally."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        # Mock the engine to return PASS
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.PASS,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
+
+    async def test_milestone_fail_stops_run(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """Milestone-bound suite FAIL: run transitions to FAILED."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.FAIL,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert RunStatus.FAILED in statuses
+
+
+class TestPulseVerificationCadence:
+    """Cadence-bound suites fire based on task count."""
+
+    @staticmethod
+    def _make_executor_with_pulse(
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        cycle,
+    ):
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
+        return DistributedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+        )
+
+    async def test_cadence_close_by_task_count(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """Cadence suite runs when max_tasks_per_pulse reached."""
+        cycle = _cycle_with_pulse_checks(
+            pulse_checks=[
+                {
+                    "suite_id": "heartbeat",
+                    "boundary_id": CADENCE_BOUNDARY_ID,
+                    "binding_mode": "cadence",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ],
+            cadence_policy={"max_tasks_per_pulse": 2, "max_pulse_seconds": 9999},
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="heartbeat",
+                    boundary_id=CADENCE_BOUNDARY_ID,
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.PASS,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # With 5 tasks and max_tasks_per_pulse=2:
+        # cadence closes at index 1 (count=2), 3 (count=2), 4 (last task)
+        # So run_pulse_verification should be called 3 times for cadence
+        assert mock_run_pv.call_count == 3
+
+    async def test_cadence_fail_stops_run(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """Cadence suite FAIL: run transitions to FAILED."""
+        cycle = _cycle_with_pulse_checks(
+            pulse_checks=[
+                {
+                    "suite_id": "heartbeat",
+                    "boundary_id": CADENCE_BOUNDARY_ID,
+                    "binding_mode": "cadence",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ],
+            cadence_policy={"max_tasks_per_pulse": 2, "max_pulse_seconds": 9999},
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="heartbeat",
+                    boundary_id=CADENCE_BOUNDARY_ID,
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.FAIL,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert RunStatus.FAILED in statuses
+
+    async def test_cadence_close_by_wall_clock_time(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """Cadence suite runs when max_pulse_seconds elapsed (non-preemptive).
+
+        Mocks _dispatch_task directly to avoid time.monotonic interference
+        with the dispatch timeout loop, then mocks time.monotonic to
+        simulate wall-clock advancement beyond max_pulse_seconds.
+        """
+        cycle = _cycle_with_pulse_checks(
+            pulse_checks=[
+                {
+                    "suite_id": "heartbeat",
+                    "boundary_id": CADENCE_BOUNDARY_ID,
+                    "binding_mode": "cadence",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ],
+            # High task count so only wall-clock triggers cadence close
+            cadence_policy={"max_tasks_per_pulse": 999, "max_pulse_seconds": 10},
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        # Mock _dispatch_task to return success instantly (bypasses time.monotonic
+        # in the dispatch polling loop)
+        async def fake_dispatch(envelope, run_id):
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={"summary": "ok", "artifacts": []},
+            )
+
+        executor._dispatch_task = fake_dispatch
+
+        # Simulate time advancing 15s between each monotonic() call.
+        # cadence tracking calls monotonic() twice per task iteration:
+        #   1. cadence_start_time = time.monotonic() (at reset)
+        #   2. elapsed = time.monotonic() - cadence_start_time (in loop)
+        # With 15s jumps and max_pulse_seconds=10, elapsed is always > 10.
+        mono_counter = [0.0]
+
+        def fake_monotonic():
+            val = mono_counter[0]
+            mono_counter[0] += 15.0
+            return val
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.time.monotonic",
+                side_effect=fake_monotonic,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="heartbeat",
+                    boundary_id=CADENCE_BOUNDARY_ID,
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.PASS,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # With 5 tasks and simulated 15s between monotonic() calls
+        # (> 10s max_pulse_seconds), every task triggers cadence close.
+        assert mock_run_pv.call_count == 5
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
+
+
+class TestPulseVerificationTelemetry:
+    """Telemetry events emitted for pulse check boundaries."""
+
+    @staticmethod
+    def _make_executor_with_obs(
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        cycle,
+    ):
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
+        obs = MagicMock()
+        return DistributedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+            llm_observability=obs,
+        ), obs
+
+    async def test_boundary_decision_event_emitted(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """pulse_check.boundary_decision event emitted at milestone boundary."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.PASS,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Find pulse_check.boundary_decision events
+        event_names = []
+        for call in obs.record_event.call_args_list:
+            event = call.args[1]
+            event_names.append(event.name)
+
+        assert "pulse_check.boundary_decision" in event_names
+
+    async def test_suite_started_and_passed_events(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """suite_started and suite_passed events emitted per suite."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.PASS,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        event_names = [call.args[1].name for call in obs.record_event.call_args_list]
+        assert "pulse_check.suite_started" in event_names
+        assert "pulse_check.suite_passed" in event_names
+
+    async def test_suite_failed_event(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """suite_failed event emitted when suite outcome is FAIL."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.FAIL,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        event_names = [call.args[1].name for call in obs.record_event.call_args_list]
+        assert "pulse_check.suite_failed" in event_names
+
+    async def test_binding_skipped_event_for_unmatched(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """pulse_check.binding_skipped emitted for unmatched milestone suites."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_deploy_check",
+                    "boundary_id": "post_deploy",
+                    "after_task_types": ["deploy"],  # no task matches this
+                    "binding_mode": "milestone",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        event_names = [call.args[1].name for call in obs.record_event.call_args_list]
+        assert "pulse_check.binding_skipped" in event_names
+
+
+class TestPulseVerificationCombined:
+    """Both cadence and milestone suites at the same dispatch point."""
+
+    @staticmethod
+    def _make_executor_with_pulse(
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        cycle,
+    ):
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
+        return DistributedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+        )
+
+    async def test_both_cadence_and_milestone_fire(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """When milestone and cadence close coincide, both run with separate boundary_ids."""
+        cycle = _cycle_with_pulse_checks(
+            pulse_checks=[
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+                {
+                    "suite_id": "heartbeat",
+                    "boundary_id": CADENCE_BOUNDARY_ID,
+                    "binding_mode": "cadence",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ],
+            cadence_policy={"max_tasks_per_pulse": 2, "max_pulse_seconds": 9999},
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="any",
+                    boundary_id="any",
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.PASS,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Verify both milestone and cadence boundary_ids appear in calls
+        boundary_ids_seen = set()
+        for call in mock_run_pv.call_args_list:
+            boundary_ids_seen.add(
+                call.kwargs.get("boundary_id", call.args[3] if len(call.args) > 3 else None)
+            )
+
+        assert "post_dev" in boundary_ids_seen
+        assert CADENCE_BOUNDARY_ID in boundary_ids_seen
+
+
+class TestPulseVerificationRecordPersistence:
+    """Registry.record_pulse_verification called for each suite record."""
+
+    @staticmethod
+    def _make_executor_with_pulse(
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        cycle,
+    ):
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
+        return DistributedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+        )
+
+    async def test_records_persisted_via_registry(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile
+    ):
+        """record_pulse_verification called for each suite at boundary."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [
+                        {"check_type": "file_exists", "target": "output.md"},
+                    ],
+                },
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+            ) as mock_run_pv,
+        ):
+            from squadops.cycles.pulse_models import PulseVerificationRecord
+
+            mock_run_pv.return_value = [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=1,
+                    run_id="run_001",
+                    suite_outcome=SuiteOutcome.PASS,
+                ),
+            ]
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert mock_registry.record_pulse_verification.call_count >= 1
+        record_arg = mock_registry.record_pulse_verification.call_args_list[0].args[1]
+        assert record_arg.suite_id == "post_dev_check"
+        assert record_arg.boundary_id == "post_dev"
+
+
+# ==========================================================================
+# Phase 3: Repair Loop
+# ==========================================================================
+
+
+@pytest.mark.domain_pulse_checks
+class TestPulseRepairLoop:
+    """FAIL triggers bounded repair loop; PASS after repair resumes; EXHAUSTED stops."""
+
+    @staticmethod
+    def _make_executor_with_pulse(
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        cycle,
+    ):
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
+        return DistributedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+        )
+
+    @staticmethod
+    def _consume_side_effect(mock_queue):
+        """Return success for every dispatched task (plan + repair)."""
+
+        async def _side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        return _side_effect
+
+    async def test_fail_repair_pass_continues(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """FAIL → repair chain dispatched → rerun PASS → run COMPLETED."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        # First call: FAIL; second call (after repair): PASS
+        call_count = {"n": 0}
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        def run_pv_side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            outcome = SuiteOutcome.FAIL if call_count["n"] == 1 else SuiteOutcome.PASS
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=outcome,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=run_pv_side_effect,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
+
+        # 2 plan tasks (strat + dev) before milestone, 4 repair, then 3 remaining = 9
+        assert mock_queue.publish.call_count == 9
+
+    async def test_fail_repair_fail_exhausted(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """FAIL → repair → still FAIL → repair → still FAIL → EXHAUSTED → FAILED."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        def always_fail(*args, **kwargs):
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=SuiteOutcome.FAIL,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=always_fail,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert RunStatus.FAILED in statuses
+
+        # 2 plan tasks (strat + dev) + 4 repair × 2 attempts = 10 publishes
+        # (milestone fires after dev, before qa/data/lead)
+        assert mock_queue.publish.call_count == 10
+
+    async def test_exhausted_error_message_contains_verification_exhausted(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """Error message on EXHAUSTED should contain VERIFICATION_EXHAUSTED."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        def always_fail(*args, **kwargs):
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=SuiteOutcome.FAIL,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=always_fail,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert RunStatus.FAILED in statuses
+
+    async def test_repair_only_reruns_failed_suites(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """When one of two suites passes, only the failed one is rerun."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "s1_passes",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "a.md"}],
+                },
+                {
+                    "suite_id": "s2_fails",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "b.md"}],
+                },
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        call_count = {"n": 0}
+
+        def mixed_pv(*args, **kwargs):
+            call_count["n"] += 1
+            suites = kwargs.get("suites") or args[0] if args else []
+            records = []
+            for suite in suites:
+                if suite.suite_id == "s1_passes":
+                    outcome = SuiteOutcome.PASS
+                elif call_count["n"] <= 1:
+                    outcome = SuiteOutcome.FAIL
+                else:
+                    outcome = SuiteOutcome.PASS
+                records.append(
+                    PulseVerificationRecord(
+                        suite_id=suite.suite_id,
+                        boundary_id="post_dev",
+                        cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                        run_id=kwargs.get("run_id", "run_001"),
+                        suite_outcome=outcome,
+                    )
+                )
+            return records
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=mixed_pv,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
+
+    async def test_max_repair_attempts_configurable(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """max_repair_attempts from applied_defaults controls exhaustion threshold."""
+        cycle = _cycle_with_pulse_checks(
+            pulse_checks=[
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ],
+        )
+        # Override max_repair_attempts to 1
+        import dataclasses
+
+        cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={**cycle.applied_defaults, "max_repair_attempts": 1},
+        )
+        mock_registry.get_cycle.return_value = cycle
+
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        def always_fail(*args, **kwargs):
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=SuiteOutcome.FAIL,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=always_fail,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # 2 plan tasks + 4 repair × 1 attempt = 6 publishes (exhausted after 1 attempt)
+        assert mock_queue.publish.call_count == 6
+
+    async def test_cadence_fail_repair_pass(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """Cadence-bound FAIL triggers repair, then PASS → run COMPLETED."""
+        cycle = _cycle_with_pulse_checks(
+            pulse_checks=[
+                {
+                    "suite_id": "cadence_check",
+                    "boundary_id": CADENCE_BOUNDARY_ID,
+                    "binding_mode": "cadence",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ],
+            cadence_policy={"max_tasks_per_pulse": 2},
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        call_count = {"n": 0}
+
+        def pv_side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            outcome = SuiteOutcome.FAIL if call_count["n"] == 1 else SuiteOutcome.PASS
+            return [
+                PulseVerificationRecord(
+                    suite_id="cadence_check",
+                    boundary_id=CADENCE_BOUNDARY_ID,
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=outcome,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=pv_side_effect,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
+
+    async def test_repair_dispatches_four_task_types(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """Repair chain dispatches data.analyze_verification → ... → development.repair."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        call_count = {"n": 0}
+
+        def pv_side(*args, **kwargs):
+            call_count["n"] += 1
+            outcome = SuiteOutcome.FAIL if call_count["n"] == 1 else SuiteOutcome.PASS
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=outcome,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=pv_side,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Extract repair task types from published messages
+        published_types = []
+        for call in mock_queue.publish.call_args_list:
+            msg_data = json.loads(call.args[1])
+            published_types.append(msg_data["payload"]["task_type"])
+
+        expected_repair_types = [
+            "data.analyze_verification",
+            "governance.root_cause_analysis",
+            "strategy.corrective_plan",
+            "development.repair",
+        ]
+        # Repair tasks appear after the 2 plan tasks
+        repair_types = published_types[2:6]
+        assert repair_types == expected_repair_types
+
+    async def test_verification_context_injected_into_repair_inputs(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """Repair envelopes contain verification_context in their inputs."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        call_count = {"n": 0}
+
+        def pv_side(*args, **kwargs):
+            call_count["n"] += 1
+            outcome = SuiteOutcome.FAIL if call_count["n"] == 1 else SuiteOutcome.PASS
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=outcome,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=pv_side,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Check that the first repair task (index 2) has verification_context in inputs
+        repair_call = mock_queue.publish.call_args_list[2]
+        msg_data = json.loads(repair_call.args[1])
+        inputs = msg_data["payload"]["inputs"]
+        assert "prior_outputs" in inputs
+        assert "verification_context" in inputs["prior_outputs"]
+        assert "post_dev" in inputs["prior_outputs"]["verification_context"]
+
+    async def test_repair_envelopes_carry_boundary_metadata(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """Repair envelopes include boundary_id and cadence_interval_id in metadata."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor = self._make_executor_with_pulse(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        call_count = {"n": 0}
+
+        def pv_side(*args, **kwargs):
+            call_count["n"] += 1
+            outcome = SuiteOutcome.FAIL if call_count["n"] == 1 else SuiteOutcome.PASS
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=outcome,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=pv_side,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Check metadata on a repair task envelope (index 2 is first repair task)
+        repair_call = mock_queue.publish.call_args_list[2]
+        msg_data = json.loads(repair_call.args[1])
+        metadata = msg_data["payload"]["metadata"]
+        assert metadata["boundary_id"] == "post_dev"
+        assert metadata["repair_chain"] is True
+        assert metadata["failed_suite_ids"] == ["post_dev_check"]
+
+
+@pytest.mark.domain_pulse_checks
+class TestPulseRepairTelemetry:
+    """Telemetry events emitted during repair loop."""
+
+    @staticmethod
+    def _make_executor_with_obs(
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        cycle,
+    ):
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
+
+        obs = MagicMock()
+        return DistributedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+            llm_observability=obs,
+        ), obs
+
+    @staticmethod
+    def _consume_side_effect(mock_queue):
+        async def _side_effect(queue_name, max_messages=1):
+            if not queue_name.startswith("cycle_results_"):
+                return []
+            last_call = mock_queue.publish.call_args
+            if last_call:
+                msg_data = json.loads(last_call.args[1])
+                task_id = msg_data["payload"]["task_id"]
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        return _side_effect
+
+    async def test_repair_started_event(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """pulse_check.repair_started emitted when repair begins."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        call_count = {"n": 0}
+
+        def pv_side(*, suites, **kwargs):
+            call_count["n"] += 1
+            outcome = SuiteOutcome.FAIL if call_count["n"] == 1 else SuiteOutcome.PASS
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=outcome,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=pv_side,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        events = [call.args[1].name for call in obs.record_event.call_args_list]
+        assert "pulse_check.repair_started" in events
+
+    async def test_exhausted_event_emitted(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """pulse_check.boundary_decision with EXHAUSTED emitted on exhaustion."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        def always_fail(*, suites, **kwargs):
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=SuiteOutcome.FAIL,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=always_fail,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Check for EXHAUSTED decision event
+        decision_events = [
+            call.args[1]
+            for call in obs.record_event.call_args_list
+            if call.args[1].name == "pulse_check.boundary_decision"
+        ]
+        decisions = []
+        for evt in decision_events:
+            for key, val in evt.attributes:
+                if key == "decision":
+                    decisions.append(val)
+        assert "exhausted" in decisions
+
+    async def test_repair_started_carries_attempt_number(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """repair_started event carries repair_attempt number in attributes."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        def always_fail(*, suites, **kwargs):
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=SuiteOutcome.FAIL,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=always_fail,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Find repair_started events and check repair_attempt attrs
+        repair_events = [
+            call.args[1]
+            for call in obs.record_event.call_args_list
+            if call.args[1].name == "pulse_check.repair_started"
+        ]
+        assert len(repair_events) == 2  # 2 attempts
+        attempts = []
+        for evt in repair_events:
+            for key, val in evt.attributes:
+                if key == "repair_attempt":
+                    attempts.append(val)
+        assert attempts == [1, 2]
+
+    async def test_repair_started_carries_failed_suite_ids(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """repair_started event carries failed_suite_ids in attributes."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        call_count = {"n": 0}
+
+        def pv_side(*, suites, **kwargs):
+            call_count["n"] += 1
+            outcome = SuiteOutcome.FAIL if call_count["n"] == 1 else SuiteOutcome.PASS
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=outcome,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=pv_side,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        repair_events = [
+            call.args[1]
+            for call in obs.record_event.call_args_list
+            if call.args[1].name == "pulse_check.repair_started"
+        ]
+        assert len(repair_events) >= 1
+        # Check failed_suite_ids is in the event attributes
+        found_suite_ids = None
+        for key, val in repair_events[0].attributes:
+            if key == "failed_suite_ids":
+                found_suite_ids = val
+        assert found_suite_ids == ["post_dev_check"]
+
+    async def test_boundary_decision_pass_after_repair(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """boundary_decision PASS emitted after successful repair."""
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        call_count = {"n": 0}
+
+        def pv_side(*, suites, **kwargs):
+            call_count["n"] += 1
+            outcome = SuiteOutcome.FAIL if call_count["n"] == 1 else SuiteOutcome.PASS
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=outcome,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=pv_side,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # After repair succeeds, boundary_decision with PASS should be emitted
+        decision_events = [
+            call.args[1]
+            for call in obs.record_event.call_args_list
+            if call.args[1].name == "pulse_check.boundary_decision"
+        ]
+        decisions = []
+        for evt in decision_events:
+            for key, val in evt.attributes:
+                if key == "decision":
+                    decisions.append(val)
+        assert "pass" in decisions
+
+    async def test_repair_tasks_dispatched_to_agent_name_queues(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+    ):
+        """Repair tasks dispatch to agent-name queues (max_comms, nat_comms), not role queues.
+
+        Verifies the agent_resolver is correctly passed from the profile so that
+        repair tasks for role='lead' go to queue='max_comms' (not 'lead_comms'),
+        role='strat' goes to 'nat_comms' (not 'strat_comms'), etc.
+        """
+        cycle = _cycle_with_pulse_checks(
+            [
+                {
+                    "suite_id": "post_dev_check",
+                    "boundary_id": "post_dev",
+                    "after_task_types": ["development"],
+                    "binding_mode": "milestone",
+                    "checks": [{"check_type": "file_exists", "target": "output.md"}],
+                }
+            ]
+        )
+        executor, obs = self._make_executor_with_obs(
+            mock_registry,
+            mock_vault,
+            mock_queue,
+            mock_squad_profile,
+            cycle,
+        )
+        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
+
+        from squadops.cycles.pulse_models import PulseVerificationRecord
+
+        call_count = {"n": 0}
+
+        def pv_side(*, suites, **kwargs):
+            call_count["n"] += 1
+            outcome = SuiteOutcome.FAIL if call_count["n"] == 1 else SuiteOutcome.PASS
+            return [
+                PulseVerificationRecord(
+                    suite_id="post_dev_check",
+                    boundary_id="post_dev",
+                    cadence_interval_id=kwargs.get("cadence_interval_id", 1),
+                    run_id=kwargs.get("run_id", "run_001"),
+                    suite_outcome=outcome,
+                )
+            ]
+
+        with (
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch(
+                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                side_effect=pv_side,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Collect all queue names that publish was called with
+        published_queues = [call.args[0] for call in mock_queue.publish.call_args_list]
+
+        # Repair tasks should go to agent-name queues, NOT role queues
+        assert "lead_comms" not in published_queues, "Should use 'max_comms' not 'lead_comms'"
+        assert "strat_comms" not in published_queues, "Should use 'nat_comms' not 'strat_comms'"
+        assert "dev_comms" not in published_queues, "Should use 'neo_comms' not 'dev_comms'"
+
+        # Agent-name queues should be present (repair dispatches to max, nat, neo, data-agent)
+        assert "max_comms" in published_queues, "Lead repair task should go to max_comms"
+        assert "nat_comms" in published_queues, "Strategy repair task should go to nat_comms"
+        assert "neo_comms" in published_queues, "Dev repair task should go to neo_comms"
+        assert "data-agent_comms" in published_queues, "Data repair task should go to data-agent_comms"

@@ -36,6 +36,7 @@
 - **Gate Decisions** – Human-in-the-loop approval gates between pipeline stages
 - **Artifact Management** – Typed artifact ingestion and retrieval per run
 - **Build Capabilities** – Agents produce executable source code, tests, and config from plans (SIP-0068)
+- **Pulse Verification** – Cadence-bounded checks at pipeline boundaries with bounded repair loops (SIP-0070)
 - **Assembly** – CLI command to assemble build artifacts into a runnable project directory
 
 ### Infrastructure Adapters

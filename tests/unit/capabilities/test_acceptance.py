@@ -114,6 +114,33 @@ class TestTemplateResolution:
             engine.resolve_template("{task1.missing}", basic_context)
         assert "task1.missing" in str(exc.value)
 
+    def test_resolve_run_id(self, engine, temp_chroot):
+        """Resolves {run_id} variable (SIP-0070, Phase 1.2)."""
+        context = AcceptanceContext(
+            run_root=str(temp_chroot),
+            cycle_id="cycle-123",
+            workload_id="wl",
+            run_id="run-456",
+        )
+        result = engine.resolve_template("runs/{run_id}/output", context)
+        assert result == "runs/run-456/output"
+
+    def test_resolve_run_id_empty_default(self, engine, basic_context):
+        """run_id defaults to empty string."""
+        result = engine.resolve_template("prefix-{run_id}-suffix", basic_context)
+        assert result == "prefix--suffix"
+
+    def test_resolve_run_id_with_other_vars(self, engine, temp_chroot):
+        """run_id resolves alongside other variables."""
+        context = AcceptanceContext(
+            run_root=str(temp_chroot),
+            cycle_id="cyc-1",
+            workload_id="wl-1",
+            run_id="run-1",
+        )
+        result = engine.resolve_template("{cycle_id}/{run_id}/{workload_id}", context)
+        assert result == "cyc-1/run-1/wl-1"
+
 
 class TestPathSecurity:
     """Tests for path security / chroot enforcement."""
