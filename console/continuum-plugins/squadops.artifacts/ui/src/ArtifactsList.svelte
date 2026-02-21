@@ -52,6 +52,10 @@
     window.dispatchEvent(new CustomEvent('squadops:select-artifact', { detail: artifact }));
   }
 
+  function viewArtifact(artifact) {
+    window.dispatchEvent(new CustomEvent('squadops:view-artifact', { detail: artifact }));
+  }
+
   function formatTimestamp(iso) {
     if (!iso) return '--';
     const d = new Date(iso);
@@ -62,6 +66,7 @@
   }
 </script>
 
+<squadops-artifacts-viewer></squadops-artifacts-viewer>
 <div class="artifacts-list">
   <h3 class="title">Artifacts</h3>
 
@@ -92,7 +97,7 @@
       </thead>
       <tbody>
         {#each filtered() as art}
-          <tr class="clickable" onclick={() => selectArtifact(art)}>
+          <tr class="clickable" onclick={() => selectArtifact(art)} ondblclick={() => viewArtifact(art)}>
             <td class="mono">{art.filename}</td>
             <td><span class="badge">{art.artifact_type}</span></td>
             <td class="muted">{art.media_type || '--'}</td>

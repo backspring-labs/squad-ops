@@ -41,6 +41,11 @@ label = "Set Baseline"
 action = "squadops.set_baseline"
 danger_level = "confirm"
 
+[[contributions.panel]]
+slot = "ui.slot.modal"
+component = "squadops-artifacts-viewer"
+priority = 100
+
 [[contributions.command]]
 id = "squadops.download_artifact"
 label = "Download Artifact"

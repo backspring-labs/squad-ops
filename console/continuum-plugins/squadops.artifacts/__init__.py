@@ -44,3 +44,9 @@ def register(ctx):
         "action": "squadops.download_artifact",
         "danger_level": "safe",
     })
+
+    ctx.register_contribution("panel", {
+        "slot": "ui.slot.modal",
+        "component": "squadops-artifacts-viewer",
+        "priority": 100,
+    })

@@ -36,7 +36,7 @@ class TestArtifactsPluginRegistration:
 
     def test_total_contributions(self, mock_ctx):
         register(mock_ctx)
-        assert mock_ctx.register_contribution.call_count == 6  # 3 panels + 3 commands
+        assert mock_ctx.register_contribution.call_count == 7  # 4 panels + 3 commands
 
     def test_panel_artifacts_list(self, mock_ctx):
         register(mock_ctx)
@@ -86,6 +86,25 @@ class TestArtifactsPluginRegistration:
         download = [c for c in commands if c[0][1]["id"] == "squadops.download_artifact"]
         assert len(download) == 1
         assert download[0][0][1]["danger_level"] == "safe"
+
+    def test_panel_artifacts_viewer_in_modal(self, mock_ctx):
+        register(mock_ctx)
+        panels = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"]
+        viewer_panels = [
+            p for p in panels if p[0][1]["component"] == "squadops-artifacts-viewer"
+        ]
+        assert len(viewer_panels) == 1
+        assert viewer_panels[0][0][1]["slot"] == "ui.slot.modal"
+        assert viewer_panels[0][0][1]["priority"] == 100
+
+    def test_viewer_has_no_perspective(self, mock_ctx):
+        register(mock_ctx)
+        panels = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"]
+        viewer_panels = [
+            p for p in panels if p[0][1]["component"] == "squadops-artifacts-viewer"
+        ]
+        assert len(viewer_panels) == 1
+        assert "perspective" not in viewer_panels[0][0][1]
 
     def test_no_nav_contributions(self, mock_ctx):
         register(mock_ctx)

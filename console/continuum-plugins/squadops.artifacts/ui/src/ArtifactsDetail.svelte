@@ -38,6 +38,11 @@
       URL.revokeObjectURL(url);
     }
   }
+
+  function view() {
+    if (!artifact) return;
+    window.dispatchEvent(new CustomEvent('squadops:view-artifact', { detail: artifact }));
+  }
 </script>
 
 <div class="artifacts-detail">
@@ -50,7 +55,10 @@
       <div class="row"><span class="key">Hash:</span><span class="val mono">{artifact.content_hash?.slice(0, 16) || '--'}</span></div>
       <div class="row"><span class="key">ID:</span><span class="val mono">{artifact.artifact_id}</span></div>
     </div>
-    <button class="download-btn" onclick={download}>Download</button>
+    <div class="actions">
+      <button class="view-btn" onclick={view}>View</button>
+      <button class="download-btn" onclick={download}>Download</button>
+    </div>
   {:else}
     <div class="empty">Select an artifact to view details</div>
   {/if}
@@ -67,13 +75,20 @@
   .row { display: flex; gap: var(--continuum-space-sm, 8px); font-size: var(--continuum-font-size-sm, 0.875rem); }
   .key { color: var(--continuum-text-muted, #94a3b8); min-width: 60px; }
   .mono { font-family: var(--continuum-font-mono, monospace); }
-  .download-btn {
+  .actions {
+    display: flex;
+    gap: var(--continuum-space-sm, 8px);
     margin-top: var(--continuum-space-md, 16px);
+  }
+  .view-btn, .download-btn {
     background: var(--continuum-accent-primary, #6366f1);
     color: #fff; border: none; padding: 8px 16px;
     border-radius: var(--continuum-radius-sm, 4px); cursor: pointer;
     font-size: var(--continuum-font-size-sm, 0.875rem);
   }
-  .download-btn:hover { opacity: 0.9; }
+  .download-btn {
+    background: var(--continuum-bg-tertiary, #334155);
+  }
+  .view-btn:hover, .download-btn:hover { opacity: 0.9; }
   .empty { color: var(--continuum-text-muted, #94a3b8); font-size: var(--continuum-font-size-sm, 0.875rem); }
 </style>
