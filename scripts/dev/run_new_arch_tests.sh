@@ -26,6 +26,7 @@ NEW_ARCH_DIRS=(
     "tests/unit/capabilities/"
     "tests/unit/cycles/"
     "tests/unit/cli/"
+    "tests/unit/console/"
     "tests/unit/contracts/"
 )
 
