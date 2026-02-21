@@ -1,8 +1,0 @@
-{
-  "name": "hello-squad",
-  "version": "0.2.0.071",
-  "description": "HelloSquad - AI Squad built application",
-  "scripts": {
-    "serve": "python -m http.server 8080"
-  }
-}
