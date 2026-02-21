@@ -42,7 +42,7 @@ def sample_token() -> CachedToken:
         access_token="access123",
         refresh_token="refresh456",
         expires_at=time.time() + 300,
-        token_endpoint="http://localhost:8180/realms/squadops-local/protocol/openid-connect/token",
+        token_endpoint="http://localhost:8180/realms/squadops-dev/protocol/openid-connect/token",
         client_id="squadops-cli",
         grant_type="password",
     )
@@ -158,9 +158,9 @@ class TestIsExpired:
 
 class TestBuildTokenEndpoint:
     def test_default(self):
-        url = _build_token_endpoint("http://localhost:8180", "squadops-local")
+        url = _build_token_endpoint("http://localhost:8180", "squadops-dev")
         assert url == (
-            "http://localhost:8180/realms/squadops-local"
+            "http://localhost:8180/realms/squadops-dev"
             "/protocol/openid-connect/token"
         )
 

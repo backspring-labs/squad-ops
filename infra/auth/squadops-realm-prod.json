@@ -1,5 +1,6 @@
 {
-  "realm": "squadops-prod",
+  "realm": "squadops-cloud",
+  "displayName": "SquadOps Cloud",
   "enabled": true,
   "sslRequired": "all",
   "registrationAllowed": false,

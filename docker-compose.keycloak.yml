@@ -1,6 +1,6 @@
 # SIP-0062/0063: Keycloak OIDC Identity Provider for local dev / CI
 # Uses the shared squadops-postgres instance (keycloak database).
-# Realm: squadops-local (renamed from "squadops" in SIP-0063)
+# Realm: ${SQUADOPS_REALM:-squadops-dev} (set via .env or SQUADOPS_REALM env var)
 # ⚠ LOCAL DEV / CI ONLY — hardcoded secrets below are NOT production-grade.
 #
 # Staging/prod operational env vars (not used here, for reference):

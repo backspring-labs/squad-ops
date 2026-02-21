@@ -4,14 +4,15 @@ Operational procedures for the SquadOps Keycloak deployment.
 
 ## Deployment Profiles
 
-| Profile | Realm | MFA | Token TTL | Proxy | TLS |
-|---------|-------|-----|-----------|-------|-----|
-| `local` | `squadops-local` | Off | Defaults | none | none |
-| `staging` | `squadops-staging` | Admin only | 10 min | edge | external |
-| `prod` | `squadops-prod` | Admin + operator | 5 min | edge | external |
+| Profile | Realm | Display Name | Environment | MFA | Token TTL | Proxy | TLS |
+|---------|-------|-------------|-------------|-----|-----------|-------|-----|
+| `local` | `squadops-dev` | SquadOps Dev | Laptop | Off | Defaults | none | none |
+| `staging` | `squadops-local` | SquadOps Local | DGX Spark | Admin only | 10 min | edge | external |
+| `lab` | `squadops-lab` | SquadOps Lab | Home lab | Admin only | 10 min | edge | external |
+| `prod` | `squadops-cloud` | SquadOps Cloud | AWS/GCP/Azure | Admin + operator | 5 min | edge | external |
 
-Config profiles: `config/profiles/{local,staging,prod}.yaml`
-Realm exports: `infra/auth/squadops-realm{,-staging,-prod}.json`
+Config profiles: `config/profiles/{local,staging,lab,prod}.yaml`
+Realm exports: `infra/auth/squadops-realm{,-staging,-lab,-prod}.json`
 
 ## Starting Keycloak (Local Dev)
 
@@ -20,8 +21,8 @@ Realm exports: `infra/auth/squadops-realm{,-staging,-prod}.json`
 docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d postgres squadops-keycloak
 
 # Verify realm imported
-curl -s http://localhost:8180/realms/squadops-local | jq .realm
-# Expected: "squadops-local"
+curl -s http://localhost:8180/realms/squadops-dev | jq .realm
+# Expected: "squadops-dev"
 ```
 
 ## Backup & Restore
@@ -31,7 +32,7 @@ curl -s http://localhost:8180/realms/squadops-local | jq .realm
 ```bash
 # Export from running instance
 docker compose -f docker-compose.yml -f docker-compose.keycloak.yml exec squadops-keycloak \
-  /opt/keycloak/bin/kc.sh export --realm squadops-local --file /tmp/realm-export.json
+  /opt/keycloak/bin/kc.sh export --realm squadops-dev --file /tmp/realm-export.json
 
 # Copy to host
 docker cp squadops-keycloak:/tmp/realm-export.json ./backups/realm-$(date +%Y%m%d).json
@@ -100,7 +101,7 @@ prod:    >= 5 + 480 = 485 minutes (~8.1 hours)
 | Role | Access | Credentials |
 |------|--------|-------------|
 | Keycloak Admin | Full server admin, all realms | `KEYCLOAK_ADMIN` / `KEYCLOAK_ADMIN_PASSWORD` |
-| Realm Admin | `admin` realm role in squadops-{staging,prod} | Per-user credentials + MFA |
+| Realm Admin | `admin` realm role in squadops-{local,lab,cloud} | Per-user credentials + MFA |
 
 **Best practice**: The Keycloak server admin account should only be used for:
 - Initial setup and realm creation
@@ -132,7 +133,7 @@ admin:
 3. Set a grace period if needed (Keycloak supports conditional OTP setup)
 
 ### TOTP Enrollment Steps (for users)
-1. Log in to Keycloak Account Console: `https://auth.squadops.example/realms/squadops-prod/account`
+1. Log in to Keycloak Account Console: `https://auth.squadops.example/realms/squadops-cloud/account`
 2. Navigate to **Security > Signing In > Two-Factor Authentication**
 3. Click **Set up Authenticator Application**
 4. Scan QR code with authenticator app (Google Authenticator, Authy, etc.)

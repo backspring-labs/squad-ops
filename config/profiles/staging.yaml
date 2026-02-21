@@ -1,11 +1,11 @@
-# SIP-0063: Staging deployment profile
+# SIP-0063: DGX Spark (local network) deployment profile
 auth:
   enabled: true
   provider: keycloak
   roles_mode: client
   roles_client_id: squadops-runtime
   keycloak:
-    realm: squadops-staging
+    realm: squadops-local
     base_url: "http://squadops-keycloak:8080"
     public_url: "https://auth.staging.squadops.example"
     db_dsn: "secret://keycloak_db_dsn"

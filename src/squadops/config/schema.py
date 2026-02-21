@@ -274,7 +274,7 @@ class KeycloakAdminConfig(BaseModel):
 class KeycloakOperationalConfig(BaseModel):
     """Keycloak operational deployment configuration (SIP-0063)."""
 
-    realm: str = "squadops-local"
+    realm: str = "squadops-dev"
     base_url: str = "http://localhost:8180"
     public_url: str | None = None
     db_dsn: str | None = None  # secret:// ref
@@ -288,21 +288,21 @@ class KeycloakOperationalConfig(BaseModel):
     logging: KeycloakLoggingConfig = Field(default_factory=KeycloakLoggingConfig)
 
     def model_post_init(self, __context: Any) -> None:
-        """Cross-field validation for staging/prod environments."""
+        """Cross-field validation for deployed (non-dev) environments."""
         _LOOPBACK = ("localhost", "127.0.0.1", "::1")
-        is_staging_or_prod = "staging" in self.realm or "prod" in self.realm
+        is_deployed = self.realm != "squadops-dev"
 
-        if is_staging_or_prod:
+        if is_deployed:
             if self.db_dsn is None:
-                raise ValueError("db_dsn required for staging/prod realms")
+                raise ValueError("db_dsn required for deployed realms")
             if self.proxy_mode == "none":
-                raise ValueError("proxy_mode must not be 'none' for staging/prod")
+                raise ValueError("proxy_mode must not be 'none' for deployed realms")
             if not self.hostname_strict:
-                raise ValueError("hostname_strict must be true for staging/prod")
+                raise ValueError("hostname_strict must be true for deployed realms")
             if self.public_url and not self.public_url.startswith("https://"):
-                raise ValueError("public_url must use HTTPS for staging/prod")
+                raise ValueError("public_url must use HTTPS for deployed realms")
             if any(lb in self.base_url for lb in _LOOPBACK):
-                raise ValueError("base_url must not reference loopback for staging/prod")
+                raise ValueError("base_url must not reference loopback for deployed realms")
 
         # Proxy + TLS mutual consistency
         if self.proxy_mode == "edge" and not self.external_tls_termination:

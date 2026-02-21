@@ -1,13 +1,13 @@
-# SIP-0063: Cloud (AWS/GCP/Azure) deployment profile
+# Home lab deployment profile (same security posture as local/DGX Spark)
 auth:
   enabled: true
   provider: keycloak
   roles_mode: client
   roles_client_id: squadops-runtime
   keycloak:
-    realm: squadops-cloud
+    realm: squadops-lab
     base_url: "http://squadops-keycloak:8080"
-    public_url: "https://auth.squadops.example"
+    public_url: "https://auth.lab.squadops.example"
     db_dsn: "secret://keycloak_db_dsn"
     proxy_mode: edge
     external_tls_termination: true
@@ -15,9 +15,9 @@ auth:
     admin:
       username: admin
       password: "secret://keycloak_admin_password"
-      allowed_networks: ["10.0.0.0/8"]
+      allowed_networks: ["10.0.0.0/8", "192.168.0.0/16"]
     token_policy:
-      access_token_minutes: 5
+      access_token_minutes: 10
       refresh_token_minutes: 1440
       refresh_token_rotation: true
     session_policy:
@@ -25,7 +25,7 @@ auth:
       max_minutes: 480
     security:
       mfa_required_for_admin: true
-      mfa_required_for_operator: true
+      mfa_required_for_operator: false
       brute_force_protection: true
     logging:
       admin_events_enabled: true

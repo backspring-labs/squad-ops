@@ -1,6 +1,6 @@
 {
-  "realm": "squadops-local",
-  "displayName": "SquadOps Local",
+  "realm": "squadops-lab",
+  "displayName": "SquadOps Lab",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,
@@ -90,15 +90,15 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
-      "rootUrl": "https://console.staging.squadops.example",
+      "rootUrl": "https://console.lab.squadops.example",
       "baseUrl": "/",
       "redirectUris": [
-        "https://console.staging.squadops.example/*",
-        "https://api.staging.squadops.example/*"
+        "https://console.lab.squadops.example/*",
+        "https://api.lab.squadops.example/*"
       ],
       "webOrigins": [
-        "https://console.staging.squadops.example",
-        "https://api.staging.squadops.example"
+        "https://console.lab.squadops.example",
+        "https://api.lab.squadops.example"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256"

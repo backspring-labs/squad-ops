@@ -1,10 +1,10 @@
-# SIP-0063: Local development deployment profile
+# SIP-0063: Laptop development deployment profile
 auth:
   enabled: true
   provider: keycloak
   roles_mode: realm
   keycloak:
-    realm: squadops-local
+    realm: squadops-dev
     base_url: "http://localhost:8180"
     proxy_mode: "none"
     hostname_strict: false

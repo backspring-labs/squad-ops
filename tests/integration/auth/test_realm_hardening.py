@@ -15,7 +15,7 @@ import httpx
 pytestmark = [pytest.mark.auth, pytest.mark.integration, pytest.mark.docker]
 
 KEYCLOAK_URL = "http://localhost:8180"
-REALM = "squadops-local"
+REALM = "squadops-dev"
 ADMIN_USER = "admin"
 ADMIN_PASSWORD = "admin123"
 REALM_USER = "squadops-admin"

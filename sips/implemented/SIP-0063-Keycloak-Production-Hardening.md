@@ -129,9 +129,10 @@ Keycloak deployments MUST support environment separation using either:
 - Staging/prod: separate instance per environment (preferred), or separate realms if operationally simpler
 
 ### Realm Naming (Normative)
-- `squadops-local`
-- `squadops-staging`
-- `squadops-prod`
+- `squadops-dev` — Laptop development
+- `squadops-local` — DGX Spark (local network)
+- `squadops-lab` — Home lab
+- `squadops-cloud` — AWS/GCP/Azure
 
 ## 5.3 Client Strategy
 
@@ -310,7 +311,7 @@ auth:
 
 ### 6.6.6 Local Dev Posture
 
-Local dev (`squadops-local` realm) MAY disable MFA for convenience:
+Local dev (`squadops-dev` realm) MAY disable MFA for convenience:
 ```yaml
 auth:
   keycloak:
@@ -421,7 +422,7 @@ class KeycloakAdminConfig(BaseModel):
     allowed_networks: list[str] = Field(default_factory=list, description="CIDR allowlist for admin UI")
 
 class KeycloakOperationalConfig(BaseModel):
-    realm: str = "squadops-local"
+    realm: str = "squadops-dev"
     base_url: str = "http://localhost:8180"
     public_url: str | None = None  # Authoritative external URL; required when behind proxy
     db_dsn: str | None = None  # secret:// ref; required for staging/prod

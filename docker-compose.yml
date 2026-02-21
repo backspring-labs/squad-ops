@@ -115,8 +115,8 @@ services:
       # Auth (SIP-0062)
       SQUADOPS__AUTH__ENABLED: "true"
       SQUADOPS__AUTH__PROVIDER: keycloak
-      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/squadops-local
-      SQUADOPS__AUTH__OIDC__ISSUER_PUBLIC_URL: http://localhost:8180/realms/squadops-local
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      SQUADOPS__AUTH__OIDC__ISSUER_PUBLIC_URL: http://localhost:8180/realms/${SQUADOPS_REALM:-squadops-dev}
       SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
       SQUADOPS__AUTH__EXPOSE_DOCS: "true"
       SQUADOPS__AUTH__CONSOLE__CLIENT_ID: squadops-console
@@ -481,8 +481,8 @@ services:
       PREFECT_API_PUBLIC_URL: http://localhost:4200
       LANGFUSE_API_URL: http://squadops-langfuse:3000
       LANGFUSE_API_PUBLIC_URL: http://localhost:3001
-      KEYCLOAK_URL: http://squadops-keycloak:8080/realms/squadops-local
-      KEYCLOAK_PUBLIC_URL: http://localhost:8180/realms/squadops-local
+      KEYCLOAK_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      KEYCLOAK_PUBLIC_URL: http://localhost:8180/realms/${SQUADOPS_REALM:-squadops-dev}
       CONSOLE_CLIENT_ID: squadops-console
       CONSOLE_REDIRECT_URI: http://localhost:4040/auth/callback
       SERVICE_CLIENT_ID: squadops-console-service

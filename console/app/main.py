@@ -32,9 +32,10 @@ PREFECT_API_URL = os.environ.get("PREFECT_API_URL", "http://prefect-server:4200"
 PREFECT_API_PUBLIC_URL = os.environ.get("PREFECT_API_PUBLIC_URL", "http://localhost:4200")
 LANGFUSE_API_URL = os.environ.get("LANGFUSE_API_URL", "http://squadops-langfuse:3000")
 LANGFUSE_API_PUBLIC_URL = os.environ.get("LANGFUSE_API_PUBLIC_URL", "http://localhost:3001")
-KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://squadops-keycloak:8080/realms/squadops-local")
+_REALM = os.environ.get("SQUADOPS_REALM", "squadops-dev")
+KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", f"http://squadops-keycloak:8080/realms/{_REALM}")
 KEYCLOAK_PUBLIC_URL = os.environ.get(
-    "KEYCLOAK_PUBLIC_URL", "http://localhost:8180/realms/squadops-local"
+    "KEYCLOAK_PUBLIC_URL", f"http://localhost:8180/realms/{_REALM}"
 )
 # Legacy — kept for backward compat but no longer used in config.js
 HEALTH_CHECK_PUBLIC_URL = os.environ.get("HEALTH_CHECK_PUBLIC_URL", "http://localhost:8000")

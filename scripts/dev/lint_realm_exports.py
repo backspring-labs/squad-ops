@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Realm export linter for SIP-0063 Keycloak production hardening.
 
-Validates staging/prod realm JSON exports against security requirements.
+Validates deployed realm JSON exports against security requirements.
 Exit 0 on success, exit 1 with descriptive errors on failure.
 """
 
@@ -12,6 +12,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Deployed (non-dev) realm names that the linter validates
+_DEPLOYED_REALMS = {"squadops-local", "squadops-lab", "squadops-cloud"}
+# Cloud realm requires sslRequired: all; others require external
+_CLOUD_REALMS = {"squadops-cloud"}
+
 
 def lint_realm(realm: dict[str, Any], filename: str) -> list[str]:
     """Validate a single realm export dict. Returns list of error strings."""
@@ -19,29 +24,28 @@ def lint_realm(realm: dict[str, Any], filename: str) -> list[str]:
     realm_name = realm.get("realm", "<unknown>")
 
     # Determine expected environment from realm name
-    is_staging = "staging" in realm_name
-    is_prod = "prod" in realm_name
+    is_deployed = realm_name in _DEPLOYED_REALMS
+    is_cloud = realm_name in _CLOUD_REALMS
 
-    if not is_staging and not is_prod:
-        errors.append(f"[{filename}] Realm name {realm_name!r} is not staging or prod — skipping")
+    if not is_deployed:
+        errors.append(f"[{filename}] Realm name {realm_name!r} is not a deployed realm — skipping")
         return errors
 
     # --- Realm name pattern ---
-    expected_prefix = "squadops-staging" if is_staging else "squadops-prod"
-    if not realm_name.startswith(expected_prefix):
+    if not realm_name.startswith("squadops-"):
         errors.append(
-            f"[{filename}] Realm name {realm_name!r} does not match expected pattern {expected_prefix!r}"
+            f"[{filename}] Realm name {realm_name!r} does not match expected pattern 'squadops-*'"
         )
 
     # --- SSL required ---
     ssl_required = realm.get("sslRequired", "none")
-    if is_staging and ssl_required != "external":
+    if is_cloud and ssl_required != "all":
         errors.append(
-            f"[{filename}] sslRequired must be 'external' for staging, got {ssl_required!r}"
+            f"[{filename}] sslRequired must be 'all' for cloud, got {ssl_required!r}"
         )
-    if is_prod and ssl_required != "all":
+    elif not is_cloud and ssl_required != "external":
         errors.append(
-            f"[{filename}] sslRequired must be 'all' for prod, got {ssl_required!r}"
+            f"[{filename}] sslRequired must be 'external' for deployed realm, got {ssl_required!r}"
         )
 
     # --- Refresh token rotation ---
@@ -100,12 +104,13 @@ def lint_realm_files(file_paths: list[Path]) -> list[str]:
 
 
 def main() -> int:
-    """Entry point: lint staging and prod realm exports."""
+    """Entry point: lint deployed realm exports."""
     repo_root = Path(__file__).resolve().parent.parent.parent
     auth_dir = repo_root / "infra" / "auth"
 
     files = [
         auth_dir / "squadops-realm-staging.json",
+        auth_dir / "squadops-realm-lab.json",
         auth_dir / "squadops-realm-prod.json",
     ]
 

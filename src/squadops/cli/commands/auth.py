@@ -8,6 +8,7 @@ whoami is registered under the auth group (squadops auth whoami).
 from __future__ import annotations
 
 import getpass
+import os
 from datetime import UTC, datetime
 
 import httpx
@@ -29,7 +30,7 @@ auth_app = typer.Typer(name="auth", help="Authentication management")
 
 # Defaults for local dev
 _DEFAULT_KEYCLOAK_URL = "http://localhost:8180"
-_DEFAULT_REALM = "squadops-local"
+_DEFAULT_REALM = os.environ.get("SQUADOPS_REALM", "squadops-dev")
 _DEFAULT_CLIENT_ID = "squadops-cli"
 
 

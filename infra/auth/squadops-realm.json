@@ -1,5 +1,6 @@
 {
-  "realm": "squadops-local",
+  "realm": "squadops-dev",
+  "displayName": "SquadOps Dev",
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": false,
