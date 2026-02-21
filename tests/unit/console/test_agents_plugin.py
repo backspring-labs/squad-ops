@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 # Load the agents plugin __init__.py using importlib to avoid module name collision
-_plugin_path = Path(__file__).parents[3] / "continuum-plugins" / "squadops.agents" / "__init__.py"
+_plugin_path = Path(__file__).parents[3] / "console" / "continuum-plugins" / "squadops.agents" / "__init__.py"
 _spec = importlib.util.spec_from_file_location("squadops_agents_plugin", _plugin_path)
 _agents_plugin = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_agents_plugin)

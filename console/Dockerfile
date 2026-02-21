@@ -41,7 +41,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci && npm run build
 FROM node:20-slim AS plugin-builder
 
 # Copy all plugin UI directories
-COPY continuum-plugins/ /plugins-src/
+COPY console/continuum-plugins/ /plugins-src/
 
 WORKDIR /plugins-src
 RUN --mount=type=cache,target=/root/.npm \
@@ -66,13 +66,13 @@ COPY --from=continuum-source /continuum /tmp/continuum
 RUN --mount=type=cache,target=/root/.cache/pip pip install /tmp/continuum && rm -rf /tmp/continuum
 
 # Install console application dependencies
-COPY docker/console/requirements.txt ./requirements.txt
+COPY console/app/requirements.txt ./requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
 # Copy console application code
-COPY docker/console/main.py ./main.py
-COPY docker/console/auth_bff.py ./auth_bff.py
-COPY docker/console/session_store.py ./session_store.py
+COPY console/app/main.py ./main.py
+COPY console/app/auth_bff.py ./auth_bff.py
+COPY console/app/session_store.py ./session_store.py
 
 # Copy built SvelteKit shell and inject config.js loader
 COPY --from=shell-builder /build/web/build ./web/build/
@@ -80,7 +80,7 @@ RUN sed -i 's|</head>|<script src="/config.js"></script></head>|' ./web/build/in
 
 # Copy plugin Python code + built UIs
 # Each plugin gets: __init__.py, plugin.toml, and dist/ (built JS)
-COPY continuum-plugins/ /tmp/plugins-src/
+COPY console/continuum-plugins/ /tmp/plugins-src/
 COPY --from=plugin-builder /plugins-src/ /tmp/plugins-built/
 
 RUN set -e && \

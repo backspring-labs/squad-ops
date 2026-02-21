@@ -14,6 +14,9 @@ aio-pika==9.3.1
 asyncpg==0.29.0
 sqlalchemy>=2.0.0
 
+# Health checker (platform_health routes)
+redis>=5.0.0,<6.0.0
+
 # Auth (SIP-0062)
 python-jose[cryptography]>=3.3.0
 

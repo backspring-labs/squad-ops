@@ -395,6 +395,10 @@ app.include_router(auth_bff_router)
 async def proxy_health_infra():
     """Proxy infrastructure health from runtime-api."""
     resp = await _api_request("GET", "/health/infra")
+    if resp.status_code != 200:
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse({"error": "upstream unavailable"}, status_code=resp.status_code)
     return resp.json()
 
 
@@ -402,6 +406,10 @@ async def proxy_health_infra():
 async def proxy_health_agents():
     """Proxy agent health status from runtime-api."""
     resp = await _api_request("GET", "/health/agents")
+    if resp.status_code != 200:
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse({"error": "upstream unavailable"}, status_code=resp.status_code)
     return resp.json()
 
 

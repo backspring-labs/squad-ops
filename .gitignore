@@ -64,4 +64,4 @@ repomix-output.xml
 .venv/
 
 # Continuum plugin built assets (built during Docker build / local dev)
-continuum-plugins/*/dist/
+console/continuum-plugins/*/dist/

@@ -620,10 +620,10 @@ config/
 
 ## 1) Where should a `/continuum-plugins` folder live in SquadOps for packaging/build?
 
-**At repo root: `/continuum-plugins/`** — alongside `src/`, `adapters/`, `config/`. This is consistent with the existing top-level package layout (`src/`, `adapters/`, `scripts/`, `infra/`, `warm-boot/`). Each plugin follows the Continuum plugin structure:
+**Under the console directory: `/console/continuum-plugins/`** — alongside `console/Dockerfile`, `console/Caddyfile`, and `console/app/`. Each plugin follows the Continuum plugin structure:
 
 ```
-continuum-plugins/
+console/continuum-plugins/
   squadops.cycles_dashboard/
     plugin.toml          # Manifest (id = "squadops.cycles_dashboard")
     __init__.py          # register(ctx) — panel + nav contributions
@@ -645,7 +645,7 @@ continuum-plugins/
 
 These plugins would be loaded by the Continuum shell either by:
 - (a) Symlinking into the Continuum `plugins/` directory
-- (b) Configuring Continuum's `plugins_dir` to point at `/continuum-plugins/`
+- (b) Configuring Continuum's `plugins_dir` to point at `/console/continuum-plugins/`
 - (c) Deploying a merged `plugins/` directory at runtime
 
 ## 2) Is Continuum shell built in SvelteKit or React right now, and where does it live?
@@ -661,7 +661,7 @@ These plugins would be loaded by the Continuum shell either by:
 - **Command bus**: Execute pipeline with authorization, JSON Schema validation, danger levels, dry-run, timeouts, audit log
 - **Keyboard shortcut**: `Cmd+K` opens command palette
 
-Note: Within the *SquadOps* repo itself, there is no Continuum shell code — the shell lives in the external repo. SquadOps plugins would live at `/continuum-plugins/` within the SquadOps repo and be loaded by the Continuum shell.
+Note: Within the *SquadOps* repo itself, there is no Continuum shell code — the shell lives in the external repo. SquadOps plugins would live at `/console/continuum-plugins/` within the SquadOps repo and be loaded by the Continuum shell.
 
 ## 3) How does the shell fetch data (direct REST to SquadOps API? proxy? same origin?)
 
@@ -735,7 +735,7 @@ CORS is already configured on the SquadOps Runtime API, derived from `config.aut
 - Entry: `ui/src/index.js` imports all Svelte components (triggers `customElements.define()`)
 - Global script: `./scripts/build-plugins.sh` builds all plugins
 
-**In the SquadOps repo**: No frontend bundling exists. SquadOps plugins for Continuum would live at `/continuum-plugins/` with their own `vite.config.js` per plugin, following the same pattern as Continuum sample plugins. These bundles would be copied or symlinked into the Continuum `plugins/` directory for loading.
+**In the SquadOps repo**: No frontend bundling exists. SquadOps plugins for Continuum would live at `/console/continuum-plugins/` with their own `vite.config.js` per plugin, following the same pattern as Continuum sample plugins. These bundles would be copied or symlinked into the Continuum `plugins/` directory for loading.
 
 **Key Vite config pattern for plugin UI**:
 ```javascript

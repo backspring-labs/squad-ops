@@ -13,7 +13,7 @@ import pytest
 # in the test environment. We inject stubs so we can import the command handler
 # registry and individual handler functions.
 
-_docker_dir = str(Path(__file__).parents[3] / "docker" / "console")
+_docker_dir = str(Path(__file__).parents[3] / "console" / "app")
 
 
 @pytest.fixture(autouse=True)
@@ -41,7 +41,7 @@ def _stub_continuum_and_bff():
     stubs["auth_bff"] = auth_bff_stub
     sys.modules["auth_bff"] = auth_bff_stub
 
-    # Add docker/console to sys.path so main.py can be found
+    # Add console/app to sys.path so main.py can be found
     if _docker_dir not in sys.path:
         sys.path.insert(0, _docker_dir)
 

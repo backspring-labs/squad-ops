@@ -179,6 +179,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       # LLM (SIP-0066: cycle task handlers)
       SQUADOPS__LLM__MODEL: "llama3.1:8b"
+    volumes:
+      - ./data/artifacts:/app/data/artifacts
     networks:
     - squadnet
     depends_on:
@@ -514,7 +516,7 @@ services:
   squadops-console:
     build:
       context: .
-      dockerfile: docker/console/Dockerfile
+      dockerfile: console/Dockerfile
       args:
         CONTINUUM_GIT_URL: ${CONTINUUM_GIT_URL:?Run scripts/dev/gen_console_env.sh first}
         CONTINUUM_REF: ${CONTINUUM_REF:?Run scripts/dev/gen_console_env.sh first}
@@ -554,7 +556,7 @@ services:
     ports:
       - "4040:4040"
     volumes:
-      - ./docker/console/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./console/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       squadops-console:
         condition: service_started

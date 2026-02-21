@@ -10,7 +10,7 @@ import pytest
 
 # Load the projects plugin __init__.py using importlib to avoid module name collision
 _plugin_path = (
-    Path(__file__).parents[3] / "continuum-plugins" / "squadops.projects" / "__init__.py"
+    Path(__file__).parents[3] / "console" / "continuum-plugins" / "squadops.projects" / "__init__.py"
 )
 _spec = importlib.util.spec_from_file_location("squadops_projects_plugin", _plugin_path)
 _projects_plugin = importlib.util.module_from_spec(_spec)

@@ -2,13 +2,13 @@
 # build_console_plugins.sh — Build all SquadOps Continuum plugin UIs locally.
 # Usage: ./scripts/dev/build_console_plugins.sh
 #
-# Iterates continuum-plugins/squadops.*/ui/ and runs npm ci && npm run build for each.
-# Plugin bundles are written to continuum-plugins/squadops.*/dist/plugin.js.
+# Iterates console/continuum-plugins/squadops.*/ui/ and runs npm ci && npm run build for each.
+# Plugin bundles are written to console/continuum-plugins/squadops.*/dist/plugin.js.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-PLUGINS_DIR="${REPO_ROOT}/continuum-plugins"
+PLUGINS_DIR="${REPO_ROOT}/console/continuum-plugins"
 
 if [ ! -d "${PLUGINS_DIR}" ]; then
     echo "ERROR: ${PLUGINS_DIR} not found" >&2

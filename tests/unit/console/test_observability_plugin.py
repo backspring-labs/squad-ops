@@ -10,7 +10,7 @@ import pytest
 
 # Load the observability plugin __init__.py using importlib to avoid module name collision
 _plugin_path = (
-    Path(__file__).parents[3] / "continuum-plugins" / "squadops.observability" / "__init__.py"
+    Path(__file__).parents[3] / "console" / "continuum-plugins" / "squadops.observability" / "__init__.py"
 )
 _spec = importlib.util.spec_from_file_location("squadops_observability_plugin", _plugin_path)
 _observability_plugin = importlib.util.module_from_spec(_spec)

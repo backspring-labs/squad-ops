@@ -19,8 +19,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from httpx import ASGITransport, AsyncClient
 
-# Add docker/console to sys.path so we can import the auth_bff module
-sys.path.insert(0, str(Path(__file__).parents[3] / "docker" / "console"))
+# Add console/app to sys.path so we can import the auth_bff module
+sys.path.insert(0, str(Path(__file__).parents[3] / "console" / "app"))
 import auth_bff  # noqa: E402
 from auth_bff import (  # noqa: E402
     _LOGIN_TTL_SECONDS,

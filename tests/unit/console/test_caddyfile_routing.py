@@ -1,6 +1,6 @@
 """Tests for Phase 4 Caddyfile routing rules and security headers.
 
-Validates the Caddyfile at docker/console/Caddyfile by static parsing —
+Validates the Caddyfile at console/Caddyfile by static parsing —
 actual proxy behaviour requires a running Caddy container.
 """
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-_caddyfile_path = Path(__file__).parents[3] / "docker" / "console" / "Caddyfile"
+_caddyfile_path = Path(__file__).parents[3] / "console" / "Caddyfile"
 
 
 @pytest.fixture()

@@ -40,8 +40,8 @@ async def _mock_registry():
     return {"plugins": []}
 
 
-# Add docker/console to sys.path
-sys.path.insert(0, str(Path(__file__).parents[3] / "docker" / "console"))
+# Add console/app to sys.path
+sys.path.insert(0, str(Path(__file__).parents[3] / "console" / "app"))
 
 # Now import main — it will pick up our mocked continuum modules
 from main import app, COMMAND_HANDLERS  # noqa: E402

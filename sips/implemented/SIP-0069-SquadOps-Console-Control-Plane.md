@@ -37,15 +37,15 @@ Seven plugins compose the console: **Home**, **Cycles**, **Artifacts**, **Agents
 
 ### D1: Deployment Model — Branded Container
 
-The Continuum shell is packaged into a Docker image branded as "SquadOps Console." The shell framework lives in its own repository (`backspring-labs/continuum`); the SquadOps-specific plugins live in this repository at `continuum-plugins/`. The Docker build combines both into a single deployable container.
+The Continuum shell is packaged into a Docker image branded as "SquadOps Console." The shell framework lives in its own repository (`backspring-labs/continuum`); the SquadOps-specific plugins live in this repository at `console/continuum-plugins/`. The Docker build combines both into a single deployable container.
 
 **Rationale**: Keeps the shell framework reusable across projects while SquadOps-specific surfaces remain co-located with the domain code they visualize.
 
-### D2: Plugin Location — `continuum-plugins/` at Repo Root
+### D2: Plugin Location — `console/continuum-plugins/` Under Console Directory
 
-Plugins live at `continuum-plugins/` alongside `src/`, `adapters/`, `config/`. Each plugin is a directory following Continuum's plugin contract: `plugin.toml` manifest, `__init__.py` entrypoint, `ui/` source, `dist/` built bundle.
+Plugins live at `console/continuum-plugins/` alongside `console/Dockerfile`, `console/Caddyfile`, and `console/app/`. Each plugin is a directory following Continuum's plugin contract: `plugin.toml` manifest, `__init__.py` entrypoint, `ui/` source, `dist/` built bundle.
 
-**Rationale**: Plugins are frontend + registration artifacts, not Python library packages. Keeping them at the repo root (not under `src/`) mirrors the existing `adapters/` and `config/` convention for non-core code.
+**Rationale**: Plugins are frontend + registration artifacts, not Python library packages. Keeping them under `console/` co-locates all console-related code (Dockerfile, Caddyfile, app, plugins) in one directory.
 
 ### D3: Auth — OIDC Authorization Code Flow with PKCE
 
@@ -180,7 +180,7 @@ SquadOps v0.9.x delivered a complete execution pipeline: cycle API (SIP-0064), C
 ```
 squad-ops repo                          continuum repo
 ─────────────                           ──────────────
-continuum-plugins/                      src/continuum/    (Python backend)
+console/continuum-plugins/              src/continuum/    (Python backend)
   squadops.home/                        web/              (SvelteKit shell)
   squadops.cycles/
   squadops.artifacts/                         │
@@ -237,7 +237,7 @@ Each plugin build MUST emit `dist/plugin.js` (ES module entry) plus any chunk as
 squadops-console:
   build:
     context: .
-    dockerfile: docker/console/Dockerfile
+    dockerfile: console/Dockerfile
   ports:
     - "4040:4040"
   environment:

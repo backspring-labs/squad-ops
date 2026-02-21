@@ -15,8 +15,8 @@ SquadOps has a fully functional API (SIP-0064), CLI (SIP-0065), Keycloak auth (S
 | ID | Decision | Rationale |
 |----|----------|-----------|
 | D1 | Continuum is fetched from the upstream git repo at a ref recorded in `continuum.lock`. Allowed ref types: 40-char SHA, annotated tag, or branch name (e.g., `main`). Branch refs resolve to a deterministic SHA at build time (see §1.1 fetch logic). No host-path injection, no `CONTINUUM_PATH`. CI/release builds may forbid branch refs; branches are allowed for local dev. Updating Continuum is an intentional, versioned action: change `continuum.lock` ref in a reviewable PR. | Reproducible builds pinned to exact ref; branch allowed for dev velocity; Continuum stays an independent repo with its own versioning; no vendored copies to maintain |
-| D2 | Plugins at `continuum-plugins/squadops.{name}/` in squad-ops repo root | Mirrors `adapters/` convention for non-core code; SIP §2 D2 |
-| D3 | Plugin `dist/` directories NOT checked into git | Built during Docker build and local dev script; `.gitignore` covers `continuum-plugins/*/dist/` |
+| D2 | Plugins at `console/continuum-plugins/squadops.{name}/` in squad-ops repo root | Mirrors `adapters/` convention for non-core code; SIP §2 D2 |
+| D3 | Plugin `dist/` directories NOT checked into git | Built during Docker build and local dev script; `.gitignore` covers `console/continuum-plugins/*/dist/` |
 | D4 | SvelteKit shell built into `/app/web/build/` in container, served via `StaticFiles(html=True)` | SPA fallback for client-side routing |
 | D5 | Auth BFF endpoints (`/auth/login`, `/auth/callback`, `/auth/refresh`, `/auth/logout`) live in console backend, not Continuum core | No upstream shell modification; SIP §7.2 BFF pattern |
 | D6 | In-memory session dict for BFF refresh tokens (keyed by httpOnly `session_id` cookie). Console restart invalidates all sessions (users must re-login). Multi-instance deployments are out of scope until Redis-backed sessions. | Acceptable for single-instance v0.9.8; Redis follow-up documented |
@@ -36,7 +36,7 @@ SquadOps has a fully functional API (SIP-0064), CLI (SIP-0065), Keycloak auth (S
 
 ### 1.1 Dockerfile
 
-**New file**: `docker/console/Dockerfile`
+**New file**: `console/Dockerfile`
 
 Multi-stage build:
 - **Stage 0** (`alpine/git`): Fetch Continuum source at pinned ref.
@@ -48,7 +48,7 @@ Multi-stage build:
   - **Guardrail**: CI/release builds may forbid branch refs; branches are allowed for local dev.
   - Output: `/continuum/` directory with exact pinned source
 - **Stage 1** (`node:20-slim`): Copy Continuum `web/` from Stage 0, `npm ci && npm run build` → SvelteKit static build
-- **Stage 2** (`node:20-slim`): Copy all `continuum-plugins/squadops.*/ui/` directories, build each with `npm ci && npm run build` → `dist/plugin.js` per plugin. Each plugin UI directory MUST include `package-lock.json`; builds fail fast if missing (`npm ci` requires it).
+- **Stage 2** (`node:20-slim`): Copy all `console/continuum-plugins/squadops.*/ui/` directories, build each with `npm ci && npm run build` → `dist/plugin.js` per plugin. Each plugin UI directory MUST include `package-lock.json`; builds fail fast if missing (`npm ci` requires it).
 - **Stage 3** (`python:3.11-slim`): Runtime image
   - Install Continuum Python package from Stage 0 source (`pip install /continuum` — pinned, immutable). No editable installs in production; Continuum changes require bumping `continuum.lock` ref.
   - Copy console application code (`main.py`, `auth_bff.py`)
@@ -70,7 +70,7 @@ Any Continuum upgrade is expressed as a change to `continuum.lock` (ref/version)
 
 ### 1.2 Console Entry Point
 
-**New file**: `docker/console/main.py`
+**New file**: `console/app/main.py`
 
 Thin FastAPI wrapper around Continuum:
 - `lifespan`: create `ContinuumRuntime(plugins_dir="./plugins")`, call `runtime.boot()`, register command handlers. Command handler registration uses `ContinuumRuntime` extension hooks (e.g., `runtime.command_bus.register_handler()`). If no public extension point exists, handlers are registered directly on the command bus instance in the console wrapper only — no Continuum core changes.
@@ -82,7 +82,7 @@ Thin FastAPI wrapper around Continuum:
 
 ### 1.3 Auth BFF Module
 
-**New file**: `docker/console/auth_bff.py`
+**New file**: `console/app/auth_bff.py`
 
 FastAPI router with `/auth` prefix:
 - `GET /auth/login` — generates `state`, `code_verifier`, and `code_challenge` (S256). Stores `{state: {code_verifier, created_at}}` in `_pending_logins` dict (TTL 10 minutes). Returns JSON `{auth_url}` containing the Keycloak authorization URL (including `state`, `code_challenge`, `code_challenge_method=S256`). The shell reads `auth_url` and performs `window.location = auth_url` to redirect the browser. Each `/auth/login` call opportunistically purges expired `_pending_logins` entries.
@@ -102,7 +102,7 @@ CONTINUUM_REF=<ref from continuum.lock>
 `docker-compose.yml` loads this env file for console builds so the Dockerfile build args always match `continuum.lock`. The helper MUST be run before `docker-compose build` (the build script in §1.8 calls it automatically).
 
 **Modify**: Add `squadops-console` service:
-- Build context: `.`, dockerfile: `docker/console/Dockerfile`, args: `CONTINUUM_GIT_URL`, `CONTINUUM_REF` (sourced from `.env.console`)
+- Build context: `.`, dockerfile: `console/Dockerfile`, args: `CONTINUUM_GIT_URL`, `CONTINUUM_REF` (sourced from `.env.console`)
 - Port: `4040:4040`
 - Environment: `SQUADOPS_API_URL`, `SQUADOPS_API_PUBLIC_URL`, `PREFECT_API_URL`, `PREFECT_API_PUBLIC_URL`, `LANGFUSE_API_URL`, `LANGFUSE_API_PUBLIC_URL`, `KEYCLOAK_URL`, `KEYCLOAK_PUBLIC_URL`, `CONSOLE_CLIENT_ID`, `CONSOLE_REDIRECT_URI`
 - Depends on: `runtime-api`
@@ -110,7 +110,7 @@ CONTINUUM_REF=<ref from continuum.lock>
 
 ### 1.5 Plugin: `squadops.home`
 
-**New directory**: `continuum-plugins/squadops.home/`
+**New directory**: `console/continuum-plugins/squadops.home/`
 
 **`plugin.toml`**:
 - `required = true`
@@ -128,7 +128,7 @@ CONTINUUM_REF=<ref from continuum.lock>
 
 ### 1.6 Plugin: `squadops.system`
 
-**New directory**: `continuum-plugins/squadops.system/`
+**New directory**: `console/continuum-plugins/squadops.system/`
 
 **`plugin.toml`**:
 - Nav: "Systems", icon `settings`, priority 400, target systems perspective
@@ -166,7 +166,7 @@ Plugins MUST NOT store tokens in `localStorage`, `sessionStorage`, or cookies. P
 
 **New file**: `scripts/dev/build_console_plugins.sh`
 
-Iterates `continuum-plugins/squadops.*/ui/`, runs `npm ci && npm run build` for each. Used for local development.
+Iterates `console/continuum-plugins/squadops.*/ui/`, runs `npm ci && npm run build` for each. Used for local development.
 
 ### 1.10 Phase 1 Tests
 
@@ -185,7 +185,7 @@ Iterates `continuum-plugins/squadops.*/ui/`, runs `npm ci && npm run build` for 
 
 ### 2.1 Plugin: `squadops.cycles`
 
-**New directory**: `continuum-plugins/squadops.cycles/`
+**New directory**: `console/continuum-plugins/squadops.cycles/`
 
 **`plugin.toml`**:
 - Nav: "Cycles", icon `zap`, priority 800, target signal perspective
@@ -211,7 +211,7 @@ All handlers use `httpx.AsyncClient(base_url=SQUADOPS_API_URL)` with `Authorizat
 
 ### 2.2 Plugin: `squadops.projects`
 
-**New directory**: `continuum-plugins/squadops.projects/`
+**New directory**: `console/continuum-plugins/squadops.projects/`
 
 **`plugin.toml`**:
 - Nav: "Projects", icon `folder`, priority 600, target discovery perspective
@@ -239,7 +239,7 @@ All handlers use `httpx.AsyncClient(base_url=SQUADOPS_API_URL)` with `Authorizat
 
 ### 3.1 Plugin: `squadops.artifacts`
 
-**New directory**: `continuum-plugins/squadops.artifacts/`
+**New directory**: `console/continuum-plugins/squadops.artifacts/`
 
 **`plugin.toml`**:
 - No nav entry
@@ -258,7 +258,7 @@ All handlers use `httpx.AsyncClient(base_url=SQUADOPS_API_URL)` with `Authorizat
 
 ### 3.2 Plugin: `squadops.agents`
 
-**New directory**: `continuum-plugins/squadops.agents/`
+**New directory**: `console/continuum-plugins/squadops.agents/`
 
 **`plugin.toml`**:
 - No nav entry, no commands (view-only)
@@ -270,7 +270,7 @@ All handlers use `httpx.AsyncClient(base_url=SQUADOPS_API_URL)` with `Authorizat
 
 ### 3.3 Plugin: `squadops.observability`
 
-**New directory**: `continuum-plugins/squadops.observability/`
+**New directory**: `console/continuum-plugins/squadops.observability/`
 
 **`plugin.toml`**:
 - No nav entry, no commands
@@ -294,7 +294,7 @@ All handlers use `httpx.AsyncClient(base_url=SQUADOPS_API_URL)` with `Authorizat
 
 ### 4.1 Reverse Proxy
 
-**New file**: `docker/console/Caddyfile`
+**New file**: `console/Caddyfile`
 
 Routes (order matters — most specific first):
 - `/api/v1/*` → `runtime-api:8001`
@@ -334,22 +334,22 @@ CSP headers: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-in
 | File | Phase | Action |
 |------|-------|--------|
 | `continuum.lock` | 1 | New |
-| `docker/console/Dockerfile` | 1 | New |
-| `docker/console/main.py` | 1 | New |
-| `docker/console/auth_bff.py` | 1 | New |
-| `docker/console/requirements.txt` | 1 | New |
+| `console/Dockerfile` | 1 | New |
+| `console/app/main.py` | 1 | New |
+| `console/app/auth_bff.py` | 1 | New |
+| `console/app/requirements.txt` | 1 | New |
 | `docker-compose.yml` | 1, 4 | Modify |
-| `.gitignore` | 1 | Modify (add `.env.console`, `continuum-plugins/*/dist/`) |
+| `.gitignore` | 1 | Modify (add `.env.console`, `console/continuum-plugins/*/dist/`) |
 | `scripts/dev/gen_console_env.sh` | 1 | New |
 | `scripts/dev/build_console_plugins.sh` | 1 | New |
-| `continuum-plugins/squadops.home/*` (6 files) | 1 | New |
-| `continuum-plugins/squadops.system/*` (8 files) | 1 | New |
-| `continuum-plugins/squadops.cycles/*` (8 files) | 2 | New |
-| `continuum-plugins/squadops.projects/*` (7 files) | 2 | New |
-| `continuum-plugins/squadops.artifacts/*` (8 files) | 3 | New |
-| `continuum-plugins/squadops.agents/*` (7 files) | 3 | New |
-| `continuum-plugins/squadops.observability/*` (8 files) | 3 | New |
-| `docker/console/Caddyfile` | 4 | New |
+| `console/continuum-plugins/squadops.home/*` (6 files) | 1 | New |
+| `console/continuum-plugins/squadops.system/*` (8 files) | 1 | New |
+| `console/continuum-plugins/squadops.cycles/*` (8 files) | 2 | New |
+| `console/continuum-plugins/squadops.projects/*` (7 files) | 2 | New |
+| `console/continuum-plugins/squadops.artifacts/*` (8 files) | 3 | New |
+| `console/continuum-plugins/squadops.agents/*` (7 files) | 3 | New |
+| `console/continuum-plugins/squadops.observability/*` (8 files) | 3 | New |
+| `console/Caddyfile` | 4 | New |
 | `tests/unit/console/test_home_plugin.py` | 1 | New |
 | `tests/unit/console/test_system_plugin.py` | 1 | New |
 | `tests/unit/console/test_auth_bff.py` | 1 | New |
