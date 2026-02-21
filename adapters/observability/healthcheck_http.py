@@ -4,7 +4,6 @@ HTTP adapter for reporting agent heartbeats to the runtime-api service.
 Env:
 - SQUADOPS_RUNTIME_API_URL: base URL for the runtime API
   (default: http://runtime-api:8001)
-- SQUADOPS_HEALTH_CHECK_URL: legacy env var (fallback)
 """
 
 from __future__ import annotations
@@ -33,7 +32,6 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
         self._base_url = (
             base_url
             or os.getenv("SQUADOPS_RUNTIME_API_URL")
-            or os.getenv("SQUADOPS_HEALTH_CHECK_URL")
             or "http://runtime-api:8001"
         ).rstrip("/")
         self._timeout_seconds = timeout_seconds

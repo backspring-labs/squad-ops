@@ -190,7 +190,6 @@ python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature
 | postgres | 5432 | Database (cycle registry, task logging) |
 | redis | 6379 | Cache |
 | runtime-api | 8001 | Cycle execution API (SIP-0048/0064) |
-| health-check | 8000 | Health monitoring |
 | prefect-server | 4200 | Workflow orchestration |
 | keycloak | 8180 | OIDC identity provider (SIP-0062) |
 | langfuse-server | 3001 | LLM observability UI (SIP-0061) |

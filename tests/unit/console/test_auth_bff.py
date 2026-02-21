@@ -128,11 +128,15 @@ class TestAuthBFF:
         count = await auth_bff._login_store.count()
         assert count == 1
 
-    async def test_callback_invalid_state_returns_400(self, client: AsyncClient):
-        """GET /auth/callback with unknown state returns 400."""
-        resp = await client.get("/auth/callback", params={"code": "abc", "state": "bad-state"})
-        assert resp.status_code == 400
-        assert "Invalid or expired" in resp.json()["detail"]
+    async def test_callback_invalid_state_redirects_to_root(self, client: AsyncClient):
+        """GET /auth/callback with unknown state redirects to / for fresh login."""
+        resp = await client.get(
+            "/auth/callback",
+            params={"code": "abc", "state": "bad-state"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/"
 
     async def test_callback_success_redirects_and_sets_cookie(self, client: AsyncClient):
         """Successful callback exchanges code, sets session cookie, redirects to /."""

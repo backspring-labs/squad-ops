@@ -204,7 +204,8 @@ async def callback(code: str, state: str) -> Response:
     await _login_store.delete(state)
 
     if pending is None:
-        raise HTTPException(status_code=400, detail="Invalid or expired state parameter")
+        logger.warning("OIDC callback with invalid/expired state — restarting login")
+        return RedirectResponse(url="/", status_code=302)
 
     assert _http_client is not None
     token_response = await _http_client.post(
