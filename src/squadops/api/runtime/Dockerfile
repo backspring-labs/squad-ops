@@ -33,11 +33,11 @@ RUN apt-get update && apt-get install -y \
 
 # Copy dependency files FIRST (for better layer caching)
 COPY pyproject.toml ./
-COPY requirements.txt ./
+COPY requirements.txt requirements-api.txt ./
 
 # Install dependencies (this layer is cached when requirements don't change)
 # BuildKit cache mount preserves pip download cache across builds
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements-api.txt
 
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/

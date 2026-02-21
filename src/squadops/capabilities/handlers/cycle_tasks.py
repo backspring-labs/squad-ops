@@ -765,10 +765,59 @@ class QABuildValidateHandler(_CycleTaskHandler):
                 "type": "test",
             })
 
+        # --- Run generated tests against source files ---
+        from squadops.capabilities.handlers.test_runner import run_generated_tests
+
+        source_file_records = [
+            {"path": path, "content": code} for path, code in sources.items()
+        ]
+        test_file_records = [
+            {"path": rec["filename"], "content": rec["content"]} for rec in extracted
+        ]
+        test_result = await run_generated_tests(source_file_records, test_file_records)
+
+        # Build test report artifact
+        report_lines = [
+            "# Test Execution Report\n",
+            f"**Result:** {test_result.summary}\n",
+            f"**Exit code:** {test_result.exit_code}\n",
+            f"**Test files:** {test_result.test_file_count}\n",
+            f"**Source files:** {test_result.source_file_count}\n",
+        ]
+        if test_result.stdout:
+            report_lines.append(f"\n## stdout\n\n```\n{test_result.stdout}\n```\n")
+        if test_result.stderr:
+            report_lines.append(f"\n## stderr\n\n```\n{test_result.stderr}\n```\n")
+        if test_result.error:
+            report_lines.append(f"\n## Error\n\n{test_result.error}\n")
+
+        artifacts.append({
+            "name": "test_report.md",
+            "content": "\n".join(report_lines),
+            "media_type": "text/markdown",
+            "type": "test_report",
+        })
+
+        # Build summary with test outcome
+        if test_result.tests_passed:
+            test_suffix = ", all tests passed"
+        elif test_result.executed:
+            test_suffix = f", tests failed (exit code {test_result.exit_code})"
+        else:
+            test_suffix = f", tests not run: {test_result.error}" if test_result.error else ""
+
         outputs = {
-            "summary": f"[qa] Generated {len(artifacts)} test file(s)",
+            "summary": f"[qa] Generated {len(artifacts) - 1} test file(s){test_suffix}",
             "role": self._role,
             "artifacts": artifacts,
+            "test_result": {
+                "executed": test_result.executed,
+                "exit_code": test_result.exit_code,
+                "tests_passed": test_result.tests_passed,
+                "test_file_count": test_result.test_file_count,
+                "source_file_count": test_result.source_file_count,
+                "summary": test_result.summary,
+            },
         }
 
         duration_ms = (time.perf_counter() - start_time) * 1000

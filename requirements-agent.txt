@@ -1,0 +1,11 @@
+# SquadOps Agent Container Dependencies
+-r requirements.txt
+
+# Message queue
+aio-pika==9.3.1
+
+# Memory system (SIP-042)
+lancedb==0.8.2
+
+# LLM Observability (SIP-0061)
+langfuse>=2.0,<3.0

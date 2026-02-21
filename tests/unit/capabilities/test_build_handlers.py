@@ -9,16 +9,34 @@ Part of Phase 1.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from squadops.capabilities.handlers.cycle_tasks import (
     DevelopmentBuildHandler,
     QABuildValidateHandler,
 )
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
+from squadops.capabilities.handlers.test_runner import TestRunResult
 from squadops.bootstrap.handlers import HANDLER_CONFIGS
 from squadops.llm.exceptions import LLMConnectionError
 from squadops.llm.models import ChatMessage
+
+_MOCK_TEST_RESULT_PASSED = TestRunResult(
+    executed=True, exit_code=0, stdout="1 passed", stderr="",
+    test_file_count=2, source_file_count=2,
+)
+
+_MOCK_TEST_RESULT_FAILED = TestRunResult(
+    executed=True, exit_code=1, stdout="1 failed", stderr="AssertionError",
+    test_file_count=2, source_file_count=2,
+)
+
+_MOCK_TEST_RESULT_NOT_RUN = TestRunResult(
+    executed=False, error="no test files provided",
+    test_file_count=0, source_file_count=0,
+)
+
+_RUN_TESTS_PATH = "squadops.capabilities.handlers.test_runner.run_generated_tests"
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -236,7 +254,8 @@ class TestDevBuildFileClassification:
 
 
 class TestQABuildProducesTestArtifacts:
-    async def test_qa_build_produces_test_artifacts(self, mock_context, qa_inputs):
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_qa_build_produces_test_artifacts(self, _mock_run, mock_context, qa_inputs):
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
@@ -245,14 +264,19 @@ class TestQABuildProducesTestArtifacts:
 
         assert result.success is True
         artifacts = result.outputs["artifacts"]
-        assert len(artifacts) == 2
-        # All QA artifacts should have type "test"
-        for art in artifacts:
+        # 2 test files + 1 test_report.md
+        assert len(artifacts) == 3
+        # First two are test artifacts
+        for art in artifacts[:2]:
             assert art["type"] == "test"
         assert artifacts[0]["name"] == "tests/test_main.py"
         assert artifacts[1]["name"] == "tests/test_utils.py"
+        # Last is the test report
+        assert artifacts[2]["name"] == "test_report.md"
+        assert artifacts[2]["type"] == "test_report"
 
-    async def test_qa_build_summary(self, mock_context, qa_inputs):
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_qa_build_summary(self, _mock_run, mock_context, qa_inputs):
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
@@ -276,7 +300,8 @@ class TestQABuildParseFailure:
 
 
 class TestQABuildPromptContent:
-    async def test_prompt_includes_source_and_plan(self, mock_context, qa_inputs):
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_prompt_includes_source_and_plan(self, _mock_run, mock_context, qa_inputs):
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
@@ -405,7 +430,8 @@ class TestDevBuildVaultFallback:
 
 
 class TestQABuildVaultFallback:
-    async def test_qa_vault_fallback_resolves_validation_plan(self, mock_context):
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_qa_vault_fallback_resolves_validation_plan(self, _mock_run, mock_context):
         """QA handler falls back to vault for validation_plan.md."""
         from datetime import datetime, timezone
 
@@ -480,7 +506,8 @@ class TestDevBuildLangFuseRecording:
 
 
 class TestQABuildLangFuseRecording:
-    async def test_langfuse_generation_recorded(self, qa_inputs):
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_langfuse_generation_recorded(self, _mock_run, qa_inputs):
         """QA handler records generation when LangFuse is enabled."""
         ctx = MagicMock()
         ctx.ports.llm.chat = AsyncMock(
@@ -502,3 +529,83 @@ class TestQABuildLangFuseRecording:
 
         assert result.success is True
         llm_obs.record_generation.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# QA test execution integration
+# ---------------------------------------------------------------------------
+
+
+class TestQATestReportArtifact:
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_test_report_artifact_present(self, _mock_run, mock_context, qa_inputs):
+        """test_report.md artifact is always present when tests are extracted."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QABuildValidateHandler()
+        result = await handler.handle(mock_context, qa_inputs)
+
+        report_arts = [a for a in result.outputs["artifacts"] if a["name"] == "test_report.md"]
+        assert len(report_arts) == 1
+        assert report_arts[0]["type"] == "test_report"
+        assert report_arts[0]["media_type"] == "text/markdown"
+        assert "all tests passed" in report_arts[0]["content"]
+
+
+class TestQAHandlerSucceedsWhenTestsFail:
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_FAILED)
+    async def test_handler_succeeds_when_tests_fail(self, _mock_run, mock_context, qa_inputs):
+        """Handler returns success=True even when tests fail — failures are evidence."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QABuildValidateHandler()
+        result = await handler.handle(mock_context, qa_inputs)
+
+        assert result.success is True
+        assert result.outputs["test_result"]["tests_passed"] is False
+        assert result.outputs["test_result"]["exit_code"] == 1
+
+
+class TestQAHandlerSucceedsWhenTestsNotExecuted:
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_NOT_RUN)
+    async def test_handler_succeeds_when_tests_not_executed(self, _mock_run, mock_context, qa_inputs):
+        """Handler returns success=True even when tests couldn't run."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QABuildValidateHandler()
+        result = await handler.handle(mock_context, qa_inputs)
+
+        assert result.success is True
+        assert result.outputs["test_result"]["executed"] is False
+
+
+class TestQASummaryIncludesTestOutcome:
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_summary_includes_passed(self, _mock_run, mock_context, qa_inputs):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QABuildValidateHandler()
+        result = await handler.handle(mock_context, qa_inputs)
+        assert "all tests passed" in result.outputs["summary"]
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_FAILED)
+    async def test_summary_includes_failed(self, _mock_run, mock_context, qa_inputs):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QABuildValidateHandler()
+        result = await handler.handle(mock_context, qa_inputs)
+        assert "tests failed" in result.outputs["summary"]
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_NOT_RUN)
+    async def test_summary_includes_not_run(self, _mock_run, mock_context, qa_inputs):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QABuildValidateHandler()
+        result = await handler.handle(mock_context, qa_inputs)
+        assert "tests not run" in result.outputs["summary"]

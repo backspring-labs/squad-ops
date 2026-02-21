@@ -56,18 +56,24 @@ RUN apt-get update && apt-get install -y \
 
 # Copy dependency files FIRST (for better layer caching)
 COPY pyproject.toml ./
-COPY requirements.txt ./
+COPY requirements.txt requirements-agent.txt ./
 
 # Install dependencies (this layer is cached when requirements don't change)
 # BuildKit cache mount preserves pip download cache across builds
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements-agent.txt
+
+# Copy agent configuration (instances for role-specific config + per-role extras)
+COPY agents/instances/ ./agents/instances/
+
+# Install per-role extras (e.g., pytest for QA agent)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ -f "agents/instances/${AGENT_ROLE}/requirements.txt" ]; then \
+      pip install -r "agents/instances/${AGENT_ROLE}/requirements.txt"; \
+    fi
 
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
 COPY adapters/ ./adapters/
-
-# Copy agent configuration (instances.yaml for role-specific config)
-COPY agents/instances/ ./agents/instances/
 
 # Install package in editable mode (fast - just creates .egg-info)
 RUN --mount=type=cache,target=/root/.cache/pip pip install -e .

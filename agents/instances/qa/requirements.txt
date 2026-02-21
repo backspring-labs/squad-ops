@@ -1,0 +1,2 @@
+# QA agent role extras — test execution at build time
+pytest>=7.0
