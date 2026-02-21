@@ -46,7 +46,7 @@ class TestBuildProfileLoads:
         assert "source" in types
         assert "test" in types
         assert "config" in types
-        assert "documentation" in types
+        assert "document" in types
 
 
 class TestBuildOnlyProfileLoads:
@@ -79,7 +79,7 @@ class TestBuildOnlyProfileLoads:
         """build-only.yaml does not include documentation in expected_artifact_types."""
         profile = load_profile("build-only")
         types = profile.defaults["expected_artifact_types"]
-        assert "documentation" not in types
+        assert "document" not in types
         assert "source" in types
         assert "test" in types
 

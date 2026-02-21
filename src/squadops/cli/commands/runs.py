@@ -4,6 +4,7 @@ Run commands (SIP-0065 §6.3).
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +20,23 @@ from squadops.cli.output import (
     print_success,
     print_table,
 )
+
+
+def _format_duration(started: str | None, finished: str | None) -> str:
+    """Compute human-readable duration from ISO timestamp strings."""
+    if not started or not finished:
+        return ""
+    try:
+        s = datetime.fromisoformat(started)
+        f = datetime.fromisoformat(finished)
+        delta = f - s
+        total = int(delta.total_seconds())
+        if total < 60:
+            return f"{total}s"
+        minutes, seconds = divmod(total, 60)
+        return f"{minutes}m{seconds}s"
+    except (ValueError, TypeError):
+        return ""
 
 app = typer.Typer(name="runs", help="Manage execution runs within cycles")
 
@@ -50,10 +68,21 @@ def list_runs(
         print_json(data)
     else:
         rows = [
-            [r["run_id"], str(r["run_number"]), r["status"], r.get("started_at", "")]
+            [
+                r["run_id"],
+                str(r["run_number"]),
+                r["status"],
+                r.get("started_at", "") or "",
+                r.get("finished_at", "") or "",
+                _format_duration(r.get("started_at"), r.get("finished_at")),
+            ]
             for r in data
         ]
-        print_table(["Run ID", "#", "Status", "Started"], rows, quiet=quiet)
+        print_table(
+            ["Run ID", "#", "Status", "Started", "Finished", "Duration"],
+            rows,
+            quiet=quiet,
+        )
 
 
 @app.command("ls", hidden=True)

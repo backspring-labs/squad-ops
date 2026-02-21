@@ -19,7 +19,7 @@ defaults:
     - code
     - test_report
     - metrics
-    - documentation
+    - document
     - source
     - test
     - config

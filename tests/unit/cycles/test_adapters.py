@@ -2,6 +2,7 @@
 Tests for SIP-0064 adapter implementations.
 """
 
+import dataclasses
 from datetime import datetime, timezone
 
 import pytest
@@ -472,12 +473,31 @@ class TestFilesystemArtifactVault:
         return FilesystemArtifactVault(base_dir=tmp_path / "artifacts")
 
     @pytest.fixture
+    def base_dir(self, vault):
+        return vault._base_dir
+
+    @pytest.fixture
     def artifact_ref(self):
         return ArtifactRef(
             artifact_id="art_001",
             project_id="hello_squad",
             artifact_type="prd",
             filename="prd-v1.md",
+            content_hash="placeholder",
+            size_bytes=0,
+            media_type="text/markdown",
+            created_at=NOW,
+            cycle_id="cyc_abc",
+            run_id="run_xyz",
+        )
+
+    @pytest.fixture
+    def unattached_ref(self):
+        return ArtifactRef(
+            artifact_id="art_bare",
+            project_id="hello_squad",
+            artifact_type="prd",
+            filename="prd-v0.md",
             content_hash="placeholder",
             size_bytes=0,
             media_type="text/markdown",
@@ -546,3 +566,95 @@ class TestFilesystemArtifactVault:
 
         with pytest.raises(ArtifactNotFoundError):
             await vault.set_baseline("hello_squad", "prd", "nonexistent")
+
+    # --- Hierarchical layout tests ---
+
+    async def test_store_creates_hierarchical_directory(self, vault, artifact_ref, base_dir):
+        await vault.store(artifact_ref, b"code")
+        expected = base_dir / "hello_squad" / "cyc_abc" / "run_xyz" / "art_001"
+        assert expected.is_dir()
+        assert (expected / "metadata.json").exists()
+        assert (expected / "prd-v1.md").exists()
+
+    async def test_index_updated_on_store(self, vault, artifact_ref, base_dir):
+        import json
+
+        await vault.store(artifact_ref, b"data")
+        index = json.loads((base_dir / "_index.json").read_text())
+        assert "art_001" in index
+        assert index["art_001"] == "hello_squad/cyc_abc/run_xyz/art_001"
+
+    async def test_retrieve_via_index(self, vault, artifact_ref):
+        await vault.store(artifact_ref, b"payload")
+        ref, data = await vault.retrieve("art_001")
+        assert data == b"payload"
+        assert ref.project_id == "hello_squad"
+        assert ref.cycle_id == "cyc_abc"
+        assert ref.run_id == "run_xyz"
+
+    async def test_list_artifacts_scoped_to_run(self, vault, artifact_ref):
+        await vault.store(artifact_ref, b"data")
+        # Different run — should not appear
+        other = dataclasses.replace(
+            artifact_ref, artifact_id="art_002", run_id="run_other"
+        )
+        await vault.store(other, b"data2")
+        results = await vault.list_artifacts(
+            project_id="hello_squad", cycle_id="cyc_abc", run_id="run_xyz"
+        )
+        assert len(results) == 1
+        assert results[0].artifact_id == "art_001"
+
+    async def test_list_artifacts_scoped_to_cycle(self, vault, artifact_ref):
+        await vault.store(artifact_ref, b"data")
+        other = dataclasses.replace(
+            artifact_ref, artifact_id="art_002", cycle_id="cyc_other", run_id="run_other"
+        )
+        await vault.store(other, b"data2")
+        results = await vault.list_artifacts(
+            project_id="hello_squad", cycle_id="cyc_abc"
+        )
+        assert len(results) == 1
+        assert results[0].artifact_id == "art_001"
+
+    async def test_unattached_artifact_stored_correctly(self, vault, unattached_ref, base_dir):
+        await vault.store(unattached_ref, b"bare")
+        expected = base_dir / "_unattached" / "art_bare"
+        assert expected.is_dir()
+        assert (expected / "metadata.json").exists()
+        # Unattached should appear in full scan
+        results = await vault.list_artifacts()
+        ids = [r.artifact_id for r in results]
+        assert "art_bare" in ids
+
+    async def test_unattached_in_project_scoped_list(self, vault, unattached_ref):
+        await vault.store(unattached_ref, b"bare")
+        results = await vault.list_artifacts(project_id="hello_squad")
+        assert len(results) == 1
+        assert results[0].artifact_id == "art_bare"
+
+    async def test_baselines_per_project(self, vault, artifact_ref, base_dir):
+        import json
+
+        await vault.store(artifact_ref, b"data")
+        await vault.set_baseline("hello_squad", "prd", "art_001")
+        bl_path = base_dir / "hello_squad" / ".baselines.json"
+        assert bl_path.exists()
+        data = json.loads(bl_path.read_text())
+        assert data["prd"] == "art_001"
+
+    async def test_index_rebuild_from_filesystem(self, vault, artifact_ref, base_dir):
+        import json
+
+        await vault.store(artifact_ref, b"data")
+        # Delete the index
+        (base_dir / "_index.json").unlink()
+        # Rebuild by re-instantiating
+        from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
+
+        vault2 = FilesystemArtifactVault(base_dir=base_dir)
+        index = json.loads((base_dir / "_index.json").read_text())
+        assert "art_001" in index
+        # Retrieval still works
+        ref, data = await vault2.retrieve("art_001")
+        assert data == b"data"

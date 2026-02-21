@@ -14,7 +14,7 @@ defaults:
         after_task_types:
           - governance.review
   expected_artifact_types:
-    - documentation
+    - document
     - source
     - test
   build_tasks:

@@ -231,7 +231,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
 
 _EXT_MAP: dict[str, tuple[str, str]] = {
     ".py": ("source", "text/x-python"),
-    ".md": ("documentation", "text/markdown"),
+    ".md": ("document", "text/markdown"),
     ".txt": ("config", "text/plain"),
     ".yaml": ("config", "text/yaml"),
     ".yml": ("config", "text/yaml"),
@@ -471,7 +471,7 @@ class DevelopmentBuildHandler(_CycleTaskHandler):
                             "name": "build_warnings.md",
                             "content": content,
                             "media_type": "text/markdown",
-                            "type": "documentation",
+                            "type": "document",
                         },
                     ],
                 },
@@ -746,7 +746,7 @@ class QABuildValidateHandler(_CycleTaskHandler):
                             "name": "build_warnings.md",
                             "content": content,
                             "media_type": "text/markdown",
-                            "type": "documentation",
+                            "type": "document",
                         },
                     ],
                 },

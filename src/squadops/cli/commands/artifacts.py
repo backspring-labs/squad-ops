@@ -129,19 +129,29 @@ def list_artifacts(
     ctx: typer.Context,
     project_id: str = typer.Option(..., "--project", help="Project ID"),
     cycle_id: Optional[str] = typer.Option(None, "--cycle", help="Filter by cycle ID"),
+    run_id: Optional[str] = typer.Option(None, "--run", help="Filter by run ID (requires --cycle)"),
     artifact_type: Optional[str] = typer.Option(None, "--type", help="Filter by artifact type"),
 ):
     """List artifacts for a project.
 
-    Selection rule: if --cycle provided, uses cycle-scoped endpoint.
+    Selection rule: if --cycle and --run provided, uses run-scoped endpoint.
+    If only --cycle provided, uses cycle-scoped endpoint.
     Otherwise uses project-scoped endpoint with optional --type filter.
     """
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
     quiet = ctx.obj.get("quiet", False) if ctx.obj else False
 
+    if run_id and not cycle_id:
+        print_error("--run requires --cycle")
+        raise typer.Exit(code=exit_codes.GENERAL_ERROR)
+
     try:
         client = _get_client(ctx)
-        if cycle_id:
+        if cycle_id and run_id:
+            data = client.get(
+                f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/artifacts"
+            )
+        elif cycle_id:
             data = client.get(
                 f"/api/v1/projects/{project_id}/cycles/{cycle_id}/artifacts"
             )
@@ -170,10 +180,11 @@ def list_artifacts_alias(
     ctx: typer.Context,
     project_id: str = typer.Option(..., "--project"),
     cycle_id: Optional[str] = typer.Option(None, "--cycle"),
+    run_id: Optional[str] = typer.Option(None, "--run"),
     artifact_type: Optional[str] = typer.Option(None, "--type"),
 ):
     """Alias for list."""
-    list_artifacts(ctx, project_id, cycle_id, artifact_type)
+    list_artifacts(ctx, project_id, cycle_id, run_id, artifact_type)
 
 
 # =============================================================================

@@ -129,7 +129,7 @@ class TestAssembleNoBuildArtifacts:
             artifact_metas=[
                 {
                     "artifact_id": "art_doc",
-                    "artifact_type": "documentation",
+                    "artifact_type": "document",
                     "filename": "plan.md",
                     "size_bytes": 100,
                 },
@@ -192,7 +192,7 @@ class TestAssembleFiltersCorrectly:
                 "artifact_refs": ["art_plan", "art_code", "art_cfg"],
             },
             artifact_metas=[
-                {"artifact_id": "art_plan", "artifact_type": "documentation", "filename": "plan.md", "size_bytes": 50},
+                {"artifact_id": "art_plan", "artifact_type": "document", "filename": "plan.md", "size_bytes": 50},
                 {"artifact_id": "art_code", "artifact_type": "source", "filename": "main.py", "size_bytes": 10},
                 {"artifact_id": "art_cfg", "artifact_type": "config", "filename": "config.yaml", "size_bytes": 20},
             ],

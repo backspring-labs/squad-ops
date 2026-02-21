@@ -361,7 +361,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
     _BUILD_ARTIFACT_FILTER: dict[str, dict[str, list[str]]] = {
         "development.build": {
             "by_producing_task": ["strategy.analyze_prd", "development.implement"],
-            "by_type_fallback": ["document", "documentation"],
+            "by_type_fallback": ["document"],
         },
         "qa.build_validate": {
             "by_producing_task": ["qa.validate"],
@@ -1342,7 +1342,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         ref = ArtifactRef(
             artifact_id=f"art_{uuid4().hex[:12]}",
             project_id=cycle.project_id if cycle else "unknown",
-            artifact_type="documentation",
+            artifact_type="document",
             filename="run_report.md",
             content_hash=sha256(content_bytes).hexdigest(),
             size_bytes=len(content_bytes),

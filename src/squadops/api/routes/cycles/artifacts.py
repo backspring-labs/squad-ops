@@ -125,6 +125,20 @@ async def list_cycle_artifacts(project_id: str, cycle_id: str):
         raise handle_cycle_error(e) from e
 
 
+@router.get("/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/artifacts")
+async def list_run_artifacts(project_id: str, cycle_id: str, run_id: str):
+    from squadops.api.runtime.deps import get_artifact_vault
+
+    try:
+        vault = get_artifact_vault()
+        refs = await vault.list_artifacts(
+            project_id=project_id, cycle_id=cycle_id, run_id=run_id
+        )
+        return [artifact_to_response(r) for r in refs]
+    except CycleError as e:
+        raise handle_cycle_error(e) from e
+
+
 @router.post("/projects/{project_id}/baseline/{artifact_type}")
 async def promote_baseline(
     project_id: str, artifact_type: str, body: BaselinePromoteRequest

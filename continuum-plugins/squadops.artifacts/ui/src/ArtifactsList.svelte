@@ -71,7 +71,7 @@
       <option value="source">Source</option>
       <option value="test">Test</option>
       <option value="config">Config</option>
-      <option value="documentation">Documentation</option>
+      <option value="document">Document</option>
     </select>
     <select bind:value={filterProject}>
       <option value="">All projects</option>

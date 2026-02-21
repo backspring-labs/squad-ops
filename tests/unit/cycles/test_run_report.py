@@ -127,7 +127,7 @@ class TestReportContainsMetadata:
         content = content_bytes.decode()
 
         assert ref.filename == "run_report.md"
-        assert ref.artifact_type == "documentation"
+        assert ref.artifact_type == "document"
         assert "cyc_001" in content
         assert "run_001" in content
         assert "COMPLETED" in content
