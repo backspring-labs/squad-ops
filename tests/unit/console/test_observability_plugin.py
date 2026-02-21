@@ -40,26 +40,26 @@ class TestObservabilityPluginRegistration:
         register(mock_ctx)
         assert mock_ctx.register_contribution.call_count == 3  # 3 panels
 
-    def test_panel_flow_metrics(self, mock_ctx):
+    def test_panel_artifacts(self, mock_ctx):
         register(mock_ctx)
         panels = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"]
-        fm = [p for p in panels if p[0][1]["component"] == "squadops-obs-flow-metrics"]
+        fm = [p for p in panels if p[0][1]["component"] == "squadops-obs-artifacts"]
         assert len(fm) == 1
         assert fm[0][0][1]["slot"] == "ui.slot.main"
         assert fm[0][0][1]["priority"] == 200
 
-    def test_panel_llm_traces(self, mock_ctx):
+    def test_panel_gate_decisions(self, mock_ctx):
         register(mock_ctx)
         panels = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"]
-        lt = [p for p in panels if p[0][1]["component"] == "squadops-obs-llm-traces"]
+        lt = [p for p in panels if p[0][1]["component"] == "squadops-obs-gate-decisions"]
         assert len(lt) == 1
         assert lt[0][0][1]["slot"] == "ui.slot.main"
         assert lt[0][0][1]["priority"] == 100
 
-    def test_panel_cost_summary_in_right_rail(self, mock_ctx):
+    def test_panel_cycle_stats_in_right_rail(self, mock_ctx):
         register(mock_ctx)
         panels = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"]
-        cs = [p for p in panels if p[0][1]["component"] == "squadops-obs-cost-summary"]
+        cs = [p for p in panels if p[0][1]["component"] == "squadops-obs-cycle-stats"]
         assert len(cs) == 1
         assert cs[0][0][1]["slot"] == "ui.slot.right_rail"
         assert cs[0][0][1]["priority"] == 300

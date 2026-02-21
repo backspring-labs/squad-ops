@@ -47,7 +47,7 @@ class TestCyclesPluginRegistration:
         assert len(nav_calls) == 1
         data = nav_calls[0][0][1]
         assert data["label"] == "Cycles"
-        assert data["icon"] == "zap"
+        assert data["icon"] == "clock"
         assert data["priority"] == 800
 
     def test_panel_cycles_list(self, mock_ctx):
@@ -100,14 +100,14 @@ class TestCyclesPluginRegistration:
         assert len(reject) == 1
         assert reject[0][0][1]["danger_level"] == "confirm"
 
-    def test_all_panels_in_signal_perspective(self, mock_ctx):
+    def test_all_panels_in_cycles_perspective(self, mock_ctx):
         register(mock_ctx)
         panel_calls = [
             c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"
         ]
         for call in panel_calls:
             data = call[0][1]
-            assert data["perspective"] == "signal", (
+            assert data["perspective"] == "cycles", (
                 f"Panel {data['component']} has perspective={data['perspective']}, "
-                f"expected 'signal'"
+                f"expected 'cycles'"
             )

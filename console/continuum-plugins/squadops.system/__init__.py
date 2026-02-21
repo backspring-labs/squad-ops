@@ -22,14 +22,14 @@ def register(ctx):
         "slot": "ui.slot.main",
         "perspective": "systems",
         "component": "squadops-system-plugins",
-        "priority": 600,
+        "priority": 400,
     })
 
     ctx.register_contribution("panel", {
         "slot": "ui.slot.main",
         "perspective": "systems",
         "component": "squadops-system-infra",
-        "priority": 400,
+        "priority": 600,
     })
 
     ctx.register_contribution("command", {

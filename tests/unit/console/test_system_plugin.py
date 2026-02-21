@@ -83,10 +83,10 @@ class TestSystemPluginRegistration:
             c for c in panel_calls if c[0][1]["component"] == "squadops-system-plugins"
         ]
         assert len(plugin_panels) == 1
-        assert plugin_panels[0][0][1]["priority"] == 600
+        assert plugin_panels[0][0][1]["priority"] == 400
 
     def test_system_infra_panel(self, mock_ctx):
-        """register() adds a system-infra panel with priority 400."""
+        """register() adds a system-infra panel with priority 600."""
         register(mock_ctx)
         panel_calls = [
             c for c in mock_ctx.register_contribution.call_args_list
@@ -96,7 +96,7 @@ class TestSystemPluginRegistration:
             c for c in panel_calls if c[0][1]["component"] == "squadops-system-infra"
         ]
         assert len(infra_panels) == 1
-        assert infra_panels[0][0][1]["priority"] == 400
+        assert infra_panels[0][0][1]["priority"] == 600
 
     def test_command_contribution(self, mock_ctx):
         """register() adds a command contribution for health_check."""

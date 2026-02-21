@@ -48,15 +48,15 @@ class TestAgentsPluginRegistration:
         assert status_panels[0][0][1]["slot"] == "ui.slot.right_rail"
         assert status_panels[0][0][1]["priority"] == 800
 
-    def test_panel_agents_tasks_in_main(self, mock_ctx):
+    def test_panel_agents_run_activity_in_main(self, mock_ctx):
         register(mock_ctx)
         panels = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"]
-        tasks_panels = [
-            p for p in panels if p[0][1]["component"] == "squadops-agents-tasks"
+        run_activity_panels = [
+            p for p in panels if p[0][1]["component"] == "squadops-agents-run-activity"
         ]
-        assert len(tasks_panels) == 1
-        assert tasks_panels[0][0][1]["slot"] == "ui.slot.main"
-        assert tasks_panels[0][0][1]["priority"] == 300
+        assert len(run_activity_panels) == 1
+        assert run_activity_panels[0][0][1]["slot"] == "ui.slot.main"
+        assert run_activity_panels[0][0][1]["priority"] == 300
 
     def test_no_nav_contributions(self, mock_ctx):
         register(mock_ctx)

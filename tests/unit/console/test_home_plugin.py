@@ -55,7 +55,7 @@ class TestHomePluginRegistration:
         data = nav_calls[0][0][1]
         assert data["slot"] == "ui.slot.left_nav"
         assert data["label"] == "Home"
-        assert data["icon"] == "home"
+        assert data["icon"] == "activity"
         assert data["priority"] == 999
 
     def test_panel_contribution(self, mock_ctx):
