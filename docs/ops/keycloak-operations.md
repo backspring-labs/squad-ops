@@ -18,7 +18,7 @@ Realm exports: `infra/auth/squadops-realm{,-staging,-lab,-prod}.json`
 
 ```bash
 # Start core services + Keycloak
-docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d postgres squadops-keycloak
+docker compose up -d postgres squadops-keycloak
 
 # Verify realm imported
 curl -s http://localhost:8180/realms/squadops-dev | jq .realm
@@ -31,7 +31,7 @@ curl -s http://localhost:8180/realms/squadops-dev | jq .realm
 
 ```bash
 # Export from running instance
-docker compose -f docker-compose.yml -f docker-compose.keycloak.yml exec squadops-keycloak \
+docker compose exec squadops-keycloak \
   /opt/keycloak/bin/kc.sh export --realm squadops-dev --file /tmp/realm-export.json
 
 # Copy to host
@@ -42,7 +42,7 @@ docker cp squadops-keycloak:/tmp/realm-export.json ./backups/realm-$(date +%Y%m%
 
 ```bash
 # Import to fresh instance (use --override flag to replace existing)
-docker compose -f docker-compose.yml -f docker-compose.keycloak.yml exec squadops-keycloak \
+docker compose exec squadops-keycloak \
   /opt/keycloak/bin/kc.sh import --file /opt/keycloak/data/import/squadops-realm.json
 ```
 
@@ -66,7 +66,7 @@ psql -h <db-host> -U keycloak -d keycloak < keycloak-db-20250101.sql
 2. **Test in staging first** — deploy new version to staging, soak for 48h minimum
 3. **Verify realm export/import roundtrip** — export from old version, import to new
 4. **Check breaking changes** in authentication flows and token formats
-5. **Update image tag** in `docker-compose.keycloak.yml` and deployment configs
+5. **Update image tag** in `docker-compose.yml` (squadops-keycloak service) and deployment configs
 6. **Deploy to prod** after staging soak period passes
 
 ### Version Compatibility
@@ -186,7 +186,7 @@ infra/auth/keycloak-theme/squadops/login/
 
 - `theme.properties` sets `parent=keycloak` so all base templates and CSS load first.
 - `squadops-login.css` is appended after the base styles and overrides selectors with `!important`.
-- The theme directory is mounted read-only into the Keycloak container via `docker-compose.keycloak.yml`.
+- The theme directory is mounted read-only into the Keycloak container via `docker-compose.yml`.
 - Each realm export sets `"loginTheme": "squadops"` to activate the theme.
 
 ### Upgrading Keycloak

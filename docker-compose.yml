@@ -94,6 +94,51 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+  # SIP-0062: Keycloak OIDC Identity Provider
+  # Uses the shared squadops-postgres instance (keycloak database).
+  # LOCAL DEV / CI ONLY — hardcoded secrets below are NOT production-grade.
+  squadops-keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: squadops-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123           # local dev only
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./infra/auth/squadops-realm.json:/opt/keycloak/data/import/squadops-realm.json
+      - ./infra/auth/keycloak-theme/squadops:/opt/keycloak/themes/squadops:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - squadnet
+
+  # SIP-0061: LangFuse LLM Observability
+  # Uses the shared squadops-postgres instance (langfuse database).
+  # LOCAL DEV / CI ONLY — hardcoded secrets below are NOT production-grade.
+  langfuse:
+    container_name: squadops-langfuse
+    image: langfuse/langfuse:2
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@postgres:5432/langfuse
+      NEXTAUTH_SECRET: mysecret            # local dev only
+      NEXTAUTH_URL: http://localhost:3001
+      SALT: mysalt                         # local dev only
+    ports:
+      - "3001:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - squadnet
+
   runtime-api:  # SIP-0048: renamed from task-api
     build:
       context: .

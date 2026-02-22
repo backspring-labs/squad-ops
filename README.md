@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.9.7) with hexagonal architecture, distributed cycle execution pipeline, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, and 1,422+ passing tests.
+**Current Status**: Production-ready framework (v0.9.10) with hexagonal architecture, distributed cycle execution pipeline, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, and 1,830+ passing tests.
 
 ---
 
@@ -50,22 +50,23 @@
 ### Services
 - **Runtime API** – FastAPI service with cycle execution, auth middleware, and Postgres migrations (SIP-0048)
 - **CLI** – Typer-based CLI for cycle management (`squadops cycles create/show/list/gate`) (SIP-0065)
-- **Health Check** – FastAPI monitoring service
 - **PostgreSQL** – Cycle registry, task logging, and state persistence
 - **Redis** – Caching and performance optimization
 - **RabbitMQ** – Inter-agent message queue
 - **Keycloak** – OIDC identity provider with realm auto-provisioning
 - **LangFuse** – LLM observability with cross-process trace linking
 - **Prefect** – Workflow orchestration and DAG visibility
-- **Ollama** – Local LLM inference
-- **Docker Compose** – 14-service development environment
+- **Ollama** – Local LLM inference (runs natively)
+- **Console** – Control-plane UI with Continuum plugin shell (SIP-0069)
+- **Caddy** – Reverse proxy for console and API
+- **Docker Compose** – 17-service development environment
 
 ---
 
 ## Documentation
 Comprehensive documentation and protocols are available in `/docs/`:
 
-- **SIPs (SquadOps Improvement Proposals)** – 63 protocol specifications in `sips/` directory (40 implemented, 1 accepted, 7 proposals, 15 deprecated)
+- **SIPs (SquadOps Improvement Proposals)** – 68 protocol specifications in `sips/` directory (44 implemented, 9 proposals, 15 deprecated)
 - **IDEA Documents** – 25+ strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance
 - **Architecture Documents** – Design guides for agent implementations and handoff templates
 - **Book Chapters** – 9 chapters covering methodology, implementation, and operations
@@ -113,14 +114,14 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── accepted/         # Numbered, approved
 ├── implemented/      # Matched to code
 └── registry.yaml     # Canonical index
-/tests/               # Test suite (1,422+ tests)
+/tests/               # Test suite (1,830+ tests)
 ├── unit/             # Unit tests (mocked deps)
 ├── integration/      # Integration tests (real services)
 └── conftest.py       # Global fixtures
 /docs/                # Documentation and protocols
 /scripts/             # Development and maintainer scripts
 /infra/               # Database migrations and DDL
-docker-compose.yml    # 14-service development environment
+docker-compose.yml    # 17-service development environment
 ```
 
 ---
@@ -130,7 +131,7 @@ docker-compose.yml    # 14-service development environment
 - **hello_squad** – Minimal CLI greeting script (simplest build-capable example)
 - **group_run** – Multi-module running activity logger (multi-file build example)
 
-Each ships with a PRD (`examples/<project>/prd.md`) and PCR (Project Cycle Request).
+Each ships with a PRD (`examples/<project>/prd.md`) and a cycle request profile.
 
 ```bash
 # Run a full plan-then-build cycle
@@ -168,7 +169,7 @@ squadops runs assemble play_game <cycle-id> <run-id> --out ./output
 
 3. **Login** (Keycloak auth required):
    ```bash
-   squadops auth login
+   squadops login
    ```
 
 4. **Run a cycle**:
@@ -177,29 +178,28 @@ squadops runs assemble play_game <cycle-id> <run-id> --out ./output
    squadops cycles show <cycle-id>
    ```
 
-5. **Monitor**: Check LangFuse UI at `http://localhost:3001` and Prefect UI at `http://localhost:4201`
+5. **Monitor**: Check LangFuse UI at `http://localhost:3001` and Prefect UI at `http://localhost:4200`
 
 ---
 
 ## Development Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline from v0.1.x through v0.9.8.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v0.9.8 — Console Control-Plane UI (SIP-0069)
-**Next**: SIP-0070 — Pulse Checks and Verification Framework
+**Current**: v0.9.10 — Codebase audit cleanup, artifact updates
 
 ---
 
 ## Current Status
-**Framework Version**: 0.9.8
-**Development Status**: Production-ready multi-agent orchestration with console UI, distributed cycle execution, agent build capabilities, durable persistence, authentication, CLI tooling, and full observability stack.
+**Framework Version**: 0.9.10
+**Development Status**: Production-ready multi-agent orchestration with console UI, distributed cycle execution, agent build capabilities, durable persistence, authentication, CLI tooling, and full observability stack. Recent 5-phase codebase audit removed legacy endpoints, dead tables, stale config, and orphaned wiring.
 
 ### Project Statistics
 - **~38,000 lines** of Python source code
 - **~31,000 lines** of test code
 - **~62,000 lines** of documentation
-- **1,447+ tests** passing in regression suite
-- **64 SIPs** (42 implemented, 1 accepted, 6 proposals, 15 deprecated)
+- **1,830+ tests** passing in regression suite
+- **68 SIPs** (44 implemented, 9 proposals, 15 deprecated)
 
 ### Functional Components
 - 5 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics)
@@ -212,13 +212,14 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline from v0.1.x
 - Capability contracts with declarative acceptance checks (SIP-0058)
 - Task planning with automatic task flow generation (plan + build modes)
 - Agent build capabilities: source code, tests, and config generation (SIP-0068)
+- Pulse verification at pipeline boundaries with bounded repair loops (SIP-0070)
 - Assembly CLI command for extracting build artifacts into runnable projects
 - LLM router abstraction with Ollama adapter
 - LanceDB semantic memory (SIP-042)
 - OpenTelemetry with trace correlation
 - Console Control-Plane UI with Continuum plugin shell and auth BFF (SIP-0069)
 - Docker build system with deterministic multi-stage builds
-- 15-service Docker Compose development environment
+- 17-service Docker Compose development environment
 
 ---
 

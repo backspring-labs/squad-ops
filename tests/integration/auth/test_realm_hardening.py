@@ -3,7 +3,7 @@
 These tests require a running Keycloak instance with the local realm imported.
 
 Start Keycloak:
-    docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d squadops-keycloak
+    docker compose up -d squadops-keycloak
 
 Run:
     pytest tests/integration/auth/test_realm_hardening.py -v -m auth

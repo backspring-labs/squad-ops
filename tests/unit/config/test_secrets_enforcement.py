@@ -29,6 +29,27 @@ SECRET_REF_PATTERN = re.compile(r"secret://([A-Za-z][A-Za-z0-9_]*)")
 URL_CREDENTIAL_PATTERN = re.compile(r"://([^:]*):([^@]+)@")
 URL_CREDENTIAL_NO_USER_PATTERN = re.compile(r"://:([^@]+)@")
 
+# Third-party services with intentional hardcoded dev-only secrets (out of scope per SIP-0052)
+THIRD_PARTY_SERVICES = {
+    "rabbitmq", "postgres", "redis", "grafana", "prometheus",
+    "otel-collector", "prefect-server", "prefect-ui",
+    "langfuse", "langfuse-db", "squadops-keycloak",
+}
+
+
+def _detect_compose_service(line: str) -> str | None:
+    """Return service name if line is a compose service header, else None."""
+    stripped = line.strip()
+    if stripped and line.startswith("  ") and not line.startswith("   ") and ":" in stripped:
+        parts = stripped.split(":", 1)
+        if len(parts) == 2 and parts[1].strip() == "":
+            name = parts[0].strip()
+            if name and not name.startswith("#") and name not in {
+                "services", "volumes", "secrets", "networks",
+            }:
+                return name
+    return None
+
 
 def get_repo_root() -> Path:
     """Get repository root directory."""
@@ -185,57 +206,43 @@ def test_no_plaintext_secrets_in_docker_compose():
     compose_files = list(repo_root.glob("docker-compose*.yml"))
 
     # Third-party dev-only compose files with intentional hardcoded secrets (SIP-0061)
-    third_party_compose_files = {"docker-compose.langfuse.yml"}
+    third_party_compose_files = set()  # all services now in main docker-compose.yml
 
     for file_path in compose_files:
         if file_path.name in third_party_compose_files:
             continue
         try:
             content = file_path.read_text(encoding="utf-8")
-            
-            # Check for URL patterns with embedded credentials
-            url_credentials = extract_url_credentials(content)
-            for url, password in url_credentials:
-                if not validate_password_component(password):
-                    violations.append(
-                        f"{file_path.relative_to(repo_root)}: Plaintext password in URL: {url}"
-                    )
-            
-            # Check for plaintext passwords in environment sections
-            # NOTE: Third-party service configurations (rabbitmq, postgres, redis, grafana, etc.)
-            # are out of scope per SIP-0052. Only check SquadOps services.
-            # Simple pattern matching - in practice, parse YAML properly
             lines = content.split("\n")
             in_env_section = False
             current_service = None
-            third_party_services = {"rabbitmq", "postgres", "redis", "grafana", "prometheus",
-                                     "otel-collector", "prefect-server", "prefect-ui",
-                                     "langfuse", "langfuse-db"}
-            
+
             for line_num, line in enumerate(lines, 1):
-                # Detect service name
-                # In docker-compose.yml, services are indented under "services:" key
-                # A service name is a line that starts with 2 spaces, has a colon, and is not a key like "image:", "environment:", etc.
-                stripped = line.strip()
-                if stripped and line.startswith("  ") and not line.startswith("   ") and ":" in stripped:
-                    # Check if this looks like a service name (not a nested key)
-                    parts = stripped.split(":", 1)
-                    if len(parts) == 2 and parts[1].strip() == "":
-                        # This is likely a service name (key with empty value)
-                        service_name = parts[0].strip()
-                        if service_name and not service_name.startswith("#") and service_name not in ["services", "volumes", "secrets", "networks"]:
-                            current_service = service_name
-                            in_env_section = False
-                
+                # Track current service
+                svc = _detect_compose_service(line)
+                if svc is not None:
+                    current_service = svc
+                    in_env_section = False
+
                 if "environment:" in line.lower() or "env:" in line.lower():
                     in_env_section = True
                 elif line.strip() and not line.startswith(" ") and not line.startswith("\t"):
                     in_env_section = False
-                
+
                 # Skip third-party service configurations (out of scope per SIP-0052)
-                if current_service in third_party_services:
+                if current_service in THIRD_PARTY_SERVICES:
                     continue
-                
+
+                # Check for URL patterns with embedded credentials
+                if not line.strip().startswith("#"):
+                    line_credentials = extract_url_credentials(line)
+                    for url, password in line_credentials:
+                        if not validate_password_component(password):
+                            violations.append(
+                                f"{file_path.relative_to(repo_root)}:{line_num}: "
+                                f"Plaintext password in URL: {url}"
+                            )
+
                 if in_env_section:
                     for key in ENFORCED_SECRET_KEYS:
                         if f"{key.upper()}:" in line or f"{key}:" in line:
@@ -351,16 +358,19 @@ def test_no_url_credentials():
                     f"{file_path.relative_to(repo_root)}: Error: {e}"
                 )
     
-    # Scan docker-compose*.yml
-    # Third-party dev-only compose files with intentional hardcoded secrets (SIP-0061)
-    third_party_compose_files = {"docker-compose.langfuse.yml"}
+    # Scan docker-compose*.yml (with service-awareness to skip third-party services)
     for file_path in repo_root.glob("docker-compose*.yml"):
-        if file_path.name in third_party_compose_files:
-            continue
         try:
             content = file_path.read_text(encoding="utf-8")
             lines = content.split("\n")
+            current_service = None
             for line_num, line in enumerate(lines, 1):
+                svc = _detect_compose_service(line)
+                if svc is not None:
+                    current_service = svc
+                # Skip third-party services (out of scope per SIP-0052)
+                if current_service in THIRD_PARTY_SERVICES:
+                    continue
                 # Skip comment lines
                 if line.strip().startswith("#"):
                     continue

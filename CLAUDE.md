@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 0.9.9
+**Framework Version**: 0.9.10
 **Python Requirement**: 3.11+
 
 ## Commands
 
 ### Testing
 ```bash
-# Run new architecture tests (recommended, 1422+ tests always pass)
+# Run new architecture tests (recommended, 1830+ tests always pass)
 ./scripts/dev/run_new_arch_tests.sh -v
 
 # Run tests affected by your changes
@@ -65,7 +65,7 @@ docker-compose up -d postgres redis rabbitmq  # Start core services only
 
 ### CLI (Cycle Execution)
 ```bash
-squadops auth login                        # Authenticate via Keycloak
+squadops login                             # Authenticate via Keycloak
 squadops cycles create <project> --squad-profile full-squad --profile selftest
 squadops cycles show <cycle-id>            # Show cycle status + runs
 squadops cycles list <project-id>          # List cycles for project
@@ -191,14 +191,15 @@ python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature
 | redis | 6379 | Cache |
 | runtime-api | 8001 | Cycle execution API (SIP-0048/0064) |
 | prefect-server | 4200 | Workflow orchestration |
-| keycloak | 8180 | OIDC identity provider (SIP-0062) |
-| langfuse-server | 3001 | LLM observability UI (SIP-0061) |
-| langfuse-db | 5433 | LangFuse Postgres |
+| squadops-keycloak | 8180 | OIDC identity provider (SIP-0062) |
+| langfuse | 3001 | LLM observability UI (SIP-0061) |
 | grafana | 3000 | Metrics dashboards |
 | prometheus | 9090 | Metrics collection |
 | otel-collector | 4317, 4318 | OpenTelemetry collector |
-| ollama | 11434 | Local LLM inference |
+| squadops-console | — | Control-plane UI (SIP-0069) |
+| caddy | 4040 | Reverse proxy for console and API |
 | max/neo/nat/eve/data | — | Agent containers |
+
 
 ## Key Files
 
@@ -206,7 +207,7 @@ python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature
 - `tests/conftest.py` - Global fixtures, session event loop, auto-markers by file location
 - `tests/unit/conftest.py` - Unit-specific mock fixtures (mock_database, mock_ports, sample_task_envelope)
 - `.env.example` - Environment template (`SQUADOPS__*` prefix, double underscores for nesting)
-- `docker-compose.yml` - 14-service development environment
+- `docker-compose.yml` - 17-service development environment
 - `infra/migrations/` - Postgres DDL migrations (applied at runtime-api startup)
 
 ## Python Path Setup
@@ -235,4 +236,4 @@ pip install -e .  # Required: install in editable mode
 | Tests skip with "agents not running" | Set `SKIP_AGENT_CHECK=1` |
 | Import errors in pytest | Run `pip install -e .` |
 | JSONB round-trip errors | asyncpg returns JSONB as strings; use `_parse_jsonb()` helper |
-| Auth 401 errors | Run `squadops auth login` first |
+| Auth 401 errors | Run `squadops login` first |
