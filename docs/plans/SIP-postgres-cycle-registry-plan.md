@@ -2,9 +2,9 @@
 
 ## Context
 
-The SIP (proposed, `sips/proposals/SIP-Postgres-Cycle-Registry.md`) replaces the in-memory `MemoryCycleRegistry` with a Postgres-backed adapter implementing `CycleRegistryPort`. All cycle, run, and gate-decision state becomes durable across runtime-api restarts. This is a prerequisite for the control plane UI (v1.0).
+The SIP (proposed, `sips/proposed/SIP-Postgres-Cycle-Registry.md`) replaces the in-memory `MemoryCycleRegistry` with a Postgres-backed adapter implementing `CycleRegistryPort`. All cycle, run, and gate-decision state becomes durable across runtime-api restarts. This is a prerequisite for the control plane UI (v1.0).
 
-**SIP spec:** `sips/proposals/SIP-Postgres-Cycle-Registry.md`
+**SIP spec:** `sips/proposed/SIP-Postgres-Cycle-Registry.md`
 **Depends on:** SIP-0064 (Cycle API models/ports), SIP-0055 (DB deployment profiles), SIP-0066 (Pipeline wiring)
 
 ---

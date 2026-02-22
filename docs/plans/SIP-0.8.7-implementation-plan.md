@@ -1573,12 +1573,12 @@ pytest tests/ -v --cov=src/squadops --cov=adapters
 
 ## SIP Lifecycle
 
-1. **Now**: SIP exists in `sips/proposals/` (unnumbered draft)
+1. **Now**: SIP exists in `sips/proposed/` (unnumbered draft)
 2. **After Phase 1 complete**:
    ```bash
    export SQUADOPS_MAINTAINER=1
    python scripts/maintainer/update_sip_status.py \
-       sips/proposals/SIP-Infrastructure-Ports-Migration.md accepted
+       sips/proposed/SIP-Infrastructure-Ports-Migration.md accepted
    ```
    → SIP gets assigned number (e.g., SIP-0059) during promotion
 3. **After Phase 3 complete**:

@@ -2,7 +2,7 @@
 
 ## Context
 
-The cycle execution pipeline (SIP-0066) runs 5 handlers that each produce a single markdown planning artifact. Neo writes an `implementation_plan.md`, not actual source code. Eve writes a `validation_plan.md`, not actual tests. The SIP proposal at `sips/proposals/SIP-Enhanced-Agent-Build-Capabilities.md` defines two new task types (`development.build`, `qa.build_validate`) that produce **executable artifacts** — source code, test files, and configuration. This plan implements that SIP.
+The cycle execution pipeline (SIP-0066) runs 5 handlers that each produce a single markdown planning artifact. Neo writes an `implementation_plan.md`, not actual source code. Eve writes a `validation_plan.md`, not actual tests. The SIP proposal at `sips/proposed/SIP-Enhanced-Agent-Build-Capabilities.md` defines two new task types (`development.build`, `qa.build_validate`) that produce **executable artifacts** — source code, test files, and configuration. This plan implements that SIP.
 
 The design is PCR-driven with no new schema: existing `Cycle`, `Run`, `Gate`, `TaskFlowPolicy` models are unchanged. A `build_tasks` key in `applied_defaults` controls whether build tasks are appended to the task plan.
 

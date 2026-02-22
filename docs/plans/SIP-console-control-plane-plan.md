@@ -1,6 +1,6 @@
 # SquadOps Console Control-Plane UI — Implementation Plan
 
-> **SIP**: `sips/proposals/SIP-SquadOps-Console-Control-Plane-UI.md`
+> **SIP**: `sips/proposed/SIP-SquadOps-Console-Control-Plane-UI.md`
 > **Target**: v0.9.8
 > **Prerequisite**: This plan assumes the v0.9.8 API surface from SIP-0064, SIP-0065, and SIP-0062 is already present and deployed.
 

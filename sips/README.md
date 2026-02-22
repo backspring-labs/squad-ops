@@ -9,7 +9,7 @@ SIPs are organized by lifecycle status in subdirectories:
 ```
 sips/
   registry.yaml          # Canonical registry of all numbered SIPs
-  proposals/             # Unnumbered SIPs (drafts, proposals)
+  proposed/             # Unnumbered SIPs (drafts, proposals)
   accepted/              # Accepted SIPs (numbered, approved)
   implemented/           # Implemented SIPs (framework matches specification)
   deprecated/           # Deprecated SIPs (superseded or retired)
@@ -27,7 +27,7 @@ proposed → accepted → implemented → deprecated
 
 ### Status Definitions
 
-1. **proposed** - Unnumbered draft SIP, lives in `sips/proposals/`
+1. **proposed** - Unnumbered draft SIP, lives in `sips/proposed/`
    - Created by contributors
    - Awaiting maintainer review and approval
    - Has `sip_uid` but `sip_number: null`
@@ -71,13 +71,13 @@ export SQUADOPS_MAINTAINER=1
 #### Transition: proposed → accepted
 
 ```bash
-python3 scripts/maintainer/update_sip_status.py sips/proposals/SIP-My-Idea.md accepted
+python3 scripts/maintainer/update_sip_status.py sips/proposed/SIP-My-Idea.md accepted
 ```
 
 **What the script does automatically:**
 - Assigns the next available SIP number
 - Updates SIP file metadata (status, sip_number, updated_at)
-- Moves file from `sips/proposals/` to `sips/accepted/`
+- Moves file from `sips/proposed/` to `sips/accepted/`
 - Renames file to normalized format: `SIP-00NN-Word1-Word2-Word3-Word4.md` (max 4 words from title)
 - Adds entry to `sips/registry.yaml`
 - Cleans up any duplicate files with the same `sip_uid` or `sip_number`
@@ -169,7 +169,7 @@ python3 scripts/maintainer/update_sip_status.py <sip_file> <new_status>
 ```bash
 # Transition proposed → accepted
 export SQUADOPS_MAINTAINER=1
-python3 scripts/maintainer/update_sip_status.py sips/proposals/SIP-My-Idea.md accepted
+python3 scripts/maintainer/update_sip_status.py sips/proposed/SIP-My-Idea.md accepted
 
 # Transition accepted → implemented
 export SQUADOPS_MAINTAINER=1
@@ -237,9 +237,9 @@ The registry is updated automatically by `update_sip_status.py`:
    python3 scripts/dev/generate_sip_uid.py
    ```
 
-2. Create SIP file in `sips/proposals/`:
+2. Create SIP file in `sips/proposed/`:
    ```bash
-   touch sips/proposals/SIP-My-Idea.md
+   touch sips/proposed/SIP-My-Idea.md
    ```
 
 3. Add YAML frontmatter:
@@ -363,7 +363,7 @@ Each SIP must include the following metadata in YAML frontmatter:
 ## Rules
 
 ### Contributors May:
-- Create SIP drafts in `sips/proposals/`
+- Create SIP drafts in `sips/proposed/`
 - Generate `sip_uid` for new SIPs using `scripts/dev/generate_sip_uid.py`
 - Set `sip_number: null` for proposals
 - Open PRs for review
@@ -398,7 +398,7 @@ python3 scripts/maintainer/update_sip_status.py <sip_file> <new_status>
 
 | Transition | Command Example |
 |------------|----------------|
-| `proposed → accepted` | `python3 scripts/maintainer/update_sip_status.py sips/proposals/SIP-File.md accepted` |
+| `proposed → accepted` | `python3 scripts/maintainer/update_sip_status.py sips/proposed/SIP-File.md accepted` |
 | `accepted → implemented` | `python3 scripts/maintainer/update_sip_status.py sips/accepted/SIP-0052-Title.md implemented` |
 | `accepted → deprecated` | `python3 scripts/maintainer/update_sip_status.py sips/accepted/SIP-XXXX-Title.md deprecated` |
 | `implemented → deprecated` | `python3 scripts/maintainer/update_sip_status.py sips/implemented/SIP-XXXX-Title.md deprecated` |

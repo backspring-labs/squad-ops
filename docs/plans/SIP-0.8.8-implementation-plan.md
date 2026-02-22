@@ -1346,7 +1346,7 @@ rm -rf _v0_legacy/
 
 ```bash
 export SQUADOPS_MAINTAINER=1
-python scripts/maintainer/update_sip_status.py sips/proposals/SIP-Agent-Migration-0-8-8.md implemented
+python scripts/maintainer/update_sip_status.py sips/proposed/SIP-Agent-Migration-0-8-8.md implemented
 python scripts/maintainer/version_cli.py bump 0.8.8 "SIP-XXXX: Agent Migration & Legacy Retirement"
 ```
 
@@ -1668,7 +1668,7 @@ pytest tests/ -v --cov=src/squadops --cov=adapters
 
 ## SIP Lifecycle
 
-1. **Now**: SIP exists in `sips/proposals/SIP-Agent-Migration-0-8-8.md`
+1. **Now**: SIP exists in `sips/proposed/SIP-Agent-Migration-0-8-8.md`
 2. **After Phase 3**: Promote to accepted
 3. **After Phase 7**: Promote to implemented, bump version to 0.8.8
 

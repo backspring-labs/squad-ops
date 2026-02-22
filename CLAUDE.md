@@ -136,7 +136,7 @@ squadops artifacts list <run-id>           # List artifacts for run
 ## SIP System (SquadOps Improvement Proposals)
 
 SIPs govern architectural decisions. Located in `sips/` with lifecycle:
-- `sips/proposals/` - Unnumbered drafts
+- `sips/proposed/` - Unnumbered drafts
 - `sips/accepted/` - Numbered, approved
 - `sips/implemented/` - Matched to code
 - `sips/registry.yaml` - Canonical index
@@ -157,7 +157,7 @@ To move a SIP (maintainer only):
 export SQUADOPS_MAINTAINER=1
 
 # Promote a proposal to accepted (assigns a number)
-python scripts/maintainer/update_sip_status.py sips/proposals/SIP-MyIdea.md accepted
+python scripts/maintainer/update_sip_status.py sips/proposed/SIP-MyIdea.md accepted
 
 # Promote an accepted SIP to implemented (after code is merged)
 python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature.md implemented
@@ -173,7 +173,7 @@ python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature
 - Permanent utilities: `scripts/dev/`
 - Maintainer-only: `scripts/maintainer/`
 - Temp migrations: `scripts/dev/migrations/temp_*.py`
-- New SIP drafts go in `sips/proposals/` (unnumbered)
+- New SIP drafts go in `sips/proposed/` (unnumbered)
 - Do not create scripts in the project root
 
 **Tests**:
