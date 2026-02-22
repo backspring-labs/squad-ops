@@ -1,6 +1,7 @@
 {
   "realm": "squadops-lab",
   "displayName": "SquadOps Lab",
+  "loginTheme": "squadops",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,
@@ -101,7 +102,8 @@
         "https://api.lab.squadops.example"
       ],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://console.lab.squadops.example/*"
       },
       "protocolMappers": [
         {

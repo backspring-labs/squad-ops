@@ -1167,10 +1167,14 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         Returns the absolute path to the run_root directory.
         """
+        import tempfile
         from pathlib import Path
 
-        base = Path(os.environ.get("SQUADOPS_BASE_PATH", "."))
-        run_root = base / "data" / "runs" / run_id
+        base_dir = os.environ.get("SQUADOPS_RUN_ROOT")
+        if base_dir:
+            run_root = Path(base_dir) / run_id
+        else:
+            run_root = Path(tempfile.gettempdir()) / "squadops" / "runs" / run_id
         run_root.mkdir(parents=True, exist_ok=True)
 
         # Write PRD to disk if available

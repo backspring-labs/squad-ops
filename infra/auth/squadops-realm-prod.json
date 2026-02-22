@@ -1,6 +1,7 @@
 {
   "realm": "squadops-cloud",
   "displayName": "SquadOps Cloud",
+  "loginTheme": "squadops",
   "enabled": true,
   "sslRequired": "all",
   "registrationAllowed": false,
@@ -101,7 +102,8 @@
         "https://api.squadops.example"
       ],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://console.squadops.example/*"
       },
       "protocolMappers": [
         {

@@ -87,6 +87,10 @@ def _logout_endpoint() -> str:
     return f"{_config['keycloak_url']}/protocol/openid-connect/logout"
 
 
+def _public_end_session_endpoint() -> str:
+    return f"{_config['keycloak_public_url']}/protocol/openid-connect/logout"
+
+
 def _kc_backchannel_headers() -> dict[str, str]:
     """Return Host header matching the public Keycloak URL.
 
@@ -232,9 +236,12 @@ async def callback(code: str, state: str) -> Response:
         _validate_id_token(id_token, expected_nonce=pending["nonce"])
 
     session_id = secrets.token_urlsafe(32)
+    session_data: dict[str, str] = {"refresh_token": tokens["refresh_token"]}
+    if id_token:
+        session_data["id_token"] = id_token
     await _session_store.set(
         session_id,
-        {"refresh_token": tokens["refresh_token"]},
+        session_data,
         _SESSION_TTL_SECONDS,
     )
 
@@ -301,16 +308,22 @@ async def refresh(request: Request, response: Response) -> dict[str, Any]:
 
 
 @router.api_route("/logout", methods=["GET", "POST"])
-async def logout(request: Request, response: Response) -> dict[str, str]:
-    """Revoke refresh token at Keycloak and clear session."""
+async def logout(request: Request) -> Response:
+    """RP-Initiated Logout: revoke tokens, clear session, redirect to Keycloak end_session.
+
+    Ends both the local BFF session and the Keycloak SSO session so the user
+    is presented with the login page on next visit.
+    """
     session_id = request.cookies.get("session_id")
+    id_token_hint = None
 
     if session_id:
         session = await _session_store.get(session_id)
         await _session_store.delete(session_id)
 
         if session:
-            # Best-effort revocation at Keycloak
+            id_token_hint = session.get("id_token")
+            # Best-effort backchannel revocation of the refresh token
             try:
                 assert _http_client is not None
                 await _http_client.post(
@@ -324,5 +337,19 @@ async def logout(request: Request, response: Response) -> dict[str, str]:
             except Exception:
                 pass  # Revocation is best-effort
 
+    # Build Keycloak end_session URL (browser-facing, uses public URL)
+    # Derive post_logout_redirect_uri from the configured redirect_uri
+    # e.g. "http://localhost:4040/auth/callback" → "http://localhost:4040/"
+    base_url = _config["redirect_uri"].split("/auth/callback")[0] + "/"
+    params: dict[str, str] = {
+        "client_id": _config["client_id"],
+        "post_logout_redirect_uri": base_url,
+    }
+    if id_token_hint:
+        params["id_token_hint"] = id_token_hint
+
+    end_session_url = f"{_public_end_session_endpoint()}?{urllib.parse.urlencode(params)}"
+
+    response = RedirectResponse(url=end_session_url, status_code=302)
     response.delete_cookie("session_id", path="/")
-    return {"status": "logged_out"}
+    return response

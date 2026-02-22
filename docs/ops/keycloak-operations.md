@@ -154,6 +154,44 @@ The linter checks staging/prod realm exports for:
 - Event logging enabled
 - Brute force protection enabled
 - MFA authentication flow present
+- Custom login theme set to `squadops`
+
+## Custom Login Theme
+
+The `squadops` login theme applies a dark slate/indigo design that matches the SquadOps console. It uses CSS-only overrides extending the built-in `keycloak` theme — no FreeMarker templates are modified.
+
+### File Layout
+
+```
+infra/auth/keycloak-theme/squadops/login/
+  theme.properties                      # parent=keycloak, imports CSS
+  resources/css/squadops-login.css      # Dark theme overrides
+```
+
+### Design Tokens
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| Page bg | `#0f172a` | Body background |
+| Card bg | `#1e293b` | Login card |
+| Border | `#334155` | Card/input borders |
+| Primary text | `#e2e8f0` | Header, form text |
+| Muted text | `#94a3b8` | Placeholders, hints |
+| Accent | `#6366f1` | Button, links, focus ring |
+| Accent hover | `#4f46e5` | Button hover |
+| Danger | `#ef4444` | Error alerts |
+| Font | `system-ui, sans-serif` | Matches console |
+
+### How It Works
+
+- `theme.properties` sets `parent=keycloak` so all base templates and CSS load first.
+- `squadops-login.css` is appended after the base styles and overrides selectors with `!important`.
+- The theme directory is mounted read-only into the Keycloak container via `docker-compose.keycloak.yml`.
+- Each realm export sets `"loginTheme": "squadops"` to activate the theme.
+
+### Upgrading Keycloak
+
+Since the theme only uses CSS overrides (no template changes), it is safe across Keycloak 24.x minor upgrades. If upgrading to a new major version, verify that the PatternFly CSS class names used in `squadops-login.css` still exist.
 
 ## Troubleshooting
 

@@ -465,6 +465,12 @@ window.__SQUADOPS_CONFIG__ = {{
     consoleClientId: "{CONSOLE_CLIENT_ID}",
 }};
 
+// Wire Continuum shell logout to auth BFF (RP-Initiated Logout)
+window.continuum = window.continuum || {{}};
+window.continuum.onLogout = function() {{
+    window.location = '/auth/logout';
+}};
+
 // Authorized fetch client — plugins MUST use this instead of raw fetch()
 window.squadops = window.squadops || {{}};
 (function() {{

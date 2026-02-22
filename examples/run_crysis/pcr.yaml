@@ -1,0 +1,39 @@
+name: run_crysis
+description: >
+  Cycle request profile for the Build Crysis benchmark project.
+  Builds a browser-playable tactical game (6x6 grid, Nanosuit modes,
+  turn-based combat) with a Python FastAPI backend and React SPA frontend.
+  Used as the platform benchmark for agent quality scoring.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: quality-review
+        description: >
+          Verify rules engine correctness, deterministic replay, and
+          SPA renders game state from server authority.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  build_tasks:
+    - development.build
+    - qa.build_validate
+  experiment_context:
+    sample_app: run_crysis
+    benchmark: true
+  notes: "Build Crysis — browser benchmark app for agent quality scoring"
+prompts:
+  build_strategy:
+    label: Build Strategy
+    help_text: "fresh = build from scratch, incremental = iterate on baseline."
+    choices:
+      - fresh
+      - incremental
+  notes:
+    label: Cycle Notes
+    help_text: Optional notes for this cycle run.

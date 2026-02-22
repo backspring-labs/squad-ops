@@ -1,6 +1,7 @@
 {
   "realm": "squadops-dev",
-  "displayName": "SquadOps Dev",
+  "displayName": "/squad_ops/dev",
+  "loginTheme": "squadops",
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": false,
@@ -80,7 +81,8 @@
         "http://localhost:8000"
       ],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4040/*"
       },
       "protocolMappers": [
         {

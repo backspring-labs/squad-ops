@@ -1,6 +1,7 @@
 {
   "realm": "squadops-local",
   "displayName": "SquadOps Local",
+  "loginTheme": "squadops",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,
@@ -101,7 +102,8 @@
         "https://api.staging.squadops.example"
       ],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://console.staging.squadops.example/*"
       },
       "protocolMappers": [
         {

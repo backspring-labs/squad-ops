@@ -27,6 +27,7 @@ services:
       - "8180:8080"
     volumes:
       - ./infra/auth/squadops-realm.json:/opt/keycloak/data/import/squadops-realm.json
+      - ./infra/auth/keycloak-theme/squadops:/opt/keycloak/themes/squadops:ro
     depends_on:
       postgres:
         condition: service_healthy

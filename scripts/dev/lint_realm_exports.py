@@ -72,6 +72,13 @@ def lint_realm(realm: dict[str, Any], filename: str) -> list[str]:
     if "squadops-browser-with-mfa" not in flow_aliases:
         errors.append(f"[{filename}] Missing MFA authentication flow 'squadops-browser-with-mfa'")
 
+    # --- Login theme ---
+    login_theme = realm.get("loginTheme")
+    if login_theme != "squadops":
+        errors.append(
+            f"[{filename}] loginTheme must be 'squadops', got {login_theme!r}"
+        )
+
     # --- Redirect URIs and web origins: no localhost ---
     for client in realm.get("clients", []):
         client_id = client.get("clientId", "<unknown>")
@@ -84,6 +91,20 @@ def lint_realm(realm: dict[str, Any], filename: str) -> list[str]:
             if "localhost" in origin or "127.0.0.1" in origin:
                 errors.append(
                     f"[{filename}] Client {client_id!r} has localhost in webOrigin: {origin!r}"
+                )
+        # RP-Initiated Logout requires post.logout.redirect.uris attribute
+        if client_id == "squadops-console":
+            attrs = client.get("attributes", {})
+            post_logout = attrs.get("post.logout.redirect.uris", "")
+            if not post_logout:
+                errors.append(
+                    f"[{filename}] Client {client_id!r} missing"
+                    f" attributes.post.logout.redirect.uris"
+                )
+            elif "localhost" in post_logout or "127.0.0.1" in post_logout:
+                errors.append(
+                    f"[{filename}] Client {client_id!r} has localhost in"
+                    f" post.logout.redirect.uris: {post_logout!r}"
                 )
 
     return errors

@@ -219,11 +219,11 @@ class TestAuthBFF:
         assert session["refresh_token"] == "new-refresh-token"
 
     async def test_logout_clears_session(self, client: AsyncClient):
-        """POST /auth/logout removes the session from the store."""
+        """POST /auth/logout removes the session and redirects to Keycloak end_session."""
         session_id = "logout-session"
         await auth_bff._session_store.set(
             session_id,
-            {"refresh_token": "refresh-to-revoke"},
+            {"refresh_token": "refresh-to-revoke", "id_token": "test-id-token"},
             _SESSION_TTL_SECONDS,
         )
 
@@ -233,24 +233,35 @@ class TestAuthBFF:
         auth_bff._http_client = AsyncMock()
         auth_bff._http_client.post = AsyncMock(return_value=mock_response)
 
-        resp = await client.post("/auth/logout", cookies={"session_id": session_id})
+        resp = await client.post(
+            "/auth/logout",
+            cookies={"session_id": session_id},
+            follow_redirects=False,
+        )
 
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "logged_out"
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert "/protocol/openid-connect/logout" in location
+        assert "post_logout_redirect_uri=" in location
+        assert "id_token_hint=test-id-token" in location
         session = await auth_bff._session_store.get(session_id)
         assert session is None
 
-    async def test_logout_without_session_succeeds(self, client: AsyncClient):
-        """POST /auth/logout without a session still returns 200."""
-        resp = await client.post("/auth/logout")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "logged_out"
+    async def test_logout_without_session_redirects(self, client: AsyncClient):
+        """POST /auth/logout without a session still redirects to Keycloak end_session."""
+        resp = await client.post("/auth/logout", follow_redirects=False)
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert "/protocol/openid-connect/logout" in location
+        assert "client_id=test-client" in location
 
     async def test_logout_accepts_get(self, client: AsyncClient):
-        """GET /auth/logout works (for loop-breaker error page link)."""
-        resp = await client.get("/auth/logout")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "logged_out"
+        """GET /auth/logout redirects to Keycloak end_session (browser navigation)."""
+        resp = await client.get("/auth/logout", follow_redirects=False)
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert "/protocol/openid-connect/logout" in location
+        assert "post_logout_redirect_uri=http" in location
 
 
 # ── Phase 1: Session Store Tests ─────────────────────────────────────────────

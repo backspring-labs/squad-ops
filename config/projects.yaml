@@ -7,12 +7,14 @@ projects:
   - project_id: run_crysis
     name: "Run Crysis"
     description: "Multi-agent coordinated build"
-    tags: [benchmark]
+    tags: [example, benchmark]
+    prd_path: examples/run_crysis/prd.md
 
   - project_id: group_run
     name: "Group Run"
     description: "Full squad parallel execution"
-    tags: [benchmark]
+    tags: [example, benchmark]
+    prd_path: examples/group_run/prd.md
 
   - project_id: play_game
     name: "Play Game"
