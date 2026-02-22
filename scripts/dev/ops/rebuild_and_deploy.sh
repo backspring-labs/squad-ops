@@ -49,7 +49,7 @@ if [ $# -gt 0 ]; then
                 while [ $i -le $# ]; do
                     next_arg="${!i}"
                     case "$next_arg" in
-                        console|runtime-api|runtime_api|task-api|task_api|all)
+                        console|runtime-api|runtime_api|all)
                             # Hit another service keyword, back up and break
                             i=$((i - 1))
                             break
@@ -63,7 +63,7 @@ if [ $# -gt 0 ]; then
                 done
                 i=$((i - 1))  # Adjust for loop increment
                 ;;
-            runtime-api|runtime_api|task-api|task_api)
+            runtime-api|runtime_api)
                 REBUILD_RUNTIME_API=true
                 ;;
             all)
@@ -220,8 +220,7 @@ else
 fi
 
 # Check Runtime API
-if curl -s --connect-timeout 5 http://localhost:8001/docs > /dev/null 2>&1 || \
-   curl -s --connect-timeout 5 http://localhost:8001/api/v1/execution-cycles 2>&1 | grep -q "method not allowed\|unauthorized\|not found" || \
+if curl -s --connect-timeout 5 http://localhost:8001/health > /dev/null 2>&1 || \
    docker ps --format '{{.Names}}\t{{.Status}}' | grep squadops-runtime-api | grep -q "Up"; then
     echo -e "${GREEN}✅ Runtime API container is running${NC}"
 else

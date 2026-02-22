@@ -506,15 +506,6 @@ class DeploymentConfig(BaseModel):
 
     file_manager: FileManagerConfig = Field(default_factory=FileManagerConfig)
     docker: DockerConfig = Field(default_factory=DockerConfig)
-    warm_boot_dir: Path = Field(default=Path("/app/warm-boot"), description="Warm boot directory")
-
-    @field_validator("warm_boot_dir", mode="before")
-    @classmethod
-    def validate_warm_boot_dir_path(cls, v: Any) -> Any:
-        """Convert string paths to Path objects."""
-        if isinstance(v, str):
-            return Path(v)
-        return v
 
 
 class AppConfig(BaseModel):
