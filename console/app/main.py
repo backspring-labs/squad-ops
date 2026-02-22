@@ -33,6 +33,8 @@ PREFECT_API_PUBLIC_URL = os.environ.get("PREFECT_API_PUBLIC_URL", "http://localh
 LANGFUSE_API_URL = os.environ.get("LANGFUSE_API_URL", "http://squadops-langfuse:3000")
 LANGFUSE_API_PUBLIC_URL = os.environ.get("LANGFUSE_API_PUBLIC_URL", "http://localhost:3001")
 _REALM = os.environ.get("SQUADOPS_REALM", "squadops-dev")
+# Derive browser tab title from realm: "squadops-dev" → "/squad_ops/dev"
+_CONSOLE_TITLE = "/" + _REALM.replace("squadops-", "squad_ops/")
 KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", f"http://squadops-keycloak:8080/realms/{_REALM}")
 KEYCLOAK_PUBLIC_URL = os.environ.get(
     "KEYCLOAK_PUBLIC_URL", f"http://localhost:8180/realms/{_REALM}"
@@ -464,6 +466,8 @@ window.__SQUADOPS_CONFIG__ = {{
     keycloakPublicUrl: "{KEYCLOAK_PUBLIC_URL}",
     consoleClientId: "{CONSOLE_CLIENT_ID}",
 }};
+
+document.title = '{_CONSOLE_TITLE}';
 
 // Wire Continuum shell logout to auth BFF (RP-Initiated Logout)
 window.continuum = window.continuum || {{}};
