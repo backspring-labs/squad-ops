@@ -17,7 +17,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 REGISTRY_FILE = REPO_ROOT / "sips" / "registry.yaml"
-PROPOSALS_DIR = REPO_ROOT / "sips" / "proposals"
+PROPOSED_DIR = REPO_ROOT / "sips" / "proposed"
 ACCEPTED_DIR = REPO_ROOT / "sips" / "accepted"
 IMPLEMENTED_DIR = REPO_ROOT / "sips" / "implemented"
 DEPRECATED_DIR = REPO_ROOT / "sips" / "deprecated"
@@ -31,7 +31,7 @@ VALID_TRANSITIONS = {
 
 # Status to folder mapping
 STATUS_TO_FOLDER = {
-    'proposed': PROPOSALS_DIR,
+    'proposed': PROPOSED_DIR,
     'accepted': ACCEPTED_DIR,
     'implemented': IMPLEMENTED_DIR,
     'deprecated': DEPRECATED_DIR,
@@ -213,7 +213,7 @@ def find_duplicate_sip_files(
                 legitimate_sip_numbers.add(reg_sip_number)
     
     # All lifecycle directories to scan
-    lifecycle_dirs = [PROPOSALS_DIR, ACCEPTED_DIR, IMPLEMENTED_DIR, DEPRECATED_DIR]
+    lifecycle_dirs = [PROPOSED_DIR, ACCEPTED_DIR, IMPLEMENTED_DIR, DEPRECATED_DIR]
     
     for lifecycle_dir in lifecycle_dirs:
         if not lifecycle_dir.exists():
@@ -366,8 +366,8 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
     # Special handling for proposed → accepted
     if current_status == 'proposed' and new_status == 'accepted':
         # Verify file is in proposals directory
-        if PROPOSALS_DIR not in sip_file.parents and sip_file.parent != PROPOSALS_DIR:
-            print(f"Error: Proposed SIP must be in {PROPOSALS_DIR}")
+        if PROPOSED_DIR not in sip_file.parents and sip_file.parent != PROPOSED_DIR:
+            print(f"Error: Proposed SIP must be in {PROPOSED_DIR}")
             return False
         
         # Assign SIP number
@@ -637,7 +637,7 @@ def main():
         print("  implemented → deprecated")
         print("\nExample:")
         print("  export SQUADOPS_MAINTAINER=1")
-        print("  python3 update_sip_status.py sips/proposals/SIP-PROPOSAL-My-Idea.md accepted")
+        print("  python3 update_sip_status.py sips/proposed/SIP-PROPOSAL-My-Idea.md accepted")
         print("  python3 update_sip_status.py sips/accepted/SIP-0046-Title.md implemented")
         return 1
     

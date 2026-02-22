@@ -1,5 +1,23 @@
-last_assigned: 70
+last_assigned: 71
 sips:
+- sip_uid: null
+  sip_number: null
+  title: Intelligent Delegation Protocols for SquadOps
+  path: sips/proposed/SIP-intelligent-delegation-protocols.md
+  status: proposed
+  author: SquadOps Core Team
+  approver: null
+  created_at: '2026-02-16T00:00:00Z'
+  updated_at: '2026-02-16T00:00:00Z'
+- sip_uid: null
+  sip_number: null
+  title: Cycle Event System — Canonical Lifecycle Event Bus
+  path: sips/proposed/SIP-Cycle-Event-System.md
+  status: proposed
+  author: SquadOps Architecture
+  approver: null
+  created_at: '2026-02-16T00:00:00Z'
+  updated_at: '2026-02-16T00:00:00Z'
 - sip_number: 3
   sip_uid: '17642554775787694'
   title: -SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol
@@ -113,7 +131,7 @@ sips:
 - sip_uid: '17642554775857273'
   sip_number: 12
   title: Pattern-First-Development-Escalation-Protocol
-  path: sips/proposals/SIP-0012-Pattern-First-Development-Escalation-Protocol.md
+  path: sips/proposed/SIP-0012-Pattern-First-Development-Escalation-Protocol.md
   status: proposed
   author: Unknown
   approver: None
@@ -123,7 +141,7 @@ sips:
 - sip_uid: '17642554775859172'
   sip_number: 13
   title: Extensibility-Customization-Protocol
-  path: sips/proposals/SIP-0013-Extensibility-Customization-Protocol.md
+  path: sips/proposed/SIP-0013-Extensibility-Customization-Protocol.md
   status: proposed
   author: Unknown
   approver: None
@@ -153,7 +171,7 @@ sips:
 - sip_uid: '17642554775868264'
   sip_number: 16
   title: HumanAgent-Hybrid-Squad-Operations
-  path: sips/proposals/SIP-0016-HumanAgent-Hybrid-Squad-Operations.md
+  path: sips/proposed/SIP-0016-HumanAgent-Hybrid-Squad-Operations.md
   status: proposed
   author: Unknown
   approver: None
@@ -173,7 +191,7 @@ sips:
 - sip_uid: '17642554775877898'
   sip_number: 18
   title: -SIP-018-Enterprise-Process-CoE-Enablement
-  path: sips/proposals/SIP-0018-Enterprise-Process-CoE-Enablement.md
+  path: sips/proposed/SIP-0018-Enterprise-Process-CoE-Enablement.md
   status: proposed
   author: Unknown
   approver: None
@@ -184,7 +202,7 @@ sips:
   sip_uid: '17642554775871658'
   title: -SIP-018-Squad-Context-Protocol
   status: proposed
-  path: sips/proposals/SIP-0018-v2-Squad-Context-Protocol.md
+  path: sips/proposed/SIP-0018-v2-Squad-Context-Protocol.md
   created_at: '2025-10-03T18:44:56.927519Z'
   updated_at: '2026-01-10T11:17:26Z'
   variant: v2
@@ -231,7 +249,7 @@ sips:
 - sip_uid: '17642554775906691'
   sip_number: 23
   title: Domain-Expert-Architecture-for-Product-Strategy
-  path: sips/proposals/SIP-0023-Domain-Expert-Architecture-for-Product-Strategy.md
+  path: sips/proposed/SIP-0023-Domain-Expert-Architecture-for-Product-Strategy.md
   status: proposed
   author: Unknown
   approver: None
@@ -301,7 +319,7 @@ sips:
 - sip_uid: '17642554775939927'
   sip_number: 28
   title: Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Deployments
-  path: sips/proposals/SIP-0028-Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Depl.md
+  path: sips/proposed/SIP-0028-Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Depl.md
   status: proposed
   author: System Architecture
   approver: None
@@ -629,20 +647,11 @@ sips:
   created_at: '2026-02-15T00:00:00Z'
   updated_at: '2026-02-18T22:23:20.096435Z'
 - sip_uid: null
-  sip_number: null
-  title: Intelligent Delegation Protocols for SquadOps
-  path: sips/proposals/SIP-intelligent-delegation-protocols.md
-  status: proposed
-  author: SquadOps Core Team
-  approver: null
-  created_at: '2026-02-16T00:00:00Z'
-  updated_at: '2026-02-16T00:00:00Z'
-- sip_uid: null
-  sip_number: null
-  title: Cycle Event System — Canonical Lifecycle Event Bus
-  path: sips/proposals/SIP-Cycle-Event-System.md
-  status: proposed
-  author: SquadOps Architecture
-  approver: null
-  created_at: '2026-02-16T00:00:00Z'
-  updated_at: '2026-02-16T00:00:00Z'
+  sip_number: 71
+  title: Builder Role — Dedicated Product Builder Agent
+  path: sips/accepted/SIP-0071-Builder-Role-Dedicated-Product.md
+  status: accepted
+  author: Jason Ladd
+  approver: jladd
+  created_at: '2026-02-22T00:00:00Z'
+  updated_at: '2026-02-22T13:31:26.668911Z'

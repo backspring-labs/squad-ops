@@ -155,7 +155,7 @@ SIPs are organized in the `sips/` directory:
 ```
 sips/
   registry.yaml          # Canonical registry of all numbered SIPs
-  proposals/             # Unnumbered SIPs (drafts, proposals)
+  proposed/             # Unnumbered SIPs (drafts, proposals)
   accepted/              # Accepted SIPs (numbered, approved)
   implemented/           # Implemented SIPs (framework matches specification)
   deprecated/           # Deprecated SIPs (superseded or retired)
@@ -165,7 +165,7 @@ sips/
 
 SIPs move through four states:
 
-1. **proposed** - Unnumbered, lives in `sips/proposals/`
+1. **proposed** - Unnumbered, lives in `sips/proposed/`
 2. **accepted** - Numbered, approved by maintainer, lives in `sips/accepted/`
 3. **implemented** - Framework functionality matches the SIP specification, lives in `sips/implemented/`
 4. **deprecated** - Superseded or retired, but preserved for historical reference, lives in `sips/deprecated/`
@@ -179,7 +179,7 @@ SIPs move through four states:
 
 #### For Contributors
 
-1. **Create a draft SIP** in `sips/proposals/`:
+1. **Create a draft SIP** in `sips/proposed/`:
    ```bash
    # Install script dependencies (if not already installed)
    pip install -r scripts/dev/requirements.txt
@@ -188,7 +188,7 @@ SIPs move through four states:
    python3 scripts/dev/generate_sip_uid.py
    
    # Create your SIP file (filename can be descriptive, will be normalized to 4 words when accepted)
-   touch sips/proposals/SIP-My-Idea.md
+   touch sips/proposed/SIP-My-Idea.md
    ```
 
 2. **Add required metadata** at the top of your SIP file:
@@ -226,13 +226,13 @@ After a SIP is approved:
 
 2. **Update SIP status** (proposed → accepted):
    ```bash
-   python3 scripts/maintainer/update_sip_status.py sips/proposals/SIP-My-Idea.md accepted
+   python3 scripts/maintainer/update_sip_status.py sips/proposed/SIP-My-Idea.md accepted
    ```
 
    This script will:
    - Assign the next available SIP number
    - Update the SIP file metadata
-   - Move the file from `sips/proposals/` to `sips/accepted/`
+   - Move the file from `sips/proposed/` to `sips/accepted/`
    - Rename the file to `SIP-00NN-Word1-Word2-Word3-Word4.md` format (maximum 4 words from title)
    - Update `sips/registry.yaml`
 
@@ -271,7 +271,7 @@ The `sips/registry.yaml` file is the canonical index of all numbered SIPs. It is
 ### Rules
 
 **Contributors may:**
-- Create SIP drafts in `sips/proposals/`
+- Create SIP drafts in `sips/proposed/`
 - Generate `sip_uid` for new SIPs
 - Set `sip_number: null` for proposals
 - Open PRs for review
@@ -287,7 +287,7 @@ The `sips/registry.yaml` file is the canonical index of all numbered SIPs. It is
 
 ### Unknown or Uncertain SIPs
 
-If you're unsure about a SIP's status or lifecycle state, it should be placed in `sips/proposals/`. The conservative approach ensures no SIPs are lost or misplaced.
+If you're unsure about a SIP's status or lifecycle state, it should be placed in `sips/proposed/`. The conservative approach ensures no SIPs are lost or misplaced.
 
 ### Additional Resources
 

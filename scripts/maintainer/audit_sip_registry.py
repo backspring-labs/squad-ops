@@ -17,14 +17,14 @@ import yaml
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 REGISTRY_FILE = REPO_ROOT / "sips" / "registry.yaml"
-PROPOSALS_DIR = REPO_ROOT / "sips" / "proposals"
+PROPOSED_DIR = REPO_ROOT / "sips" / "proposed"
 ACCEPTED_DIR = REPO_ROOT / "sips" / "accepted"
 IMPLEMENTED_DIR = REPO_ROOT / "sips" / "implemented"
 DEPRECATED_DIR = REPO_ROOT / "sips" / "deprecated"
 
 # Status to folder mapping
 STATUS_TO_FOLDER = {
-    'proposed': PROPOSALS_DIR,
+    'proposed': PROPOSED_DIR,
     'accepted': ACCEPTED_DIR,
     'implemented': IMPLEMENTED_DIR,
     'deprecated': DEPRECATED_DIR,
@@ -32,7 +32,7 @@ STATUS_TO_FOLDER = {
 
 # Folder to status mapping (reverse)
 FOLDER_TO_STATUS = {
-    PROPOSALS_DIR: 'proposed',
+    PROPOSED_DIR: 'proposed',
     ACCEPTED_DIR: 'accepted',
     IMPLEMENTED_DIR: 'implemented',
     DEPRECATED_DIR: 'deprecated',
@@ -94,7 +94,7 @@ def is_valid_iso_timestamp(value: Any) -> bool:
 def find_all_sip_files() -> dict[str, Path]:
     """Find all SIP files in lifecycle directories."""
     files = {}
-    lifecycle_dirs = [PROPOSALS_DIR, ACCEPTED_DIR, IMPLEMENTED_DIR, DEPRECATED_DIR]
+    lifecycle_dirs = [PROPOSED_DIR, ACCEPTED_DIR, IMPLEMENTED_DIR, DEPRECATED_DIR]
     
     for lifecycle_dir in lifecycle_dirs:
         if not lifecycle_dir.exists():
