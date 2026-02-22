@@ -15,13 +15,11 @@ from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
-from squadops.ports.tasks.registry import TaskRegistryPort
 
 if TYPE_CHECKING:
     from squadops.api.runtime.health_checker import HealthChecker
 
 # Global adapter instances (initialized at startup)
-_adapter: TaskRegistryPort | None = None
 _auth_port: AuthPort | None = None
 _authz_port: AuthorizationPort | None = None
 _audit_port = None  # AuditPort | None
@@ -33,12 +31,6 @@ _cycle_registry: CycleRegistryPort | None = None
 _squad_profile: SquadProfilePort | None = None
 _artifact_vault: ArtifactVaultPort | None = None
 _flow_executor: FlowExecutionPort | None = None
-
-
-def set_tasks_adapter(adapter: TaskRegistryPort) -> None:
-    """Set the tasks adapter instance for dependency injection."""
-    global _adapter
-    _adapter = adapter
 
 
 def set_auth_ports(
@@ -70,23 +62,6 @@ def get_authz_port() -> AuthorizationPort | None:
 def get_audit_port():
     """Return the current AuditPort instance, or None if not configured."""
     return _audit_port
-
-
-async def get_tasks_adapter_dep() -> TaskRegistryPort:
-    """
-    FastAPI dependency function that returns the configured tasks adapter.
-
-    Used via FastAPI Depends() in route handlers.
-
-    Returns:
-        TaskRegistryPort instance
-
-    Raises:
-        RuntimeError: If adapter not initialized
-    """
-    if _adapter is None:
-        raise RuntimeError("Tasks adapter not initialized. Call set_tasks_adapter() at startup.")
-    return _adapter
 
 
 # =============================================================================
