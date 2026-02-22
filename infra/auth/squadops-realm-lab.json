@@ -1,6 +1,6 @@
 {
   "realm": "squadops-lab",
-  "displayName": "SquadOps Lab",
+  "displayName": "squad_ops (lab)",
   "loginTheme": "squadops",
   "enabled": true,
   "sslRequired": "external",

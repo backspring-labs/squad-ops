@@ -36,8 +36,8 @@ html.login-pf body {
   color: #e2e8f0 !important;
   font-weight: 600 !important;
   font-size: 1.5rem !important;
-  font-family: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", ui-monospace, monospace !important;
-  letter-spacing: 0.025em !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  letter-spacing: normal !important;
   text-transform: none !important;
   padding: 0 !important;
   text-align: center !important;
@@ -198,10 +198,10 @@ html.login-pf body {
   text-decoration: underline !important;
 }
 
-/* ── Error alerts ── */
+/* ── Error alerts (PF v4 + v5) ── */
 .login-pf .alert-error,
 .login-pf .pf-c-alert.pf-m-danger,
-.login-pf .kc-feedback-text {
+.login-pf .pf-v5-c-alert.pf-m-danger {
   background: rgba(239, 68, 68, 0.12) !important;
   border: 1px solid rgba(239, 68, 68, 0.3) !important;
   border-radius: 6px !important;
@@ -209,11 +209,27 @@ html.login-pf body {
   padding: 0.75rem 1rem !important;
 }
 
-/* ── Info / warning alerts ── */
+.login-pf .pf-v5-c-alert__title,
+.login-pf .pf-c-alert__title {
+  color: #ef4444 !important;
+}
+
+/* Inline field-level error (nested inside input group — no border) */
+.login-pf .kc-feedback-text {
+  color: #ef4444 !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0.25rem 0 0 0 !important;
+  font-size: 0.8125rem !important;
+}
+
+/* ── Info / warning alerts (PF v4 + v5) ── */
 .login-pf .alert-warning,
 .login-pf .alert-info,
 .login-pf .pf-c-alert.pf-m-warning,
-.login-pf .pf-c-alert.pf-m-info {
+.login-pf .pf-c-alert.pf-m-info,
+.login-pf .pf-v5-c-alert.pf-m-warning,
+.login-pf .pf-v5-c-alert.pf-m-info {
   background: rgba(88, 166, 255, 0.1) !important;
   border: 1px solid rgba(88, 166, 255, 0.25) !important;
   border-radius: 6px !important;

@@ -1,6 +1,6 @@
 {
   "realm": "squadops-dev",
-  "displayName": "/squad_ops/dev",
+  "displayName": "squad_ops (dev)",
   "loginTheme": "squadops",
   "enabled": true,
   "sslRequired": "none",

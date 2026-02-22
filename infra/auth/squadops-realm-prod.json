@@ -1,6 +1,6 @@
 {
   "realm": "squadops-cloud",
-  "displayName": "SquadOps Cloud",
+  "displayName": "squad_ops (cloud)",
   "loginTheme": "squadops",
   "enabled": true,
   "sslRequired": "all",

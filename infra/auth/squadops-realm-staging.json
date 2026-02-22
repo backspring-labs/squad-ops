@@ -1,6 +1,6 @@
 {
   "realm": "squadops-local",
-  "displayName": "SquadOps Local",
+  "displayName": "squad_ops (local)",
   "loginTheme": "squadops",
   "enabled": true,
   "sslRequired": "external",
