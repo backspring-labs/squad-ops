@@ -363,6 +363,11 @@ class DistributedFlowExecutor(FlowExecutionPort):
             "by_producing_task": ["strategy.analyze_prd", "development.implement"],
             "by_type_fallback": ["document"],
         },
+        # V1: duplicates development.build filter for parity (SIP-0071 D7)
+        "builder.build": {
+            "by_producing_task": ["strategy.analyze_prd", "development.implement"],
+            "by_type_fallback": ["document"],
+        },
         "qa.build_validate": {
             "by_producing_task": ["qa.validate"],
             "by_type": ["source", "config"],

@@ -42,6 +42,14 @@ instances:
     enabled: true
     description: "QA & Security - Counterfactual reasoning"
 
+  # Builder Role
+  - id: bob
+    display_name: Bob
+    role: builder
+    model: qwen2.5:7b
+    enabled: true
+    description: "Builder - Artifact production from plans"
+
   # Data Role
   - id: data
     display_name: Data

@@ -19,6 +19,7 @@ from squadops.agents.skills import dev
 from squadops.agents.skills import qa
 from squadops.agents.skills import strat
 from squadops.agents.skills import data
+from squadops.agents.skills import builder
 
 if TYPE_CHECKING:
     from squadops.agents.skills.base import Skill
@@ -34,6 +35,7 @@ SKILL_MODULES = {
     "qa": qa,
     "strat": strat,
     "data": data,
+    "builder": builder,
 }
 
 # Role -> skill module mappings
@@ -43,6 +45,7 @@ ROLE_SKILL_MODULES = {
     "qa": ["shared", "qa"],
     "strat": ["shared", "strat"],
     "data": ["shared", "data"],
+    "builder": ["shared", "builder"],
 }
 
 

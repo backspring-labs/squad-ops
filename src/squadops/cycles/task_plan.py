@@ -2,15 +2,20 @@
 
 Produces a deterministic task sequence for the standard squad roles
 using pinned task_type values from SIP-0066 §5.4, with optional
-build steps from SIP-Enhanced-Agent-Build-Capabilities.
+build steps from SIP-Enhanced-Agent-Build-Capabilities and builder-aware
+routing from SIP-0071.
 
-Part of SIP-0066 Phase 4 + build capabilities extension.
+Part of SIP-0066 Phase 4 + build capabilities extension + SIP-0071.
 """
 
 from __future__ import annotations
 
 from uuid import uuid4
 
+from squadops.capabilities.handlers.build_profiles import (
+    ROUTING_BUILDER_PRESENT,
+    ROUTING_FALLBACK_NO_BUILDER,
+)
 from squadops.cycles.models import Cycle, Run, SquadProfile
 from squadops.tasks.models import TaskEnvelope
 
@@ -29,6 +34,15 @@ BUILD_TASK_STEPS: list[tuple[str, str]] = [
     ("qa.build_validate", "qa"),
 ]
 
+# Builder-aware build steps (SIP-0071)
+BUILDER_BUILD_TASK_STEPS: list[tuple[str, str]] = [
+    ("builder.build", "builder"),
+    ("qa.build_validate", "qa"),
+]
+
+# Task types that are build steps (for routing_reason metadata)
+_BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_BUILD_TASK_STEPS}
+
 
 def _resolve_agent_id(profile: SquadProfile, role: str) -> str:
     """Resolve agent_id from profile by role, fallback to role name."""
@@ -36,6 +50,15 @@ def _resolve_agent_id(profile: SquadProfile, role: str) -> str:
         if agent.role == role and agent.enabled:
             return agent.agent_id
     return role
+
+
+def _has_builder_role(profile: SquadProfile) -> bool:
+    """Check if squad profile includes a builder role agent.
+
+    V1: presence-only detection (any(...)). Multi-builder selection
+    behavior is out of scope and not specified by this plan.
+    """
+    return any(a.role == "builder" and a.enabled for a in profile.agents)
 
 
 def generate_task_plan(
@@ -47,7 +70,9 @@ def generate_task_plan(
     ``applied_defaults``:
 
     - ``plan_tasks`` (default True): include the 5 standard plan steps
-    - ``build_tasks`` (default falsy): if non-empty, append the 2 build steps
+    - ``build_tasks`` (default falsy): if non-empty, append build steps
+    - When builder role present in profile, routes build to ``builder.build``
+      instead of ``development.build`` (SIP-0071 D5)
 
     Args:
         cycle: The cycle containing experiment config.
@@ -61,11 +86,17 @@ def generate_task_plan(
     include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
     include_build = bool(cycle.applied_defaults.get("build_tasks"))
 
+    # Compute routing decision once before step expansion (D5, D14)
+    builder_used = include_build and _has_builder_role(profile)
+
     steps: list[tuple[str, str]] = []
     if include_plan:
         steps.extend(CYCLE_TASK_STEPS)
     if include_build:
-        steps.extend(BUILD_TASK_STEPS)
+        if builder_used:
+            steps.extend(BUILDER_BUILD_TASK_STEPS)
+        else:
+            steps.extend(BUILD_TASK_STEPS)
 
     # Shared lineage IDs for the entire plan
     correlation_id = uuid4().hex
@@ -73,6 +104,9 @@ def generate_task_plan(
 
     # Resolved config = applied_defaults merged with execution_overrides
     resolved_config = {**cycle.applied_defaults, **cycle.execution_overrides}
+
+    # Routing reason for build step metadata (D14)
+    routing_reason = ROUTING_BUILDER_PRESENT if builder_used else ROUTING_FALLBACK_NO_BUILDER
 
     envelopes: list[TaskEnvelope] = []
     prev_task_id: str | None = None
@@ -84,6 +118,15 @@ def generate_task_plan(
         causation_id = prev_task_id or correlation_id
 
         agent_id = _resolve_agent_id(profile, role)
+
+        metadata: dict = {
+            "step_index": step_index,
+            "role": role,
+        }
+
+        # Add routing_reason only on build step envelopes
+        if task_type in _BUILD_TASK_TYPES:
+            metadata["routing_reason"] = routing_reason
 
         envelope = TaskEnvelope(
             task_id=task_id,
@@ -101,10 +144,7 @@ def generate_task_plan(
                 "resolved_config": resolved_config,
                 "config_hash": run.resolved_config_hash,
             },
-            metadata={
-                "step_index": step_index,
-                "role": role,
-            },
+            metadata=metadata,
         )
         envelopes.append(envelope)
         prev_task_id = task_id

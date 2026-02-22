@@ -861,3 +861,356 @@ class QABuildValidateHandler(_CycleTaskHandler):
                 ),
             )
             llm_obs.record_generation(context.correlation_context, gen_record, layers)
+
+
+# ---------------------------------------------------------------------------
+# Builder build handler (SIP-0071)
+# ---------------------------------------------------------------------------
+
+
+class BuilderBuildHandler(_CycleTaskHandler):
+    """Build handler for dedicated builder role (SIP-0071).
+
+    Routes to the appropriate build profile, validates QA handoff artifact,
+    enforces required file lists, and detects duplicate filenames.
+    Falls back to DevelopmentBuildHandler semantics when no builder role
+    is present (routing resolved at plan-generation time, D5).
+    """
+
+    _handler_name = "builder_build_handler"
+    _capability_id = "builder.build"
+    _role = "builder"
+    _artifact_name = "build_output"
+
+    def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
+        errors = super().validate_inputs(inputs, contract)
+        if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
+            errors.append(
+                "'artifact_contents' or 'artifact_vault' is required for build tasks"
+            )
+        return errors
+
+    def _resolve_artifact_content(
+        self, inputs: dict[str, Any], filename_substring: str,
+    ) -> str | None:
+        contents = inputs.get("artifact_contents", {})
+        for key, value in contents.items():
+            if filename_substring in key:
+                return value
+        return None
+
+    async def _resolve_with_vault_fallback(
+        self, inputs: dict[str, Any], filename_substring: str,
+    ) -> str | None:
+        result = self._resolve_artifact_content(inputs, filename_substring)
+        if result is not None:
+            return result
+
+        vault = inputs.get("artifact_vault")
+        refs = inputs.get("artifact_refs", [])
+        if not vault or not refs:
+            return None
+
+        for ref_id in refs:
+            try:
+                ref, content_bytes = await vault.retrieve(ref_id)
+                if filename_substring in ref.filename:
+                    return content_bytes.decode(errors="replace")
+            except Exception:
+                logger.debug(
+                    "Vault fallback: failed to retrieve %s", ref_id, exc_info=True,
+                )
+        return None
+
+    async def handle(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+    ) -> HandlerResult:
+        from squadops.capabilities.handlers.build_profiles import (
+            QA_HANDOFF_REQUIRED_SECTIONS,
+            get_profile,
+        )
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        start_time = time.perf_counter()
+
+        prd = inputs.get("prd", "")
+        prior_outputs = inputs.get("prior_outputs")
+        resolved_config = inputs.get("resolved_config", {})
+
+        # Step 1: Resolve build profile
+        profile_name = resolved_config.get("build_profile", "python_cli_builder")
+        try:
+            profile = get_profile(profile_name)
+        except ValueError as exc:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False, outputs={}, _evidence=evidence, error=str(exc),
+            )
+
+        # Step 1b: Resolve task tags (profile defaults + experiment_context overrides)
+        task_tags = dict(profile.default_task_tags)
+        experiment_ctx = resolved_config.get("experiment_context", {})
+        if isinstance(experiment_ctx, dict):
+            for key, value in experiment_ctx.items():
+                if isinstance(value, str):
+                    task_tags[key] = value
+                else:
+                    logger.warning(
+                        "Ignoring non-string tag %r=%r from experiment_context", key, value,
+                    )
+
+        # Step 2: Resolve plan artifacts
+        impl_plan = self._resolve_artifact_content(inputs, "implementation_plan")
+        strategy = self._resolve_artifact_content(inputs, "strategy_analysis")
+
+        # Step 3: Build prompt from profile template
+        parts = [f"## Product Requirements Document\n\n{prd}"]
+        if impl_plan:
+            parts.append(f"\n\n## Implementation Plan\n\n{impl_plan}")
+        if strategy:
+            parts.append(f"\n\n## Strategy Analysis\n\n{strategy}")
+        if prior_outputs:
+            parts.append("\n\n## Prior Analysis from Upstream Roles\n")
+            for role, summary in prior_outputs.items():
+                parts.append(f"### {role}\n{summary}\n")
+
+        if task_tags:
+            parts.append("\n\n## Builder Tags\n")
+            for tag_key, tag_value in sorted(task_tags.items()):
+                parts.append(f"- **{tag_key}**: {tag_value}")
+
+        parts.append(
+            "\n\nGenerate complete, runnable source files as a Python package. "
+            "Use tagged fenced code blocks with the format:\n"
+            "```<language>:<filepath>\n<content>\n```\n\n"
+            "IMPORTANT: You MUST also include a `qa_handoff.md` file with these "
+            "required sections:\n"
+            "- ## How to Run\n"
+            "- ## How to Test\n"
+            "- ## Expected Behavior\n\n"
+            "File path rules:\n"
+            "- Use the project name as the top-level package directory.\n"
+            "- Always include __init__.py for the package.\n"
+            "- Use RELATIVE imports within the package.\n"
+            "- File paths must use forward slashes, no colons, no spaces.\n"
+            "- Include a requirements.txt if external dependencies are needed.\n"
+            "- The main entry point should be runnable via "
+            "`python -m <package_name>` (use __main__.py).\n\n"
+            "Before emitting each file, verify:\n"
+            "- All stdlib and third-party imports are present\n"
+            "- All intra-package imports use relative form\n"
+            "- __main__.py uses relative imports, not absolute"
+        )
+        user_prompt = "\n".join(parts)
+
+        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        system_prompt = (
+            assembled.content
+            + "\n\n"
+            + profile.system_prompt_template
+        )
+
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_prompt),
+        ]
+
+        # Step 4: LLM call
+        try:
+            response = await context.ports.llm.chat(messages)
+        except LLMError as exc:
+            logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False, outputs={}, _evidence=evidence, error=str(exc),
+            )
+
+        content = response.content
+        llm_duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # Record LLM generation for LangFuse tracing
+        self._record_generation(context, user_prompt, content, llm_duration_ms)
+
+        # Step 5: Parse fenced code blocks
+        extracted = extract_fenced_files(content)
+
+        if not extracted:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=evidence,
+                error="No valid fenced code blocks found",
+            )
+
+        # Step 6: Classify files and separate qa_handoff
+        import os
+
+        artifacts = []
+        qa_handoff_content = None
+
+        for file_rec in extracted:
+            filename = file_rec["filename"]
+            basename = os.path.basename(filename)
+
+            if basename == "qa_handoff.md":
+                qa_handoff_content = file_rec["content"]
+                artifacts.append({
+                    "name": filename,
+                    "content": file_rec["content"],
+                    "media_type": "text/markdown",
+                    "type": "qa_handoff",
+                })
+            else:
+                artifact_type, media_type = _classify_file(filename)
+                artifacts.append({
+                    "name": filename,
+                    "content": file_rec["content"],
+                    "media_type": media_type,
+                    "type": artifact_type,
+                })
+
+        # Step 7: Validate QA handoff
+        if qa_handoff_content is None:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False, outputs={}, _evidence=evidence,
+                error="qa_handoff.md not found in builder output",
+            )
+
+        missing_sections = [
+            s for s in QA_HANDOFF_REQUIRED_SECTIONS if s not in qa_handoff_content
+        ]
+        if missing_sections:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False, outputs={}, _evidence=evidence,
+                error=f"qa_handoff.md missing required sections: {missing_sections}",
+            )
+
+        # Step 8: Required file validation (path-agnostic basename match)
+        extracted_basenames = {os.path.basename(f["filename"]) for f in extracted}
+        missing_files = [
+            rf for rf in profile.required_files if rf not in extracted_basenames
+        ]
+        if missing_files:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False, outputs={}, _evidence=evidence,
+                error=f"Required files missing: {missing_files}",
+            )
+
+        # Step 8b: Duplicate filename detection
+        seen_basenames: dict[str, list[str]] = {}
+        for file_rec in extracted:
+            bn = os.path.basename(file_rec["filename"])
+            seen_basenames.setdefault(bn, []).append(file_rec["filename"])
+        duplicates = {bn: paths for bn, paths in seen_basenames.items() if len(paths) > 1}
+        if duplicates:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False, outputs={}, _evidence=evidence,
+                error=f"Duplicate filenames detected: {duplicates}",
+            )
+
+        # Step 9: Build outputs with diagnostics
+        qa_validation_errors: list[str] = []
+        outputs = {
+            "summary": f"[builder] Generated {len(artifacts)} artifact(s)",
+            "role": self._role,
+            "artifacts": artifacts,
+            "diagnostics": {
+                "resolved_handler": self._handler_name,
+                "build_profile": profile_name,
+                "qa_handoff_present": qa_handoff_content is not None,
+                "qa_validation_errors": qa_validation_errors,
+                "missing_required_files": missing_files,
+                "resolved_tags": task_tags,
+            },
+        }
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+        )
+
+        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+
+    def _record_generation(
+        self, context: ExecutionContext, prompt: str, response: str, duration_ms: float,
+    ) -> None:
+        llm_obs = getattr(context.ports, "llm_observability", None)
+        if llm_obs and context.correlation_context:
+            import uuid
+
+            from squadops.telemetry.models import (
+                GenerationRecord,
+                PromptLayer,
+                PromptLayerMetadata,
+            )
+
+            gen_record = GenerationRecord(
+                generation_id=str(uuid.uuid4()),
+                model=context.ports.llm.default_model,
+                prompt_text=prompt[:2000],
+                response_text=response[:2000],
+                latency_ms=duration_ms,
+            )
+            layers = PromptLayerMetadata(
+                prompt_layer_set_id=f"{self._role}-build",
+                layers=(
+                    PromptLayer(layer_type="system", layer_id=f"{self._role}-build-system"),
+                    PromptLayer(
+                        layer_type="user", layer_id=f"build-{self._capability_id}"
+                    ),
+                ),
+            )
+            llm_obs.record_generation(context.correlation_context, gen_record, layers)

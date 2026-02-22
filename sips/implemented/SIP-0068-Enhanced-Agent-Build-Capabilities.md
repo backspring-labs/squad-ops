@@ -143,6 +143,8 @@ Group 2 (build):
 
 The plan-review gate is evaluated after the final task in Group 1 (`governance.review`) and before any build tasks are dispatched. Group 2 consumes Group 1 outputs via `artifact_refs` accumulated during Group 1 execution. The gate is optional — omit it for unattended execution.
 
+> **SIP-0071 Extension**: When the squad profile includes a `builder` role agent, `builder.build → Bob` replaces `development.build → Neo` in Group 2. The routing decision is made at plan-generation time (see SIP-0071 §D5). The `full-squad-with-builder` profile activates this behavior; the legacy `full-squad` profile is unchanged.
+
 ### 5.2 Why No New Schema
 
 - The executor already supports sequential task ordering + gates + pause/resume.

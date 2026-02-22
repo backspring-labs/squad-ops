@@ -1,0 +1,23 @@
+name: builder-build
+description: Plan-then-build cycle using dedicated builder agent.
+defaults:
+  build_strategy: fresh
+  build_profile: python_cli_builder
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: plan-review
+        description: Review planning artifacts before build begins.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+    - qa_handoff
+  build_tasks:
+    - builder.build
+    - qa.build_validate
+  experiment_context: {}
+  notes: "Plan-then-build with dedicated builder agent (SIP-0071)"

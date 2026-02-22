@@ -1,10 +1,10 @@
 ---
 title: Builder Role — Dedicated Product Builder Agent
-status: accepted
+status: implemented
 author: Jason Ladd
 created_at: '2026-02-22T00:00:00Z'
 sip_number: 71
-updated_at: '2026-02-22T13:31:26.647555Z'
+updated_at: '2026-02-22T17:10:54.611583Z'
 ---
 # SIP-00XX: Builder Role — Dedicated Product Builder Agent
 
