@@ -1,7 +1,10 @@
+> **HISTORICAL** — LanceDB was chosen for agent memory per SIP-042.
+> This planning document pre-dates that decision and is retained for reference only.
+
 # SIP-021 Memory Implementation Plan & Integration Analysis
 
-**Date:** January 2025  
-**Status:** Planning Phase  
+**Date:** January 2025
+**Status:** Superseded by SIP-042 (LanceDB)
 **Author:** Build Partner Analysis
 
 ---

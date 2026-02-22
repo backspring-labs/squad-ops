@@ -1,7 +1,10 @@
+> **HISTORICAL** — LanceDB was chosen for agent memory per SIP-042.
+> This evaluation pre-dates that decision and is retained for reference only.
+
 # Memori Integration Analysis & Recommendation
 
-**Date:** January 2025  
-**Status:** Architecture Decision  
+**Date:** January 2025
+**Status:** Superseded by SIP-042 (LanceDB)
 **Context:** Evaluating Memori as external memory system vs native SQL-based implementation
 
 ---

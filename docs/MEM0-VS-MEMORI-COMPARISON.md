@@ -1,7 +1,10 @@
+> **HISTORICAL** — LanceDB was chosen for agent memory per SIP-042.
+> This comparison pre-dates that decision and is retained for reference only.
+
 # Mem0 vs Memori Comparison Analysis
 
-**Date:** January 2025  
-**Status:** Technology Evaluation  
+**Date:** January 2025
+**Status:** Superseded by SIP-042 (LanceDB)
 **Context:** Comparing Mem0 and Memori for SquadOps agent memory integration
 
 ---
