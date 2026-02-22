@@ -3,7 +3,7 @@
 A hexagonal architecture (ports & adapters) framework for
 orchestrating AI agent squads in software development workflows.
 
-Framework Version: 0.9.9
+Framework Version: 0.9.10
 SIP-0.8.8 Agent Migration + SIP-0.8.9 Test Suite Modernization complete.
 
 Quick Start:
@@ -29,7 +29,7 @@ Quick Start:
     result = await system.task_service.execute_task(request)
 """
 
-__version__ = "0.9.9"
+__version__ = "0.9.10"
 
 # Core exports for quick access
 from squadops.bootstrap import (
