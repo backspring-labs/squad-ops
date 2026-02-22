@@ -123,80 +123,6 @@ CREATE TABLE IF NOT EXISTS agent_status (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Task Status Table
-CREATE TABLE IF NOT EXISTS task_status (
-    task_id TEXT PRIMARY KEY,
-    agent_name TEXT NOT NULL,
-    status TEXT NOT NULL,
-    progress FLOAT DEFAULT 0.0,
-    eta TEXT,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Tasks Table (Enhanced for WarmBoot)
-CREATE TABLE IF NOT EXISTS tasks (
-    task_id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    description TEXT,
-    priority TEXT,
-    status TEXT NOT NULL DEFAULT 'PENDING',
-    assignee TEXT,
-    parent_task_id TEXT,
-    progress_message TEXT,
-    result_data JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- SquadComms Messages Table
-CREATE TABLE IF NOT EXISTS squadcomms_messages (
-    id SERIAL PRIMARY KEY,
-    message_id TEXT UNIQUE NOT NULL,
-    sender TEXT NOT NULL,
-    recipient TEXT NOT NULL,
-    message_type TEXT NOT NULL,
-    payload JSONB,
-    context JSONB,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    processed BOOLEAN DEFAULT FALSE
-);
-
--- WarmBoot Runs Table
-CREATE TABLE IF NOT EXISTS warmboot_runs (
-    run_id TEXT PRIMARY KEY,
-    run_name TEXT NOT NULL,
-    squad_config JSONB,
-    benchmark_target TEXT,
-    start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP,
-    status TEXT NOT NULL,
-    metrics JSONB,
-    scorecard JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Process Registry Table
-CREATE TABLE IF NOT EXISTS process_registry (
-    pid TEXT PRIMARY KEY,
-    process_name TEXT NOT NULL,
-    status TEXT NOT NULL,
-    last_updated_version TEXT,
-    change_notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Optimization Log Table
-CREATE TABLE IF NOT EXISTS optimization_log (
-    id SERIAL PRIMARY KEY,
-    run_id TEXT NOT NULL,
-    optimization_type TEXT NOT NULL,
-    before_config JSONB,
-    after_config JSONB,
-    performance_impact JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_agent_task_log_cycle_id ON agent_task_log(cycle_id);
 CREATE INDEX IF NOT EXISTS idx_agent_task_log_agent ON agent_task_log(agent);
@@ -205,24 +131,14 @@ CREATE INDEX IF NOT EXISTS idx_agent_task_log_task_name ON agent_task_log(task_n
 CREATE INDEX IF NOT EXISTS idx_agent_task_log_status ON agent_task_log(status);
 CREATE INDEX IF NOT EXISTS idx_cycle_run_type ON cycle(run_type);
 CREATE INDEX IF NOT EXISTS idx_cycle_project_id ON cycle(project_id);
-CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_sender ON squadcomms_messages(sender);
-CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_recipient ON squadcomms_messages(recipient);
-CREATE INDEX IF NOT EXISTS idx_squadcomms_messages_timestamp ON squadcomms_messages(timestamp);
-CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id);
 
 -- Insert initial projects (SIP-0047)
 INSERT INTO projects (project_id, name, description) VALUES
 ('warmboot_selftest', 'WarmBoot Self-Test', 'Framework self-test execution cycles')
 ON CONFLICT (project_id) DO NOTHING;
 
--- Insert initial process registry entries
-INSERT INTO process_registry (pid, process_name, status, last_updated_version, change_notes) VALUES
-('PID-001', 'HelloSquad', 'Active', 'v1.0.0', 'First reference app - FastAPI Hello World service')
-ON CONFLICT (pid) DO NOTHING;
-
 -- Insert initial agent status entries
+-- Canonical 5-agent squad: max (lead), neo (dev), nat (strategy), eve (qa), data (analytics)
 -- SIP-Agent-Lifecycle: Use agent_id (lowercase identifier) and network_status
 INSERT INTO agent_status (agent_id, network_status, lifecycle_state, version) VALUES
 ('max', 'offline', 'UNKNOWN', '1.0.0'),
@@ -260,14 +176,3 @@ CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_tags ON squad_mem_pool USING GIN(t
 CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_status ON squad_mem_pool(status);
 CREATE INDEX IF NOT EXISTS idx_squad_mem_pool_created_at ON squad_mem_pool(created_at DESC);
 
--- Memory reuse tracking (optional enhancement)
-CREATE TABLE IF NOT EXISTS memory_reuse_log (
-    id SERIAL PRIMARY KEY,
-    memory_id TEXT NOT NULL,
-    agent TEXT NOT NULL,
-    accessed_at TIMESTAMPTZ DEFAULT now(),
-    query_context TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_memory_reuse_log_memory_id ON memory_reuse_log(memory_id);
-CREATE INDEX IF NOT EXISTS idx_memory_reuse_log_agent ON memory_reuse_log(agent);
