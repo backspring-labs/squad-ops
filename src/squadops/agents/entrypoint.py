@@ -631,6 +631,7 @@ async def main() -> int:
             agent_role_map = {
                 "max": "lead",
                 "neo": "dev",
+                "bob": "builder",
                 "eve": "qa",
                 "nat": "strat",
                 "data": "data",

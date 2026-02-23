@@ -218,7 +218,7 @@ class TestDispatchTask:
             cycle_id="cyc_001",
             pulse_id="p1",
             project_id="proj_001",
-            task_type="development.implement",
+            task_type="development.design",
             correlation_id="corr",
             causation_id="cause",
             trace_id="trace",
@@ -257,7 +257,7 @@ class TestDispatchTask:
             cycle_id="cyc_001",
             pulse_id="p1",
             project_id="proj_001",
-            task_type="development.implement",
+            task_type="development.design",
             correlation_id="corr",
             causation_id="cause",
             trace_id="trace",
@@ -283,7 +283,7 @@ class TestDispatchTask:
             cycle_id="cyc_001",
             pulse_id="p1",
             project_id="proj_001",
-            task_type="development.implement",
+            task_type="development.design",
             correlation_id="corr",
             causation_id="cause",
             trace_id="trace",
@@ -383,7 +383,7 @@ class TestSequentialHappyPath:
         published_queues = [call.args[0] for call in mock_queue.publish.call_args_list]
         assert published_queues == [
             "nat_comms",  # strategy.analyze_prd -> strat -> nat
-            "neo_comms",  # development.implement -> dev -> neo
+            "neo_comms",  # development.design -> dev -> neo
             "eve_comms",  # qa.validate -> qa -> eve
             "data-agent_comms",  # data.report -> data -> data-agent
             "max_comms",  # governance.review -> lead -> max

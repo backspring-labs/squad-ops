@@ -41,7 +41,7 @@ def _sample_envelope() -> TaskEnvelope:
         cycle_id="cyc_001",
         pulse_id="pulse_001",
         project_id="proj_001",
-        task_type="development.implement",
+        task_type="development.design",
         correlation_id="corr_001",
         causation_id="cause_001",
         trace_id="trace_001",
@@ -93,7 +93,7 @@ class TestHandleTaskEnvelope:
         runner.system.orchestrator.submit_task.assert_awaited_once()
         submitted = runner.system.orchestrator.submit_task.call_args.args[0]
         assert submitted.task_id == "task_123"
-        assert submitted.task_type == "development.implement"
+        assert submitted.task_type == "development.design"
         assert submitted.agent_id == "neo"
 
     async def test_publishes_result_to_reply_queue(self, runner) -> None:

@@ -25,7 +25,7 @@ def _make_envelope_payload() -> dict:
         cycle_id="cyc_001",
         pulse_id="p1",
         project_id="proj_001",
-        task_type="development.implement",
+        task_type="development.design",
         correlation_id="corr-1",
         causation_id="cause-1",
         trace_id="shared-trace-id",

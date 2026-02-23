@@ -524,7 +524,17 @@ Update existing `play_game`, `hello_squad`, `group_run` reference apps with buil
 - Update CLAUDE.md Agent Squad section (6 agents when builder present)
 - Regression suite passes (all existing tests green + new tests)
 
-### 4.4 SIP promotion
+### 4.4 Version bump
+
+Bump framework version to `0.9.11` to mark the builder role addition:
+
+```bash
+python scripts/maintainer/version_cli.py 0.9.11
+```
+
+Update `CLAUDE.md` version line (`**Framework Version**: 0.9.11`).
+
+### 4.5 SIP promotion
 
 After all E2E validation passes:
 ```bash
@@ -539,6 +549,7 @@ SQUADOPS_MAINTAINER=1 python scripts/maintainer/update_sip_status.py \
 - [ ] Legacy 5-agent cycle passes with zero config changes
 - [ ] Routing diagnostics visible in Prefect/task metadata
 - [ ] CLAUDE.md and SIP-0068 docs updated
+- [ ] Framework version bumped to 0.9.11
 - [ ] Full regression suite passes
 - [ ] SIP-0071 promoted to implemented
 - [ ] Final PR merged to main

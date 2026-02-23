@@ -27,8 +27,8 @@ class TestBuildProfileLoads:
         profile = load_profile("build")
         build_tasks = profile.defaults.get("build_tasks")
         assert build_tasks is not None
-        assert "development.build" in build_tasks
-        assert "qa.build_validate" in build_tasks
+        assert "development.develop" in build_tasks
+        assert "qa.test" in build_tasks
 
     def test_build_profile_has_plan_review_gate(self):
         """build.yaml has a plan-review gate after governance.review."""
@@ -61,8 +61,8 @@ class TestBuildOnlyProfileLoads:
         profile = load_profile("build-only")
         build_tasks = profile.defaults.get("build_tasks")
         assert build_tasks is not None
-        assert "development.build" in build_tasks
-        assert "qa.build_validate" in build_tasks
+        assert "development.develop" in build_tasks
+        assert "qa.test" in build_tasks
 
     def test_build_only_has_no_gates(self):
         """build-only.yaml has no gates (build-only skips planning)."""

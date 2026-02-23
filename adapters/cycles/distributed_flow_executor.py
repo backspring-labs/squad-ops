@@ -359,12 +359,16 @@ class DistributedFlowExecutor(FlowExecutionPort):
     # by_producing_task: match on producing_task_type metadata
     # by_type / by_type_fallback: match on artifact_type for artifacts without provenance
     _BUILD_ARTIFACT_FILTER: dict[str, dict[str, list[str]]] = {
-        "development.build": {
-            "by_producing_task": ["strategy.analyze_prd", "development.implement"],
+        "development.develop": {
+            "by_producing_task": ["strategy.analyze_prd", "development.design"],
             "by_type_fallback": ["document"],
         },
-        "qa.build_validate": {
-            "by_producing_task": ["qa.validate"],
+        "builder.assemble": {
+            "by_producing_task": ["development.develop"],
+            "by_type": ["source", "config"],
+        },
+        "qa.test": {
+            "by_producing_task": ["qa.validate", "builder.assemble"],
             "by_type": ["source", "config"],
         },
     }

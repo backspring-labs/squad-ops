@@ -1,8 +1,8 @@
 """Fenced code block parser for build handler output.
 
 Extracts tagged fenced code blocks from LLM responses into structured
-file records. Used by DevelopmentBuildHandler and QABuildValidateHandler
-to parse multi-file output.
+file records. Used by DevelopmentDevelopHandler, BuilderAssembleHandler,
+and QATestHandler to parse multi-file output.
 
 Part of SIP-Enhanced-Agent-Build-Capabilities, Phase 1.
 """

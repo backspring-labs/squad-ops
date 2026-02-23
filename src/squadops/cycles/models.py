@@ -73,6 +73,7 @@ class ArtifactType:
     TEST_REPORT = "test_report"
     BUILD_PLAN = "build_plan"
     CONFIG_SNAPSHOT = "config_snapshot"
+    QA_HANDOFF = "qa_handoff"
 
 
 class RunInitiator:

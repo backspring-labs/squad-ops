@@ -1,7 +1,8 @@
-name: build
-description: Plan-then-build cycle with optional gate between plan and build phases.
+name: builder-assemble
+description: Plan-then-build cycle using dedicated builder agent for assembly.
 defaults:
   build_strategy: fresh
+  build_profile: python_cli_builder
   task_flow_policy:
     mode: sequential
     gates:
@@ -14,8 +15,10 @@ defaults:
     - source
     - test
     - config
+    - qa_handoff
   build_tasks:
     - development.develop
+    - builder.assemble
     - qa.test
   experiment_context: {}
-  notes: "Plan-then-build cycle"
+  notes: "Plan-then-build with dedicated builder agent (SIP-0071)"

@@ -95,6 +95,16 @@ DATA_ROLE = AgentRole(
     ),
 )
 
+BUILDER_ROLE = AgentRole(
+    role_id="builder",
+    display_name="Builder Agent",
+    description="Artifact production from approved plans",
+    default_skills=(
+        "artifact_generation",
+        "code_generation",
+    ),
+)
+
 # Role registry
 DEFAULT_ROLES = {
     "lead": LEAD_ROLE,
@@ -102,4 +112,5 @@ DEFAULT_ROLES = {
     "qa": QA_ROLE,
     "strat": STRAT_ROLE,
     "data": DATA_ROLE,
+    "builder": BUILDER_ROLE,
 }

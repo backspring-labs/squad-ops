@@ -12,11 +12,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.handlers.cycle_tasks import (
+    BuilderAssembleHandler,
     DataReportHandler,
-    DevelopmentBuildHandler,
-    DevelopmentImplementHandler,
+    DevelopmentDesignHandler,
+    DevelopmentDevelopHandler,
     GovernanceReviewHandler,
-    QABuildValidateHandler,
+    QATestHandler,
     QAValidateHandler,
     StrategyAnalyzeHandler,
 )
@@ -71,17 +72,19 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (DataAnalysisHandler, ("data",)),
     (MetricsCollectionHandler, ("data",)),
     # Warmboot handlers (all roles can warmboot)
-    (WarmbootHandler, ("lead", "dev", "qa", "strat", "data")),
-    (ContextSyncHandler, ("lead", "dev", "qa", "strat", "data")),
+    (WarmbootHandler, ("lead", "dev", "qa", "strat", "data", "builder")),
+    (ContextSyncHandler, ("lead", "dev", "qa", "strat", "data", "builder")),
     # Cycle task handlers (SIP-0066: pinned task_types for cycle execution pipeline)
     (StrategyAnalyzeHandler, ("strat",)),
-    (DevelopmentImplementHandler, ("dev",)),
+    (DevelopmentDesignHandler, ("dev",)),
     (QAValidateHandler, ("qa",)),
     (DataReportHandler, ("data",)),
     (GovernanceReviewHandler, ("lead",)),
     # Build handlers (SIP-Enhanced-Agent-Build-Capabilities)
-    (DevelopmentBuildHandler, ("dev",)),
-    (QABuildValidateHandler, ("qa",)),
+    (DevelopmentDevelopHandler, ("dev",)),
+    (QATestHandler, ("qa",)),
+    # Builder handlers (SIP-0071: Builder Role)
+    (BuilderAssembleHandler, ("builder",)),
     # Repair handlers (SIP-0070: Pulse Check Verification)
     (DataAnalyzeVerificationHandler, ("data",)),
     (GovernanceRootCauseHandler, ("lead",)),

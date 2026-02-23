@@ -15,8 +15,8 @@ defaults:
     - test
     - config
   build_tasks:
-    - development.build
-    - qa.build_validate
+    - development.develop
+    - qa.test
   pulse_checks:
     - suite_id: post_dev_smoke
       boundary_id: post_dev
@@ -36,7 +36,7 @@ defaults:
       boundary_id: post_build
       binding_mode: milestone
       after_task_types:
-        - development.build
+        - development.develop
       checks:
         - check_type: command_exit_code
           target: build_smoke

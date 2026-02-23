@@ -107,7 +107,7 @@ class TestPlanPlusBuild:
 
     def test_plan_plus_build_7_envelopes(self, run, profile):
         cycle = _make_cycle({
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile)
 
@@ -118,7 +118,7 @@ class TestPlanPlusBuild:
 
     def test_causation_chain_continues_through_build(self, run, profile):
         cycle = _make_cycle({
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile)
 
@@ -130,7 +130,7 @@ class TestPlanPlusBuild:
 
     def test_build_steps_have_correct_roles(self, run, profile):
         cycle = _make_cycle({
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile)
 
@@ -140,7 +140,7 @@ class TestPlanPlusBuild:
 
     def test_build_steps_have_correct_agent_ids(self, run, profile):
         cycle = _make_cycle({
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile)
 
@@ -149,7 +149,7 @@ class TestPlanPlusBuild:
 
     def test_step_indices_are_sequential(self, run, profile):
         cycle = _make_cycle({
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile)
 
@@ -163,18 +163,18 @@ class TestBuildOnly:
     def test_build_only_2_envelopes(self, run, profile):
         cycle = _make_cycle({
             "plan_tasks": False,
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile)
 
         assert len(envelopes) == 2
         task_types = [e.task_type for e in envelopes]
-        assert task_types == ["development.build", "qa.build_validate"]
+        assert task_types == ["development.develop", "qa.test"]
 
     def test_build_only_causation_chain(self, run, profile):
         cycle = _make_cycle({
             "plan_tasks": False,
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile)
 
@@ -206,7 +206,7 @@ class TestGateBetweenPlanAndBuild:
             ),
             build_strategy="fresh",
             applied_defaults={
-                "build_tasks": ["development.build", "qa.build_validate"],
+                "build_tasks": ["development.develop", "qa.test"],
             },
             execution_overrides={},
         )
@@ -214,14 +214,14 @@ class TestGateBetweenPlanAndBuild:
 
         # governance.review is step 4 (index 4), build starts at step 5
         assert envelopes[4].task_type == "governance.review"
-        assert envelopes[5].task_type == "development.build"
+        assert envelopes[5].task_type == "development.develop"
         assert len(envelopes) == 7
 
 
 class TestAllSharedIdsConsistent:
     def test_all_envelopes_share_correlation_and_trace(self, run, profile):
         cycle = _make_cycle({
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile)
 

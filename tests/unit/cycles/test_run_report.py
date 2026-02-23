@@ -64,7 +64,7 @@ def _make_run(
 def _make_plan(count: int = 3) -> list[TaskEnvelope]:
     steps = [
         ("strategy.analyze_prd", "strat", "nat"),
-        ("development.implement", "dev", "neo"),
+        ("development.design", "dev", "neo"),
         ("qa.validate", "qa", "eve"),
     ]
     envelopes = []
@@ -179,7 +179,7 @@ class TestReportContainsMetadata:
         content = executor._artifact_vault.store.call_args[0][1].decode()
         assert "Task Plan" in content
         assert "strategy.analyze_prd" in content
-        assert "development.implement" in content
+        assert "development.design" in content
         assert "qa.validate" in content
         assert "Total tasks: 3" in content
 

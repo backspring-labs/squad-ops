@@ -4,7 +4,7 @@ Tests the 5 cycle task handlers in
 ``squadops.capabilities.handlers.cycle_tasks``:
 
 - StrategyAnalyzeHandler  (strategy.analyze_prd / strat)
-- DevelopmentImplementHandler (development.implement / dev)
+- DevelopmentDesignHandler (development.design / dev)
 - QAValidateHandler       (qa.validate / qa)
 - DataReportHandler       (data.report / data)
 - GovernanceReviewHandler (governance.review / lead)
@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from squadops.capabilities.handlers.cycle_tasks import (
     StrategyAnalyzeHandler,
-    DevelopmentImplementHandler,
+    DevelopmentDesignHandler,
     QAValidateHandler,
     DataReportHandler,
     GovernanceReviewHandler,
@@ -40,7 +40,7 @@ pytestmark = [pytest.mark.domain_capabilities]
 # ---------------------------------------------------------------------------
 HANDLER_SPECS = [
     (StrategyAnalyzeHandler, "strategy.analyze_prd", "strat"),
-    (DevelopmentImplementHandler, "development.implement", "dev"),
+    (DevelopmentDesignHandler, "development.design", "dev"),
     (QAValidateHandler, "qa.validate", "qa"),
     (DataReportHandler, "data.report", "data"),
     (GovernanceReviewHandler, "governance.review", "lead"),
@@ -50,7 +50,7 @@ HANDLER_CLASSES = [cls for cls, _, _ in HANDLER_SPECS]
 
 EXPECTED_ARTIFACT_NAMES = {
     StrategyAnalyzeHandler: "strategy_analysis.md",
-    DevelopmentImplementHandler: "implementation_plan.md",
+    DevelopmentDesignHandler: "implementation_plan.md",
     QAValidateHandler: "validation_plan.md",
     DataReportHandler: "data_report.md",
     GovernanceReviewHandler: "governance_review.md",
@@ -394,7 +394,7 @@ class TestHandleArtifactNames:
 # ---------------------------------------------------------------------------
 EXPECTED_ROLES = {
     StrategyAnalyzeHandler: "strat",
-    DevelopmentImplementHandler: "dev",
+    DevelopmentDesignHandler: "dev",
     QAValidateHandler: "qa",
     DataReportHandler: "data",
     GovernanceReviewHandler: "lead",

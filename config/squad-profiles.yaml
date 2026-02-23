@@ -10,4 +10,16 @@ profiles:
       - { agent_id: eve, role: qa, model: "qwen2.5:3b-instruct", enabled: true }
       - { agent_id: data, role: data, model: "qwen2.5:3b-instruct", enabled: true }
 
+  - profile_id: full-squad-with-builder
+    name: "Full Squad with Builder"
+    description: "6 agents including dedicated builder"
+    version: 1
+    agents:
+      - { agent_id: max, role: lead, model: "llama3.1:8b", enabled: true }
+      - { agent_id: neo, role: dev, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: nat, role: strat, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: bob, role: builder, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: eve, role: qa, model: "qwen2.5:3b-instruct", enabled: true }
+      - { agent_id: data, role: data, model: "qwen2.5:3b-instruct", enabled: true }
+
 active_profile: full-squad

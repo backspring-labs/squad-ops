@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 0.9.10
+**Framework Version**: 0.9.11
 **Python Requirement**: 3.11+
 
 ## Commands
@@ -114,7 +114,7 @@ squadops artifacts list <run-id>           # List artifacts for run
 - **CRP Applied Defaults**: Extra keys in CRP `defaults` flow into `applied_defaults`: `build_tasks`, `plan_tasks`, `pulse_checks`, `cadence_policy`
 
 ### Agent Squad
-5 agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics). Implementations in `src/squadops/agents/`.
+6 agents when builder role is present: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics). The standard 5-agent squad (without Bob) remains the default via `full-squad` profile. Implementations in `src/squadops/agents/`.
 
 ## Test Configuration
 
@@ -151,6 +151,7 @@ Key implemented SIPs:
 - **SIP-0068** – Enhanced Agent Build Capabilities
 - **SIP-0069** – Console Control-Plane UI (Continuum Plugins)
 - **SIP-0070** – Pulse Checks and Verification Framework
+- **SIP-0071** – Builder Role (Dedicated Product Builder Agent)
 
 To move a SIP (maintainer only):
 ```bash

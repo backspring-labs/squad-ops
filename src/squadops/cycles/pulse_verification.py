@@ -42,8 +42,8 @@ def resolve_milestone_bindings(
 
     For each milestone suite, resolves ``after_task_types`` via prefix matching:
     ``after_task_type`` ``'development'`` matches all tasks whose ``task_type``
-    starts with ``'development.'`` (e.g., ``development.implement``,
-    ``development.build``).
+    starts with ``'development.'`` (e.g., ``development.design``,
+    ``development.develop``).
 
     Milestone boundary = the **last** plan index whose ``task_type``
     prefix-matches the bound family.  The emitted ``boundary_id`` is the

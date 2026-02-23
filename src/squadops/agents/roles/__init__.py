@@ -3,6 +3,7 @@
 Concrete role implementations for the agent framework.
 Part of SIP-0.8.8 Phase 3.
 """
+from squadops.agents.roles.builder import BuilderAgent
 from squadops.agents.roles.data import DataAgent
 from squadops.agents.roles.dev import DevAgent
 from squadops.agents.roles.lead import LeadAgent
@@ -15,4 +16,5 @@ __all__ = [
     "QAAgent",
     "StratAgent",
     "DataAgent",
+    "BuilderAgent",
 ]

@@ -84,7 +84,7 @@ class TestArtifactContentsPreResolution:
         )
         ref_impl = _make_artifact_ref(
             "art_002", "implementation_plan.md", "document",
-            producing_task_type="development.implement",
+            producing_task_type="development.design",
         )
 
         stored = [("art_001", ref_strategy), ("art_002", ref_impl)]
@@ -95,7 +95,7 @@ class TestArtifactContentsPreResolution:
         ])
 
         contents = await executor._resolve_artifact_contents(
-            "development.build", stored,
+            "development.develop", stored,
         )
 
         assert "strategy_analysis.md" in contents
@@ -111,14 +111,14 @@ class TestArtifactContentsPreResolution:
         assert contents == {}
 
     async def test_qa_build_gets_source_artifacts(self, executor):
-        """qa.build_validate receives source artifacts by type."""
+        """qa.test receives source artifacts by type."""
         ref_val = _make_artifact_ref(
             "art_001", "validation_plan.md", "document",
             producing_task_type="qa.validate",
         )
         ref_src = _make_artifact_ref(
             "art_002", "src/main.py", "source",
-            producing_task_type="development.build",
+            producing_task_type="development.develop",
         )
 
         stored = [("art_001", ref_val), ("art_002", ref_src)]
@@ -129,7 +129,7 @@ class TestArtifactContentsPreResolution:
         ])
 
         contents = await executor._resolve_artifact_contents(
-            "qa.build_validate", stored,
+            "qa.test", stored,
         )
 
         assert "validation_plan.md" in contents
@@ -145,7 +145,7 @@ class TestArtifactContentsPreResolution:
         )
         ref2 = _make_artifact_ref(
             "art_002", "file2.md", "document",
-            producing_task_type="development.implement",
+            producing_task_type="development.design",
         )
         ref3 = _make_artifact_ref(
             "art_003", "file3.md", "document",
@@ -161,7 +161,7 @@ class TestArtifactContentsPreResolution:
         ])
 
         contents = await executor._resolve_artifact_contents(
-            "development.build", stored,
+            "development.develop", stored,
         )
 
         # First two fit (256+256=512), third would exceed limit
@@ -190,7 +190,7 @@ class TestProducingTaskTypeMetadata:
             cycle_id="cyc_001",
             pulse_id="pulse_1",
             project_id="test",
-            task_type="development.build",
+            task_type="development.develop",
             correlation_id="corr_1",
             causation_id="corr_1",
             trace_id="trace_1",
@@ -213,10 +213,10 @@ class TestProducingTaskTypeMetadata:
 
         ref = await executor._store_artifact(
             art_dict, cycle, "run_001", envelope,
-            producing_task_type="development.build",
+            producing_task_type="development.develop",
         )
 
-        assert ref.metadata["producing_task_type"] == "development.build"
+        assert ref.metadata["producing_task_type"] == "development.develop"
         assert ref.metadata["task_id"] == "task_1"
         assert ref.metadata["role"] == "dev"
 
@@ -246,7 +246,7 @@ class TestBuildOnlyValidation:
             build_strategy="fresh",
             applied_defaults={
                 "plan_tasks": False,
-                "build_tasks": ["development.build", "qa.build_validate"],
+                "build_tasks": ["development.develop", "qa.test"],
             },
             execution_overrides={},  # no plan_artifact_refs
         )
@@ -328,7 +328,7 @@ class TestBuildOnlySeeding:
             return_value=(ref_plan, b"Plan content here"),
         )
         contents = await executor._resolve_artifact_contents(
-            "development.build", stored_artifacts,
+            "development.develop", stored_artifacts,
         )
 
         assert "implementation_plan.md" in contents
@@ -352,7 +352,7 @@ class TestBuildOnlySeeding:
             build_strategy="fresh",
             applied_defaults={
                 "plan_tasks": False,
-                "build_tasks": ["development.build", "qa.build_validate"],
+                "build_tasks": ["development.develop", "qa.test"],
             },
             execution_overrides={
                 "plan_artifact_refs": ["art_plan_001"],

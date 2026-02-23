@@ -419,6 +419,45 @@ services:
         condition: service_started
     networks:
     - squadnet
+  bob:
+    build:
+      context: .
+      dockerfile: agents/Dockerfile
+      args:
+        AGENT_ROLE: builder
+        BUILD_HASH: ${BUILD_HASH:-unknown}
+    container_name: squadops-bob
+    secrets:
+      - db_password
+      - rabbitmq_password
+    environment:
+      SQUADOPS__AGENT__ID: bob
+      SQUADOPS_AGENT_ROLE: builder
+      SQUADOPS_PROFILE: dev
+      SQUADOPS__SECRETS__PROVIDER: docker_secret
+      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
+      SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
+      SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
+      SQUADOPS__TELEMETRY__BACKEND: otel
+      SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+      SQUADOPS__LANGFUSE__ENABLED: "true"
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
+      SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
+      SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Auth not needed for agents (no HTTP server)
+      SQUADOPS__AUTH__ENABLED: "false"
+    volumes:
+      - ./warm-boot:/app/warm-boot
+      - bob_memory_data:/app/data/memory_db
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - squadnet
   # quark (finance) - Disabled: Role not yet ported to new architecture (SIP-0.8.8)
   # quark:
   #   build:
@@ -621,6 +660,7 @@ volumes:
   grafana_data: {}
   max_memory_data: {}
   neo_memory_data: {}
+  bob_memory_data: {}
   data_memory_data: {}
 secrets:
   db_password:

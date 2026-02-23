@@ -19,8 +19,8 @@ defaults:
     - test
     - config
   build_tasks:
-    - development.build
-    - qa.build_validate
+    - development.develop
+    - qa.test
   experiment_context:
     sample_app: group_run
   notes: "Group Run — multi-module build-capable sample project"
