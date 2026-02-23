@@ -18,8 +18,8 @@ defaults:
     - source
     - test
   build_tasks:
-    - development.build
-    - qa.build_validate
+    - development.develop
+    - qa.test
   experiment_context:
     sample_app: hello_squad
   notes: "Hello Squad — minimal build-capable sample project"

@@ -15,7 +15,7 @@ defaults:
     - test
     - config
   build_tasks:
-    - development.build
-    - qa.build_validate
+    - development.develop
+    - qa.test
   experiment_context: {}
   notes: "Plan-then-build cycle"

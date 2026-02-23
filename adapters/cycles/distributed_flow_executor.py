@@ -359,17 +359,16 @@ class DistributedFlowExecutor(FlowExecutionPort):
     # by_producing_task: match on producing_task_type metadata
     # by_type / by_type_fallback: match on artifact_type for artifacts without provenance
     _BUILD_ARTIFACT_FILTER: dict[str, dict[str, list[str]]] = {
-        "development.build": {
-            "by_producing_task": ["strategy.analyze_prd", "development.implement"],
+        "development.develop": {
+            "by_producing_task": ["strategy.analyze_prd", "development.design"],
             "by_type_fallback": ["document"],
         },
-        # V1: duplicates development.build filter for parity (SIP-0071 D7)
-        "builder.build": {
-            "by_producing_task": ["strategy.analyze_prd", "development.implement"],
-            "by_type_fallback": ["document"],
+        "builder.assemble": {
+            "by_producing_task": ["development.develop"],
+            "by_type": ["source", "config"],
         },
-        "qa.build_validate": {
-            "by_producing_task": ["qa.validate"],
+        "qa.test": {
+            "by_producing_task": ["qa.validate", "builder.assemble"],
             "by_type": ["source", "config"],
         },
     }

@@ -189,11 +189,11 @@ class StrategyAnalyzeHandler(_CycleTaskHandler):
     _artifact_name = "strategy_analysis.md"
 
 
-class DevelopmentImplementHandler(_CycleTaskHandler):
-    """Cycle task handler for development implementation (dev role)."""
+class DevelopmentDesignHandler(_CycleTaskHandler):
+    """Cycle task handler for development design (dev role)."""
 
-    _handler_name = "development_implement_handler"
-    _capability_id = "development.implement"
+    _handler_name = "development_design_handler"
+    _capability_id = "development.design"
     _role = "dev"
     _artifact_name = "implementation_plan.md"
 
@@ -266,7 +266,7 @@ def _classify_file(filename: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
-class DevelopmentBuildHandler(_CycleTaskHandler):
+class DevelopmentDevelopHandler(_CycleTaskHandler):
     """Build handler: generates source code from implementation plan (D1, D8).
 
     Reads the implementation plan and strategy analysis from
@@ -275,8 +275,8 @@ class DevelopmentBuildHandler(_CycleTaskHandler):
     tagged fenced code blocks.
     """
 
-    _handler_name = "development_build_handler"
-    _capability_id = "development.build"
+    _handler_name = "development_develop_handler"
+    _capability_id = "development.develop"
     _role = "dev"
     _artifact_name = "build_output"  # overridden by multi-file output
 
@@ -539,7 +539,7 @@ class DevelopmentBuildHandler(_CycleTaskHandler):
             llm_obs.record_generation(context.correlation_context, gen_record, layers)
 
 
-class QABuildValidateHandler(_CycleTaskHandler):
+class QATestHandler(_CycleTaskHandler):
     """Build handler: generates test files from validation plan + source (D1).
 
     Reads the validation plan and source artifacts from
@@ -547,8 +547,8 @@ class QABuildValidateHandler(_CycleTaskHandler):
     pytest test files.
     """
 
-    _handler_name = "qa_build_validate_handler"
-    _capability_id = "qa.build_validate"
+    _handler_name = "qa_test_handler"
+    _capability_id = "qa.test"
     _role = "qa"
     _artifact_name = "test_output"  # overridden by multi-file output
 
@@ -868,17 +868,16 @@ class QABuildValidateHandler(_CycleTaskHandler):
 # ---------------------------------------------------------------------------
 
 
-class BuilderBuildHandler(_CycleTaskHandler):
-    """Build handler for dedicated builder role (SIP-0071).
+class BuilderAssembleHandler(_CycleTaskHandler):
+    """Assembly handler for dedicated builder role (SIP-0071).
 
-    Routes to the appropriate build profile, validates QA handoff artifact,
-    enforces required file lists, and detects duplicate filenames.
-    Falls back to DevelopmentBuildHandler semantics when no builder role
-    is present (routing resolved at plan-generation time, D5).
+    Takes source code produced by the dev role (from artifact_contents)
+    and assembles it into deployable artifacts: packaging, entrypoints,
+    Dockerfile, startup scripts, and qa_handoff.md.
     """
 
-    _handler_name = "builder_build_handler"
-    _capability_id = "builder.build"
+    _handler_name = "builder_assemble_handler"
+    _capability_id = "builder.assemble"
     _role = "builder"
     _artifact_name = "build_output"
 
@@ -886,7 +885,7 @@ class BuilderBuildHandler(_CycleTaskHandler):
         errors = super().validate_inputs(inputs, contract)
         if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
             errors.append(
-                "'artifact_contents' or 'artifact_vault' is required for build tasks"
+                "'artifact_contents' or 'artifact_vault' is required for assembly tasks"
             )
         return errors
 
@@ -921,6 +920,15 @@ class BuilderBuildHandler(_CycleTaskHandler):
                     "Vault fallback: failed to retrieve %s", ref_id, exc_info=True,
                 )
         return None
+
+    def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
+        """Get all source/config artifacts from artifact_contents."""
+        contents = inputs.get("artifact_contents", {})
+        sources = {}
+        for key, value in contents.items():
+            if key.endswith((".py", ".txt", ".yaml", ".yml", ".toml", ".json", ".md")):
+                sources[key] = value
+        return sources
 
     async def handle(
         self,
@@ -967,16 +975,29 @@ class BuilderBuildHandler(_CycleTaskHandler):
                         "Ignoring non-string tag %r=%r from experiment_context", key, value,
                     )
 
-        # Step 2: Resolve plan artifacts
-        impl_plan = self._resolve_artifact_content(inputs, "implementation_plan")
-        strategy = self._resolve_artifact_content(inputs, "strategy_analysis")
+        # Step 2: Resolve source artifacts from dev role (assembly input)
+        sources = self._get_source_artifacts(inputs)
 
-        # Step 3: Build prompt from profile template
+        if not sources:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False, outputs={}, _evidence=evidence,
+                error="No source artifacts found for assembly",
+            )
+
+        # Step 3: Build assembly prompt with source files as context
         parts = [f"## Product Requirements Document\n\n{prd}"]
-        if impl_plan:
-            parts.append(f"\n\n## Implementation Plan\n\n{impl_plan}")
-        if strategy:
-            parts.append(f"\n\n## Strategy Analysis\n\n{strategy}")
+
+        parts.append("\n\n## Source Files (from developer)\n")
+        for path, code in sorted(sources.items()):
+            parts.append(f"\n### {path}\n```\n{code}\n```\n")
+
         if prior_outputs:
             parts.append("\n\n## Prior Analysis from Upstream Roles\n")
             for role, summary in prior_outputs.items():
@@ -988,26 +1009,25 @@ class BuilderBuildHandler(_CycleTaskHandler):
                 parts.append(f"- **{tag_key}**: {tag_value}")
 
         parts.append(
-            "\n\nGenerate complete, runnable source files as a Python package. "
+            "\n\nYou are ASSEMBLING the source code above into a deployable package. "
+            "Do NOT rewrite or regenerate the source code — it is already written. "
+            "Your job is to add deployment and packaging artifacts.\n\n"
             "Use tagged fenced code blocks with the format:\n"
             "```<language>:<filepath>\n<content>\n```\n\n"
+            "Produce the following deployment artifacts:\n"
+            "- __main__.py entrypoint (if not already present)\n"
+            "- Dockerfile for containerized deployment\n"
+            "- requirements.txt (if not already present)\n"
+            "- Any startup scripts or config files needed for deployment\n\n"
             "IMPORTANT: You MUST also include a `qa_handoff.md` file with these "
             "required sections:\n"
             "- ## How to Run\n"
             "- ## How to Test\n"
             "- ## Expected Behavior\n\n"
             "File path rules:\n"
-            "- Use the project name as the top-level package directory.\n"
-            "- Always include __init__.py for the package.\n"
-            "- Use RELATIVE imports within the package.\n"
             "- File paths must use forward slashes, no colons, no spaces.\n"
-            "- Include a requirements.txt if external dependencies are needed.\n"
-            "- The main entry point should be runnable via "
-            "`python -m <package_name>` (use __main__.py).\n\n"
-            "Before emitting each file, verify:\n"
-            "- All stdlib and third-party imports are present\n"
-            "- All intra-package imports use relative form\n"
-            "- __main__.py uses relative imports, not absolute"
+            "- Do NOT re-emit source files that the developer already wrote.\n"
+            "- Only emit NEW files needed for packaging and deployment."
         )
         user_prompt = "\n".join(parts)
 
@@ -1104,9 +1124,18 @@ class BuilderBuildHandler(_CycleTaskHandler):
                 error="qa_handoff.md not found in builder output",
             )
 
-        missing_sections = [
-            s for s in QA_HANDOFF_REQUIRED_SECTIONS if s not in qa_handoff_content
-        ]
+        qa_lower = qa_handoff_content.lower()
+        # Flexible section check: accept exact heading or keyword variants
+        _SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
+            "## How to Run": ("how to run", "running", "## run"),
+            "## How to Test": ("how to test", "testing", "## test"),
+            "## Expected Behavior": ("expected behavior", "expected output", "## expected"),
+        }
+        missing_sections = []
+        for section in QA_HANDOFF_REQUIRED_SECTIONS:
+            keywords = _SECTION_KEYWORDS.get(section, (section.lower(),))
+            if not any(kw in qa_lower for kw in keywords):
+                missing_sections.append(section)
         if missing_sections:
             duration_ms = (time.perf_counter() - start_time) * 1000
             evidence = HandlerEvidence.create(
@@ -1135,7 +1164,7 @@ class BuilderBuildHandler(_CycleTaskHandler):
             )
             return HandlerResult(
                 success=False, outputs={}, _evidence=evidence,
-                error=f"Required files missing: {missing_files}",
+                error=f"Required deployment files missing: {missing_files}",
             )
 
         # Step 8b: Duplicate filename detection
@@ -1160,12 +1189,13 @@ class BuilderBuildHandler(_CycleTaskHandler):
         # Step 9: Build outputs with diagnostics
         qa_validation_errors: list[str] = []
         outputs = {
-            "summary": f"[builder] Generated {len(artifacts)} artifact(s)",
+            "summary": f"[builder] Assembled {len(artifacts)} deployment artifact(s)",
             "role": self._role,
             "artifacts": artifacts,
             "diagnostics": {
                 "resolved_handler": self._handler_name,
                 "build_profile": profile_name,
+                "source_files_count": len(sources),
                 "qa_handoff_present": qa_handoff_content is not None,
                 "qa_validation_errors": qa_validation_errors,
                 "missing_required_files": missing_files,
@@ -1205,11 +1235,13 @@ class BuilderBuildHandler(_CycleTaskHandler):
                 latency_ms=duration_ms,
             )
             layers = PromptLayerMetadata(
-                prompt_layer_set_id=f"{self._role}-build",
+                prompt_layer_set_id=f"{self._role}-assemble",
                 layers=(
-                    PromptLayer(layer_type="system", layer_id=f"{self._role}-build-system"),
                     PromptLayer(
-                        layer_type="user", layer_id=f"build-{self._capability_id}"
+                        layer_type="system", layer_id=f"{self._role}-assemble-system",
+                    ),
+                    PromptLayer(
+                        layer_type="user", layer_id=f"assemble-{self._capability_id}"
                     ),
                 ),
             )

@@ -22,7 +22,7 @@ from squadops.tasks.models import TaskEnvelope
 # Pinned task_type → role mapping (SIP-0066 §5.4)
 CYCLE_TASK_STEPS: list[tuple[str, str]] = [
     ("strategy.analyze_prd", "strat"),
-    ("development.implement", "dev"),
+    ("development.design", "dev"),
     ("qa.validate", "qa"),
     ("data.report", "data"),
     ("governance.review", "lead"),
@@ -30,18 +30,19 @@ CYCLE_TASK_STEPS: list[tuple[str, str]] = [
 
 # Build task steps (SIP-Enhanced-Agent-Build-Capabilities)
 BUILD_TASK_STEPS: list[tuple[str, str]] = [
-    ("development.build", "dev"),
-    ("qa.build_validate", "qa"),
+    ("development.develop", "dev"),
+    ("qa.test", "qa"),
 ]
 
 # Builder-aware build steps (SIP-0071)
-BUILDER_BUILD_TASK_STEPS: list[tuple[str, str]] = [
-    ("builder.build", "builder"),
-    ("qa.build_validate", "qa"),
+BUILDER_ASSEMBLY_TASK_STEPS: list[tuple[str, str]] = [
+    ("development.develop", "dev"),
+    ("builder.assemble", "builder"),
+    ("qa.test", "qa"),
 ]
 
 # Task types that are build steps (for routing_reason metadata)
-_BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_BUILD_TASK_STEPS}
+_BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
 
 
 def _resolve_agent_id(profile: SquadProfile, role: str) -> str:
@@ -71,8 +72,8 @@ def generate_task_plan(
 
     - ``plan_tasks`` (default True): include the 5 standard plan steps
     - ``build_tasks`` (default falsy): if non-empty, append build steps
-    - When builder role present in profile, routes build to ``builder.build``
-      instead of ``development.build`` (SIP-0071 D5)
+    - When builder role present in profile, routes build through
+      ``builder.assemble`` (3-step pipeline, SIP-0071 D5)
 
     Args:
         cycle: The cycle containing experiment config.
@@ -94,7 +95,7 @@ def generate_task_plan(
         steps.extend(CYCLE_TASK_STEPS)
     if include_build:
         if builder_used:
-            steps.extend(BUILDER_BUILD_TASK_STEPS)
+            steps.extend(BUILDER_ASSEMBLY_TASK_STEPS)
         else:
             steps.extend(BUILD_TASK_STEPS)
 

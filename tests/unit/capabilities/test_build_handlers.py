@@ -1,6 +1,6 @@
 """Unit tests for build handlers (SIP-Enhanced-Agent-Build-Capabilities).
 
-Tests DevelopmentBuildHandler and QABuildValidateHandler in
+Tests DevelopmentDevelopHandler and QATestHandler in
 ``squadops.capabilities.handlers.cycle_tasks``.
 
 Part of Phase 1.
@@ -12,8 +12,8 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from squadops.capabilities.handlers.cycle_tasks import (
-    DevelopmentBuildHandler,
-    QABuildValidateHandler,
+    DevelopmentDevelopHandler,
+    QATestHandler,
 )
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.test_runner import TestRunResult
@@ -124,13 +124,13 @@ def qa_inputs():
 
 
 # ---------------------------------------------------------------------------
-# DevelopmentBuildHandler
+# DevelopmentDevelopHandler
 # ---------------------------------------------------------------------------
 
 
 class TestDevBuildMultiFile:
     async def test_dev_build_multi_file(self, mock_context, build_inputs):
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
         assert result.success is True
@@ -145,7 +145,7 @@ class TestDevBuildMultiFile:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_SINGLE_FILE_RESPONSE),
         )
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
         assert result.success is True
@@ -153,7 +153,7 @@ class TestDevBuildMultiFile:
         assert result.outputs["artifacts"][0]["name"] == "app.py"
 
     async def test_dev_build_summary(self, mock_context, build_inputs):
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
         assert "[dev]" in result.outputs["summary"]
@@ -165,7 +165,7 @@ class TestDevBuildParseFailure:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_NO_FENCES_RESPONSE),
         )
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
         assert result.success is False
@@ -179,7 +179,7 @@ class TestDevBuildParseFailure:
 class TestDevBuildLLMError:
     async def test_dev_build_llm_error(self, mock_context, build_inputs):
         mock_context.ports.llm.chat = AsyncMock(side_effect=LLMConnectionError("timeout"))
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
         assert result.success is False
@@ -188,17 +188,17 @@ class TestDevBuildLLMError:
 
 class TestDevBuildValidation:
     def test_missing_prd(self):
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         errors = handler.validate_inputs({"artifact_contents": {}})
         assert "'prd' is required" in errors
 
     def test_missing_artifact_contents_and_vault(self):
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         errors = handler.validate_inputs({"prd": "something"})
         assert any("artifact_contents" in e for e in errors)
 
     def test_valid_inputs(self):
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         errors = handler.validate_inputs({
             "prd": "something",
             "artifact_contents": {"plan.md": "content"},
@@ -208,18 +208,18 @@ class TestDevBuildValidation:
 
 class TestDevBuildEvidence:
     async def test_evidence_present(self, mock_context, build_inputs):
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
         assert isinstance(result._evidence, HandlerEvidence)
-        assert result.evidence.capability_id == "development.build"
-        assert result.evidence.handler_name == "development_build_handler"
+        assert result.evidence.capability_id == "development.develop"
+        assert result.evidence.handler_name == "development_develop_handler"
         assert result.evidence.duration_ms >= 0
 
 
 class TestDevBuildPromptContent:
     async def test_prompt_includes_plan_artifacts(self, mock_context, build_inputs):
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
         call_args = mock_context.ports.llm.chat.call_args
@@ -240,7 +240,7 @@ class TestDevBuildFileClassification:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=yaml_response),
         )
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
         assert result.success is True
@@ -249,7 +249,7 @@ class TestDevBuildFileClassification:
 
 
 # ---------------------------------------------------------------------------
-# QABuildValidateHandler
+# QATestHandler
 # ---------------------------------------------------------------------------
 
 
@@ -259,7 +259,7 @@ class TestQABuildProducesTestArtifacts:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
 
         assert result.success is True
@@ -280,7 +280,7 @@ class TestQABuildProducesTestArtifacts:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
 
         assert "[qa]" in result.outputs["summary"]
@@ -292,7 +292,7 @@ class TestQABuildParseFailure:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_NO_FENCES_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
 
         assert result.success is False
@@ -305,7 +305,7 @@ class TestQABuildPromptContent:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         await handler.handle(mock_context, qa_inputs)
 
         call_args = mock_context.ports.llm.chat.call_args
@@ -324,13 +324,13 @@ class TestQABuildPromptContent:
 class TestBuildHandlerBootstrap:
     def test_dev_build_in_handler_configs(self):
         registered = {entry[0]: entry[1] for entry in HANDLER_CONFIGS}
-        assert DevelopmentBuildHandler in registered
-        assert registered[DevelopmentBuildHandler] == ("dev",)
+        assert DevelopmentDevelopHandler in registered
+        assert registered[DevelopmentDevelopHandler] == ("dev",)
 
     def test_qa_build_in_handler_configs(self):
         registered = {entry[0]: entry[1] for entry in HANDLER_CONFIGS}
-        assert QABuildValidateHandler in registered
-        assert registered[QABuildValidateHandler] == ("qa",)
+        assert QATestHandler in registered
+        assert registered[QATestHandler] == ("qa",)
 
 
 # ---------------------------------------------------------------------------
@@ -340,15 +340,15 @@ class TestBuildHandlerBootstrap:
 
 class TestBuildHandlerProperties:
     def test_dev_build_capability_id(self):
-        handler = DevelopmentBuildHandler()
-        assert handler.capability_id == "development.build"
-        assert handler.name == "development_build_handler"
+        handler = DevelopmentDevelopHandler()
+        assert handler.capability_id == "development.develop"
+        assert handler.name == "development_develop_handler"
         assert "dev" in handler.description
 
     def test_qa_build_capability_id(self):
-        handler = QABuildValidateHandler()
-        assert handler.capability_id == "qa.build_validate"
-        assert handler.name == "qa_build_validate_handler"
+        handler = QATestHandler()
+        assert handler.capability_id == "qa.test"
+        assert handler.name == "qa_test_handler"
         assert "qa" in handler.description
 
 
@@ -384,7 +384,7 @@ class TestDevBuildVaultFallback:
             "artifact_refs": ["art_001"],
         }
 
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, inputs)
 
         assert result.success is True
@@ -422,7 +422,7 @@ class TestDevBuildVaultFallback:
             "artifact_refs": ["art_099"],
         }
 
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, inputs)
 
         assert result.success is False
@@ -463,7 +463,7 @@ class TestQABuildVaultFallback:
             "artifact_refs": ["art_val"],
         }
 
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, inputs)
 
         assert result.success is True
@@ -494,7 +494,7 @@ class TestDevBuildLangFuseRecording:
         ctx.ports.llm_observability = llm_obs
         ctx.correlation_context = MagicMock()
 
-        handler = DevelopmentBuildHandler()
+        handler = DevelopmentDevelopHandler()
         result = await handler.handle(ctx, build_inputs)
 
         assert result.success is True
@@ -524,7 +524,7 @@ class TestQABuildLangFuseRecording:
         ctx.ports.llm_observability = llm_obs
         ctx.correlation_context = MagicMock()
 
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(ctx, qa_inputs)
 
         assert result.success is True
@@ -543,7 +543,7 @@ class TestQATestReportArtifact:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
 
         report_arts = [a for a in result.outputs["artifacts"] if a["name"] == "test_report.md"]
@@ -560,7 +560,7 @@ class TestQAHandlerSucceedsWhenTestsFail:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
 
         assert result.success is True
@@ -575,7 +575,7 @@ class TestQAHandlerSucceedsWhenTestsNotExecuted:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
 
         assert result.success is True
@@ -588,7 +588,7 @@ class TestQASummaryIncludesTestOutcome:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
         assert "all tests passed" in result.outputs["summary"]
 
@@ -597,7 +597,7 @@ class TestQASummaryIncludesTestOutcome:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
         assert "tests failed" in result.outputs["summary"]
 
@@ -606,6 +606,6 @@ class TestQASummaryIncludesTestOutcome:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        handler = QABuildValidateHandler()
+        handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
         assert "tests not run" in result.outputs["summary"]

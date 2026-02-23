@@ -11,7 +11,7 @@ defaults:
     - config
   plan_tasks: false
   build_tasks:
-    - development.build
-    - qa.build_validate
+    - development.develop
+    - qa.test
   experiment_context: {}
   notes: "Build-only cycle — requires plan_artifact_refs in execution_overrides"

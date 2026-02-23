@@ -139,22 +139,22 @@ class TestSkillBootstrap:
 class TestBuilderHandlerRegistration:
     """Tests for builder handler registration (SIP-0071)."""
 
-    def test_builder_build_handler_in_configs(self):
-        """BuilderBuildHandler should be registered in HANDLER_CONFIGS."""
-        from squadops.capabilities.handlers.cycle_tasks import BuilderBuildHandler
+    def test_builder_assemble_handler_in_configs(self):
+        """BuilderAssembleHandler should be registered in HANDLER_CONFIGS."""
+        from squadops.capabilities.handlers.cycle_tasks import BuilderAssembleHandler
 
         handler_classes = [hc for hc, _ in get_all_handlers()]
-        assert BuilderBuildHandler in handler_classes
+        assert BuilderAssembleHandler in handler_classes
 
-    def test_builder_build_handler_assigned_to_builder_role(self):
-        """BuilderBuildHandler should be assigned to builder role only."""
-        from squadops.capabilities.handlers.cycle_tasks import BuilderBuildHandler
+    def test_builder_assemble_handler_assigned_to_builder_role(self):
+        """BuilderAssembleHandler should be assigned to builder role only."""
+        from squadops.capabilities.handlers.cycle_tasks import BuilderAssembleHandler
 
         for handler_class, roles in get_all_handlers():
-            if handler_class is BuilderBuildHandler:
+            if handler_class is BuilderAssembleHandler:
                 assert roles == ("builder",)
                 return
-        pytest.fail("BuilderBuildHandler not found in handler configs")
+        pytest.fail("BuilderAssembleHandler not found in handler configs")
 
     def test_warmboot_includes_builder_role(self):
         """WarmbootHandler should include builder in its role tuple."""
@@ -176,28 +176,28 @@ class TestBuilderHandlerRegistration:
                 return
         pytest.fail("ContextSyncHandler not found in handler configs")
 
-    def test_builder_does_not_shadow_development_build(self):
-        """BuilderBuildHandler and DevelopmentBuildHandler should coexist."""
+    def test_builder_does_not_shadow_development_develop(self):
+        """BuilderAssembleHandler and DevelopmentDevelopHandler should coexist."""
         from squadops.capabilities.handlers.cycle_tasks import (
-            BuilderBuildHandler,
-            DevelopmentBuildHandler,
+            BuilderAssembleHandler,
+            DevelopmentDevelopHandler,
         )
 
         handler_classes = [hc for hc, _ in get_all_handlers()]
-        assert BuilderBuildHandler in handler_classes
-        assert DevelopmentBuildHandler in handler_classes
+        assert BuilderAssembleHandler in handler_classes
+        assert DevelopmentDevelopHandler in handler_classes
 
-    def test_builder_build_handler_capability_id(self):
-        """BuilderBuildHandler in registry should have correct capability_id."""
+    def test_builder_assemble_handler_capability_id(self):
+        """BuilderAssembleHandler in registry should have correct capability_id."""
         registry = create_handler_registry()
         capabilities = registry.list_capabilities()
-        assert "builder.build" in capabilities
+        assert "builder.assemble" in capabilities
 
     def test_builder_role_filter_includes_builder_handler(self):
-        """Filtering by builder role should include builder.build."""
+        """Filtering by builder role should include builder.assemble."""
         registry = create_handler_registry(roles=["builder"])
         capabilities = registry.list_capabilities()
-        assert "builder.build" in capabilities
+        assert "builder.assemble" in capabilities
         # Should NOT include dev-only handlers
         assert "development.code_generation" not in capabilities
 

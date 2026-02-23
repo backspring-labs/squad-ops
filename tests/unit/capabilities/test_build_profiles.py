@@ -47,13 +47,13 @@ class TestBuildProfileImmutability:
 
 
 class TestPythonCliBuilderProfile:
-    def test_required_files_include_main_py(self):
+    def test_required_files_include_dockerfile(self):
         profile = get_profile("python_cli_builder")
-        assert "main.py" in profile.required_files
+        assert "Dockerfile" in profile.required_files
 
-    def test_required_files_include_init_py(self):
+    def test_required_files_include_requirements_txt(self):
         profile = get_profile("python_cli_builder")
-        assert "__init__.py" in profile.required_files
+        assert "requirements.txt" in profile.required_files
 
     def test_required_files_include_main_entry(self):
         profile = get_profile("python_cli_builder")

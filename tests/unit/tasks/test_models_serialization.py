@@ -27,7 +27,7 @@ class TestTaskEnvelopeSerialization:
             cycle_id="cyc_001",
             pulse_id="pulse_001",
             project_id="proj_001",
-            task_type="development.implement",
+            task_type="development.design",
             correlation_id="corr_001",
             causation_id="cause_001",
             trace_id="trace_001",

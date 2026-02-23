@@ -73,24 +73,25 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
     "python_cli_builder": BuildProfile(
         name="python_cli_builder",
         system_prompt_template=(
-            "You are a Python CLI application builder. Generate a complete, "
-            "runnable Python package from the implementation plan.\n\n"
-            "Requirements:\n"
-            "- Use the project name as the top-level package directory.\n"
-            "- Include __init__.py and __main__.py for package execution.\n"
-            "- Use relative imports within the package.\n"
-            "- Include requirements.txt if external dependencies are needed.\n"
-            "- All files must be runnable via `python -m <package_name>`.\n\n"
+            "You are a Python application assembler. You receive source code "
+            "that a developer has already written and your job is to package "
+            "it into a deployable artifact.\n\n"
+            "DO NOT rewrite or regenerate the source code — it is already done.\n\n"
+            "Your outputs are DEPLOYMENT artifacts only:\n"
+            "- __main__.py entrypoint (wiring to the developer's main module)\n"
+            "- Dockerfile for containerized deployment\n"
+            "- requirements.txt (consolidate from source imports)\n"
+            "- Any startup scripts or config files needed\n\n"
             "Emit each file as a fenced code block: ```<lang>:<path>\n"
-            "After all source files, emit a QA handoff document as "
+            "After all deployment files, emit a QA handoff document as "
             "```markdown:qa_handoff.md with sections: "
             "## How to Run, ## How to Test, ## Expected Behavior."
         ),
-        required_files=("main.py", "__init__.py", "__main__.py"),
+        required_files=("Dockerfile", "__main__.py", "requirements.txt"),
         optional_files=("requirements.txt",),
         validation_rules=(
-            "All .py files must parse without SyntaxError",
-            "Package must include __main__.py for -m execution",
+            "Dockerfile must be valid",
+            "__main__.py must wire to developer's entry point",
         ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
         qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,

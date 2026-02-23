@@ -1,7 +1,7 @@
 """Local bootstrap verification tests for builder role (SIP-0071 Phase 3).
 
 Tests that the builder role bootstraps cleanly in the handler and skill
-registries, and that dry-run plan generation emits builder.build tasks
+registries, and that dry-run plan generation emits builder.assemble tasks
 when the full-squad-with-builder profile is used.
 """
 from __future__ import annotations
@@ -33,15 +33,15 @@ class TestBuilderHandlerBootstrap:
         """Builder role should produce a valid handler registry."""
         registry = create_handler_registry(roles=["builder"])
         capabilities = registry.list_capabilities()
-        assert "builder.build" in capabilities
+        assert "builder.assemble" in capabilities
 
     def test_builder_plus_all_roles_no_errors(self):
         """Full registry with builder included should create without errors."""
         registry = create_handler_registry()
         capabilities = registry.list_capabilities()
-        assert "builder.build" in capabilities
-        assert "development.build" in capabilities
-        assert "qa.build_validate" in capabilities
+        assert "builder.assemble" in capabilities
+        assert "development.develop" in capabilities
+        assert "qa.test" in capabilities
 
 
 # ---------------------------------------------------------------------------
@@ -73,8 +73,8 @@ class TestDryRunPlanGeneration:
     def provider(self):
         return ConfigSquadProfile(yaml_path=CONFIG_PATH)
 
-    async def test_plan_emits_builder_build(self, provider):
-        """Plan generation with builder profile should emit builder.build."""
+    async def test_plan_emits_builder_assemble(self, provider):
+        """Plan generation with builder profile should emit builder.assemble."""
         profile = await provider.get_profile("full-squad-with-builder")
         assert _has_builder_role(profile)
 
@@ -89,7 +89,7 @@ class TestDryRunPlanGeneration:
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
             applied_defaults={
-                "build_tasks": ["builder.build", "qa.build_validate"],
+                "build_tasks": ["builder.assemble", "qa.test"],
             },
             execution_overrides={},
         )
@@ -105,11 +105,10 @@ class TestDryRunPlanGeneration:
         envelopes = generate_task_plan(cycle, run, profile)
         task_types = [e.task_type for e in envelopes]
 
-        assert "builder.build" in task_types
-        assert "development.build" not in task_types
+        assert "builder.assemble" in task_types
 
     async def test_plan_without_builder_falls_back(self, provider):
-        """Plan generation without builder should emit development.build."""
+        """Plan generation without builder should emit development.develop."""
         profile = await provider.get_profile("full-squad")
         assert not _has_builder_role(profile)
 
@@ -124,7 +123,7 @@ class TestDryRunPlanGeneration:
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
             applied_defaults={
-                "build_tasks": ["development.build", "qa.build_validate"],
+                "build_tasks": ["development.develop", "qa.test"],
             },
             execution_overrides={},
         )
@@ -140,5 +139,5 @@ class TestDryRunPlanGeneration:
         envelopes = generate_task_plan(cycle, run, profile)
         task_types = [e.task_type for e in envelopes]
 
-        assert "development.build" in task_types
-        assert "builder.build" not in task_types
+        assert "development.develop" in task_types
+        assert "builder.assemble" not in task_types

@@ -96,7 +96,7 @@ class TestResolveMilestoneBindings:
     def test_prefix_match_single_suite(self):
         plan = [
             _make_envelope("strategy.analyze_prd", "t1"),
-            _make_envelope("development.implement", "t2"),
+            _make_envelope("development.design", "t2"),
             _make_envelope("qa.validate", "t3"),
         ]
         suite = _make_suite("s1", "post_dev", ("development",))
@@ -110,8 +110,8 @@ class TestResolveMilestoneBindings:
     def test_prefix_match_last_index(self):
         """When multiple tasks match prefix, bind to the last one."""
         plan = [
-            _make_envelope("development.implement", "t1"),
-            _make_envelope("development.build", "t2"),
+            _make_envelope("development.design", "t1"),
+            _make_envelope("development.develop", "t2"),
             _make_envelope("qa.validate", "t3"),
         ]
         suite = _make_suite("s1", "post_dev", ("development",))
@@ -122,7 +122,7 @@ class TestResolveMilestoneBindings:
 
     def test_multiple_suites_same_boundary(self):
         plan = [
-            _make_envelope("development.implement", "t1"),
+            _make_envelope("development.design", "t1"),
             _make_envelope("qa.validate", "t2"),
         ]
         s1 = _make_suite("s1", "post_dev", ("development",))
@@ -135,7 +135,7 @@ class TestResolveMilestoneBindings:
     def test_multiple_suites_different_boundaries(self):
         plan = [
             _make_envelope("strategy.analyze_prd", "t1"),
-            _make_envelope("development.implement", "t2"),
+            _make_envelope("development.design", "t2"),
             _make_envelope("qa.validate", "t3"),
         ]
         s_dev = _make_suite("s1", "post_dev", ("development",))
@@ -148,7 +148,7 @@ class TestResolveMilestoneBindings:
         assert bindings[2] == [s_qa]
 
     def test_unmatched_suite_returned_separately(self):
-        plan = [_make_envelope("development.implement", "t1")]
+        plan = [_make_envelope("development.design", "t1")]
         suite = _make_suite("s1", "post_qa", ("qa",))
         bindings, unmatched = resolve_milestone_bindings((suite,), plan)
 
@@ -157,7 +157,7 @@ class TestResolveMilestoneBindings:
 
     def test_cadence_suites_excluded(self):
         """Cadence-bound suites should not appear in milestone bindings."""
-        plan = [_make_envelope("development.implement", "t1")]
+        plan = [_make_envelope("development.design", "t1")]
         cadence = _make_suite(
             "cad", CADENCE_BOUNDARY_ID, (), "cadence"
         )
@@ -171,7 +171,7 @@ class TestResolveMilestoneBindings:
         assert unmatched == []
 
     def test_empty_pulse_checks(self):
-        plan = [_make_envelope("development.implement")]
+        plan = [_make_envelope("development.design")]
         bindings, unmatched = resolve_milestone_bindings((), plan)
         assert bindings == {}
         assert unmatched == []
@@ -184,7 +184,7 @@ class TestResolveMilestoneBindings:
 
     def test_boundary_id_from_suite_not_plan(self):
         """boundary_id comes from suite.boundary_id, not derived from plan."""
-        plan = [_make_envelope("development.implement", "t1")]
+        plan = [_make_envelope("development.design", "t1")]
         suite = _make_suite("s1", "my_custom_boundary", ("development",))
         bindings, _ = resolve_milestone_bindings((suite,), plan)
 
@@ -195,12 +195,12 @@ class TestResolveMilestoneBindings:
         """Prefix 'development' must NOT match 'developmentXYZ' (no dot)."""
         plan = [
             _make_envelope("developmentXYZ", "t1"),
-            _make_envelope("development.implement", "t2"),
+            _make_envelope("development.design", "t2"),
         ]
         suite = _make_suite("s1", "post_dev", ("development",))
         bindings, _ = resolve_milestone_bindings((suite,), plan)
 
-        # Only index 1 (development.implement) matches, not index 0 (developmentXYZ)
+        # Only index 1 (development.design) matches, not index 0 (developmentXYZ)
         assert 1 in bindings
         assert 0 not in bindings
 

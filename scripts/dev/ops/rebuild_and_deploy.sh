@@ -7,7 +7,7 @@
 #   ./scripts/dev/ops/rebuild_and_deploy.sh                           # Rebuild everything (default)
 #   ./scripts/dev/ops/rebuild_and_deploy.sh all                       # Rebuild everything
 #   ./scripts/dev/ops/rebuild_and_deploy.sh console                   # Rebuild only console service
-#   ./scripts/dev/ops/rebuild_and_deploy.sh agents                    # Rebuild default 5 core agents (max, nat, neo, eve, data)
+#   ./scripts/dev/ops/rebuild_and_deploy.sh agents                    # Rebuild default 6 core agents (max, nat, neo, eve, data)
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents max neo            # Rebuild only specified agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents max nat neo eve data glyph  # Rebuild specified agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api agents        # Rebuild runtime-api and default agents
@@ -77,7 +77,7 @@ if [ $# -gt 0 ]; then
                 echo "Usage: $0 [console] [agents [agent1 agent2 ...]] [runtime-api] [all]"
                 echo "  Examples:"
                 echo "    $0 console                   # Build only console"
-                echo "    $0 agents                    # Build default 5 core agents (max, nat, neo, eve, data)"
+                echo "    $0 agents                    # Build default 6 core agents (max, nat, neo, eve, data)"
                 echo "    $0 agents max neo            # Build only max and neo"
                 echo "    $0 runtime-api console       # Build runtime-api and console"
                 exit 1
@@ -264,6 +264,7 @@ get_agent_role() {
         neo) echo "dev" ;;
         nat) echo "strat" ;;
         eve) echo "qa" ;;
+        bob) echo "builder" ;;
         glyph) echo "comms" ;;
         data) echo "data" ;;
         quark) echo "finance" ;;
@@ -341,9 +342,9 @@ verify_build_hash() {
 if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     # Determine which agents to build
     if [ ${#AGENT_LIST[@]} -eq 0 ]; then
-        # No agents specified, use default 5 core agents
-        AGENTS=$(docker-compose config --services | grep -E "^(max|nat|neo|eve|data)$" || echo "max nat neo eve data")
-        echo -e "${BLUE}   No agents specified, using default core agents: max, nat, neo, eve, data${NC}"
+        # No agents specified, use default 6 core agents
+        AGENTS=$(docker-compose config --services | grep -E "^(max|nat|neo|eve|bob|data)$" || echo "max nat neo eve bob data")
+        echo -e "${BLUE}   No agents specified, using default core agents: max, nat, neo, eve, bob, data${NC}"
     else
         # Use specified agents, validate they exist in docker-compose
         AGENTS=""
@@ -384,10 +385,9 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
                     exit 1
                 fi
                 
-                # Verify manifest was created
+                # Check for legacy manifest (optional — new arch uses editable install)
                 if [ ! -f "$REPO_ROOT/dist/agents/${role}/manifest.json" ]; then
-                    echo -e "${RED}  ❌ Manifest not created for ${agent}${NC}"
-                    exit 1
+                    echo -e "${YELLOW}  ⚠️  No legacy manifest for ${agent} (new arch uses editable install)${NC}"
                 fi
             fi
         fi

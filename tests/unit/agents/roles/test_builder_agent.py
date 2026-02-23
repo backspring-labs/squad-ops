@@ -25,8 +25,8 @@ class TestTaskTypeRouting:
     def test_build_maps_to_artifact_generation(self):
         assert TASK_TYPE_SKILL_MAP["build"] == "artifact_generation"
 
-    def test_builder_build_maps_to_artifact_generation(self):
-        assert TASK_TYPE_SKILL_MAP["builder.build"] == "artifact_generation"
+    def test_builder_assemble_maps_to_artifact_generation(self):
+        assert TASK_TYPE_SKILL_MAP["builder.assemble"] == "artifact_generation"
 
 
 class TestBuilderAgentImport:

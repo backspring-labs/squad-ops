@@ -1,5 +1,5 @@
-name: builder-build
-description: Plan-then-build cycle using dedicated builder agent.
+name: builder-assemble
+description: Plan-then-build cycle using dedicated builder agent for assembly.
 defaults:
   build_strategy: fresh
   build_profile: python_cli_builder
@@ -17,7 +17,8 @@ defaults:
     - config
     - qa_handoff
   build_tasks:
-    - builder.build
-    - qa.build_validate
+    - development.develop
+    - builder.assemble
+    - qa.test
   experiment_context: {}
   notes: "Plan-then-build with dedicated builder agent (SIP-0071)"

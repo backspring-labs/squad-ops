@@ -88,7 +88,7 @@ class TestPulseCheckBuildProfile:
     def test_has_build_tasks(self):
         profile = load_profile("pulse-check-build")
         assert "build_tasks" in profile.defaults
-        assert "development.build" in profile.defaults["build_tasks"]
+        assert "development.develop" in profile.defaults["build_tasks"]
 
     def test_has_gate(self):
         profile = load_profile("pulse-check-build")

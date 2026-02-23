@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Task type to skill ID mapping for Builder agent
 TASK_TYPE_SKILL_MAP = {
     "build": "artifact_generation",
-    "builder.build": "artifact_generation",
+    "builder.assemble": "artifact_generation",
 }
 
 

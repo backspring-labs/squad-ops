@@ -1,8 +1,8 @@
 """Tests for builder-aware task plan routing (SIP-0071).
 
-Validates that generate_task_plan routes build tasks to builder.build
+Validates that generate_task_plan routes build tasks to builder.assemble
 when a builder role is present in the squad profile, and falls back to
-development.build when absent.
+development.develop when absent.
 """
 from datetime import datetime, timezone
 
@@ -21,7 +21,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.task_plan import (
     BUILD_TASK_STEPS,
-    BUILDER_BUILD_TASK_STEPS,
+    BUILDER_ASSEMBLY_TASK_STEPS,
     _has_builder_role,
     generate_task_plan,
 )
@@ -129,47 +129,46 @@ class TestHasBuilderRole:
 
 
 # ---------------------------------------------------------------------------
-# Builder routing: builder present → builder.build
+# Builder routing: builder present → builder.assemble
 # ---------------------------------------------------------------------------
 
 
 class TestBuilderRouting:
-    def test_emits_builder_build_when_builder_present(
+    def test_emits_builder_assemble_when_builder_present(
         self, run, profile_with_builder,
     ):
         cycle = _make_cycle({
-            "build_tasks": ["builder.build", "qa.build_validate"],
+            "build_tasks": ["builder.assemble", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
         task_types = [e.task_type for e in envelopes]
-        assert "builder.build" in task_types
-        assert "development.build" not in task_types
+        assert "builder.assemble" in task_types
 
-    def test_builder_build_assigned_to_bob(self, run, profile_with_builder):
+    def test_builder_assemble_assigned_to_bob(self, run, profile_with_builder):
         cycle = _make_cycle({
-            "build_tasks": ["builder.build", "qa.build_validate"],
+            "build_tasks": ["builder.assemble", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
-        builder_envs = [e for e in envelopes if e.task_type == "builder.build"]
+        builder_envs = [e for e in envelopes if e.task_type == "builder.assemble"]
         assert len(builder_envs) == 1
         assert builder_envs[0].agent_id == "bob"
 
-    def test_builder_build_has_builder_role_in_metadata(
+    def test_builder_assemble_has_builder_role_in_metadata(
         self, run, profile_with_builder,
     ):
         cycle = _make_cycle({
-            "build_tasks": ["builder.build", "qa.build_validate"],
+            "build_tasks": ["builder.assemble", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
-        builder_envs = [e for e in envelopes if e.task_type == "builder.build"]
+        builder_envs = [e for e in envelopes if e.task_type == "builder.assemble"]
         assert builder_envs[0].metadata["role"] == "builder"
 
 
 # ---------------------------------------------------------------------------
-# Fallback routing: no builder → development.build
+# Fallback routing: no builder → development.develop
 # ---------------------------------------------------------------------------
 
 
@@ -178,21 +177,21 @@ class TestFallbackRouting:
         self, run, profile_without_builder,
     ):
         cycle = _make_cycle({
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_without_builder)
 
         task_types = [e.task_type for e in envelopes]
-        assert "development.build" in task_types
-        assert "builder.build" not in task_types
+        assert "development.develop" in task_types
+        assert "builder.assemble" not in task_types
 
     def test_no_build_tasks_no_build_steps(self, run, profile_without_builder):
         cycle = _make_cycle({})
         envelopes = generate_task_plan(cycle, run, profile_without_builder)
 
         task_types = [e.task_type for e in envelopes]
-        assert "development.build" not in task_types
-        assert "builder.build" not in task_types
+        assert "development.develop" not in task_types
+        assert "builder.assemble" not in task_types
         assert len(envelopes) == 5
 
 
@@ -204,39 +203,39 @@ class TestFallbackRouting:
 class TestRoutingReason:
     def test_builder_present_routing_reason(self, run, profile_with_builder):
         cycle = _make_cycle({
-            "build_tasks": ["builder.build", "qa.build_validate"],
+            "build_tasks": ["builder.assemble", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
         build_envs = [
             e for e in envelopes
-            if e.task_type in ("builder.build", "qa.build_validate")
+            if e.task_type in ("builder.assemble", "qa.test")
         ]
         for env in build_envs:
             assert env.metadata["routing_reason"] == ROUTING_BUILDER_PRESENT
 
     def test_fallback_routing_reason(self, run, profile_without_builder):
         cycle = _make_cycle({
-            "build_tasks": ["development.build", "qa.build_validate"],
+            "build_tasks": ["development.develop", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_without_builder)
 
         build_envs = [
             e for e in envelopes
-            if e.task_type in ("development.build", "qa.build_validate")
+            if e.task_type in ("development.develop", "qa.test")
         ]
         for env in build_envs:
             assert env.metadata["routing_reason"] == ROUTING_FALLBACK_NO_BUILDER
 
     def test_routing_reason_only_on_build_steps(self, run, profile_with_builder):
         cycle = _make_cycle({
-            "build_tasks": ["builder.build", "qa.build_validate"],
+            "build_tasks": ["builder.assemble", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
         plan_envs = [
             e for e in envelopes
-            if e.task_type not in ("builder.build", "qa.build_validate")
+            if e.task_type not in ("development.develop", "builder.assemble", "qa.test")
         ]
         for env in plan_envs:
             assert "routing_reason" not in env.metadata
@@ -245,7 +244,7 @@ class TestRoutingReason:
         self, run, profile_with_builder,
     ):
         cycle = _make_cycle({
-            "build_tasks": ["builder.build", "qa.build_validate"],
+            "build_tasks": ["builder.assemble", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
@@ -264,17 +263,17 @@ class TestRoutingReason:
 class TestPlanPlusBuildWithBuilder:
     def test_plan_plus_build_7_envelopes(self, run, profile_with_builder):
         cycle = _make_cycle({
-            "build_tasks": ["builder.build", "qa.build_validate"],
+            "build_tasks": ["builder.assemble", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
-        assert len(envelopes) == 7
+        assert len(envelopes) == 8
 
     def test_build_only_2_envelopes(self, run, profile_with_builder):
         cycle = _make_cycle({
             "plan_tasks": False,
-            "build_tasks": ["builder.build", "qa.build_validate"],
+            "build_tasks": ["builder.assemble", "qa.test"],
         })
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
-        assert len(envelopes) == 2
+        assert len(envelopes) == 3
         task_types = [e.task_type for e in envelopes]
-        assert task_types == ["builder.build", "qa.build_validate"]
+        assert task_types == ["development.develop", "builder.assemble", "qa.test"]
