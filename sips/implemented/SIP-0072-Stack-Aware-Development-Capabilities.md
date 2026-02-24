@@ -1,10 +1,10 @@
 ---
 title: Stack-Aware Development Capabilities
-status: accepted
+status: implemented
 author: Jason Ladd
 created_at: '2026-02-22T00:00:00Z'
 sip_number: 72
-updated_at: '2026-02-22T21:13:19.677538Z'
+updated_at: '2026-02-23T09:59:51.569928Z'
 ---
 # SIP-00XX: Stack-Aware Development Capabilities
 

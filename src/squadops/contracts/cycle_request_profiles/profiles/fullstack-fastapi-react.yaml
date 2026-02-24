@@ -1,8 +1,8 @@
-name: group_run
+name: fullstack-fastapi-react
 description: >
-  Cycle request profile for the Group Run sample project.
-  Builds a full-stack web app (FastAPI + React) for coordinating group runs.
-  Uses the build profile for plan-then-build execution.
+  Fullstack FastAPI + React (Vite) build with builder assembly.
+  Neo produces backend/ and frontend/ source code, Bob assembles
+  packaging artifacts, Eve generates tests for both stacks.
 defaults:
   build_strategy: fresh
   dev_capability: fullstack_fastapi_react
@@ -12,7 +12,7 @@ defaults:
     gates:
       - name: plan-review
         description: >
-          Review planning artifacts before building the running logger.
+          Review planning artifacts before building the fullstack app.
         after_task_types:
           - governance.review
   expected_artifact_types:
@@ -24,6 +24,4 @@ defaults:
     - development.develop
     - builder.assemble
     - qa.test
-  experiment_context:
-    sample_app: group_run
-  notes: "Group Run — multi-module build-capable sample project"
+  notes: "Fullstack FastAPI + React (Vite) — stack-aware development capabilities"

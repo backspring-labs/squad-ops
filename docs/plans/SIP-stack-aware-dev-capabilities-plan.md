@@ -4,7 +4,7 @@
 
 The build pipeline (SIP-0068 + SIP-0071) hardcodes Python-only behavior at every stage: the dev handler prompts for Python packages, `_EXT_MAP` only classifies `.py` as source, the QA handler filters on `.py` only, and `test_runner.py` only runs pytest. To build fullstack apps like `group_run` (FastAPI + React/Vite), each handler needs stack-aware prompting, file classification, and test execution.
 
-The SIP at `sips/proposed/SIP-Stack-Aware-Development-Capabilities.md` defines a `DevelopmentCapability` registry that controls handler behavior via a `dev_capability` key in `resolved_config`. This plan implements that SIP.
+The SIP at `sips/accepted/SIP-0072-Stack-Aware-Development-Capabilities.md` defines a `DevelopmentCapability` registry that controls handler behavior via a `dev_capability` key in `resolved_config`. This plan implements that SIP.
 
 The pipeline shape is unchanged: `development.develop → builder.assemble → qa.test`. No new task types, no model changes. Stack awareness is purely registry-driven within existing handlers.
 
@@ -14,15 +14,19 @@ The pipeline shape is unchanged: `development.develop → builder.assemble → q
 
 | ID | Decision | Rationale |
 |----|----------|-----------|
-| D1 | `DevelopmentCapability` is a frozen dataclass in new file `dev_capabilities.py`, analogous to `BuildProfile` in `build_profiles.py` | Same registry pattern; `get_capability()` mirrors `get_profile()` |
+| D1 | `DevelopmentCapability` is a frozen dataclass in new file `src/squadops/capabilities/dev_capabilities.py`, analogous to `BuildProfile` in `build_profiles.py` | Same registry pattern; `get_capability()` mirrors `get_profile()`. Module is a capability registry consumed by handlers, not a handler itself — placed at `capabilities/` level, not `capabilities/handlers/` |
 | D2 | `python_cli` capability reproduces current hardcoded behavior exactly — its `system_prompt_supplement` and `file_structure_guidance` contain the same text as lines 352–380 and 420–426 of `cycle_tasks.py` | Zero regression: absent `dev_capability` falls back to `python_cli` |
 | D3 | Unknown `dev_capability` value raises `ValueError` in `get_capability()` — handler returns structured task failure with diagnostics | Same pattern as `get_profile()` in `build_profiles.py:152-170`; prevents silent wrong-stack output from typos |
 | D4 | `test_file_patterns` field on `DevelopmentCapability` drives test exclusion via `fnmatch` + `__tests__/` path check | Replaces `not key.startswith("test_")` which is Python-only |
 | D5 | `TEST_FRAMEWORK_PYTEST`, `TEST_FRAMEWORK_VITEST`, `TEST_FRAMEWORK_BOTH` are module-level string constants | Avoids string drift across registry, handlers, and tests |
 | D6 | `run_node_tests()` accepts `target_dir` parameter, not just `workspace` | Fullstack projects have `package.json` in `frontend/`, not root |
 | D7 | Frontend test execution is non-blocking — failures do not change run success/failure | Node.js may not be available in agent containers; test generation is required, execution is best-effort |
-| D8 | `BuilderAssembleHandler._get_source_artifacts()` extension list is static (not capability-driven) | Bob always needs to see all source files regardless of stack to produce correct packaging |
-| D9 | `QATestHandler._build_user_prompt()` uses capability's `test_prompt_supplement` to select pytest vs vitest vs both | System prompt suffix also uses `capability.test_prompt_supplement` instead of hardcoded pytest text |
+| D8 | `BuilderAssembleHandler._get_assembly_inputs()` extension list is static (not capability-driven) | Bob always needs to see all source and config files regardless of stack to produce correct packaging |
+| D9 | `QATestHandler._build_user_prompt()` uses capability's `test_prompt_supplement` to select pytest vs vitest vs both | Replaces hardcoded pytest instructions |
+| D10 | `QATestHandler` system prompt suffix uses `capability.test_prompt_supplement` instead of hardcoded pytest text | Mirrors D9 for the system prompt path |
+| D11 | `DevelopmentDevelopHandler.handle()` stores `resolved_config` as `self._resolved_config` at the start, making it available to `_build_user_prompt()` without passing as a parameter | Single access pattern; consistent with how `BuilderAssembleHandler` already reads `resolved_config` |
+| D12 | `run_fullstack_tests()` takes no `test_framework` parameter — it always runs both pytest and vitest | The function inherently means "run both stacks"; framework selection happens in the caller |
+| D13 | Backend pytest result controls blocking pass/fail; frontend vitest result is recorded as non-blocking diagnostics | V1 merge policy: combined `TestRunResult` preserves both outputs but only backend failures flip overall result to failure |
 
 ---
 
@@ -30,7 +34,7 @@ The pipeline shape is unchanged: `development.develop → builder.assemble → q
 
 ### 1.1 Development capability registry
 
-**New file:** `src/squadops/capabilities/handlers/dev_capabilities.py`
+**New file:** `src/squadops/capabilities/dev_capabilities.py`
 
 ```python
 TEST_FRAMEWORK_PYTEST = "pytest"
@@ -66,7 +70,7 @@ V1 registry entries:
 
 The `python_cli` `system_prompt_supplement` and `file_structure_guidance` must reproduce the current hardcoded text from `DevelopmentDevelopHandler._build_user_prompt()` (lines 352–380) and `handle()` (lines 420–426) exactly — this is the zero-regression anchor (D2).
 
-The `python_api` capability is similar but replaces `__init__.py`/`__main__.py`/relative imports guidance with FastAPI-specific guidance (`main.py`, `models.py`, `uvicorn`, `requirements.txt`).
+The `python_api` capability is similar but replaces `__init__.py`/`__main__.py`/relative imports guidance with FastAPI-specific guidance (`main.py`, `models.py`, `uvicorn`, `requirements.txt`). Note: `python_api` is included for immediate near-term use (standalone API projects) but is not exercised by the `group_run` fullstack validation scenario. A minimal unit test proving capability resolution and prompt selection is sufficient for V1 coverage.
 
 The `react_app` capability provides React/Vite-specific guidance (ES module imports, `package.json` with react/vite deps, `vite.config.js`).
 
@@ -87,6 +91,8 @@ Expand `_EXT_MAP` (line 232) with:
 ".css": ("source", "text/css"),
 ".html": ("source", "text/html"),
 ```
+
+Note: `.ts`/`.tsx` classification is included as forward-compatible file handling only. TypeScript generation and test support are not required in V1 cycle success criteria. These entries ensure that if a model produces TypeScript files they are classified correctly rather than dropped, but no capability in V1 prompts for TypeScript output.
 
 Expand `_FILENAME_MAP` (line 243) with:
 
@@ -115,6 +121,7 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
 
 - `get_capability("python_cli")` returns the default capability
 - `get_capability("fullstack_fastapi_react")` returns fullstack capability
+- `get_capability("python_api")` returns valid capability with FastAPI-specific prompt content
 - `get_capability("nonexistent")` raises `ValueError` with available capabilities listed
 - `DevelopmentCapability` is frozen (mutation raises `AttributeError`)
 - All V1 capabilities have non-empty `system_prompt_supplement`, `source_filter`, `test_file_patterns`
@@ -145,6 +152,8 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
 
 **Modified file:** `src/squadops/capabilities/handlers/cycle_tasks.py`
 
+In `handle()`: Store `resolved_config` as `self._resolved_config` at the start of the method, before any other processing. This makes it available to `_build_user_prompt()` without passing as a parameter (D11).
+
 In `_build_user_prompt()` (lines 352–380): Replace the hardcoded Python prompt block with capability-driven content:
 
 ```python
@@ -170,7 +179,7 @@ In `handle()` (lines 419–426): Replace hardcoded system prompt suffix:
 
 ```python
 capability = get_capability(
-    inputs.get("resolved_config", {}).get("dev_capability", "python_cli")
+    self._resolved_config.get("dev_capability", "python_cli")
 )
 system_prompt = (
     assembled.content
@@ -179,8 +188,6 @@ system_prompt = (
     "Paths must be clean relative paths with no colons or spaces."
 )
 ```
-
-Note: `resolved_config` must be read from `inputs` in `handle()` (it's already there via task plan generation) and passed to `_build_user_prompt()`. Currently `_build_user_prompt()` doesn't have access to `resolved_config` — either pass it as a parameter or store it as `self._resolved_config` at the start of `handle()`.
 
 ### 2.2 QATestHandler
 
@@ -215,9 +222,9 @@ def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
     return sources
 ```
 
-Replace `_build_user_prompt()` (lines 611–659): Use capability's `test_prompt_supplement` instead of hardcoded pytest instructions. The source files section should use the correct language fence (not always `python`).
+Replace `_build_user_prompt()` (lines 611–659): Use capability's `test_prompt_supplement` instead of hardcoded pytest instructions (D9). The source files section should use the correct language fence (not always `python`).
 
-Replace system prompt suffix (lines 696–701):
+Replace system prompt suffix (lines 696–701) using capability's `test_prompt_supplement` (D10):
 
 ```python
 capability = get_capability(
@@ -231,21 +238,23 @@ system_prompt = (
 )
 ```
 
-### 2.3 BuilderAssembleHandler source filter
+### 2.3 BuilderAssembleHandler assembly inputs
 
 **Modified file:** `src/squadops/capabilities/handlers/cycle_tasks.py`
 
-Expand `_get_source_artifacts()` (line 924–931) with JS/TS/HTML/CSS extensions (D8 — static, not capability-driven):
+Rename `BuilderAssembleHandler._get_source_artifacts()` to `_get_assembly_inputs()` (D8). The helper collects all files Bob needs for packaging context — source, config, and documentation — so the name should reflect that broader scope.
+
+Expand the extension list (line 924–931) with JS/TS/HTML/CSS extensions (static, not capability-driven):
 
 ```python
-def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
+def _get_assembly_inputs(self, inputs: dict[str, Any]) -> dict[str, str]:
     contents = inputs.get("artifact_contents", {})
-    sources = {}
+    result = {}
     for key, value in contents.items():
         if key.endswith((".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css",
                          ".mjs", ".txt", ".yaml", ".yml", ".toml", ".json", ".md")):
-            sources[key] = value
-    return sources
+            result[key] = value
+    return result
 ```
 
 ### 2.4 Phase 2 tests
@@ -268,7 +277,7 @@ QATestHandler tests:
 - System prompt contains "vitest" when capability is `react_app`
 
 BuilderAssembleHandler tests:
-- `_get_source_artifacts()` picks up `.jsx`, `.html`, `.css` files (verify new extensions work)
+- `_get_assembly_inputs()` picks up `.jsx`, `.html`, `.css`, `.md`, `.json` files (verify broad extension set)
 
 ---
 
@@ -305,25 +314,34 @@ Implementation follows `run_generated_tests()` patterns:
 - Same stdout/stderr truncation (`_STDOUT_LIMIT`), timeout handling, cleanup
 - Never raises — always returns `TestRunResult`
 
-Add `run_fullstack_tests()` orchestrator:
+**V1 fallback semantics:** If Node/npm is unavailable (binary not found) or `npm install` fails (network error, dependency resolution failure), `run_node_tests()` returns `TestRunResult(executed=False, error="<diagnostic message>")` with a clear reason string. No retry loops, no alternate package manager attempts. The non-blocking policy (D7) ensures this does not fail the cycle.
+
+Add `run_fullstack_tests()` orchestrator (D12):
 
 ```python
 async def run_fullstack_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
-    test_framework: str = "pytest",
     timeout_seconds: int = 60,
 ) -> TestRunResult:
-    """Orchestrate test execution by framework.
+    """Run both pytest (backend) and vitest (frontend) tests.
 
-    For "both": runs pytest on backend/ files, vitest on frontend/ files,
-    merges results.
+    Splits files by path prefix (backend/ vs frontend/), runs both
+    test suites, merges results per the V1 merge policy (D13).
     """
 ```
 
-- `TEST_FRAMEWORK_PYTEST`: delegates to `run_generated_tests()` (existing)
-- `TEST_FRAMEWORK_VITEST`: delegates to `run_node_tests()`
-- `TEST_FRAMEWORK_BOTH`: splits files by path prefix (`backend/` vs `frontend/`), runs both, merges `TestRunResult` (combine stdout, take worst exit_code)
+- Splits files by path prefix (`backend/` vs `frontend/`)
+- Runs `run_generated_tests()` on backend files (pytest)
+- Runs `run_node_tests()` on frontend files with `target_dir="frontend"` (vitest)
+- Never raises — always returns `TestRunResult`
+
+**V1 merge policy (D13):**
+- Backend pytest result controls blocking pass/fail — if pytest fails, the combined result is a failure
+- Frontend vitest result is recorded as non-blocking diagnostics — vitest failure/skip/not-executed does NOT flip the combined result to failure
+- Combined `TestRunResult` preserves both outputs (stdout concatenated with clear section headers)
+- Combined exit code is the backend exit code only
+- If backend pytest is not executed (no backend files), fall through to vitest-only behavior (still non-blocking)
 
 Frontend test execution (vitest) is non-blocking — failures do not prevent cycle success (D7).
 
@@ -365,6 +383,8 @@ Add to `BUILD_PROFILES`:
 
 **New file:** `src/squadops/contracts/cycle_request_profiles/profiles/fullstack-fastapi-react.yaml`
 
+This is the **canonical reusable profile** for the fullstack FastAPI + React capability path. It is referenced by `--profile fullstack-fastapi-react` in CLI commands.
+
 ```yaml
 name: fullstack-fastapi-react
 description: >
@@ -399,7 +419,7 @@ defaults:
 
 **Modified file:** `src/squadops/capabilities/handlers/cycle_tasks.py`
 
-In `QATestHandler.handle()`, around line 777 where `run_generated_tests()` is called: read `dev_capability` from `resolved_config` and pass `test_framework` to select the right runner:
+In `QATestHandler.handle()`, around line 777 where `run_generated_tests()` is called: read `dev_capability` from `resolved_config` and select the right runner:
 
 ```python
 capability = get_capability(
@@ -410,10 +430,7 @@ if capability.test_framework == TEST_FRAMEWORK_PYTEST:
 elif capability.test_framework == TEST_FRAMEWORK_VITEST:
     test_result = await run_node_tests(source_file_records, test_file_records)
 elif capability.test_framework == TEST_FRAMEWORK_BOTH:
-    test_result = await run_fullstack_tests(
-        source_file_records, test_file_records,
-        test_framework=TEST_FRAMEWORK_BOTH,
-    )
+    test_result = await run_fullstack_tests(source_file_records, test_file_records)
 ```
 
 ### 3.5 Phase 3 tests
@@ -423,8 +440,11 @@ elif capability.test_framework == TEST_FRAMEWORK_BOTH:
 - `run_node_tests()` with no `package.json` → `TestRunResult(executed=False)`
 - `run_node_tests()` with mocked subprocess → captures stdout/stderr, returns exit code
 - `run_node_tests()` timeout → process killed, `executed=False`
-- `run_fullstack_tests()` with `TEST_FRAMEWORK_PYTEST` → delegates to `run_generated_tests()`
-- `run_fullstack_tests()` with `TEST_FRAMEWORK_BOTH` → runs both, merges results
+- `run_node_tests()` with Node/npm unavailable (FileNotFoundError) → `TestRunResult(executed=False)` with diagnostic
+- `run_node_tests()` with `npm install` failure → `TestRunResult(executed=False)` with diagnostic
+- `run_fullstack_tests()` runs both pytest and vitest, merges results
+- `run_fullstack_tests()` with vitest failure but pytest success → combined result is success (D13 merge policy)
+- `run_fullstack_tests()` with pytest failure → combined result is failure regardless of vitest outcome
 
 Note: Node.js tests use mocked subprocess (unlike Python test runner tests which run real pytest). `npm`/`npx` may not be available in CI.
 
@@ -450,7 +470,7 @@ Note: Node.js tests use mocked subprocess (unlike Python test runner tests which
 
 **Modified file:** `examples/group_run/pcr.yaml`
 
-Add `dev_capability: fullstack_fastapi_react` to defaults.
+Add `dev_capability: fullstack_fastapi_react` to defaults. This is an **example-specific profile** for the group_run sample app. It may carry additional example-specific overrides (e.g., `experiment_context`) that the canonical reusable profile does not.
 
 **Modified file:** `examples/group_run/pcr-scaffold.yaml`
 
@@ -458,24 +478,60 @@ Already has `dev_capability: fullstack_fastapi_react` — verify it references t
 
 ### 4.2 Integration validation
 
-Not automated tests — manual cycle execution:
+Not automated tests — manual cycle execution.
+
+**Profile roles:**
+- `pcr-scaffold` (via `--profile pcr-scaffold`) — example-specific smoke test profile that uses `prd-scaffold.md` for minimal validation
+- `fullstack-fastapi-react` (via `--profile fullstack-fastapi-react`) — canonical reusable profile for full-scope fullstack cycles
 
 ```bash
 # Rebuild with new capabilities
 ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api agents
 
-# Run scaffold first (smoke test)
+# 1. Scaffold smoke test (validates pipeline with minimal scope)
 squadops cycles create group_run \
   --squad-profile full-squad-with-builder \
   --profile pcr-scaffold \
   --prd examples/group_run/prd-scaffold.md
 
-# If scaffold succeeds, run full PRD
+# 2. Full-scope validation (uses canonical reusable profile)
 squadops cycles create group_run \
   --squad-profile full-squad-with-builder \
   --profile fullstack-fastapi-react \
   --prd examples/group_run/prd.md
 ```
+
+### 4.3 Version bump and SIP promotion
+
+After all phases pass verification:
+
+**Version bump:** `0.9.11` → `0.9.12` (patch bump — new capability surface, no breaking changes to existing behavior).
+
+```bash
+export SQUADOPS_MAINTAINER=1
+python scripts/maintainer/version_cli.py bump 0.9.12
+```
+
+**SIP promotion:** Move SIP-0072 from accepted to implemented.
+
+```bash
+export SQUADOPS_MAINTAINER=1
+python scripts/maintainer/update_sip_status.py \
+  sips/accepted/SIP-0072-Stack-Aware-Development-Capabilities.md implemented
+```
+
+Both are committed in the final PR alongside the implementation code.
+
+---
+
+## Rollback Strategy
+
+If regressions appear after Phase 2 or 3, operational use reverts to `python_cli` default behavior:
+
+1. Remove `dev_capability` from active cycle request profiles (both the reusable `fullstack-fastapi-react.yaml` profile and example-specific `pcr.yaml`/`pcr-scaffold.yaml` files)
+2. Without `dev_capability` in `resolved_config`, all handlers fall back to `python_cli` (D2) — no code changes required for safe fallback
+3. The registry module, file classification expansions, and test runner additions remain in the codebase for incremental fixes without affecting existing Python-only cycles
+4. If deeper rollback is needed, revert the Phase 2 handler changes (capability branching) while preserving Phase 1 (registry + classification) as inert infrastructure
 
 ---
 
@@ -483,16 +539,16 @@ squadops cycles create group_run \
 
 | File | Change |
 |------|--------|
-| `src/squadops/capabilities/handlers/dev_capabilities.py` | **New** — `DevelopmentCapability` registry, `get_capability()`, V1 entries |
-| `src/squadops/capabilities/handlers/cycle_tasks.py` | `_EXT_MAP`/`_FILENAME_MAP` expansion; `_is_test_file()` helper; `DevelopmentDevelopHandler` reads capability; `QATestHandler` reads capability for source filter + prompt + test runner selection; `BuilderAssembleHandler._get_source_artifacts()` expanded extensions |
+| `src/squadops/capabilities/dev_capabilities.py` | **New** — `DevelopmentCapability` registry, `get_capability()`, V1 entries |
+| `src/squadops/capabilities/handlers/cycle_tasks.py` | `_EXT_MAP`/`_FILENAME_MAP` expansion; `_is_test_file()` helper; `DevelopmentDevelopHandler` reads capability via `self._resolved_config`; `QATestHandler` reads capability for source filter + prompt + test runner selection; `BuilderAssembleHandler._get_source_artifacts()` renamed to `_get_assembly_inputs()` with expanded extensions |
 | `src/squadops/capabilities/handlers/test_runner.py` | `run_node_tests()`, `run_fullstack_tests()` |
 | `src/squadops/capabilities/handlers/build_profiles.py` | Add `fullstack_fastapi_react` profile |
 | `src/squadops/contracts/cycle_request_profiles/schema.py` | Add `"dev_capability"` to `_APPLIED_DEFAULTS_EXTRA_KEYS` |
 | `src/squadops/contracts/cycle_request_profiles/profiles/fullstack-fastapi-react.yaml` | **New** — fullstack cycle request profile |
 | `examples/group_run/pcr.yaml` | Add `dev_capability` key |
-| `tests/unit/capabilities/test_dev_capabilities.py` | **New** — registry tests |
+| `tests/unit/capabilities/test_dev_capabilities.py` | **New** — registry tests (including `python_api` resolution) |
 | `tests/unit/capabilities/test_build_handlers.py` | Capability selection tests, `_classify_file` expansion tests, `_is_test_file` tests |
-| `tests/unit/capabilities/test_node_test_runner.py` | **New** — Node.js test runner tests |
+| `tests/unit/capabilities/test_node_test_runner.py` | **New** — Node.js test runner tests, fullstack merge policy tests |
 | `tests/unit/capabilities/test_build_profiles.py` | Updated profile count, fullstack profile tests |
 | `tests/unit/contracts/test_crp_schema_dev_capability.py` | **New** — schema key tests |
 | `tests/unit/contracts/test_fullstack_profile.py` | **New** — profile YAML contract tests |
@@ -527,4 +583,10 @@ squadops cycles create group_run \
 # Verify: Neo produces backend/*.py + frontend/*.jsx
 # Verify: Bob produces Dockerfile + qa_handoff.md
 # Verify: Eve produces test files for both stacks
+
+# 5. Non-blocking frontend test verification
+# If Node tooling is unavailable in the agent container, verify:
+# - QA/test execution records a diagnostic indicating frontend tests were skipped/not-executed
+# - Cycle does not fail solely due to frontend test execution absence
+# - Backend pytest results still control overall pass/fail
 ```

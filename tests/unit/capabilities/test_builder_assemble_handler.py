@@ -98,7 +98,7 @@ LLM_MISSING_REQUIRED_FILE = (
 
 LLM_NO_FENCES = "I generated the deployment files but forgot fences.\nFROM python:3.11\n"
 
-LLM_DUPLICATE_FILENAMES = (
+LLM_DUPLICATE_BASENAMES_DIFFERENT_PATHS = (
     "```python:my_app/__main__.py\n"
     "pass\n"
     "```\n\n"
@@ -109,7 +109,27 @@ LLM_DUPLICATE_FILENAMES = (
     "# none\n"
     "```\n\n"
     "```dockerfile:deploy/Dockerfile\n"
-    "# duplicate basename Dockerfile\n"
+    "# different path, same basename\n"
+    "```\n\n"
+    "```markdown:qa_handoff.md\n"
+    "## How to Run\nrun it\n\n"
+    "## How to Test\ntest it\n\n"
+    "## Expected Behavior\nworks\n"
+    "```\n"
+)
+
+LLM_DUPLICATE_EXACT_PATHS = (
+    "```python:my_app/__main__.py\n"
+    "pass\n"
+    "```\n\n"
+    "```dockerfile:Dockerfile\n"
+    "FROM python:3.11-slim\n"
+    "```\n\n"
+    "```text:requirements.txt\n"
+    "# none\n"
+    "```\n\n"
+    "```dockerfile:Dockerfile\n"
+    "FROM python:3.11-slim\nCOPY . .\n"
     "```\n\n"
     "```markdown:qa_handoff.md\n"
     "## How to Run\nrun it\n\n"
@@ -333,15 +353,37 @@ class TestRequiredFileValidation:
 
 
 class TestDuplicateFilenames:
-    async def test_duplicate_basenames_fail_validation(self, mock_context, builder_inputs):
+    async def test_same_basename_different_paths_succeeds(self, mock_context, builder_inputs):
+        """Fullstack projects can have same basename in different dirs."""
         mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(role="assistant", content=LLM_DUPLICATE_FILENAMES),
+            return_value=ChatMessage(
+                role="assistant", content=LLM_DUPLICATE_BASENAMES_DIFFERENT_PATHS,
+            ),
         )
         handler = BuilderAssembleHandler()
         result = await handler.handle(mock_context, builder_inputs)
 
-        assert result.success is False
-        assert "Duplicate filenames" in result.error
+        assert result.success is True
+        filenames = [a["name"] for a in result.outputs["artifacts"]]
+        assert "Dockerfile" in filenames
+        assert "deploy/Dockerfile" in filenames
+
+    async def test_exact_duplicate_paths_deduped(self, mock_context, builder_inputs):
+        """LLM emits same file twice — last occurrence wins, no failure."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant", content=LLM_DUPLICATE_EXACT_PATHS,
+            ),
+        )
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, builder_inputs)
+
+        assert result.success is True
+        # Deduped: only one Dockerfile
+        dockerfiles = [a for a in result.outputs["artifacts"] if a["name"] == "Dockerfile"]
+        assert len(dockerfiles) == 1
+        # Last occurrence kept (has COPY)
+        assert "COPY" in dockerfiles[0]["content"]
 
 
 # ---------------------------------------------------------------------------
@@ -534,3 +576,72 @@ class TestTagInterpolation:
 
         diag = result.outputs["diagnostics"]
         assert diag["resolved_tags"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Assembly input expansion (SIP-0072 Phase 2, D8)
+# ---------------------------------------------------------------------------
+
+
+class TestAssemblyInputsExpandedExtensions:
+    """_get_assembly_inputs() picks up JS/TS/HTML/CSS files (D8)."""
+
+    async def test_jsx_files_included(self, mock_context):
+        handler = BuilderAssembleHandler()
+        inputs = {
+            "prd": "Fullstack app.",
+            "resolved_config": {"build_profile": "python_cli_builder"},
+            "artifact_contents": {
+                "backend/main.py": "from fastapi import FastAPI",
+                "frontend/src/App.jsx": "export default function App() {}",
+                "frontend/src/index.html": "<html></html>",
+                "frontend/src/styles.css": "body { margin: 0; }",
+            },
+        }
+        result = await handler.handle(mock_context, inputs)
+        # Handler should succeed and include all files in the prompt
+        assert result.success is True
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "backend/main.py" in user_msg
+        assert "frontend/src/App.jsx" in user_msg
+        assert "frontend/src/index.html" in user_msg
+        assert "frontend/src/styles.css" in user_msg
+
+    async def test_ts_tsx_files_included(self, mock_context):
+        handler = BuilderAssembleHandler()
+        inputs = {
+            "prd": "TS app.",
+            "resolved_config": {"build_profile": "python_cli_builder"},
+            "artifact_contents": {
+                "src/app.ts": "const x: number = 1",
+                "src/Component.tsx": "export default () => <div/>",
+            },
+        }
+        result = await handler.handle(mock_context, inputs)
+        assert result.success is True
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "src/app.ts" in user_msg
+        assert "src/Component.tsx" in user_msg
+
+    async def test_mjs_files_included(self, mock_context):
+        handler = BuilderAssembleHandler()
+        inputs = {
+            "prd": "ESM app.",
+            "resolved_config": {"build_profile": "python_cli_builder"},
+            "artifact_contents": {
+                "utils.mjs": "export const foo = 42",
+            },
+        }
+        result = await handler.handle(mock_context, inputs)
+        assert result.success is True
+
+    async def test_py_still_included(self, mock_context, builder_inputs):
+        """Existing .py file inclusion is unchanged."""
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, builder_inputs)
+        assert result.success is True
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "my_app/main.py" in user_msg
