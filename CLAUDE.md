@@ -168,6 +168,8 @@ python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature
 
 **Branch first**: Always create a feature branch before writing any code for a new feature or SIP implementation. Develop on the branch with incremental commits per phase — not one giant commit at the end. This keeps `main` clean and gives the PR a proper commit history.
 
+**Proactive guidance**: If you observe a workflow best practice being bypassed (e.g., developing on main instead of a feature branch, skipping tests, hardcoding secrets), call it out early — don't wait to be asked.
+
 ## Repository Rules
 
 **Read-Only Areas**:
