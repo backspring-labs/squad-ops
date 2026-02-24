@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 0.9.11
+**Framework Version**: 0.9.12
 **Python Requirement**: 3.11+
 
 ## Commands
@@ -163,6 +163,10 @@ python scripts/maintainer/update_sip_status.py sips/proposed/SIP-MyIdea.md accep
 # Promote an accepted SIP to implemented (after code is merged)
 python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature.md implemented
 ```
+
+## Development Workflow
+
+**Branch first**: Always create a feature branch before writing any code for a new feature or SIP implementation. Develop on the branch with incremental commits per phase — not one giant commit at the end. This keeps `main` clean and gives the PR a proper commit history.
 
 ## Repository Rules
 
