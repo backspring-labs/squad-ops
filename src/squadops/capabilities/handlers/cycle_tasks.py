@@ -15,6 +15,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.dev_capabilities import get_capability
 from squadops.capabilities.handlers.base import (
     CapabilityHandler,
     HandlerEvidence,
@@ -231,6 +232,13 @@ class GovernanceReviewHandler(_CycleTaskHandler):
 
 _EXT_MAP: dict[str, tuple[str, str]] = {
     ".py": ("source", "text/x-python"),
+    ".js": ("source", "text/javascript"),
+    ".jsx": ("source", "text/javascript"),
+    ".ts": ("source", "text/typescript"),
+    ".tsx": ("source", "text/typescript"),
+    ".mjs": ("source", "text/javascript"),
+    ".css": ("source", "text/css"),
+    ".html": ("source", "text/html"),
     ".md": ("document", "text/markdown"),
     ".txt": ("config", "text/plain"),
     ".yaml": ("config", "text/yaml"),
@@ -242,6 +250,9 @@ _EXT_MAP: dict[str, tuple[str, str]] = {
 # Special-cased filenames (checked before extension)
 _FILENAME_MAP: dict[str, tuple[str, str]] = {
     "requirements.txt": ("config", "text/plain"),
+    "package.json": ("config", "application/json"),
+    "vite.config.js": ("config", "text/javascript"),
+    "tsconfig.json": ("config", "application/json"),
 }
 
 _DEFAULT_TYPE = ("source", "application/octet-stream")
@@ -259,6 +270,18 @@ def _classify_file(filename: str) -> tuple[str, str]:
 
     _, ext = os.path.splitext(filename)
     return _EXT_MAP.get(ext.lower(), _DEFAULT_TYPE)
+
+
+def _is_test_file(path: str, patterns: tuple[str, ...]) -> bool:
+    """Check if *path* matches any test file pattern or resides in __tests__/.
+
+    Uses fnmatch for glob-style pattern matching (D4).
+    """
+    from fnmatch import fnmatch
+    from pathlib import PurePosixPath
+
+    name = PurePosixPath(path).name
+    return any(fnmatch(name, pat) for pat in patterns) or "/__tests__/" in path
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +359,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         strategy: str | None = None,
     ) -> str:
         """Build prompt with PRD + plan artifacts for code generation."""
+        capability = get_capability(
+            self._resolved_config.get("dev_capability", "python_cli")
+        )
+
         parts = [f"## Product Requirements Document\n\n{prd}"]
 
         if impl_plan:
@@ -349,35 +376,8 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             for role, summary in prior_outputs.items():
                 parts.append(f"### {role}\n{summary}\n")
 
-        parts.append(
-            "\n\nGenerate complete, runnable source files as a Python package. "
-            "Use tagged fenced code blocks with the format:\n"
-            "```<language>:<filepath>\n<content>\n```\n\n"
-            "IMPORTANT rules for file paths and imports:\n"
-            "- Use the project name as the top-level package directory "
-            "(e.g., play_game/main.py, play_game/board.py).\n"
-            "- Always include a __init__.py for the package.\n"
-            "- Use RELATIVE imports within the package "
-            "(e.g., `from .board import Board`, NOT `from board import Board`).\n"
-            "- File paths must use forward slashes, no colons, no spaces.\n"
-            "- Include a requirements.txt at the project root if external "
-            "dependencies are needed.\n"
-            "- The main entry point should be runnable via "
-            "`python -m <package_name>` (use __main__.py) or as a script.\n\n"
-            "Example of a correctly structured package:\n"
-            "```python:my_app/__init__.py\n```\n"
-            "```python:my_app/__main__.py\n"
-            "from .main import main\n"
-            "if __name__ == '__main__':\n"
-            "    main()\n```\n"
-            "```python:my_app/main.py\n"
-            "import random\n"
-            "from .board import Board\n```\n\n"
-            "Before emitting each file, verify:\n"
-            "- All stdlib and third-party imports are present (import random, etc.)\n"
-            "- All intra-package imports use relative form (from .module import X)\n"
-            "- __main__.py uses relative imports, not absolute"
-        )
+        parts.append(capability.file_structure_guidance)
+        parts.append(f"\n\nTarget file structure:\n{capability.example_structure}")
         return "\n".join(parts)
 
     async def handle(
@@ -389,8 +389,28 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         start_time = time.perf_counter()
 
+        # D11: store resolved_config for use by _build_user_prompt()
+        self._resolved_config = inputs.get("resolved_config", {})
+
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
+
+        # Resolve capability (fail fast on unknown dev_capability)
+        try:
+            capability = get_capability(
+                self._resolved_config.get("dev_capability", "python_cli")
+            )
+        except ValueError as exc:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False, outputs={}, _evidence=evidence, error=str(exc),
+            )
 
         # Resolve plan artifacts with vault fallback (D3)
         impl_plan = await self._resolve_with_vault_fallback(
@@ -419,10 +439,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = (
             assembled.content
-            + "\n\nYou are generating source code as a Python package. "
-            "Emit each file as a fenced code block: ```<lang>:<path>\n"
-            "Use relative imports within the package (from .module import X). "
-            "Paths must be clean relative paths with no colons or spaces."
+            + "\n\n" + capability.system_prompt_supplement
         )
 
         messages = [
@@ -600,13 +617,26 @@ class QATestHandler(_CycleTaskHandler):
         return None
 
     def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
-        """Get all source artifacts from artifact_contents."""
+        """Get source artifacts filtered by capability (D4, D9)."""
+        capability = get_capability(
+            inputs.get("resolved_config", {}).get("dev_capability", "python_cli")
+        )
         contents = inputs.get("artifact_contents", {})
         sources = {}
         for key, value in contents.items():
-            if key.endswith(".py") and not key.startswith("test_"):
-                sources[key] = value
+            if any(key.endswith(ext) for ext in capability.source_filter):
+                if not _is_test_file(key, capability.test_file_patterns):
+                    sources[key] = value
         return sources
+
+    @staticmethod
+    def _fence_lang(path: str) -> str:
+        """Return the appropriate code fence language for a file path."""
+        if path.endswith((".js", ".jsx", ".mjs")):
+            return "javascript"
+        if path.endswith((".ts", ".tsx")):
+            return "typescript"
+        return "python"
 
     def _build_user_prompt(
         self,
@@ -614,8 +644,10 @@ class QATestHandler(_CycleTaskHandler):
         prior_outputs: dict[str, Any] | None,
         val_plan: str | None = None,
         sources: dict[str, str] | None = None,
+        capability_name: str = "python_cli",
     ) -> str:
         """Build prompt with validation plan + source code for test generation."""
+        capability = get_capability(capability_name)
         parts = [f"## Product Requirements Document\n\n{prd}"]
 
         if val_plan:
@@ -624,38 +656,15 @@ class QATestHandler(_CycleTaskHandler):
         if sources:
             parts.append("\n\n## Source Files to Test\n")
             for path, code in sources.items():
-                parts.append(f"\n### {path}\n```python\n{code}\n```\n")
+                lang = self._fence_lang(path)
+                parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
 
         if prior_outputs:
             parts.append("\n\n## Prior Analysis from Upstream Roles\n")
             for role, summary in prior_outputs.items():
                 parts.append(f"### {role}\n{summary}\n")
 
-        parts.append(
-            "\n\nGenerate pytest test files that thoroughly test the source code. "
-            "Use tagged fenced code blocks with the format:\n"
-            "```<language>:<filepath>\n<content>\n```\n\n"
-            "IMPORTANT rules for test file paths and imports:\n"
-            "- Place test files in a tests/ directory "
-            "(e.g., tests/test_board.py, tests/test_game.py).\n"
-            "- File paths must use forward slashes, no colons, no spaces.\n"
-            "- Each fence path must be ONLY the file path — do NOT append "
-            "extra metadata or source references after the path.\n"
-            "- Import from the source package using its package name "
-            "(e.g., `from play_game.board import Board`), NOT relative imports.\n"
-            "- Include a tests/__init__.py if needed.\n"
-            "- Use standard pytest conventions (test_ prefix, assert statements).\n\n"
-            "Example:\n"
-            "```python:tests/test_board.py\n"
-            "import pytest\n"
-            "from play_game.board import Board\n\n"
-            "def test_initial_board_empty():\n"
-            "    board = Board()\n"
-            "    assert ...\n```\n\n"
-            "Before emitting each file, verify:\n"
-            "- All imports (pytest, stdlib, source package) are present\n"
-            "- Source imports use the package name, not relative imports"
-        )
+        parts.append(capability.test_prompt_supplement)
         return "\n".join(parts)
 
     async def handle(
@@ -669,6 +678,23 @@ class QATestHandler(_CycleTaskHandler):
 
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
+        resolved_config = inputs.get("resolved_config", {})
+        capability_name = resolved_config.get("dev_capability", "python_cli")
+
+        # Resolve capability (fail fast on unknown dev_capability)
+        try:
+            capability = get_capability(capability_name)
+        except ValueError as exc:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False, outputs={}, _evidence=evidence, error=str(exc),
+            )
 
         # Resolve plan artifacts with vault fallback (D3)
         val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
@@ -690,16 +716,11 @@ class QATestHandler(_CycleTaskHandler):
 
         user_prompt = self._build_user_prompt(
             prd, prior_outputs, val_plan=val_plan, sources=sources,
+            capability_name=capability_name,
         )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
-        system_prompt = (
-            assembled.content
-            + "\n\nYou are generating pytest test files. "
-            "Emit each file as a fenced code block: ```python:<path>\n"
-            "Paths must be clean relative paths like tests/test_module.py — "
-            "no colons, no spaces, no extra metadata after the path."
-        )
+        system_prompt = assembled.content
 
         messages = [
             ChatMessage(role="system", content=system_prompt),
@@ -766,7 +787,15 @@ class QATestHandler(_CycleTaskHandler):
             })
 
         # --- Run generated tests against source files ---
-        from squadops.capabilities.handlers.test_runner import run_generated_tests
+        from squadops.capabilities.dev_capabilities import (
+            TEST_FRAMEWORK_BOTH,
+            TEST_FRAMEWORK_VITEST,
+        )
+        from squadops.capabilities.handlers.test_runner import (
+            run_fullstack_tests,
+            run_generated_tests,
+            run_node_tests,
+        )
 
         source_file_records = [
             {"path": path, "content": code} for path, code in sources.items()
@@ -774,7 +803,17 @@ class QATestHandler(_CycleTaskHandler):
         test_file_records = [
             {"path": rec["filename"], "content": rec["content"]} for rec in extracted
         ]
-        test_result = await run_generated_tests(source_file_records, test_file_records)
+
+        if capability.test_framework == TEST_FRAMEWORK_VITEST:
+            test_result = await run_node_tests(source_file_records, test_file_records)
+        elif capability.test_framework == TEST_FRAMEWORK_BOTH:
+            test_result = await run_fullstack_tests(
+                source_file_records, test_file_records,
+            )
+        else:
+            test_result = await run_generated_tests(
+                source_file_records, test_file_records,
+            )
 
         # Build test report artifact
         report_lines = [
@@ -921,12 +960,19 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 )
         return None
 
-    def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
-        """Get all source/config artifacts from artifact_contents."""
+    def _get_assembly_inputs(self, inputs: dict[str, Any]) -> dict[str, str]:
+        """Get all source/config artifacts for assembly (D8 — static, not capability-driven).
+
+        Bob always needs to see all source files regardless of stack to produce
+        correct packaging.
+        """
         contents = inputs.get("artifact_contents", {})
         sources = {}
         for key, value in contents.items():
-            if key.endswith((".py", ".txt", ".yaml", ".yml", ".toml", ".json", ".md")):
+            if key.endswith((
+                ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".mjs",
+                ".txt", ".yaml", ".yml", ".toml", ".json", ".md",
+            )):
                 sources[key] = value
         return sources
 
@@ -976,7 +1022,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                     )
 
         # Step 2: Resolve source artifacts from dev role (assembly input)
-        sources = self._get_source_artifacts(inputs)
+        sources = self._get_assembly_inputs(inputs)
 
         if not sources:
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1012,8 +1058,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             "\n\nYou are ASSEMBLING the source code above into a deployable package. "
             "Do NOT rewrite or regenerate the source code — it is already written. "
             "Your job is to add deployment and packaging artifacts.\n\n"
-            "Use tagged fenced code blocks with the format:\n"
-            "```<language>:<filepath>\n<content>\n```\n\n"
+            "Use tagged fenced code blocks with the language and path "
+            "separated by a colon, for example:\n"
+            "```dockerfile:Dockerfile\n<content>\n```\n"
+            "```markdown:qa_handoff.md\n<content>\n```\n\n"
             "Produce the following deployment artifacts:\n"
             "- __main__.py entrypoint (if not already present)\n"
             "- Dockerfile for containerized deployment\n"
@@ -1167,24 +1215,40 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 error=f"Required deployment files missing: {missing_files}",
             )
 
-        # Step 8b: Duplicate filename detection
-        seen_basenames: dict[str, list[str]] = {}
-        for file_rec in extracted:
-            bn = os.path.basename(file_rec["filename"])
-            seen_basenames.setdefault(bn, []).append(file_rec["filename"])
-        duplicates = {bn: paths for bn, paths in seen_basenames.items() if len(paths) > 1}
-        if duplicates:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
+        # Step 8b: Deduplicate by full path (LLM may re-emit the same file;
+        # keep the last occurrence as a self-correction).
+        seen_paths: dict[str, int] = {}
+        for idx, file_rec in enumerate(extracted):
+            seen_paths[file_rec["filename"]] = idx
+        if len(seen_paths) < len(extracted):
+            logger.info(
+                "Builder output contained duplicate paths; deduplicating %d → %d files",
+                len(extracted), len(seen_paths),
             )
-            return HandlerResult(
-                success=False, outputs={}, _evidence=evidence,
-                error=f"Duplicate filenames detected: {duplicates}",
-            )
+            deduped_indices = sorted(seen_paths.values())
+            extracted = [extracted[i] for i in deduped_indices]
+            # Rebuild artifacts from deduped list
+            artifacts = []
+            qa_handoff_content = None
+            for file_rec in extracted:
+                filename = file_rec["filename"]
+                basename = os.path.basename(filename)
+                if basename == "qa_handoff.md":
+                    qa_handoff_content = file_rec["content"]
+                    artifacts.append({
+                        "name": filename,
+                        "content": file_rec["content"],
+                        "media_type": "text/markdown",
+                        "type": "qa_handoff",
+                    })
+                else:
+                    artifact_type, media_type = _classify_file(filename)
+                    artifacts.append({
+                        "name": filename,
+                        "content": file_rec["content"],
+                        "media_type": media_type,
+                        "type": artifact_type,
+                    })
 
         # Step 9: Build outputs with diagnostics
         qa_validation_errors: list[str] = []

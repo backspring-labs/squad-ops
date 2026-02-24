@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from squadops.capabilities.handlers.cycle_tasks import (
     DevelopmentDevelopHandler,
     QATestHandler,
+    _classify_file,
+    _is_test_file,
 )
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.test_runner import TestRunResult
@@ -609,3 +611,388 @@ class TestQASummaryIncludesTestOutcome:
         handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
         assert "tests not run" in result.outputs["summary"]
+
+
+# ---------------------------------------------------------------------------
+# File classification expansion (SIP-0072 Phase 1)
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyFileJS:
+    def test_js_classified_as_source(self):
+        assert _classify_file("app.js") == ("source", "text/javascript")
+
+    def test_jsx_classified_as_source(self):
+        assert _classify_file("App.jsx") == ("source", "text/javascript")
+
+    def test_mjs_classified_as_source(self):
+        assert _classify_file("utils.mjs") == ("source", "text/javascript")
+
+    def test_ts_classified_as_source(self):
+        assert _classify_file("app.ts") == ("source", "text/typescript")
+
+    def test_tsx_classified_as_source(self):
+        assert _classify_file("App.tsx") == ("source", "text/typescript")
+
+
+class TestClassifyFileWebAssets:
+    def test_css_classified_as_source(self):
+        assert _classify_file("styles.css") == ("source", "text/css")
+
+    def test_html_classified_as_source(self):
+        assert _classify_file("index.html") == ("source", "text/html")
+
+
+class TestClassifyFileFilenameMap:
+    def test_package_json_classified_as_config(self):
+        assert _classify_file("package.json") == ("config", "application/json")
+
+    def test_vite_config_classified_as_config(self):
+        assert _classify_file("vite.config.js") == ("config", "text/javascript")
+
+    def test_tsconfig_classified_as_config(self):
+        assert _classify_file("tsconfig.json") == ("config", "application/json")
+
+    def test_requirements_txt_still_config(self):
+        assert _classify_file("requirements.txt") == ("config", "text/plain")
+
+
+class TestClassifyFileExistingBehavior:
+    def test_py_still_source(self):
+        assert _classify_file("main.py") == ("source", "text/x-python")
+
+    def test_md_still_document(self):
+        assert _classify_file("README.md") == ("document", "text/markdown")
+
+    def test_yaml_still_config(self):
+        assert _classify_file("config.yaml") == ("config", "text/yaml")
+
+    def test_json_still_config(self):
+        assert _classify_file("data.json") == ("config", "application/json")
+
+    def test_filename_map_takes_precedence(self):
+        """package.json uses filename map (config), not ext map (config)."""
+        result = _classify_file("package.json")
+        assert result == ("config", "application/json")
+
+
+# ---------------------------------------------------------------------------
+# _is_test_file helper (SIP-0072 Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestIsTestFilePython:
+    def test_test_prefix_py(self):
+        assert _is_test_file("test_api.py", ("test_*.py", "*_test.py")) is True
+
+    def test_suffix_py(self):
+        assert _is_test_file("api_test.py", ("test_*.py", "*_test.py")) is True
+
+    def test_non_test_py(self):
+        assert _is_test_file("main.py", ("test_*.py", "*_test.py")) is False
+
+    def test_nested_path(self):
+        assert _is_test_file("tests/test_api.py", ("test_*.py", "*_test.py")) is True
+
+    def test_deeply_nested_path(self):
+        assert _is_test_file("backend/tests/test_api.py", ("test_*.py", "*_test.py")) is True
+
+
+class TestIsTestFileJS:
+    def test_test_jsx(self):
+        assert _is_test_file("App.test.jsx", ("*.test.jsx", "*.test.js")) is True
+
+    def test_test_js(self):
+        assert _is_test_file("utils.test.js", ("*.test.jsx", "*.test.js")) is True
+
+    def test_spec_jsx(self):
+        assert _is_test_file("App.spec.jsx", ("*.spec.jsx",)) is True
+
+    def test_non_test_jsx(self):
+        assert _is_test_file("App.jsx", ("*.test.jsx", "*.test.js")) is False
+
+    def test_dunder_tests_dir(self):
+        assert _is_test_file(
+            "frontend/src/__tests__/App.test.jsx",
+            ("*.test.jsx",),
+        ) is True
+
+    def test_dunder_tests_dir_even_without_pattern_match(self):
+        """Files inside __tests__/ are test files regardless of pattern."""
+        assert _is_test_file(
+            "frontend/src/__tests__/helpers.js",
+            ("*.test.jsx",),
+        ) is True
+
+
+# ---------------------------------------------------------------------------
+# DevelopmentDevelopHandler capability selection (SIP-0072 Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestDevHandlerCapabilityDefault:
+    async def test_default_capability_is_python_cli(self, mock_context, build_inputs):
+        """Without resolved_config, handler defaults to python_cli."""
+        handler = DevelopmentDevelopHandler()
+        result = await handler.handle(mock_context, build_inputs)
+
+        assert result.success is True
+        call_args = mock_context.ports.llm.chat.call_args
+        messages = call_args[0][0]
+        system_msg = messages[0].content
+        assert "Python package" in system_msg
+        user_msg = messages[1].content
+        assert "__init__.py" in user_msg
+
+    async def test_explicit_python_cli(self, mock_context, build_inputs):
+        """Explicit dev_capability=python_cli reproduces default behavior."""
+        build_inputs["resolved_config"] = {"dev_capability": "python_cli"}
+        handler = DevelopmentDevelopHandler()
+        result = await handler.handle(mock_context, build_inputs)
+
+        assert result.success is True
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "RELATIVE imports" in user_msg
+        assert "python -m" in user_msg
+
+
+class TestDevHandlerFullstackCapability:
+    async def test_fullstack_prompt_contains_backend_frontend(self, mock_context, build_inputs):
+        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        handler = DevelopmentDevelopHandler()
+        result = await handler.handle(mock_context, build_inputs)
+
+        assert result.success is True
+        call_args = mock_context.ports.llm.chat.call_args
+        messages = call_args[0][0]
+        user_msg = messages[1].content
+        assert "backend/" in user_msg
+        assert "frontend/" in user_msg
+
+    async def test_fullstack_prompt_does_not_contain_python_only_guidance(
+        self, mock_context, build_inputs,
+    ):
+        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        handler = DevelopmentDevelopHandler()
+        await handler.handle(mock_context, build_inputs)
+
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "__init__.py" not in user_msg
+        assert "python -m" not in user_msg
+
+    async def test_fullstack_system_prompt_mentions_fullstack(self, mock_context, build_inputs):
+        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        handler = DevelopmentDevelopHandler()
+        await handler.handle(mock_context, build_inputs)
+
+        call_args = mock_context.ports.llm.chat.call_args
+        system_msg = call_args[0][0][0].content
+        assert "fullstack" in system_msg.lower() or "backend" in system_msg.lower()
+
+
+class TestDevHandlerUnknownCapability:
+    async def test_unknown_capability_fails(self, mock_context, build_inputs):
+        build_inputs["resolved_config"] = {"dev_capability": "unknown_stack"}
+        handler = DevelopmentDevelopHandler()
+        result = await handler.handle(mock_context, build_inputs)
+
+        assert result.success is False
+        assert "Unknown" in result.error
+        assert "python_cli" in result.error
+
+    async def test_unknown_capability_does_not_call_llm(self, mock_context, build_inputs):
+        build_inputs["resolved_config"] = {"dev_capability": "unknown_stack"}
+        handler = DevelopmentDevelopHandler()
+        await handler.handle(mock_context, build_inputs)
+
+        mock_context.ports.llm.chat.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# QATestHandler capability selection (SIP-0072 Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestQASourceFilterPythonCli:
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_python_cli_picks_py_files(self, _mock_run, mock_context, qa_inputs):
+        """Default capability filters to .py files only."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, qa_inputs)
+
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "src/main.py" in user_msg
+        assert "src/utils.py" in user_msg
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_python_cli_excludes_test_files(self, _mock_run, mock_context):
+        """Source filter excludes test_*.py files."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        inputs = {
+            "prd": "Test project.",
+            "artifact_contents": {
+                "validation_plan.md": "# Plan",
+                "src/main.py": "def main(): pass",
+                "test_main.py": "def test_main(): pass",
+            },
+        }
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "src/main.py" in user_msg
+        assert "test_main.py" not in user_msg
+
+
+class TestQASourceFilterFullstack:
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_fullstack_picks_py_and_jsx(self, _mock_run, mock_context):
+        """Fullstack capability includes both .py and .jsx source files."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        inputs = {
+            "prd": "Fullstack app.",
+            "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+            "artifact_contents": {
+                "validation_plan.md": "# Plan",
+                "backend/main.py": "from fastapi import FastAPI",
+                "frontend/src/App.jsx": "export default function App() {}",
+                "frontend/src/App.test.jsx": "test('renders', () => {})",
+                "backend/tests/test_api.py": "def test_api(): pass",
+            },
+        }
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        # Source files included in ### headings
+        assert "### backend/main.py" in user_msg
+        assert "### frontend/src/App.jsx" in user_msg
+        # Test files excluded from ### headings
+        assert "### frontend/src/App.test.jsx" not in user_msg
+        assert "### backend/tests/test_api.py" not in user_msg
+
+
+class TestQAPromptCapability:
+    """test_prompt_supplement appears in user prompt (not system prompt)."""
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_python_cli_user_prompt_mentions_pytest(self, _mock_run, mock_context, qa_inputs):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, qa_inputs)
+
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "pytest" in user_msg
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_react_app_user_prompt_mentions_vitest(self, _mock_run, mock_context):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        inputs = {
+            "prd": "React app.",
+            "resolved_config": {"dev_capability": "react_app"},
+            "artifact_contents": {
+                "validation_plan.md": "# Plan",
+                "src/App.jsx": "export default function App() {}",
+            },
+        }
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "vitest" in user_msg.lower()
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_fullstack_user_prompt_mentions_both(self, _mock_run, mock_context):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        inputs = {
+            "prd": "Fullstack app.",
+            "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+            "artifact_contents": {
+                "validation_plan.md": "# Plan",
+                "backend/main.py": "from fastapi import FastAPI",
+            },
+        }
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "pytest" in user_msg
+        assert "vitest" in user_msg.lower()
+
+
+class TestQAUnknownCapability:
+    async def test_unknown_capability_fails(self, mock_context, qa_inputs):
+        qa_inputs["resolved_config"] = {"dev_capability": "nonexistent"}
+        handler = QATestHandler()
+        result = await handler.handle(mock_context, qa_inputs)
+
+        assert result.success is False
+        assert "Unknown" in result.error
+
+
+class TestQAFenceLang:
+    def test_py_gets_python_fence(self):
+        assert QATestHandler._fence_lang("backend/main.py") == "python"
+
+    def test_jsx_gets_javascript_fence(self):
+        assert QATestHandler._fence_lang("frontend/App.jsx") == "javascript"
+
+    def test_js_gets_javascript_fence(self):
+        assert QATestHandler._fence_lang("utils.js") == "javascript"
+
+    def test_ts_gets_typescript_fence(self):
+        assert QATestHandler._fence_lang("app.ts") == "typescript"
+
+    def test_tsx_gets_typescript_fence(self):
+        assert QATestHandler._fence_lang("Component.tsx") == "typescript"
+
+    def test_mjs_gets_javascript_fence(self):
+        assert QATestHandler._fence_lang("module.mjs") == "javascript"
+
+    def test_unknown_defaults_to_python(self):
+        assert QATestHandler._fence_lang("data.yaml") == "python"
+
+
+class TestQAUserPromptFenceLang:
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_jsx_files_fenced_as_javascript(self, _mock_run, mock_context):
+        """JSX source files use ```javascript fences, not ```python."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        inputs = {
+            "prd": "React app.",
+            "resolved_config": {"dev_capability": "react_app"},
+            "artifact_contents": {
+                "validation_plan.md": "# Plan",
+                "src/App.jsx": "export default function App() {}",
+            },
+        }
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+
+        call_args = mock_context.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "```javascript" in user_msg
+        assert "```python" not in user_msg

@@ -82,7 +82,7 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
             "- Dockerfile for containerized deployment\n"
             "- requirements.txt (consolidate from source imports)\n"
             "- Any startup scripts or config files needed\n\n"
-            "Emit each file as a fenced code block: ```<lang>:<path>\n"
+            "Emit each file as a fenced code block, e.g. ```python:main.py or ```dockerfile:Dockerfile\n"
             "After all deployment files, emit a QA handoff document as "
             "```markdown:qa_handoff.md with sections: "
             "## How to Run, ## How to Test, ## Expected Behavior."
@@ -107,7 +107,7 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
             "- Include a main.js for interactivity.\n"
             "- All assets must use relative paths (no CDN dependencies).\n"
             "- The result must be openable by double-clicking index.html.\n\n"
-            "Emit each file as a fenced code block: ```<lang>:<path>\n"
+            "Emit each file as a fenced code block, e.g. ```python:main.py or ```dockerfile:Dockerfile\n"
             "After all source files, emit a QA handoff document as "
             "```markdown:qa_handoff.md with sections: "
             "## How to Run, ## How to Test, ## Expected Behavior."
@@ -132,7 +132,7 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
             "- Include requirements.txt for Python dependencies.\n"
             "- Use a lightweight framework (Flask preferred).\n"
             "- The application must start with a single command.\n\n"
-            "Emit each file as a fenced code block: ```<lang>:<path>\n"
+            "Emit each file as a fenced code block, e.g. ```python:main.py or ```dockerfile:Dockerfile\n"
             "After all source files, emit a QA handoff document as "
             "```markdown:qa_handoff.md with sections: "
             "## How to Run, ## How to Test, ## Expected Behavior."
@@ -142,6 +142,33 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
         validation_rules=(
             "app.py must be valid Python",
             "requirements.txt must list all dependencies",
+        ),
+        artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
+        qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,
+    ),
+    "fullstack_fastapi_react": BuildProfile(
+        name="fullstack_fastapi_react",
+        system_prompt_template=(
+            "You are assembling a fullstack web application with a FastAPI backend "
+            "and a React (Vite) frontend.\n\n"
+            "Produce the following artifacts:\n"
+            "1. A multi-stage Dockerfile: Python base for backend, Node build stage "
+            "   for frontend static assets, final stage serves both.\n"
+            "2. A docker-compose.yaml for local development (backend on :8000, "
+            "   frontend dev server on :5173, with proxy config).\n"
+            "3. A startup script (start.sh) that runs both services.\n"
+            "4. CORS configuration notes for the backend.\n"
+            "5. A qa_handoff.md covering how to run, test, and verify both stacks.\n\n"
+            "The source code from the development step is provided as context. "
+            "Do not regenerate application code — focus on packaging, configuration, "
+            "and operational readiness."
+        ),
+        required_files=("Dockerfile", "qa_handoff.md"),
+        optional_files=("docker-compose.yaml", "start.sh", ".env.example", "nginx.conf"),
+        validation_rules=(
+            "Dockerfile must use multi-stage build",
+            "docker-compose.yaml must define backend and frontend services",
+            "qa_handoff.md must include startup and test instructions for both stacks",
         ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
         qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,
