@@ -1,9 +1,9 @@
 ---
 title: LLM Budget and Timeout Controls
-status: accepted
+status: implemented
 author: SquadOps Core
 created_at: '2026-02-23'
-updated_at: '2026-02-24T20:49:01.185765Z'
+updated_at: '2026-02-24T21:59:22.215000Z'
 sip_number: 73
 ---
 # SIP: LLM Budget and Timeout Controls
