@@ -3,6 +3,7 @@
 Tests DevelopmentCapability dataclass, get_capability() lookup, constants,
 and capability immutability. Mirrors test_build_profiles.py pattern.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -169,6 +170,44 @@ class TestFrameworkConstants:
             assert cap.test_framework in valid, f"{name} uses invalid test_framework"
 
 
+class TestTokenBudgetFields:
+    """Tests for SIP-0073 max_completion_tokens and test_timeout_seconds."""
+
+    def test_all_have_positive_max_completion_tokens(self):
+        for name, cap in DEV_CAPABILITIES.items():
+            assert cap.max_completion_tokens > 0, f"{name} has non-positive max_completion_tokens"
+
+    def test_all_have_positive_test_timeout_seconds(self):
+        for name, cap in DEV_CAPABILITIES.items():
+            assert cap.test_timeout_seconds > 0, f"{name} has non-positive test_timeout_seconds"
+
+    def test_python_cli_defaults(self):
+        cap = get_capability("python_cli")
+        assert cap.max_completion_tokens == 4000
+        assert cap.test_timeout_seconds == 60
+
+    def test_python_api_tokens(self):
+        cap = get_capability("python_api")
+        assert cap.max_completion_tokens == 6000
+        assert cap.test_timeout_seconds == 60
+
+    def test_react_app_tokens(self):
+        cap = get_capability("react_app")
+        assert cap.max_completion_tokens == 8000
+        assert cap.test_timeout_seconds == 120
+
+    def test_fullstack_higher_than_cli(self):
+        cli = get_capability("python_cli")
+        fs = get_capability("fullstack_fastapi_react")
+        assert fs.max_completion_tokens > cli.max_completion_tokens
+        assert fs.test_timeout_seconds > cli.test_timeout_seconds
+
+    def test_fullstack_values(self):
+        cap = get_capability("fullstack_fastapi_react")
+        assert cap.max_completion_tokens == 12000
+        assert cap.test_timeout_seconds == 180
+
+
 class TestRegistryCompleteness:
     def test_registry_has_four_capabilities(self):
         assert len(DEV_CAPABILITIES) == 4
@@ -179,7 +218,9 @@ class TestRegistryCompleteness:
 
     def test_all_have_non_empty_system_prompt_supplement(self):
         for name, cap in DEV_CAPABILITIES.items():
-            assert len(cap.system_prompt_supplement) > 0, f"{name} has empty system_prompt_supplement"
+            assert len(cap.system_prompt_supplement) > 0, (
+                f"{name} has empty system_prompt_supplement"
+            )
 
     def test_all_have_non_empty_source_filter(self):
         for name, cap in DEV_CAPABILITIES.items():

@@ -6,10 +6,10 @@ selection.  V1 capabilities are code-defined frozen dataclass instances.
 
 Mirrors the BuildProfile registry pattern in build_profiles.py.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 
 # ---------------------------------------------------------------------------
 # Test framework constants (D5)
@@ -42,6 +42,8 @@ class DevelopmentCapability:
     test_prompt_supplement: str
     source_filter: tuple[str, ...]
     test_file_patterns: tuple[str, ...]
+    max_completion_tokens: int = 4000
+    test_timeout_seconds: int = 60
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +109,8 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         ),
         source_filter=(".py",),
         test_file_patterns=("test_*.py", "*_test.py"),
+        # max_completion_tokens=4000 (default)
+        # test_timeout_seconds=60 (default)
     ),
     # ── python_api ────────────────────────────────────────────────────────
     # FastAPI-specific guidance replacing CLI packaging conventions.
@@ -138,11 +142,7 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
             "- requirements.txt includes all dependencies"
         ),
         example_structure=(
-            "<project_name>/\n"
-            "  main.py\n"
-            "  models.py\n"
-            "  routes.py\n"
-            "requirements.txt"
+            "<project_name>/\n  main.py\n  models.py\n  routes.py\nrequirements.txt"
         ),
         expected_extensions=(".py",),
         test_framework=TEST_FRAMEWORK_PYTEST,
@@ -155,6 +155,7 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         ),
         source_filter=(".py",),
         test_file_patterns=("test_*.py", "*_test.py"),
+        max_completion_tokens=6000,
     ),
     # ── react_app ─────────────────────────────────────────────────────────
     "react_app": DevelopmentCapability(
@@ -183,14 +184,7 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
             "- package.json includes all required dependencies\n"
             "- vite.config.js imports and uses @vitejs/plugin-react"
         ),
-        example_structure=(
-            "index.html\n"
-            "package.json\n"
-            "vite.config.js\n"
-            "src/\n"
-            "  main.jsx\n"
-            "  App.jsx"
-        ),
+        example_structure=("index.html\npackage.json\nvite.config.js\nsrc/\n  main.jsx\n  App.jsx"),
         expected_extensions=(".js", ".jsx", ".html", ".css"),
         test_framework=TEST_FRAMEWORK_VITEST,
         test_prompt_supplement=(
@@ -202,8 +196,13 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         ),
         source_filter=(".js", ".jsx"),
         test_file_patterns=(
-            "*.test.js", "*.test.jsx", "*.spec.js", "*.spec.jsx",
+            "*.test.js",
+            "*.test.jsx",
+            "*.spec.js",
+            "*.spec.jsx",
         ),
+        max_completion_tokens=8000,
+        test_timeout_seconds=120,
     ),
     # ── fullstack_fastapi_react ───────────────────────────────────────────
     "fullstack_fastapi_react": DevelopmentCapability(
@@ -282,9 +281,15 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         ),
         source_filter=(".py", ".js", ".jsx"),
         test_file_patterns=(
-            "test_*.py", "*_test.py",
-            "*.test.js", "*.test.jsx", "*.spec.js", "*.spec.jsx",
+            "test_*.py",
+            "*_test.py",
+            "*.test.js",
+            "*.test.jsx",
+            "*.spec.js",
+            "*.spec.jsx",
         ),
+        max_completion_tokens=12000,
+        test_timeout_seconds=180,
     ),
 }
 
@@ -305,7 +310,6 @@ def get_capability(name: str) -> DevelopmentCapability:
     if capability is None:
         available = sorted(DEV_CAPABILITIES.keys())
         raise ValueError(
-            f"Unknown development capability {name!r}. "
-            f"Available capabilities: {available}"
+            f"Unknown development capability {name!r}. Available capabilities: {available}"
         )
     return capability
