@@ -1,4 +1,4 @@
-last_assigned: 72
+last_assigned: 73
 sips:
 - sip_uid: null
   sip_number: null
@@ -664,3 +664,12 @@ sips:
   approver: jladd
   created_at: '2026-02-22T00:00:00Z'
   updated_at: '2026-02-23T09:59:51.570695Z'
+- sip_uid: null
+  sip_number: 73
+  title: LLM Budget and Timeout Controls
+  path: sips/accepted/SIP-0073-LLM-Budget-and-Timeout.md
+  status: accepted
+  author: SquadOps Core
+  approver: jladd
+  created_at: '2026-02-23'
+  updated_at: '2026-02-24T20:49:01.206569Z'
