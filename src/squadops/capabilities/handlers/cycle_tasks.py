@@ -22,7 +22,9 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.llm.exceptions import LLMError
+from squadops.llm.model_registry import get_model_spec
 from squadops.llm.models import ChatMessage
 
 if TYPE_CHECKING:
@@ -454,13 +456,53 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
 
+        # SIP-0073: compute token budget from capability + model spec
+        model_name = context.ports.llm.default_model
+        model_spec = get_model_spec(model_name)
+        max_tokens = capability.max_completion_tokens
+        context_window = None
+        if model_spec is not None:
+            max_tokens = min(max_tokens, model_spec.default_max_completion)
+            context_window = model_spec.context_window
+
+        # SIP-0073: guard prompt size against context window
+        resolved_config = inputs.get("resolved_config", {})
+        try:
+            user_prompt = _guard_prompt_size(
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                context_window,
+            )
+        except ValueError as exc:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=evidence,
+                error=str(exc),
+            )
+
+        # SIP-0073: resolve effective timeout (D6)
+        generation_timeout = resolved_config.get("generation_timeout", 300)
+
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=user_prompt),
         ]
 
         try:
-            response = await context.ports.llm.chat(messages)
+            response = await context.ports.llm.chat(
+                messages,
+                max_tokens=max_tokens,
+                timeout_seconds=generation_timeout,
+            )
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -755,13 +797,52 @@ class QATestHandler(_CycleTaskHandler):
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
 
+        # SIP-0073: compute token budget from capability + model spec
+        model_name = context.ports.llm.default_model
+        model_spec = get_model_spec(model_name)
+        max_tokens = capability.max_completion_tokens
+        context_window = None
+        if model_spec is not None:
+            max_tokens = min(max_tokens, model_spec.default_max_completion)
+            context_window = model_spec.context_window
+
+        # SIP-0073: guard prompt size against context window
+        try:
+            user_prompt = _guard_prompt_size(
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                context_window,
+            )
+        except ValueError as exc:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=evidence,
+                error=str(exc),
+            )
+
+        # SIP-0073: resolve effective timeout (D6)
+        generation_timeout = resolved_config.get("generation_timeout", 300)
+
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=user_prompt),
         ]
 
         try:
-            response = await context.ports.llm.chat(messages)
+            response = await context.ports.llm.chat(
+                messages,
+                max_tokens=max_tokens,
+                timeout_seconds=generation_timeout,
+            )
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -840,17 +921,25 @@ class QATestHandler(_CycleTaskHandler):
             {"path": rec["filename"], "content": rec["content"]} for rec in extracted
         ]
 
+        test_timeout = capability.test_timeout_seconds
+
         if capability.test_framework == TEST_FRAMEWORK_VITEST:
-            test_result = await run_node_tests(source_file_records, test_file_records)
+            test_result = await run_node_tests(
+                source_file_records,
+                test_file_records,
+                timeout_seconds=test_timeout,
+            )
         elif capability.test_framework == TEST_FRAMEWORK_BOTH:
             test_result = await run_fullstack_tests(
                 source_file_records,
                 test_file_records,
+                timeout_seconds=test_timeout,
             )
         else:
             test_result = await run_generated_tests(
                 source_file_records,
                 test_file_records,
+                timeout_seconds=test_timeout,
             )
 
         # Build test report artifact

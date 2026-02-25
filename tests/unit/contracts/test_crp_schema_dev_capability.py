@@ -23,6 +23,10 @@ class TestAppliedDefaultsExtraKeys:
         assert "pulse_checks" in _APPLIED_DEFAULTS_EXTRA_KEYS
         assert "cadence_policy" in _APPLIED_DEFAULTS_EXTRA_KEYS
 
+    def test_generation_timeout_in_extra_keys(self):
+        """SIP-0073: generation_timeout is a valid applied_defaults key."""
+        assert "generation_timeout" in _APPLIED_DEFAULTS_EXTRA_KEYS
+
 
 class TestCycleRequestProfileWithDevCapability:
     def test_dev_capability_accepted_in_defaults(self):
