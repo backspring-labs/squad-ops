@@ -47,17 +47,29 @@ class LLMRouter:
         self,
         messages: list[ChatMessage],
         model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
     ) -> ChatMessage:
         """Chat with the LLM.
 
         Args:
             messages: List of chat messages
             model: Optional model override
+            max_tokens: Maximum completion tokens (adapter default if None)
+            temperature: Sampling temperature (adapter default if None)
+            timeout_seconds: Request timeout (adapter default if None)
 
         Returns:
             Assistant's response message
         """
-        return await self._provider.chat(messages, model)
+        return await self._provider.chat(
+            messages,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            timeout_seconds=timeout_seconds,
+        )
 
     def list_models(self) -> list[str]:
         """List available models (sync, returns cached list).

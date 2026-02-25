@@ -42,12 +42,18 @@ class LLMPort(ABC):
         self,
         messages: list[ChatMessage],
         model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
     ) -> ChatMessage:
         """Chat with the LLM using message history.
 
         Args:
             messages: List of chat messages (conversation history)
             model: Optional model override
+            max_tokens: Maximum completion tokens (adapter default if None)
+            temperature: Sampling temperature (adapter default if None)
+            timeout_seconds: Request timeout (adapter default if None)
 
         Returns:
             Assistant's response message

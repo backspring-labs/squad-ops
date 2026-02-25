@@ -31,7 +31,6 @@ from squadops.ports.tools.filesystem import FileSystemPort
 from squadops.prompts.models import AssembledPrompt
 from squadops.telemetry.models import Span, StructuredEvent
 
-
 # ---------------------------------------------------------------------------
 # Hard-fail stubs (intentional calls that should never happen)
 # ---------------------------------------------------------------------------
@@ -43,7 +42,14 @@ class NoOpLLMPort(LLMPort):
     async def generate(self, request: LLMRequest) -> LLMResponse:
         raise NotImplementedError("NoOpLLMPort: no LLM provider configured")
 
-    async def chat(self, messages: list[ChatMessage], model: str | None = None) -> ChatMessage:
+    async def chat(
+        self,
+        messages: list[ChatMessage],
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ChatMessage:
         raise NotImplementedError("NoOpLLMPort: no LLM provider configured")
 
     def list_models(self) -> list[str]:

@@ -8,34 +8,46 @@ Part of Phase 1.
 
 from __future__ import annotations
 
-import pytest
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from squadops.bootstrap.handlers import HANDLER_CONFIGS
+from squadops.capabilities.handlers.base import HandlerEvidence
 from squadops.capabilities.handlers.cycle_tasks import (
     DevelopmentDevelopHandler,
     QATestHandler,
     _classify_file,
     _is_test_file,
 )
-from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.test_runner import TestRunResult
-from squadops.bootstrap.handlers import HANDLER_CONFIGS
 from squadops.llm.exceptions import LLMConnectionError
 from squadops.llm.models import ChatMessage
 
 _MOCK_TEST_RESULT_PASSED = TestRunResult(
-    executed=True, exit_code=0, stdout="1 passed", stderr="",
-    test_file_count=2, source_file_count=2,
+    executed=True,
+    exit_code=0,
+    stdout="1 passed",
+    stderr="",
+    test_file_count=2,
+    source_file_count=2,
 )
 
 _MOCK_TEST_RESULT_FAILED = TestRunResult(
-    executed=True, exit_code=1, stdout="1 failed", stderr="AssertionError",
-    test_file_count=2, source_file_count=2,
+    executed=True,
+    exit_code=1,
+    stdout="1 failed",
+    stderr="AssertionError",
+    test_file_count=2,
+    source_file_count=2,
 )
 
 _MOCK_TEST_RESULT_NOT_RUN = TestRunResult(
-    executed=False, error="no test files provided",
-    test_file_count=0, source_file_count=0,
+    executed=False,
+    error="no test files provided",
+    test_file_count=0,
+    source_file_count=0,
 )
 
 _RUN_TESTS_PATH = "squadops.capabilities.handlers.test_runner.run_generated_tests"
@@ -59,15 +71,10 @@ LLM_MULTI_FILE_RESPONSE = (
     "```\n"
 )
 
-LLM_SINGLE_FILE_RESPONSE = (
-    "```python:app.py\n"
-    "print('hello')\n"
-    "```\n"
-)
+LLM_SINGLE_FILE_RESPONSE = "```python:app.py\nprint('hello')\n```\n"
 
 LLM_NO_FENCES_RESPONSE = (
-    "I have generated the code but forgot to use fenced blocks.\n"
-    "def main(): pass\n"
+    "I have generated the code but forgot to use fenced blocks.\ndef main(): pass\n"
 )
 
 LLM_TEST_FILE_RESPONSE = (
@@ -201,10 +208,12 @@ class TestDevBuildValidation:
 
     def test_valid_inputs(self):
         handler = DevelopmentDevelopHandler()
-        errors = handler.validate_inputs({
-            "prd": "something",
-            "artifact_contents": {"plan.md": "content"},
-        })
+        errors = handler.validate_inputs(
+            {
+                "prd": "something",
+                "artifact_contents": {"plan.md": "content"},
+            }
+        )
         assert errors == []
 
 
@@ -234,11 +243,7 @@ class TestDevBuildPromptContent:
 
 class TestDevBuildFileClassification:
     async def test_yaml_classified_as_config(self, mock_context, build_inputs):
-        yaml_response = (
-            "```yaml:config.yaml\n"
-            "key: value\n"
-            "```\n"
-        )
+        yaml_response = "```yaml:config.yaml\nkey: value\n```\n"
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=yaml_response),
         )
@@ -362,7 +367,7 @@ class TestBuildHandlerProperties:
 class TestDevBuildVaultFallback:
     async def test_vault_fallback_resolves_missing_content(self, mock_context):
         """When artifact_contents is empty, vault fallback resolves from refs."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from squadops.cycles.models import ArtifactRef
 
@@ -374,7 +379,7 @@ class TestDevBuildVaultFallback:
             content_hash="abc",
             size_bytes=100,
             media_type="text/markdown",
-            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         vault = AsyncMock()
         vault.retrieve = AsyncMock(return_value=(plan_ref, b"# Plan\nBuild it."))
@@ -400,7 +405,7 @@ class TestDevBuildVaultFallback:
 
     async def test_vault_fallback_fails_when_vault_has_no_match(self, mock_context):
         """When vault has no matching artifacts, handler returns failure."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from squadops.cycles.models import ArtifactRef
 
@@ -412,7 +417,7 @@ class TestDevBuildVaultFallback:
             content_hash="abc",
             size_bytes=100,
             media_type="text/markdown",
-            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         vault = AsyncMock()
         vault.retrieve = AsyncMock(return_value=(other_ref, b"unrelated"))
@@ -435,7 +440,7 @@ class TestQABuildVaultFallback:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_qa_vault_fallback_resolves_validation_plan(self, _mock_run, mock_context):
         """QA handler falls back to vault for validation_plan.md."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from squadops.cycles.models import ArtifactRef
 
@@ -451,7 +456,7 @@ class TestQABuildVaultFallback:
             content_hash="abc",
             size_bytes=100,
             media_type="text/markdown",
-            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         vault = AsyncMock()
         vault.retrieve = AsyncMock(return_value=(plan_ref, b"# Test Plan"))
@@ -483,7 +488,8 @@ class TestDevBuildLangFuseRecording:
         ctx = MagicMock()
         ctx.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(
-                role="assistant", content=LLM_MULTI_FILE_RESPONSE,
+                role="assistant",
+                content=LLM_MULTI_FILE_RESPONSE,
             ),
         )
         ctx.ports.llm.default_model = "ollama/llama3"
@@ -514,7 +520,8 @@ class TestQABuildLangFuseRecording:
         ctx = MagicMock()
         ctx.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(
-                role="assistant", content=LLM_TEST_FILE_RESPONSE,
+                role="assistant",
+                content=LLM_TEST_FILE_RESPONSE,
             ),
         )
         ctx.ports.llm.default_model = "ollama/llama3"
@@ -572,7 +579,9 @@ class TestQAHandlerSucceedsWhenTestsFail:
 
 class TestQAHandlerSucceedsWhenTestsNotExecuted:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_NOT_RUN)
-    async def test_handler_succeeds_when_tests_not_executed(self, _mock_run, mock_context, qa_inputs):
+    async def test_handler_succeeds_when_tests_not_executed(
+        self, _mock_run, mock_context, qa_inputs
+    ):
         """Handler returns success=True even when tests couldn't run."""
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
@@ -712,17 +721,23 @@ class TestIsTestFileJS:
         assert _is_test_file("App.jsx", ("*.test.jsx", "*.test.js")) is False
 
     def test_dunder_tests_dir(self):
-        assert _is_test_file(
-            "frontend/src/__tests__/App.test.jsx",
-            ("*.test.jsx",),
-        ) is True
+        assert (
+            _is_test_file(
+                "frontend/src/__tests__/App.test.jsx",
+                ("*.test.jsx",),
+            )
+            is True
+        )
 
     def test_dunder_tests_dir_even_without_pattern_match(self):
         """Files inside __tests__/ are test files regardless of pattern."""
-        assert _is_test_file(
-            "frontend/src/__tests__/helpers.js",
-            ("*.test.jsx",),
-        ) is True
+        assert (
+            _is_test_file(
+                "frontend/src/__tests__/helpers.js",
+                ("*.test.jsx",),
+            )
+            is True
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -771,7 +786,9 @@ class TestDevHandlerFullstackCapability:
         assert "frontend/" in user_msg
 
     async def test_fullstack_prompt_does_not_contain_python_only_guidance(
-        self, mock_context, build_inputs,
+        self,
+        mock_context,
+        build_inputs,
     ):
         build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
         handler = DevelopmentDevelopHandler()
@@ -996,3 +1013,207 @@ class TestQAUserPromptFenceLang:
         user_msg = call_args[0][0][1].content
         assert "```javascript" in user_msg
         assert "```python" not in user_msg
+
+
+# ---------------------------------------------------------------------------
+# SIP-0073: Token budget + timeout wiring
+# ---------------------------------------------------------------------------
+
+
+class TestDevHandlerTokenBudget:
+    """Dev handler passes max_tokens and timeout_seconds to chat()."""
+
+    async def test_python_cli_max_tokens(self, mock_context, build_inputs):
+        """Default python_cli → max_tokens=4000."""
+        handler = DevelopmentDevelopHandler()
+        await handler.handle(mock_context, build_inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        assert call_kwargs["max_tokens"] == 4000
+
+    async def test_fullstack_max_tokens(self, mock_context, build_inputs):
+        """fullstack_fastapi_react → max_tokens=12000."""
+        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        handler = DevelopmentDevelopHandler()
+        await handler.handle(mock_context, build_inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        assert call_kwargs["max_tokens"] == 12000
+
+    async def test_model_spec_caps_tokens(self, mock_context, build_inputs):
+        """When model spec has lower limit, max_tokens is capped."""
+        # qwen2.5:7b has default_max_completion=4096
+        mock_context.ports.llm.default_model = "qwen2.5:7b"
+        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        handler = DevelopmentDevelopHandler()
+        await handler.handle(mock_context, build_inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        # min(12000, 4096) = 4096
+        assert call_kwargs["max_tokens"] == 4096
+
+    async def test_unknown_model_uses_capability_tokens(self, mock_context, build_inputs):
+        """Unknown model → no capping, uses capability's max_completion_tokens."""
+        mock_context.ports.llm.default_model = "unknown"
+        handler = DevelopmentDevelopHandler()
+        await handler.handle(mock_context, build_inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        assert call_kwargs["max_tokens"] == 4000
+
+    async def test_default_timeout(self, mock_context, build_inputs):
+        """No generation_timeout in config → falls back to 300."""
+        handler = DevelopmentDevelopHandler()
+        await handler.handle(mock_context, build_inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        assert call_kwargs["timeout_seconds"] == 300
+
+    async def test_config_timeout(self, mock_context, build_inputs):
+        """generation_timeout from resolved_config is forwarded."""
+        build_inputs["resolved_config"] = {"generation_timeout": 600}
+        handler = DevelopmentDevelopHandler()
+        await handler.handle(mock_context, build_inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        assert call_kwargs["timeout_seconds"] == 600
+
+
+class TestDevHandlerPromptGuard:
+    """Dev handler catches prompt overflow ValueError."""
+
+    async def test_prompt_overflow_returns_failure(self, mock_context, build_inputs):
+        """When prompt exceeds context window, handler returns structured failure."""
+        import json
+
+        # Use a known small model and a very large PRD
+        mock_context.ports.llm.default_model = "qwen2.5:7b"
+        build_inputs["prd"] = "x" * 200000  # ~50K tokens, exceeds 8K context
+        handler = DevelopmentDevelopHandler()
+        result = await handler.handle(mock_context, build_inputs)
+
+        assert result.success is False
+        payload = json.loads(result.error)
+        assert payload["error_code"] == "PROMPT_EXCEEDS_CONTEXT_WINDOW"
+        mock_context.ports.llm.chat.assert_not_called()
+
+
+class TestQAHandlerTokenBudget:
+    """QA handler passes max_tokens and timeout_seconds to chat()."""
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_python_cli_max_tokens(self, _mock_run, mock_context, qa_inputs):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, qa_inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        assert call_kwargs["max_tokens"] == 4000
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_fullstack_max_tokens(self, _mock_run, mock_context, qa_inputs):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        qa_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        handler = QATestHandler()
+        await handler.handle(mock_context, qa_inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        assert call_kwargs["max_tokens"] == 12000
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_default_timeout(self, _mock_run, mock_context, qa_inputs):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, qa_inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        assert call_kwargs["timeout_seconds"] == 300
+
+
+class TestQAHandlerTestTimeout:
+    """QA handler passes capability.test_timeout_seconds to test runner."""
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_python_cli_test_timeout(self, mock_run, mock_context, qa_inputs):
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, qa_inputs)
+
+        call_kwargs = mock_run.call_args.kwargs
+        assert call_kwargs["timeout_seconds"] == 60
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_fullstack_test_timeout(self, _mock_run, mock_context, qa_inputs):
+        """fullstack_fastapi_react → test runner gets timeout_seconds=180."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        qa_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        qa_inputs["artifact_contents"]["backend/main.py"] = "from fastapi import FastAPI"
+
+        with patch(
+            "squadops.capabilities.handlers.test_runner.run_fullstack_tests",
+            return_value=_MOCK_TEST_RESULT_PASSED,
+        ) as mock_fullstack:
+            handler = QATestHandler()
+            await handler.handle(mock_context, qa_inputs)
+
+            call_kwargs = mock_fullstack.call_args.kwargs
+            assert call_kwargs["timeout_seconds"] == 180
+
+
+class TestBuilderNoTokenBudget:
+    """Builder handler calls chat() without max_tokens (D2)."""
+
+    async def test_builder_no_max_tokens(self):
+        from squadops.capabilities.handlers.cycle_tasks import BuilderAssembleHandler
+
+        ctx = MagicMock()
+        ctx.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant",
+                content=(
+                    "```python:my_app/__main__.py\n"
+                    "from .main import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    main()\n```\n\n"
+                    "```dockerfile:Dockerfile\n"
+                    "FROM python:3.11-slim\nWORKDIR /app\n"
+                    'COPY . .\nCMD ["python", "-m", "my_app"]\n```\n\n'
+                    "```text:requirements.txt\n# none\n```\n\n"
+                    "```markdown:qa_handoff.md\n"
+                    "## How to Run\npython -m my_app\n\n"
+                    "## How to Test\npytest tests/\n\n"
+                    "## Expected Behavior\nPrints hello\n```\n"
+                ),
+            ),
+        )
+        ctx.ports.llm.default_model = "test-model"
+        assembled = MagicMock()
+        assembled.content = "You are a builder agent."
+        ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
+        ctx.ports.llm_observability = None
+        ctx.correlation_context = None
+
+        inputs = {
+            "prd": "Build something.",
+            "artifact_contents": {
+                "my_app/main.py": "def main():\n    print('hello')",
+            },
+            "resolved_config": {"build_profile": "python_cli_builder"},
+        }
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(ctx, inputs)
+
+        assert result.success is True
+        call_kwargs = ctx.ports.llm.chat.call_args.kwargs
+        assert "max_tokens" not in call_kwargs
+        assert "timeout_seconds" not in call_kwargs
