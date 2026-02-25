@@ -5,7 +5,6 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import httpx
@@ -118,30 +117,45 @@ class OllamaAdapter(LLMPort):
         self,
         messages: list[ChatMessage],
         model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
     ) -> ChatMessage:
         """Chat with the LLM using message history.
 
         Args:
             messages: List of chat messages
             model: Optional model override
+            max_tokens: Maximum completion tokens (maps to num_predict)
+            temperature: Sampling temperature
+            timeout_seconds: Request timeout override
 
         Returns:
             Assistant's response message
         """
         client = await self._get_client()
         model = model or self._default_model
+        timeout = timeout_seconds or self._timeout
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": False,
         }
 
+        options: dict[str, Any] = {}
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
+        if temperature is not None:
+            options["temperature"] = temperature
+        if options:
+            payload["options"] = options
+
         try:
             response = await client.post(
                 "/api/chat",
                 json=payload,
-                timeout=self._timeout,
+                timeout=timeout,
             )
             response.raise_for_status()
             data = response.json()
@@ -152,7 +166,7 @@ class OllamaAdapter(LLMPort):
                 content=message_data.get("content", ""),
             )
         except httpx.TimeoutException as e:
-            raise LLMTimeoutError(f"Ollama chat timed out after {self._timeout}s") from e
+            raise LLMTimeoutError(f"Ollama chat timed out after {timeout}s") from e
         except httpx.ConnectError as e:
             raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
 
