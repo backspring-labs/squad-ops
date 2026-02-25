@@ -240,7 +240,7 @@ class TestStructuredPayloadKeys:
         assert set(payload.keys()) == self._REQUIRED_KEYS
 
     def test_overflow_with_section_has_all_keys(self):
-        user = f"{_PRIOR_ANALYSIS_HEADING}\nprior\n\nx" * 40000
+        user = f"{_PRIOR_ANALYSIS_HEADING}\n" + "x" * 40000
         payload = self._trigger_error(
             system_prompt="x" * 40000,
             user_prompt=user,
