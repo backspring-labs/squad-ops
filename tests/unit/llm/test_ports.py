@@ -102,3 +102,44 @@ class TestLLMPortChatParams:
             "temperature": None,
             "timeout_seconds": None,
         }
+
+
+class TestLLMRouterForwarding:
+    """Verify LLMRouter forwards new chat() params to the underlying provider."""
+
+    async def test_router_forwards_all_chat_params(self):
+        from squadops.llm.router import LLMRouter
+
+        provider = _ConcreteLLM()
+        router = LLMRouter(provider)
+        messages = [ChatMessage(role="user", content="hi")]
+
+        result = await router.chat(
+            messages,
+            model="test-model",
+            max_tokens=4000,
+            temperature=0.8,
+            timeout_seconds=120.0,
+        )
+        assert result.content == "ok"
+        assert provider.last_chat_kwargs == {
+            "model": "test-model",
+            "max_tokens": 4000,
+            "temperature": 0.8,
+            "timeout_seconds": 120.0,
+        }
+
+    async def test_router_forwards_none_defaults(self):
+        from squadops.llm.router import LLMRouter
+
+        provider = _ConcreteLLM()
+        router = LLMRouter(provider)
+        messages = [ChatMessage(role="user", content="hi")]
+
+        await router.chat(messages)
+        assert provider.last_chat_kwargs == {
+            "model": None,
+            "max_tokens": None,
+            "temperature": None,
+            "timeout_seconds": None,
+        }
