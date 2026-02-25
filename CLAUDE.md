@@ -141,7 +141,23 @@ SIPs govern architectural decisions. Located in `sips/` with lifecycle:
 - `sips/implemented/` - Matched to code
 - `sips/registry.yaml` - Canonical index
 
-Key implemented SIPs:
+### Contributor Workflow
+
+| Step | Where | Who | What happens |
+|------|-------|-----|-------------|
+| 1. Propose | PR to main | Contributor | Adds draft to `sips/proposed/` |
+| 2. Design review | That PR | Maintainer + team | Review the SIP spec — approve the *design*, not code |
+| 3. Accept | Merge to main | Maintainer | Runs `update_sip_status.py ... accepted`, merges |
+| 4. Branch | Feature branch off main | Implementer | `git checkout -b feature/sip-NNNN-...` from main (which now has the accepted SIP) |
+| 5. Implement | Feature branch | Implementer | Incremental commits per phase |
+| 6. Code review | PR to main | Maintainer + team | Review the implementation |
+| 7. Merge | main | Maintainer | Merge the feature PR |
+| 8. Promote | main | Maintainer | Runs `update_sip_status.py ... implemented` after verification |
+
+Key principle: **acceptance is a design commitment on main, not an implementation artifact.** The feature branch starts from a main that already has the accepted SIP, so the implementer works from an approved spec. This separates "we agree this is the right design" from "the implementation is correct."
+
+### Key Implemented SIPs
+
 - **SIP-0061** – LangFuse LLM Observability Foundation
 - **SIP-0062** – Auth Boundary (Keycloak OIDC)
 - **SIP-0064** – Project Cycle Request API
@@ -153,7 +169,8 @@ Key implemented SIPs:
 - **SIP-0070** – Pulse Checks and Verification Framework
 - **SIP-0071** – Builder Role (Dedicated Product Builder Agent)
 
-To move a SIP (maintainer only):
+### Moving a SIP (maintainer only)
+
 ```bash
 export SQUADOPS_MAINTAINER=1
 
