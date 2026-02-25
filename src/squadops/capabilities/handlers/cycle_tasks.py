@@ -466,7 +466,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             context_window = model_spec.context_window
 
         # SIP-0073: guard prompt size against context window
-        resolved_config = inputs.get("resolved_config", {})
         try:
             user_prompt = _guard_prompt_size(
                 system_prompt,
@@ -490,7 +489,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             )
 
         # SIP-0073: resolve effective timeout (D6)
-        generation_timeout = resolved_config.get("generation_timeout", 300)
+        generation_timeout = self._resolved_config.get("generation_timeout", 300)
 
         messages = [
             ChatMessage(role="system", content=system_prompt),
