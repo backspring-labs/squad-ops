@@ -387,15 +387,6 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# Prevent browser caching of plugin JS bundles (they have no content-hash in URL)
-@app.middleware("http")
-async def no_cache_plugin_assets(request: Request, call_next):
-    response = await call_next(request)
-    if request.url.path.startswith("/plugins/") and request.url.path.endswith(".js"):
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return response
-
-
 # Continuum API routes (/health, /api/registry, /plugins/{id}/assets/...)
 app.include_router(continuum_api_router)
 
