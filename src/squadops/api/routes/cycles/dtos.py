@@ -9,7 +9,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 # =============================================================================
 # Nested DTOs
 # =============================================================================
@@ -36,9 +35,7 @@ class CycleCreateRequest(BaseModel):
 
     prd_ref: str | None = None
     squad_profile_id: str
-    task_flow_policy: TaskFlowPolicyDTO = Field(
-        default_factory=lambda: TaskFlowPolicyDTO()
-    )
+    task_flow_policy: TaskFlowPolicyDTO = Field(default_factory=lambda: TaskFlowPolicyDTO())
     build_strategy: Literal["fresh", "incremental"] = "fresh"  # T13
     applied_defaults: dict = Field(default_factory=dict)  # SIP-0065 D2: CRP defaults from CLI
     execution_overrides: dict = Field(default_factory=dict)
@@ -85,6 +82,7 @@ class ProjectResponse(BaseModel):
     description: str
     created_at: datetime
     tags: list[str]
+    has_prd: bool = False
 
 
 class GateDecisionResponse(BaseModel):

@@ -16,6 +16,7 @@
   import CyclesList from './CyclesList.svelte';
   import CyclesRunTimeline from './CyclesRunTimeline.svelte';
   import CyclesRunDetail from './CyclesRunDetail.svelte';
+  import CycleCreateModal from './CycleCreateModal.svelte';
 
   let selection = $state({
     project_id: null,
@@ -61,6 +62,18 @@
   function handleNewCycle() {
     modalOpen = true;
   }
+
+  function handleModalClose() {
+    modalOpen = false;
+  }
+
+  function handleCycleCreated({ project_id, cycle_id, run_id }) {
+    modalOpen = false;
+    // Selection rule 5: after creating cycle, set to new cycle_id + run_id
+    selection.project_id = project_id;
+    selection.cycle_id = cycle_id;
+    selection.active_run_id = run_id || null;
+  }
 </script>
 
 <div class="cycles-perspective">
@@ -91,6 +104,13 @@
     {/if}
   </div>
 </div>
+
+{#if modalOpen}
+  <CycleCreateModal
+    onCreated={handleCycleCreated}
+    onClose={handleModalClose}
+  />
+{/if}
 
 <style>
   .cycles-perspective {
