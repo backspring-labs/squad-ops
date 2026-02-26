@@ -1,15 +1,15 @@
-<svelte:options customElement="squadops-cycles-run-detail" />
-
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import GateDecisionCard from './GateDecisionCard.svelte';
+  import ArtifactTypeFilter from './ArtifactTypeFilter.svelte';
 
-  let selectedRun = $state(null);
+  let { projectId = null, cycleId = null, runId = null } = $props();
+
   let runDetail = $state(null);
   let artifacts = $state([]);
+  let filteredArtifacts = $state([]);
   let loading = $state(false);
   let error = $state(null);
-  let gateLoading = $state(null);
-  let gateError = $state(null);
   let pollTimer = $state(null);
 
   const config = window.__SQUADOPS_CONFIG__ || {};
@@ -20,27 +20,34 @@
     return fetch(url, opts);
   }
 
-  function handleSelectRun(event) {
-    const { project_id, cycle_id, run_id, run_number } = event.detail;
-    selectedRun = { project_id, cycle_id, run_id, run_number };
-    gateError = null;
-    fetchRunDetail();
-  }
-
   async function fetchRunDetail() {
-    if (!selectedRun) return;
+    if (!projectId || !cycleId || !runId) return;
     loading = true;
     error = null;
     try {
-      const { project_id, cycle_id, run_id } = selectedRun;
       const runResp = await apiFetch(
-        `${apiBase}/api/v1/projects/${project_id}/cycles/${cycle_id}/runs/${run_id}`
+        `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}/runs/${runId}`
       );
       if (!runResp.ok) throw new Error(`Run detail: ${runResp.status}`);
       runDetail = await runResp.json();
 
-      // Extract artifact refs from run detail response (no separate endpoint)
-      artifacts = runDetail.artifact_refs || [];
+      // Fetch full artifacts via dedicated endpoint (Option B per plan §2.5)
+      try {
+        const artResp = await apiFetch(
+          `${apiBase}/api/v1/projects/${projectId}/artifacts?run_id=${runId}`
+        );
+        if (artResp.ok) {
+          artifacts = await artResp.json();
+          filteredArtifacts = artifacts;
+        } else {
+          // Fallback to artifact_refs from run detail
+          artifacts = runDetail.artifact_refs || [];
+          filteredArtifacts = artifacts;
+        }
+      } catch {
+        artifacts = runDetail.artifact_refs || [];
+        filteredArtifacts = artifacts;
+      }
 
       loading = false;
     } catch (err) {
@@ -49,54 +56,35 @@
     }
   }
 
-  async function executeCommand(commandId, params) {
-    const resp = await apiFetch('/api/commands/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command_id: commandId, params }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text();
-      throw new Error(body || `Command failed: ${resp.status}`);
+  // Re-fetch when run selection changes
+  $effect(() => {
+    if (projectId && cycleId && runId) {
+      fetchRunDetail();
+    } else {
+      runDetail = null;
+      artifacts = [];
+      filteredArtifacts = [];
     }
-    return resp.json();
-  }
-
-  async function handleGateDecision(gateName, decision) {
-    if (!selectedRun) return;
-    gateLoading = gateName;
-    gateError = null;
-    try {
-      const commandId =
-        decision === 'approved'
-          ? 'squadops.gate_approve'
-          : 'squadops.gate_reject';
-      await executeCommand(commandId, {
-        project_id: selectedRun.project_id,
-        cycle_id: selectedRun.cycle_id,
-        run_id: selectedRun.run_id,
-        gate_name: gateName,
-        decision,
-      });
-      // Refresh after gate decision
-      await fetchRunDetail();
-    } catch (err) {
-      gateError = `Gate ${decision} failed: ${err.message}`;
-    }
-    gateLoading = null;
-  }
+  });
 
   onMount(() => {
-    window.addEventListener('squadops:select-run', handleSelectRun);
     pollTimer = setInterval(() => {
-      if (selectedRun) fetchRunDetail();
+      if (projectId && cycleId && runId) fetchRunDetail();
     }, 15000);
   });
 
   onDestroy(() => {
-    window.removeEventListener('squadops:select-run', handleSelectRun);
     if (pollTimer) clearInterval(pollTimer);
   });
+
+  function handleDecisionRecorded() {
+    // Re-fetch run detail to get server-confirmed state (no optimistic update)
+    fetchRunDetail();
+  }
+
+  function handleArtifactFilter(filtered) {
+    filteredArtifacts = filtered;
+  }
 
   function statusColor(status) {
     const colors = {
@@ -124,7 +112,7 @@
 </script>
 
 <div class="run-detail">
-  {#if !selectedRun}
+  {#if !runId}
     <div class="empty">Select a run to view details</div>
   {:else if loading}
     <div class="loading">Loading run details...</div>
@@ -132,7 +120,7 @@
     <div class="error">Error: {error}</div>
   {:else if runDetail}
     <h3 class="title">
-      Run #{selectedRun.run_number ?? '--'}
+      Run #{runDetail.run_number ?? '--'}
       <span
         class="title-status"
         style="color: {statusColor(runDetail.status || 'queued')}"
@@ -151,11 +139,11 @@
         </div>
         <div class="detail-row">
           <span class="detail-key">Cycle ID</span>
-          <span class="detail-val mono">{selectedRun.cycle_id}</span>
+          <span class="detail-val mono">{cycleId}</span>
         </div>
         <div class="detail-row">
           <span class="detail-key">Project</span>
-          <span class="detail-val">{selectedRun.project_id}</span>
+          <span class="detail-val">{projectId}</span>
         </div>
         <div class="detail-row">
           <span class="detail-key">Status</span>
@@ -188,58 +176,16 @@
     {#if runDetail.gates && runDetail.gates.length > 0}
       <div class="detail-section">
         <h4 class="section-title">Gate Decisions</h4>
-
-        {#if gateError}
-          <div class="gate-error">{gateError}</div>
-        {/if}
-
         <div class="gates-list">
           {#each runDetail.gates as gate}
-            <div class="gate-card">
-              <div class="gate-header">
-                <span class="gate-name">{gate.gate_name}</span>
-                <span
-                  class="gate-decision"
-                  class:gate-pending={!gate.decision}
-                  class:gate-approved={gate.decision === 'approved'}
-                  class:gate-rejected={gate.decision === 'rejected'}
-                >
-                  {gate.decision || 'pending'}
-                </span>
-              </div>
-
-              {#if gate.decided_by}
-                <div class="gate-meta">
-                  Decided by: {gate.decided_by}
-                  {#if gate.decided_at}
-                    at {formatTimestamp(gate.decided_at)}
-                  {/if}
-                </div>
-              {/if}
-
-              {#if gate.reason}
-                <div class="gate-meta">Reason: {gate.reason}</div>
-              {/if}
-
-              {#if !gate.decision}
-                <div class="gate-actions">
-                  <button
-                    class="btn btn-approve"
-                    disabled={gateLoading === gate.gate_name}
-                    onclick={() => handleGateDecision(gate.gate_name, 'approved')}
-                  >
-                    {gateLoading === gate.gate_name ? 'Processing...' : 'Approve'}
-                  </button>
-                  <button
-                    class="btn btn-reject"
-                    disabled={gateLoading === gate.gate_name}
-                    onclick={() => handleGateDecision(gate.gate_name, 'rejected')}
-                  >
-                    {gateLoading === gate.gate_name ? 'Processing...' : 'Reject'}
-                  </button>
-                </div>
-              {/if}
-            </div>
+            <GateDecisionCard
+              {gate}
+              {projectId}
+              {cycleId}
+              {runId}
+              runStatus={runDetail.status}
+              onDecisionRecorded={handleDecisionRecorded}
+            />
           {/each}
         </div>
       </div>
@@ -249,11 +195,12 @@
     {#if artifacts.length > 0}
       <div class="detail-section">
         <h4 class="section-title">Artifacts</h4>
+        <ArtifactTypeFilter {artifacts} onFilter={handleArtifactFilter} />
         <div class="artifacts-list">
-          {#each artifacts as artifact}
+          {#each filteredArtifacts as artifact}
             <div class="artifact-row">
               <span class="artifact-name">{artifact.filename || artifact.artifact_id}</span>
-              <span class="artifact-type">{artifact.content_type || '--'}</span>
+              <span class="artifact-type">{artifact.artifact_type || artifact.content_type || '--'}</span>
               <span class="artifact-agent">{artifact.agent_role || '--'}</span>
             </div>
           {/each}
@@ -332,105 +279,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--continuum-space-sm, 8px);
-  }
-
-  .gate-card {
-    background: var(--continuum-bg-secondary, #1e293b);
-    border: 1px solid var(--continuum-border, #334155);
-    border-radius: var(--continuum-radius-md, 8px);
-    padding: var(--continuum-space-md, 16px);
-  }
-
-  .gate-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--continuum-space-xs, 4px);
-  }
-
-  .gate-name {
-    font-weight: 600;
-    font-size: var(--continuum-font-size-sm, 0.875rem);
-  }
-
-  .gate-decision {
-    font-size: var(--continuum-font-size-xs, 0.75rem);
-    padding: 2px 8px;
-    border-radius: var(--continuum-radius-sm, 4px);
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-
-  .gate-pending {
-    background: rgba(148, 163, 184, 0.15);
-    color: var(--continuum-text-muted, #94a3b8);
-  }
-
-  .gate-approved {
-    background: rgba(34, 197, 94, 0.15);
-    color: var(--continuum-accent-success, #22c55e);
-  }
-
-  .gate-rejected {
-    background: rgba(239, 68, 68, 0.15);
-    color: var(--continuum-accent-danger, #ef4444);
-  }
-
-  .gate-meta {
-    font-size: var(--continuum-font-size-xs, 0.75rem);
-    color: var(--continuum-text-muted, #94a3b8);
-    margin-top: 2px;
-  }
-
-  .gate-actions {
-    display: flex;
-    gap: var(--continuum-space-sm, 8px);
-    margin-top: var(--continuum-space-sm, 8px);
-  }
-
-  .gate-error {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: var(--continuum-radius-sm, 4px);
-    padding: var(--continuum-space-sm, 8px);
-    color: var(--continuum-accent-danger, #ef4444);
-    font-size: var(--continuum-font-size-sm, 0.875rem);
-    margin-bottom: var(--continuum-space-sm, 8px);
-  }
-
-  .btn {
-    padding: var(--continuum-space-xs, 4px) var(--continuum-space-md, 16px);
-    border: 1px solid var(--continuum-border, #334155);
-    border-radius: var(--continuum-radius-sm, 4px);
-    font-size: var(--continuum-font-size-sm, 0.875rem);
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-  }
-
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-approve {
-    background: rgba(34, 197, 94, 0.15);
-    color: var(--continuum-accent-success, #22c55e);
-    border-color: rgba(34, 197, 94, 0.3);
-  }
-
-  .btn-approve:hover:not(:disabled) {
-    background: rgba(34, 197, 94, 0.25);
-  }
-
-  .btn-reject {
-    background: rgba(239, 68, 68, 0.15);
-    color: var(--continuum-accent-danger, #ef4444);
-    border-color: rgba(239, 68, 68, 0.3);
-  }
-
-  .btn-reject:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.25);
   }
 
   /* Artifacts */

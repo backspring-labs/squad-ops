@@ -1,7 +1,7 @@
-<svelte:options customElement="squadops-cycles-list" />
-
 <script>
   import { onMount, onDestroy } from 'svelte';
+
+  let { onSelectCycle = null, onNewCycle = null } = $props();
 
   let projects = $state([]);
   let cycles = $state([]);
@@ -74,11 +74,7 @@
   });
 
   function selectCycle(projectId, cycleId) {
-    window.dispatchEvent(
-      new CustomEvent('squadops:select-cycle', {
-        detail: { project_id: projectId, cycle_id: cycleId },
-      })
-    );
+    onSelectCycle?.(projectId, cycleId);
   }
 
   let filteredCycles = $derived(
@@ -118,7 +114,12 @@
 </script>
 
 <div class="cycles-list">
-  <h3 class="title">Cycles</h3>
+  <div class="header">
+    <h3 class="title">Cycles</h3>
+    {#if onNewCycle}
+      <button class="btn btn-new" onclick={() => onNewCycle()}>+ New Cycle</button>
+    {/if}
+  </div>
 
   <div class="filters">
     <input
@@ -185,10 +186,33 @@
     color: var(--continuum-text-primary, #e2e8f0);
   }
 
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--continuum-space-md, 16px);
+  }
+
   .title {
     font-size: var(--continuum-font-size-md, 1rem);
     font-weight: 600;
-    margin: 0 0 var(--continuum-space-md, 16px) 0;
+    margin: 0;
+  }
+
+  .btn-new {
+    padding: var(--continuum-space-xs, 4px) var(--continuum-space-md, 16px);
+    background: var(--continuum-accent-primary, #6366f1);
+    color: #fff;
+    border: none;
+    border-radius: var(--continuum-radius-sm, 4px);
+    font-size: var(--continuum-font-size-sm, 0.875rem);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .btn-new:hover {
+    background: var(--continuum-accent-primary-hover, #4f46e5);
   }
 
   .filters {

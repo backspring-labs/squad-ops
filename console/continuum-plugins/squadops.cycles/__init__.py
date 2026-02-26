@@ -2,7 +2,7 @@
 
 
 def register(ctx):
-    """Register Cycles plugin contributions (1 nav + 3 panels + 6 commands)."""
+    """Register Cycles plugin contributions (1 nav + 1 panel + 6 commands)."""
     # ── Navigation ──────────────────────────────────────────────
     ctx.register_contribution("nav", {
         "slot": "ui.slot.left_nav",
@@ -12,26 +12,12 @@ def register(ctx):
         "target": {"type": "panel", "panel_id": "cycles"},
     })
 
-    # ── Panels ──────────────────────────────────────────────────
+    # ── Panels (SIP-0074: single composite perspective) ─────────
     ctx.register_contribution("panel", {
         "slot": "ui.slot.main",
         "perspective": "cycles",
-        "component": "squadops-cycles-list",
+        "component": "squadops-cycles-perspective",
         "priority": 800,
-    })
-
-    ctx.register_contribution("panel", {
-        "slot": "ui.slot.main",
-        "perspective": "cycles",
-        "component": "squadops-cycles-run-timeline",
-        "priority": 700,
-    })
-
-    ctx.register_contribution("panel", {
-        "slot": "ui.slot.main",
-        "perspective": "cycles",
-        "component": "squadops-cycles-run-detail",
-        "priority": 600,
     })
 
     # ── Commands ────────────────────────────────────────────────

@@ -22,20 +22,8 @@ panel_id = "cycles"
 [[contributions.panel]]
 slot = "ui.slot.main"
 perspective = "cycles"
-component = "squadops-cycles-list"
+component = "squadops-cycles-perspective"
 priority = 800
-
-[[contributions.panel]]
-slot = "ui.slot.main"
-perspective = "cycles"
-component = "squadops-cycles-run-timeline"
-priority = 700
-
-[[contributions.panel]]
-slot = "ui.slot.main"
-perspective = "cycles"
-component = "squadops-cycles-run-detail"
-priority = 600
 
 [[contributions.command]]
 id = "squadops.create_cycle"

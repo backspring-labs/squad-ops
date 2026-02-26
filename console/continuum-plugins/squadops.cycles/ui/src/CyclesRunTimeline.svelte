@@ -1,9 +1,8 @@
-<svelte:options customElement="squadops-cycles-run-timeline" />
-
 <script>
   import { onMount, onDestroy } from 'svelte';
 
-  let selectedCycle = $state(null);
+  let { projectId = null, cycleId = null, onSelectRun = null } = $props();
+
   let runs = $state([]);
   let loading = $state(false);
   let error = $state(null);
@@ -17,20 +16,13 @@
     return fetch(url, opts);
   }
 
-  function handleSelectCycle(event) {
-    const { project_id, cycle_id } = event.detail;
-    selectedCycle = { project_id, cycle_id };
-    fetchRuns();
-  }
-
   async function fetchRuns() {
-    if (!selectedCycle) return;
+    if (!projectId || !cycleId) return;
     loading = true;
     error = null;
     try {
-      const { project_id, cycle_id } = selectedCycle;
       const resp = await apiFetch(
-        `${apiBase}/api/v1/projects/${project_id}/cycles/${cycle_id}/runs`
+        `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}/runs`
       );
       if (!resp.ok) throw new Error(`Runs: ${resp.status}`);
       runs = await resp.json();
@@ -41,30 +33,27 @@
     }
   }
 
+  // Re-fetch when cycle selection changes
+  $effect(() => {
+    if (projectId && cycleId) {
+      fetchRuns();
+    } else {
+      runs = [];
+    }
+  });
+
   onMount(() => {
-    window.addEventListener('squadops:select-cycle', handleSelectCycle);
     pollTimer = setInterval(() => {
-      if (selectedCycle) fetchRuns();
+      if (projectId && cycleId) fetchRuns();
     }, 15000);
   });
 
   onDestroy(() => {
-    window.removeEventListener('squadops:select-cycle', handleSelectCycle);
     if (pollTimer) clearInterval(pollTimer);
   });
 
   function selectRun(run) {
-    if (!selectedCycle) return;
-    window.dispatchEvent(
-      new CustomEvent('squadops:select-run', {
-        detail: {
-          project_id: selectedCycle.project_id,
-          cycle_id: selectedCycle.cycle_id,
-          run_id: run.run_id,
-          run_number: run.run_number,
-        },
-      })
-    );
+    onSelectRun?.(run.run_id);
   }
 
   function statusColor(status) {
@@ -105,12 +94,12 @@
 </script>
 
 <div class="run-timeline">
-  {#if !selectedCycle}
+  {#if !projectId || !cycleId}
     <div class="empty">Select a cycle to view its runs</div>
   {:else}
     <h3 class="title">
       Runs for
-      <span class="cycle-ref">{selectedCycle.cycle_id.slice(0, 12)}</span>
+      <span class="cycle-ref">{cycleId.slice(0, 12)}</span>
     </h3>
 
     {#if loading}
