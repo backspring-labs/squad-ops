@@ -79,7 +79,7 @@ COPY adapters/ ./adapters/
 RUN --mount=type=cache,target=/root/.cache/pip pip install -e .
 
 # Create required directories
-RUN mkdir -p /app/logs /app/data/memory_db /app/warm-boot
+RUN mkdir -p /app/logs /app/data/memory_db
 
 # Expose health check port
 EXPOSE 8000

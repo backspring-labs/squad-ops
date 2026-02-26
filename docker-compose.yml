@@ -233,7 +233,6 @@ services:
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     volumes:
-      - ./warm-boot:/app/warm-boot
       - max_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
@@ -329,7 +328,6 @@ services:
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     volumes:
-      - ./warm-boot:/app/warm-boot
       - ./docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
       - neo_memory_data:/app/data/memory_db
@@ -406,7 +404,6 @@ services:
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     volumes:
-      - ./warm-boot:/app/warm-boot
       - data_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
@@ -447,7 +444,6 @@ services:
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     volumes:
-      - ./warm-boot:/app/warm-boot
       - bob_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
