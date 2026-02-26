@@ -31,11 +31,13 @@ _ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS
 
 
 class PromptMeta(BaseModel):
-    """CLI prompt metadata for interactive mode."""
+    """CLI/console prompt metadata for interactive mode (SIP-0074 §5.8)."""
 
     label: str
     help_text: str = ""
     choices: list[str] = Field(default_factory=list)
+    type: str | None = None  # "choice" | "text" | "bool" — inferred by consumers if None
+    required: bool = False
 
 
 class CycleRequestProfile(BaseModel):

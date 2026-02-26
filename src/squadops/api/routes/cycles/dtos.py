@@ -175,6 +175,33 @@ class ArtifactRefResponse(BaseModel):
     vault_uri: str | None = None
 
 
+class PromptMetaResponse(BaseModel):
+    """Prompt field metadata for cycle request profile (SIP-0074 §5.8)."""
+
+    label: str
+    help_text: str = ""
+    choices: list[str] = Field(default_factory=list)
+    type: str | None = None
+    required: bool = False
+
+
+class CycleRequestProfileResponse(BaseModel):
+    """Cycle request profile with defaults and prompt metadata (SIP-0074)."""
+
+    name: str
+    description: str = ""
+    defaults: dict = Field(default_factory=dict)
+    prompts: dict[str, PromptMetaResponse] = Field(default_factory=dict)
+
+
+class ModelSpecResponse(BaseModel):
+    """Model registry entry (SIP-0074, SIP-0073)."""
+
+    name: str
+    context_window: int
+    default_max_completion: int
+
+
 class ErrorDetail(BaseModel):
     code: str
     message: str

@@ -13,8 +13,10 @@ from squadops.cli.commands.artifacts import artifacts_app, baseline_app
 from squadops.cli.commands.auth import auth_app, login, logout
 from squadops.cli.commands.cycles import app as cycles_app
 from squadops.cli.commands.meta import app as meta_app
+from squadops.cli.commands.models import app as models_app
 from squadops.cli.commands.profiles import app as profiles_app
 from squadops.cli.commands.projects import app as projects_app
+from squadops.cli.commands.request_profiles import app as request_profiles_app
 from squadops.cli.commands.runs import app as runs_app
 
 app = typer.Typer(
@@ -73,3 +75,5 @@ app.add_typer(profiles_app, name="squad-profiles")
 app.add_typer(artifacts_app, name="artifacts")
 app.add_typer(baseline_app, name="baseline")
 app.add_typer(auth_app, name="auth")
+app.add_typer(request_profiles_app, name="request-profiles")  # SIP-0074
+app.add_typer(models_app, name="models")  # SIP-0074

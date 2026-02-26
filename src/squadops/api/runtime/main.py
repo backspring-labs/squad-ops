@@ -101,7 +101,9 @@ app.include_router(auth_router)
 # SIP-0064: Include cycle execution routes
 from squadops.api.routes.cycles import (
     artifacts_router,
+    cycle_request_profiles_router,
     cycles_router,
+    models_router,
     profiles_router,
     projects_router,
     runs_router,
@@ -112,6 +114,8 @@ app.include_router(cycles_router)
 app.include_router(runs_router)
 app.include_router(profiles_router)
 app.include_router(artifacts_router)
+app.include_router(cycle_request_profiles_router)  # SIP-0074
+app.include_router(models_router)  # SIP-0074
 
 # Platform health routes (replaces legacy health-check service)
 from squadops.api.routes.platform_health import router as platform_health_router
