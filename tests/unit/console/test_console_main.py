@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 from fastapi import APIRouter
 
 # ── Mock continuum dependencies before importing main ──────────────────────
@@ -29,6 +28,7 @@ sys.modules["continuum.adapters.web.api"] = MagicMock()
 _mock_api_module = sys.modules["continuum.adapters.web.api"]
 _mock_api_module.router = APIRouter(prefix="/api/registry")
 
+
 # Add a dummy /health route and /api/registry route so we can verify mounting
 @_mock_api_module.router.get("/health")
 async def _mock_health():
@@ -44,9 +44,8 @@ async def _mock_registry():
 sys.path.insert(0, str(Path(__file__).parents[3] / "console" / "app"))
 
 # Now import main — it will pick up our mocked continuum modules
-from main import app, COMMAND_HANDLERS  # noqa: E402
-
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from main import COMMAND_HANDLERS, app  # noqa: E402
 
 
 class TestConsoleMain:

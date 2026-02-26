@@ -9,7 +9,9 @@ from unittest.mock import MagicMock
 import pytest
 
 # Load the agents plugin __init__.py using importlib to avoid module name collision
-_plugin_path = Path(__file__).parents[3] / "console" / "continuum-plugins" / "squadops.agents" / "__init__.py"
+_plugin_path = (
+    Path(__file__).parents[3] / "console" / "continuum-plugins" / "squadops.agents" / "__init__.py"
+)
 _spec = importlib.util.spec_from_file_location("squadops_agents_plugin", _plugin_path)
 _agents_plugin = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_agents_plugin)
@@ -41,9 +43,7 @@ class TestAgentsPluginRegistration:
     def test_panel_agents_status_in_right_rail(self, mock_ctx):
         register(mock_ctx)
         panels = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"]
-        status_panels = [
-            p for p in panels if p[0][1]["component"] == "squadops-agents-status"
-        ]
+        status_panels = [p for p in panels if p[0][1]["component"] == "squadops-agents-status"]
         assert len(status_panels) == 1
         assert status_panels[0][0][1]["slot"] == "ui.slot.right_rail"
         assert status_panels[0][0][1]["priority"] == 800
@@ -65,5 +65,7 @@ class TestAgentsPluginRegistration:
 
     def test_no_command_contributions(self, mock_ctx):
         register(mock_ctx)
-        commands = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "command"]
+        commands = [
+            c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "command"
+        ]
         assert len(commands) == 0

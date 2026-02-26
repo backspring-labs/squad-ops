@@ -128,11 +128,16 @@ class TestCreateRunHandler:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"run_id": "r123"}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            result = await main.squadops_create_run({
-                "project_id": "proj1",
-                "cycle_id": "c1",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            result = await main.squadops_create_run(
+                {
+                    "project_id": "proj1",
+                    "cycle_id": "c1",
+                },
+                {},
+            )
 
         assert result == {"run_id": "r123"}
         call_args = mock_req.call_args
@@ -144,12 +149,17 @@ class TestCreateRunHandler:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            await main.squadops_create_run({
-                "project_id": "proj1",
-                "cycle_id": "c1",
-                "extra_field": "value",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            await main.squadops_create_run(
+                {
+                    "project_id": "proj1",
+                    "cycle_id": "c1",
+                    "extra_field": "value",
+                },
+                {},
+            )
 
         body = mock_req.call_args[1]["json"]
         assert "project_id" not in body
@@ -166,11 +176,16 @@ class TestCancelHandlers:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"status": "cancelled"}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            result = await main.squadops_cancel_cycle({
-                "project_id": "proj1",
-                "cycle_id": "c1",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            result = await main.squadops_cancel_cycle(
+                {
+                    "project_id": "proj1",
+                    "cycle_id": "c1",
+                },
+                {},
+            )
 
         assert result == {"status": "cancelled"}
         call_args = mock_req.call_args
@@ -182,12 +197,17 @@ class TestCancelHandlers:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"status": "cancelled"}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            result = await main.squadops_cancel_run({
-                "project_id": "proj1",
-                "cycle_id": "c1",
-                "run_id": "r1",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            result = await main.squadops_cancel_run(
+                {
+                    "project_id": "proj1",
+                    "cycle_id": "c1",
+                    "run_id": "r1",
+                },
+                {},
+            )
 
         assert result == {"status": "cancelled"}
         call_args = mock_req.call_args
@@ -200,11 +220,14 @@ class TestCancelHandlers:
         mock_resp.text = "Run not found"
 
         with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp):
-            result = await main.squadops_cancel_run({
-                "project_id": "proj1",
-                "cycle_id": "c1",
-                "run_id": "r1",
-            }, {})
+            result = await main.squadops_cancel_run(
+                {
+                    "project_id": "proj1",
+                    "cycle_id": "c1",
+                    "run_id": "r1",
+                },
+                {},
+            )
 
         assert result["error"] == "Run not found"
         assert result["status_code"] == 404
@@ -219,10 +242,15 @@ class TestSetActiveProfileHandler:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"profile_id": "full-squad"}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            result = await main.squadops_set_active_profile({
-                "profile_id": "full-squad",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            result = await main.squadops_set_active_profile(
+                {
+                    "profile_id": "full-squad",
+                },
+                {},
+            )
 
         assert result == {"profile_id": "full-squad"}
         call_args = mock_req.call_args
@@ -238,11 +266,16 @@ class TestCreateCycleBodyCleaning:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            await main.squadops_create_cycle({
-                "project_id": "proj1",
-                "squad_profile_id": "full-squad",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            await main.squadops_create_cycle(
+                {
+                    "project_id": "proj1",
+                    "squad_profile_id": "full-squad",
+                },
+                {},
+            )
 
         body = mock_req.call_args[1]["json"]
         assert "project_id" not in body
@@ -258,13 +291,18 @@ class TestGateHandlers:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"decision": "approved"}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            await main.squadops_gate_approve({
-                "project_id": "p1",
-                "cycle_id": "c1",
-                "run_id": "r1",
-                "gate_name": "plan-review",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            await main.squadops_gate_approve(
+                {
+                    "project_id": "p1",
+                    "cycle_id": "c1",
+                    "run_id": "r1",
+                    "gate_name": "plan-review",
+                },
+                {},
+            )
 
         call_args = mock_req.call_args
         assert call_args[1]["json"] == {"decision": "approved"}
@@ -275,13 +313,18 @@ class TestGateHandlers:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"decision": "rejected"}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            await main.squadops_gate_reject({
-                "project_id": "p1",
-                "cycle_id": "c1",
-                "run_id": "r1",
-                "gate_name": "plan-review",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            await main.squadops_gate_reject(
+                {
+                    "project_id": "p1",
+                    "cycle_id": "c1",
+                    "run_id": "r1",
+                    "gate_name": "plan-review",
+                },
+                {},
+            )
 
         call_args = mock_req.call_args
         assert call_args[1]["json"] == {"decision": "rejected"}
@@ -303,13 +346,16 @@ class TestIngestArtifactHandler:
             patch.object(main, "_get_service_token", new_callable=AsyncMock, return_value="tok"),
             patch.object(main, "_api_client", mock_client),
         ):
-            result = await main.squadops_ingest_artifact({
-                "project_id": "proj1",
-                "content": "hello world",
-                "filename": "hello.py",
-                "artifact_type": "source",
-                "media_type": "text/x-python",
-            }, {})
+            result = await main.squadops_ingest_artifact(
+                {
+                    "project_id": "proj1",
+                    "content": "hello world",
+                    "filename": "hello.py",
+                    "artifact_type": "source",
+                    "media_type": "text/x-python",
+                },
+                {},
+            )
 
         assert result == {"artifact_id": "a123"}
         call_kwargs = mock_client.post.call_args[1]
@@ -335,13 +381,16 @@ class TestIngestArtifactHandler:
             patch.object(main, "_get_service_token", new_callable=AsyncMock, return_value=""),
             patch.object(main, "_api_client", mock_client),
         ):
-            result = await main.squadops_ingest_artifact({
-                "project_id": "proj1",
-                "content_base64": b64,
-                "filename": "data.bin",
-                "artifact_type": "config",
-                "media_type": "application/octet-stream",
-            }, {})
+            result = await main.squadops_ingest_artifact(
+                {
+                    "project_id": "proj1",
+                    "content_base64": b64,
+                    "filename": "data.bin",
+                    "artifact_type": "config",
+                    "media_type": "application/octet-stream",
+                },
+                {},
+            )
 
         assert result == {"artifact_id": "a456"}
         call_kwargs = mock_client.post.call_args[1]
@@ -362,10 +411,13 @@ class TestIngestArtifactHandler:
             patch.object(main, "_get_service_token", new_callable=AsyncMock, return_value=""),
             patch.object(main, "_api_client", mock_client),
         ):
-            result = await main.squadops_ingest_artifact({
-                "project_id": "proj1",
-                "content": "x",
-            }, {})
+            result = await main.squadops_ingest_artifact(
+                {
+                    "project_id": "proj1",
+                    "content": "x",
+                },
+                {},
+            )
 
         assert result["error"] == "File too large"
         assert result["status_code"] == 413
@@ -413,12 +465,17 @@ class TestSetBaselineHandler:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"baseline_id": "b1"}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            result = await main.squadops_set_baseline({
-                "project_id": "proj1",
-                "artifact_type": "source",
-                "artifact_id": "a1",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            result = await main.squadops_set_baseline(
+                {
+                    "project_id": "proj1",
+                    "artifact_type": "source",
+                    "artifact_id": "a1",
+                },
+                {},
+            )
 
         assert result == {"baseline_id": "b1"}
         call_args = mock_req.call_args
@@ -430,12 +487,17 @@ class TestSetBaselineHandler:
         mock_resp.status_code = 200
         mock_resp.json.return_value = {}
 
-        with patch.object(main, "_api_request", new_callable=AsyncMock, return_value=mock_resp) as mock_req:
-            await main.squadops_set_baseline({
-                "project_id": "proj1",
-                "artifact_type": "source",
-                "artifact_id": "a1",
-            }, {})
+        with patch.object(
+            main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
+        ) as mock_req:
+            await main.squadops_set_baseline(
+                {
+                    "project_id": "proj1",
+                    "artifact_type": "source",
+                    "artifact_id": "a1",
+                },
+                {},
+            )
 
         body = mock_req.call_args[1]["json"]
         assert "project_id" not in body

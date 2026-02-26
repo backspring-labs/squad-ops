@@ -22,20 +22,8 @@ panel_id = "cycles"
 [[contributions.panel]]
 slot = "ui.slot.main"
 perspective = "cycles"
-component = "squadops-cycles-list"
+component = "squadops-cycles-perspective"
 priority = 800
-
-[[contributions.panel]]
-slot = "ui.slot.main"
-perspective = "cycles"
-component = "squadops-cycles-run-timeline"
-priority = 700
-
-[[contributions.panel]]
-slot = "ui.slot.main"
-perspective = "cycles"
-component = "squadops-cycles-run-detail"
-priority = 600
 
 [[contributions.command]]
 id = "squadops.create_cycle"
@@ -72,3 +60,10 @@ id = "squadops.gate_reject"
 label = "Reject Gate"
 action = "squadops.gate_reject"
 danger_level = "confirm"
+
+[[contributions.command]]
+id = "squadops.open_create_cycle"
+label = "New Cycle"
+description = "Open the cycle creation modal"
+action = "squadops.open_create_cycle"
+danger_level = "safe"

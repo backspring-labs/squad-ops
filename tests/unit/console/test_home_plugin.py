@@ -9,7 +9,9 @@ from unittest.mock import MagicMock
 import pytest
 
 # Load the home plugin __init__.py using importlib to avoid module name collision
-_plugin_path = Path(__file__).parents[3] / "console" / "continuum-plugins" / "squadops.home" / "__init__.py"
+_plugin_path = (
+    Path(__file__).parents[3] / "console" / "continuum-plugins" / "squadops.home" / "__init__.py"
+)
 _spec = importlib.util.spec_from_file_location("squadops_home_plugin", _plugin_path)
 _home_plugin = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_home_plugin)
@@ -47,10 +49,7 @@ class TestHomePluginRegistration:
     def test_nav_contribution(self, mock_ctx):
         """register() adds a nav contribution with correct properties."""
         register(mock_ctx)
-        nav_calls = [
-            c for c in mock_ctx.register_contribution.call_args_list
-            if c[0][0] == "nav"
-        ]
+        nav_calls = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "nav"]
         assert len(nav_calls) == 1
         data = nav_calls[0][0][1]
         assert data["slot"] == "ui.slot.left_nav"
@@ -62,8 +61,7 @@ class TestHomePluginRegistration:
         """register() adds a panel contribution with correct properties."""
         register(mock_ctx)
         panel_calls = [
-            c for c in mock_ctx.register_contribution.call_args_list
-            if c[0][0] == "panel"
+            c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "panel"
         ]
         assert len(panel_calls) == 1
         data = panel_calls[0][0][1]
@@ -75,10 +73,7 @@ class TestHomePluginRegistration:
     def test_nav_target_panel_id(self, mock_ctx):
         """Nav contribution points to the 'signal' perspective."""
         register(mock_ctx)
-        nav_call = [
-            c for c in mock_ctx.register_contribution.call_args_list
-            if c[0][0] == "nav"
-        ][0]
+        nav_call = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "nav"][0]
         data = nav_call[0][1]
         assert data["target"] == {"type": "panel", "panel_id": "signal"}
 
@@ -86,7 +81,6 @@ class TestHomePluginRegistration:
         """Home plugin does not register any command contributions."""
         register(mock_ctx)
         command_calls = [
-            c for c in mock_ctx.register_contribution.call_args_list
-            if c[0][0] == "command"
+            c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "command"
         ]
         assert len(command_calls) == 0

@@ -2,12 +2,14 @@
 
 <script>
   import { onMount } from 'svelte';
+  import SquadProfileDetail from './SquadProfileDetail.svelte';
 
   let profiles = $state([]);
   let activeProfile = $state(null);
   let loading = $state(true);
   let error = $state(null);
   let setActiveError = $state(null);
+  let expandedId = $state(null);
 
   const config = window.__SQUADOPS_CONFIG__ || {};
   const apiBase = config.apiBaseUrl || '';
@@ -50,6 +52,10 @@
       setActiveError = `Failed to set active profile: ${err.message}`;
     }
   }
+
+  function toggleExpand(profileId) {
+    expandedId = expandedId === profileId ? null : profileId;
+  }
 </script>
 
 <div class="profiles">
@@ -68,26 +74,27 @@
     <div class="profile-list">
       {#each profiles as profile}
         <div class="profile-card" class:active={activeProfile?.profile_id === profile.profile_id}>
-          <div class="profile-header">
-            <span class="profile-name">{profile.profile_id || profile.name}</span>
+          <div
+            class="profile-header"
+            role="button"
+            tabindex="0"
+            onclick={() => toggleExpand(profile.profile_id)}
+            onkeydown={(e) => { if (e.key === 'Enter') toggleExpand(profile.profile_id); }}
+          >
+            <span class="profile-name">
+              <span class="expand-indicator">{expandedId === profile.profile_id ? '\u25BC' : '\u25B6'}</span>
+              {profile.profile_id || profile.name}
+            </span>
             {#if activeProfile?.profile_id === profile.profile_id}
               <span class="active-badge">ACTIVE</span>
             {:else}
-              <button class="set-active-btn" onclick={() => setActive(profile.profile_id)}>
+              <button class="set-active-btn" onclick={(e) => { e.stopPropagation(); setActive(profile.profile_id); }}>
                 Set Active
               </button>
             {/if}
           </div>
-          {#if profile.agents}
-            <div class="agent-config">
-              {#each Object.entries(profile.agents) as [agent, config]}
-                <div class="agent-row">
-                  <span class="agent-name">{agent}</span>
-                  <span class="agent-model">{config.model || '—'}</span>
-                  <span class="agent-enabled">{config.enabled !== false ? 'on' : 'off'}</span>
-                </div>
-              {/each}
-            </div>
+          {#if expandedId === profile.profile_id}
+            <SquadProfileDetail {profile} />
           {/if}
         </div>
       {/each}
@@ -110,8 +117,18 @@
     padding: var(--continuum-space-md, 16px);
   }
   .profile-card.active { border-color: var(--continuum-accent-primary, #6366f1); }
-  .profile-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--continuum-space-sm, 8px); }
+  .profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+  }
   .profile-name { font-weight: 600; }
+  .expand-indicator {
+    font-size: 0.6rem;
+    color: var(--continuum-text-muted, #94a3b8);
+    margin-right: 4px;
+  }
   .active-badge {
     font-size: var(--continuum-font-size-xs, 0.75rem);
     background: var(--continuum-accent-primary, #6366f1);
@@ -125,15 +142,6 @@
     padding: 2px 8px; border-radius: var(--continuum-radius-sm, 4px); cursor: pointer;
   }
   .set-active-btn:hover { background: rgba(99, 102, 241, 0.1); }
-  .agent-config { display: flex; flex-direction: column; gap: 2px; }
-  .agent-row {
-    display: flex; gap: var(--continuum-space-sm, 8px);
-    font-size: var(--continuum-font-size-xs, 0.75rem);
-    padding: 2px 0;
-  }
-  .agent-name { min-width: 50px; font-weight: 500; text-transform: capitalize; }
-  .agent-model { font-family: var(--continuum-font-mono, monospace); color: var(--continuum-text-muted, #94a3b8); flex: 1; }
-  .agent-enabled { color: var(--continuum-text-muted, #94a3b8); }
   .loading, .empty { color: var(--continuum-text-muted, #94a3b8); padding: var(--continuum-space-md, 16px); }
   .error { color: var(--continuum-accent-danger, #ef4444); padding: var(--continuum-space-sm, 8px) 0; font-size: var(--continuum-font-size-sm, 0.875rem); }
 </style>

@@ -31,6 +31,7 @@ def project_to_response(project: Project) -> ProjectResponse:
         description=project.description,
         created_at=project.created_at,
         tags=list(project.tags),
+        has_prd=project.prd_path is not None,
     )
 
 
