@@ -24,52 +24,50 @@ class TestCaddyfileRouting:
 
     def test_api_v1_routes_to_runtime_api(self, caddyfile):
         """Rule 1: /api/v1/* → runtime-api:8001 (preserve path via handle, not handle_path)."""
-        match = re.search(r'handle\s+/api/v1/\*\s*\{[^}]*reverse_proxy\s+(\S+)', caddyfile)
+        match = re.search(r"handle\s+/api/v1/\*\s*\{[^}]*reverse_proxy\s+(\S+)", caddyfile)
         assert match, "/api/v1/* route missing"
         assert match.group(1) == "runtime-api:8001"
 
     def test_auth_userinfo_routes_to_runtime_api(self, caddyfile):
         """Rule 2: /auth/userinfo → runtime-api:8001 (explicit exception)."""
-        match = re.search(r'handle\s+/auth/userinfo\s*\{[^}]*reverse_proxy\s+(\S+)', caddyfile)
+        match = re.search(r"handle\s+/auth/userinfo\s*\{[^}]*reverse_proxy\s+(\S+)", caddyfile)
         assert match, "/auth/userinfo route missing"
         assert match.group(1) == "runtime-api:8001"
 
     def test_auth_routes_to_console_backend(self, caddyfile):
         """Rule 3: /auth/* → squadops-console:4040 (BFF)."""
-        match = re.search(r'handle\s+/auth/\*\s*\{[^}]*reverse_proxy\s+(\S+)', caddyfile)
+        match = re.search(r"handle\s+/auth/\*\s*\{[^}]*reverse_proxy\s+(\S+)", caddyfile)
         assert match, "/auth/* route missing"
         assert match.group(1) == "squadops-console:4040"
 
     def test_health_infra_routes_to_runtime_api(self, caddyfile):
         """Rule 4: /health/infra → runtime-api:8001."""
-        match = re.search(r'handle\s+/health/infra\s*\{[^}]*reverse_proxy\s+(\S+)', caddyfile)
+        match = re.search(r"handle\s+/health/infra\s*\{[^}]*reverse_proxy\s+(\S+)", caddyfile)
         assert match, "/health/infra route missing"
         assert match.group(1) == "runtime-api:8001"
 
     def test_health_agents_routes_to_runtime_api(self, caddyfile):
         """Rule 5: /health/agents* → runtime-api:8001."""
-        match = re.search(r'handle\s+/health/agents\*\s*\{[^}]*reverse_proxy\s+(\S+)', caddyfile)
+        match = re.search(r"handle\s+/health/agents\*\s*\{[^}]*reverse_proxy\s+(\S+)", caddyfile)
         assert match, "/health/agents* route missing"
         assert match.group(1) == "runtime-api:8001"
 
     def test_prefect_strips_prefix(self, caddyfile):
         """Rule 6: /prefect/* → prefect-server:4200 (strip prefix via handle_path)."""
-        match = re.search(r'handle_path\s+/prefect/\*\s*\{[^}]*reverse_proxy\s+(\S+)', caddyfile)
+        match = re.search(r"handle_path\s+/prefect/\*\s*\{[^}]*reverse_proxy\s+(\S+)", caddyfile)
         assert match, "/prefect/* handle_path route missing"
         assert match.group(1) == "prefect-server:4200"
 
     def test_langfuse_strips_prefix(self, caddyfile):
         """Rule 7: /langfuse/* → squadops-langfuse:3000 (strip prefix via handle_path)."""
-        match = re.search(
-            r'handle_path\s+/langfuse/\*\s*\{[^}]*reverse_proxy\s+(\S+)', caddyfile
-        )
+        match = re.search(r"handle_path\s+/langfuse/\*\s*\{[^}]*reverse_proxy\s+(\S+)", caddyfile)
         assert match, "/langfuse/* handle_path route missing"
         assert match.group(1) == "squadops-langfuse:3000"
 
     def test_default_routes_to_console_backend(self, caddyfile):
         """Rule 8: everything else → squadops-console:4040."""
         # The default handle block (no path matcher)
-        match = re.search(r'handle\s*\{[^}]*reverse_proxy\s+(\S+)', caddyfile)
+        match = re.search(r"handle\s*\{[^}]*reverse_proxy\s+(\S+)", caddyfile)
         assert match, "Default catch-all handle block missing"
         assert match.group(1) == "squadops-console:4040"
 
@@ -89,7 +87,7 @@ class TestCaddyfileRoutePrecedence:
         """/api/v1/* must appear before the default catch-all."""
         api_pos = caddyfile.find("handle /api/v1/*")
         # Default handler is a bare 'handle {' without a path matcher
-        default_match = re.search(r'\n\thandle\s*\{', caddyfile)
+        default_match = re.search(r"\n\thandle\s*\{", caddyfile)
         assert default_match, "Default catch-all handle block not found"
         assert api_pos < default_match.start(), (
             "/api/v1/* must appear before default catch-all handler"

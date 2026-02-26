@@ -10,7 +10,11 @@ import pytest
 
 # Load the projects plugin __init__.py using importlib to avoid module name collision
 _plugin_path = (
-    Path(__file__).parents[3] / "console" / "continuum-plugins" / "squadops.projects" / "__init__.py"
+    Path(__file__).parents[3]
+    / "console"
+    / "continuum-plugins"
+    / "squadops.projects"
+    / "__init__.py"
 )
 _spec = importlib.util.spec_from_file_location("squadops_projects_plugin", _plugin_path)
 _projects_plugin = importlib.util.module_from_spec(_spec)
@@ -43,9 +47,7 @@ class TestProjectsPluginRegistration:
 
     def test_nav_contribution(self, mock_ctx):
         register(mock_ctx)
-        nav_calls = [
-            c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "nav"
-        ]
+        nav_calls = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "nav"]
         assert len(nav_calls) == 1
         data = nav_calls[0][0][1]
         assert data["label"] == "Projects"
@@ -69,7 +71,9 @@ class TestProjectsPluginRegistration:
 
     def test_command_set_active_profile_requires_confirm(self, mock_ctx):
         register(mock_ctx)
-        commands = [c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "command"]
+        commands = [
+            c for c in mock_ctx.register_contribution.call_args_list if c[0][0] == "command"
+        ]
         sap = [c for c in commands if c[0][1]["id"] == "squadops.set_active_profile"]
         assert len(sap) == 1
         assert sap[0][0][1]["danger_level"] == "confirm"

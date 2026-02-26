@@ -3,16 +3,22 @@
 
 def register(ctx):
     """Register Agents plugin contributions."""
-    ctx.register_contribution("panel", {
-        "slot": "ui.slot.right_rail",
-        "perspective": "signal",
-        "component": "squadops-agents-status",
-        "priority": 800,
-    })
+    ctx.register_contribution(
+        "panel",
+        {
+            "slot": "ui.slot.right_rail",
+            "perspective": "signal",
+            "component": "squadops-agents-status",
+            "priority": 800,
+        },
+    )
 
-    ctx.register_contribution("panel", {
-        "slot": "ui.slot.main",
-        "perspective": "signal",
-        "component": "squadops-agents-run-activity",
-        "priority": 300,
-    })
+    ctx.register_contribution(
+        "panel",
+        {
+            "slot": "ui.slot.main",
+            "perspective": "signal",
+            "component": "squadops-agents-run-activity",
+            "priority": 300,
+        },
+    )

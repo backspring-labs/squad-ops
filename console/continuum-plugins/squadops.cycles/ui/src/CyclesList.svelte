@@ -92,13 +92,12 @@
   function statusColor(status) {
     const colors = {
       completed: 'var(--continuum-accent-success, #22c55e)',
-      running: 'var(--continuum-accent-primary, #6366f1)',
+      active: 'var(--continuum-accent-primary, #6366f1)',
       failed: 'var(--continuum-accent-danger, #ef4444)',
-      paused: 'var(--continuum-accent-warning, #f59e0b)',
-      queued: 'var(--continuum-text-muted, #94a3b8)',
+      created: 'var(--continuum-text-muted, #94a3b8)',
       cancelled: 'var(--continuum-text-muted, #94a3b8)',
     };
-    return colors[status] || colors.queued;
+    return colors[status] || colors.created;
   }
 
   function formatDate(iso) {
@@ -130,9 +129,8 @@
     />
     <select class="filter-select" bind:value={filterStatus}>
       <option value="all">All statuses</option>
-      <option value="queued">Queued</option>
-      <option value="running">Running</option>
-      <option value="paused">Paused</option>
+      <option value="created">Created</option>
+      <option value="active">Active</option>
       <option value="completed">Completed</option>
       <option value="failed">Failed</option>
       <option value="cancelled">Cancelled</option>
