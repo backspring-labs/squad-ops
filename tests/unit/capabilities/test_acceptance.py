@@ -10,19 +10,18 @@ Tests:
 
 import json
 import os
+
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock
 
 from squadops.capabilities.acceptance import AcceptanceCheckEngine
+from squadops.capabilities.exceptions import (
+    PathEscapeError,
+    TemplateResolutionError,
+)
 from squadops.capabilities.models import (
     AcceptanceCheck,
     AcceptanceContext,
     CheckType,
-)
-from squadops.capabilities.exceptions import (
-    PathEscapeError,
-    TemplateResolutionError,
 )
 
 
@@ -47,9 +46,7 @@ def basic_context(temp_chroot):
         run_root=str(temp_chroot),
         cycle_id="cycle-123",
         workload_id="test_workload",
-        task_outputs=(
-            ("task1", {"path": "output/file.json", "count": 42}),
-        ),
+        task_outputs=(("task1", {"path": "output/file.json", "count": 42}),),
         vars=(
             ("env", "test"),
             ("version", "1.0"),
@@ -338,14 +335,18 @@ class TestJsonFieldEqualsCheck:
     def test_json_field_equals_nested_path(self, engine, basic_context, temp_chroot):
         """json_field_equals navigates nested paths."""
         target = temp_chroot / "data.json"
-        target.write_text(json.dumps({
-            "metadata": {
-                "status": "completed",
-                "details": {
-                    "code": 200,
+        target.write_text(
+            json.dumps(
+                {
+                    "metadata": {
+                        "status": "completed",
+                        "details": {
+                            "code": 200,
+                        },
+                    }
                 }
-            }
-        }))
+            )
+        )
 
         check = AcceptanceCheck(
             check_type=CheckType.JSON_FIELD_EQUALS,
@@ -385,7 +386,9 @@ class TestJsonFieldEqualsCheck:
         assert result.passed is False
         assert "Type mismatch" in result.error
 
-    def test_json_field_equals_strict_type_string_vs_number(self, engine, basic_context, temp_chroot):
+    def test_json_field_equals_strict_type_string_vs_number(
+        self, engine, basic_context, temp_chroot
+    ):
         """json_field_equals strict type: string '1' != number 1."""
         target = temp_chroot / "data.json"
         target.write_text(json.dumps({"value": "1"}))
@@ -400,7 +403,9 @@ class TestJsonFieldEqualsCheck:
         assert result.passed is False
         assert "Type mismatch" in result.error
 
-    def test_json_field_equals_strict_type_string_vs_boolean(self, engine, basic_context, temp_chroot):
+    def test_json_field_equals_strict_type_string_vs_boolean(
+        self, engine, basic_context, temp_chroot
+    ):
         """json_field_equals strict type: string 'true' != boolean True."""
         target = temp_chroot / "data.json"
         target.write_text(json.dumps({"value": "true"}))

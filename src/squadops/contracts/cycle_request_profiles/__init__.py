@@ -50,9 +50,7 @@ def load_profile(name: str = "default") -> CycleRequestProfile:
 
     if not profile_path.is_file():  # type: ignore[union-attr]
         available = list_profiles()
-        raise FileNotFoundError(
-            f"CRP profile {name!r} not found. Available: {available}"
-        )
+        raise FileNotFoundError(f"CRP profile {name!r} not found. Available: {available}")
 
     raw = yaml.safe_load(profile_path.read_text())  # type: ignore[union-attr]
     return CycleRequestProfile(**raw)

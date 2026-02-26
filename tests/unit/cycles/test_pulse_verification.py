@@ -158,13 +158,9 @@ class TestResolveMilestoneBindings:
     def test_cadence_suites_excluded(self):
         """Cadence-bound suites should not appear in milestone bindings."""
         plan = [_make_envelope("development.design", "t1")]
-        cadence = _make_suite(
-            "cad", CADENCE_BOUNDARY_ID, (), "cadence"
-        )
+        cadence = _make_suite("cad", CADENCE_BOUNDARY_ID, (), "cadence")
         milestone = _make_suite("ms", "post_dev", ("development",))
-        bindings, unmatched = resolve_milestone_bindings(
-            (cadence, milestone), plan
-        )
+        bindings, unmatched = resolve_milestone_bindings((cadence, milestone), plan)
 
         assert 0 in bindings
         assert bindings[0] == [milestone]
@@ -269,9 +265,7 @@ class TestRunPulseVerification:
 
         engine = AsyncMock()
         engine.evaluate_all_async.return_value = ValidationReport(
-            results=(
-                AcceptanceResult(check=check, passed=True, resolved_path="x"),
-            )
+            results=(AcceptanceResult(check=check, passed=True, resolved_path="x"),)
         )
 
         records = await run_pulse_verification(
@@ -293,9 +287,7 @@ class TestRunPulseVerification:
 
         engine = AsyncMock()
         engine.evaluate_all_async.return_value = ValidationReport(
-            results=(
-                AcceptanceResult(check=check, passed=True, resolved_path="x"),
-            )
+            results=(AcceptanceResult(check=check, passed=True, resolved_path="x"),)
         )
 
         records = await run_pulse_verification(
@@ -316,8 +308,7 @@ class TestRunPulseVerification:
         engine = AsyncMock()
         engine.evaluate_all_async.return_value = ValidationReport(
             results=(
-                AcceptanceResult(check=check, passed=False, resolved_path="x",
-                                 error="not found"),
+                AcceptanceResult(check=check, passed=False, resolved_path="x", error="not found"),
             )
         )
 
@@ -340,8 +331,11 @@ class TestRunPulseVerification:
         engine.evaluate_all_async.return_value = ValidationReport(
             results=(
                 AcceptanceResult(
-                    check=check, passed=True, resolved_path="output.md",
-                    reason_code=None, metadata={"truncated": False},
+                    check=check,
+                    passed=True,
+                    resolved_path="output.md",
+                    reason_code=None,
+                    metadata={"truncated": False},
                 ),
             )
         )
@@ -367,9 +361,7 @@ class TestRunPulseVerification:
 
         engine = AsyncMock()
         engine.evaluate_all_async.return_value = ValidationReport(
-            results=(
-                AcceptanceResult(check=check, passed=True, resolved_path="x"),
-            )
+            results=(AcceptanceResult(check=check, passed=True, resolved_path="x"),)
         )
 
         records = await run_pulse_verification(
@@ -396,9 +388,7 @@ class TestRunPulseVerification:
 
         engine = AsyncMock()
         engine.evaluate_all_async.return_value = ValidationReport(
-            results=(
-                AcceptanceResult(check=check, passed=True, resolved_path="x"),
-            )
+            results=(AcceptanceResult(check=check, passed=True, resolved_path="x"),)
         )
 
         await run_pulse_verification(
@@ -411,7 +401,8 @@ class TestRunPulseVerification:
         )
 
         engine.evaluate_all_async.assert_awaited_once_with(
-            (check,), _ctx(),
+            (check,),
+            _ctx(),
             max_suite_seconds=15,
             max_check_seconds=5,
         )
@@ -426,12 +417,18 @@ class TestDetermineBoundaryDecision:
     def test_all_pass(self):
         records = [
             PulseVerificationRecord(
-                suite_id="s1", boundary_id="b", cadence_interval_id=1,
-                run_id="r", suite_outcome=SuiteOutcome.PASS,
+                suite_id="s1",
+                boundary_id="b",
+                cadence_interval_id=1,
+                run_id="r",
+                suite_outcome=SuiteOutcome.PASS,
             ),
             PulseVerificationRecord(
-                suite_id="s2", boundary_id="b", cadence_interval_id=1,
-                run_id="r", suite_outcome=SuiteOutcome.PASS,
+                suite_id="s2",
+                boundary_id="b",
+                cadence_interval_id=1,
+                run_id="r",
+                suite_outcome=SuiteOutcome.PASS,
             ),
         ]
         assert determine_boundary_decision(records) == PulseDecision.PASS
@@ -439,12 +436,18 @@ class TestDetermineBoundaryDecision:
     def test_any_fail(self):
         records = [
             PulseVerificationRecord(
-                suite_id="s1", boundary_id="b", cadence_interval_id=1,
-                run_id="r", suite_outcome=SuiteOutcome.PASS,
+                suite_id="s1",
+                boundary_id="b",
+                cadence_interval_id=1,
+                run_id="r",
+                suite_outcome=SuiteOutcome.PASS,
             ),
             PulseVerificationRecord(
-                suite_id="s2", boundary_id="b", cadence_interval_id=1,
-                run_id="r", suite_outcome=SuiteOutcome.FAIL,
+                suite_id="s2",
+                boundary_id="b",
+                cadence_interval_id=1,
+                run_id="r",
+                suite_outcome=SuiteOutcome.FAIL,
             ),
         ]
         assert determine_boundary_decision(records) == PulseDecision.FAIL
@@ -452,8 +455,11 @@ class TestDetermineBoundaryDecision:
     def test_all_fail(self):
         records = [
             PulseVerificationRecord(
-                suite_id="s1", boundary_id="b", cadence_interval_id=1,
-                run_id="r", suite_outcome=SuiteOutcome.FAIL,
+                suite_id="s1",
+                boundary_id="b",
+                cadence_interval_id=1,
+                run_id="r",
+                suite_outcome=SuiteOutcome.FAIL,
             ),
         ]
         assert determine_boundary_decision(records) == PulseDecision.FAIL
@@ -465,8 +471,11 @@ class TestDetermineBoundaryDecision:
         """SKIP-only records should yield PASS (no guardrail evidence to block)."""
         records = [
             PulseVerificationRecord(
-                suite_id="s1", boundary_id="b", cadence_interval_id=1,
-                run_id="r", suite_outcome=SuiteOutcome.SKIP,
+                suite_id="s1",
+                boundary_id="b",
+                cadence_interval_id=1,
+                run_id="r",
+                suite_outcome=SuiteOutcome.SKIP,
             ),
         ]
         assert determine_boundary_decision(records) == PulseDecision.PASS
@@ -474,12 +483,18 @@ class TestDetermineBoundaryDecision:
     def test_mixed_pass_and_skip(self):
         records = [
             PulseVerificationRecord(
-                suite_id="s1", boundary_id="b", cadence_interval_id=1,
-                run_id="r", suite_outcome=SuiteOutcome.PASS,
+                suite_id="s1",
+                boundary_id="b",
+                cadence_interval_id=1,
+                run_id="r",
+                suite_outcome=SuiteOutcome.PASS,
             ),
             PulseVerificationRecord(
-                suite_id="s2", boundary_id="b", cadence_interval_id=1,
-                run_id="r", suite_outcome=SuiteOutcome.SKIP,
+                suite_id="s2",
+                boundary_id="b",
+                cadence_interval_id=1,
+                run_id="r",
+                suite_outcome=SuiteOutcome.SKIP,
             ),
         ]
         assert determine_boundary_decision(records) == PulseDecision.PASS

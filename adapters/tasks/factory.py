@@ -4,6 +4,7 @@ Factory function for creating task registry adapters.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 Updated in SIP-0.8.8 with full PrefectTaskAdapter implementation.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

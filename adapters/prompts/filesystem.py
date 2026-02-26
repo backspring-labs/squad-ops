@@ -11,12 +11,12 @@ from pathlib import Path
 import yaml
 
 from squadops.ports.prompts.repository import PromptRepository
-from squadops.prompts.models import PromptFragment, PromptManifest, ManifestFragment
 from squadops.prompts.exceptions import (
     FragmentNotFoundError,
     HashMismatchError,
     ManifestValidationError,
 )
+from squadops.prompts.models import ManifestFragment, PromptFragment, PromptManifest
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class FileSystemPromptRepository(PromptRepository):
             )
 
         try:
-            with open(self.manifest_path, "r", encoding="utf-8") as f:
+            with open(self.manifest_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
             raise ManifestValidationError(f"Invalid manifest YAML: {e}")
@@ -97,9 +97,7 @@ class FileSystemPromptRepository(PromptRepository):
 
         # Verify manifest integrity if hash provided
         if manifest.manifest_hash:
-            computed = PromptManifest.compute_manifest_hash(
-                manifest.version, manifest.fragments
-            )
+            computed = PromptManifest.compute_manifest_hash(manifest.version, manifest.fragments)
             if computed != manifest.manifest_hash:
                 logger.warning(
                     f"Manifest hash mismatch: expected {manifest.manifest_hash[:16]}..., "
@@ -145,7 +143,9 @@ class FileSystemPromptRepository(PromptRepository):
 
         return None
 
-    def _parse_fragment_file(self, path: Path, manifest_meta: ManifestFragment | None = None) -> PromptFragment:
+    def _parse_fragment_file(
+        self, path: Path, manifest_meta: ManifestFragment | None = None
+    ) -> PromptFragment:
         """
         Parse a fragment file, extracting header and content.
 
@@ -165,7 +165,7 @@ class FileSystemPromptRepository(PromptRepository):
         Returns:
             Parsed PromptFragment
         """
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             raw_content = f.read()
 
         # Try to parse header
@@ -180,14 +180,16 @@ class FileSystemPromptRepository(PromptRepository):
                 header = {}
 
             # Content is everything after the header
-            content = raw_content[header_match.end():].strip()
+            content = raw_content[header_match.end() :].strip()
         else:
             # No header - use entire file as content
             header = {}
             content = raw_content.strip()
 
         # Extract metadata (prefer file header, fall back to manifest)
-        fragment_id = header.get("fragment_id") or (manifest_meta.fragment_id if manifest_meta else path.stem)
+        fragment_id = header.get("fragment_id") or (
+            manifest_meta.fragment_id if manifest_meta else path.stem
+        )
         layer = header.get("layer") or (manifest_meta.layer if manifest_meta else "identity")
         version = header.get("version") or (self.get_manifest().version)
         roles = tuple(header.get("roles", manifest_meta.roles if manifest_meta else ["*"]))

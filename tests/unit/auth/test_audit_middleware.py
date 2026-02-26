@@ -1,8 +1,9 @@
 """Tests for audit event emission in AuthMiddleware (SIP-0062 Phase 3b)."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, call
+from datetime import UTC
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -11,7 +12,7 @@ from squadops.auth.models import Identity, TokenClaims, TokenValidationError
 
 
 def _make_auth_port(*, fail=False):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     port = AsyncMock()
     if fail:
@@ -21,8 +22,8 @@ def _make_auth_port(*, fail=False):
             subject="u1",
             issuer="http://keycloak/realms/test",
             audience="test",
-            expires_at=datetime.now(timezone.utc),
-            issued_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(UTC),
+            issued_at=datetime.now(UTC),
         )
         port.resolve_identity.return_value = Identity(
             user_id="u1",

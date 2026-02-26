@@ -142,9 +142,7 @@ def parse_pulse_checks(
             raise ValueError(f"pulse_checks[{idx}]: suite_id is required")
 
         if suite_id in seen_suite_ids:
-            raise ValueError(
-                f"pulse_checks[{idx}]: duplicate suite_id {suite_id!r}"
-            )
+            raise ValueError(f"pulse_checks[{idx}]: duplicate suite_id {suite_id!r}")
         seen_suite_ids.add(suite_id)
 
         suite_class = raw.get("suite_class", "guardrail")
@@ -163,9 +161,7 @@ def parse_pulse_checks(
 
         boundary_id = raw.get("boundary_id", "")
         if not boundary_id:
-            raise ValueError(
-                f"pulse_checks[{idx}] ({suite_id}): boundary_id is required"
-            )
+            raise ValueError(f"pulse_checks[{idx}] ({suite_id}): boundary_id is required")
 
         # D5a: cadence binding enforces boundary_id == CADENCE_BOUNDARY_ID
         if binding_mode == "cadence" and boundary_id != CADENCE_BOUNDARY_ID:
@@ -221,15 +217,17 @@ def parse_pulse_checks(
         if isinstance(after_task_types, list):
             after_task_types = tuple(after_task_types)
 
-        definitions.append(PulseCheckDefinition(
-            suite_id=suite_id,
-            boundary_id=boundary_id,
-            checks=tuple(checks),
-            suite_class=suite_class,
-            after_task_types=after_task_types,
-            binding_mode=binding_mode,
-            max_suite_seconds=raw.get("max_suite_seconds", 30),
-            max_check_seconds=raw.get("max_check_seconds", 10),
-        ))
+        definitions.append(
+            PulseCheckDefinition(
+                suite_id=suite_id,
+                boundary_id=boundary_id,
+                checks=tuple(checks),
+                suite_class=suite_class,
+                after_task_types=after_task_types,
+                binding_mode=binding_mode,
+                max_suite_seconds=raw.get("max_suite_seconds", 30),
+                max_check_seconds=raw.get("max_check_seconds", 10),
+            )
+        )
 
     return tuple(definitions)

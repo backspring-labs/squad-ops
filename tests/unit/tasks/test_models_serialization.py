@@ -12,7 +12,6 @@ import pytest
 
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
-
 pytestmark = [pytest.mark.domain_orchestration]
 
 

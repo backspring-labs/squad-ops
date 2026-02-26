@@ -8,7 +8,6 @@ dictionaries, making them safe for logging and debugging.
 import re
 from typing import Any
 
-
 # Keys that should always be redacted
 REDACTED_KEYS = {
     "password",
@@ -86,7 +85,17 @@ def redact_value(value: Any, key: str | None = None) -> Any:
     # Redact DSN/URL strings
     if isinstance(value, str):
         # Check if it looks like a connection string with credentials
-        if any(scheme in value for scheme in ["postgresql://", "postgres://", "amqp://", "redis://", "http://", "https://"]):
+        if any(
+            scheme in value
+            for scheme in [
+                "postgresql://",
+                "postgres://",
+                "amqp://",
+                "redis://",
+                "http://",
+                "https://",
+            ]
+        ):
             return _redact_dsn(value)
 
     return value

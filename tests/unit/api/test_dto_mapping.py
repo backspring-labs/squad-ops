@@ -3,23 +3,24 @@
 Tests the SIP-0.8.8 API boundary mapping between
 Pydantic DTOs and internal frozen dataclasses.
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
 
+from squadops.api.mapping import (
+    dto_to_envelope,
+    envelope_to_response,
+    response_to_dict,
+    result_dto_to_dict,
+    result_to_dto,
+)
 from squadops.api.schemas import (
     TaskRequestDTO,
     TaskResponseDTO,
     TaskResultDTO,
     TaskStatusDTO,
-)
-from squadops.api.mapping import (
-    dto_to_envelope,
-    envelope_to_response,
-    result_to_dto,
-    response_to_dict,
-    result_dto_to_dict,
 )
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
@@ -205,6 +206,7 @@ class TestDtoToEnvelope:
 
         # Verify frozen (immutable)
         from dataclasses import FrozenInstanceError
+
         with pytest.raises(FrozenInstanceError):
             envelope.task_id = "modified"
 
@@ -249,7 +251,7 @@ class TestEnvelopeToResponse:
             span_id="span-001",
         )
 
-        explicit_time = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        explicit_time = datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC)
         response = envelope_to_response(envelope, created_at=explicit_time)
 
         assert response.created_at == explicit_time
@@ -322,7 +324,7 @@ class TestResponseSerialization:
             task_id="task-001",
             task_type="analyze",
             status="accepted",
-            created_at=datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc),
+            created_at=datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC),
         )
 
         result = response_to_dict(response)

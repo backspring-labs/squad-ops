@@ -8,6 +8,7 @@ Provides domain models and compatibility bridge for task operations:
 
 Part of SIP-0.8.7/0.8.8 Infrastructure Ports Migration.
 """
+
 from squadops.tasks.exceptions import (
     TaskError,
     TaskNotFoundError,

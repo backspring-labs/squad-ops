@@ -3,12 +3,16 @@
 Tests CapabilityHandler ABC, HandlerResult, HandlerEvidence.
 Part of SIP-0.8.8 Phase 5.
 """
-import pytest
-from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock
 
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from squadops.agents.base import PortsBundle
+from squadops.agents.skills.base import ExecutionEvidence, Skill, SkillResult
+from squadops.agents.skills.registry import SkillRegistry
 from squadops.capabilities.handlers.base import (
-    CapabilityHandler,
     HandlerEvidence,
     HandlerResult,
 )
@@ -16,9 +20,6 @@ from squadops.capabilities.handlers.context import (
     ExecutionContext,
     SkillExecutionRecord,
 )
-from squadops.agents.base import PortsBundle
-from squadops.agents.skills.registry import SkillRegistry
-from squadops.agents.skills.base import Skill, SkillResult, ExecutionEvidence
 
 
 class TestHandlerEvidence:
@@ -197,6 +198,7 @@ class TestExecutionContext:
     @pytest.fixture
     def mock_skill(self):
         """Create a mock skill."""
+
         class MockSkill(Skill):
             @property
             def name(self) -> str:

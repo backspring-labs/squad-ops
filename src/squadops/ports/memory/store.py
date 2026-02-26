@@ -3,6 +3,7 @@
 Abstract base class for memory storage adapters.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from abc import ABC, abstractmethod
 
 from squadops.memory.models import MemoryEntry, MemoryQuery, MemoryResult

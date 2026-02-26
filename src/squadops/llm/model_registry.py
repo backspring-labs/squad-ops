@@ -7,6 +7,7 @@ no alias or tag normalization.
 Registry keys must exactly match ``LLMConfig.model`` values used in
 active profiles (e.g. ``qwen2.5:7b``, not ``qwen2.5-7b``).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

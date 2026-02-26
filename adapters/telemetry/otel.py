@@ -3,10 +3,11 @@
 Production-ready adapter using OpenTelemetry SDK.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.ports.telemetry.events import EventPort
@@ -159,7 +160,11 @@ class OTelAdapter(MetricsPort, EventPort):
             if current_span and current_span.is_recording():
                 current_span.add_event(
                     name=event.name,
-                    attributes={"message": event.message, "level": event.level, **dict(event.attributes)},
+                    attributes={
+                        "message": event.message,
+                        "level": event.level,
+                        **dict(event.attributes),
+                    },
                 )
         except Exception:
             # Swallow all errors - non-blocking contract
@@ -186,7 +191,7 @@ class OTelAdapter(MetricsPort, EventPort):
             trace_id=parent.trace_id if parent else str(uuid.uuid4()),
             span_id=span_id,
             parent_span_id=parent.span_id if parent else None,
-            start_time=datetime.now(timezone.utc),
+            start_time=datetime.now(UTC),
             attributes=tuple(attributes.items()) if attributes else (),
         )
 

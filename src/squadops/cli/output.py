@@ -7,7 +7,6 @@ Supports table, JSON, and quiet modes.
 from __future__ import annotations
 
 import json
-import sys
 from typing import Any
 
 from rich.console import Console

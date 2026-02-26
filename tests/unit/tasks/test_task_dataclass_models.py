@@ -3,8 +3,10 @@
 Tests the SIP-0.8.8 migration of TaskEnvelope and TaskResult
 from Pydantic BaseModel to frozen dataclasses.
 """
-import pytest
+
 from dataclasses import FrozenInstanceError
+
+import pytest
 
 from squadops.tasks.models import TaskEnvelope, TaskIdentity, TaskResult
 

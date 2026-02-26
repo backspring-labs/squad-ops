@@ -353,9 +353,7 @@ class TestPulseCheckE2E:
         # Check that vault.store was called with run_report.md containing pulse section
         vault = executor._artifact_vault
         store_calls = vault.store.call_args_list
-        report_call = [
-            c for c in store_calls if c.args[0].filename == "run_report.md"
-        ]
+        report_call = [c for c in store_calls if c.args[0].filename == "run_report.md"]
         assert len(report_call) == 1
         content = report_call[0].args[1].decode("utf-8")
         assert "## Pulse Verification" in content

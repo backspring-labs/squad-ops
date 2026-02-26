@@ -32,7 +32,10 @@ class InvalidSecretReferenceError(SecretResolutionError):
 
     def __init__(self, logical_name: str, reason: str | None = None):
         self.logical_name = logical_name
-        msg = reason or f"Invalid secret reference logical name: '{logical_name}'. Must match pattern [A-Za-z][A-Za-z0-9_]*"
+        msg = (
+            reason
+            or f"Invalid secret reference logical name: '{logical_name}'. Must match pattern [A-Za-z][A-Za-z0-9_]*"
+        )
         super().__init__(msg)
 
 
@@ -82,7 +85,9 @@ class SecretManager:
             return self._replace_in_string(value)
         return self._resolve_reference(value)
 
-    def _resolve_dict(self, d: dict[str, Any], exclude_keys: list[str] | None = None) -> dict[str, Any]:
+    def _resolve_dict(
+        self, d: dict[str, Any], exclude_keys: list[str] | None = None
+    ) -> dict[str, Any]:
         """
         Recursively resolve secret:// references in a dictionary.
 
@@ -153,6 +158,7 @@ class SecretManager:
             InvalidSecretReferenceError: If logical name format is invalid
             SecretResolutionError: If resolved value contains secret:// (recursive reference)
         """
+
         def replace_match(match: re.Match[str]) -> str:
             logical_name = match.group(1)
             resolved_value = self._resolve_reference(logical_name)
@@ -166,7 +172,7 @@ class SecretManager:
             # This means a resolved secret value itself contained secret://
             # This is forbidden (no chained/recursive references)
             raise SecretResolutionError(
-                f"Resolved secret value contains 'secret://' reference (recursive/chained references are forbidden)"
+                "Resolved secret value contains 'secret://' reference (recursive/chained references are forbidden)"
             )
 
         return result
@@ -203,14 +209,14 @@ class SecretManager:
         except Exception as e:
             if isinstance(e, SecretResolutionError):
                 raise
-            raise SecretResolutionError(
-                f"Failed to resolve secret '{logical_name}': {e}"
-            ) from e
+            raise SecretResolutionError(f"Failed to resolve secret '{logical_name}': {e}") from e
 
         return resolved_value
 
     @staticmethod
-    def has_secret_references(config_dict: dict[str, Any], exclude_keys: list[str] | None = None) -> bool:
+    def has_secret_references(
+        config_dict: dict[str, Any], exclude_keys: list[str] | None = None
+    ) -> bool:
         """
         Check if configuration dict contains any secret:// references.
 

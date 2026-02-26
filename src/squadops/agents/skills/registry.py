@@ -7,6 +7,7 @@ Provides a central registry for skills with:
 
 Part of SIP-0.8.8 Agent Foundation.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -96,9 +97,7 @@ class SkillRegistry:
             List of skills requiring that capability
         """
         return [
-            skill
-            for skill in self._skills.values()
-            if capability in skill.required_capabilities
+            skill for skill in self._skills.values() if capability in skill.required_capabilities
         ]
 
     async def execute(

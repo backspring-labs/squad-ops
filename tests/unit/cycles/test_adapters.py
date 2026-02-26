@@ -3,7 +3,7 @@ Tests for SIP-0064 adapter implementations.
 """
 
 import dataclasses
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 import yaml
@@ -31,7 +31,7 @@ from squadops.cycles.models import (
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 # =============================================================================
@@ -171,9 +171,7 @@ class TestMemoryCycleRegistry:
         # With queued run, derived status is ACTIVE
         active = await registry.list_cycles("hello_squad", status=CycleStatus.ACTIVE)
         assert len(active) == 1
-        completed = await registry.list_cycles(
-            "hello_squad", status=CycleStatus.COMPLETED
-        )
+        completed = await registry.list_cycles("hello_squad", status=CycleStatus.COMPLETED)
         assert len(completed) == 0
 
     async def test_cancel_cycle(self, registry, cycle):
@@ -595,9 +593,7 @@ class TestFilesystemArtifactVault:
     async def test_list_artifacts_scoped_to_run(self, vault, artifact_ref):
         await vault.store(artifact_ref, b"data")
         # Different run — should not appear
-        other = dataclasses.replace(
-            artifact_ref, artifact_id="art_002", run_id="run_other"
-        )
+        other = dataclasses.replace(artifact_ref, artifact_id="art_002", run_id="run_other")
         await vault.store(other, b"data2")
         results = await vault.list_artifacts(
             project_id="hello_squad", cycle_id="cyc_abc", run_id="run_xyz"
@@ -611,9 +607,7 @@ class TestFilesystemArtifactVault:
             artifact_ref, artifact_id="art_002", cycle_id="cyc_other", run_id="run_other"
         )
         await vault.store(other, b"data2")
-        results = await vault.list_artifacts(
-            project_id="hello_squad", cycle_id="cyc_abc"
-        )
+        results = await vault.list_artifacts(project_id="hello_squad", cycle_id="cyc_abc")
         assert len(results) == 1
         assert results[0].artifact_id == "art_001"
 

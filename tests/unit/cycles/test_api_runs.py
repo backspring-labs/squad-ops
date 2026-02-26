@@ -2,7 +2,7 @@
 Tests for SIP-0064 run API routes.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,7 +22,7 @@ from squadops.cycles.models import (
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 _CYCLE = Cycle(
     cycle_id="cyc_001",
@@ -69,9 +69,7 @@ def client(mock_cycle_registry, monkeypatch):
 
 class TestCreateRun:
     def test_creates_retry_run(self, client):
-        resp = client.post(
-            "/api/v1/projects/hello_squad/cycles/cyc_001/runs"
-        )
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
         assert resp.status_code == 200
         body = resp.json()
         assert body["run_number"] == 2
@@ -81,9 +79,7 @@ class TestCreateRun:
 
 class TestListRuns:
     def test_returns_list(self, client):
-        resp = client.get(
-            "/api/v1/projects/hello_squad/cycles/cyc_001/runs"
-        )
+        resp = client.get("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
@@ -92,25 +88,19 @@ class TestListRuns:
 
 class TestGetRun:
     def test_returns_run(self, client):
-        resp = client.get(
-            "/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001"
-        )
+        resp = client.get("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001")
         assert resp.status_code == 200
         assert resp.json()["run_id"] == "run_001"
 
     def test_not_found(self, client, mock_cycle_registry):
         mock_cycle_registry.get_run.side_effect = RunNotFoundError("Not found")
-        resp = client.get(
-            "/api/v1/projects/hello_squad/cycles/cyc_001/runs/nonexistent"
-        )
+        resp = client.get("/api/v1/projects/hello_squad/cycles/cyc_001/runs/nonexistent")
         assert resp.status_code == 404
 
 
 class TestCancelRun:
     def test_cancel_success(self, client):
-        resp = client.post(
-            "/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel"
-        )
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
         assert resp.status_code == 200
         assert resp.json()["status"] == "cancelled"
 
@@ -170,8 +160,8 @@ class TestGateDecision:
         assert resp.status_code == 200
 
     def test_conflicting_decision(self, client, mock_cycle_registry):
-        mock_cycle_registry.record_gate_decision.side_effect = (
-            GateAlreadyDecidedError("Already decided")
+        mock_cycle_registry.record_gate_decision.side_effect = GateAlreadyDecidedError(
+            "Already decided"
         )
         resp = client.post(
             "/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/gates/qa_review",
@@ -181,9 +171,7 @@ class TestGateDecision:
         assert resp.json()["detail"]["error"]["code"] == "GATE_ALREADY_DECIDED"
 
     def test_terminal_run(self, client, mock_cycle_registry):
-        mock_cycle_registry.record_gate_decision.side_effect = RunTerminalError(
-            "Terminal"
-        )
+        mock_cycle_registry.record_gate_decision.side_effect = RunTerminalError("Terminal")
         resp = client.post(
             "/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/gates/qa_review",
             json={"decision": "approved"},

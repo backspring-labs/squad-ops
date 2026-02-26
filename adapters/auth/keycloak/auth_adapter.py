@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from jose import JWTError, jwt
@@ -104,8 +104,13 @@ class KeycloakAuthAdapter(AuthPort):
             "verify_aud": True,
             "verify_iss": verify_iss,
         }
-        decode_kwargs = {"token": token, "key": jwks, "algorithms": ["RS256"],
-                         "audience": self._audience, "options": decode_opts}
+        decode_kwargs = {
+            "token": token,
+            "key": jwks,
+            "algorithms": ["RS256"],
+            "audience": self._audience,
+            "options": decode_opts,
+        }
         if verify_iss:
             decode_kwargs["issuer"] = self._issuer_url
 
@@ -122,7 +127,9 @@ class KeycloakAuthAdapter(AuthPort):
                 try:
                     payload = jwt.decode(**decode_kwargs)
                 except JWTError as retry_e:
-                    raise TokenValidationError(f"Token validation failed after JWKS refresh: {retry_e}") from retry_e
+                    raise TokenValidationError(
+                        f"Token validation failed after JWKS refresh: {retry_e}"
+                    ) from retry_e
             else:
                 raise TokenValidationError(f"Token validation failed: {e}") from e
 
@@ -156,8 +163,8 @@ class KeycloakAuthAdapter(AuthPort):
             subject=payload.get("sub", ""),
             issuer=payload.get("iss", ""),
             audience=aud,
-            expires_at=datetime.fromtimestamp(exp, tz=timezone.utc),
-            issued_at=datetime.fromtimestamp(iat, tz=timezone.utc),
+            expires_at=datetime.fromtimestamp(exp, tz=UTC),
+            issued_at=datetime.fromtimestamp(iat, tz=UTC),
             roles=tuple(roles),
             scopes=scopes,
             raw_claims=payload,
@@ -170,15 +177,16 @@ class KeycloakAuthAdapter(AuthPort):
 
         raw = claims.raw_claims
         display_name = (
-            raw.get("preferred_username")
-            or raw.get("name")
-            or raw.get("email")
-            or claims.subject
+            raw.get("preferred_username") or raw.get("name") or raw.get("email") or claims.subject
         )
 
         # Determine identity type
         azp = raw.get("azp", "")
-        identity_type = IdentityType.SERVICE if azp and not raw.get("preferred_username") else IdentityType.HUMAN
+        identity_type = (
+            IdentityType.SERVICE
+            if azp and not raw.get("preferred_username")
+            else IdentityType.HUMAN
+        )
 
         return Identity(
             user_id=claims.subject,

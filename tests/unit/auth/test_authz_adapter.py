@@ -5,7 +5,6 @@ import pytest
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
 from squadops.auth.models import Identity, Role, Scope
 
-
 pytestmark = pytest.mark.auth
 
 

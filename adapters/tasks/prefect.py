@@ -6,6 +6,7 @@ Integrates with Prefect orchestration while maintaining SquadOps DB as source of
 IMPORTANT: This module MUST NOT import Prefect at module level.
 Prefect is an optional dependency - adapter works in DB-only mode when unavailable.
 """
+
 from __future__ import annotations
 
 import json
@@ -137,10 +138,7 @@ class PrefectTaskAdapter(TaskRegistryPort):
             if isinstance(artifacts_data, list):
                 from squadops.tasks.types import Artifact
 
-                artifacts = [
-                    Artifact(**a) if isinstance(a, dict) else a
-                    for a in artifacts_data
-                ]
+                artifacts = [Artifact(**a) if isinstance(a, dict) else a for a in artifacts_data]
 
         # Parse metrics if present (includes Prefect run ID)
         metrics = {}

@@ -6,12 +6,12 @@ Provides concrete implementations of capability ports:
 - ACICapabilityExecutor: ACI queue-based task execution
 """
 
-from adapters.capabilities.filesystem import FileSystemCapabilityRepository
 from adapters.capabilities.aci_executor import ACICapabilityExecutor
 from adapters.capabilities.factory import (
-    create_capability_repository,
     create_capability_executor,
+    create_capability_repository,
 )
+from adapters.capabilities.filesystem import FileSystemCapabilityRepository
 
 __all__ = [
     "FileSystemCapabilityRepository",

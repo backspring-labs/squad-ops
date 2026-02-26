@@ -7,6 +7,7 @@ Provides domain models for memory operations:
 
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from squadops.memory.exceptions import (
     MemoryEmbeddingError,
     MemoryError,

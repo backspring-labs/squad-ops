@@ -7,7 +7,7 @@ task sequences.
 Part of Phase 2.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -24,11 +24,10 @@ from squadops.cycles.task_plan import (
     CYCLE_TASK_STEPS,
     generate_task_plan,
 )
-from squadops.tasks.models import TaskEnvelope
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -42,9 +41,7 @@ def profile():
             AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
         ),
         created_at=NOW,
@@ -106,9 +103,11 @@ class TestPlanPlusBuild:
     """build_tasks present → 5 plan + 2 build = 7 envelopes."""
 
     def test_plan_plus_build_7_envelopes(self, run, profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
 
         assert len(envelopes) == 7
@@ -117,9 +116,11 @@ class TestPlanPlusBuild:
         assert task_types == expected
 
     def test_causation_chain_continues_through_build(self, run, profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
 
         # Step 0: causation = correlation
@@ -129,9 +130,11 @@ class TestPlanPlusBuild:
             assert envelopes[i].causation_id == envelopes[i - 1].task_id
 
     def test_build_steps_have_correct_roles(self, run, profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
 
         # Last two are build steps
@@ -139,18 +142,22 @@ class TestPlanPlusBuild:
         assert envelopes[6].metadata["role"] == "qa"
 
     def test_build_steps_have_correct_agent_ids(self, run, profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
 
         assert envelopes[5].agent_id == "neo"  # dev role
         assert envelopes[6].agent_id == "eve"  # qa role
 
     def test_step_indices_are_sequential(self, run, profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
 
         for i, env in enumerate(envelopes):
@@ -161,10 +168,12 @@ class TestBuildOnly:
     """plan_tasks=false + build_tasks → only 2 build envelopes."""
 
     def test_build_only_2_envelopes(self, run, profile):
-        cycle = _make_cycle({
-            "plan_tasks": False,
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "plan_tasks": False,
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
 
         assert len(envelopes) == 2
@@ -172,10 +181,12 @@ class TestBuildOnly:
         assert task_types == ["development.develop", "qa.test"]
 
     def test_build_only_causation_chain(self, run, profile):
-        cycle = _make_cycle({
-            "plan_tasks": False,
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "plan_tasks": False,
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
 
         assert envelopes[0].causation_id == envelopes[0].correlation_id
@@ -220,9 +231,11 @@ class TestGateBetweenPlanAndBuild:
 
 class TestAllSharedIdsConsistent:
     def test_all_envelopes_share_correlation_and_trace(self, run, profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
 
         correlation_ids = {e.correlation_id for e in envelopes}

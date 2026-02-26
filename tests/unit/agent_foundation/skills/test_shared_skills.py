@@ -3,17 +3,18 @@
 Tests skills WITHOUT agents - direct SkillContext mocking.
 Part of SIP-0.8.8 Phase 4.
 """
+
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
 
 from squadops.agents.base import PortsBundle
 from squadops.agents.skills.context import SkillContext
-from squadops.agents.skills.shared.llm_query import LLMQuerySkill
 from squadops.agents.skills.shared.file_read import FileReadSkill
 from squadops.agents.skills.shared.file_write import FileWriteSkill
-from squadops.agents.skills.shared.memory_store import MemoryStoreSkill
+from squadops.agents.skills.shared.llm_query import LLMQuerySkill
 from squadops.agents.skills.shared.memory_recall import MemoryRecallSkill
+from squadops.agents.skills.shared.memory_store import MemoryStoreSkill
 
 
 @pytest.fixture

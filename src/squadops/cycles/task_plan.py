@@ -62,9 +62,7 @@ def _has_builder_role(profile: SquadProfile) -> bool:
     return any(a.role == "builder" and a.enabled for a in profile.agents)
 
 
-def generate_task_plan(
-    cycle: Cycle, run: Run, profile: SquadProfile
-) -> list[TaskEnvelope]:
+def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
     Produces plan steps (5 standard) and/or build steps (2) based on

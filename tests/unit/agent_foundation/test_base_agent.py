@@ -2,8 +2,10 @@
 
 Tests the agent foundation from SIP-0.8.8.
 """
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from squadops.agents.base import BaseAgent, PortsBundle
 from squadops.tasks.models import TaskEnvelope, TaskResult
@@ -156,9 +158,7 @@ class TestBaseAgent:
     @pytest.mark.asyncio
     async def test_health_check(self, mock_ports):
         """health() should aggregate health info."""
-        mock_ports["llm"].health = AsyncMock(
-            return_value={"healthy": True, "provider": "test"}
-        )
+        mock_ports["llm"].health = AsyncMock(return_value={"healthy": True, "provider": "test"})
         agent = ConcreteAgent(agent_id="agent-1", **mock_ports)
         health = await agent.health()
         assert health["healthy"] is True

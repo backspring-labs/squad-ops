@@ -3,12 +3,9 @@ Verification tests for squadops.core.secrets module.
 Tests core purity and secret resolution with mock provider injection.
 """
 
-from unittest.mock import Mock
-
 import pytest
 
 from squadops.core.secrets import (
-    InvalidSecretReferenceError,
     SecretManager,
     SecretNotFoundError,
     SecretResolutionError,
@@ -73,6 +70,7 @@ class TestSecretManagerCorePurity:
     def test_core_imports_only_from_ports(self):
         """Verify that core.secrets only imports from ports.secrets."""
         import inspect
+
         import squadops.core.secrets as secrets_module
 
         # Get all imports in the module
@@ -88,6 +86,7 @@ class TestSecretManagerCorePurity:
     def test_core_does_not_import_factory(self):
         """Verify that core.secrets does not import the factory."""
         import inspect
+
         import squadops.core.secrets as secrets_module
 
         # Check module source for factory imports
@@ -180,9 +179,7 @@ class TestSecretManagerWithMockProvider:
 
         config_dict = {
             "db": {"url": "postgresql://user:secret://db_password@host:5432/db"},
-            "comms": {
-                "rabbitmq": {"url": "amqp://user:secret://rabbitmq_password@host:5672/"}
-            },
+            "comms": {"rabbitmq": {"url": "amqp://user:secret://rabbitmq_password@host:5672/"}},
             "secrets": {"provider": "env"},
         }
 

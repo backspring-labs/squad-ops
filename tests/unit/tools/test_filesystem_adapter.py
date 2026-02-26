@@ -1,12 +1,12 @@
 """Unit tests for filesystem adapters."""
+
 import pytest
-from pathlib import Path
 
 from adapters.tools.local_filesystem import (
     LocalFileSystemAdapter,
     PathValidatedFileSystem,
 )
-from squadops.tools.exceptions import ToolFileNotFoundError, ToolPermissionError
+from squadops.tools.exceptions import ToolFileNotFoundError
 from squadops.tools.security import PathSecurityError, PathSecurityPolicy
 
 

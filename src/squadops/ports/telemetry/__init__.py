@@ -7,6 +7,7 @@ Provides abstract base classes for telemetry adapters:
 
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from squadops.ports.telemetry.events import EventPort
 from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 from squadops.ports.telemetry.metrics import MetricsPort

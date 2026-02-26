@@ -80,11 +80,13 @@ def extract_fenced_files(response: str) -> list[dict]:
         if content.endswith("\n"):
             content = content[:-1]
 
-        results.append({
-            "filename": filepath,
-            "content": content,
-            "language": language,
-        })
+        results.append(
+            {
+                "filename": filepath,
+                "content": content,
+                "language": language,
+            }
+        )
 
         pos = close_match.end()
 

@@ -4,6 +4,7 @@ Factory functions for creating telemetry adapters with production mode guards.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 Extended with LLM observability factory (SIP-0061).
 """
+
 import logging
 from typing import TextIO
 
@@ -171,7 +172,9 @@ def create_llm_observability_provider(
     raise ValueError(f"Unknown LLM observability provider: {provider}")
 
 
-def _resolve_secrets(config: LangFuseConfig, secret_manager: SecretManager | None) -> LangFuseConfig:
+def _resolve_secrets(
+    config: LangFuseConfig, secret_manager: SecretManager | None
+) -> LangFuseConfig:
     """Resolve secret:// references in LangFuseConfig fields.
 
     Returns a new LangFuseConfig with resolved values. If no secret_manager

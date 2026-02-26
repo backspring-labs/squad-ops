@@ -14,13 +14,13 @@ import pytest
 
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
-
 pytestmark = [pytest.mark.domain_agents]
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_envelope_payload(envelope: TaskEnvelope, reply_queue: str = "cycle_results_run_001"):
     """Build the full message payload as the agent consumer would receive."""
@@ -55,6 +55,7 @@ def _sample_envelope() -> TaskEnvelope:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestHandleTaskEnvelope:
     """AgentRunner._handle_task_envelope dispatches to orchestrator."""
 
@@ -86,9 +87,7 @@ class TestHandleTaskEnvelope:
         envelope = _sample_envelope()
         payload = _make_envelope_payload(envelope)
 
-        await runner._handle_task_envelope(
-            payload, payload["metadata"]
-        )
+        await runner._handle_task_envelope(payload, payload["metadata"])
 
         runner.system.orchestrator.submit_task.assert_awaited_once()
         submitted = runner.system.orchestrator.submit_task.call_args.args[0]
@@ -101,9 +100,7 @@ class TestHandleTaskEnvelope:
         envelope = _sample_envelope()
         payload = _make_envelope_payload(envelope, reply_queue="cycle_results_run_001")
 
-        await runner._handle_task_envelope(
-            payload, payload["metadata"]
-        )
+        await runner._handle_task_envelope(payload, payload["metadata"])
 
         runner._queue.publish.assert_awaited_once()
         call_args = runner._queue.publish.call_args
@@ -121,9 +118,7 @@ class TestHandleTaskEnvelope:
         envelope = _sample_envelope()
         payload = _make_envelope_payload(envelope)
 
-        await runner._handle_task_envelope(
-            payload, payload["metadata"]
-        )
+        await runner._handle_task_envelope(payload, payload["metadata"])
 
         runner._queue.publish.assert_awaited_once()
         published = json.loads(runner._queue.publish.call_args.args[1])
@@ -148,9 +143,7 @@ class TestHandleTaskEnvelope:
         envelope = _sample_envelope()
         payload = _make_envelope_payload(envelope)
 
-        await runner._handle_task_envelope(
-            payload, payload["metadata"]
-        )
+        await runner._handle_task_envelope(payload, payload["metadata"])
 
         published = json.loads(runner._queue.publish.call_args.args[1])
         assert published["metadata"]["correlation_id"] == "corr_001"

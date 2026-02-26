@@ -9,8 +9,9 @@ Constraints:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from squadops.core.secrets import SecretManager
 from squadops.ports.db import DbRuntime
@@ -140,4 +141,3 @@ class BaseAgent:
         role = self.agent_id.split("-")[0] if "-" in self.agent_id else self.agent_id
         assembled = self.prompt_service.get_system_prompt(role)
         return assembled.content
-

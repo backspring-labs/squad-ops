@@ -16,12 +16,14 @@ import requests
 # SIP-0061: LangFuse env-var gating for contract/integration/resilience tests
 # ---------------------------------------------------------------------------
 
-_langfuse_available = all([
-    os.getenv("SQUADOPS__LANGFUSE__ENABLED", "").lower() == "true",
-    os.getenv("SQUADOPS__LANGFUSE__HOST", ""),
-    os.getenv("SQUADOPS__LANGFUSE__PUBLIC_KEY", ""),
-    os.getenv("SQUADOPS__LANGFUSE__SECRET_KEY", ""),
-])
+_langfuse_available = all(
+    [
+        os.getenv("SQUADOPS__LANGFUSE__ENABLED", "").lower() == "true",
+        os.getenv("SQUADOPS__LANGFUSE__HOST", ""),
+        os.getenv("SQUADOPS__LANGFUSE__PUBLIC_KEY", ""),
+        os.getenv("SQUADOPS__LANGFUSE__SECRET_KEY", ""),
+    ]
+)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -33,6 +35,7 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "langfuse" in item.keywords:
                 item.add_marker(skip_langfuse)
+
 
 # Import agent manager for container management
 from testcontainers.postgres import PostgresContainer

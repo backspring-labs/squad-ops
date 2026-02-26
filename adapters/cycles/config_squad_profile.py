@@ -7,7 +7,7 @@ Loads profiles from config/squad-profiles.yaml.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -41,7 +41,7 @@ class ConfigSquadProfile(SquadProfilePort):
         with open(self._yaml_path) as f:
             data = yaml.safe_load(f) or {}
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for entry in data.get("profiles", []):
             agents = tuple(
                 AgentProfileEntry(
@@ -64,9 +64,7 @@ class ConfigSquadProfile(SquadProfilePort):
             self._profiles[profile.profile_id] = profile
 
         self._active_profile_id = data.get("active_profile")
-        logger.info(
-            "Loaded %d squad profiles from %s", len(self._profiles), self._yaml_path
-        )
+        logger.info("Loaded %d squad profiles from %s", len(self._profiles), self._yaml_path)
         self._loaded = True
 
     async def list_profiles(self) -> list[SquadProfile]:

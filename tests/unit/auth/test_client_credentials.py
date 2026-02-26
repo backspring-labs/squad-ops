@@ -2,9 +2,9 @@
 
 import asyncio
 import time
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from squadops.auth.client_credentials import ServiceToken, ServiceTokenClient
 
@@ -19,7 +19,7 @@ def _mock_response(access_token="tok-123", expires_in=300, status_code=200):
     }
     resp.raise_for_status = MagicMock()
     if status_code >= 400:
-        from httpx import HTTPStatusError, Request, Response
+        from httpx import HTTPStatusError
 
         resp.raise_for_status.side_effect = HTTPStatusError(
             "error", request=MagicMock(), response=resp

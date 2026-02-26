@@ -2,6 +2,7 @@
 
 Tests BUILDER_ROLE registration in DEFAULT_ROLES and frozen immutability.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -9,7 +10,6 @@ import pytest
 from squadops.agents.models import (
     BUILDER_ROLE,
     DEFAULT_ROLES,
-    AgentRole,
 )
 
 pytestmark = [pytest.mark.domain_agents]

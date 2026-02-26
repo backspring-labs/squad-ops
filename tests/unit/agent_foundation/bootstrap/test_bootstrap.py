@@ -3,25 +3,27 @@
 Tests skill/handler auto-registration and system creation.
 Part of SIP-0.8.8 Phase 7.
 """
-import pytest
-from unittest.mock import MagicMock, AsyncMock
 
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from squadops.agents.base import PortsBundle
+from squadops.bootstrap.handlers import (
+    create_handler_registry,
+    get_all_handlers,
+)
 from squadops.bootstrap.skills import (
+    create_skill_registry,
     get_all_skills,
     get_skills_for_role,
-    create_skill_registry,
-)
-from squadops.bootstrap.handlers import (
-    get_all_handlers,
-    create_handler_registry,
 )
 from squadops.bootstrap.system import (
+    SquadOpsSystem,
+    SystemConfig,
     create_orchestrator,
     create_system,
-    SystemConfig,
-    SquadOpsSystem,
 )
-from squadops.agents.base import PortsBundle
 
 
 @pytest.fixture

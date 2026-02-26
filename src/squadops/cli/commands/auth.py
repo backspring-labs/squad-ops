@@ -41,18 +41,14 @@ def login(
     client_credentials: bool = typer.Option(
         False, "--client-credentials", help="Use client_credentials grant"
     ),
-    client_id: str = typer.Option(
-        _DEFAULT_CLIENT_ID, "--client-id", help="OIDC client ID"
-    ),
+    client_id: str = typer.Option(_DEFAULT_CLIENT_ID, "--client-id", help="OIDC client ID"),
     client_secret: str | None = typer.Option(
         None, "--client-secret", help="Client secret (for client_credentials)"
     ),
     keycloak_url: str = typer.Option(
         _DEFAULT_KEYCLOAK_URL, "--keycloak-url", help="Keycloak base URL"
     ),
-    realm: str = typer.Option(
-        _DEFAULT_REALM, "--realm", help="Keycloak realm"
-    ),
+    realm: str = typer.Option(_DEFAULT_REALM, "--realm", help="Keycloak realm"),
     token_endpoint: str | None = typer.Option(
         None, "--token-endpoint", help="Override full token endpoint URL"
     ),
@@ -91,15 +87,15 @@ def login(
     save_token(token)
 
     if fmt == "json":
-        print_json({
-            "status": "authenticated",
-            "grant_type": token.grant_type,
-            "client_id": token.client_id,
-            "expires_at": datetime.fromtimestamp(
-                token.expires_at, tz=UTC
-            ).isoformat(),
-            "has_refresh_token": token.refresh_token is not None,
-        })
+        print_json(
+            {
+                "status": "authenticated",
+                "grant_type": token.grant_type,
+                "client_id": token.client_id,
+                "expires_at": datetime.fromtimestamp(token.expires_at, tz=UTC).isoformat(),
+                "has_refresh_token": token.refresh_token is not None,
+            }
+        )
     else:
         print_success("Login successful")
 
@@ -136,9 +132,7 @@ def whoami(ctx: typer.Context):
         "status": "expired" if expired else "authenticated",
         "grant_type": token.grant_type,
         "client_id": token.client_id,
-        "expires_at": datetime.fromtimestamp(
-            token.expires_at, tz=UTC
-        ).isoformat(),
+        "expires_at": datetime.fromtimestamp(token.expires_at, tz=UTC).isoformat(),
         "has_refresh_token": token.refresh_token is not None,
     }
 

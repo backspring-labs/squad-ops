@@ -1,6 +1,8 @@
 """Unit tests for PathSecurityPolicy."""
-import pytest
+
 from pathlib import Path
+
+import pytest
 
 from squadops.tools.security import PathSecurityError, PathSecurityPolicy
 

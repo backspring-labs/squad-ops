@@ -2,7 +2,7 @@
 Tests for SIP-0064 lifecycle state machine, status derivation, and hash computation.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -22,7 +22,7 @@ from squadops.cycles.models import (
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 def _make_run(

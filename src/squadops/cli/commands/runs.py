@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -37,6 +36,7 @@ def _format_duration(started: str | None, finished: str | None) -> str:
         return f"{minutes}m{seconds}s"
     except (ValueError, TypeError):
         return ""
+
 
 app = typer.Typer(name="runs", help="Manage execution runs within cycles")
 
@@ -86,7 +86,9 @@ def list_runs(
 
 
 @app.command("ls", hidden=True)
-def list_runs_alias(ctx: typer.Context, project_id: str = typer.Argument(...), cycle_id: str = typer.Argument(...)):
+def list_runs_alias(
+    ctx: typer.Context, project_id: str = typer.Argument(...), cycle_id: str = typer.Argument(...)
+):
     """Alias for list."""
     list_runs(ctx, project_id, cycle_id)
 
@@ -104,9 +106,7 @@ def show_run(
 
     try:
         client = _get_client(ctx)
-        data = client.get(
-            f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}"
-        )
+        data = client.get(f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}")
         client.close()
     except CLIError as e:
         print_error(str(e))
@@ -119,7 +119,12 @@ def show_run(
 
 
 @app.command("cat", hidden=True)
-def show_run_alias(ctx: typer.Context, project_id: str = typer.Argument(...), cycle_id: str = typer.Argument(...), run_id: str = typer.Argument(...)):
+def show_run_alias(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    cycle_id: str = typer.Argument(...),
+    run_id: str = typer.Argument(...),
+):
     """Alias for show."""
     show_run(ctx, project_id, cycle_id, run_id)
 
@@ -163,9 +168,7 @@ def cancel_run(
 
     try:
         client = _get_client(ctx)
-        data = client.post(
-            f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/cancel"
-        )
+        data = client.post(f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/cancel")
         client.close()
     except CLIError as e:
         print_error(str(e))
@@ -186,7 +189,7 @@ def gate_decision(
     gate_name: str = typer.Argument(...),
     approve: bool = typer.Option(False, "--approve", help="Approve the gate"),
     reject: bool = typer.Option(False, "--reject", help="Reject the gate"),
-    notes: Optional[str] = typer.Option(None, "--notes", help="Decision notes"),
+    notes: str | None = typer.Option(None, "--notes", help="Decision notes"),
 ):
     """Record a gate decision (approve or reject).
 
@@ -235,7 +238,9 @@ def assemble_run(
     cycle_id: str = typer.Argument(..., help="Cycle ID"),
     run_id: str = typer.Argument(..., help="Run ID"),
     out: Path = typer.Option(
-        Path("./output"), "--out", help="Output directory",
+        Path("./output"),
+        "--out",
+        help="Output directory",
     ),
 ):
     """Assemble build artifacts from a completed run into a local directory.
@@ -247,16 +252,12 @@ def assemble_run(
         client = _get_client(ctx)
 
         # 1. Fetch cycle metadata for output directory naming
-        cycle_data = client.get(
-            f"/api/v1/projects/{project_id}/cycles/{cycle_id}"
-        )
+        cycle_data = client.get(f"/api/v1/projects/{project_id}/cycles/{cycle_id}")
         pid = cycle_data.get("project_id") or ""
         output_dir_name = pid if pid else cycle_id[:12]
 
         # 2. Fetch run to get artifact_refs
-        run_data = client.get(
-            f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}"
-        )
+        run_data = client.get(f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}")
         artifact_refs = run_data.get("artifact_refs", [])
 
         if not artifact_refs:
@@ -285,9 +286,7 @@ def assemble_run(
 
         written_files: list[str] = []
         for meta in build_artifacts:
-            content, _ = client.download(
-                f"/api/v1/artifacts/{meta['artifact_id']}/download"
-            )
+            content, _ = client.download(f"/api/v1/artifacts/{meta['artifact_id']}/download")
             filepath = target_dir / meta["filename"]
             filepath.parent.mkdir(parents=True, exist_ok=True)
             filepath.write_bytes(content)

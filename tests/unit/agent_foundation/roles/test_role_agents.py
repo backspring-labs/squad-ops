@@ -2,22 +2,24 @@
 
 Tests all 5 agent roles from SIP-0.8.8 Phase 3.
 """
+
 import hashlib
 import json
-import pytest
 from typing import Any
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
+
+import pytest
 
 from squadops.agents.base import PortsBundle
 from squadops.agents.exceptions import SkillNotFoundError
-from squadops.agents.roles.lead import LeadAgent
+from squadops.agents.roles.data import DataAgent
 from squadops.agents.roles.dev import DevAgent
+from squadops.agents.roles.lead import LeadAgent
 from squadops.agents.roles.qa import QAAgent
 from squadops.agents.roles.strat import StratAgent
-from squadops.agents.roles.data import DataAgent
 from squadops.agents.skills.base import ExecutionEvidence, Skill, SkillResult
 from squadops.agents.skills.registry import SkillRegistry
-from squadops.tasks.models import TaskEnvelope, TaskResult
+from squadops.tasks.models import TaskEnvelope
 
 
 class MockSkill(Skill):
@@ -70,17 +72,30 @@ def skill_registry():
     # Register skills for all roles
     skills = [
         # Lead skills
-        "task_analysis", "task_delegation", "code_review",
-        "cycle_planning", "governance_approval",
+        "task_analysis",
+        "task_delegation",
+        "code_review",
+        "cycle_planning",
+        "governance_approval",
         # Dev skills
-        "code_generation", "code_modification", "test_writing",
-        "bug_fixing", "refactoring",
+        "code_generation",
+        "code_modification",
+        "test_writing",
+        "bug_fixing",
+        "refactoring",
         # QA skills
-        "test_design", "test_execution", "validation", "bug_reporting",
+        "test_design",
+        "test_execution",
+        "validation",
+        "bug_reporting",
         # Strat skills
-        "strategy_analysis", "architecture_review", "requirement_analysis",
+        "strategy_analysis",
+        "architecture_review",
+        "requirement_analysis",
         # Data skills
-        "data_analysis", "metrics_collection", "report_generation",
+        "data_analysis",
+        "metrics_collection",
+        "report_generation",
     ]
     for skill_name in skills:
         registry.register(MockSkill(skill_name))

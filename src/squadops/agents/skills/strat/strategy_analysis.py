@@ -3,6 +3,7 @@
 Strategy agent skill for strategic planning.
 Part of SIP-0.8.8 Phase 4.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -141,9 +142,7 @@ class StrategyAnalysisSkill(Skill):
                 skill_name=self.name,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_inputs(inputs),
-                outputs_hash=self._hash_inputs(
-                    {"options_count": len(outputs["options"])}
-                ),
+                outputs_hash=self._hash_inputs({"options_count": len(outputs["options"])}),
                 port_calls=context.get_port_calls(),
             )
 

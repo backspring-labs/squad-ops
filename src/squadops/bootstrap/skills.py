@@ -5,21 +5,15 @@ with all skills auto-discovered and registered.
 
 Part of SIP-0.8.8 Phase 7.
 """
+
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
 
-from squadops.agents.skills.registry import SkillRegistry
-
 # Import skill modules for auto-discovery
-from squadops.agents.skills import shared
-from squadops.agents.skills import lead
-from squadops.agents.skills import dev
-from squadops.agents.skills import qa
-from squadops.agents.skills import strat
-from squadops.agents.skills import data
-from squadops.agents.skills import builder
+from squadops.agents.skills import builder, data, dev, lead, qa, shared, strat
+from squadops.agents.skills.registry import SkillRegistry
 
 if TYPE_CHECKING:
     from squadops.agents.skills.base import Skill

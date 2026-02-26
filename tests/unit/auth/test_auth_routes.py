@@ -1,8 +1,9 @@
 """Tests for /auth/userinfo endpoint (SIP-0062 Phase 3a)."""
 
-import pytest
+from datetime import UTC
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -25,7 +26,8 @@ def _make_app(auth_port=None, provider="keycloak"):
 
 
 def _make_auth_port(identity=None):
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from squadops.auth.models import TokenClaims
 
     port = AsyncMock()
@@ -33,8 +35,8 @@ def _make_auth_port(identity=None):
         subject=identity.user_id if identity else "u1",
         issuer="http://keycloak/realms/test",
         audience="test",
-        expires_at=datetime.now(timezone.utc),
-        issued_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(UTC),
+        issued_at=datetime.now(UTC),
     )
     port.resolve_identity.return_value = identity or Identity(
         user_id="u1",

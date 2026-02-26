@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import re
-import textwrap
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -17,6 +16,7 @@ pytestmark = [pytest.mark.domain_orchestration]
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _FakeAcquireCtx:
     """Async context manager that yields *conn*."""
@@ -76,6 +76,7 @@ def _write_sql(tmp_path: Path, name: str, content: str = "SELECT 1;") -> Path:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestApplyMigrations:
     async def test_creates_tracking_table(self, tmp_path):
@@ -205,7 +206,8 @@ class TestApplyMigrations:
 
         # Extract the filenames from INSERT calls
         insert_calls = [
-            c for c in conn.execute.call_args_list
+            c
+            for c in conn.execute.call_args_list
             if len(c[0]) > 1 and isinstance(c[0][1], str) and c[0][1].endswith(".sql")
         ]
         filenames = [c[0][1] for c in insert_calls]
@@ -232,6 +234,4 @@ class TestMigrationSQLStyle:
         """All CREATE statements use IF NOT EXISTS."""
         create_stmts = re.findall(r"CREATE\s+(?:TABLE|INDEX)\b[^;]+", migration_sql, re.IGNORECASE)
         for stmt in create_stmts:
-            assert "IF NOT EXISTS" in stmt.upper(), (
-                f"Non-idempotent DDL: {stmt[:80]}..."
-            )
+            assert "IF NOT EXISTS" in stmt.upper(), f"Non-idempotent DDL: {stmt[:80]}..."

@@ -8,6 +8,7 @@ can attach as an artifact.
 All exceptions are caught so that a test-runner failure never crashes
 the handler — callers always get a ``TestRunResult``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -93,7 +94,12 @@ async def run_generated_tests(
         _materialize_files(workspace, all_files)
 
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "pytest", ".", "--tb=short", "-q",
+            sys.executable,
+            "-m",
+            "pytest",
+            ".",
+            "--tb=short",
+            "-q",
             cwd=workspace,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -104,7 +110,7 @@ async def run_generated_tests(
                 proc.communicate(),
                 timeout=timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return TestRunResult(
@@ -180,7 +186,10 @@ async def run_node_tests(
         # npm install
         try:
             install_proc = await asyncio.create_subprocess_exec(
-                "npm", "install", "--no-audit", "--no-fund",
+                "npm",
+                "install",
+                "--no-audit",
+                "--no-fund",
                 cwd=cwd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -190,7 +199,7 @@ async def run_node_tests(
                     install_proc.communicate(),
                     timeout=timeout_seconds,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 install_proc.kill()
                 await install_proc.wait()
                 return TestRunResult(
@@ -218,7 +227,10 @@ async def run_node_tests(
         # npx vitest run
         try:
             proc = await asyncio.create_subprocess_exec(
-                "npx", "vitest", "run", "--reporter=verbose",
+                "npx",
+                "vitest",
+                "run",
+                "--reporter=verbose",
                 cwd=cwd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -236,7 +248,7 @@ async def run_node_tests(
                 proc.communicate(),
                 timeout=timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return TestRunResult(
@@ -301,12 +313,15 @@ async def run_fullstack_tests(
 
     # Run backend (pytest) — blocking
     backend_result = await run_generated_tests(
-        backend_source, backend_tests, timeout_seconds=timeout_seconds,
+        backend_source,
+        backend_tests,
+        timeout_seconds=timeout_seconds,
     )
 
     # Run frontend (vitest) — non-blocking (D7, D13)
     frontend_result = await run_node_tests(
-        frontend_source, frontend_tests,
+        frontend_source,
+        frontend_tests,
         target_dir="frontend",
         timeout_seconds=timeout_seconds,
     )
@@ -314,23 +329,15 @@ async def run_fullstack_tests(
     # Merge results (D13): backend controls pass/fail
     combined_stdout_parts = []
     if backend_result.stdout:
-        combined_stdout_parts.append(
-            f"=== Backend (pytest) ===\n{backend_result.stdout}"
-        )
+        combined_stdout_parts.append(f"=== Backend (pytest) ===\n{backend_result.stdout}")
     if frontend_result.stdout:
-        combined_stdout_parts.append(
-            f"=== Frontend (vitest) ===\n{frontend_result.stdout}"
-        )
+        combined_stdout_parts.append(f"=== Frontend (vitest) ===\n{frontend_result.stdout}")
 
     combined_stderr_parts = []
     if backend_result.stderr:
-        combined_stderr_parts.append(
-            f"=== Backend (pytest) ===\n{backend_result.stderr}"
-        )
+        combined_stderr_parts.append(f"=== Backend (pytest) ===\n{backend_result.stderr}")
     if frontend_result.stderr:
-        combined_stderr_parts.append(
-            f"=== Frontend (vitest) ===\n{frontend_result.stderr}"
-        )
+        combined_stderr_parts.append(f"=== Frontend (vitest) ===\n{frontend_result.stderr}")
 
     # D13: backend exit code controls combined outcome
     combined_executed = backend_result.executed or frontend_result.executed

@@ -61,9 +61,7 @@ class TestConsoleBoot:
 
         # Fallback: check that registry exposes plugin info with asset paths
         registry_resp = httpx.get(f"{CONSOLE_BASE_URL}/api/registry", timeout=5.0)
-        assert registry_resp.status_code == 200, (
-            "Neither /config.js nor /api/registry returned 200"
-        )
+        assert registry_resp.status_code == 200, "Neither /config.js nor /api/registry returned 200"
         registry = registry_resp.json()
 
         # Try to find and fetch a plugin asset from registry entries.
@@ -81,9 +79,7 @@ class TestConsoleBoot:
                 plugin_ids = list(plugins_value.keys())
         elif isinstance(registry, list):
             plugin_ids = [
-                p.get("id", p.get("plugin_id", ""))
-                for p in registry
-                if isinstance(p, dict)
+                p.get("id", p.get("plugin_id", "")) for p in registry if isinstance(p, dict)
             ]
 
         fetched_any = False

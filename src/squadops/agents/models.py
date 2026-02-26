@@ -3,6 +3,7 @@
 Frozen dataclasses for agent configuration and identity.
 Part of SIP-0.8.8 Agent Foundation.
 """
+
 from dataclasses import dataclass, field
 from typing import Any
 

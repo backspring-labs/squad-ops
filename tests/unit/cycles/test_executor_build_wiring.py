@@ -8,15 +8,14 @@ Part of Phase 2.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
-    Gate,
     Run,
     RunStatus,
     TaskFlowPolicy,
@@ -24,7 +23,7 @@ from squadops.cycles.models import (
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 def _make_artifact_ref(
@@ -79,23 +78,30 @@ class TestArtifactContentsPreResolution:
     async def test_artifact_contents_injected_for_build_task(self, executor):
         """Pre-resolution returns content keyed by filename."""
         ref_strategy = _make_artifact_ref(
-            "art_001", "strategy_analysis.md", "document",
+            "art_001",
+            "strategy_analysis.md",
+            "document",
             producing_task_type="strategy.analyze_prd",
         )
         ref_impl = _make_artifact_ref(
-            "art_002", "implementation_plan.md", "document",
+            "art_002",
+            "implementation_plan.md",
+            "document",
             producing_task_type="development.design",
         )
 
         stored = [("art_001", ref_strategy), ("art_002", ref_impl)]
 
-        executor._artifact_vault.retrieve = AsyncMock(side_effect=[
-            (ref_strategy, b"Strategy content"),
-            (ref_impl, b"Implementation content"),
-        ])
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[
+                (ref_strategy, b"Strategy content"),
+                (ref_impl, b"Implementation content"),
+            ]
+        )
 
         contents = await executor._resolve_artifact_contents(
-            "development.develop", stored,
+            "development.develop",
+            stored,
         )
 
         assert "strategy_analysis.md" in contents
@@ -106,30 +112,38 @@ class TestArtifactContentsPreResolution:
     async def test_no_resolution_for_plan_tasks(self, executor):
         """Plan tasks (e.g., strategy.analyze_prd) get no pre-resolution."""
         contents = await executor._resolve_artifact_contents(
-            "strategy.analyze_prd", [],
+            "strategy.analyze_prd",
+            [],
         )
         assert contents == {}
 
     async def test_qa_build_gets_source_artifacts(self, executor):
         """qa.test receives source artifacts by type."""
         ref_val = _make_artifact_ref(
-            "art_001", "validation_plan.md", "document",
+            "art_001",
+            "validation_plan.md",
+            "document",
             producing_task_type="qa.validate",
         )
         ref_src = _make_artifact_ref(
-            "art_002", "src/main.py", "source",
+            "art_002",
+            "src/main.py",
+            "source",
             producing_task_type="development.develop",
         )
 
         stored = [("art_001", ref_val), ("art_002", ref_src)]
 
-        executor._artifact_vault.retrieve = AsyncMock(side_effect=[
-            (ref_val, b"Validation plan"),
-            (ref_src, b"print('hello')"),
-        ])
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[
+                (ref_val, b"Validation plan"),
+                (ref_src, b"print('hello')"),
+            ]
+        )
 
         contents = await executor._resolve_artifact_contents(
-            "qa.test", stored,
+            "qa.test",
+            stored,
         )
 
         assert "validation_plan.md" in contents
@@ -140,28 +154,37 @@ class TestArtifactContentsPreResolution:
         big_content = b"x" * (256 * 1024)  # 256KB each, 2 = 512KB
 
         ref1 = _make_artifact_ref(
-            "art_001", "file1.md", "document",
+            "art_001",
+            "file1.md",
+            "document",
             producing_task_type="strategy.analyze_prd",
         )
         ref2 = _make_artifact_ref(
-            "art_002", "file2.md", "document",
+            "art_002",
+            "file2.md",
+            "document",
             producing_task_type="development.design",
         )
         ref3 = _make_artifact_ref(
-            "art_003", "file3.md", "document",
+            "art_003",
+            "file3.md",
+            "document",
             producing_task_type="strategy.analyze_prd",
         )
 
         stored = [("art_001", ref1), ("art_002", ref2), ("art_003", ref3)]
 
-        executor._artifact_vault.retrieve = AsyncMock(side_effect=[
-            (ref1, big_content),
-            (ref2, big_content),
-            (ref3, big_content),  # Should not be reached
-        ])
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[
+                (ref1, big_content),
+                (ref2, big_content),
+                (ref3, big_content),  # Should not be reached
+            ]
+        )
 
         contents = await executor._resolve_artifact_contents(
-            "development.develop", stored,
+            "development.develop",
+            stored,
         )
 
         # First two fit (256+256=512), third would exceed limit
@@ -200,9 +223,7 @@ class TestProducingTaskTypeMetadata:
         )
 
         # Mock vault.store to return the ref as-is
-        executor._artifact_vault.store = AsyncMock(
-            side_effect=lambda ref, content: ref
-        )
+        executor._artifact_vault.store = AsyncMock(side_effect=lambda ref, content: ref)
 
         art_dict = {
             "name": "src/main.py",
@@ -212,7 +233,10 @@ class TestProducingTaskTypeMetadata:
         }
 
         ref = await executor._store_artifact(
-            art_dict, cycle, "run_001", envelope,
+            art_dict,
+            cycle,
+            "run_001",
+            envelope,
             producing_task_type="development.develop",
         )
 
@@ -231,7 +255,6 @@ class TestBuildOnlyValidation:
         """Build-only cycle without plan_artifact_refs raises _ExecutionError."""
         from adapters.cycles.distributed_flow_executor import (
             DistributedFlowExecutor,
-            _ExecutionError,
         )
 
         cycle = Cycle(
@@ -268,20 +291,22 @@ class TestBuildOnlyValidation:
         squad = AsyncMock()
         from squadops.cycles.models import AgentProfileEntry, SquadProfile
 
-        squad.resolve_snapshot = AsyncMock(return_value=(
-            SquadProfile(
-                profile_id="full-squad",
-                name="Full",
-                description="",
-                version=1,
-                agents=(
-                    AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-                    AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+        squad.resolve_snapshot = AsyncMock(
+            return_value=(
+                SquadProfile(
+                    profile_id="full-squad",
+                    name="Full",
+                    description="",
+                    version=1,
+                    agents=(
+                        AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
+                        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+                    ),
+                    created_at=NOW,
                 ),
-                created_at=NOW,
-            ),
-            "snap",
-        ))
+                "snap",
+            )
+        )
 
         ex = DistributedFlowExecutor(
             cycle_registry=registry,
@@ -305,7 +330,9 @@ class TestBuildOnlySeeding:
     async def test_build_only_seeds_from_plan_refs(self, executor):
         """When seed_artifact_refs is provided, _execute_sequential loads them."""
         ref_plan = _make_artifact_ref(
-            "art_plan_001", "implementation_plan.md", "document",
+            "art_plan_001",
+            "implementation_plan.md",
+            "document",
         )
 
         executor._artifact_vault.retrieve = AsyncMock(
@@ -328,7 +355,8 @@ class TestBuildOnlySeeding:
             return_value=(ref_plan, b"Plan content here"),
         )
         contents = await executor._resolve_artifact_contents(
-            "development.develop", stored_artifacts,
+            "development.develop",
+            stored_artifacts,
         )
 
         assert "implementation_plan.md" in contents
@@ -381,20 +409,22 @@ class TestBuildOnlySeeding:
         from squadops.cycles.models import AgentProfileEntry, SquadProfile
 
         squad = AsyncMock()
-        squad.resolve_snapshot = AsyncMock(return_value=(
-            SquadProfile(
-                profile_id="full-squad",
-                name="Full",
-                description="",
-                version=1,
-                agents=(
-                    AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-                    AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+        squad.resolve_snapshot = AsyncMock(
+            return_value=(
+                SquadProfile(
+                    profile_id="full-squad",
+                    name="Full",
+                    description="",
+                    version=1,
+                    agents=(
+                        AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
+                        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+                    ),
+                    created_at=NOW,
                 ),
-                created_at=NOW,
-            ),
-            "snap",
-        ))
+                "snap",
+            )
+        )
 
         ex = DistributedFlowExecutor(
             cycle_registry=registry,
@@ -414,7 +444,12 @@ class TestBuildOnlySeeding:
                     "summary": "done",
                     "role": envelope.metadata.get("role"),
                     "artifacts": [
-                        {"name": "src/main.py", "content": "print(1)", "type": "source", "media_type": "text/x-python"},
+                        {
+                            "name": "src/main.py",
+                            "content": "print(1)",
+                            "type": "source",
+                            "media_type": "text/x-python",
+                        },
                     ],
                 },
             )
@@ -471,13 +506,15 @@ class TestPlanOnlyCyclesUnaffected:
         msg = MagicMock()
         import json
 
-        msg.payload = json.dumps({
-            "payload": {
-                "task_id": "placeholder",
-                "status": "SUCCEEDED",
-                "outputs": {"summary": "done", "role": "strat"},
+        msg.payload = json.dumps(
+            {
+                "payload": {
+                    "task_id": "placeholder",
+                    "status": "SUCCEEDED",
+                    "outputs": {"summary": "done", "role": "strat"},
+                }
             }
-        })
+        )
         queue.consume = AsyncMock(return_value=[msg])
         queue.ack = AsyncMock()
 
@@ -487,23 +524,25 @@ class TestPlanOnlyCyclesUnaffected:
         squad = AsyncMock()
         from squadops.cycles.models import AgentProfileEntry, SquadProfile
 
-        squad.resolve_snapshot = AsyncMock(return_value=(
-            SquadProfile(
-                profile_id="full-squad",
-                name="Full",
-                description="",
-                version=1,
-                agents=(
-                    AgentProfileEntry(agent_id="nat", role="strat", model="m", enabled=True),
-                    AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
-                    AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
-                    AgentProfileEntry(agent_id="data", role="data", model="m", enabled=True),
-                    AgentProfileEntry(agent_id="max", role="lead", model="m", enabled=True),
+        squad.resolve_snapshot = AsyncMock(
+            return_value=(
+                SquadProfile(
+                    profile_id="full-squad",
+                    name="Full",
+                    description="",
+                    version=1,
+                    agents=(
+                        AgentProfileEntry(agent_id="nat", role="strat", model="m", enabled=True),
+                        AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
+                        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+                        AgentProfileEntry(agent_id="data", role="data", model="m", enabled=True),
+                        AgentProfileEntry(agent_id="max", role="lead", model="m", enabled=True),
+                    ),
+                    created_at=NOW,
                 ),
-                created_at=NOW,
-            ),
-            "snap",
-        ))
+                "snap",
+            )
+        )
 
         ex = DistributedFlowExecutor(
             cycle_registry=registry,

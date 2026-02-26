@@ -3,6 +3,7 @@
 Implements LLMObservabilityPort with silent no-ops (SIP-0061).
 Separate from null.py which implements MetricsPort + EventPort.
 """
+
 from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 from squadops.telemetry.models import (
     CorrelationContext,

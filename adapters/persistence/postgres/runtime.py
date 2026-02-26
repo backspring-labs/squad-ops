@@ -4,8 +4,7 @@ PostgreSQL runtime implementation for DbRuntime port.
 
 import logging
 import time
-from typing import Any
-from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -71,9 +70,7 @@ class PostgresRuntime(DbRuntime):
             logger.debug("Resolved secret:// references in DSN (redacted in logs)")
 
         # Build SQLAlchemy connection URL with SSL parameters
-        final_dsn = self._build_connection_url(
-            resolved_dsn, ssl_mode, ssl_ca_bundle_path
-        )
+        final_dsn = self._build_connection_url(resolved_dsn, ssl_mode, ssl_ca_bundle_path)
 
         # Log configuration (never log secrets or unredacted DSNs)
         logger.info(
@@ -94,9 +91,7 @@ class PostgresRuntime(DbRuntime):
         # Create session factory
         self._session_factory = sessionmaker(bind=self._engine)
 
-    def _build_connection_url(
-        self, dsn: str, ssl_mode: str, ssl_ca_bundle_path: str | None
-    ) -> str:
+    def _build_connection_url(self, dsn: str, ssl_mode: str, ssl_ca_bundle_path: str | None) -> str:
         """
         Build SQLAlchemy connection URL with SSL parameters.
 

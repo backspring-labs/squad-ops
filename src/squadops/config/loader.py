@@ -13,9 +13,9 @@ from typing import Any, get_args, get_origin
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from squadops.config.path_resolver import PathResolver
 from squadops.config.errors import ConfigValidationError
 from squadops.config.fingerprint import config_fingerprint
+from squadops.config.path_resolver import PathResolver
 from squadops.config.redaction import redact_config
 from squadops.config.schema import AppConfig, SecretsConfig
 
@@ -31,6 +31,7 @@ _schema_path_map: dict[str, "SchemaPathInfo"] | None = None
 @dataclass
 class SchemaPathInfo:
     """Metadata for a schema path."""
+
     dot_path: str  # e.g., "db.pool_size"
     tuple_path: tuple[str, ...]  # e.g., ("db", "pool_size")
     field_type: type  # e.g., int, bool, TasksBackend, Path
@@ -53,7 +54,9 @@ def _extract_field_type(annotation: Any) -> tuple[type, bool]:
 
     # Handle Optional/Union[Type, None]
     if origin is not None:
-        if origin is type(None) or (hasattr(origin, '__origin__') and origin.__origin__ is type(None)):
+        if origin is type(None) or (
+            hasattr(origin, "__origin__") and origin.__origin__ is type(None)
+        ):
             return (type(None), True)
         args = get_args(annotation)
         if len(args) == 2 and type(None) in args:
@@ -116,7 +119,7 @@ def _build_schema_path_map() -> dict[str, SchemaPathInfo]:
             if isinstance(field_type, type) and issubclass(field_type, Enum):
                 is_enum = True
                 enum_class = field_type
-            elif hasattr(field_type, '__origin__'):
+            elif hasattr(field_type, "__origin__"):
                 # Check if it's a generic type that might contain an enum
                 args = get_args(field_type)
                 for arg in args:
@@ -152,7 +155,9 @@ def _build_schema_path_map() -> dict[str, SchemaPathInfo]:
             # If it's a nested model, recurse into it
             if is_nested_model:
                 nested_model_class = field_type
-                if not isinstance(nested_model_class, type) or not issubclass(nested_model_class, BaseModel):
+                if not isinstance(nested_model_class, type) or not issubclass(
+                    nested_model_class, BaseModel
+                ):
                     # Extract from Optional/Union
                     origin = get_origin(annotation)
                     if origin is not None:
@@ -162,7 +167,9 @@ def _build_schema_path_map() -> dict[str, SchemaPathInfo]:
                                 nested_model_class = arg
                                 break
 
-                if isinstance(nested_model_class, type) and issubclass(nested_model_class, BaseModel):
+                if isinstance(nested_model_class, type) and issubclass(
+                    nested_model_class, BaseModel
+                ):
                     traverse_model(nested_model_class, current_tuple_path)
 
     # Start traversal from AppConfig
@@ -233,7 +240,9 @@ def _generate_path_segmentations(parts: list[str]) -> list[str]:
     return generate_recursive(parts, [])
 
 
-def _resolve_env_var_path(env_var_path: str, schema_map: dict[str, SchemaPathInfo]) -> SchemaPathInfo | None:
+def _resolve_env_var_path(
+    env_var_path: str, schema_map: dict[str, SchemaPathInfo]
+) -> SchemaPathInfo | None:
     """
     Resolve an environment variable path to a schema path unambiguously.
 
@@ -301,7 +310,7 @@ def _load_yaml_file(file_path: Path) -> dict[str, Any]:
         return {}
 
     try:
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             content = yaml.safe_load(f)
             return content if isinstance(content, dict) else {}
     except Exception as e:
@@ -610,7 +619,9 @@ def load_config(
             db_runtime = get_db_runtime(merged, manager)
             logger.info("Created DbRuntime instance via persistence factory")
         except Exception as e:
-            logger.warning(f"Failed to create DbRuntime instance: {e}. Database access may be limited.")
+            logger.warning(
+                f"Failed to create DbRuntime instance: {e}. Database access may be limited."
+            )
 
     app_config._db_runtime = db_runtime
 

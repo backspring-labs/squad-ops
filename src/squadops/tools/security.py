@@ -3,6 +3,7 @@
 Shared path validation for all tool ports (SIP §7.2).
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from pathlib import Path
 
 

@@ -40,13 +40,9 @@ def handle_cycle_error(e: CycleError) -> HTTPException:
         if isinstance(e, exc_type):
             return HTTPException(
                 status_code=status,
-                detail={
-                    "error": {"code": code, "message": str(e), "details": None}
-                },
+                detail={"error": {"code": code, "message": str(e), "details": None}},
             )
     return HTTPException(
         status_code=500,
-        detail={
-            "error": {"code": "INTERNAL_ERROR", "message": str(e), "details": None}
-        },
+        detail={"error": {"code": "INTERNAL_ERROR", "message": str(e), "details": None}},
     )

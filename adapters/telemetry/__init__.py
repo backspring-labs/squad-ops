@@ -8,6 +8,7 @@ Provides implementations of telemetry ports:
 
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from adapters.telemetry.console import ConsoleAdapter
 from adapters.telemetry.factory import (
     create_event_provider,

@@ -73,9 +73,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     async def get_cycle(self, cycle_id: str) -> Cycle:
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM cycle_registry WHERE cycle_id = $1", cycle_id
-            )
+            row = await conn.fetchrow("SELECT * FROM cycle_registry WHERE cycle_id = $1", cycle_id)
         if row is None:
             raise CycleNotFoundError(f"Cycle not found: {cycle_id}")
         return self._row_to_cycle(row)
@@ -128,8 +126,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             async with conn.transaction(isolation="serializable"):
                 # Lock cycle row and check cancelled (D2, D8)
                 cycle_row = await conn.fetchrow(
-                    "SELECT cancelled FROM cycle_registry "
-                    "WHERE cycle_id = $1 FOR UPDATE",
+                    "SELECT cancelled FROM cycle_registry WHERE cycle_id = $1 FOR UPDATE",
                     run.cycle_id,
                 )
                 if cycle_row is None:
@@ -141,8 +138,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
                 # Allocate next run_number under the lock
                 next_num = await conn.fetchval(
-                    "SELECT COALESCE(MAX(run_number), 0) + 1 "
-                    "FROM cycle_runs WHERE cycle_id = $1",
+                    "SELECT COALESCE(MAX(run_number), 0) + 1 FROM cycle_runs WHERE cycle_id = $1",
                     run.cycle_id,
                 )
 
@@ -164,9 +160,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     async def get_run(self, run_id: str) -> Run:
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM cycle_runs WHERE run_id = $1", run_id
-            )
+            row = await conn.fetchrow("SELECT * FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
                 raise RunNotFoundError(f"Run not found: {run_id}")
             gate_rows = await conn.fetch(
@@ -176,9 +170,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
         return self._assemble_run(row, gate_rows)
 
-    async def list_runs(
-        self, cycle_id: str, *, limit: int = 50, offset: int = 0
-    ) -> list[Run]:
+    async def list_runs(self, cycle_id: str, *, limit: int = 50, offset: int = 0) -> list[Run]:
         async with self._pool.acquire() as conn:
             run_rows = await conn.fetch(
                 "SELECT * FROM cycle_runs WHERE cycle_id = $1 "
@@ -201,16 +193,11 @@ class PostgresCycleRegistry(CycleRegistryPort):
         for g in gate_rows:
             gates_by_run.setdefault(g["run_id"], []).append(g)
 
-        return [
-            self._assemble_run(r, gates_by_run.get(r["run_id"], []))
-            for r in run_rows
-        ]
+        return [self._assemble_run(r, gates_by_run.get(r["run_id"], [])) for r in run_rows]
 
     async def update_run_status(self, run_id: str, status: RunStatus) -> Run:
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT status FROM cycle_runs WHERE run_id = $1", run_id
-            )
+            row = await conn.fetchrow("SELECT status FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
                 raise RunNotFoundError(f"Run not found: {run_id}")
 
@@ -245,9 +232,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
     async def cancel_run(self, run_id: str) -> None:
         await self.update_run_status(run_id, RunStatus.CANCELLED)
 
-    async def append_artifact_refs(
-        self, run_id: str, artifact_ids: tuple[str, ...]
-    ) -> Run:
+    async def append_artifact_refs(self, run_id: str, artifact_ids: tuple[str, ...]) -> Run:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT artifact_refs FROM cycle_runs WHERE run_id = $1", run_id
@@ -272,35 +257,28 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     # --- Gate decisions ---
 
-    async def record_gate_decision(
-        self, run_id: str, decision: GateDecision
-    ) -> Run:
+    async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:
         async with self._pool.acquire() as conn:
             async with conn.transaction(isolation="read_committed"):
                 # 1. Load run + validate not terminal
                 run_row = await conn.fetchrow(
-                    "SELECT status, cycle_id FROM cycle_runs "
-                    "WHERE run_id = $1 FOR UPDATE",
+                    "SELECT status, cycle_id FROM cycle_runs WHERE run_id = $1 FOR UPDATE",
                     run_id,
                 )
                 if run_row is None:
                     raise RunNotFoundError(f"Run not found: {run_id}")
                 if RunStatus(run_row["status"]) in TERMINAL_STATES:
                     raise RunTerminalError(
-                        f"Cannot record gate decision on terminal run "
-                        f"(status={run_row['status']})"
+                        f"Cannot record gate decision on terminal run (status={run_row['status']})"
                     )
 
                 # 2. Validate gate_name exists in cycle's policy
                 cycle_row = await conn.fetchrow(
-                    "SELECT task_flow_policy FROM cycle_registry "
-                    "WHERE cycle_id = $1",
+                    "SELECT task_flow_policy FROM cycle_registry WHERE cycle_id = $1",
                     run_row["cycle_id"],
                 )
                 if cycle_row is None:
-                    raise CycleNotFoundError(
-                        f"Cycle not found: {run_row['cycle_id']}"
-                    )
+                    raise CycleNotFoundError(f"Cycle not found: {run_row['cycle_id']}")
                 policy = self._parse_jsonb(cycle_row["task_flow_policy"])
                 gate_names = {g["name"] for g in policy.get("gates", ())}
                 if decision.gate_name not in gate_names:
@@ -348,21 +326,16 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     # --- Pulse Verification (SIP-0070) ---
 
-    async def record_pulse_verification(
-        self, run_id: str, record: PulseVerificationRecord
-    ) -> Run:
+    async def record_pulse_verification(self, run_id: str, record: PulseVerificationRecord) -> Run:
         """Persist a pulse verification record to Postgres."""
         async with self._pool.acquire() as conn:
             # Validate run exists and is not terminal
-            row = await conn.fetchrow(
-                "SELECT status FROM cycle_runs WHERE run_id = $1", run_id
-            )
+            row = await conn.fetchrow("SELECT status FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
                 raise RunNotFoundError(f"Run not found: {run_id}")
             if RunStatus(row["status"]) in TERMINAL_STATES:
                 raise RunTerminalError(
-                    f"Cannot record pulse verification on terminal run "
-                    f"(status={row['status']})"
+                    f"Cannot record pulse verification on terminal run (status={row['status']})"
                 )
 
             await conn.execute(
@@ -454,8 +427,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         """Fetch the single most recent run for status derivation (D6)."""
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT * FROM cycle_runs WHERE cycle_id = $1 "
-                "ORDER BY run_number DESC LIMIT 1",
+                "SELECT * FROM cycle_runs WHERE cycle_id = $1 ORDER BY run_number DESC LIMIT 1",
                 cycle_id,
             )
             if row is None:

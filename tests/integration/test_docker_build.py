@@ -25,15 +25,20 @@ def build_qa_image(project_root):
     """Build QA agent Docker image for tests."""
     result = subprocess.run(
         [
-            "docker", "build",
-            "-t", "squadops/eve:test",
-            "--build-arg", "AGENT_ROLE=qa",
-            "-f", "agents/Dockerfile", "."
+            "docker",
+            "build",
+            "-t",
+            "squadops/eve:test",
+            "--build-arg",
+            "AGENT_ROLE=qa",
+            "-f",
+            "agents/Dockerfile",
+            ".",
         ],
         cwd=project_root,
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=300,
     )
     if result.returncode != 0:
         pytest.skip(f"Docker build failed: {result.stderr[:200]}")
@@ -45,15 +50,20 @@ def build_dev_image(project_root):
     """Build Dev agent Docker image for tests."""
     result = subprocess.run(
         [
-            "docker", "build",
-            "-t", "squadops/neo:test",
-            "--build-arg", "AGENT_ROLE=dev",
-            "-f", "agents/Dockerfile", "."
+            "docker",
+            "build",
+            "-t",
+            "squadops/neo:test",
+            "--build-arg",
+            "AGENT_ROLE=dev",
+            "-f",
+            "agents/Dockerfile",
+            ".",
         ],
         cwd=project_root,
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=300,
     )
     if result.returncode != 0:
         pytest.skip(f"Docker build failed: {result.stderr[:200]}")
@@ -65,15 +75,20 @@ def test_qa_docker_build_succeeds(project_root):
     """Test that QA agent Docker build succeeds."""
     result = subprocess.run(
         [
-            "docker", "build",
-            "-t", "squadops/eve:test",
-            "--build-arg", "AGENT_ROLE=qa",
-            "-f", "agents/Dockerfile", "."
+            "docker",
+            "build",
+            "-t",
+            "squadops/eve:test",
+            "--build-arg",
+            "AGENT_ROLE=qa",
+            "-f",
+            "agents/Dockerfile",
+            ".",
         ],
         cwd=project_root,
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=300,
     )
 
     assert result.returncode == 0, f"Docker build failed: {result.stderr[:500]}"
@@ -84,15 +99,20 @@ def test_dev_docker_build_succeeds(project_root):
     """Test that Dev agent Docker build succeeds."""
     result = subprocess.run(
         [
-            "docker", "build",
-            "-t", "squadops/neo:test",
-            "--build-arg", "AGENT_ROLE=dev",
-            "-f", "agents/Dockerfile", "."
+            "docker",
+            "build",
+            "-t",
+            "squadops/neo:test",
+            "--build-arg",
+            "AGENT_ROLE=dev",
+            "-f",
+            "agents/Dockerfile",
+            ".",
         ],
         cwd=project_root,
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=300,
     )
 
     assert result.returncode == 0, f"Docker build failed: {result.stderr[:500]}"
@@ -105,7 +125,7 @@ def test_built_container_has_correct_structure(build_qa_image):
         ["docker", "run", "--rm", build_qa_image, "ls", "-la", "/app"],
         capture_output=True,
         text=True,
-        timeout=30
+        timeout=30,
     )
 
     assert result.returncode == 0, f"Container check failed: {result.stderr}"
@@ -120,10 +140,18 @@ def test_built_container_has_correct_structure(build_qa_image):
 def test_built_container_has_squadops_package(build_qa_image):
     """Test that squadops package is installed in container."""
     result = subprocess.run(
-        ["docker", "run", "--rm", build_qa_image, "python", "-c", "import squadops; print(squadops.__version__)"],
+        [
+            "docker",
+            "run",
+            "--rm",
+            build_qa_image,
+            "python",
+            "-c",
+            "import squadops; print(squadops.__version__)",
+        ],
         capture_output=True,
         text=True,
-        timeout=30
+        timeout=30,
     )
 
     assert result.returncode == 0, f"Package import failed: {result.stderr}"
@@ -137,7 +165,7 @@ def test_built_container_has_instances_yaml(build_qa_image):
         ["docker", "run", "--rm", build_qa_image, "cat", "/app/agents/instances/instances.yaml"],
         capture_output=True,
         text=True,
-        timeout=30
+        timeout=30,
     )
 
     assert result.returncode == 0, f"instances.yaml not found: {result.stderr}"
@@ -149,15 +177,19 @@ def test_agent_can_start_in_container(build_qa_image):
     """Test that agent entry point can be loaded (doesn't require full startup)."""
     result = subprocess.run(
         [
-            "docker", "run", "--rm",
-            "-e", "SQUADOPS__AGENT__ID=eve",
+            "docker",
+            "run",
+            "--rm",
+            "-e",
+            "SQUADOPS__AGENT__ID=eve",
             build_qa_image,
-            "python", "-c",
-            "from squadops.agents.entrypoint import AgentRunner; print('Entry point loadable')"
+            "python",
+            "-c",
+            "from squadops.agents.entrypoint import AgentRunner; print('Entry point loadable')",
         ],
         capture_output=True,
         text=True,
-        timeout=30
+        timeout=30,
     )
 
     assert result.returncode == 0, f"Agent entry point failed to load: {result.stderr}"
@@ -171,26 +203,38 @@ def test_build_hash_propagation(project_root):
 
     result = subprocess.run(
         [
-            "docker", "build",
-            "-t", "squadops/hash-test:latest",
-            "--build-arg", "AGENT_ROLE=qa",
-            "--build-arg", f"BUILD_HASH={test_hash}",
-            "-f", "agents/Dockerfile", "."
+            "docker",
+            "build",
+            "-t",
+            "squadops/hash-test:latest",
+            "--build-arg",
+            "AGENT_ROLE=qa",
+            "--build-arg",
+            f"BUILD_HASH={test_hash}",
+            "-f",
+            "agents/Dockerfile",
+            ".",
         ],
         cwd=project_root,
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=300,
     )
 
     assert result.returncode == 0, f"Docker build failed: {result.stderr[:500]}"
 
     # Check label was applied
     inspect_result = subprocess.run(
-        ["docker", "inspect", "--format", "{{index .Config.Labels \"squadops.build_hash\"}}", "squadops/hash-test:latest"],
+        [
+            "docker",
+            "inspect",
+            "--format",
+            '{{index .Config.Labels "squadops.build_hash"}}',
+            "squadops/hash-test:latest",
+        ],
         capture_output=True,
         text=True,
-        timeout=10
+        timeout=10,
     )
 
     assert test_hash in inspect_result.stdout, f"Build hash not in labels: {inspect_result.stdout}"

@@ -2,7 +2,7 @@
 Shared fixtures for SIP-0064 cycle domain tests.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -18,7 +18,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 
-_NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture

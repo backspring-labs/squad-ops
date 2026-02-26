@@ -5,10 +5,11 @@ by capability ID and role.
 
 Part of SIP-0.8.8 Phase 6.
 """
+
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -129,9 +130,7 @@ class HandlerRegistry:
         # Remove from role index
         for role in registration.roles:
             if role in self._by_role:
-                self._by_role[role] = [
-                    cid for cid in self._by_role[role] if cid != capability_id
-                ]
+                self._by_role[role] = [cid for cid in self._by_role[role] if cid != capability_id]
 
         return True
 

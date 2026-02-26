@@ -7,7 +7,6 @@ are committed. Enforces secret:// usage for secret-bearing keys.
 
 import re
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
 
 import pytest
 
@@ -31,9 +30,17 @@ URL_CREDENTIAL_NO_USER_PATTERN = re.compile(r"://:([^@]+)@")
 
 # Third-party services with intentional hardcoded dev-only secrets (out of scope per SIP-0052)
 THIRD_PARTY_SERVICES = {
-    "rabbitmq", "postgres", "redis", "grafana", "prometheus",
-    "otel-collector", "prefect-server", "prefect-ui",
-    "langfuse", "langfuse-db", "squadops-keycloak",
+    "rabbitmq",
+    "postgres",
+    "redis",
+    "grafana",
+    "prometheus",
+    "otel-collector",
+    "prefect-server",
+    "prefect-ui",
+    "langfuse",
+    "langfuse-db",
+    "squadops-keycloak",
 }
 
 
@@ -44,9 +51,17 @@ def _detect_compose_service(line: str) -> str | None:
         parts = stripped.split(":", 1)
         if len(parts) == 2 and parts[1].strip() == "":
             name = parts[0].strip()
-            if name and not name.startswith("#") and name not in {
-                "services", "volumes", "secrets", "networks",
-            }:
+            if (
+                name
+                and not name.startswith("#")
+                and name
+                not in {
+                    "services",
+                    "volumes",
+                    "secrets",
+                    "networks",
+                }
+            ):
                 return name
     return None
 
@@ -73,11 +88,11 @@ def scan_yaml_files(directory: Path, pattern: str = "**/*.yaml") -> list[Path]:
 def extract_url_credentials(content: str) -> list[tuple[str, str]]:
     """
     Extract password components from URLs with embedded credentials.
-    
+
     Returns list of (url, password_component) tuples.
     """
     credentials = []
-    
+
     # Pattern 1: user:password@host
     for match in URL_CREDENTIAL_PATTERN.finditer(content):
         username = match.group(1)
@@ -89,7 +104,7 @@ def extract_url_credentials(content: str) -> list[tuple[str, str]]:
             end = min(len(content), content.find(" ", match.end()))
         url = content[start:end] if end > start else ""
         credentials.append((url, password))
-    
+
     # Pattern 2: :password@host (no username)
     for match in URL_CREDENTIAL_NO_USER_PATTERN.finditer(content):
         password = match.group(1)
@@ -100,7 +115,7 @@ def extract_url_credentials(content: str) -> list[tuple[str, str]]:
             end = min(len(content), content.find(" ", match.end()))
         url = content[start:end] if end > start else ""
         credentials.append((url, password))
-    
+
     return credentials
 
 
@@ -136,19 +151,19 @@ def test_no_plaintext_secrets_in_config():
     """Scan config/**/*.yaml for forbidden patterns."""
     repo_root = get_repo_root()
     config_dir = repo_root / "config"
-    
+
     if not config_dir.exists():
         pytest.skip("config directory not found")
-    
+
     violations = []
-    
+
     # Scan all YAML files in config directory
     yaml_files = scan_yaml_files(config_dir, "**/*.yaml")
-    
+
     for file_path in yaml_files:
         try:
             content = file_path.read_text(encoding="utf-8")
-            
+
             # Check for URL patterns with embedded credentials
             # Skip comments - only check actual configuration values
             lines = content.split("\n")
@@ -163,7 +178,7 @@ def test_no_plaintext_secrets_in_config():
                         violations.append(
                             f"{file_path.relative_to(repo_root)}:{line_num}: Plaintext password in URL: {url}"
                         )
-            
+
             # Check for known secret-bearing keys with non-secret:// values
             # This is a simplified check - in practice, you'd parse YAML properly
             lines = content.split("\n")
@@ -177,19 +192,24 @@ def test_no_plaintext_secrets_in_config():
                             # Check if it's not a comment
                             if not line.strip().startswith("#"):
                                 # Check for plaintext patterns
-                                if any(pattern in line.lower() for pattern in [
-                                    "squadops123", "postgres/postgres", "changeme", "password123",
-                                    "admin123", "test123"
-                                ]):
+                                if any(
+                                    pattern in line.lower()
+                                    for pattern in [
+                                        "squadops123",
+                                        "postgres/postgres",
+                                        "changeme",
+                                        "password123",
+                                        "admin123",
+                                        "test123",
+                                    ]
+                                ):
                                     violations.append(
                                         f"{file_path.relative_to(repo_root)}:{line_num}: "
                                         f"Secret-bearing key '{key}' with plaintext value"
                                     )
         except Exception as e:
-            violations.append(
-                f"{file_path.relative_to(repo_root)}: Error reading file: {e}"
-            )
-    
+            violations.append(f"{file_path.relative_to(repo_root)}: Error reading file: {e}")
+
     if violations:
         pytest.fail(
             "Plaintext secrets found in config files:\n" + "\n".join(f"  - {v}" for v in violations)
@@ -199,9 +219,9 @@ def test_no_plaintext_secrets_in_config():
 def test_no_plaintext_secrets_in_docker_compose():
     """Scan docker-compose*.yml for forbidden patterns."""
     repo_root = get_repo_root()
-    
+
     violations = []
-    
+
     # Find all docker-compose files
     compose_files = list(repo_root.glob("docker-compose*.yml"))
 
@@ -248,38 +268,44 @@ def test_no_plaintext_secrets_in_docker_compose():
                         if f"{key.upper()}:" in line or f"{key}:" in line:
                             if "secret://" not in line:
                                 # Check for plaintext patterns
-                                if any(pattern in line.lower() for pattern in [
-                                    "squadops123", "postgres/postgres", "changeme", "password123",
-                                    "admin123", "test123"
-                                ]):
+                                if any(
+                                    pattern in line.lower()
+                                    for pattern in [
+                                        "squadops123",
+                                        "postgres/postgres",
+                                        "changeme",
+                                        "password123",
+                                        "admin123",
+                                        "test123",
+                                    ]
+                                ):
                                     violations.append(
                                         f"{file_path.relative_to(repo_root)}:{line_num}: "
                                         f"Plaintext secret in environment: {line.strip()}"
                                     )
         except Exception as e:
-            violations.append(
-                f"{file_path.relative_to(repo_root)}: Error reading file: {e}"
-            )
-    
+            violations.append(f"{file_path.relative_to(repo_root)}: Error reading file: {e}")
+
     if violations:
         pytest.fail(
-            "Plaintext secrets found in docker-compose files:\n" + "\n".join(f"  - {v}" for v in violations)
+            "Plaintext secrets found in docker-compose files:\n"
+            + "\n".join(f"  - {v}" for v in violations)
         )
 
 
 def test_env_templates_use_secret_references():
     """Scan committed .env* templates for secret:// usage."""
     repo_root = get_repo_root()
-    
+
     violations = []
-    
+
     # Find .env.example and .env.template files (not .env itself)
     env_templates = list(repo_root.glob(".env.example")) + list(repo_root.glob(".env.template"))
-    
+
     for file_path in env_templates:
         try:
             content = file_path.read_text(encoding="utf-8")
-            
+
             # Check for URL patterns with embedded credentials
             # Skip comments - only check actual configuration values
             lines = content.split("\n")
@@ -294,13 +320,13 @@ def test_env_templates_use_secret_references():
                         violations.append(
                             f"{file_path.relative_to(repo_root)}:{line_num}: Plaintext password in URL: {url}"
                         )
-            
+
             # Check for ENFORCED_SECRET_KEYS without secret:// references
             lines = content.split("\n")
             for line_num, line in enumerate(lines, 1):
                 if line.strip().startswith("#"):
                     continue  # Skip comments
-                
+
                 for key in ENFORCED_SECRET_KEYS:
                     # Check if line defines this key
                     if re.match(rf"^{key.upper()}=|^{key}=", line, re.IGNORECASE):
@@ -310,30 +336,28 @@ def test_env_templates_use_secret_references():
                                 f"Secret-bearing key '{key}' must use secret:// reference"
                             )
         except Exception as e:
-            violations.append(
-                f"{file_path.relative_to(repo_root)}: Error reading file: {e}"
-            )
-    
+            violations.append(f"{file_path.relative_to(repo_root)}: Error reading file: {e}")
+
     if violations:
         pytest.fail(
-            "Secret-bearing keys without secret:// references in .env templates:\n" + 
-            "\n".join(f"  - {v}" for v in violations)
+            "Secret-bearing keys without secret:// references in .env templates:\n"
+            + "\n".join(f"  - {v}" for v in violations)
         )
 
 
 def test_no_url_credentials():
     """
     MANDATORY: Detect and validate password components in URLs with embedded credentials.
-    
+
     Scans all target files for URL patterns: user:password@host or :password@host
     Extracts the password component from each URL
     Validates that password component contains valid secret://<logical_name> reference
     HARD FAIL if password component does NOT contain valid secret:// reference
     """
     repo_root = get_repo_root()
-    
+
     violations = []
-    
+
     # Scan config/**/*.yaml
     config_dir = repo_root / "config"
     if config_dir.exists():
@@ -354,10 +378,8 @@ def test_no_url_credentials():
                                 f"URL with plaintext password: {url}"
                             )
             except Exception as e:
-                violations.append(
-                    f"{file_path.relative_to(repo_root)}: Error: {e}"
-                )
-    
+                violations.append(f"{file_path.relative_to(repo_root)}: Error: {e}")
+
     # Scan docker-compose*.yml (with service-awareness to skip third-party services)
     for file_path in repo_root.glob("docker-compose*.yml"):
         try:
@@ -383,10 +405,8 @@ def test_no_url_credentials():
                             f"URL with plaintext password: {url}"
                         )
         except Exception as e:
-            violations.append(
-                f"{file_path.relative_to(repo_root)}: Error: {e}"
-            )
-    
+            violations.append(f"{file_path.relative_to(repo_root)}: Error: {e}")
+
     # Scan .env* templates
     for file_path in list(repo_root.glob(".env.example")) + list(repo_root.glob(".env.template")):
         try:
@@ -405,13 +425,10 @@ def test_no_url_credentials():
                             f"URL with plaintext password: {url}"
                         )
         except Exception as e:
-            violations.append(
-                f"{file_path.relative_to(repo_root)}: Error: {e}"
-            )
-    
+            violations.append(f"{file_path.relative_to(repo_root)}: Error: {e}")
+
     if violations:
         pytest.fail(
-            "URLs with plaintext credentials found (must use secret:// references):\n" +
-            "\n".join(f"  - {v}" for v in violations)
+            "URLs with plaintext credentials found (must use secret:// references):\n"
+            + "\n".join(f"  - {v}" for v in violations)
         )
-

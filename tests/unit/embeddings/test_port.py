@@ -1,6 +1,8 @@
 """Unit tests for EmbeddingsPort interface."""
-import pytest
+
 from abc import ABC
+
+import pytest
 
 from squadops.ports.embeddings.provider import EmbeddingsPort
 

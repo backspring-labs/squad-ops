@@ -3,7 +3,7 @@ Run API routes (SIP-0064 §9.4).
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 
@@ -13,9 +13,7 @@ from squadops.api.routes.cycles.mapping import run_to_response
 from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import CycleError, GateDecision, Run
 
-router = APIRouter(
-    prefix="/api/v1/projects/{project_id}/cycles/{cycle_id}/runs", tags=["runs"]
-)
+router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles/{cycle_id}/runs", tags=["runs"])
 
 
 @router.post("")
@@ -29,9 +27,7 @@ async def create_run(project_id: str, cycle_id: str):
         existing_runs = await registry.list_runs(cycle_id)
         run_number = len(existing_runs) + 1
 
-        config_hash = compute_config_hash(
-            cycle.applied_defaults, cycle.execution_overrides
-        )
+        config_hash = compute_config_hash(cycle.applied_defaults, cycle.execution_overrides)
 
         run = Run(
             run_id=f"run_{uuid.uuid4().hex[:12]}",
@@ -99,7 +95,7 @@ async def gate_decision(
             gate_name=gate_name,
             decision=body.decision,
             decided_by="system",  # TODO: extract from auth context
-            decided_at=datetime.now(timezone.utc),
+            decided_at=datetime.now(UTC),
             notes=body.notes,
         )
         updated = await registry.record_gate_decision(run_id, decision)

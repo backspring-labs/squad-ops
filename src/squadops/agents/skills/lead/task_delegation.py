@@ -3,6 +3,7 @@
 Lead agent skill for task assignment.
 Part of SIP-0.8.8 Phase 4.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -96,9 +97,7 @@ class TaskDelegationSkill(Skill):
             }
 
             # Track queue call (actual publish would be done by capability layer)
-            context.track_port_call(
-                "queue", "prepare_delegation", target=target_role
-            )
+            context.track_port_call("queue", "prepare_delegation", target=target_role)
 
             duration_ms = (time.perf_counter() - start_time) * 1000
 
@@ -143,9 +142,7 @@ class TaskDelegationSkill(Skill):
     def _select_target_role(self, task_type: str) -> str:
         """Select appropriate role for task type."""
         for role, capabilities in ROLE_CAPABILITIES.items():
-            if task_type in capabilities or any(
-                cap in task_type for cap in capabilities
-            ):
+            if task_type in capabilities or any(cap in task_type for cap in capabilities):
                 return role
         # Default to dev for code-related tasks
         return "dev"

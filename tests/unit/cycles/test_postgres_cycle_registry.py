@@ -8,8 +8,8 @@ Concurrency, locking, and uniqueness are validated by integration tests (Phase 3
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, call
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -31,13 +31,11 @@ from squadops.cycles.models import (
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 _POLICY = TaskFlowPolicy(
     mode="sequential",
-    gates=(
-        Gate(name="qa_gate", description="QA check", after_task_types=("dev",)),
-    ),
+    gates=(Gate(name="qa_gate", description="QA check", after_task_types=("dev",)),),
 )
 
 _CYCLE = Cycle(
@@ -325,11 +323,14 @@ class TestPostgresCycleRegistry:
     # 8. update_run_status — sets finished_at on terminal states
     # ------------------------------------------------------------------
 
-    @pytest.mark.parametrize("terminal_status", [
-        RunStatus.COMPLETED,
-        RunStatus.FAILED,
-        RunStatus.CANCELLED,
-    ])
+    @pytest.mark.parametrize(
+        "terminal_status",
+        [
+            RunStatus.COMPLETED,
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+        ],
+    )
     async def test_update_run_status_sets_finished_at_on_terminal(
         self, registry, conn, terminal_status
     ):

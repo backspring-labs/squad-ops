@@ -4,6 +4,7 @@ Builder agent skill for generating source files, QA handoff documents,
 and configuration from implementation plans.
 Part of SIP-0071 Phase 3.
 """
+
 from __future__ import annotations
 
 import hashlib

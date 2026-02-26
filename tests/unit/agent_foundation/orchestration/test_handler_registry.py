@@ -3,14 +3,15 @@
 Tests capability handler registration and lookup.
 Part of SIP-0.8.8 Phase 6.
 """
+
 import pytest
 
+from squadops.capabilities.handlers.base import CapabilityHandler, HandlerEvidence, HandlerResult
 from squadops.orchestration.handler_registry import (
-    HandlerRegistry,
-    HandlerNotFoundError,
     DuplicateHandlerError,
+    HandlerNotFoundError,
+    HandlerRegistry,
 )
-from squadops.capabilities.handlers.base import CapabilityHandler, HandlerResult, HandlerEvidence
 
 
 class MockHandler(CapabilityHandler):

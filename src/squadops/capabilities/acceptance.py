@@ -85,9 +85,7 @@ class AcceptanceCheckEngine:
         """
         self.chroot = Path(chroot).resolve()
 
-    def resolve_template(
-        self, template: str, context: AcceptanceContext
-    ) -> str:
+    def resolve_template(self, template: str, context: AcceptanceContext) -> str:
         """
         Resolve {variable} placeholders in a template string.
 
@@ -143,9 +141,7 @@ class AcceptanceCheckEngine:
 
         return TEMPLATE_PATTERN.sub(replace_match, template)
 
-    def validate_and_resolve_path(
-        self, path_template: str, context: AcceptanceContext
-    ) -> Path:
+    def validate_and_resolve_path(self, path_template: str, context: AcceptanceContext) -> Path:
         """
         Resolve and validate a path template with chroot enforcement.
 
@@ -210,9 +206,7 @@ class AcceptanceCheckEngine:
 
         return True, current
 
-    def _check_file_exists(
-        self, path: Path, check: AcceptanceCheck
-    ) -> AcceptanceResult:
+    def _check_file_exists(self, path: Path, check: AcceptanceCheck) -> AcceptanceResult:
         """Evaluate file_exists check."""
         exists = path.exists() and path.is_file()
         return AcceptanceResult(
@@ -222,9 +216,7 @@ class AcceptanceCheckEngine:
             error=None if exists else f"File does not exist: {path}",
         )
 
-    def _check_non_empty(
-        self, path: Path, check: AcceptanceCheck
-    ) -> AcceptanceResult:
+    def _check_non_empty(self, path: Path, check: AcceptanceCheck) -> AcceptanceResult:
         """Evaluate non_empty check."""
         if not path.exists():
             return AcceptanceResult(
@@ -251,9 +243,7 @@ class AcceptanceCheckEngine:
             error=None if passed else f"File is empty: {path}",
         )
 
-    def _check_json_field_equals(
-        self, path: Path, check: AcceptanceCheck
-    ) -> AcceptanceResult:
+    def _check_json_field_equals(self, path: Path, check: AcceptanceCheck) -> AcceptanceResult:
         """
         Evaluate json_field_equals check with strict type comparison.
 
@@ -312,8 +302,7 @@ class AcceptanceCheckEngine:
                 )
             else:
                 error = (
-                    f"Value mismatch at '{check.field_path}': "
-                    f"expected {expected!r}, got {actual!r}"
+                    f"Value mismatch at '{check.field_path}': expected {expected!r}, got {actual!r}"
                 )
 
         return AcceptanceResult(
@@ -324,9 +313,7 @@ class AcceptanceCheckEngine:
             error=error,
         )
 
-    def evaluate(
-        self, check: AcceptanceCheck, context: AcceptanceContext
-    ) -> AcceptanceResult:
+    def evaluate(self, check: AcceptanceCheck, context: AcceptanceContext) -> AcceptanceResult:
         """
         Evaluate a single acceptance check.
 
@@ -416,8 +403,10 @@ class AcceptanceCheckEngine:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(resolved_url, timeout=timeout)
             passed = resp.status_code == check.expected_status
-            error = None if passed else (
-                f"Expected status {check.expected_status}, got {resp.status_code}"
+            error = (
+                None
+                if passed
+                else (f"Expected status {check.expected_status}, got {resp.status_code}")
             )
             return AcceptanceResult(
                 check=check,
@@ -458,14 +447,15 @@ class AcceptanceCheckEngine:
         container = self.resolve_template(check.container_name, context)
         try:
             proc = await asyncio.create_subprocess_exec(
-                "docker", "inspect", "--format",
-                '{{json .State}}', container,
+                "docker",
+                "inspect",
+                "--format",
+                "{{json .State}}",
+                container,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             if proc.returncode != 0:
                 return AcceptanceResult(
                     check=check,
@@ -529,19 +519,25 @@ class AcceptanceCheckEngine:
             doc_path = self.validate_and_resolve_path(check.target, context)
         except (PathEscapeError, TemplateResolutionError) as e:
             return AcceptanceResult(
-                check=check, passed=False, resolved_path=check.target,
+                check=check,
+                passed=False,
+                resolved_path=check.target,
                 error=str(e),
             )
 
         schema_path = self.chroot / check.schema
         if not doc_path.exists():
             return AcceptanceResult(
-                check=check, passed=False, resolved_path=str(doc_path),
+                check=check,
+                passed=False,
+                resolved_path=str(doc_path),
                 error=f"Document not found: {doc_path}",
             )
         if not schema_path.exists():
             return AcceptanceResult(
-                check=check, passed=False, resolved_path=str(doc_path),
+                check=check,
+                passed=False,
+                resolved_path=str(doc_path),
                 error=f"Schema not found: {schema_path}",
             )
 
@@ -550,18 +546,24 @@ class AcceptanceCheckEngine:
             schema_data = json.loads(schema_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
             return AcceptanceResult(
-                check=check, passed=False, resolved_path=str(doc_path),
+                check=check,
+                passed=False,
+                resolved_path=str(doc_path),
                 error=f"Invalid JSON: {e}",
             )
 
         try:
             jsonschema.validate(instance=doc_data, schema=schema_data)
             return AcceptanceResult(
-                check=check, passed=True, resolved_path=str(doc_path),
+                check=check,
+                passed=True,
+                resolved_path=str(doc_path),
             )
         except jsonschema.ValidationError as e:
             return AcceptanceResult(
-                check=check, passed=False, resolved_path=str(doc_path),
+                check=check,
+                passed=False,
+                resolved_path=str(doc_path),
                 error=f"Schema validation failed: {e.message}",
             )
 
@@ -592,9 +594,7 @@ class AcceptanceCheckEngine:
                 cwd=cwd,
                 env=cmd_env,
             )
-            stdout_data, stderr_data = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
-            )
+            stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:
             return AcceptanceResult(
                 check=check,
@@ -639,10 +639,7 @@ class AcceptanceCheckEngine:
         passed = proc.returncode == check.expected_exit_code
         error = None
         if not passed:
-            error = (
-                f"Expected exit code {check.expected_exit_code}, "
-                f"got {proc.returncode}"
-            )
+            error = f"Expected exit code {check.expected_exit_code}, got {proc.returncode}"
             if stderr_text.strip():
                 error += f"\nstderr: {stderr_text.strip()[:500]}"
 
@@ -734,18 +731,21 @@ class AcceptanceCheckEngine:
             remaining = max_suite_seconds - elapsed
             if remaining <= 0:
                 # Suite timeout — SKIP remaining checks (D18)
-                results.append(AcceptanceResult(
-                    check=check,
-                    passed=False,
-                    resolved_path=check.target,
-                    error="Skipped: suite timeout exceeded",
-                    reason_code="suite_timeout",
-                ))
+                results.append(
+                    AcceptanceResult(
+                        check=check,
+                        passed=False,
+                        resolved_path=check.target,
+                        error="Skipped: suite timeout exceeded",
+                        reason_code="suite_timeout",
+                    )
+                )
                 continue
 
             per_check_timeout = min(max_check_seconds, remaining)
             result = await self.evaluate_async(
-                check, context,
+                check,
+                context,
                 max_check_seconds=per_check_timeout,
                 max_output_bytes=max_output_bytes,
             )

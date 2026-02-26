@@ -5,7 +5,6 @@ Unit tests for project commands (SIP-0065 §6.3).
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from squadops.cli import exit_codes
@@ -25,18 +24,22 @@ def _mock_client(return_value):
 class TestProjectsList:
     @patch("squadops.cli.commands.projects._get_client")
     def test_table_output(self, mock_get_client):
-        mock_get_client.return_value = _mock_client([
-            {"project_id": "hello_squad", "name": "Hello Squad", "description": "Test project"},
-        ])
+        mock_get_client.return_value = _mock_client(
+            [
+                {"project_id": "hello_squad", "name": "Hello Squad", "description": "Test project"},
+            ]
+        )
         result = runner.invoke(app, ["projects", "list"])
         assert result.exit_code == 0
         assert "hello_squad" in result.output
 
     @patch("squadops.cli.commands.projects._get_client")
     def test_json_output(self, mock_get_client):
-        mock_get_client.return_value = _mock_client([
-            {"project_id": "hello_squad", "name": "Hello Squad", "description": "Test"},
-        ])
+        mock_get_client.return_value = _mock_client(
+            [
+                {"project_id": "hello_squad", "name": "Hello Squad", "description": "Test"},
+            ]
+        )
         result = runner.invoke(app, ["--json", "projects", "list"])
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -51,9 +54,11 @@ class TestProjectsList:
 
     @patch("squadops.cli.commands.projects._get_client")
     def test_quiet_mode(self, mock_get_client):
-        mock_get_client.return_value = _mock_client([
-            {"project_id": "p1", "name": "P1", "description": "D"},
-        ])
+        mock_get_client.return_value = _mock_client(
+            [
+                {"project_id": "p1", "name": "P1", "description": "D"},
+            ]
+        )
         result = runner.invoke(app, ["--quiet", "projects", "list"])
         assert result.exit_code == 0
         assert "p1" in result.output

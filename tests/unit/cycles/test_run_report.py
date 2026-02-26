@@ -8,8 +8,8 @@ Part of Phase 3.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -17,14 +17,13 @@ from squadops.cycles.models import (
     Cycle,
     GateDecision,
     Run,
-    RunStatus,
     TaskFlowPolicy,
 )
 from squadops.tasks.models import TaskEnvelope
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 def _make_cycle() -> Cycle:
@@ -70,20 +69,22 @@ def _make_plan(count: int = 3) -> list[TaskEnvelope]:
     envelopes = []
     for i in range(min(count, len(steps))):
         task_type, role, agent = steps[i]
-        envelopes.append(TaskEnvelope(
-            task_id=f"task_{i}",
-            agent_id=agent,
-            cycle_id="cyc_001",
-            pulse_id="pulse_1",
-            project_id="play_game",
-            task_type=task_type,
-            correlation_id="corr_1",
-            causation_id="corr_1" if i == 0 else f"task_{i - 1}",
-            trace_id="trace_1",
-            span_id=f"span_{i}",
-            inputs={"prd": "test"},
-            metadata={"role": role, "step_index": i},
-        ))
+        envelopes.append(
+            TaskEnvelope(
+                task_id=f"task_{i}",
+                agent_id=agent,
+                cycle_id="cyc_001",
+                pulse_id="pulse_1",
+                project_id="play_game",
+                task_type=task_type,
+                correlation_id="corr_1",
+                causation_id="corr_1" if i == 0 else f"task_{i - 1}",
+                trace_id="trace_1",
+                span_id=f"span_{i}",
+                inputs={"prd": "test"},
+                metadata={"role": role, "step_index": i},
+            )
+        )
     return envelopes
 
 
@@ -116,8 +117,11 @@ class TestReportContainsMetadata:
         executor._cycle_registry.get_run = AsyncMock(return_value=run)
 
         await executor._generate_run_report(
-            "cyc_001", "run_001", "COMPLETED",
-            cycle=cycle, plan=_make_plan(),
+            "cyc_001",
+            "run_001",
+            "COMPLETED",
+            cycle=cycle,
+            plan=_make_plan(),
         )
 
         # Verify vault.store was called with the report content
@@ -141,8 +145,11 @@ class TestReportContainsMetadata:
         executor._cycle_registry.get_run = AsyncMock(return_value=run)
 
         await executor._generate_run_report(
-            "cyc_001", "run_001", "COMPLETED",
-            cycle=cycle, plan=None,
+            "cyc_001",
+            "run_001",
+            "COMPLETED",
+            cycle=cycle,
+            plan=None,
         )
 
         content = executor._artifact_vault.store.call_args[0][1].decode()
@@ -156,8 +163,11 @@ class TestReportContainsMetadata:
         executor._cycle_registry.get_run = AsyncMock(return_value=run)
 
         await executor._generate_run_report(
-            "cyc_001", "run_001", "FAILED",
-            cycle=cycle, plan=None,
+            "cyc_001",
+            "run_001",
+            "FAILED",
+            cycle=cycle,
+            plan=None,
         )
 
         content = executor._artifact_vault.store.call_args[0][1].decode()
@@ -172,8 +182,11 @@ class TestReportContainsMetadata:
         plan = _make_plan(3)
 
         await executor._generate_run_report(
-            "cyc_001", "run_001", "COMPLETED",
-            cycle=cycle, plan=plan,
+            "cyc_001",
+            "run_001",
+            "COMPLETED",
+            cycle=cycle,
+            plan=plan,
         )
 
         content = executor._artifact_vault.store.call_args[0][1].decode()
@@ -200,8 +213,11 @@ class TestReportContainsMetadata:
         executor._cycle_registry.get_run = AsyncMock(return_value=run)
 
         await executor._generate_run_report(
-            "cyc_001", "run_001", "COMPLETED",
-            cycle=cycle, plan=None,
+            "cyc_001",
+            "run_001",
+            "COMPLETED",
+            cycle=cycle,
+            plan=None,
         )
 
         content = executor._artifact_vault.store.call_args[0][1].decode()
@@ -217,8 +233,11 @@ class TestReportContainsMetadata:
         executor._cycle_registry.get_run = AsyncMock(return_value=run)
 
         await executor._generate_run_report(
-            "cyc_001", "run_001", "COMPLETED",
-            cycle=cycle, plan=None,
+            "cyc_001",
+            "run_001",
+            "COMPLETED",
+            cycle=cycle,
+            plan=None,
         )
 
         content = executor._artifact_vault.store.call_args[0][1].decode()
@@ -235,7 +254,9 @@ class TestReportFailureNoStatusChange:
         # Should not raise — caller wraps in try/except
         with pytest.raises(Exception, match="registry down"):
             await executor._generate_run_report(
-                "cyc_001", "run_001", "COMPLETED",
+                "cyc_001",
+                "run_001",
+                "COMPLETED",
             )
 
         # The run status was NOT updated (no update_run_status calls)
@@ -249,8 +270,11 @@ class TestReportWithoutCycleOrPlan:
         executor._cycle_registry.get_run = AsyncMock(return_value=run)
 
         await executor._generate_run_report(
-            "cyc_001", "run_001", "FAILED",
-            cycle=None, plan=None,
+            "cyc_001",
+            "run_001",
+            "FAILED",
+            cycle=None,
+            plan=None,
         )
 
         call_args = executor._artifact_vault.store.call_args

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import typer
 
-from squadops.cli import exit_codes
 from squadops.cli.client import APIClient, CLIError
 from squadops.cli.config import load_config
 from squadops.cli.output import print_detail, print_error, print_json, print_table
@@ -36,10 +35,7 @@ def list_projects(ctx: typer.Context):
     if fmt == "json":
         print_json(data)
     else:
-        rows = [
-            [p["project_id"], p["name"], p.get("description", "")]
-            for p in data
-        ]
+        rows = [[p["project_id"], p["name"], p.get("description", "")] for p in data]
         print_table(["Project ID", "Name", "Description"], rows, quiet=quiet)
 
 

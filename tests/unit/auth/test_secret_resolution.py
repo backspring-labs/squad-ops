@@ -1,7 +1,8 @@
 """Tests for factory secret resolution (SIP-0062 Phase 3b)."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from adapters.auth.factory import create_service_token_client
 

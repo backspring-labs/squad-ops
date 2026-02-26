@@ -4,6 +4,7 @@ Provides centralized agent instantiation with full port injection.
 
 Part of SIP-0.8.8 Agent Foundation.
 """
+
 from __future__ import annotations
 
 import logging
@@ -155,9 +156,7 @@ class AgentFactory:
         """
         # Validate role exists
         if config.role_id not in self._roles:
-            raise AgentRoleNotFoundError(
-                f"Role '{config.role_id}' not found in registry"
-            )
+            raise AgentRoleNotFoundError(f"Role '{config.role_id}' not found in registry")
 
         # Get agent class (if registered) or use BaseAgent subclass requirement
         agent_class = self._agent_types.get(config.role_id)

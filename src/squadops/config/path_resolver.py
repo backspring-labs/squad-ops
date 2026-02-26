@@ -68,7 +68,9 @@ class PathResolver:
             # Go up from src/squadops/config/ to repo root
             potential_base = current_file.parent.parent.parent.parent
             if (potential_base / "pyproject.toml").exists():
-                logger.debug(f"PathResolver: Detected base path from file location: {potential_base}")
+                logger.debug(
+                    f"PathResolver: Detected base path from file location: {potential_base}"
+                )
                 return potential_base
 
             # Try /app for Docker

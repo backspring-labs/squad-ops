@@ -42,9 +42,7 @@ class PathEscapeError(CapabilityDomainError):
     def __init__(self, path: str, chroot: str):
         self.path = path
         self.chroot = chroot
-        super().__init__(
-            f"Path escape attempt: '{path}' escapes chroot boundary '{chroot}'"
-        )
+        super().__init__(f"Path escape attempt: '{path}' escapes chroot boundary '{chroot}'")
 
 
 class TemplateResolutionError(CapabilityDomainError):

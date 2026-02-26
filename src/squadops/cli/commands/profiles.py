@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import typer
 
-from squadops.cli import exit_codes
 from squadops.cli.client import APIClient, CLIError
 from squadops.cli.config import load_config
 from squadops.cli.output import (

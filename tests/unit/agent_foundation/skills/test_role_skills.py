@@ -3,19 +3,25 @@
 Tests skills WITHOUT agents - direct SkillContext mocking.
 Part of SIP-0.8.8 Phase 4.
 """
+
 import json
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
 
 from squadops.agents.base import PortsBundle
 from squadops.agents.skills.context import SkillContext
 
-# Lead skills
-from squadops.agents.skills.lead.task_analysis import TaskAnalysisSkill
-from squadops.agents.skills.lead.task_delegation import TaskDelegationSkill
+# Data skills
+from squadops.agents.skills.data.data_analysis import DataAnalysisSkill
+from squadops.agents.skills.data.metrics_collection import MetricsCollectionSkill
 
 # Dev skills
 from squadops.agents.skills.dev.code_generation import CodeGenerationSkill
+
+# Lead skills
+from squadops.agents.skills.lead.task_analysis import TaskAnalysisSkill
+from squadops.agents.skills.lead.task_delegation import TaskDelegationSkill
 
 # QA skills
 from squadops.agents.skills.qa.test_execution import TestExecutionSkill
@@ -23,10 +29,6 @@ from squadops.agents.skills.qa.validation import ValidationSkill
 
 # Strat skills
 from squadops.agents.skills.strat.strategy_analysis import StrategyAnalysisSkill
-
-# Data skills
-from squadops.agents.skills.data.data_analysis import DataAnalysisSkill
-from squadops.agents.skills.data.metrics_collection import MetricsCollectionSkill
 
 
 @pytest.fixture
@@ -81,13 +83,15 @@ class TestTaskAnalysisSkill:
     async def test_execute_success(self, skill_context, mock_ports):
         """Skill should analyze task successfully."""
         mock_ports.llm.chat.return_value = MagicMock(
-            content=json.dumps({
-                "summary": "Create a REST API",
-                "requirements": ["FastAPI", "Database"],
-                "approach": "Build incrementally",
-                "complexity": "medium",
-                "risks": ["API changes"],
-            })
+            content=json.dumps(
+                {
+                    "summary": "Create a REST API",
+                    "requirements": ["FastAPI", "Database"],
+                    "approach": "Build incrementally",
+                    "complexity": "medium",
+                    "risks": ["API changes"],
+                }
+            )
         )
 
         skill = TaskAnalysisSkill()
@@ -306,13 +310,15 @@ class TestStrategyAnalysisSkill:
     async def test_execute_analyzes_strategy(self, skill_context, mock_ports):
         """Skill should analyze strategy."""
         mock_ports.llm.chat.return_value = MagicMock(
-            content=json.dumps({
-                "assessment": "Current state is stable",
-                "options": [{"name": "Option A"}],
-                "recommendation": "Go with A",
-                "risks": [],
-                "metrics": ["conversion rate"],
-            })
+            content=json.dumps(
+                {
+                    "assessment": "Current state is stable",
+                    "options": [{"name": "Option A"}],
+                    "recommendation": "Go with A",
+                    "risks": [],
+                    "metrics": ["conversion rate"],
+                }
+            )
         )
 
         skill = StrategyAnalysisSkill()
@@ -347,11 +353,13 @@ class TestDataAnalysisSkill:
     async def test_execute_analyzes_list_data(self, skill_context, mock_ports):
         """Skill should analyze list data."""
         mock_ports.llm.chat.return_value = MagicMock(
-            content=json.dumps({
-                "summary": "Numeric data",
-                "insights": ["Mean is 3"],
-                "recommendations": [],
-            })
+            content=json.dumps(
+                {
+                    "summary": "Numeric data",
+                    "insights": ["Mean is 3"],
+                    "recommendations": [],
+                }
+            )
         )
 
         skill = DataAnalysisSkill()
@@ -369,11 +377,13 @@ class TestDataAnalysisSkill:
     async def test_execute_analyzes_dict_data(self, skill_context, mock_ports):
         """Skill should analyze dict data."""
         mock_ports.llm.chat.return_value = MagicMock(
-            content=json.dumps({
-                "summary": "Key-value data",
-                "insights": [],
-                "recommendations": [],
-            })
+            content=json.dumps(
+                {
+                    "summary": "Key-value data",
+                    "insights": [],
+                    "recommendations": [],
+                }
+            )
         )
 
         skill = DataAnalysisSkill()

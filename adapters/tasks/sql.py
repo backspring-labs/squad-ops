@@ -3,6 +3,7 @@
 PostgreSQL-based task persistence.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -122,9 +123,7 @@ class SQLTaskAdapter(TaskRegistryPort):
                 TaskState.COMPLETED,
                 TaskState.FAILED,
             ):
-                raise TaskStateError(
-                    f"Cannot transition from {current_status} to {status.value}"
-                )
+                raise TaskStateError(f"Cannot transition from {current_status} to {status.value}")
 
             # Update
             result_json = json.dumps(result) if result else None

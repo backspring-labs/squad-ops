@@ -1,10 +1,17 @@
 """Tests for validate_and_resolve_identity() shared helper (SIP-0062 Phase 3a)."""
 
-import pytest
+from datetime import UTC
 from unittest.mock import AsyncMock
 
-from squadops.auth.models import Identity, IdentityResolutionError, TokenClaims, TokenValidationError
+import pytest
+
 from squadops.api.middleware.auth import validate_and_resolve_identity
+from squadops.auth.models import (
+    Identity,
+    IdentityResolutionError,
+    TokenClaims,
+    TokenValidationError,
+)
 
 
 @pytest.fixture
@@ -14,14 +21,14 @@ def mock_auth_port():
 
 @pytest.fixture
 def sample_claims():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     return TokenClaims(
         subject="user-1",
         issuer="http://keycloak/realms/test",
         audience="test-client",
-        expires_at=datetime.now(timezone.utc),
-        issued_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(UTC),
+        issued_at=datetime.now(UTC),
         roles=("admin",),
         scopes=("openid",),
     )
@@ -40,7 +47,9 @@ def sample_identity():
 
 @pytest.mark.auth
 class TestValidateAndResolveIdentity:
-    async def test_valid_token_returns_identity(self, mock_auth_port, sample_claims, sample_identity):
+    async def test_valid_token_returns_identity(
+        self, mock_auth_port, sample_claims, sample_identity
+    ):
         mock_auth_port.validate_token.return_value = sample_claims
         mock_auth_port.resolve_identity.return_value = sample_identity
 

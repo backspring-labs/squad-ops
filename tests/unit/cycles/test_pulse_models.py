@@ -10,7 +10,6 @@ Tests:
 - parse_pulse_checks() validation: suite_class, binding_mode, suite_id, cadence enforcement
 """
 
-
 import pytest
 
 from squadops.capabilities.models import CheckType
@@ -125,8 +124,11 @@ class TestPulseVerificationRecord:
 
     def test_frozen(self):
         record = PulseVerificationRecord(
-            suite_id="s", boundary_id="b", cadence_interval_id=0,
-            run_id="r", suite_outcome=SuiteOutcome.PASS,
+            suite_id="s",
+            boundary_id="b",
+            cadence_interval_id=0,
+            run_id="r",
+            suite_outcome=SuiteOutcome.PASS,
         )
         with pytest.raises(AttributeError):
             record.suite_outcome = SuiteOutcome.FAIL
@@ -134,15 +136,17 @@ class TestPulseVerificationRecord:
 
 class TestParsePulseChecks:
     def test_valid_milestone(self):
-        raw = [{
-            "suite_id": "post_dev_smoke",
-            "boundary_id": "post_dev",
-            "suite_class": "guardrail",
-            "after_task_types": ["development"],
-            "checks": [
-                {"check_type": "file_exists", "target": "output/code.py"},
-            ],
-        }]
+        raw = [
+            {
+                "suite_id": "post_dev_smoke",
+                "boundary_id": "post_dev",
+                "suite_class": "guardrail",
+                "after_task_types": ["development"],
+                "checks": [
+                    {"check_type": "file_exists", "target": "output/code.py"},
+                ],
+            }
+        ]
         result = parse_pulse_checks(raw)
         assert len(result) == 1
         assert result[0].suite_id == "post_dev_smoke"
@@ -152,46 +156,54 @@ class TestParsePulseChecks:
         assert result[0].checks[0].check_type == CheckType.FILE_EXISTS
 
     def test_valid_cadence(self):
-        raw = [{
-            "suite_id": "heartbeat",
-            "boundary_id": "cadence",
-            "binding_mode": "cadence",
-            "checks": [
-                {"check_type": "file_exists", "target": "status.txt"},
-            ],
-        }]
+        raw = [
+            {
+                "suite_id": "heartbeat",
+                "boundary_id": "cadence",
+                "binding_mode": "cadence",
+                "checks": [
+                    {"check_type": "file_exists", "target": "status.txt"},
+                ],
+            }
+        ]
         result = parse_pulse_checks(raw)
         assert result[0].binding_mode == "cadence"
         assert result[0].boundary_id == CADENCE_BOUNDARY_ID
 
     def test_proof_rejected(self):
-        raw = [{
-            "suite_id": "formal",
-            "boundary_id": "post_dev",
-            "suite_class": "proof",
-            "checks": [],
-        }]
+        raw = [
+            {
+                "suite_id": "formal",
+                "boundary_id": "post_dev",
+                "suite_class": "proof",
+                "checks": [],
+            }
+        ]
         with pytest.raises(ValueError, match="proof"):
             parse_pulse_checks(raw)
 
     def test_unknown_binding_mode_rejected(self):
-        raw = [{
-            "suite_id": "s1",
-            "boundary_id": "b1",
-            "binding_mode": "unknown",
-            "checks": [],
-        }]
+        raw = [
+            {
+                "suite_id": "s1",
+                "boundary_id": "b1",
+                "binding_mode": "unknown",
+                "checks": [],
+            }
+        ]
         with pytest.raises(ValueError, match="binding_mode"):
             parse_pulse_checks(raw)
 
     def test_cadence_wrong_boundary_id_rejected(self):
         """D5a: cadence binding mode requires boundary_id == CADENCE_BOUNDARY_ID."""
-        raw = [{
-            "suite_id": "s1",
-            "boundary_id": "post_dev",
-            "binding_mode": "cadence",
-            "checks": [],
-        }]
+        raw = [
+            {
+                "suite_id": "s1",
+                "boundary_id": "post_dev",
+                "binding_mode": "cadence",
+                "checks": [],
+            }
+        ]
         with pytest.raises(ValueError, match="cadence"):
             parse_pulse_checks(raw)
 
@@ -228,40 +240,50 @@ class TestParsePulseChecks:
         assert len(result) == 3
 
     def test_command_list_converted_to_tuple(self):
-        raw = [{
-            "suite_id": "cmd",
-            "boundary_id": "post_dev",
-            "checks": [{
-                "check_type": "command_exit_code",
-                "target": "",
-                "command": ["python", "-c", "print('hi')"],
-            }],
-        }]
+        raw = [
+            {
+                "suite_id": "cmd",
+                "boundary_id": "post_dev",
+                "checks": [
+                    {
+                        "check_type": "command_exit_code",
+                        "target": "",
+                        "command": ["python", "-c", "print('hi')"],
+                    }
+                ],
+            }
+        ]
         result = parse_pulse_checks(raw)
         assert isinstance(result[0].checks[0].command, tuple)
 
     def test_env_list_converted_to_tuple(self):
-        raw = [{
-            "suite_id": "envcheck",
-            "boundary_id": "post_dev",
-            "checks": [{
-                "check_type": "command_exit_code",
-                "target": "",
-                "command": ["echo"],
-                "env": [["MY_VAR", "val"]],
-            }],
-        }]
+        raw = [
+            {
+                "suite_id": "envcheck",
+                "boundary_id": "post_dev",
+                "checks": [
+                    {
+                        "check_type": "command_exit_code",
+                        "target": "",
+                        "command": ["echo"],
+                        "env": [["MY_VAR", "val"]],
+                    }
+                ],
+            }
+        ]
         result = parse_pulse_checks(raw)
         assert result[0].checks[0].env == (("MY_VAR", "val"),)
 
     def test_custom_timeouts(self):
-        raw = [{
-            "suite_id": "slow",
-            "boundary_id": "post_dev",
-            "max_suite_seconds": 60,
-            "max_check_seconds": 20,
-            "checks": [],
-        }]
+        raw = [
+            {
+                "suite_id": "slow",
+                "boundary_id": "post_dev",
+                "max_suite_seconds": 60,
+                "max_check_seconds": 20,
+                "checks": [],
+            }
+        ]
         result = parse_pulse_checks(raw)
         assert result[0].max_suite_seconds == 60
         assert result[0].max_check_seconds == 20

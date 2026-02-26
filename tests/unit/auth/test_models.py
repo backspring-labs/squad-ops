@@ -7,14 +7,13 @@ import pytest
 from squadops.auth.models import (
     AuthContext,
     Identity,
+    IdentityResolutionError,
     IdentityType,
     Role,
     Scope,
     TokenClaims,
     TokenValidationError,
-    IdentityResolutionError,
 )
-
 
 pytestmark = pytest.mark.auth
 
@@ -56,24 +55,33 @@ class TestTokenClaims:
     def test_audience_single_string(self):
         now = datetime.utcnow()
         claims = TokenClaims(
-            subject="u", issuer="i", audience="single-aud",
-            expires_at=now, issued_at=now,
+            subject="u",
+            issuer="i",
+            audience="single-aud",
+            expires_at=now,
+            issued_at=now,
         )
         assert claims.audience == "single-aud"
 
     def test_audience_tuple(self):
         now = datetime.utcnow()
         claims = TokenClaims(
-            subject="u", issuer="i", audience=("aud1", "aud2"),
-            expires_at=now, issued_at=now,
+            subject="u",
+            issuer="i",
+            audience=("aud1", "aud2"),
+            expires_at=now,
+            issued_at=now,
         )
         assert claims.audience == ("aud1", "aud2")
 
     def test_default_roles_and_scopes(self):
         now = datetime.utcnow()
         claims = TokenClaims(
-            subject="u", issuer="i", audience="a",
-            expires_at=now, issued_at=now,
+            subject="u",
+            issuer="i",
+            audience="a",
+            expires_at=now,
+            issued_at=now,
         )
         assert claims.roles == ()
         assert claims.scopes == ()
@@ -107,7 +115,8 @@ class TestIdentity:
 
     def test_service_identity_type(self):
         identity = Identity(
-            user_id="svc-1", display_name="Runtime Service",
+            user_id="svc-1",
+            display_name="Runtime Service",
             identity_type=IdentityType.SERVICE,
         )
         assert identity.identity_type == "service"

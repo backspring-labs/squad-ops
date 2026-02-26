@@ -44,6 +44,7 @@ def saved_token(tmp_path):
 # login
 # ---------------------------------------------------------------------------
 
+
 class TestLoginCommand:
     @patch("squadops.cli.commands.auth.password_login")
     def test_password_login_success(self, mock_login):
@@ -70,10 +71,17 @@ class TestLoginCommand:
             client_id="svc",
             grant_type="client_credentials",
         )
-        result = runner.invoke(app, [
-            "login", "--client-credentials",
-            "--client-id", "svc", "--client-secret", "sec",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "login",
+                "--client-credentials",
+                "--client-id",
+                "svc",
+                "--client-secret",
+                "sec",
+            ],
+        )
         assert result.exit_code == 0
         assert "Login successful" in result.output
 
@@ -129,6 +137,7 @@ class TestLoginCommand:
 # logout
 # ---------------------------------------------------------------------------
 
+
 class TestLogoutCommand:
     def test_logout_removes_token(self, saved_token):
         result = runner.invoke(app, ["logout"])
@@ -151,6 +160,7 @@ class TestLogoutCommand:
 # ---------------------------------------------------------------------------
 # auth whoami
 # ---------------------------------------------------------------------------
+
 
 class TestWhoamiCommand:
     def test_whoami_authenticated(self, saved_token):

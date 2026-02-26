@@ -8,6 +8,7 @@ Provides the core agent infrastructure:
 
 Part of SIP-0.8.8.
 """
+
 from squadops.agents.base import BaseAgent, PortsBundle
 from squadops.agents.exceptions import (
     AgentError,

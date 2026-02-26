@@ -1,4 +1,5 @@
 """Unit tests for LLM domain models."""
+
 import pytest
 
 from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse

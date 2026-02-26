@@ -10,14 +10,13 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
 
 from squadops.cycles.models import (
     Cycle,
-    CycleNotFoundError,
     FlowMode,
     Gate,
     GateAlreadyDecidedError,
@@ -72,7 +71,7 @@ if not _pg_available():
 # Fixtures
 # ---------------------------------------------------------------------------
 
-_NOW = datetime.now(timezone.utc)
+_NOW = datetime.now(UTC)
 
 
 @pytest_asyncio.fixture

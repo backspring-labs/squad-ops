@@ -8,23 +8,23 @@ Tests verify:
 - Fragment resolution with winning rule
 """
 
-import pytest
 from pathlib import Path
-import tempfile
-import shutil
 
-from adapters.prompts.filesystem import FileSystemPromptRepository
+import pytest
+
 from adapters.prompts.factory import create_prompt_repository
-from squadops.prompts.models import PromptFragment
+from adapters.prompts.filesystem import FileSystemPromptRepository
 from squadops.prompts.exceptions import (
     FragmentNotFoundError,
     HashMismatchError,
     ManifestValidationError,
 )
-
+from squadops.prompts.models import PromptFragment
 
 # Path to actual fragments in the repo
-FRAGMENTS_PATH = Path(__file__).parent.parent.parent.parent / "src" / "squadops" / "prompts" / "fragments"
+FRAGMENTS_PATH = (
+    Path(__file__).parent.parent.parent.parent / "src" / "squadops" / "prompts" / "fragments"
+)
 
 
 class TestFileSystemPromptRepository:
@@ -86,16 +86,18 @@ Lead-specific identity content.
 
     def _create_manifest(self, base_path: Path) -> str:
         """Create a manifest for test fragments."""
-        import yaml
         import hashlib
+
+        import yaml
 
         def get_hash(path: Path) -> str:
             content = path.read_text()
             # Extract content after header
             import re
+
             match = re.match(r"^---\s*\n.*?\n---\s*\n", content, re.DOTALL)
             if match:
-                content = content[match.end():].strip()
+                content = content[match.end() :].strip()
             return hashlib.sha256(content.encode()).hexdigest()
 
         fragments = [
@@ -211,7 +213,8 @@ Original content.
 
         # Create manifest with original hash
         import hashlib
-        original_hash = hashlib.sha256("Original content.".encode()).hexdigest()
+
+        original_hash = hashlib.sha256(b"Original content.").hexdigest()
 
         manifest_content = f"""
 version: "0.8.5"
@@ -294,7 +297,13 @@ class TestRealFragments:
             fragment = repo.get_fragment(meta.fragment_id)
 
             assert fragment.fragment_id
-            assert fragment.layer in {"identity", "constraints", "lifecycle", "task_type", "recovery"}
+            assert fragment.layer in {
+                "identity",
+                "constraints",
+                "lifecycle",
+                "task_type",
+                "recovery",
+            }
             assert fragment.content
             assert fragment.sha256_hash
 

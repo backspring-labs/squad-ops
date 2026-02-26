@@ -5,19 +5,20 @@ coordinating between DTOs, orchestration, and domain models.
 
 Part of SIP-0.8.8 Phase 6.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from squadops.api.mapping import dto_to_envelope, envelope_to_response, result_to_dto
 from squadops.api.schemas import (
     TaskRequestDTO,
     TaskResponseDTO,
     TaskResultDTO,
     TaskStatusDTO,
 )
-from squadops.api.mapping import dto_to_envelope, envelope_to_response, result_to_dto
 
 if TYPE_CHECKING:
     from squadops.orchestration.orchestrator import AgentOrchestrator
@@ -141,7 +142,7 @@ class TaskService:
         return {
             "status": "healthy" if orchestrator_health["status"] == "healthy" else "unhealthy",
             "orchestrator": orchestrator_health,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
 

@@ -3,7 +3,7 @@ Tests for SIP-0064 domain models, enums, and constants.
 """
 
 import dataclasses
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -26,7 +26,7 @@ from squadops.cycles.models import (
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 # =============================================================================
@@ -195,9 +195,7 @@ class TestGateDecision:
         assert sample_gate_decision.notes == "Looks good"
 
     def test_default_notes(self):
-        gd = GateDecision(
-            gate_name="g", decision="approved", decided_by="u", decided_at=NOW
-        )
+        gd = GateDecision(gate_name="g", decision="approved", decided_by="u", decided_at=NOW)
         assert gd.notes is None
 
     def test_immutability(self, sample_gate_decision):

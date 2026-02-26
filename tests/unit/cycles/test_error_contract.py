@@ -38,9 +38,7 @@ class TestErrorContract:
             (ValidationError, 422, "VALIDATION_ERROR"),
         ],
     )
-    def test_error_maps_to_correct_status(
-        self, exc_cls, expected_status, expected_code
-    ):
+    def test_error_maps_to_correct_status(self, exc_cls, expected_status, expected_code):
         exc = exc_cls("test message")
         http_exc = handle_cycle_error(exc)
         assert http_exc.status_code == expected_status

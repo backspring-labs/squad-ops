@@ -122,9 +122,7 @@ class TestTemplateVariableValidation:
             {
                 "suite_id": "bad_template",
                 "boundary_id": "post_dev",
-                "checks": [
-                    {"check_type": "file_exists", "target": "{bogus_var}/output.md"}
-                ],
+                "checks": [{"check_type": "file_exists", "target": "{bogus_var}/output.md"}],
             }
         ]
         with pytest.raises(ValueError, match="bogus_var"):
@@ -170,9 +168,7 @@ class TestTemplateVariableValidation:
             {
                 "suite_id": "literal",
                 "boundary_id": "post_dev",
-                "checks": [
-                    {"check_type": "file_exists", "target": "output.md"}
-                ],
+                "checks": [{"check_type": "file_exists", "target": "output.md"}],
             }
         ]
         defs = parse_pulse_checks(raw)

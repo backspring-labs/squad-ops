@@ -3,6 +3,7 @@
 Validates that the squad profile with builder agent loads correctly,
 resolves all 6 agents, and has the builder role properly configured.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -4,6 +4,7 @@ Factory function for creating memory adapters.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 Updated in SIP-0.8.8 to use EmbeddingsPort instead of embed_fn seam.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -13,6 +14,7 @@ from squadops.ports.memory.store import MemoryPort
 
 if TYPE_CHECKING:
     from squadops.core.secret_manager import SecretManager
+
     from squadops.ports.embeddings.provider import EmbeddingsPort
 
 

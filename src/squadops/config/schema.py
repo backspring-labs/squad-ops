@@ -42,8 +42,12 @@ class ConnectionMode(str, Enum):
 class SSLConfig(BaseModel):
     """SSL/TLS configuration for database connections."""
 
-    mode: SSLMode = Field(default=SSLMode.DISABLE, description="SSL mode (disable, require, verify-full)")
-    ca_bundle_path: Path | None = Field(default=None, description="Path to CA bundle file (optional)")
+    mode: SSLMode = Field(
+        default=SSLMode.DISABLE, description="SSL mode (disable, require, verify-full)"
+    )
+    ca_bundle_path: Path | None = Field(
+        default=None, description="Path to CA bundle file (optional)"
+    )
 
 
 class PoolConfig(BaseModel):
@@ -57,7 +61,9 @@ class PoolConfig(BaseModel):
 class MigrationConfig(BaseModel):
     """Migration execution configuration."""
 
-    mode: MigrationMode = Field(default=MigrationMode.OFF, description="Migration mode (off, startup, job)")
+    mode: MigrationMode = Field(
+        default=MigrationMode.OFF, description="Migration mode (off, startup, job)"
+    )
 
 
 class DBConfig(BaseModel):
@@ -65,17 +71,32 @@ class DBConfig(BaseModel):
 
     # Legacy fields (maintained for backward compatibility)
     url: str | None = Field(default=None, description="PostgreSQL connection URL (legacy, use dsn)")
-    pool_size: int = Field(default=5, ge=1, le=100, description="Connection pool size (legacy, use pool.size)")
-    max_overflow: int = Field(default=10, ge=0, description="Max pool overflow connections (legacy, use pool.max_overflow)")
-    pool_timeout: int = Field(default=30, ge=1, description="Pool timeout in seconds (legacy, use pool.timeout_seconds)")
+    pool_size: int = Field(
+        default=5, ge=1, le=100, description="Connection pool size (legacy, use pool.size)"
+    )
+    max_overflow: int = Field(
+        default=10,
+        ge=0,
+        description="Max pool overflow connections (legacy, use pool.max_overflow)",
+    )
+    pool_timeout: int = Field(
+        default=30, ge=1, description="Pool timeout in seconds (legacy, use pool.timeout_seconds)"
+    )
     echo: bool = Field(default=False, description="Enable SQL query logging")
 
     # SIP-0.8.3: New deployment profile contract fields
-    dsn: str | None = Field(default=None, description="Full PostgreSQL connection string (supports secret:// references)")
+    dsn: str | None = Field(
+        default=None,
+        description="Full PostgreSQL connection string (supports secret:// references)",
+    )
     ssl: SSLConfig | None = Field(default=None, description="SSL/TLS configuration")
     pool: PoolConfig | None = Field(default=None, description="Connection pool configuration")
-    migrations: MigrationConfig | None = Field(default=None, description="Migration execution configuration")
-    connection: ConnectionMode | None = Field(default=None, description="Connection mode (direct, proxy)")
+    migrations: MigrationConfig | None = Field(
+        default=None, description="Migration execution configuration"
+    )
+    connection: ConnectionMode | None = Field(
+        default=None, description="Connection mode (direct, proxy)"
+    )
     migrations_dir: str = Field(
         default="infra/migrations",
         description="Path to SQL migrations directory",
@@ -125,7 +146,9 @@ class RabbitMQConfig(BaseModel):
     host: str = Field(default="rabbitmq", description="RabbitMQ host")
     port: int = Field(default=5672, ge=1, le=65535, description="RabbitMQ port")
     user: str = Field(default="squadops", description="RabbitMQ username")
-    password: str | None = Field(default=None, description="RabbitMQ password (use secret:// reference)")
+    password: str | None = Field(
+        default=None, description="RabbitMQ password (use secret:// reference)"
+    )
     vhost: str = Field(default="/", description="RabbitMQ virtual host")
 
 
@@ -148,10 +171,19 @@ class CommsConfig(BaseModel):
 class SecretsConfig(BaseModel):
     """Secrets management configuration."""
 
-    provider: Literal["env", "file", "docker_secret"] = Field(..., description="Secrets provider (required)")
-    env_prefix: str | None = Field(default=None, description="Environment variable prefix (defaults to SQUADOPS_ for env provider, normalized to end with _)")
-    file_dir: Path | None = Field(default=None, description="File provider directory (required if provider=file)")
-    name_map: dict[str, str] | None = Field(default=None, description="Logical name to provider key mapping")
+    provider: Literal["env", "file", "docker_secret"] = Field(
+        ..., description="Secrets provider (required)"
+    )
+    env_prefix: str | None = Field(
+        default=None,
+        description="Environment variable prefix (defaults to SQUADOPS_ for env provider, normalized to end with _)",
+    )
+    file_dir: Path | None = Field(
+        default=None, description="File provider directory (required if provider=file)"
+    )
+    name_map: dict[str, str] | None = Field(
+        default=None, description="Logical name to provider key mapping"
+    )
 
     @field_validator("file_dir")
     @classmethod
@@ -165,7 +197,9 @@ class SecretsConfig(BaseModel):
 class OIDCConfig(BaseModel):
     """OIDC provider configuration (SIP-0062)."""
 
-    issuer_url: str = Field(..., description="OIDC issuer URL (e.g. http://keycloak:8080/realms/squadops)")
+    issuer_url: str = Field(
+        ..., description="OIDC issuer URL (e.g. http://keycloak:8080/realms/squadops)"
+    )
     issuer_public_url: str | None = Field(
         default=None,
         description="Browser-facing issuer URL (e.g. http://localhost:8180/realms/squadops). "
@@ -180,11 +214,17 @@ class OIDCConfig(BaseModel):
         default="realm_access.roles",
         description="Dot-delimited path to roles in JWT claims",
     )
-    jwks_cache_ttl_seconds: int = Field(default=3600, ge=60, description="JWKS cache TTL in seconds")
-    jwks_forced_refresh_min_interval_seconds: int = Field(
-        default=30, ge=5, description="Minimum interval between forced JWKS refreshes (stampede protection)"
+    jwks_cache_ttl_seconds: int = Field(
+        default=3600, ge=60, description="JWKS cache TTL in seconds"
     )
-    clock_skew_seconds: int = Field(default=60, ge=0, description="Allowed clock skew for token expiry checks")
+    jwks_forced_refresh_min_interval_seconds: int = Field(
+        default=30,
+        ge=5,
+        description="Minimum interval between forced JWKS refreshes (stampede protection)",
+    )
+    clock_skew_seconds: int = Field(
+        default=60, ge=0, description="Allowed clock skew for token expiry checks"
+    )
 
 
 class ConsoleAuthConfig(BaseModel):
@@ -205,7 +245,9 @@ class ServiceClientConfig(BaseModel):
     """Service-to-service client credentials (SIP-0062)."""
 
     client_id: str = Field(..., description="Service client ID")
-    client_secret: str = Field(..., description="Service client secret (supports secret:// references)")
+    client_secret: str = Field(
+        ..., description="Service client secret (supports secret:// references)"
+    )
 
 
 class KeycloakTokenPolicyConfig(BaseModel):
@@ -306,13 +348,9 @@ class KeycloakOperationalConfig(BaseModel):
 
         # Proxy + TLS mutual consistency
         if self.proxy_mode == "edge" and not self.external_tls_termination:
-            raise ValueError(
-                "external_tls_termination must be true when proxy_mode is 'edge'"
-            )
+            raise ValueError("external_tls_termination must be true when proxy_mode is 'edge'")
         if self.proxy_mode == "none" and self.external_tls_termination:
-            raise ValueError(
-                "external_tls_termination must be false when proxy_mode is 'none'"
-            )
+            raise ValueError("external_tls_termination must be false when proxy_mode is 'none'")
         if self.external_tls_termination and not self.public_url:
             raise ValueError("public_url required when external_tls_termination is true")
         if self.proxy_mode in ("edge", "reencrypt", "passthrough") and not self.public_url:
@@ -353,7 +391,9 @@ class AuthConfig(BaseModel):
         if self.enabled and self.provider not in ("keycloak", "disabled"):
             raise ValueError(f"Unknown auth provider: {self.provider}")
         if self.enabled and self.provider != "disabled" and self.oidc is None:
-            raise ValueError("oidc configuration is required when auth is enabled and provider != 'disabled'")
+            raise ValueError(
+                "oidc configuration is required when auth is enabled and provider != 'disabled'"
+            )
         if self.enabled and self.provider == "keycloak" and self.keycloak is None:
             pass  # keycloak operational config is optional — only needed for deploy profiles
 
@@ -371,14 +411,18 @@ class PrefectConfig(BaseModel):
     """Prefect orchestration configuration."""
 
     api_url: str = Field(default="http://prefect-server:4200/api", description="Prefect API URL")
-    api_key: str | None = Field(default=None, description="Prefect API key (use secret:// reference)")
+    api_key: str | None = Field(
+        default=None, description="Prefect API key (use secret:// reference)"
+    )
     timeout: int = Field(default=30, ge=1, description="Prefect API timeout in seconds")
 
 
 class LLMConfig(BaseModel):
     """LLM provider configuration."""
 
-    url: str = Field(default="http://host.docker.internal:11434", description="LLM API URL (Ollama)")
+    url: str = Field(
+        default="http://host.docker.internal:11434", description="LLM API URL (Ollama)"
+    )
     model: str | None = Field(default=None, description="Default LLM model name")
     use_local: bool = Field(default=True, description="Use local LLM provider")
     timeout: int = Field(default=60, ge=1, description="LLM request timeout in seconds")
@@ -390,9 +434,15 @@ class AgentConfig(BaseModel):
     id: str = Field(default="unknown_agent", description="Agent identifier")
     role: str = Field(default="unknown", description="Agent role")
     display_name: str | None = Field(default=None, description="Agent display name")
-    instances_file: Path = Field(default=Path("agents/instances/instances.yaml"), description="Agent instances file path")
-    heartbeat_timeout_window: int = Field(default=90, ge=1, description="Heartbeat timeout window in seconds")
-    reconciliation_interval: int = Field(default=45, ge=1, description="Reconciliation interval in seconds")
+    instances_file: Path = Field(
+        default=Path("agents/instances/instances.yaml"), description="Agent instances file path"
+    )
+    heartbeat_timeout_window: int = Field(
+        default=90, ge=1, description="Heartbeat timeout window in seconds"
+    )
+    reconciliation_interval: int = Field(
+        default=45, ge=1, description="Reconciliation interval in seconds"
+    )
 
     @field_validator("instances_file", mode="before")
     @classmethod
@@ -413,7 +463,9 @@ class AWSTelemetryConfig(BaseModel):
     """AWS-specific telemetry configuration."""
 
     region: str | None = Field(default=None, description="AWS region")
-    cloudwatch_logs_group: str = Field(default="squadops/agents", description="CloudWatch logs group")
+    cloudwatch_logs_group: str = Field(
+        default="squadops/agents", description="CloudWatch logs group"
+    )
     xray_tracing_enabled: bool = Field(default=True, description="Enable X-Ray tracing")
 
 
@@ -434,9 +486,13 @@ class GCPTelemetryConfig(BaseModel):
 class TelemetryConfig(BaseModel):
     """Telemetry and observability configuration."""
 
-    backend: str | None = Field(default=None, description="Telemetry backend override (opentelemetry, aws, azure, gcp)")
+    backend: str | None = Field(
+        default=None, description="Telemetry backend override (opentelemetry, aws, azure, gcp)"
+    )
     otlp_endpoint: str | None = Field(default=None, description="OTLP exporter endpoint")
-    prometheus_port: int = Field(default=8888, ge=1, le=65535, description="Prometheus metrics port")
+    prometheus_port: int = Field(
+        default=8888, ge=1, le=65535, description="Prometheus metrics port"
+    )
     aws: AWSTelemetryConfig | None = Field(default=None, description="AWS telemetry config")
     azure: AzureTelemetryConfig | None = Field(default=None, description="Azure telemetry config")
     gcp: GCPTelemetryConfig | None = Field(default=None, description="GCP telemetry config")
@@ -450,13 +506,31 @@ class LangFuseConfig(BaseModel):
 
     enabled: bool = Field(default=False, description="Enable LangFuse integration")
     host: str = Field(default="http://localhost:3000", description="LangFuse host URL")
-    public_key: str = Field(default="", description="LangFuse public key (supports secret:// references)")
-    secret_key: str = Field(default="", description="LangFuse secret key (supports secret:// references)")
-    redaction_mode: str = Field(default="standard", description="Redaction mode: 'standard' or 'strict' (recommended for prod)")
-    sample_rate_percent: int = Field(default=100, ge=0, le=100, description="Generation sampling rate (0-100). Applies to record_generation only; spans/events always emit.")
-    flush_interval_seconds: int = Field(default=5, ge=1, description="Background flush interval in seconds")
-    buffer_max_size: int = Field(default=1000, ge=1, description="Maximum buffer size before drop-oldest overflow")
-    shutdown_flush_timeout_seconds: int = Field(default=5, ge=1, description="Max time budget for shutdown flush")
+    public_key: str = Field(
+        default="", description="LangFuse public key (supports secret:// references)"
+    )
+    secret_key: str = Field(
+        default="", description="LangFuse secret key (supports secret:// references)"
+    )
+    redaction_mode: str = Field(
+        default="standard",
+        description="Redaction mode: 'standard' or 'strict' (recommended for prod)",
+    )
+    sample_rate_percent: int = Field(
+        default=100,
+        ge=0,
+        le=100,
+        description="Generation sampling rate (0-100). Applies to record_generation only; spans/events always emit.",
+    )
+    flush_interval_seconds: int = Field(
+        default=5, ge=1, description="Background flush interval in seconds"
+    )
+    buffer_max_size: int = Field(
+        default=1000, ge=1, description="Maximum buffer size before drop-oldest overflow"
+    )
+    shutdown_flush_timeout_seconds: int = Field(
+        default=5, ge=1, description="Max time budget for shutdown flush"
+    )
 
 
 class ServiceConfig(BaseModel):
@@ -477,10 +551,15 @@ class OTelConfig(BaseModel):
 class ObservabilityConfig(BaseModel):
     """Observability service URLs for health checks."""
 
-    prometheus: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://prometheus:9090"))
+    prometheus: ServiceConfig = Field(
+        default_factory=lambda: ServiceConfig(url="http://prometheus:9090")
+    )
     grafana: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://grafana:3000"))
     otel: OTelConfig = Field(default_factory=OTelConfig)
-    health_check: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://health-check:8000"), description="Health check service URL")
+    health_check: ServiceConfig = Field(
+        default_factory=lambda: ServiceConfig(url="http://health-check:8000"),
+        description="Health check service URL",
+    )
 
 
 class FileManagerConfig(BaseModel):
@@ -490,7 +569,9 @@ class FileManagerConfig(BaseModel):
         default_factory=lambda: [".md", ".py", ".js", ".html", ".css", ".json", ".yaml", ".yml"],
         description="Allowed file extensions",
     )
-    max_file_size: int = Field(default=10485760, ge=1, description="Maximum file size in bytes (10MB)")
+    max_file_size: int = Field(
+        default=10485760, ge=1, description="Maximum file size in bytes (10MB)"
+    )
 
 
 class DockerConfig(BaseModel):
@@ -519,17 +600,27 @@ class AppConfig(BaseModel):
     runtime_api_url: str = Field(default="http://runtime-api:8001", description="Runtime API URL")
 
     # Task management
-    tasks_backend: TasksBackend = Field(default=TasksBackend.PREFECT, description="Task backend selection")
+    tasks_backend: TasksBackend = Field(
+        default=TasksBackend.PREFECT, description="Task backend selection"
+    )
 
     # Secrets and auth
-    secrets: SecretsConfig | None = Field(default=None, description="Secrets management configuration (optional)")
-    auth: AuthConfig = Field(default_factory=AuthConfig, description="Authentication configuration (SIP-0062)")
+    secrets: SecretsConfig | None = Field(
+        default=None, description="Secrets management configuration (optional)"
+    )
+    auth: AuthConfig = Field(
+        default_factory=AuthConfig, description="Authentication configuration (SIP-0062)"
+    )
 
     # Cycles
-    cycles: CyclesConfig = Field(default_factory=CyclesConfig, description="Cycle registry configuration")
+    cycles: CyclesConfig = Field(
+        default_factory=CyclesConfig, description="Cycle registry configuration"
+    )
 
     # Orchestration
-    prefect: PrefectConfig = Field(default_factory=PrefectConfig, description="Prefect configuration")
+    prefect: PrefectConfig = Field(
+        default_factory=PrefectConfig, description="Prefect configuration"
+    )
 
     # LLM
     llm: LLMConfig = Field(default_factory=LLMConfig, description="LLM configuration")
@@ -538,13 +629,19 @@ class AppConfig(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig, description="Agent configuration")
 
     # Cycle data
-    cycle_data: CycleDataConfig = Field(default_factory=CycleDataConfig, description="Cycle data configuration")
+    cycle_data: CycleDataConfig = Field(
+        default_factory=CycleDataConfig, description="Cycle data configuration"
+    )
 
     # Telemetry
-    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig, description="Telemetry configuration")
+    telemetry: TelemetryConfig = Field(
+        default_factory=TelemetryConfig, description="Telemetry configuration"
+    )
 
     # LangFuse LLM Observability (SIP-0061) — sibling to telemetry, not nested
-    langfuse: LangFuseConfig = Field(default_factory=LangFuseConfig, description="LangFuse LLM observability configuration")
+    langfuse: LangFuseConfig = Field(
+        default_factory=LangFuseConfig, description="LangFuse LLM observability configuration"
+    )
 
     # Observability
     observability: ObservabilityConfig = Field(
@@ -552,7 +649,9 @@ class AppConfig(BaseModel):
     )
 
     # Deployment
-    deployment: DeploymentConfig = Field(default_factory=DeploymentConfig, description="Deployment tooling configuration")
+    deployment: DeploymentConfig = Field(
+        default_factory=DeploymentConfig, description="Deployment tooling configuration"
+    )
 
     # Private attributes for runtime state (not part of config validation)
     _profile: str | None = None

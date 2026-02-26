@@ -26,8 +26,9 @@ from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.lifecycle import compute_config_hash
 
 try:
-    from starlette.testclient import TestClient as StarletteTestClient
     import aio_pika  # noqa: F401 — runtime dep check
+    from starlette.testclient import TestClient as StarletteTestClient
+
     _HAS_RUNTIME_DEPS = True
 except ImportError:
     _HAS_RUNTIME_DEPS = False
@@ -66,6 +67,7 @@ def _import_fastapi_app():
         # Clear any cached failed import attempt
         sys.modules.pop("squadops.api.runtime.main", None)
         from squadops.api.runtime.main import app as fastapi_app
+
         return fastapi_app
     finally:
         for k, orig in saved.items():
@@ -104,6 +106,7 @@ def _wire_cycle_ports():
 # ---------------------------------------------------------------------------
 # Fixtures — set up a real FastAPI app with in-memory adapters
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def fastapi_app():
@@ -193,10 +196,17 @@ class TestCyclesIntegration:
         profile_id = profiles[0]["profile_id"]
 
         # Create cycle with default CRP profile
-        result = runner.invoke(app, [
-            "--json", "cycles", "create", project_id,
-            "--squad-profile", profile_id,
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "--json",
+                "cycles",
+                "create",
+                project_id,
+                "--squad-profile",
+                profile_id,
+            ],
+        )
 
         if result.exit_code == exit_codes.NOT_FOUND:
             pytest.skip("Project or profile not found in test runtime")
@@ -214,9 +224,7 @@ class TestErrorCodes:
 
     @pytest.mark.usefixtures("_patch_client")
     def test_unknown_project_exits_12(self):
-        result = runner.invoke(app, [
-            "cycles", "list", "definitely_not_a_real_project_id"
-        ])
+        result = runner.invoke(app, ["cycles", "list", "definitely_not_a_real_project_id"])
         # Server may return 404 or empty list depending on implementation
         # At minimum it should not crash
         assert result.exit_code in (0, exit_codes.NOT_FOUND)

@@ -5,16 +5,17 @@ Tests verify assembly logic using mock repositories,
 ensuring isolated domain logic without filesystem access.
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
-from squadops.prompts.assembler import PromptAssembler
-from squadops.prompts.models import PromptFragment, PromptManifest, ManifestFragment
-from squadops.prompts.exceptions import (
-    MandatoryLayerMissingError,
-    HashMismatchError,
-)
+import pytest
+
 from squadops.ports.prompts.repository import PromptRepository
+from squadops.prompts.assembler import PromptAssembler
+from squadops.prompts.exceptions import (
+    HashMismatchError,
+    MandatoryLayerMissingError,
+)
+from squadops.prompts.models import PromptFragment, PromptManifest
 
 
 def create_mock_fragment(
@@ -137,9 +138,7 @@ class TestPromptAssembler:
         repo = create_mock_repository(fragments)
         assembler = PromptAssembler(repo)
 
-        result = assembler.assemble(
-            role="dev", hook="task_execute", task_type="code_generate"
-        )
+        result = assembler.assemble(role="dev", hook="task_execute", task_type="code_generate")
 
         assert "Generate code..." in result.content
 
@@ -244,9 +243,7 @@ class TestPromptAssembler:
             "constraints.global": create_mock_fragment(
                 "constraints.global", "constraints", "[CONSTRAINTS]"
             ),
-            "lifecycle.test": create_mock_fragment(
-                "lifecycle.test", "lifecycle", "[LIFECYCLE]"
-            ),
+            "lifecycle.test": create_mock_fragment("lifecycle.test", "lifecycle", "[LIFECYCLE]"),
         }
         repo = create_mock_repository(fragments)
         assembler = PromptAssembler(repo)

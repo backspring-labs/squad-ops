@@ -31,6 +31,7 @@ def get_framework_version() -> str:
         # Try importing directly
         sys.path.insert(0, str(REPO_ROOT / "src"))
         from squadops import __version__
+
         return __version__
     except ImportError:
         # Fall back to parsing pyproject.toml
@@ -109,7 +110,7 @@ def bump_version(new_version: str):
     old_version = get_framework_version()
 
     # Validate version format
-    if not re.match(r'^\d+\.\d+\.\d+(-[\w.]+)?$', new_version):
+    if not re.match(r"^\d+\.\d+\.\d+(-[\w.]+)?$", new_version):
         print(f"Invalid version format: {new_version}")
         print("Expected format: X.Y.Z or X.Y.Z-suffix")
         return False
@@ -122,14 +123,14 @@ def bump_version(new_version: str):
         content = PYPROJECT_PATH.read_text()
         new_content = re.sub(
             r'^(version\s*=\s*")[^"]+(")',
-            rf'\g<1>{new_version}\g<2>',
+            rf"\g<1>{new_version}\g<2>",
             content,
             count=1,
             flags=re.MULTILINE,
         )
         if new_content != content:
             PYPROJECT_PATH.write_text(new_content)
-            print(f"  Updated: pyproject.toml")
+            print("  Updated: pyproject.toml")
         else:
             errors.append("pyproject.toml: version pattern not found")
     else:
@@ -140,22 +141,14 @@ def bump_version(new_version: str):
         content = INIT_PATH.read_text()
 
         # Update __version__
-        new_content = re.sub(
-            r'(__version__\s*=\s*")[^"]+(")',
-            rf'\g<1>{new_version}\g<2>',
-            content
-        )
+        new_content = re.sub(r'(__version__\s*=\s*")[^"]+(")', rf"\g<1>{new_version}\g<2>", content)
 
         # Update docstring version
-        new_content = re.sub(
-            r'(Framework Version:\s*)\S+',
-            rf'\g<1>{new_version}',
-            new_content
-        )
+        new_content = re.sub(r"(Framework Version:\s*)\S+", rf"\g<1>{new_version}", new_content)
 
         if new_content != content:
             INIT_PATH.write_text(new_content)
-            print(f"  Updated: src/squadops/__init__.py")
+            print("  Updated: src/squadops/__init__.py")
         else:
             errors.append("__init__.py: version pattern not found")
     else:

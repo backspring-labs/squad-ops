@@ -30,9 +30,7 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
         fail_silently: bool = True,
     ) -> None:
         self._base_url = (
-            base_url
-            or os.getenv("SQUADOPS_RUNTIME_API_URL")
-            or "http://runtime-api:8001"
+            base_url or os.getenv("SQUADOPS_RUNTIME_API_URL") or "http://runtime-api:8001"
         ).rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._fail_silently = fail_silently

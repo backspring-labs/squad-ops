@@ -5,14 +5,15 @@ the CapabilityExecutor port interface.
 
 Part of SIP-0.8.8 Phase 6.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from squadops.orchestration.handler_registry import HandlerRegistry, HandlerNotFoundError
 from squadops.capabilities.handlers.context import ExecutionContext
+from squadops.orchestration.handler_registry import HandlerNotFoundError, HandlerRegistry
 from squadops.ports.capabilities.executor import CapabilityExecutor
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
@@ -110,7 +111,8 @@ class HandlerExecutor(CapabilityExecutor):
             from squadops.telemetry.models import CorrelationContext
 
             corr_ctx = CorrelationContext.from_envelope(
-                envelope, agent_id=envelope.agent_id,
+                envelope,
+                agent_id=envelope.agent_id,
             )
             context = ExecutionContext.create(
                 agent_id=envelope.agent_id,
@@ -141,7 +143,7 @@ class HandlerExecutor(CapabilityExecutor):
                     handler.handle(context, envelope.inputs or {}),
                     timeout=timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise TimeoutError(f"Execution timed out after {timeout}s")
 
             # Convert handler result to task result

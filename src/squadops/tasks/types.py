@@ -7,12 +7,6 @@ Part of SIP-0.8.7/0.8.8 Infrastructure Ports Migration.
 """
 
 # New frozen dataclass models (SIP-0.8.8)
-from squadops.tasks.models import (
-    TaskEnvelope,
-    TaskIdentity,
-    TaskResult,
-)
-
 # Legacy Pydantic models (still needed for DB operations)
 # Migrated from _v0_legacy as part of SIP-0.8.9
 from squadops.tasks.legacy_models import (
@@ -24,6 +18,11 @@ from squadops.tasks.legacy_models import (
     TaskCreate,
     TaskFilters,
     TaskState,
+)
+from squadops.tasks.models import (
+    TaskEnvelope,
+    TaskIdentity,
+    TaskResult,
 )
 
 __all__ = [

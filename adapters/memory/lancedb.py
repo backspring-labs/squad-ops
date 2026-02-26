@@ -4,6 +4,7 @@ Vector-based memory storage using LanceDB with EmbeddingsPort injection.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 Updated in SIP-0.8.8 to use EmbeddingsPort instead of embed_fn seam.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -65,17 +66,19 @@ class LanceDBAdapter(MemoryPort):
                 self._table = self._db.open_table(self._table_name)
             except Exception:
                 # Create table with schema if it doesn't exist
-                schema = pa.schema([
-                    pa.field("id", pa.string()),
-                    pa.field("content", pa.string()),
-                    pa.field("namespace", pa.string()),
-                    pa.field("agent_id", pa.string()),
-                    pa.field("cycle_id", pa.string()),
-                    pa.field("tags", pa.list_(pa.string())),
-                    pa.field("importance", pa.float32()),
-                    pa.field("metadata", pa.string()),  # JSON serialized
-                    pa.field("vector", pa.list_(pa.float32(), self._embedding_dim)),
-                ])
+                schema = pa.schema(
+                    [
+                        pa.field("id", pa.string()),
+                        pa.field("content", pa.string()),
+                        pa.field("namespace", pa.string()),
+                        pa.field("agent_id", pa.string()),
+                        pa.field("cycle_id", pa.string()),
+                        pa.field("tags", pa.list_(pa.string())),
+                        pa.field("importance", pa.float32()),
+                        pa.field("metadata", pa.string()),  # JSON serialized
+                        pa.field("vector", pa.list_(pa.float32(), self._embedding_dim)),
+                    ]
+                )
                 self._table = self._db.create_table(self._table_name, schema=schema)
 
     async def store(self, entry: MemoryEntry) -> str:
@@ -124,11 +127,7 @@ class LanceDBAdapter(MemoryPort):
             query_embedding = await self._embeddings.embed(query.text)
 
             # Search
-            results = (
-                self._table.search(query_embedding)
-                .limit(query.limit)
-                .to_list()
-            )
+            results = self._table.search(query_embedding).limit(query.limit).to_list()
 
             # Convert to MemoryResult
             memory_results = []
@@ -158,11 +157,13 @@ class LanceDBAdapter(MemoryPort):
                     metadata=tuple(json.loads(row.get("metadata", "{}")).items()),
                 )
 
-                memory_results.append(MemoryResult(
-                    entry=entry,
-                    memory_id=row.get("id", ""),
-                    score=score,
-                ))
+                memory_results.append(
+                    MemoryResult(
+                        entry=entry,
+                        memory_id=row.get("id", ""),
+                        score=score,
+                    )
+                )
 
             return memory_results
         except MemoryEmbeddingError:

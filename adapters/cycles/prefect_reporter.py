@@ -112,9 +112,7 @@ class PrefectReporter:
             logger.warning("Prefect create_task_run failed", exc_info=True)
             return f"unknown-{uuid4().hex[:8]}"
 
-    async def set_flow_run_state(
-        self, flow_run_id: str, state_type: str, state_name: str
-    ) -> None:
+    async def set_flow_run_state(self, flow_run_id: str, state_type: str, state_name: str) -> None:
         """Update flow run state (RUNNING, COMPLETED, FAILED, CANCELLED)."""
         try:
             resp = await self._client.post(
@@ -137,9 +135,7 @@ class PrefectReporter:
                 exc_info=True,
             )
 
-    async def set_task_run_state(
-        self, task_run_id: str, state_type: str, state_name: str
-    ) -> None:
+    async def set_task_run_state(self, task_run_id: str, state_type: str, state_name: str) -> None:
         """Update task run state."""
         try:
             resp = await self._client.post(

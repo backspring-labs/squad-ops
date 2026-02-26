@@ -8,7 +8,6 @@ Part of Phase 3.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -75,10 +74,18 @@ class TestAssembleWritesFiles:
             ],
         )
 
-        result = runner.invoke(app, [
-            "runs", "assemble", "play_game", "cyc_001", "run_001",
-            "--out", str(tmp_path),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "assemble",
+                "play_game",
+                "cyc_001",
+                "run_001",
+                "--out",
+                str(tmp_path),
+            ],
+        )
 
         assert result.exit_code == 0
         assert (tmp_path / "play_game" / "src" / "main.py").read_bytes() == b"print('hello')"
@@ -107,10 +114,18 @@ class TestAssembleWritesFiles:
             ],
         )
 
-        result = runner.invoke(app, [
-            "runs", "assemble", "proj", "cyc_abcdef123456", "run_001",
-            "--out", str(tmp_path),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "assemble",
+                "proj",
+                "cyc_abcdef123456",
+                "run_001",
+                "--out",
+                str(tmp_path),
+            ],
+        )
 
         assert result.exit_code == 0
         assert (tmp_path / "cyc_abcdef12" / "app.py").exists()
@@ -136,10 +151,18 @@ class TestAssembleNoBuildArtifacts:
             ],
         )
 
-        result = runner.invoke(app, [
-            "runs", "assemble", "proj", "cyc_001", "run_001",
-            "--out", str(tmp_path),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "assemble",
+                "proj",
+                "cyc_001",
+                "run_001",
+                "--out",
+                str(tmp_path),
+            ],
+        )
 
         assert result.exit_code == exit_codes.NOT_FOUND
         assert "planning artifacts" in result.output
@@ -157,10 +180,18 @@ class TestAssembleNoArtifacts:
             },
         )
 
-        result = runner.invoke(app, [
-            "runs", "assemble", "proj", "cyc_001", "run_001",
-            "--out", str(tmp_path),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "assemble",
+                "proj",
+                "cyc_001",
+                "run_001",
+                "--out",
+                str(tmp_path),
+            ],
+        )
 
         assert result.exit_code == exit_codes.NOT_FOUND
 
@@ -173,10 +204,18 @@ class TestAssembleAPIError:
         mock.get.side_effect = CLIError("not found", exit_codes.NOT_FOUND)
         mock_get_client.return_value = mock
 
-        result = runner.invoke(app, [
-            "runs", "assemble", "proj", "cyc_001", "run_001",
-            "--out", str(tmp_path),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "assemble",
+                "proj",
+                "cyc_001",
+                "run_001",
+                "--out",
+                str(tmp_path),
+            ],
+        )
 
         assert result.exit_code == exit_codes.NOT_FOUND
 
@@ -192,9 +231,24 @@ class TestAssembleFiltersCorrectly:
                 "artifact_refs": ["art_plan", "art_code", "art_cfg"],
             },
             artifact_metas=[
-                {"artifact_id": "art_plan", "artifact_type": "document", "filename": "plan.md", "size_bytes": 50},
-                {"artifact_id": "art_code", "artifact_type": "source", "filename": "main.py", "size_bytes": 10},
-                {"artifact_id": "art_cfg", "artifact_type": "config", "filename": "config.yaml", "size_bytes": 20},
+                {
+                    "artifact_id": "art_plan",
+                    "artifact_type": "document",
+                    "filename": "plan.md",
+                    "size_bytes": 50,
+                },
+                {
+                    "artifact_id": "art_code",
+                    "artifact_type": "source",
+                    "filename": "main.py",
+                    "size_bytes": 10,
+                },
+                {
+                    "artifact_id": "art_cfg",
+                    "artifact_type": "config",
+                    "filename": "config.yaml",
+                    "size_bytes": 20,
+                },
             ],
             download_returns=[
                 (b"print(1)", "main.py"),
@@ -202,10 +256,18 @@ class TestAssembleFiltersCorrectly:
             ],
         )
 
-        result = runner.invoke(app, [
-            "runs", "assemble", "proj", "cyc_001", "run_001",
-            "--out", str(tmp_path),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "assemble",
+                "proj",
+                "cyc_001",
+                "run_001",
+                "--out",
+                str(tmp_path),
+            ],
+        )
 
         assert result.exit_code == 0
         assert (tmp_path / "proj" / "main.py").exists()
@@ -225,8 +287,18 @@ class TestAssembleReadmeContent:
                 "artifact_refs": ["art_src", "art_readme"],
             },
             artifact_metas=[
-                {"artifact_id": "art_src", "artifact_type": "source", "filename": "main.py", "size_bytes": 10},
-                {"artifact_id": "art_readme", "artifact_type": "config", "filename": "README.md", "size_bytes": 20},
+                {
+                    "artifact_id": "art_src",
+                    "artifact_type": "source",
+                    "filename": "main.py",
+                    "size_bytes": 10,
+                },
+                {
+                    "artifact_id": "art_readme",
+                    "artifact_type": "config",
+                    "filename": "README.md",
+                    "size_bytes": 20,
+                },
             ],
             download_returns=[
                 (b"print(1)", "main.py"),
@@ -234,10 +306,18 @@ class TestAssembleReadmeContent:
             ],
         )
 
-        result = runner.invoke(app, [
-            "runs", "assemble", "proj", "cyc_001", "run_001",
-            "--out", str(tmp_path),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "assemble",
+                "proj",
+                "cyc_001",
+                "run_001",
+                "--out",
+                str(tmp_path),
+            ],
+        )
 
         assert result.exit_code == 0
         assert "README.md" in result.output
@@ -256,17 +336,30 @@ class TestAssembleJsonOutput:
                 "artifact_refs": ["art_src"],
             },
             artifact_metas=[
-                {"artifact_id": "art_src", "artifact_type": "source", "filename": "app.py", "size_bytes": 5},
+                {
+                    "artifact_id": "art_src",
+                    "artifact_type": "source",
+                    "filename": "app.py",
+                    "size_bytes": 5,
+                },
             ],
             download_returns=[
                 (b"code", "app.py"),
             ],
         )
 
-        result = runner.invoke(app, [
-            "runs", "assemble", "proj", "cyc_001", "run_001",
-            "--out", str(tmp_path),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "runs",
+                "assemble",
+                "proj",
+                "cyc_001",
+                "run_001",
+                "--out",
+                str(tmp_path),
+            ],
+        )
 
         assert result.exit_code == 0
         assert "app.py" in result.output

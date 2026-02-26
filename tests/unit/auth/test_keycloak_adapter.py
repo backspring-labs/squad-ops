@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from adapters.auth.keycloak.auth_adapter import KeycloakAuthAdapter
 from squadops.auth.models import IdentityType, TokenValidationError
-
 
 pytestmark = pytest.mark.auth
 
@@ -247,7 +245,9 @@ class TestTokenValidation:
 
         claims = _make_claims()
 
-        with patch("adapters.auth.keycloak.auth_adapter.jwt.decode", return_value=claims) as mock_decode:
+        with patch(
+            "adapters.auth.keycloak.auth_adapter.jwt.decode", return_value=claims
+        ) as mock_decode:
             await adapter.validate_token("skewed-token")
 
         # Verify leeway was passed to jwt.decode

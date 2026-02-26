@@ -1,4 +1,5 @@
 """Unit tests for Tasks domain models."""
+
 import pytest
 
 from squadops.tasks.models import TaskIdentity

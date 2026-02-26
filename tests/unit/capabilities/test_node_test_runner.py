@@ -3,9 +3,9 @@
 Tests run_node_tests() and run_fullstack_tests() with mocked subprocess
 (npm/npx may not be available in CI).
 """
+
 from __future__ import annotations
 
-import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -117,7 +117,9 @@ class TestRunNodeTestsSuccess:
     async def test_vitest_passes(self, _rmtree, _mkdtemp, _isfile, _mat):
         install_proc = _make_proc_mock(returncode=0)
         vitest_proc = _make_proc_mock(
-            returncode=0, stdout=b"1 passed", stderr=b"",
+            returncode=0,
+            stdout=b"1 passed",
+            stderr=b"",
         )
         call_count = 0
 
@@ -142,7 +144,9 @@ class TestRunNodeTestsSuccess:
     async def test_vitest_fails(self, _rmtree, _mkdtemp, _isfile, _mat):
         install_proc = _make_proc_mock(returncode=0)
         vitest_proc = _make_proc_mock(
-            returncode=1, stdout=b"1 failed", stderr=b"AssertionError",
+            returncode=1,
+            stdout=b"1 failed",
+            stderr=b"AssertionError",
         )
         call_count = 0
 
@@ -182,7 +186,9 @@ class TestRunNodeTestsTimeout:
             # Use a very short timeout but we're mocking anyway
             with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
                 result = await run_node_tests(
-                    _SOURCE_FILES, _TEST_FILES, timeout_seconds=1,
+                    _SOURCE_FILES,
+                    _TEST_FILES,
+                    timeout_seconds=1,
                 )
 
         assert result.executed is False
@@ -198,7 +204,9 @@ class TestRunNodeTestsTargetDir:
     async def test_target_dir_checked_for_package_json(self):
         """When target_dir is set, package.json is expected in that subdir."""
         result = await run_node_tests(
-            _SOURCE_FILES, _TEST_FILES, target_dir="frontend",
+            _SOURCE_FILES,
+            _TEST_FILES,
+            target_dir="frontend",
         )
         assert result.executed is False
         assert "frontend" in result.error
@@ -213,24 +221,42 @@ _RUN_PYTEST_PATH = "squadops.capabilities.handlers.test_runner.run_generated_tes
 _RUN_NODE_PATH = "squadops.capabilities.handlers.test_runner.run_node_tests"
 
 _BACKEND_PASS = TestRunResult(
-    executed=True, exit_code=0, stdout="backend ok", stderr="",
-    test_file_count=2, source_file_count=3,
+    executed=True,
+    exit_code=0,
+    stdout="backend ok",
+    stderr="",
+    test_file_count=2,
+    source_file_count=3,
 )
 _BACKEND_FAIL = TestRunResult(
-    executed=True, exit_code=1, stdout="backend fail", stderr="AssertionError",
-    test_file_count=2, source_file_count=3,
+    executed=True,
+    exit_code=1,
+    stdout="backend fail",
+    stderr="AssertionError",
+    test_file_count=2,
+    source_file_count=3,
 )
 _FRONTEND_PASS = TestRunResult(
-    executed=True, exit_code=0, stdout="frontend ok", stderr="",
-    test_file_count=1, source_file_count=2,
+    executed=True,
+    exit_code=0,
+    stdout="frontend ok",
+    stderr="",
+    test_file_count=1,
+    source_file_count=2,
 )
 _FRONTEND_FAIL = TestRunResult(
-    executed=True, exit_code=1, stdout="frontend fail", stderr="vitest error",
-    test_file_count=1, source_file_count=2,
+    executed=True,
+    exit_code=1,
+    stdout="frontend fail",
+    stderr="vitest error",
+    test_file_count=1,
+    source_file_count=2,
 )
 _FRONTEND_NOT_RUN = TestRunResult(
-    executed=False, error="npm not found — Node.js is not installed",
-    test_file_count=1, source_file_count=2,
+    executed=False,
+    error="npm not found — Node.js is not installed",
+    test_file_count=1,
+    source_file_count=2,
 )
 
 
@@ -329,5 +355,10 @@ class TestFullstackTestsFileSplit:
             ],
         )
         # Counts are summed from both runners
-        assert result.test_file_count == _BACKEND_PASS.test_file_count + _FRONTEND_PASS.test_file_count
-        assert result.source_file_count == _BACKEND_PASS.source_file_count + _FRONTEND_PASS.source_file_count
+        assert (
+            result.test_file_count == _BACKEND_PASS.test_file_count + _FRONTEND_PASS.test_file_count
+        )
+        assert (
+            result.source_file_count
+            == _BACKEND_PASS.source_file_count + _FRONTEND_PASS.source_file_count
+        )

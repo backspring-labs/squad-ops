@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,13 +17,12 @@ from squadops.api.middleware.auth import (
 )
 from squadops.auth.models import Identity, Role, Scope, TokenClaims
 
-
 pytestmark = pytest.mark.auth
 
 
 def _make_auth_port(identity: Identity):
     """Create a mock AuthPort that returns the given identity."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     claims = TokenClaims(
         subject=identity.user_id,
         issuer="http://keycloak:8080/realms/squadops",

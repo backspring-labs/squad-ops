@@ -3,6 +3,7 @@
 Abstract base class for embedding provider adapters.
 Part of SIP-0.8.8 Agent Migration.
 """
+
 from abc import ABC, abstractmethod
 from typing import Any
 

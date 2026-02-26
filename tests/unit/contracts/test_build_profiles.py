@@ -9,7 +9,7 @@ Part of Phase 4.
 
 import pytest
 
-from squadops.contracts.cycle_request_profiles import load_profile, list_profiles
+from squadops.contracts.cycle_request_profiles import list_profiles, load_profile
 from squadops.contracts.cycle_request_profiles.schema import CycleRequestProfile
 
 pytestmark = [pytest.mark.domain_contracts]

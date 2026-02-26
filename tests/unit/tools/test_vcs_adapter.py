@@ -1,8 +1,8 @@
 """Unit tests for VCS adapters."""
-import pytest
+
 import subprocess
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+
+import pytest
 
 from adapters.tools.git import GitAdapter, PathValidatedVCS
 from squadops.tools.exceptions import ToolVCSError
@@ -16,7 +16,9 @@ class TestGitAdapter:
         """Test status on a clean git repo."""
         # Initialize a git repo
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True
+        )
         subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, capture_output=True)
 
         # Create and commit a file
@@ -35,7 +37,9 @@ class TestGitAdapter:
         """Test status with modified files."""
         # Initialize a git repo
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True
+        )
         subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, capture_output=True)
 
         # Create and commit a file
@@ -56,7 +60,9 @@ class TestGitAdapter:
         """Test status with untracked files."""
         # Initialize a git repo
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"], cwd=tmp_path, capture_output=True
+        )
         subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, capture_output=True)
 
         # Create a file without staging
@@ -86,7 +92,9 @@ class TestPathValidatedVCS:
 
         # Initialize git in allowed
         subprocess.run(["git", "init"], cwd=allowed, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=allowed, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"], cwd=allowed, capture_output=True
+        )
         subprocess.run(["git", "config", "user.name", "Test"], cwd=allowed, capture_output=True)
 
         raw = GitAdapter()

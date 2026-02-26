@@ -12,12 +12,17 @@ import json
 import logging
 import uuid
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from squadops.capabilities.acceptance import AcceptanceCheckEngine
+from squadops.capabilities.exceptions import (
+    ContractNotFoundError,
+    ContractValidationError,
+    TemplateResolutionError,
+)
 from squadops.capabilities.models import (
-    AcceptanceCheck,
     AcceptanceContext,
     AcceptanceResult,
     CapabilityContract,
@@ -30,17 +35,11 @@ from squadops.capabilities.models import (
     WorkloadStatus,
     WorkloadTask,
 )
-from squadops.capabilities.acceptance import AcceptanceCheckEngine
-from squadops.capabilities.exceptions import (
-    ContractNotFoundError,
-    ContractValidationError,
-    TemplateResolutionError,
-)
-from squadops.ports.capabilities.repository import CapabilityRepository
 from squadops.ports.capabilities.executor import CapabilityExecutor
+from squadops.ports.capabilities.repository import CapabilityRepository
 
 # Import ACI models from core domain (SIP-0.8.8 migration)
-from squadops.tasks.models import TaskEnvelope, TaskResult
+from squadops.tasks.models import TaskEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +147,7 @@ class WorkloadRunner:
 
         if visited != len(task_ids):
             raise DAGValidationError(
-                f"Cycle detected in workload DAG",
+                "Cycle detected in workload DAG",
                 {"workload_id": workload.workload_id},
             )
 
@@ -261,14 +260,12 @@ class WorkloadRunner:
             metadata={"workload_task_id": task.task_id},
         )
 
-    def _create_failure_record(
-        self, error_type: str, message: str
-    ) -> FailureRecord:
+    def _create_failure_record(self, error_type: str, message: str) -> FailureRecord:
         """Create a failure record with current timestamp."""
         return FailureRecord(
             error_type=error_type,
             message=message,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
         )
 
     def _acceptance_result_to_dict(self, result: AcceptanceResult) -> dict:
@@ -296,9 +293,7 @@ class WorkloadRunner:
             pass
         return path
 
-    def _write_report(
-        self, report: WorkloadRunReport, cycle_id: str, workload_id: str
-    ) -> Path:
+    def _write_report(self, report: WorkloadRunReport, cycle_id: str, workload_id: str) -> Path:
         """
         Write the workload run report to disk.
 
@@ -325,8 +320,7 @@ class WorkloadRunner:
                     "task_result_ref": tr.task_result_ref,
                     "artifact_refs": list(tr.artifact_refs),
                     "acceptance_results": [
-                        self._acceptance_result_to_dict(ar)
-                        for ar in tr.acceptance_results
+                        self._acceptance_result_to_dict(ar) for ar in tr.acceptance_results
                     ],
                     "failure": (
                         {
@@ -341,8 +335,7 @@ class WorkloadRunner:
                 for tr in report.task_records
             ],
             "workload_acceptance_results": [
-                self._acceptance_result_to_dict(ar)
-                for ar in report.workload_acceptance_results
+                self._acceptance_result_to_dict(ar) for ar in report.workload_acceptance_results
             ],
             "metrics": (
                 {
@@ -395,7 +388,7 @@ class WorkloadRunner:
         Returns:
             WorkloadRunReport with execution results
         """
-        started_at = datetime.now(timezone.utc).isoformat()
+        started_at = datetime.now(UTC).isoformat()
         pulse_id = pulse_id or cycle_id
         task_records: list[TaskRecord] = []
         task_outputs: dict[str, dict[str, Any]] = {}
@@ -407,9 +400,7 @@ class WorkloadRunner:
             workload = self.repository.get_workload(workload_id)
         except Exception as e:
             logger.error(f"Failed to load workload {workload_id}: {e}")
-            workload_failure = self._create_failure_record(
-                "workload_load_error", str(e)
-            )
+            workload_failure = self._create_failure_record("workload_load_error", str(e))
             return self._emit_early_failure_report(
                 workload_id, cycle_id, started_at, workload_failure
             )
@@ -419,9 +410,7 @@ class WorkloadRunner:
             self._validate_dag(workload)
         except DAGValidationError as e:
             logger.error(f"DAG validation failed: {e}")
-            workload_failure = self._create_failure_record(
-                "dag_validation_error", str(e)
-            )
+            workload_failure = self._create_failure_record("dag_validation_error", str(e))
             return self._emit_early_failure_report(
                 workload_id, cycle_id, started_at, workload_failure
             )
@@ -430,14 +419,10 @@ class WorkloadRunner:
         contracts: dict[str, CapabilityContract] = {}
         for task in workload.tasks:
             try:
-                contracts[task.capability_id] = self.repository.get_contract(
-                    task.capability_id
-                )
+                contracts[task.capability_id] = self.repository.get_contract(task.capability_id)
             except ContractNotFoundError as e:
                 logger.error(f"Contract not found: {e}")
-                workload_failure = self._create_failure_record(
-                    "contract_not_found", str(e)
-                )
+                workload_failure = self._create_failure_record("contract_not_found", str(e))
                 return self._emit_early_failure_report(
                     workload_id, cycle_id, started_at, workload_failure
                 )
@@ -489,9 +474,7 @@ class WorkloadRunner:
                         task_id=task.task_id,
                         capability_id=task.capability_id,
                         status=TaskStatus.FAILED,
-                        failure=self._create_failure_record(
-                            "template_resolution_error", str(e)
-                        ),
+                        failure=self._create_failure_record("template_resolution_error", str(e)),
                     )
                 )
                 halt_execution = True
@@ -502,13 +485,11 @@ class WorkloadRunner:
                 task, contract, resolved_inputs, cycle_id, project_id, pulse_id
             )
 
-            task_started_at = datetime.now(timezone.utc).isoformat()
+            task_started_at = datetime.now(UTC).isoformat()
 
             try:
-                result = await executor.execute(
-                    envelope, timeout_seconds=contract.timeout_seconds
-                )
-                task_completed_at = datetime.now(timezone.utc).isoformat()
+                result = await executor.execute(envelope, timeout_seconds=contract.timeout_seconds)
+                task_completed_at = datetime.now(UTC).isoformat()
 
                 if result.status == "SUCCEEDED":
                     # Store outputs for downstream tasks
@@ -522,9 +503,7 @@ class WorkloadRunner:
                         task_outputs=tuple(task_outputs.items()),
                         vars=vars_tuple,
                     )
-                    validation = engine.evaluate_all(
-                        contract.acceptance_checks, context
-                    )
+                    validation = engine.evaluate_all(contract.acceptance_checks, context)
 
                     task_records.append(
                         TaskRecord(
@@ -539,9 +518,7 @@ class WorkloadRunner:
 
                     # If acceptance checks failed, halt
                     if not validation.all_passed:
-                        logger.warning(
-                            f"Task {task.task_id} acceptance checks failed"
-                        )
+                        logger.warning(f"Task {task.task_id} acceptance checks failed")
                         halt_execution = True
 
                 else:
@@ -561,7 +538,7 @@ class WorkloadRunner:
                     halt_execution = True
 
             except TimeoutError as e:
-                task_completed_at = datetime.now(timezone.utc).isoformat()
+                task_completed_at = datetime.now(UTC).isoformat()
                 task_records.append(
                     TaskRecord(
                         task_id=task.task_id,
@@ -575,7 +552,7 @@ class WorkloadRunner:
                 halt_execution = True
 
             except Exception as e:
-                task_completed_at = datetime.now(timezone.utc).isoformat()
+                task_completed_at = datetime.now(UTC).isoformat()
                 task_records.append(
                     TaskRecord(
                         task_id=task.task_id,
@@ -583,9 +560,7 @@ class WorkloadRunner:
                         status=TaskStatus.FAILED,
                         started_at=task_started_at,
                         completed_at=task_completed_at,
-                        failure=self._create_failure_record(
-                            "execution_error", str(e)
-                        ),
+                        failure=self._create_failure_record("execution_error", str(e)),
                     )
                 )
                 halt_execution = True
@@ -604,7 +579,7 @@ class WorkloadRunner:
             workload_acceptance_results = validation.results
 
         # Compute metrics
-        completed_at = datetime.now(timezone.utc).isoformat()
+        completed_at = datetime.now(UTC).isoformat()
         succeeded = sum(1 for tr in task_records if tr.status == TaskStatus.SUCCEEDED)
         failed = sum(
             1
@@ -632,7 +607,9 @@ class WorkloadRunner:
         # Determine overall status
         if workload_failure:
             status = WorkloadStatus.FAILED
-        elif failed > 0 or (workload_acceptance_results and not all(r.passed for r in workload_acceptance_results)):
+        elif failed > 0 or (
+            workload_acceptance_results and not all(r.passed for r in workload_acceptance_results)
+        ):
             status = WorkloadStatus.FAILED
         elif skipped > 0:
             status = WorkloadStatus.FAILED  # Fail-fast means failure
@@ -665,7 +642,7 @@ class WorkloadRunner:
         failure: FailureRecord,
     ) -> WorkloadRunReport:
         """Emit a failure report when execution cannot proceed."""
-        completed_at = datetime.now(timezone.utc).isoformat()
+        completed_at = datetime.now(UTC).isoformat()
 
         report = WorkloadRunReport(
             workload_id=workload_id,

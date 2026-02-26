@@ -2,7 +2,7 @@
 Tests for SIP-0064 cycle API routes.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,7 +21,7 @@ from squadops.cycles.models import (
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -56,11 +56,7 @@ def mock_squad_profile():
         name="Full Squad",
         description="All agents",
         version=1,
-        agents=(
-            AgentProfileEntry(
-                agent_id="max", role="lead", model="gpt-4", enabled=True
-            ),
-        ),
+        agents=(AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),),
         created_at=NOW,
     )
     mock.resolve_snapshot.return_value = (profile, "sha256:abc123")
@@ -122,9 +118,7 @@ class TestCreateCycle:
         assert resp.json()["prd_ref"] is None
 
     def test_create_cycle_unknown_project(self, client, mock_project_registry):
-        mock_project_registry.get_project.side_effect = ProjectNotFoundError(
-            "Not found"
-        )
+        mock_project_registry.get_project.side_effect = ProjectNotFoundError("Not found")
         resp = client.post(
             "/api/v1/projects/unknown/cycles",
             json={"squad_profile_id": "full-squad"},

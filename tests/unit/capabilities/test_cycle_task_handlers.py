@@ -17,18 +17,19 @@ and bootstrap registration.
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from squadops.capabilities.handlers.cycle_tasks import (
-    StrategyAnalyzeHandler,
-    DevelopmentDesignHandler,
-    QAValidateHandler,
-    DataReportHandler,
-    GovernanceReviewHandler,
-)
-from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
+import pytest
+
 from squadops.bootstrap.handlers import HANDLER_CONFIGS
+from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
+from squadops.capabilities.handlers.cycle_tasks import (
+    DataReportHandler,
+    DevelopmentDesignHandler,
+    GovernanceReviewHandler,
+    QAValidateHandler,
+    StrategyAnalyzeHandler,
+)
 from squadops.llm.exceptions import LLMConnectionError, LLMModelNotFoundError, LLMTimeoutError
 from squadops.llm.models import ChatMessage
 
@@ -227,8 +228,7 @@ class TestBootstrapRegistration:
         registered = {entry[0]: entry[1] for entry in HANDLER_CONFIGS}
         assert cls in registered, f"{cls.__name__} not found in HANDLER_CONFIGS"
         assert (expected_role,) == registered[cls], (
-            f"{cls.__name__} expected roles ({expected_role},), "
-            f"got {registered[cls]}"
+            f"{cls.__name__} expected roles ({expected_role},), got {registered[cls]}"
         )
 
     def test_all_five_cycle_handlers_registered(self):
@@ -411,9 +411,7 @@ class TestHandleUsesPromptService:
         handler = cls()
         await handler.handle(mock_context, {"prd": "Build a widget"})
 
-        mock_context.ports.prompt_service.get_system_prompt.assert_called_once_with(
-            expected_role
-        )
+        mock_context.ports.prompt_service.get_system_prompt.assert_called_once_with(expected_role)
 
     @pytest.mark.parametrize(
         "cls",

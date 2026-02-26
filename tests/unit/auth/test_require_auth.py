@@ -1,9 +1,10 @@
 """Tests for require_auth() FastAPI dependency (SIP-0062 Phase 3a)."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC
+from unittest.mock import AsyncMock, patch
 
-from fastapi import FastAPI, Depends
+import pytest
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from squadops.api.middleware.auth import require_auth
@@ -23,14 +24,14 @@ def _make_identity(**overrides):
 
 
 def _make_claims():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     return TokenClaims(
         subject="user-1",
         issuer="http://keycloak/realms/test",
         audience="test-client",
-        expires_at=datetime.now(timezone.utc),
-        issued_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(UTC),
+        issued_at=datetime.now(UTC),
     )
 
 

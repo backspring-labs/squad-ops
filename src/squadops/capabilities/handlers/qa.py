@@ -5,6 +5,7 @@ to fulfill QA capability contracts.
 
 Part of SIP-0.8.8 Phase 5.
 """
+
 from __future__ import annotations
 
 import time
@@ -113,10 +114,12 @@ class TestExecutionHandler(CapabilityHandler):
                 duration_ms=duration_ms,
                 skill_executions=context.get_skill_executions(),
                 inputs_hash=self._hash_dict(inputs),
-                outputs_hash=self._hash_dict({
-                    "passed": outputs["passed"],
-                    "total": outputs["total"],
-                }),
+                outputs_hash=self._hash_dict(
+                    {
+                        "passed": outputs["passed"],
+                        "total": outputs["total"],
+                    }
+                ),
             )
 
             return HandlerResult(

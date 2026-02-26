@@ -3,6 +3,7 @@
 Abstract base class for LLM provider adapters.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from abc import ABC, abstractmethod
 from typing import Any
 

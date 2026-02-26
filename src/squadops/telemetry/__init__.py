@@ -7,6 +7,7 @@ Provides domain models for telemetry operations:
 
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from squadops.telemetry.exceptions import TelemetryError
 from squadops.telemetry.models import MetricType, Span, StructuredEvent
 

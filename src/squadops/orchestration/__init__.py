@@ -7,9 +7,10 @@ Provides coordination between agents, handlers, and capabilities:
 
 Part of SIP-0.8.8 Phase 6.
 """
-from squadops.orchestration.orchestrator import AgentOrchestrator
-from squadops.orchestration.handler_registry import HandlerRegistry
+
 from squadops.orchestration.handler_executor import HandlerExecutor
+from squadops.orchestration.handler_registry import HandlerRegistry
+from squadops.orchestration.orchestrator import AgentOrchestrator
 
 __all__ = [
     "AgentOrchestrator",

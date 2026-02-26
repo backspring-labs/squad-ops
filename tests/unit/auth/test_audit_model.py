@@ -1,7 +1,8 @@
 """Tests for AuditEvent model (SIP-0062 Phase 3b)."""
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from squadops.auth.models import AuditEvent
 
@@ -55,18 +56,18 @@ class TestAuditEvent:
             resource_type="api",
         )
         assert event.timestamp.tzinfo is not None
-        assert event.timestamp.tzinfo == timezone.utc
+        assert event.timestamp.tzinfo == UTC
 
     def test_timestamp_default_is_utc(self):
         """Default timestamp uses datetime.now(timezone.utc)."""
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         event = AuditEvent(
             action="test",
             actor_id="u1",
             actor_type="human",
             resource_type="api",
         )
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
         assert before <= event.timestamp <= after
 
     def test_metadata_as_tuples(self):

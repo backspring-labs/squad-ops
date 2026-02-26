@@ -1,4 +1,5 @@
 """Unit tests for Memory domain models."""
+
 import pytest
 
 from squadops.memory.models import MemoryEntry, MemoryQuery, MemoryResult

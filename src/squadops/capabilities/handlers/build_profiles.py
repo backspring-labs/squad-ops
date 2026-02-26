@@ -4,10 +4,10 @@ Typed build profiles that control handler behavior: prompt templates,
 required files, validation rules, and QA handoff expectations.
 V1 profiles are code-defined frozen dataclass instances.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
 
 # ---------------------------------------------------------------------------
 # QA handoff section name constants (D12 — single source of truth)
@@ -191,7 +191,5 @@ def get_profile(name: str) -> BuildProfile:
     profile = BUILD_PROFILES.get(name)
     if profile is None:
         available = sorted(BUILD_PROFILES.keys())
-        raise ValueError(
-            f"Unknown build profile {name!r}. Available profiles: {available}"
-        )
+        raise ValueError(f"Unknown build profile {name!r}. Available profiles: {available}")
     return profile

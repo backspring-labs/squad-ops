@@ -79,13 +79,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
 
     def _artifact_dir_for_ref(self, ref: ArtifactRef) -> Path:
         if ref.cycle_id and ref.run_id:
-            return (
-                self._base_dir
-                / ref.project_id
-                / ref.cycle_id
-                / ref.run_id
-                / ref.artifact_id
-            )
+            return self._base_dir / ref.project_id / ref.cycle_id / ref.run_id / ref.artifact_id
         return self._base_dir / "_unattached" / ref.artifact_id
 
     def _baselines_path_for_project(self, project_id: str) -> Path:
@@ -177,9 +171,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
 
         return results
 
-    async def set_baseline(
-        self, project_id: str, artifact_type: str, artifact_id: str
-    ) -> None:
+    async def set_baseline(self, project_id: str, artifact_type: str, artifact_id: str) -> None:
         # Verify artifact exists via index
         art_dir = self._resolve_artifact_dir(artifact_id)
         if not (art_dir / "metadata.json").exists():
@@ -189,9 +181,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         baselines[artifact_type] = artifact_id
         self._save_baselines(project_id, baselines)
 
-    async def get_baseline(
-        self, project_id: str, artifact_type: str
-    ) -> ArtifactRef | None:
+    async def get_baseline(self, project_id: str, artifact_type: str) -> ArtifactRef | None:
         baselines = self._load_baselines(project_id)
         artifact_id = baselines.get(artifact_type)
         if artifact_id is None:

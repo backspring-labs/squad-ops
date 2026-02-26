@@ -2567,4 +2567,6 @@ class TestPulseRepairTelemetry:
         assert "max_comms" in published_queues, "Lead repair task should go to max_comms"
         assert "nat_comms" in published_queues, "Strategy repair task should go to nat_comms"
         assert "neo_comms" in published_queues, "Dev repair task should go to neo_comms"
-        assert "data-agent_comms" in published_queues, "Data repair task should go to data-agent_comms"
+        assert "data-agent_comms" in published_queues, (
+            "Data repair task should go to data-agent_comms"
+        )

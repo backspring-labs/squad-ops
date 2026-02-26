@@ -3,6 +3,7 @@
 The QA agent handles test design, execution, and validation.
 Part of SIP-0.8.8 Phase 3.
 """
+
 from __future__ import annotations
 
 import logging
@@ -145,9 +146,7 @@ class QAAgent(BaseAgent):
         """
         skill_id = TASK_TYPE_SKILL_MAP.get(task_type)
         if skill_id is None:
-            raise SkillNotFoundError(
-                f"No skill registered for task type: {task_type}"
-            )
+            raise SkillNotFoundError(f"No skill registered for task type: {task_type}")
         return skill_id
 
     def _map_task_to_inputs(self, envelope: TaskEnvelope) -> dict[str, Any]:

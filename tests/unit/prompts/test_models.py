@@ -8,10 +8,10 @@ without any filesystem or external dependencies.
 import pytest
 
 from squadops.prompts.models import (
-    PromptFragment,
     AssembledPrompt,
-    PromptManifest,
     ManifestFragment,
+    PromptFragment,
+    PromptManifest,
 )
 
 

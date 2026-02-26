@@ -7,19 +7,15 @@ enabling config-driven provider selection.
 
 from pathlib import Path
 
-from squadops.ports.capabilities.repository import CapabilityRepository
-from squadops.ports.capabilities.executor import CapabilityExecutor
-from squadops.ports.comms.queue import QueuePort
-from adapters.capabilities.filesystem import FileSystemCapabilityRepository
 from adapters.capabilities.aci_executor import ACICapabilityExecutor
+from adapters.capabilities.filesystem import FileSystemCapabilityRepository
+from squadops.ports.capabilities.executor import CapabilityExecutor
+from squadops.ports.capabilities.repository import CapabilityRepository
+from squadops.ports.comms.queue import QueuePort
 
 # Default path for capability manifests
 DEFAULT_MANIFESTS_PATH = (
-    Path(__file__).parent.parent.parent
-    / "src"
-    / "squadops"
-    / "capabilities"
-    / "manifests"
+    Path(__file__).parent.parent.parent / "src" / "squadops" / "capabilities" / "manifests"
 )
 
 

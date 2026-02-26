@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
 from squadops.auth.models import Identity, Role, Scope, TokenClaims
-
 
 pytestmark = pytest.mark.auth
 
@@ -61,7 +60,7 @@ def _make_app(
 
 def _make_auth_port(identity: Identity | None = None) -> MagicMock:
     """Create a mock AuthPort."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     if identity is None:
         identity = Identity(
             user_id="test-user",

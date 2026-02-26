@@ -3,11 +3,12 @@
 Validates the YAML profile loads, defaults are valid, and build pipeline
 configuration matches the SIP-0072 specification.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from squadops.contracts.cycle_request_profiles import load_profile, list_profiles
+from squadops.contracts.cycle_request_profiles import list_profiles, load_profile
 
 pytestmark = [pytest.mark.domain_contracts]
 

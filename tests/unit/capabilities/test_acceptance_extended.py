@@ -220,10 +220,12 @@ class TestProcessRunning:
 
     async def test_unhealthy(self, engine, ctx, monkeypatch):
         """process_running FAIL when container is running but unhealthy."""
-        state_json = json.dumps({
-            "Running": True,
-            "Health": {"Status": "unhealthy"},
-        }).encode()
+        state_json = json.dumps(
+            {
+                "Running": True,
+                "Health": {"Status": "unhealthy"},
+            }
+        ).encode()
 
         async def fake_create(*args, **kwargs):
             return _make_fake_proc(stdout=state_json)
@@ -241,10 +243,12 @@ class TestProcessRunning:
 
     async def test_healthy(self, engine, ctx, monkeypatch):
         """process_running PASS when container is running and healthy."""
-        state_json = json.dumps({
-            "Running": True,
-            "Health": {"Status": "healthy"},
-        }).encode()
+        state_json = json.dumps(
+            {
+                "Running": True,
+                "Health": {"Status": "healthy"},
+            }
+        ).encode()
 
         async def fake_create(*args, **kwargs):
             return _make_fake_proc(stdout=state_json)
@@ -292,14 +296,18 @@ class TestJsonSchema:
 
         schema = temp_chroot / "schemas" / "report.schema.json"
         schema.parent.mkdir(parents=True)
-        schema.write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "version": {"type": "integer"},
-            },
-            "required": ["name", "version"],
-        }))
+        schema.write_text(
+            json.dumps(
+                {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "version": {"type": "integer"},
+                    },
+                    "required": ["name", "version"],
+                }
+            )
+        )
 
         check = AcceptanceCheck(
             check_type=CheckType.JSON_SCHEMA,
@@ -317,11 +325,15 @@ class TestJsonSchema:
 
         schema = temp_chroot / "schemas" / "report.schema.json"
         schema.parent.mkdir(parents=True)
-        schema.write_text(json.dumps({
-            "type": "object",
-            "properties": {"name": {"type": "string"}},
-            "required": ["name"],
-        }))
+        schema.write_text(
+            json.dumps(
+                {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "required": ["name"],
+                }
+            )
+        )
 
         check = AcceptanceCheck(
             check_type=CheckType.JSON_SCHEMA,
@@ -551,9 +563,7 @@ class TestEvaluateAllAsync:
             AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="exists.txt"),
         )
         # Use 0s suite timeout — all checks should be skipped
-        report = await engine.evaluate_all_async(
-            checks, ctx, max_suite_seconds=0.0
-        )
+        report = await engine.evaluate_all_async(checks, ctx, max_suite_seconds=0.0)
         skipped = [r for r in report.results if r.reason_code == "suite_timeout"]
         assert len(skipped) >= 1
 
@@ -566,9 +576,7 @@ class TestEvaluateAllAsync:
             AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="exists.txt"),
             AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="exists.txt"),
         )
-        report = await engine.evaluate_all_async(
-            checks, ctx, max_suite_seconds=0.0
-        )
+        report = await engine.evaluate_all_async(checks, ctx, max_suite_seconds=0.0)
         # SKIPPED checks are not passed, so all_passed must be False
         assert report.all_passed is False
 

@@ -2,8 +2,10 @@
 
 Tests dependency-injected agent creation from SIP-0.8.8.
 """
-import pytest
+
 from unittest.mock import MagicMock
+
+import pytest
 
 from squadops.agents.base import BaseAgent
 from squadops.agents.exceptions import AgentRoleNotFoundError

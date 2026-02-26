@@ -8,13 +8,12 @@ must satisfy.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from squadops.cycles.models import (
     Cycle,
-    CycleNotFoundError,
     Gate,
     GateAlreadyDecidedError,
     GateDecision,
@@ -24,7 +23,6 @@ from squadops.cycles.models import (
     RunStatus,
     RunTerminalError,
     TaskFlowPolicy,
-    ValidationError,
 )
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -33,7 +31,7 @@ pytestmark = [pytest.mark.domain_orchestration]
 # Constants
 # ---------------------------------------------------------------------------
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 _POLICY = TaskFlowPolicy(
     mode="sequential",
@@ -291,8 +289,11 @@ class TestRecordPulseVerification:
         from squadops.cycles.pulse_models import PulseVerificationRecord, SuiteOutcome
 
         record = PulseVerificationRecord(
-            suite_id="s", boundary_id="b", cadence_interval_id=0,
-            run_id="nonexistent", suite_outcome=SuiteOutcome.PASS,
+            suite_id="s",
+            boundary_id="b",
+            cadence_interval_id=0,
+            run_id="nonexistent",
+            suite_outcome=SuiteOutcome.PASS,
         )
         with pytest.raises(RunNotFoundError):
             await registry.record_pulse_verification("nonexistent", record)
@@ -305,8 +306,11 @@ class TestRecordPulseVerification:
         await registry.update_run_status("run_001", RunStatus.COMPLETED)
 
         record = PulseVerificationRecord(
-            suite_id="s", boundary_id="b", cadence_interval_id=0,
-            run_id="run_001", suite_outcome=SuiteOutcome.PASS,
+            suite_id="s",
+            boundary_id="b",
+            cadence_interval_id=0,
+            run_id="run_001",
+            suite_outcome=SuiteOutcome.PASS,
         )
         with pytest.raises(RunTerminalError):
             await registry.record_pulse_verification("run_001", record)

@@ -55,9 +55,7 @@ class ServiceTokenClient:
         simultaneously trigger token fetches.
         """
         async with self._lock:
-            if self._cached and time.monotonic() < (
-                self._cached.expires_at - self._refresh_margin
-            ):
+            if self._cached and time.monotonic() < (self._cached.expires_at - self._refresh_margin):
                 return self._cached.access_token
             token = await self._fetch_token()
             self._cached = token

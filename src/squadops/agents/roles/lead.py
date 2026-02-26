@@ -3,6 +3,7 @@
 The Lead agent coordinates task distribution, approvals, and governance.
 Part of SIP-0.8.8 Phase 3.
 """
+
 from __future__ import annotations
 
 import logging
@@ -147,9 +148,7 @@ class LeadAgent(BaseAgent):
             # Default to task_analysis for unknown types
             if task_type in ("query", "request"):
                 return "task_analysis"
-            raise SkillNotFoundError(
-                f"No skill registered for task type: {task_type}"
-            )
+            raise SkillNotFoundError(f"No skill registered for task type: {task_type}")
         return skill_id
 
     def _map_task_to_inputs(self, envelope: TaskEnvelope) -> dict[str, Any]:

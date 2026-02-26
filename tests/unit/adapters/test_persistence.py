@@ -2,13 +2,13 @@
 Unit tests for persistence adapters.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-from squadops.core.secrets import SecretManager
-from squadops.ports.db import DbRuntime, HealthResult
+import pytest
 
 from adapters.persistence.factory import validate_db_config
+from squadops.core.secrets import SecretManager
+from squadops.ports.db import HealthResult
 
 
 class TestValidateDBConfig:
@@ -46,7 +46,9 @@ class TestGetDBRuntime:
     def mock_secret_manager(self):
         """Fixture for a mock SecretManager."""
         manager = Mock(spec=SecretManager)
-        manager._replace_in_string = Mock(side_effect=lambda x: x.replace("secret://db_pass", "resolved_password"))
+        manager._replace_in_string = Mock(
+            side_effect=lambda x: x.replace("secret://db_pass", "resolved_password")
+        )
         return manager
 
     @pytest.fixture
@@ -63,7 +65,9 @@ class TestGetDBRuntime:
         }
 
     @patch("adapters.persistence.factory.PostgresRuntime")
-    def test_create_runtime_with_basic_profile(self, mock_runtime_class, basic_profile, mock_secret_manager):
+    def test_create_runtime_with_basic_profile(
+        self, mock_runtime_class, basic_profile, mock_secret_manager
+    ):
         """Test creating runtime with basic profile."""
         from adapters.persistence.factory import get_db_runtime
 
@@ -166,7 +170,9 @@ class TestPostgresRuntime:
     def mock_secret_manager(self):
         """Fixture for a mock SecretManager."""
         manager = Mock(spec=SecretManager)
-        manager._replace_in_string = Mock(side_effect=lambda x: x.replace("secret://db_pass", "resolved_password"))
+        manager._replace_in_string = Mock(
+            side_effect=lambda x: x.replace("secret://db_pass", "resolved_password")
+        )
         return manager
 
     @pytest.fixture
@@ -192,7 +198,9 @@ class TestPostgresRuntime:
 
     @patch("adapters.persistence.postgres.runtime.create_engine")
     @patch("adapters.persistence.postgres.runtime.sessionmaker")
-    def test_init_with_secret_reference(self, mock_sessionmaker, mock_create_engine, basic_dsn, mock_secret_manager):
+    def test_init_with_secret_reference(
+        self, mock_sessionmaker, mock_create_engine, basic_dsn, mock_secret_manager
+    ):
         """Test initialization with secret:// reference."""
         from adapters.persistence.postgres import PostgresRuntime
 
@@ -331,7 +339,9 @@ class TestPostgresRuntime:
         mock_engine = Mock()
         mock_create_engine.return_value = mock_engine
 
-        runtime = PostgresRuntime(dsn=basic_dsn, ssl_mode="verify-full", ssl_ca_bundle_path="/path/to/ca.crt")
+        runtime = PostgresRuntime(
+            dsn=basic_dsn, ssl_mode="verify-full", ssl_ca_bundle_path="/path/to/ca.crt"
+        )
 
         call_args = mock_create_engine.call_args
         dsn_used = call_args[0][0]

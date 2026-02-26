@@ -3,34 +3,35 @@
 Tests governance, development, QA, data, and warmboot handlers.
 Part of SIP-0.8.8 Phase 5.
 """
-import pytest
-from unittest.mock import MagicMock, AsyncMock
 
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from squadops.agents.base import PortsBundle
+from squadops.agents.skills.base import ExecutionEvidence, Skill, SkillResult
+from squadops.agents.skills.registry import SkillRegistry
+from squadops.capabilities.handlers.context import ExecutionContext
+from squadops.capabilities.handlers.data import (
+    DataAnalysisHandler,
+    MetricsCollectionHandler,
+)
+from squadops.capabilities.handlers.development import (
+    CodeAnalysisHandler,
+    CodeGenerationHandler,
+)
 from squadops.capabilities.handlers.governance import (
     TaskAnalysisHandler,
     TaskDelegationHandler,
-)
-from squadops.capabilities.handlers.development import (
-    CodeGenerationHandler,
-    CodeAnalysisHandler,
 )
 from squadops.capabilities.handlers.qa import (
     TestExecutionHandler,
     ValidationHandler,
 )
-from squadops.capabilities.handlers.data import (
-    DataAnalysisHandler,
-    MetricsCollectionHandler,
-)
 from squadops.capabilities.handlers.warmboot import (
-    WarmbootHandler,
     ContextSyncHandler,
+    WarmbootHandler,
 )
-from squadops.capabilities.handlers.context import ExecutionContext
-from squadops.agents.base import PortsBundle
-from squadops.agents.skills.registry import SkillRegistry
-from squadops.agents.skills.base import Skill, SkillResult, ExecutionEvidence
-
 
 # =============================================================================
 # Test Fixtures

@@ -8,14 +8,13 @@ without legacy infrastructure leakage.
 
 import os
 import sys
-import pytest
-from unittest.mock import patch, MagicMock
 
+import pytest
+
+from adapters.persistence.factory import get_db_runtime
+from adapters.secrets.factory import create_provider
 from squadops.core.secrets import SecretManager
 from squadops.ports.db import DbRuntime, HealthResult
-
-from adapters.secrets.factory import create_provider
-from adapters.persistence.factory import get_db_runtime
 
 
 class TestPersistenceHandshake:
@@ -57,48 +56,56 @@ class TestPersistenceHandshake:
         # Verify SecretManager was created
         assert secret_manager is not None
         assert secret_manager.provider.provider_name == "env"
-        
+
         # Verify it can resolve the secret
         resolved = secret_manager._resolve_reference("db_pass")
         assert resolved == mock_db_password
 
-    def test_persistence_initialization_with_secret(self, secret_manager, mock_profile_with_secret_dsn):
+    def test_persistence_initialization_with_secret(
+        self, secret_manager, mock_profile_with_secret_dsn
+    ):
         """Test 2: Persistence initialization with secret:// reference."""
         # Track modules loaded before
         modules_before = set(sys.modules.keys())
-        
+
         # Create DbRuntime via factory
         runtime = get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
-        
+
         # Track modules loaded after
         modules_after = set(sys.modules.keys())
         new_modules = modules_after - modules_before
-        
+
         # Verify runtime was created
         assert runtime is not None
         assert isinstance(runtime, DbRuntime)
         assert runtime.engine is not None
         assert runtime.session_factory is not None
 
-    def test_secret_resolution_handshake(self, secret_manager, mock_profile_with_secret_dsn, mock_db_password):
+    def test_secret_resolution_handshake(
+        self, secret_manager, mock_profile_with_secret_dsn, mock_db_password
+    ):
         """Test 3: Verify SecretManager was called during runtime creation."""
         # Create a spy on the secret manager's resolve method
         original_resolve = secret_manager._resolve_reference
         call_count = {"count": 0}
-        
+
         def counting_resolve(logical_name: str) -> str:
             call_count["count"] += 1
             return original_resolve(logical_name)
-        
+
         secret_manager._resolve_reference = counting_resolve
-        
+
         # Create runtime
         runtime = get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
-        
-        # Verify SecretManager was called
-        assert call_count["count"] > 0, "SecretManager should have been called to resolve secret:// references"
 
-    def test_engine_contains_resolved_password(self, secret_manager, mock_profile_with_secret_dsn, mock_db_password):
+        # Verify SecretManager was called
+        assert call_count["count"] > 0, (
+            "SecretManager should have been called to resolve secret:// references"
+        )
+
+    def test_engine_contains_resolved_password(
+        self, secret_manager, mock_profile_with_secret_dsn, mock_db_password
+    ):
         """Test 4: Verify engine contains resolved password (redacted in logs)."""
         runtime = get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
 
@@ -123,19 +130,18 @@ class TestPersistenceHandshake:
 
         # Check for legacy module imports (these should NOT exist after v0 removal)
         legacy_modules = [
-            mod for mod in all_modules
+            mod
+            for mod in all_modules
             if mod.startswith("infra.db") or mod.startswith("infra.secrets")
         ]
 
         assert len(legacy_modules) == 0, (
-            f"Legacy infrastructure modules should not be loaded. "
-            f"Found: {legacy_modules}"
+            f"Legacy infrastructure modules should not be loaded. Found: {legacy_modules}"
         )
 
         # Verify we're using new architecture (check all modules, not just new ones)
         new_arch_modules = [
-            mod for mod in all_modules
-            if mod.startswith("squadops.") or mod.startswith("adapters.")
+            mod for mod in all_modules if mod.startswith("squadops.") or mod.startswith("adapters.")
         ]
         assert len(new_arch_modules) > 0, "New architecture modules should be loaded"
 
@@ -146,14 +152,14 @@ class TestPersistenceHandshake:
     def test_connectivity_check_optional(self, secret_manager, mock_profile_with_secret_dsn):
         """Test 6: Optional connectivity check if local Postgres is available."""
         runtime = get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
-        
+
         # Perform health check
         result = runtime.db_health_check()
-        
+
         # Verify HealthResult structure
         assert isinstance(result, HealthResult)
         assert result.status in ["healthy", "unhealthy"]
-        
+
         # If healthy, verify latency is recorded
         if result.status == "healthy":
             assert result.latency_ms is not None

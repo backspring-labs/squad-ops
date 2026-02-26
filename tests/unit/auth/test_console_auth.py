@@ -1,26 +1,27 @@
 """Tests for console route auth (SIP-0062 Phase 3a)."""
 
-import pytest
+from datetime import UTC
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from squadops.api.routes import console as console_routes
 from squadops.api.middleware.auth import require_auth
+from squadops.api.routes import console as console_routes
 from squadops.auth.models import Identity, TokenClaims
 
 
 def _make_auth_port(identity=None):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     port = AsyncMock()
     port.validate_token.return_value = TokenClaims(
         subject="u1",
         issuer="http://keycloak/realms/test",
         audience="test",
-        expires_at=datetime.now(timezone.utc),
-        issued_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(UTC),
+        issued_at=datetime.now(UTC),
     )
     port.resolve_identity.return_value = identity or Identity(
         user_id="u1",

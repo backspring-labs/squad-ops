@@ -7,11 +7,13 @@ enabling config-driven provider selection.
 
 from pathlib import Path
 
-from squadops.ports.prompts.repository import PromptRepository
 from adapters.prompts.filesystem import FileSystemPromptRepository
+from squadops.ports.prompts.repository import PromptRepository
 
 # Default path for prompt fragments
-DEFAULT_PROMPTS_PATH = Path(__file__).parent.parent.parent / "src" / "squadops" / "prompts" / "fragments"
+DEFAULT_PROMPTS_PATH = (
+    Path(__file__).parent.parent.parent / "src" / "squadops" / "prompts" / "fragments"
+)
 
 
 def create_prompt_repository(

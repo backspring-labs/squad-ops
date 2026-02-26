@@ -3,6 +3,7 @@ No-op queue port implementation.
 
 Used for testing and development without a real queue backend.
 """
+
 from __future__ import annotations
 
 import logging

@@ -19,7 +19,6 @@ from squadops.contracts.cycle_request_profiles.schema import (
 )
 from squadops.cycles.lifecycle import compute_config_hash
 
-
 # =============================================================================
 # Schema validation
 # =============================================================================

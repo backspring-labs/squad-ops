@@ -3,6 +3,7 @@
 Implementation of ContainerPort for Docker.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -64,7 +65,7 @@ class DockerAdapter(ContainerPort):
                 stdout.decode("utf-8", errors="replace"),
                 stderr.decode("utf-8", errors="replace"),
             )
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             raise ToolContainerError(f"Docker command timed out after {timeout}s") from e
         except Exception as e:
             raise ToolContainerError(f"Docker command failed: {e}") from e
@@ -126,7 +127,9 @@ class DockerAdapter(ContainerPort):
     async def health(self) -> dict[str, Any]:
         """Check Docker daemon health."""
         try:
-            exit_code, stdout, _ = await self._run_docker("info", "--format", "{{.ServerVersion}}", timeout=5.0)
+            exit_code, stdout, _ = await self._run_docker(
+                "info", "--format", "{{.ServerVersion}}", timeout=5.0
+            )
             return {
                 "healthy": exit_code == 0,
                 "docker_version": stdout.strip() if exit_code == 0 else None,

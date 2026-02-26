@@ -44,11 +44,18 @@ def _validate_format(value: str) -> str:
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(
-        False, "--version", "-V", callback=_version_callback, is_eager=True,
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
         help="Show CLI version and exit.",
     ),
     format: str = typer.Option(
-        "table", "--format", "-o", callback=_validate_format,
+        "table",
+        "--format",
+        "-o",
+        callback=_validate_format,
         help="Output format: table|json",
     ),
     json_flag: bool = typer.Option(False, "--json", help="Shorthand for -o json"),

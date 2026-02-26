@@ -2,7 +2,7 @@
 Integration tests for SIP-0064 — end-to-end flows with real adapters (no mocks).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 import yaml
@@ -22,7 +22,7 @@ from squadops.cycles.models import (
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -136,9 +136,7 @@ class TestCycleLifecycleFlow:
         await cycle_registry.update_run_status("run_001", RunStatus.RUNNING)
 
         # Complete run
-        updated = await cycle_registry.update_run_status(
-            "run_001", RunStatus.COMPLETED
-        )
+        updated = await cycle_registry.update_run_status("run_001", RunStatus.COMPLETED)
         assert updated.status == "completed"
 
         # Verify cycle status
@@ -375,8 +373,6 @@ class TestMultipleCycles:
         all_cycles = await cycle_registry.list_cycles("hello_squad")
         assert len(all_cycles) == 2
 
-        completed = await cycle_registry.list_cycles(
-            "hello_squad", status=CycleStatus.COMPLETED
-        )
+        completed = await cycle_registry.list_cycles("hello_squad", status=CycleStatus.COMPLETED)
         assert len(completed) == 1
         assert completed[0].cycle_id == "cyc_001"

@@ -3,6 +3,7 @@
 Lead agent skill for task understanding.
 Part of SIP-0.8.8 Phase 4.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -129,9 +130,7 @@ class TaskAnalysisSkill(Skill):
                 skill_name=self.name,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_inputs(inputs),
-                outputs_hash=self._hash_inputs(
-                    {"complexity": outputs["complexity"]}
-                ),
+                outputs_hash=self._hash_inputs({"complexity": outputs["complexity"]}),
                 port_calls=context.get_port_calls(),
             )
 

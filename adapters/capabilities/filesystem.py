@@ -8,7 +8,6 @@ Loads contracts and workloads from YAML files, validating against JSON schemas.
 import json
 import logging
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -17,7 +16,11 @@ try:
 except ImportError:
     jsonschema = None  # type: ignore
 
-from squadops.ports.capabilities.repository import CapabilityRepository
+from squadops.capabilities.exceptions import (
+    ContractNotFoundError,
+    ContractValidationError,
+    WorkloadNotFoundError,
+)
 from squadops.capabilities.models import (
     AcceptanceCheck,
     ArtifactSpec,
@@ -30,11 +33,7 @@ from squadops.capabilities.models import (
     Workload,
     WorkloadTask,
 )
-from squadops.capabilities.exceptions import (
-    ContractNotFoundError,
-    ContractValidationError,
-    WorkloadNotFoundError,
-)
+from squadops.ports.capabilities.repository import CapabilityRepository
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +82,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
                 f"Schema not found: {schema_path}",
                 {"path": str(schema_path)},
             )
-        with open(schema_path, "r", encoding="utf-8") as f:
+        with open(schema_path, encoding="utf-8") as f:
             return json.load(f)
 
     def _validate_against_schema(self, data: dict, schema_name: str) -> None:
@@ -151,8 +150,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
         )
 
         acceptance_checks = tuple(
-            self._parse_acceptance_check(c)
-            for c in data.get("acceptance_checks", [])
+            self._parse_acceptance_check(c) for c in data.get("acceptance_checks", [])
         )
 
         return CapabilityContract(
@@ -192,8 +190,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
             )
 
         acceptance_checks = tuple(
-            self._parse_acceptance_check(c)
-            for c in data.get("acceptance_checks", [])
+            self._parse_acceptance_check(c) for c in data.get("acceptance_checks", [])
         )
 
         return Workload(
@@ -242,7 +239,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
 
         # Load and parse
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
             raise ContractValidationError(f"Invalid YAML: {e}")
@@ -272,7 +269,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
 
         # Load and parse
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
             raise ContractValidationError(f"Invalid YAML: {e}")

@@ -4,13 +4,14 @@ Tests handler instantiation, profile selection, assembly from source artifacts,
 QA handoff generation, required deployment file validation, duplicate filename
 detection, and routing diagnostics.
 """
+
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from squadops.capabilities.handlers.cycle_tasks import BuilderAssembleHandler
-from squadops.capabilities.handlers.base import HandlerResult
 from squadops.llm.exceptions import LLMConnectionError
 from squadops.llm.models import ChatMessage
 
@@ -34,7 +35,7 @@ LLM_GOOD_RESPONSE = (
     "COPY requirements.txt .\n"
     "RUN pip install -r requirements.txt\n"
     "COPY . .\n"
-    "CMD [\"python\", \"-m\", \"my_app\"]\n"
+    'CMD ["python", "-m", "my_app"]\n'
     "```\n\n"
     "```text:requirements.txt\n"
     "# no external dependencies\n"
@@ -319,7 +320,8 @@ class TestQAHandoffValidation:
     async def test_missing_section_reports_error(self, mock_context, builder_inputs):
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(
-                role="assistant", content=LLM_QA_HANDOFF_MISSING_SECTION,
+                role="assistant",
+                content=LLM_QA_HANDOFF_MISSING_SECTION,
             ),
         )
         handler = BuilderAssembleHandler()
@@ -357,7 +359,8 @@ class TestDuplicateFilenames:
         """Fullstack projects can have same basename in different dirs."""
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(
-                role="assistant", content=LLM_DUPLICATE_BASENAMES_DIFFERENT_PATHS,
+                role="assistant",
+                content=LLM_DUPLICATE_BASENAMES_DIFFERENT_PATHS,
             ),
         )
         handler = BuilderAssembleHandler()
@@ -372,7 +375,8 @@ class TestDuplicateFilenames:
         """LLM emits same file twice — last occurrence wins, no failure."""
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(
-                role="assistant", content=LLM_DUPLICATE_EXACT_PATHS,
+                role="assistant",
+                content=LLM_DUPLICATE_EXACT_PATHS,
             ),
         )
         handler = BuilderAssembleHandler()
@@ -433,17 +437,21 @@ class TestInputValidation:
 
     def test_passes_with_artifact_contents(self):
         handler = BuilderAssembleHandler()
-        errors = handler.validate_inputs({
-            "prd": "test",
-            "artifact_contents": {"main.py": "# source"},
-        })
+        errors = handler.validate_inputs(
+            {
+                "prd": "test",
+                "artifact_contents": {"main.py": "# source"},
+            }
+        )
         assert not any("artifact_contents" in e for e in errors)
 
     def test_requires_prd(self):
         handler = BuilderAssembleHandler()
-        errors = handler.validate_inputs({
-            "artifact_contents": {"main.py": "# source"},
-        })
+        errors = handler.validate_inputs(
+            {
+                "artifact_contents": {"main.py": "# source"},
+            }
+        )
         assert any("prd" in e for e in errors)
 
 

@@ -37,4 +37,3 @@ class AgentHeartbeatReporter(ABC):
             memory_count: Optional memory count metric.
         """
         raise NotImplementedError
-

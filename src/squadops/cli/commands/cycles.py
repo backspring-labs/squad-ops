@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -51,10 +50,10 @@ def create_cycle(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
     profile: str = typer.Option("default", "--profile", help="CRP profile name"),
-    prd: Optional[str] = typer.Option(None, "--prd", help="PRD file path or artifact ID"),
+    prd: str | None = typer.Option(None, "--prd", help="PRD file path or artifact ID"),
     squad_profile_id: str = typer.Option(..., "--squad-profile", help="Squad profile ID"),
-    set_flags: Optional[list[str]] = typer.Option(None, "--set", help="Override: key=value"),
-    notes: Optional[str] = typer.Option(None, "--notes", help="Experiment notes"),
+    set_flags: list[str] | None = typer.Option(None, "--set", help="Override: key=value"),
+    notes: str | None = typer.Option(None, "--notes", help="Experiment notes"),
 ):
     """Create a new experiment cycle.
 
@@ -139,27 +138,27 @@ def create_cycle(
     # 8. Verify hash round-trip
     server_hash = data.get("resolved_config_hash", "")
     if server_hash and server_hash != local_hash:
-        print_error(
-            f"Warning: hash mismatch — local={local_hash[:12]}… server={server_hash[:12]}…"
-        )
+        print_error(f"Warning: hash mismatch — local={local_hash[:12]}… server={server_hash[:12]}…")
 
     if fmt == "json":
         print_json(data)
     else:
         print_success(f"Cycle {data['cycle_id']} created (run {data['run_id']})")
-        print_detail({
-            "cycle_id": data["cycle_id"],
-            "run_id": data["run_id"],
-            "status": data["status"],
-            "hash": data.get("resolved_config_hash", ""),
-        })
+        print_detail(
+            {
+                "cycle_id": data["cycle_id"],
+                "run_id": data["run_id"],
+                "status": data["status"],
+                "hash": data.get("resolved_config_hash", ""),
+            }
+        )
 
 
 @app.command("list")
 def list_cycles(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
-    status: Optional[str] = typer.Option(None, "--status", help="Filter by status"),
+    status: str | None = typer.Option(None, "--status", help="Filter by status"),
 ):
     """List cycles for a project."""
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
@@ -181,14 +180,23 @@ def list_cycles(
         print_json(data)
     else:
         rows = [
-            [c["cycle_id"], c.get("status", ""), c.get("build_strategy", ""), c.get("created_at", "")]
+            [
+                c["cycle_id"],
+                c.get("status", ""),
+                c.get("build_strategy", ""),
+                c.get("created_at", ""),
+            ]
             for c in data
         ]
         print_table(["Cycle ID", "Status", "Strategy", "Created"], rows, quiet=quiet)
 
 
 @app.command("ls", hidden=True)
-def list_cycles_alias(ctx: typer.Context, project_id: str = typer.Argument(...), status: Optional[str] = typer.Option(None, "--status")):
+def list_cycles_alias(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    status: str | None = typer.Option(None, "--status"),
+):
     """Alias for list."""
     list_cycles(ctx, project_id, status)
 
@@ -218,7 +226,9 @@ def show_cycle(
 
 
 @app.command("cat", hidden=True)
-def show_cycle_alias(ctx: typer.Context, project_id: str = typer.Argument(...), cycle_id: str = typer.Argument(...)):
+def show_cycle_alias(
+    ctx: typer.Context, project_id: str = typer.Argument(...), cycle_id: str = typer.Argument(...)
+):
     """Alias for show."""
     show_cycle(ctx, project_id, cycle_id)
 

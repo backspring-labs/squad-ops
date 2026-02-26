@@ -115,9 +115,7 @@ class TestTaskEnvelopeLangfuseOnFailure:
 
     async def test_lifecycle_calls_on_failure(self):
         runner, mock_obs = _make_runner()
-        runner.system.orchestrator.submit_task = AsyncMock(
-            side_effect=RuntimeError("boom")
-        )
+        runner.system.orchestrator.submit_task = AsyncMock(side_effect=RuntimeError("boom"))
         payload = _make_envelope_payload()
 
         await runner._handle_task_envelope(payload, payload["metadata"])
@@ -131,9 +129,7 @@ class TestTaskEnvelopeLangfuseOnFailure:
 
     async def test_failure_result_published(self):
         runner, mock_obs = _make_runner()
-        runner.system.orchestrator.submit_task = AsyncMock(
-            side_effect=RuntimeError("boom")
-        )
+        runner.system.orchestrator.submit_task = AsyncMock(side_effect=RuntimeError("boom"))
         payload = _make_envelope_payload()
 
         await runner._handle_task_envelope(payload, payload["metadata"])

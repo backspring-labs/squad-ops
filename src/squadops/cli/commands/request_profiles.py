@@ -44,9 +44,7 @@ def list_request_profiles(ctx: typer.Context):
             ]
             for p in data
         ]
-        print_table(
-            ["Name", "Description", "Prompts", "Defaults"], rows, quiet=quiet
-        )
+        print_table(["Name", "Description", "Prompts", "Defaults"], rows, quiet=quiet)
 
 
 @app.command("ls", hidden=True)
@@ -56,9 +54,7 @@ def list_request_profiles_alias(ctx: typer.Context):
 
 
 @app.command("show")
-def show_request_profile(
-    ctx: typer.Context, profile_name: str = typer.Argument(...)
-):
+def show_request_profile(ctx: typer.Context, profile_name: str = typer.Argument(...)):
     """Show cycle request profile defaults and prompt metadata."""
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
     quiet = ctx.obj.get("quiet", False) if ctx.obj else False
@@ -78,8 +74,6 @@ def show_request_profile(
 
 
 @app.command("cat", hidden=True)
-def show_request_profile_alias(
-    ctx: typer.Context, profile_name: str = typer.Argument(...)
-):
+def show_request_profile_alias(ctx: typer.Context, profile_name: str = typer.Argument(...)):
     """Alias for show."""
     show_request_profile(ctx, profile_name)

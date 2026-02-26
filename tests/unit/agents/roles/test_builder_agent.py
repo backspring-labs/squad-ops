@@ -2,12 +2,12 @@
 
 Tests role ID, default skills, and task type routing.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from squadops.agents.roles.builder import BuilderAgent, TASK_TYPE_SKILL_MAP
-from squadops.agents.exceptions import SkillNotFoundError
+from squadops.agents.roles.builder import TASK_TYPE_SKILL_MAP, BuilderAgent
 
 pytestmark = [pytest.mark.domain_agents]
 
@@ -32,4 +32,5 @@ class TestTaskTypeRouting:
 class TestBuilderAgentImport:
     def test_importable_from_roles_package(self):
         from squadops.agents.roles import BuilderAgent as Imported
+
         assert Imported is BuilderAgent

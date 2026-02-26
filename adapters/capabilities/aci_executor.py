@@ -11,12 +11,12 @@ import logging
 import uuid
 from typing import Any
 
-from squadops.ports.comms.queue import QueuePort
-from squadops.ports.capabilities.executor import CapabilityExecutor
-
 # Import ACI models from v0_legacy (path added via pytest pythonpath)
 # [DEFERRED] Migrate TaskEnvelope/TaskResult to canonical location in future SIP
 from agents.tasks.models import TaskEnvelope, TaskResult
+
+from squadops.ports.capabilities.executor import CapabilityExecutor
+from squadops.ports.comms.queue import QueuePort
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +107,7 @@ class ACICapabilityExecutor(CapabilityExecutor):
         envelope_dict = envelope.model_dump()
         envelope_dict["metadata"]["response_queue"] = response_queue
 
-        logger.info(
-            f"Executing task {task_id} for agent {agent_id} "
-            f"(timeout: {timeout}s)"
-        )
+        logger.info(f"Executing task {task_id} for agent {agent_id} (timeout: {timeout}s)")
 
         try:
             # Publish task to agent queue
@@ -128,7 +125,7 @@ class ACICapabilityExecutor(CapabilityExecutor):
             logger.info(f"Task {task_id} completed with status: {result.status}")
             return result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Task {task_id} timed out after {timeout}s")
             raise TimeoutError(f"Task {task_id} timed out after {timeout} seconds")
 
@@ -136,9 +133,7 @@ class ACICapabilityExecutor(CapabilityExecutor):
             logger.error(f"Task {task_id} failed: {e}")
             raise ExecutorError(f"Task execution failed: {e}", task_id=task_id)
 
-    async def _wait_for_result(
-        self, response_queue: str, task_id: str
-    ) -> TaskResult:
+    async def _wait_for_result(self, response_queue: str, task_id: str) -> TaskResult:
         """
         Wait for a TaskResult on the response queue.
 

@@ -13,9 +13,7 @@ class FlowExecutionPort(ABC):
     """
 
     @abstractmethod
-    async def execute_run(
-        self, cycle_id: str, run_id: str, profile_id: str | None = None
-    ) -> None:
+    async def execute_run(self, cycle_id: str, run_id: str, profile_id: str | None = None) -> None:
         """Execute a run by loading authoritative state from registry.
 
         Dispatches tasks, updates Run status via CycleRegistryPort.

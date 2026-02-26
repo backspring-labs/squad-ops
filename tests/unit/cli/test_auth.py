@@ -29,6 +29,7 @@ from squadops.cli.auth import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def token_dir(tmp_path, monkeypatch):
     """Set XDG_CONFIG_HOME so token files land in tmp_path."""
@@ -52,6 +53,7 @@ def sample_token() -> CachedToken:
 # CachedToken dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestCachedToken:
     def test_fields(self, sample_token):
         assert sample_token.access_token == "access123"
@@ -74,6 +76,7 @@ class TestCachedToken:
 # ---------------------------------------------------------------------------
 # File I/O
 # ---------------------------------------------------------------------------
+
 
 class TestSaveAndLoad:
     def test_round_trip(self, token_dir, sample_token):
@@ -123,6 +126,7 @@ class TestClearToken:
 # Expiry
 # ---------------------------------------------------------------------------
 
+
 class TestIsExpired:
     def test_not_expired(self, sample_token):
         assert is_expired(sample_token) is False
@@ -156,13 +160,11 @@ class TestIsExpired:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class TestBuildTokenEndpoint:
     def test_default(self):
         url = _build_token_endpoint("http://localhost:8180", "squadops-dev")
-        assert url == (
-            "http://localhost:8180/realms/squadops-dev"
-            "/protocol/openid-connect/token"
-        )
+        assert url == ("http://localhost:8180/realms/squadops-dev/protocol/openid-connect/token")
 
 
 class TestParseTokenResponse:
@@ -187,6 +189,7 @@ class TestParseTokenResponse:
 # ---------------------------------------------------------------------------
 # OIDC login flows (mocked httpx)
 # ---------------------------------------------------------------------------
+
 
 def _mock_token_response(status_code=200, json_data=None):
     """Build a mock httpx.Response."""

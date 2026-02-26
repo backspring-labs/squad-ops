@@ -3,6 +3,7 @@
 Frozen dataclasses for tool operations.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from dataclasses import dataclass
 
 

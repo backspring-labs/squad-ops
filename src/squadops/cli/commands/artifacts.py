@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -39,7 +38,9 @@ def _get_client(ctx: typer.Context) -> APIClient:
 def ingest_artifact(
     ctx: typer.Context,
     project_id: str = typer.Option(..., "--project", help="Project ID"),
-    artifact_type: str = typer.Option(..., "--type", help="Artifact type (prd, code, test_report, etc.)"),
+    artifact_type: str = typer.Option(
+        ..., "--type", help="Artifact type (prd, code, test_report, etc.)"
+    ),
     file_path: Path = typer.Option(..., "--file", help="File to ingest"),
 ):
     """Ingest an artifact via multipart/form-data upload.
@@ -78,11 +79,13 @@ def ingest_artifact(
         print_json(data)
     else:
         print_success(f"Artifact {data.get('artifact_id', '')} ingested")
-        print_detail({
-            "artifact_id": data.get("artifact_id", ""),
-            "type": data.get("artifact_type", ""),
-            "size": data.get("size_bytes", ""),
-        })
+        print_detail(
+            {
+                "artifact_id": data.get("artifact_id", ""),
+                "type": data.get("artifact_type", ""),
+                "size": data.get("size_bytes", ""),
+            }
+        )
 
 
 @artifacts_app.command("get")
@@ -128,9 +131,9 @@ def download_artifact(
 def list_artifacts(
     ctx: typer.Context,
     project_id: str = typer.Option(..., "--project", help="Project ID"),
-    cycle_id: Optional[str] = typer.Option(None, "--cycle", help="Filter by cycle ID"),
-    run_id: Optional[str] = typer.Option(None, "--run", help="Filter by run ID (requires --cycle)"),
-    artifact_type: Optional[str] = typer.Option(None, "--type", help="Filter by artifact type"),
+    cycle_id: str | None = typer.Option(None, "--cycle", help="Filter by cycle ID"),
+    run_id: str | None = typer.Option(None, "--run", help="Filter by run ID (requires --cycle)"),
+    artifact_type: str | None = typer.Option(None, "--type", help="Filter by artifact type"),
 ):
     """List artifacts for a project.
 
@@ -152,9 +155,7 @@ def list_artifacts(
                 f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/artifacts"
             )
         elif cycle_id:
-            data = client.get(
-                f"/api/v1/projects/{project_id}/cycles/{cycle_id}/artifacts"
-            )
+            data = client.get(f"/api/v1/projects/{project_id}/cycles/{cycle_id}/artifacts")
         else:
             params = {}
             if artifact_type:
@@ -169,7 +170,12 @@ def list_artifacts(
         print_json(data)
     else:
         rows = [
-            [a["artifact_id"], a.get("artifact_type", ""), a.get("filename", ""), str(a.get("size_bytes", ""))]
+            [
+                a["artifact_id"],
+                a.get("artifact_type", ""),
+                a.get("filename", ""),
+                str(a.get("size_bytes", "")),
+            ]
             for a in data
         ]
         print_table(["Artifact ID", "Type", "Filename", "Size"], rows, quiet=quiet)
@@ -179,9 +185,9 @@ def list_artifacts(
 def list_artifacts_alias(
     ctx: typer.Context,
     project_id: str = typer.Option(..., "--project"),
-    cycle_id: Optional[str] = typer.Option(None, "--cycle"),
-    run_id: Optional[str] = typer.Option(None, "--run"),
-    artifact_type: Optional[str] = typer.Option(None, "--type"),
+    cycle_id: str | None = typer.Option(None, "--cycle"),
+    run_id: str | None = typer.Option(None, "--run"),
+    artifact_type: str | None = typer.Option(None, "--type"),
 ):
     """Alias for list."""
     list_artifacts(ctx, project_id, cycle_id, run_id, artifact_type)

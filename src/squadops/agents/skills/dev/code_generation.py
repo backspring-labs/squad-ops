@@ -3,6 +3,7 @@
 Developer agent skill for code creation.
 Part of SIP-0.8.8 Phase 4.
 """
+
 from __future__ import annotations
 
 import hashlib

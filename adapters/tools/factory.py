@@ -3,6 +3,7 @@
 Factory functions for creating tool adapters with security wrappers.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

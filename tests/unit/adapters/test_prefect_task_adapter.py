@@ -3,18 +3,19 @@
 Tests the SIP-0.8.8 full implementation of PrefectTaskAdapter
 that integrates with Prefect while maintaining SquadOps DB as source of truth.
 """
+
 import json
-import pytest
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from adapters.tasks.prefect import (
-    PrefectTaskAdapter,
-    SQUADOPS_TO_PREFECT_STATE,
     PREFECT_TO_SQUADOPS_STATE,
+    SQUADOPS_TO_PREFECT_STATE,
+    PrefectTaskAdapter,
 )
-from squadops.tasks.types import Task, TaskState
 from squadops.tasks.exceptions import TaskError, TaskNotFoundError, TaskStateError
+from squadops.tasks.types import Task, TaskState
 
 
 class MockConnectionContext:
@@ -177,6 +178,7 @@ class TestPrefectTaskAdapterCreate:
 
         # Import real exception to raise
         import asyncpg.exceptions
+
         conn.execute = AsyncMock(
             side_effect=asyncpg.exceptions.UniqueViolationError("duplicate key")
         )

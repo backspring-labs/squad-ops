@@ -3,6 +3,7 @@
 Pass-through router for 0.8.7. Real routing policy in 0.8.8.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any

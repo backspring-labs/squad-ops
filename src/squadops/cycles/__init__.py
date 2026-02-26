@@ -5,6 +5,12 @@ Domain models, enums, exceptions, and lifecycle logic for Projects, Cycles,
 Runs, Squad Profiles, Task Flow Policy, and Artifact Vault integration.
 """
 
+from squadops.cycles.lifecycle import (
+    compute_config_hash,
+    compute_profile_snapshot_hash,
+    derive_cycle_status,
+    validate_run_transition,
+)
 from squadops.cycles.models import (
     AgentProfileEntry,
     ArtifactNotFoundError,
@@ -32,12 +38,6 @@ from squadops.cycles.models import (
     SquadProfile,
     TaskFlowPolicy,
     ValidationError,
-)
-from squadops.cycles.lifecycle import (
-    compute_config_hash,
-    compute_profile_snapshot_hash,
-    derive_cycle_status,
-    validate_run_transition,
 )
 
 __all__ = [

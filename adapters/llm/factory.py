@@ -3,6 +3,7 @@
 Factory function for creating LLM adapters with secret resolution.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

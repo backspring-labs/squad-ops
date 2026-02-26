@@ -4,14 +4,14 @@ Unit tests for CLI API client (SIP-0065 D1, D4, D10).
 Tests error-to-exit-code mapping, auth headers, injected client, User-Agent.
 """
 
-import pytest
-import httpx
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+import httpx
+import pytest
+
+from squadops.cli import exit_codes
 from squadops.cli.client import APIClient, CLIError
 from squadops.cli.config import CLIConfig
-from squadops.cli import exit_codes
-
 
 # =============================================================================
 # Client construction (D10)
@@ -43,6 +43,7 @@ class TestAPIClientConstruction:
         monkeypatch.delenv("SQUADOPS_TOKEN", raising=False)
         api = APIClient(CLIConfig())
         from squadops import __version__
+
         assert api._client.headers["user-agent"] == f"squadops-cli/{__version__}"
         api.close()
 
@@ -91,26 +92,20 @@ class TestErrorMapping:
     """HTTP status codes map to correct exit codes."""
 
     def test_401_maps_to_auth_error(self):
-        api = _make_api_client_with_response(
-            401, {"error": {"message": "invalid token"}}
-        )
+        api = _make_api_client_with_response(401, {"error": {"message": "invalid token"}})
         with pytest.raises(CLIError) as exc_info:
             api.get("/test")
         assert exc_info.value.exit_code == exit_codes.AUTH_ERROR
         assert "authentication failed" in str(exc_info.value)
 
     def test_403_maps_to_auth_error(self):
-        api = _make_api_client_with_response(
-            403, {"error": {"message": "forbidden"}}
-        )
+        api = _make_api_client_with_response(403, {"error": {"message": "forbidden"}})
         with pytest.raises(CLIError) as exc_info:
             api.get("/test")
         assert exc_info.value.exit_code == exit_codes.AUTH_ERROR
 
     def test_404_maps_to_not_found(self):
-        api = _make_api_client_with_response(
-            404, {"error": {"message": "project not found"}}
-        )
+        api = _make_api_client_with_response(404, {"error": {"message": "project not found"}})
         with pytest.raises(CLIError) as exc_info:
             api.get("/test")
         assert exc_info.value.exit_code == exit_codes.NOT_FOUND
@@ -142,9 +137,7 @@ class TestErrorMapping:
         assert "file too large" in str(exc_info.value)
 
     def test_500_maps_to_general_error(self):
-        api = _make_api_client_with_response(
-            500, {"error": {"message": "internal error"}}
-        )
+        api = _make_api_client_with_response(500, {"error": {"message": "internal error"}})
         with pytest.raises(CLIError) as exc_info:
             api.get("/test")
         assert exc_info.value.exit_code == exit_codes.GENERAL_ERROR

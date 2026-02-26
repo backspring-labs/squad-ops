@@ -42,9 +42,7 @@ class ArtifactVaultPort(ABC):
         """List artifacts with optional filters."""
 
     @abstractmethod
-    async def set_baseline(
-        self, project_id: str, artifact_type: str, artifact_id: str
-    ) -> None:
+    async def set_baseline(self, project_id: str, artifact_type: str, artifact_id: str) -> None:
         """Promote an artifact as the baseline for the given type.
 
         Raises:
@@ -52,9 +50,7 @@ class ArtifactVaultPort(ABC):
         """
 
     @abstractmethod
-    async def get_baseline(
-        self, project_id: str, artifact_type: str
-    ) -> ArtifactRef | None:
+    async def get_baseline(self, project_id: str, artifact_type: str) -> ArtifactRef | None:
         """Get the current baseline artifact for the given type, or None."""
 
     @abstractmethod

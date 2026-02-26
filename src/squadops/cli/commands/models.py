@@ -43,9 +43,7 @@ def list_models(ctx: typer.Context):
             ]
             for m in data
         ]
-        print_table(
-            ["Model", "Context Window", "Max Completion"], rows, quiet=quiet
-        )
+        print_table(["Model", "Context Window", "Max Completion"], rows, quiet=quiet)
 
 
 @app.command("ls", hidden=True)

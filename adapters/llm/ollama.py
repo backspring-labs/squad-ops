@@ -3,6 +3,7 @@
 Production adapter for local Ollama LLM server.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 from typing import Any

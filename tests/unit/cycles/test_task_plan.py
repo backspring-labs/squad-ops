@@ -5,7 +5,7 @@ Validates that generate_task_plan produces a deterministic 5-step task sequence
 with correct lineage chaining, input payloads, and agent resolution.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -21,7 +21,7 @@ from squadops.tasks.models import TaskEnvelope
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -35,9 +35,7 @@ def profile():
             AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
         ),
         created_at=NOW,

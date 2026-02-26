@@ -1,11 +1,8 @@
 """Tests for auth factory functions (SIP-0062 Phase 1)."""
 
-from unittest.mock import patch
-
 import pytest
 
 from adapters.auth.factory import create_auth_provider, create_authorization_provider
-
 
 pytestmark = pytest.mark.auth
 

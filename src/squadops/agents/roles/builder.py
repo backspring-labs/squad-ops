@@ -4,6 +4,7 @@ The Builder agent generates runnable, testable application artifacts
 from implementation plans produced by the dev role.
 Part of SIP-0071.
 """
+
 from __future__ import annotations
 
 import logging
@@ -137,9 +138,7 @@ class BuilderAgent(BaseAgent):
         """
         skill_id = TASK_TYPE_SKILL_MAP.get(task_type)
         if skill_id is None:
-            raise SkillNotFoundError(
-                f"No skill registered for task type: {task_type}"
-            )
+            raise SkillNotFoundError(f"No skill registered for task type: {task_type}")
         return skill_id
 
     def _map_task_to_inputs(self, envelope: TaskEnvelope) -> dict[str, Any]:

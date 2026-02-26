@@ -19,6 +19,7 @@ pytestmark = pytest.mark.auth
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _dev_config(**overrides):
     """Build a valid dev KeycloakOperationalConfig with defaults."""
     defaults = {
@@ -84,6 +85,7 @@ def _cloud_config(**overrides):
 # Happy-path tests
 # ---------------------------------------------------------------------------
 
+
 class TestKeycloakOperationalConfigValid:
     """Valid configurations should pass validation."""
 
@@ -143,6 +145,7 @@ class TestKeycloakOperationalConfigValid:
 # Staging/prod environment validators
 # ---------------------------------------------------------------------------
 
+
 class TestDeployedRealmValidation:
     """Non-dev (deployed) realms enforce stricter constraints."""
 
@@ -201,6 +204,7 @@ class TestDeployedRealmValidation:
 # Proxy + TLS mutual consistency
 # ---------------------------------------------------------------------------
 
+
 class TestProxyTlsConsistency:
     """Proxy mode and TLS termination must be mutually consistent."""
 
@@ -247,6 +251,7 @@ class TestProxyTlsConsistency:
 # CIDR validation
 # ---------------------------------------------------------------------------
 
+
 class TestAdminCidrValidation:
     """KeycloakAdminConfig.allowed_networks CIDR validation."""
 
@@ -272,6 +277,7 @@ class TestAdminCidrValidation:
 # ---------------------------------------------------------------------------
 # Token / session / TOTP bounds
 # ---------------------------------------------------------------------------
+
 
 class TestPolicyBounds:
     """Pydantic ge/le constraints on policy fields."""
@@ -304,6 +310,7 @@ class TestPolicyBounds:
 # ---------------------------------------------------------------------------
 # AuthConfig integration
 # ---------------------------------------------------------------------------
+
 
 class TestAuthConfigKeycloak:
     """KeycloakOperationalConfig nested under AuthConfig."""
@@ -340,6 +347,7 @@ class TestAuthConfigKeycloak:
 # Realm lint function tests
 # ---------------------------------------------------------------------------
 
+
 class TestRealmLintFunction:
     """Unit tests for the lint_realm function from lint_realm_exports.py."""
 
@@ -366,9 +374,7 @@ class TestRealmLintFunction:
             "eventsEnabled": True,
             "adminEventsEnabled": True,
             "bruteForceProtected": True,
-            "authenticationFlows": [
-                {"alias": "squadops-browser-with-mfa"}
-            ],
+            "authenticationFlows": [{"alias": "squadops-browser-with-mfa"}],
             "clients": [
                 {
                     "clientId": "squadops-console",

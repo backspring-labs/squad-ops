@@ -6,6 +6,7 @@ Provides implementations of task registry ports:
 
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from adapters.tasks.factory import create_task_registry_provider
 from adapters.tasks.prefect import PrefectTaskAdapter
 from adapters.tasks.sql import SQLTaskAdapter

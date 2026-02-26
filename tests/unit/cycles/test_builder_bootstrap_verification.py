@@ -4,22 +4,23 @@ Tests that the builder role bootstraps cleanly in the handler and skill
 registries, and that dry-run plan generation emits builder.assemble tasks
 when the full-squad-with-builder profile is used.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from adapters.cycles.config_squad_profile import ConfigSquadProfile
 from squadops.bootstrap.handlers import create_handler_registry
-from squadops.bootstrap.skills import get_skills_for_role, create_skill_registry
-from squadops.cycles.task_plan import generate_task_plan, _has_builder_role
+from squadops.bootstrap.skills import create_skill_registry, get_skills_for_role
 from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
+from squadops.cycles.task_plan import _has_builder_role, generate_task_plan
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "squad-profiles.yaml"
 
 

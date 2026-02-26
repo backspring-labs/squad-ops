@@ -8,8 +8,8 @@ SIP-0066 Phases 2-7.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, call, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -26,7 +26,7 @@ from squadops.cycles.models import (
 )
 from squadops.tasks.models import TaskResult
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -103,9 +103,7 @@ def mock_squad_profile():
             AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
         ),
         created_at=NOW,
@@ -269,9 +267,7 @@ class TestCancellation:
         assert "run_001" in executor._cancelled
         mock_registry.cancel_run.assert_awaited_once_with("run_001")
 
-    async def test_cancel_before_first_task(
-        self, executor, mock_registry, mock_orchestrator
-    ):
+    async def test_cancel_before_first_task(self, executor, mock_registry, mock_orchestrator):
         """If get_run returns cancelled status, run transitions to cancelled, no tasks dispatched."""
         mock_registry.get_run.return_value = Run(
             run_id="run_001",
@@ -290,9 +286,7 @@ class TestCancellation:
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.CANCELLED in terminal_statuses
 
-    async def test_cancel_mid_execution(
-        self, executor, mock_registry, mock_orchestrator
-    ):
+    async def test_cancel_mid_execution(self, executor, mock_registry, mock_orchestrator):
         """After 2 successful tasks, registry returns cancelled -> remaining skipped."""
         # _is_cancelled is called before each task dispatch.
         # Each _is_cancelled call invokes get_run once.
@@ -402,14 +396,10 @@ class TestOutputChaining:
 
         return _capture
 
-    async def test_prior_outputs_chained_to_downstream(
-        self, executor, mock_orchestrator
-    ):
+    async def test_prior_outputs_chained_to_downstream(self, executor, mock_orchestrator):
         """Second task's envelope includes prior_outputs from the first task."""
         snapshots: list[dict] = []
-        mock_orchestrator.submit_task.side_effect = self._capturing_side_effect(
-            snapshots
-        )
+        mock_orchestrator.submit_task.side_effect = self._capturing_side_effect(snapshots)
 
         await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
@@ -425,9 +415,7 @@ class TestOutputChaining:
     async def test_prior_outputs_keyed_by_role(self, executor, mock_orchestrator):
         """prior_outputs dict is keyed by role_id (strat, dev, qa, data, lead)."""
         snapshots: list[dict] = []
-        mock_orchestrator.submit_task.side_effect = self._capturing_side_effect(
-            snapshots
-        )
+        mock_orchestrator.submit_task.side_effect = self._capturing_side_effect(snapshots)
 
         await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
@@ -495,9 +483,7 @@ class TestGatePauseResume:
             squad_profile=mock_squad_profile,
         )
 
-    async def test_gate_pause_and_resume(
-        self, gated_executor, mock_registry, mock_orchestrator
-    ):
+    async def test_gate_pause_and_resume(self, gated_executor, mock_registry, mock_orchestrator):
         """Gate after strategy.analyze_prd pauses run, approved decision resumes it."""
         # Track calls to get_run. The executor calls get_run:
         #   1. Initial load
@@ -558,9 +544,7 @@ class TestGatePauseResume:
         # Should have been paused at gate
         assert RunStatus.PAUSED in terminal_statuses
 
-    async def test_gate_rejection_fails_run(
-        self, gated_executor, mock_registry, mock_orchestrator
-    ):
+    async def test_gate_rejection_fails_run(self, gated_executor, mock_registry, mock_orchestrator):
         """Gate with decision=rejected -> run transitions to failed."""
         poll_count = 0
         base_run = Run(
@@ -621,9 +605,7 @@ class TestPortSignature:
 
     async def test_execute_run_accepts_new_signature(self, executor):
         """execute_run(cycle_id, run_id, profile_id) works without error."""
-        await executor.execute_run(
-            cycle_id="cyc_001", run_id="run_001", profile_id="full-squad"
-        )
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001", profile_id="full-squad")
 
 
 # ===========================================================================
@@ -634,9 +616,7 @@ class TestPortSignature:
 class TestEdgeCases:
     """Edge cases: empty artifacts, no outputs, etc."""
 
-    async def test_empty_artifacts_no_vault_call(
-        self, executor, mock_orchestrator, mock_vault
-    ):
+    async def test_empty_artifacts_no_vault_call(self, executor, mock_orchestrator, mock_vault):
         """If task outputs have no 'artifacts' key, vault.store is not called."""
         mock_orchestrator.submit_task.return_value = TaskResult(
             task_id="task_001",

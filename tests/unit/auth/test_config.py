@@ -4,7 +4,6 @@ import pytest
 
 from squadops.config.schema import AuthConfig, OIDCConfig
 
-
 pytestmark = pytest.mark.auth
 
 

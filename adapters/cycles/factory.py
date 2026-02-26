@@ -59,7 +59,7 @@ def create_flow_executor(
     *,
     cycle_registry: CycleRegistryPort | None = None,
     artifact_vault: ArtifactVaultPort | None = None,
-    orchestrator: "AgentOrchestrator | None" = None,
+    orchestrator: AgentOrchestrator | None = None,
     squad_profile: SquadProfilePort | None = None,
     project_registry: ProjectRegistryPort | None = None,
     **kwargs,

@@ -4,8 +4,6 @@ Unit tests for CLI output formatting (SIP-0065 §6.5).
 
 import json
 
-import pytest
-
 from squadops.cli.output import (
     print_detail,
     print_error,

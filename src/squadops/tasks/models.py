@@ -5,6 +5,7 @@ Migrated from Pydantic BaseModel in SIP-0.8.8.
 
 Part of SIP-0.8.7/0.8.8 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 import dataclasses

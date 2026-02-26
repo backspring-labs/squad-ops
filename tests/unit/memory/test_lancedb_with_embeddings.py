@@ -2,8 +2,10 @@
 
 Tests the SIP-0.8.8 update that replaced embed_fn seam with EmbeddingsPort.
 """
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from squadops.ports.embeddings.provider import EmbeddingsPort
 
@@ -159,8 +161,8 @@ class TestMemoryFactoryWithEmbeddings:
 
     def test_factory_creates_default_embeddings_when_none_provided(self, mock_lancedb):
         """Factory creates default Ollama embeddings if none provided."""
-        from adapters.memory.factory import create_memory_provider
         from adapters.embeddings.ollama import OllamaEmbeddingsAdapter
+        from adapters.memory.factory import create_memory_provider
 
         # Since the import is inside the function, we test by verifying
         # that without providing embeddings, the adapter still works

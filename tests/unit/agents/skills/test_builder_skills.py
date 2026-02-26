@@ -3,6 +3,7 @@
 Tests skill auto-discovery, ArtifactGenerationSkill properties,
 and skill execution.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -24,6 +25,7 @@ class TestBuilderSkillDiscovery:
 
     def test_skill_importable_from_package(self):
         from squadops.agents.skills.builder import ArtifactGenerationSkill as Imported
+
         assert Imported is ArtifactGenerationSkill
 
 
@@ -81,7 +83,8 @@ class TestArtifactGenerationExecution:
     async def test_success(self, mock_context):
         skill = ArtifactGenerationSkill()
         result = await skill.execute(
-            mock_context, {"plan": "Build a hello world app"},
+            mock_context,
+            {"plan": "Build a hello world app"},
         )
         assert result.success is True
         assert "artifacts" in result.outputs
@@ -98,7 +101,8 @@ class TestArtifactGenerationExecution:
         mock_context.llm.chat = AsyncMock(side_effect=RuntimeError("LLM down"))
         skill = ArtifactGenerationSkill()
         result = await skill.execute(
-            mock_context, {"plan": "Build something"},
+            mock_context,
+            {"plan": "Build something"},
         )
         assert result.success is False
         assert "LLM down" in result.error

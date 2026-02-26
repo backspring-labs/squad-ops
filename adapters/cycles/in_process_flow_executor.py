@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from squadops.cycles.models import ArtifactRef, Cycle, Run, RunStatus
+from squadops.cycles.models import ArtifactRef, Cycle, RunStatus
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 
@@ -66,9 +66,7 @@ class InProcessFlowExecutor(FlowExecutionPort):
     # Public API
     # ------------------------------------------------------------------
 
-    async def execute_run(
-        self, cycle_id: str, run_id: str, profile_id: str | None = None
-    ) -> None:
+    async def execute_run(self, cycle_id: str, run_id: str, profile_id: str | None = None) -> None:
         """Execute a run by loading authoritative state from registry.
 
         SIP-0066 §5.3: Breaking signature change (cycle_id, run_id, profile_id).
@@ -84,6 +82,7 @@ class InProcessFlowExecutor(FlowExecutionPort):
                 prd_content = await self._resolve_prd_from_project(cycle.project_id)
             if prd_content and prd_content != cycle.prd_ref:
                 import dataclasses as _dc
+
                 cycle = _dc.replace(cycle, prd_ref=prd_content)
 
             # queued → running
@@ -93,7 +92,10 @@ class InProcessFlowExecutor(FlowExecutionPort):
 
             logger.info(
                 "Executing run %s for cycle %s (%d tasks, mode=%s)",
-                run_id, cycle_id, len(plan), cycle.task_flow_policy.mode,
+                run_id,
+                cycle_id,
+                len(plan),
+                cycle.task_flow_policy.mode,
             )
 
             # Dispatch based on policy mode
@@ -217,13 +219,9 @@ class InProcessFlowExecutor(FlowExecutionPort):
         all_artifact_refs: list[str] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                raise _ExecutionError(
-                    f"Task {plan[i].task_id} raised exception: {result}"
-                )
+                raise _ExecutionError(f"Task {plan[i].task_id} raised exception: {result}")
             if result.status != "SUCCEEDED":
-                raise _ExecutionError(
-                    f"Task {plan[i].task_id} failed: {result.error}"
-                )
+                raise _ExecutionError(f"Task {plan[i].task_id} failed: {result.error}")
             # Collect artifacts
             for art in (result.outputs or {}).get("artifacts", []):
                 ref = await self._store_artifact(art, cycle, run_id, plan[i])
@@ -243,14 +241,10 @@ class InProcessFlowExecutor(FlowExecutionPort):
                 return True
         return False
 
-    async def _handle_gate(
-        self, run_id: str, cycle: Cycle, task_type: str
-    ) -> None:
+    async def _handle_gate(self, run_id: str, cycle: Cycle, task_type: str) -> None:
         """Pause, poll for decision, resume or reject (§5.7)."""
         gate_names = [
-            g.name
-            for g in cycle.task_flow_policy.gates
-            if task_type in g.after_task_types
+            g.name for g in cycle.task_flow_policy.gates if task_type in g.after_task_types
         ]
         logger.info("Run %s paused at gate(s): %s", run_id, gate_names)
         await self._cycle_registry.update_run_status(run_id, RunStatus.PAUSED)
@@ -266,15 +260,11 @@ class InProcessFlowExecutor(FlowExecutionPort):
                 for decision in run.gate_decisions:
                     if decision.gate_name == gate_name:
                         if decision.decision == "approved":
-                            await self._cycle_registry.update_run_status(
-                                run_id, RunStatus.RUNNING
-                            )
+                            await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
                             logger.info("Gate %r approved, resuming run %s", gate_name, run_id)
                             return  # Resume
                         elif decision.decision == "rejected":
-                            raise _ExecutionError(
-                                f"Gate {gate_name!r} rejected: {decision.notes}"
-                            )
+                            raise _ExecutionError(f"Gate {gate_name!r} rejected: {decision.notes}")
 
             await asyncio.sleep(poll_interval)
 
@@ -309,7 +299,7 @@ class InProcessFlowExecutor(FlowExecutionPort):
             content_hash=sha256(content).hexdigest(),
             size_bytes=len(content),
             media_type=art_dict.get("media_type", "text/markdown"),
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             cycle_id=cycle.cycle_id,
             run_id=run_id,
             metadata={
@@ -344,6 +334,8 @@ class InProcessFlowExecutor(FlowExecutionPort):
             await self._cycle_registry.update_run_status(run_id, status)
         except Exception:
             logger.warning(
-                "Failed to transition run %s to %s", run_id, status.value,
+                "Failed to transition run %s to %s",
+                run_id,
+                status.value,
                 exc_info=True,
             )

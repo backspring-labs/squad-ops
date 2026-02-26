@@ -1,4 +1,5 @@
 """Unit tests for model context registry (SIP-0073)."""
+
 import pytest
 
 from squadops.llm.model_registry import MODEL_SPECS, ModelSpec, get_model_spec

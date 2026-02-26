@@ -7,7 +7,7 @@ Loads projects from config/projects.yaml (T3: YAML is the canonical runtime sour
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -39,7 +39,7 @@ class ConfigProjectRegistry(ProjectRegistryPort):
         with open(self._yaml_path) as f:
             data = yaml.safe_load(f) or {}
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for entry in data.get("projects", []):
             project = Project(
                 project_id=entry["project_id"],

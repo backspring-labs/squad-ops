@@ -1,4 +1,5 @@
 """Unit tests for Ollama adapter."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

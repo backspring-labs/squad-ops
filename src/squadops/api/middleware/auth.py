@@ -70,9 +70,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self._expose_docs = expose_docs
         self._audit_port = audit_port
 
-    def _emit_audit(self, request: Request, *, action: str, actor_id: str = "anonymous",
-                    actor_type: str = "unknown", result: str = "success",
-                    denial_reason: str | None = None) -> None:
+    def _emit_audit(
+        self,
+        request: Request,
+        *,
+        action: str,
+        actor_id: str = "anonymous",
+        actor_type: str = "unknown",
+        result: str = "success",
+        denial_reason: str | None = None,
+    ) -> None:
         """Emit an audit event if audit_port is configured."""
         audit_port = self._audit_port
         if audit_port is None:
@@ -123,8 +130,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Disabled provider → 503 for all protected endpoints
         if self._provider == "disabled":
             self._emit_audit(
-                request, action="auth.token_rejected",
-                result="error", denial_reason="provider_disabled",
+                request,
+                action="auth.token_rejected",
+                result="error",
+                denial_reason="provider_disabled",
             )
             return Response(
                 content='{"detail":"Authentication service unavailable"}',
@@ -137,8 +146,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("authorization", "")
         if not auth_header.startswith("Bearer "):
             self._emit_audit(
-                request, action="auth.token_rejected",
-                result="denied", denial_reason="missing_bearer_token",
+                request,
+                action="auth.token_rejected",
+                result="denied",
+                denial_reason="missing_bearer_token",
             )
             return Response(
                 content='{"detail":"Missing or invalid Authorization header"}',
@@ -158,8 +169,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if auth_port is None:
             self._emit_audit(
-                request, action="auth.token_rejected",
-                result="error", denial_reason="auth_service_unavailable",
+                request,
+                action="auth.token_rejected",
+                result="error",
+                denial_reason="auth_service_unavailable",
             )
             return Response(
                 content='{"detail":"Authentication service unavailable"}',
@@ -172,14 +185,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             identity = await validate_and_resolve_identity(token, auth_port)
             request.state.identity = identity
             self._emit_audit(
-                request, action="auth.token_validated",
-                actor_id=identity.user_id, actor_type=identity.identity_type,
+                request,
+                action="auth.token_validated",
+                actor_id=identity.user_id,
+                actor_type=identity.identity_type,
             )
         except Exception as e:
             logger.warning("Token validation failed: %s", e)
             self._emit_audit(
-                request, action="auth.token_rejected",
-                result="denied", denial_reason=str(e),
+                request,
+                action="auth.token_rejected",
+                result="denied",
+                denial_reason=str(e),
             )
             return Response(
                 content='{"detail":"Invalid or expired token"}',

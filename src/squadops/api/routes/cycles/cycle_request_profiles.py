@@ -61,6 +61,4 @@ async def get_cycle_request_profile(profile_name: str):
         profile = load_profile(profile_name)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-    return JSONResponse(
-        content=_profile_to_response(profile), headers=_CACHE_HEADERS
-    )
+    return JSONResponse(content=_profile_to_response(profile), headers=_CACHE_HEADERS)

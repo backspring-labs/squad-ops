@@ -1,4 +1,5 @@
 """Unit tests for Tasks registry port interface."""
+
 import pytest
 
 from squadops.ports.tasks.registry import TaskRegistryPort

@@ -898,16 +898,17 @@ class DistributedFlowExecutor(FlowExecutionPort):
         decision = determine_boundary_decision(records)
 
         # Accumulate for run report
-        self._pulse_report_entries.append({
-            "boundary_id": boundary_id,
-            "cadence_interval_id": cadence_interval_id,
-            "decision": decision.value,
-            "repair_attempt": repair_attempt_number,
-            "suites": [
-                {"suite_id": r.suite_id, "outcome": r.suite_outcome.value}
-                for r in records
-            ],
-        })
+        self._pulse_report_entries.append(
+            {
+                "boundary_id": boundary_id,
+                "cadence_interval_id": cadence_interval_id,
+                "decision": decision.value,
+                "repair_attempt": repair_attempt_number,
+                "suites": [
+                    {"suite_id": r.suite_id, "outcome": r.suite_outcome.value} for r in records
+                ],
+            }
+        )
 
         # Emit boundary-level decision
         self._emit_pulse_event(
@@ -1192,9 +1193,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     prd_path.write_bytes(content)
                     logger.info("Materialized PRD %s to %s", prd_ref, prd_path)
                 except Exception:
-                    logger.warning(
-                        "Failed to materialize PRD %s", prd_ref, exc_info=True
-                    )
+                    logger.warning("Failed to materialize PRD %s", prd_ref, exc_info=True)
             else:
                 # Inline PRD content
                 prd_path.write_text(prd_ref, encoding="utf-8")
@@ -1300,12 +1299,8 @@ class DistributedFlowExecutor(FlowExecutionPort):
         if self._pulse_report_entries:
             lines.append("")
             lines.append("## Pulse Verification")
-            pass_count = sum(
-                1 for e in self._pulse_report_entries if e["decision"] == "pass"
-            )
-            fail_count = sum(
-                1 for e in self._pulse_report_entries if e["decision"] == "fail"
-            )
+            pass_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "pass")
+            fail_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "fail")
             exhausted_count = sum(
                 1 for e in self._pulse_report_entries if e["decision"] == "exhausted"
             )
@@ -1320,10 +1315,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 lines.append(f"Repair attempts: {len(repair_entries)} (max attempt: {max_attempt})")
             lines.append("")
             for entry in self._pulse_report_entries:
-                suites_str = ", ".join(
-                    f"{s['suite_id']}={s['outcome']}" for s in entry["suites"]
+                suites_str = ", ".join(f"{s['suite_id']}={s['outcome']}" for s in entry["suites"])
+                repair_tag = (
+                    f" (repair #{entry['repair_attempt']})" if entry["repair_attempt"] else ""
                 )
-                repair_tag = f" (repair #{entry['repair_attempt']})" if entry["repair_attempt"] else ""
                 lines.append(
                     f"- **{entry['boundary_id']}** [{entry['decision'].upper()}]{repair_tag}: {suites_str}"
                 )

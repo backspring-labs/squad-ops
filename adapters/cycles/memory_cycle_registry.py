@@ -66,13 +66,9 @@ class MemoryCycleRegistry(CycleRegistryPort):
             cycle = self._to_cycle(data)
             if status is not None:
                 runs = [
-                    self._to_run(r)
-                    for r in self._runs.values()
-                    if r["cycle_id"] == cycle.cycle_id
+                    self._to_run(r) for r in self._runs.values() if r["cycle_id"] == cycle.cycle_id
                 ]
-                derived = derive_cycle_status(
-                    runs, cycle.cycle_id in self._cancelled_cycles
-                )
+                derived = derive_cycle_status(runs, cycle.cycle_id in self._cancelled_cycles)
                 if derived != status:
                     continue
             results.append(cycle)
@@ -98,13 +94,9 @@ class MemoryCycleRegistry(CycleRegistryPort):
             raise RunNotFoundError(f"Run not found: {run_id}")
         return self._to_run(self._runs[run_id])
 
-    async def list_runs(
-        self, cycle_id: str, *, limit: int = 50, offset: int = 0
-    ) -> list[Run]:
+    async def list_runs(self, cycle_id: str, *, limit: int = 50, offset: int = 0) -> list[Run]:
         results = [
-            self._to_run(data)
-            for data in self._runs.values()
-            if data["cycle_id"] == cycle_id
+            self._to_run(data) for data in self._runs.values() if data["cycle_id"] == cycle_id
         ]
         return results[offset : offset + limit]
 
@@ -158,9 +150,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         policy = self._cycles[cycle_id]["_policy_obj"]
         gate_names = {g.name for g in policy.gates}
         if decision.gate_name not in gate_names:
-            raise ValidationError(
-                f"Gate {decision.gate_name!r} not found in TaskFlowPolicy"
-            )
+            raise ValidationError(f"Gate {decision.gate_name!r} not found in TaskFlowPolicy")
 
         # Check existing decisions
         existing = list(run_data.get("gate_decisions", ()))
@@ -182,9 +172,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
 
     # --- Pulse Verification (SIP-0070) ---
 
-    async def record_pulse_verification(
-        self, run_id: str, record: PulseVerificationRecord
-    ) -> Run:
+    async def record_pulse_verification(self, run_id: str, record: PulseVerificationRecord) -> Run:
         """Persist a pulse verification record."""
         if run_id not in self._runs:
             raise RunNotFoundError(f"Run not found: {run_id}")
@@ -192,8 +180,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         current_status = RunStatus(data["status"])
         if current_status in TERMINAL_STATES:
             raise RunTerminalError(
-                f"Cannot record pulse verification on terminal run "
-                f"(status={current_status.value})"
+                f"Cannot record pulse verification on terminal run (status={current_status.value})"
             )
         # Serialize and store
         rec = {

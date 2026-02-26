@@ -2,12 +2,14 @@
 
 Tests Skill, SkillContext, and SkillRegistry from SIP-0.8.8.
 """
+
 import hashlib
 import json
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
 
 from squadops.agents.base import PortsBundle
 from squadops.agents.exceptions import SkillContractViolation, SkillNotFoundError
@@ -170,7 +172,7 @@ class TestExecutionEvidence:
         """Evidence should be immutable."""
         evidence = ExecutionEvidence(
             skill_name="test",
-            executed_at=datetime.now(timezone.utc),
+            executed_at=datetime.now(UTC),
             duration_ms=1.0,
             inputs_hash="abc",
             outputs_hash="xyz",
@@ -180,14 +182,14 @@ class TestExecutionEvidence:
 
     def test_create_sets_timestamp(self):
         """create() should set current timestamp."""
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         evidence = ExecutionEvidence.create(
             skill_name="test",
             duration_ms=1.0,
             inputs_hash="abc",
             outputs_hash="xyz",
         )
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
         assert before <= evidence.executed_at <= after
 
     def test_create_stores_port_calls(self):

@@ -4,7 +4,6 @@ Unit tests for squad profile commands (SIP-0065 §6.3).
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from squadops.cli.main import app
@@ -24,9 +23,11 @@ def _mock_client(get_val=None, post_val=None):
 class TestSquadProfilesList:
     @patch("squadops.cli.commands.profiles._get_client")
     def test_list(self, mock_get_client):
-        mock_get_client.return_value = _mock_client(get_val=[
-            {"profile_id": "sp1", "name": "Default", "version": 1, "description": "Base"},
-        ])
+        mock_get_client.return_value = _mock_client(
+            get_val=[
+                {"profile_id": "sp1", "name": "Default", "version": 1, "description": "Base"},
+            ]
+        )
         result = runner.invoke(app, ["squad-profiles", "list"])
         assert result.exit_code == 0
         assert "sp1" in result.output
@@ -35,10 +36,12 @@ class TestSquadProfilesList:
 class TestSquadProfilesActive:
     @patch("squadops.cli.commands.profiles._get_client")
     def test_active(self, mock_get_client):
-        mock_get_client.return_value = _mock_client(get_val={
-            "profile_id": "sp1",
-            "name": "Default",
-        })
+        mock_get_client.return_value = _mock_client(
+            get_val={
+                "profile_id": "sp1",
+                "name": "Default",
+            }
+        )
         result = runner.invoke(app, ["squad-profiles", "active"])
         assert result.exit_code == 0
         assert "sp1" in result.output

@@ -8,13 +8,10 @@ import pytest
 
 from squadops.capabilities.models import (
     AcceptanceCheck,
-    AcceptanceContext,
     AcceptanceResult,
     ArtifactSpec,
     CapabilityContract,
     CheckType,
-    FailureRecord,
-    HeadlineMetrics,
     InputSpec,
     LifecycleScope,
     OutputSpec,
@@ -293,16 +290,12 @@ class TestValidationReport:
         """all_passed is True when all results pass."""
         results = (
             AcceptanceResult(
-                check=AcceptanceCheck(
-                    check_type=CheckType.FILE_EXISTS, target="path1"
-                ),
+                check=AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="path1"),
                 passed=True,
                 resolved_path="/full/path1",
             ),
             AcceptanceResult(
-                check=AcceptanceCheck(
-                    check_type=CheckType.FILE_EXISTS, target="path2"
-                ),
+                check=AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="path2"),
                 passed=True,
                 resolved_path="/full/path2",
             ),
@@ -314,16 +307,12 @@ class TestValidationReport:
         """all_passed is False when any result fails."""
         results = (
             AcceptanceResult(
-                check=AcceptanceCheck(
-                    check_type=CheckType.FILE_EXISTS, target="path1"
-                ),
+                check=AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="path1"),
                 passed=True,
                 resolved_path="/full/path1",
             ),
             AcceptanceResult(
-                check=AcceptanceCheck(
-                    check_type=CheckType.FILE_EXISTS, target="path2"
-                ),
+                check=AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="path2"),
                 passed=False,
                 resolved_path="/full/path2",
                 error="File not found",

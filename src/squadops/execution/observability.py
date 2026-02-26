@@ -2,6 +2,7 @@
 
 Bridges LLM port output into the observability domain.
 """
+
 from __future__ import annotations
 
 import uuid

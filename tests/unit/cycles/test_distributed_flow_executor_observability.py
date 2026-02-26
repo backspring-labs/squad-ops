@@ -40,11 +40,13 @@ def _make_result_message(
     queue_name: str = "cycle_results_run_001",
 ) -> QueueMessage:
     result = TaskResult(task_id=task_id, status=status, outputs=outputs)
-    payload = json.dumps({
-        "action": "comms.task.result",
-        "metadata": {"correlation_id": "corr"},
-        "payload": result.to_dict(),
-    })
+    payload = json.dumps(
+        {
+            "action": "comms.task.result",
+            "metadata": {"correlation_id": "corr"},
+            "payload": result.to_dict(),
+        }
+    )
     return QueueMessage(
         message_id=f"msg_{task_id}",
         queue_name=queue_name,
@@ -56,6 +58,7 @@ def _make_result_message(
 
 def _make_queue_side_effects(mock_queue):
     """Build a consume side_effect that returns matching results."""
+
     async def consume_side_effect(queue_name, max_messages=1):
         if not queue_name.startswith("cycle_results_"):
             return []
@@ -63,22 +66,24 @@ def _make_queue_side_effects(mock_queue):
         if last_call:
             msg_data = json.loads(last_call.args[1])
             task_id = msg_data["payload"]["task_id"]
-            return [_make_result_message(
-                task_id=task_id,
-                outputs={
-                    "summary": "stub output",
-                    "role": "strat",
-                    "artifacts": [
-                        {
-                            "name": "output.md",
-                            "content": "# Output",
-                            "media_type": "text/markdown",
-                            "type": "document",
-                        }
-                    ],
-                },
-                queue_name=queue_name,
-            )]
+            return [
+                _make_result_message(
+                    task_id=task_id,
+                    outputs={
+                        "summary": "stub output",
+                        "role": "strat",
+                        "artifacts": [
+                            {
+                                "name": "output.md",
+                                "content": "# Output",
+                                "media_type": "text/markdown",
+                                "type": "document",
+                            }
+                        ],
+                    },
+                    queue_name=queue_name,
+                )
+            ]
         return []
 
     return consume_side_effect
@@ -140,9 +145,7 @@ def mock_squad_profile():
             AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
         ),
         created_at=NOW,
@@ -182,8 +185,13 @@ def mock_prefect():
 
 @pytest.fixture
 def executor(
-    mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle,
-    mock_llm_obs, mock_prefect,
+    mock_registry,
+    mock_vault,
+    mock_queue,
+    mock_squad_profile,
+    cycle,
+    mock_llm_obs,
+    mock_prefect,
 ):
     from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
 
@@ -221,9 +229,7 @@ def executor_no_obs(mock_registry, mock_vault, mock_queue, mock_squad_profile, c
 class TestLangFuseCycleEvents:
     """Verify start_cycle_trace + end_cycle_trace called around execute_run."""
 
-    async def test_emits_langfuse_cycle_events(
-        self, executor, mock_queue, mock_llm_obs
-    ):
+    async def test_emits_langfuse_cycle_events(self, executor, mock_queue, mock_llm_obs):
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
@@ -238,15 +244,11 @@ class TestLangFuseCycleEvents:
 
         # record_event called twice (started + completed)
         assert mock_llm_obs.record_event.call_count == 2
-        event_names = [
-            call.args[1].name for call in mock_llm_obs.record_event.call_args_list
-        ]
+        event_names = [call.args[1].name for call in mock_llm_obs.record_event.call_args_list]
         assert "cycle.started" in event_names
         assert "cycle.completed" in event_names
 
-    async def test_langfuse_context_has_trace_id(
-        self, executor, mock_queue, mock_llm_obs
-    ):
+    async def test_langfuse_context_has_trace_id(self, executor, mock_queue, mock_llm_obs):
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
@@ -289,9 +291,7 @@ class TestWithoutObservability:
 class TestPrefectFlowRun:
     """Verify Prefect flow run created at start."""
 
-    async def test_creates_prefect_flow_run(
-        self, executor, mock_queue, mock_prefect
-    ):
+    async def test_creates_prefect_flow_run(self, executor, mock_queue, mock_prefect):
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
@@ -313,9 +313,7 @@ class TestPrefectFlowRun:
 class TestPrefectTaskRuns:
     """Verify 5 task runs created during sequential execution."""
 
-    async def test_creates_task_runs(
-        self, executor, mock_queue, mock_prefect
-    ):
+    async def test_creates_task_runs(self, executor, mock_queue, mock_prefect):
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
@@ -326,9 +324,7 @@ class TestPrefectTaskRuns:
 
         assert mock_prefect.create_task_run.call_count == 5
 
-    async def test_task_run_states_updated(
-        self, executor, mock_queue, mock_prefect
-    ):
+    async def test_task_run_states_updated(self, executor, mock_queue, mock_prefect):
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(

@@ -7,7 +7,6 @@ httpx.Client for testability (D10).
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import httpx
@@ -139,8 +138,7 @@ class APIClient:
             return response.json()
         except Exception:
             raise CLIError(
-                f"Error: unexpected response (HTTP {response.status_code}) — "
-                f"{response.text[:200]}",
+                f"Error: unexpected response (HTTP {response.status_code}) — {response.text[:200]}",
                 exit_codes.GENERAL_ERROR,
             )
 

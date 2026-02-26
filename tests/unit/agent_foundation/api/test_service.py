@@ -3,11 +3,13 @@
 Tests TaskService and AgentService.
 Part of SIP-0.8.8 Phase 6.
 """
-import pytest
-from unittest.mock import MagicMock, AsyncMock
 
-from squadops.api.service import TaskService, AgentService
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from squadops.api.schemas import TaskRequestDTO
+from squadops.api.service import AgentService, TaskService
 from squadops.tasks.models import TaskResult
 
 
@@ -19,11 +21,13 @@ def mock_orchestrator():
     orchestrator.get_active_tasks = MagicMock(return_value=[])
     orchestrator.get_available_capabilities = MagicMock(return_value=["cap.one", "cap.two"])
     orchestrator.get_agent_states = MagicMock(return_value={})
-    orchestrator.health_check = AsyncMock(return_value={
-        "status": "healthy",
-        "registered_agents": 1,
-        "capabilities": 2,
-    })
+    orchestrator.health_check = AsyncMock(
+        return_value={
+            "status": "healthy",
+            "registered_agents": 1,
+            "capabilities": 2,
+        }
+    )
     return orchestrator
 
 

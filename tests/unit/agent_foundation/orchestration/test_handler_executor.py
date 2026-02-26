@@ -3,14 +3,16 @@
 Tests capability execution via handlers.
 Part of SIP-0.8.8 Phase 6.
 """
-import pytest
-from unittest.mock import MagicMock, AsyncMock
 
-from squadops.orchestration.handler_registry import HandlerRegistry
-from squadops.orchestration.handler_executor import HandlerExecutor
-from squadops.capabilities.handlers.base import CapabilityHandler, HandlerResult, HandlerEvidence
+from unittest.mock import MagicMock
+
+import pytest
+
 from squadops.agents.base import PortsBundle
 from squadops.agents.skills.registry import SkillRegistry
+from squadops.capabilities.handlers.base import CapabilityHandler, HandlerEvidence, HandlerResult
+from squadops.orchestration.handler_executor import HandlerExecutor
+from squadops.orchestration.handler_registry import HandlerRegistry
 from squadops.tasks.models import TaskEnvelope
 
 

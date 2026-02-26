@@ -101,8 +101,8 @@ def validate_agent_build(role: str, base_path: Path) -> None:
     logger.info(f"Agent build validated successfully: {role}")
     logger.info(f"   Role module: {role_module.name}")
     logger.info(f"   Skills: {', '.join(sorted(skills)) if skills else 'none'}")
-    logger.info(f"   Entry point: python -m squadops.agents.entrypoint")
-    logger.info(f"   Dockerfile: agents/Dockerfile")
+    logger.info("   Entry point: python -m squadops.agents.entrypoint")
+    logger.info("   Dockerfile: agents/Dockerfile")
     if git_commit:
         logger.info(f"   Git commit: {git_commit[:8]}")
     logger.info("")

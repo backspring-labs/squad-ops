@@ -81,9 +81,7 @@ PRIMITIVE_TYPES = {"string", "number", "boolean"}
 def _validate_primitive_type(type_name: str, context: str) -> None:
     """Validate that a type name is a v1 primitive."""
     if type_name not in PRIMITIVE_TYPES:
-        raise ValueError(
-            f"{context}: type must be one of {PRIMITIVE_TYPES}, got '{type_name}'"
-        )
+        raise ValueError(f"{context}: type must be one of {PRIMITIVE_TYPES}, got '{type_name}'")
 
 
 def _validate_primitive_value(value: Any, expected_type: str) -> bool:
@@ -542,8 +540,6 @@ class WorkloadRunReport:
     started_at: str
     completed_at: str
     task_records: tuple[TaskRecord, ...]
-    workload_acceptance_results: tuple[AcceptanceResult, ...] = field(
-        default_factory=tuple
-    )
+    workload_acceptance_results: tuple[AcceptanceResult, ...] = field(default_factory=tuple)
     metrics: HeadlineMetrics | None = None
     failure: FailureRecord | None = None

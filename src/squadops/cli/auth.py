@@ -147,9 +147,7 @@ def client_credentials_login(
         timeout=15,
     )
     resp.raise_for_status()
-    return _parse_token_response(
-        resp.json(), token_endpoint, client_id, "client_credentials"
-    )
+    return _parse_token_response(resp.json(), token_endpoint, client_id, "client_credentials")
 
 
 def refresh_access_token(token: CachedToken) -> CachedToken | None:

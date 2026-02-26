@@ -11,9 +11,10 @@ The 5-agent squad (lead, dev, strat, qa, data) must:
 - Generate the same 5-step plan when no build_tasks are configured
 - Work with the real ``full-squad`` profile from squad-profiles.yaml
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -30,15 +31,15 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.cycles.task_plan import (
-    CYCLE_TASK_STEPS,
     BUILD_TASK_STEPS,
+    CYCLE_TASK_STEPS,
     _has_builder_role,
     generate_task_plan,
 )
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "squad-profiles.yaml"
 
 
@@ -56,7 +57,10 @@ def five_agent_profile():
             AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
             AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True,
+                agent_id="data-agent",
+                role="data",
+                model="gpt-4",
+                enabled=True,
             ),
         ),
         created_at=NOW,
@@ -131,62 +135,73 @@ class TestLegacyPlanPlusBuild:
     """5-agent plan+build cycle — development.develop, NOT builder.assemble."""
 
     def test_seven_total_envelopes(self, run, five_agent_profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, five_agent_profile)
         assert len(envelopes) == 7
 
     def test_development_build_emitted(self, run, five_agent_profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, five_agent_profile)
         task_types = [e.task_type for e in envelopes]
         assert "development.develop" in task_types
 
     def test_no_builder_assemble(self, run, five_agent_profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, five_agent_profile)
         task_types = [e.task_type for e in envelopes]
         assert "builder.assemble" not in task_types
 
     def test_build_step_assigned_to_neo(self, run, five_agent_profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, five_agent_profile)
         build_envs = [e for e in envelopes if e.task_type == "development.develop"]
         assert len(build_envs) == 1
         assert build_envs[0].agent_id == "neo"
 
     def test_fallback_routing_reason(self, run, five_agent_profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, five_agent_profile)
-        build_envs = [
-            e for e in envelopes
-            if e.task_type in ("development.develop", "qa.test")
-        ]
+        build_envs = [e for e in envelopes if e.task_type in ("development.develop", "qa.test")]
         for env in build_envs:
             assert env.metadata["routing_reason"] == ROUTING_FALLBACK_NO_BUILDER
 
     def test_plan_steps_unchanged_in_combined_mode(self, run, five_agent_profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, five_agent_profile)
         plan_types = [e.task_type for e in envelopes[:5]]
         expected = [step[0] for step in CYCLE_TASK_STEPS]
         assert plan_types == expected
 
     def test_build_step_sequence(self, run, five_agent_profile):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, five_agent_profile)
         build_types = [e.task_type for e in envelopes[5:]]
         expected = [step[0] for step in BUILD_TASK_STEPS]
@@ -215,9 +230,11 @@ class TestLegacyYAMLProfileIntegration:
 
     async def test_full_squad_plan_emits_development_build(self, provider, run):
         profile = await provider.get_profile("full-squad")
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
         task_types = [e.task_type for e in envelopes]
         assert "development.develop" in task_types
@@ -231,13 +248,12 @@ class TestLegacyYAMLProfileIntegration:
 
     async def test_full_squad_build_route_reason(self, provider, run):
         profile = await provider.get_profile("full-squad")
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile)
-        build_envs = [
-            e for e in envelopes
-            if e.task_type in ("development.develop", "qa.test")
-        ]
+        build_envs = [e for e in envelopes if e.task_type in ("development.develop", "qa.test")]
         for env in build_envs:
             assert env.metadata["routing_reason"] == ROUTING_FALLBACK_NO_BUILDER

@@ -1,4 +1,5 @@
 """Unit tests for Memory port interface."""
+
 import pytest
 
 from squadops.ports.memory.store import MemoryPort

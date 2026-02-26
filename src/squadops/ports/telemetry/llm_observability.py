@@ -3,6 +3,7 @@
 Defines the abstract contract for LLM-specific observability (SIP-0061).
 All methods MUST be non-blocking — implementations buffer/enqueue internally.
 """
+
 from abc import ABC, abstractmethod
 
 from squadops.telemetry.models import (

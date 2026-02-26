@@ -5,14 +5,13 @@ Implements the stateless logic for layering and selection (the "Winning Rule")
 as defined in SIP-0057.
 """
 
-from squadops.prompts.models import AssembledPrompt, PromptFragment
+from squadops.ports.prompts.repository import PromptRepository
+from squadops.ports.prompts.service import PromptService
 from squadops.prompts.exceptions import (
     HashMismatchError,
     MandatoryLayerMissingError,
-    FragmentNotFoundError,
 )
-from squadops.ports.prompts.repository import PromptRepository
-from squadops.ports.prompts.service import PromptService
+from squadops.prompts.models import AssembledPrompt, PromptFragment
 
 
 class PromptAssembler(PromptService):
@@ -131,9 +130,7 @@ class PromptAssembler(PromptService):
                 actual=actual_hash,
             )
 
-    def _compose(
-        self, fragments: list[PromptFragment], role: str, hook: str
-    ) -> AssembledPrompt:
+    def _compose(self, fragments: list[PromptFragment], role: str, hook: str) -> AssembledPrompt:
         """
         Compose fragments into final assembled prompt.
 

@@ -5,10 +5,9 @@ Factory for creating database runtime instances.
 import logging
 from typing import Any
 
+from adapters.persistence.postgres import PostgresRuntime
 from squadops.core.secrets import SecretManager
 from squadops.ports.db import DbRuntime
-
-from adapters.persistence.postgres import PostgresRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +82,11 @@ def get_db_runtime(profile: dict[str, Any], secret_manager: SecretManager) -> Db
     # Extract other configuration
     echo = db_config.get("echo", False)
     connection_mode = db_config.get("connection", "direct")
-    migration_mode = db_config.get("migrations", {}).get("mode", "off") if isinstance(db_config.get("migrations"), dict) else "off"
+    migration_mode = (
+        db_config.get("migrations", {}).get("mode", "off")
+        if isinstance(db_config.get("migrations"), dict)
+        else "off"
+    )
 
     # Create PostgresRuntime instance
     # Note: Secret resolution happens inside PostgresRuntime.__init__ if DSN contains secret://
@@ -101,6 +104,8 @@ def get_db_runtime(profile: dict[str, Any], secret_manager: SecretManager) -> Db
         migration_mode=migration_mode,
     )
 
-    logger.info(f"Created PostgresRuntime instance (connection_mode={connection_mode}, migration_mode={migration_mode})")
+    logger.info(
+        f"Created PostgresRuntime instance (connection_mode={connection_mode}, migration_mode={migration_mode})"
+    )
 
     return runtime

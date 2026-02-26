@@ -3,6 +3,7 @@
 Provides the core agent base class with dependency-injected ports.
 Part of SIP-0.8.8 Agent Foundation.
 """
+
 from __future__ import annotations
 
 import logging

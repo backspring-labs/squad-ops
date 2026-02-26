@@ -3,6 +3,7 @@
 No-op implementation for testing. Does nothing, never raises.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from squadops.ports.telemetry.events import EventPort
 from squadops.ports.telemetry.metrics import MetricsPort
 from squadops.telemetry.models import Span, StructuredEvent

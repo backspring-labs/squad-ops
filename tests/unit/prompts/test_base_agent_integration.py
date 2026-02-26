@@ -4,12 +4,11 @@ Unit tests for BaseAgent prompt service integration.
 Verifies that BaseAgent correctly uses the injected PromptService.
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
 
-from squadops.prompts.models import AssembledPrompt
-from squadops.ports.prompts.service import PromptService
 from squadops.execution.agent import BaseAgent
+from squadops.ports.prompts.service import PromptService
+from squadops.prompts.models import AssembledPrompt
 
 
 def create_mock_prompt_service(content: str = "Test prompt content") -> PromptService:

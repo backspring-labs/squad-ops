@@ -3,6 +3,7 @@
 Frozen dataclasses for memory operations.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from dataclasses import dataclass
 from typing import Any
 

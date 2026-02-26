@@ -9,8 +9,8 @@ Run:
     pytest tests/integration/auth/test_realm_hardening.py -v -m auth
 """
 
-import pytest
 import httpx
+import pytest
 
 pytestmark = [pytest.mark.auth, pytest.mark.integration, pytest.mark.docker]
 

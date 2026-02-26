@@ -3,6 +3,7 @@
 Implementation of VersionControlPort for Git.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 import subprocess

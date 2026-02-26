@@ -8,4 +8,3 @@ binding to concrete transports or vendors.
 from squadops.ports.observability.heartbeat import AgentHeartbeatReporter
 
 __all__ = ["AgentHeartbeatReporter"]
-

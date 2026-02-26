@@ -15,6 +15,7 @@ Usage:
 
 Part of SIP-0.8.8 Phase 6.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,8 +45,9 @@ def load_instance_config(agent_id: str) -> dict | None:
     Returns:
         Instance configuration dict or None if not found
     """
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     # Try multiple paths for instances.yaml
     search_paths = [
@@ -137,6 +139,7 @@ class AgentRunner:
         try:
             # Create heartbeat reporter
             from adapters.observability.healthcheck_http import HealthCheckHttpReporter
+
             self._heartbeat_reporter = HealthCheckHttpReporter()
 
             # Bootstrap system
@@ -187,7 +190,7 @@ class AgentRunner:
 
         Creates all port adapters and bootstraps the system.
         """
-        from squadops.bootstrap import create_system, SystemConfig
+        from squadops.bootstrap import SystemConfig, create_system
         from squadops.config import load_config
 
         # Load configuration
@@ -217,15 +220,17 @@ class AgentRunner:
             Dictionary of port instances ready for system creation
         """
         # Import adapter factories
-        from adapters.llm.factory import create_llm_provider
-        from adapters.memory.factory import create_memory_provider
-        from adapters.tools.local_filesystem import LocalFileSystemAdapter
-
         # Import adapters
         from adapters.comms.rabbitmq import RabbitMQAdapter
-        from squadops.prompts.assembler import PromptAssembler
+        from adapters.llm.factory import create_llm_provider
+        from adapters.memory.factory import create_memory_provider
         from adapters.prompts import create_prompt_repository
-        from adapters.telemetry.factory import create_telemetry_provider, create_llm_observability_provider
+        from adapters.telemetry.factory import (
+            create_llm_observability_provider,
+            create_telemetry_provider,
+        )
+        from adapters.tools.local_filesystem import LocalFileSystemAdapter
+        from squadops.prompts.assembler import PromptAssembler
 
         # Create LLM adapter
         # Priority: instance config model > env var > config
@@ -365,7 +370,7 @@ class AgentRunner:
         Raises:
             ValueError: If PromptService is not available or returns invalid prompt
         """
-        if not hasattr(self, '_prompt_service') or not self._prompt_service:
+        if not hasattr(self, "_prompt_service") or not self._prompt_service:
             raise ValueError(
                 f"PromptService not initialized for agent '{self.agent_id}'. "
                 "Cannot build system prompt without proper configuration."
@@ -410,6 +415,7 @@ class AgentRunner:
             if self.system and self.system.ports.llm:
                 import time
                 import uuid
+
                 from squadops.llm.models import LLMRequest
 
                 # Get role-specific system prompt from PromptService
@@ -423,7 +429,7 @@ class AgentRunner:
                 t0 = time.monotonic()
                 response = await self.system.ports.llm.generate(request)
                 latency_ms = (time.monotonic() - t0) * 1000
-                response_text = response.text if hasattr(response, 'text') else str(response)
+                response_text = response.text if hasattr(response, "text") else str(response)
 
                 # Record generation in LangFuse (SIP-0061)
                 llm_obs = self.system.ports.llm_observability
@@ -467,6 +473,7 @@ class AgentRunner:
 
             # Build response message in the format expected by health-check
             from datetime import datetime
+
             response_message = {
                 "action": "comms.chat.response",
                 "metadata": {
@@ -508,6 +515,7 @@ class AgentRunner:
         so all 5 agents' spans merge into one LangFuse trace.
         """
         import json
+
         from squadops.tasks.models import TaskEnvelope, TaskResult
 
         envelope_data = payload.get("payload", {})
@@ -528,7 +536,9 @@ class AgentRunner:
         from squadops.telemetry.models import CorrelationContext
 
         ctx = CorrelationContext.from_envelope(
-            envelope, agent_id=self.agent_id, agent_role=self.role,
+            envelope,
+            agent_id=self.agent_id,
+            agent_role=self.role,
         )
         llm_obs = self.system.ports.llm_observability if self.system else None
 
@@ -589,7 +599,7 @@ class AgentRunner:
                     timeout=heartbeat_interval,
                 )
                 break  # Shutdown requested
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass  # Continue loop
 
     async def _send_heartbeat(self) -> None:
@@ -604,7 +614,9 @@ class AgentRunner:
             lifecycle_state=self._lifecycle_state,
             version=SQUADOPS_VERSION,
         )
-        logger.debug("Heartbeat sent", extra={"agent_id": self.agent_id, "state": self._lifecycle_state})
+        logger.debug(
+            "Heartbeat sent", extra={"agent_id": self.agent_id, "state": self._lifecycle_state}
+        )
 
 
 def setup_signal_handlers(runner: AgentRunner) -> None:
@@ -660,4 +672,3 @@ async def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
-

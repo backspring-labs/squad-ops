@@ -3,6 +3,7 @@
 Applied at buffer ingestion time (before enqueue) so sensitive data
 never enters the buffer.
 """
+
 from __future__ import annotations
 
 import hashlib

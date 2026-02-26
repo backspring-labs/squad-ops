@@ -5,15 +5,12 @@ from datetime import datetime, timedelta
 import pytest
 
 from squadops.auth.models import (
-    AuthContext,
     Identity,
-    IdentityType,
     Role,
     Scope,
     TokenClaims,
 )
 from tests._stubs.auth import TestStubAuthAdapter, TestStubAuthzAdapter
-
 
 pytestmark = pytest.mark.auth
 

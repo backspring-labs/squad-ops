@@ -67,9 +67,7 @@ class CycleRegistryPort(ABC):
         """
 
     @abstractmethod
-    async def list_runs(
-        self, cycle_id: str, *, limit: int = 50, offset: int = 0
-    ) -> list[Run]:
+    async def list_runs(self, cycle_id: str, *, limit: int = 50, offset: int = 0) -> list[Run]:
         """List runs for a cycle, with pagination."""
 
     @abstractmethod
@@ -120,9 +118,7 @@ class CycleRegistryPort(ABC):
     # --- Pulse Verification (SIP-0070) ---
 
     @abstractmethod
-    async def record_pulse_verification(
-        self, run_id: str, record: PulseVerificationRecord
-    ) -> Run:
+    async def record_pulse_verification(self, run_id: str, record: PulseVerificationRecord) -> Run:
         """Persist a pulse verification record for a run.
 
         Each record is per-suite: contains suite_id + suite_outcome.

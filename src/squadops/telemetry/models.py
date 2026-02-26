@@ -4,6 +4,7 @@ Frozen dataclasses for structured events, spans, metric types,
 and LLM observability correlation (SIP-0061).
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

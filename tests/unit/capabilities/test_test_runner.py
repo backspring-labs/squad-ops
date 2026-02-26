@@ -3,6 +3,7 @@
 Tests ``TestRunResult``, ``_materialize_files``, and ``run_generated_tests``
 from ``squadops.capabilities.handlers.test_runner``.
 """
+
 from __future__ import annotations
 
 import os
@@ -72,44 +73,56 @@ class TestMaterializeFiles:
     def test_flat_files(self):
         workspace = tempfile.mkdtemp(prefix="test_mat_")
         try:
-            _materialize_files(workspace, [
-                {"path": "main.py", "content": "print('hi')"},
-                {"path": "helper.py", "content": "x = 1"},
-            ])
+            _materialize_files(
+                workspace,
+                [
+                    {"path": "main.py", "content": "print('hi')"},
+                    {"path": "helper.py", "content": "x = 1"},
+                ],
+            )
             assert os.path.isfile(os.path.join(workspace, "main.py"))
             assert os.path.isfile(os.path.join(workspace, "helper.py"))
             with open(os.path.join(workspace, "main.py")) as f:
                 assert f.read() == "print('hi')"
         finally:
             import shutil
+
             shutil.rmtree(workspace)
 
     def test_nested_directories(self):
         workspace = tempfile.mkdtemp(prefix="test_mat_")
         try:
-            _materialize_files(workspace, [
-                {"path": "pkg/__init__.py", "content": ""},
-                {"path": "pkg/core.py", "content": "val = 1"},
-                {"path": "tests/test_core.py", "content": "assert True"},
-            ])
+            _materialize_files(
+                workspace,
+                [
+                    {"path": "pkg/__init__.py", "content": ""},
+                    {"path": "pkg/core.py", "content": "val = 1"},
+                    {"path": "tests/test_core.py", "content": "assert True"},
+                ],
+            )
             assert os.path.isfile(os.path.join(workspace, "pkg", "__init__.py"))
             assert os.path.isfile(os.path.join(workspace, "pkg", "core.py"))
             assert os.path.isfile(os.path.join(workspace, "tests", "test_core.py"))
         finally:
             import shutil
+
             shutil.rmtree(workspace)
 
     def test_multiple_files_same_dir(self):
         workspace = tempfile.mkdtemp(prefix="test_mat_")
         try:
-            _materialize_files(workspace, [
-                {"path": "tests/test_a.py", "content": "a"},
-                {"path": "tests/test_b.py", "content": "b"},
-            ])
+            _materialize_files(
+                workspace,
+                [
+                    {"path": "tests/test_a.py", "content": "a"},
+                    {"path": "tests/test_b.py", "content": "b"},
+                ],
+            )
             assert os.path.isfile(os.path.join(workspace, "tests", "test_a.py"))
             assert os.path.isfile(os.path.join(workspace, "tests", "test_b.py"))
         finally:
             import shutil
+
             shutil.rmtree(workspace)
 
 
@@ -137,9 +150,7 @@ class TestRunGeneratedTestsPassing:
             {
                 "path": "test_mylib.py",
                 "content": (
-                    "from mylib import add\n\n"
-                    "def test_add():\n"
-                    "    assert add(1, 2) == 3\n"
+                    "from mylib import add\n\ndef test_add():\n    assert add(1, 2) == 3\n"
                 ),
             },
         ]
@@ -159,9 +170,7 @@ class TestRunGeneratedTestsFailing:
             {
                 "path": "test_mylib.py",
                 "content": (
-                    "from mylib import add\n\n"
-                    "def test_add():\n"
-                    "    assert add(1, 2) == 3\n"
+                    "from mylib import add\n\ndef test_add():\n    assert add(1, 2) == 3\n"
                 ),
             },
         ]
@@ -177,9 +186,7 @@ class TestRunGeneratedTestsImportError:
             {
                 "path": "test_bad.py",
                 "content": (
-                    "from nonexistent_module import Foo\n\n"
-                    "def test_foo():\n"
-                    "    assert Foo()\n"
+                    "from nonexistent_module import Foo\n\ndef test_foo():\n    assert Foo()\n"
                 ),
             },
         ]
@@ -216,11 +223,7 @@ class TestRunGeneratedTestsTimeout:
         tests = [
             {
                 "path": "test_slow.py",
-                "content": (
-                    "import time\n\n"
-                    "def test_slow():\n"
-                    "    time.sleep(30)\n"
-                ),
+                "content": ("import time\n\ndef test_slow():\n    time.sleep(30)\n"),
             },
         ]
         result = await run_generated_tests(source_files=[], test_files=tests, timeout_seconds=2)

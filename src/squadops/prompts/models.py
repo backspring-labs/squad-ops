@@ -5,8 +5,8 @@ All models are immutable (frozen dataclasses) to ensure deterministic
 behavior and prevent accidental mutation during assembly.
 """
 
-from dataclasses import dataclass, field
 import hashlib
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

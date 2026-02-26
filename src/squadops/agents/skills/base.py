@@ -7,11 +7,12 @@ Skills are the fundamental units of agent work. Each skill:
 
 Part of SIP-0.8.8 Agent Foundation.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -59,7 +60,7 @@ class ExecutionEvidence:
         """
         return cls(
             skill_name=skill_name,
-            executed_at=datetime.now(timezone.utc),
+            executed_at=datetime.now(UTC),
             duration_ms=duration_ms,
             inputs_hash=inputs_hash,
             outputs_hash=outputs_hash,

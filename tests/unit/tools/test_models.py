@@ -1,4 +1,5 @@
 """Unit tests for Tools domain models."""
+
 import pytest
 
 from squadops.tools.models import ContainerResult, ContainerSpec, VCSStatus

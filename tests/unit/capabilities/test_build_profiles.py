@@ -3,6 +3,7 @@
 Tests BuildProfile dataclass, get_profile() lookup, constants, and
 profile immutability.
 """
+
 from __future__ import annotations
 
 import pytest

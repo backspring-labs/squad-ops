@@ -2,7 +2,7 @@
 Tests for SIP-0064 squad profile API routes.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,16 +14,14 @@ from squadops.cycles.models import AgentProfileEntry, CycleError, SquadProfile
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 _PROFILE = SquadProfile(
     profile_id="full-squad",
     name="Full Squad",
     description="All agents",
     version=1,
-    agents=(
-        AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
-    ),
+    agents=(AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),),
     created_at=NOW,
 )
 

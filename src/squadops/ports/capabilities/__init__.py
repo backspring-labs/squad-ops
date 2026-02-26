@@ -6,8 +6,8 @@ Defines contracts for:
 - CapabilityExecutor (driven port): Execution abstraction for task invocation
 """
 
-from squadops.ports.capabilities.repository import CapabilityRepository
 from squadops.ports.capabilities.executor import CapabilityExecutor
+from squadops.ports.capabilities.repository import CapabilityRepository
 
 __all__ = [
     "CapabilityRepository",

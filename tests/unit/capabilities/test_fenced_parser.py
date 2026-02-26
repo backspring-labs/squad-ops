@@ -17,12 +17,7 @@ pytestmark = [pytest.mark.domain_capabilities]
 
 class TestSingleFence:
     def test_single_fence_extraction(self):
-        response = (
-            "Here is the code:\n"
-            "```python:src/main.py\n"
-            "print('hello')\n"
-            "```\n"
-        )
+        response = "Here is the code:\n```python:src/main.py\nprint('hello')\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["filename"] == "src/main.py"
@@ -85,61 +80,36 @@ class TestMultipleFences:
 
 class TestPathSecurity:
     def test_path_traversal_rejection(self):
-        response = (
-            "```python:../etc/passwd\n"
-            "malicious\n"
-            "```\n"
-        )
+        response = "```python:../etc/passwd\nmalicious\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 0
 
     def test_absolute_path_rejection(self):
-        response = (
-            "```python:/etc/passwd\n"
-            "malicious\n"
-            "```\n"
-        )
+        response = "```python:/etc/passwd\nmalicious\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 0
 
     def test_mid_path_traversal_rejection(self):
-        response = (
-            "```python:src/../../../etc/shadow\n"
-            "malicious\n"
-            "```\n"
-        )
+        response = "```python:src/../../../etc/shadow\nmalicious\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 0
 
     def test_dotdot_in_filename_is_ok(self):
         """Filenames containing '..' not as a path segment are fine."""
-        response = (
-            "```python:src/foo..bar.py\n"
-            "code\n"
-            "```\n"
-        )
+        response = "```python:src/foo..bar.py\ncode\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["filename"] == "src/foo..bar.py"
 
     def test_colon_in_filename_rejected(self):
         """Colons in filenames are rejected (invalid on macOS/Windows, LLM artifact)."""
-        response = (
-            "```python:test_board:play_game/board.py\n"
-            "def test_board():\n"
-            "    pass\n"
-            "```\n"
-        )
+        response = "```python:test_board:play_game/board.py\ndef test_board():\n    pass\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 0
 
     def test_colon_in_nested_path_rejected(self):
         """Colons anywhere in the path are rejected."""
-        response = (
-            "```python:src/foo:bar.py\n"
-            "code\n"
-            "```\n"
-        )
+        response = "```python:src/foo:bar.py\ncode\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 0
 
@@ -171,30 +141,19 @@ class TestEdgeCases:
 
     def test_no_tagged_fences(self):
         """Untagged fences (no lang:path) are ignored."""
-        response = (
-            "```python\n"
-            "print('hi')\n"
-            "```\n"
-        )
+        response = "```python\nprint('hi')\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 0
 
     def test_no_closing_fence(self):
         """Unclosed fence is skipped."""
-        response = (
-            "```python:main.py\n"
-            "print('hi')\n"
-        )
+        response = "```python:main.py\nprint('hi')\n"
         result = extract_fenced_files(response)
         assert len(result) == 0
 
     def test_malformed_header_with_space(self):
         """Fence headers with spaces in the path are not matched."""
-        response = (
-            "```python:my file.py\n"
-            "code\n"
-            "```\n"
-        )
+        response = "```python:my file.py\ncode\n```\n"
         # Space in path means \S+ won't match the space part
         # Actually "my" will match and "file.py" is leftover — but the regex
         # requires no trailing content after path except whitespace, so
@@ -204,20 +163,13 @@ class TestEdgeCases:
         assert len(result) == 0
 
     def test_deeply_nested_path(self):
-        response = (
-            "```python:src/squadops/capabilities/handlers/build.py\n"
-            "code\n"
-            "```\n"
-        )
+        response = "```python:src/squadops/capabilities/handlers/build.py\ncode\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["filename"] == "src/squadops/capabilities/handlers/build.py"
 
     def test_empty_file_content(self):
-        response = (
-            "```python:empty.py\n"
-            "```\n"
-        )
+        response = "```python:empty.py\n```\n"
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["content"] == ""

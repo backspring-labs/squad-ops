@@ -4,9 +4,10 @@ Map between API DTOs (Pydantic) and internal domain models (frozen dataclasses).
 
 Part of SIP-0.8.8.
 """
-from datetime import datetime, timezone
-from typing import Any
+
 import uuid
+from datetime import UTC, datetime
+from typing import Any
 
 from squadops.api.schemas import TaskRequestDTO, TaskResponseDTO, TaskResultDTO
 from squadops.tasks.models import TaskEnvelope, TaskResult
@@ -81,7 +82,7 @@ def envelope_to_response(
         task_id=envelope.task_id,
         task_type=envelope.task_type,
         status="accepted",
-        created_at=created_at or datetime.now(timezone.utc),
+        created_at=created_at or datetime.now(UTC),
     )
 
 

@@ -3,9 +3,10 @@
 DEV-ONLY adapter that logs to stdout. Not for production use.
 Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
+
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TextIO
 
 from squadops.ports.telemetry.events import EventPort
@@ -87,7 +88,7 @@ class ConsoleAdapter(MetricsPort, EventPort):
             trace_id=parent.trace_id if parent else str(uuid.uuid4()),
             span_id=str(uuid.uuid4()),
             parent_span_id=parent.span_id if parent else None,
-            start_time=datetime.now(timezone.utc),
+            start_time=datetime.now(UTC),
             attributes=tuple(attributes.items()) if attributes else (),
         )
         attrs_str = f" {attributes}" if attributes else ""

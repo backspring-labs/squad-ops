@@ -2,7 +2,7 @@
 Tests for SIP-0064 artifact API routes.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,7 +19,7 @@ from squadops.cycles.models import (
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 _ARTIFACT = ArtifactRef(
     artifact_id="art_001",
@@ -114,9 +114,7 @@ class TestGetArtifactMetadata:
         assert resp.json()["artifact_id"] == "art_001"
 
     def test_not_found(self, client, mock_artifact_vault):
-        mock_artifact_vault.get_metadata.side_effect = ArtifactNotFoundError(
-            "Not found"
-        )
+        mock_artifact_vault.get_metadata.side_effect = ArtifactNotFoundError("Not found")
         resp = client.get("/api/v1/artifacts/nonexistent")
         assert resp.status_code == 404
 
@@ -128,9 +126,7 @@ class TestListProjectArtifacts:
         assert len(resp.json()) == 1
 
     def test_filter_by_type(self, client):
-        resp = client.get(
-            "/api/v1/projects/hello_squad/artifacts?artifact_type=prd"
-        )
+        resp = client.get("/api/v1/projects/hello_squad/artifacts?artifact_type=prd")
         assert resp.status_code == 200
 
 

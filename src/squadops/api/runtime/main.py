@@ -207,7 +207,10 @@ async def startup_event():
                 # secret_manager=None is correct: config loader pre-resolves
                 # all secret:// references before AppConfig is created.
                 create_service_token_client(
-                    svc_name, svc_config, auth_config.oidc, secret_manager=None,
+                    svc_name,
+                    svc_config,
+                    auth_config.oidc,
+                    secret_manager=None,
                 )
                 logger.info("Service token client initialized: %s", svc_name)
     except Exception as e:
@@ -292,13 +295,13 @@ async def startup_event():
         redis_url = config.comms.redis.url
         _redis_client = aioredis.from_url(redis_url)
         _health_checker_instance = HealthChecker(
-            pg_pool=pool, redis_client=_redis_client, config=config,
+            pg_pool=pool,
+            redis_client=_redis_client,
+            config=config,
         )
         await _health_checker_instance.init_connections()
         set_health_checker(_health_checker_instance)
-        _reconciliation_task = asyncio.create_task(
-            _health_checker_instance.reconciliation_loop()
-        )
+        _reconciliation_task = asyncio.create_task(_health_checker_instance.reconciliation_loop())
         logger.info("Platform health checker initialized")
     except Exception as e:
         logger.error(f"Failed to initialize health checker: {e}")

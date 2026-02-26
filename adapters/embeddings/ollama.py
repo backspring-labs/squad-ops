@@ -3,6 +3,7 @@
 Production adapter for local Ollama embeddings.
 Part of SIP-0.8.8 Agent Migration.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -15,7 +16,6 @@ from squadops.embeddings.exceptions import (
     EmbeddingTimeoutError,
 )
 from squadops.ports.embeddings.provider import EmbeddingsPort
-
 
 # Model dimensions for known Ollama embedding models
 MODEL_DIMENSIONS: dict[str, int] = {
@@ -90,9 +90,7 @@ class OllamaEmbeddingsAdapter(EmbeddingsPort):
 
             return embedding
         except httpx.TimeoutException as e:
-            raise EmbeddingTimeoutError(
-                f"Ollama embedding timed out after {self._timeout}s"
-            ) from e
+            raise EmbeddingTimeoutError(f"Ollama embedding timed out after {self._timeout}s") from e
         except httpx.ConnectError as e:
             raise EmbeddingConnectionError(
                 f"Failed to connect to Ollama at {self._base_url}"

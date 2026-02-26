@@ -5,6 +5,7 @@ SquadOps system with all components wired together.
 
 Part of SIP-0.8.8 Phase 7.
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,21 +13,21 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from squadops.agents.base import PortsBundle
-from squadops.bootstrap.skills import create_skill_registry
+from squadops.api.service import AgentService, TaskService
 from squadops.bootstrap.handlers import create_handler_registry
+from squadops.bootstrap.skills import create_skill_registry
 from squadops.orchestration.orchestrator import AgentOrchestrator
-from squadops.api.service import TaskService, AgentService
 
 if TYPE_CHECKING:
     from squadops.agents.skills.registry import SkillRegistry
     from squadops.orchestration.handler_registry import HandlerRegistry
+    from squadops.ports.comms.queue import QueuePort
     from squadops.ports.llm.provider import LLMPort
     from squadops.ports.memory.store import MemoryPort
     from squadops.ports.prompts.service import PromptService
-    from squadops.ports.comms.queue import QueuePort
-    from squadops.ports.telemetry.metrics import MetricsPort
     from squadops.ports.telemetry.events import EventPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
+    from squadops.ports.telemetry.metrics import MetricsPort
     from squadops.ports.tools.filesystem import FileSystemPort
 
 logger = logging.getLogger(__name__)

@@ -3,7 +3,7 @@ Cycle API routes (SIP-0064 §9.3).
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks
 
@@ -20,9 +20,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 
-router = APIRouter(
-    prefix="/api/v1/projects/{project_id}/cycles", tags=["cycles"]
-)
+router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles", tags=["cycles"])
 
 
 @router.post("")
@@ -47,13 +45,11 @@ async def create_cycle(
 
         # Resolve squad profile snapshot
         profile_port = get_squad_profile_port()
-        profile, snapshot_hash = await profile_port.resolve_snapshot(
-            body.squad_profile_id
-        )
+        profile, snapshot_hash = await profile_port.resolve_snapshot(body.squad_profile_id)
 
         # Build domain objects
         cycle_id = f"cyc_{uuid.uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Convert DTO policy to domain
         gates = tuple(

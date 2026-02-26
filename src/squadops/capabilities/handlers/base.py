@@ -6,13 +6,14 @@ skills to fulfill a capability contract.
 
 Part of SIP-0.8.8 Phase 5.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -75,7 +76,7 @@ class HandlerEvidence:
         return cls(
             handler_name=handler_name,
             capability_id=capability_id,
-            executed_at=datetime.now(timezone.utc),
+            executed_at=datetime.now(UTC),
             duration_ms=duration_ms,
             skill_executions=tuple(skill_executions or []),
             inputs_hash=inputs_hash,

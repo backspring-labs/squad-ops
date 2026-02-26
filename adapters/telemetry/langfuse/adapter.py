@@ -6,6 +6,7 @@ A single daemon thread handles background flushing to LangFuse.
 The langfuse SDK is lazily imported in __init__ — this module can be
 imported without the SDK; only construction triggers the import.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -86,12 +87,12 @@ class LangFuseAdapter(LLMObservabilityPort):
             ) from None
 
         self._config = config
-        self._buffer: queue.Queue[_BufferEntry] = queue.Queue(
-            maxsize=config.buffer_max_size
-        )
+        self._buffer: queue.Queue[_BufferEntry] = queue.Queue(maxsize=config.buffer_max_size)
         self._dropped_events = 0
         self._span_state: dict[str, Any] = {}  # Keyed by cycle_id/pulse_id/task_id
-        self._lock = threading.Lock()  # Protects _span_state, _dropped_events, _last_overflow_warning
+        self._lock = (
+            threading.Lock()
+        )  # Protects _span_state, _dropped_events, _last_overflow_warning
         self._shutdown = threading.Event()
         self._flush_requested = threading.Event()
         self._last_overflow_warning = 0.0  # Protected by _lock
@@ -185,11 +186,7 @@ class LangFuseAdapter(LLMObservabilityPort):
             timestamp=event.timestamp,
             span_id=event.span_id,
         )
-        self._enqueue(
-            _BufferEntry(
-                event_type=_EventType.EVENT, ctx=ctx, payload=redacted_event
-            )
-        )
+        self._enqueue(_BufferEntry(event_type=_EventType.EVENT, ctx=ctx, payload=redacted_event))
 
     def flush(self) -> None:
         """Signal background thread to drain. Non-blocking."""
@@ -204,9 +201,7 @@ class LangFuseAdapter(LLMObservabilityPort):
         if self._flush_thread.is_alive():
             remaining = self._buffer.qsize()
             if remaining > 0:
-                logger.warning(
-                    "langfuse_close_timeout: discarding %d unflushed entries", remaining
-                )
+                logger.warning("langfuse_close_timeout: discarding %d unflushed entries", remaining)
         # Shutdown the SDK client
         try:
             self._client.shutdown()
@@ -256,9 +251,7 @@ class LangFuseAdapter(LLMObservabilityPort):
             now = time.monotonic()
             with self._lock:
                 self._dropped_events += 1
-                should_warn = (
-                    now - self._last_overflow_warning >= OVERFLOW_WARNING_INTERVAL_SECONDS
-                )
+                should_warn = now - self._last_overflow_warning >= OVERFLOW_WARNING_INTERVAL_SECONDS
                 if should_warn:
                     self._last_overflow_warning = now
                 total_dropped = self._dropped_events
@@ -279,9 +272,7 @@ class LangFuseAdapter(LLMObservabilityPort):
 
         while not self._shutdown.is_set():
             # Wait for flush interval or explicit signal
-            self._flush_requested.wait(
-                timeout=self._config.flush_interval_seconds
-            )
+            self._flush_requested.wait(timeout=self._config.flush_interval_seconds)
             self._flush_requested.clear()
 
             try:
@@ -292,9 +283,7 @@ class LangFuseAdapter(LLMObservabilityPort):
                     "langfuse_flush_error: retrying in %.1fs", retry_delay, exc_info=True
                 )
                 time.sleep(retry_delay)
-                retry_delay = min(
-                    retry_delay * RETRY_BACKOFF_FACTOR, RETRY_MAX_DELAY_SECONDS
-                )
+                retry_delay = min(retry_delay * RETRY_BACKOFF_FACTOR, RETRY_MAX_DELAY_SECONDS)
 
         # Final drain attempt on shutdown
         try:
@@ -351,9 +340,7 @@ class LangFuseAdapter(LLMObservabilityPort):
 
         elif entry.event_type == _EventType.END_PULSE:
             with self._lock:
-                span = self._span_state.pop(
-                    f"pulse:{tk}:{ctx.pulse_id}", None
-                )
+                span = self._span_state.pop(f"pulse:{tk}:{ctx.pulse_id}", None)
             if span is not None:
                 span.end()
 
@@ -374,9 +361,7 @@ class LangFuseAdapter(LLMObservabilityPort):
 
         elif entry.event_type == _EventType.END_TASK:
             with self._lock:
-                span = self._span_state.pop(
-                    f"task:{tk}:{ctx.task_id}", None
-                )
+                span = self._span_state.pop(f"task:{tk}:{ctx.task_id}", None)
             if span is not None:
                 span.end()
 
@@ -449,9 +434,7 @@ class LangFuseAdapter(LLMObservabilityPort):
                 if span is not None:
                     return span
             if ctx.pulse_id:
-                span = self._span_state.get(
-                    f"pulse:{tk}:{ctx.pulse_id}"
-                )
+                span = self._span_state.get(f"pulse:{tk}:{ctx.pulse_id}")
                 if span is not None:
                     return span
             return self._span_state.get(f"cycle:{tk}")

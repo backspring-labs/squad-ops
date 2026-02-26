@@ -40,9 +40,7 @@ def lint_realm(realm: dict[str, Any], filename: str) -> list[str]:
     # --- SSL required ---
     ssl_required = realm.get("sslRequired", "none")
     if is_cloud and ssl_required != "all":
-        errors.append(
-            f"[{filename}] sslRequired must be 'all' for cloud, got {ssl_required!r}"
-        )
+        errors.append(f"[{filename}] sslRequired must be 'all' for cloud, got {ssl_required!r}")
     elif not is_cloud and ssl_required != "external":
         errors.append(
             f"[{filename}] sslRequired must be 'external' for deployed realm, got {ssl_required!r}"
@@ -75,9 +73,7 @@ def lint_realm(realm: dict[str, Any], filename: str) -> list[str]:
     # --- Login theme ---
     login_theme = realm.get("loginTheme")
     if login_theme != "squadops":
-        errors.append(
-            f"[{filename}] loginTheme must be 'squadops', got {login_theme!r}"
-        )
+        errors.append(f"[{filename}] loginTheme must be 'squadops', got {login_theme!r}")
 
     # --- Redirect URIs and web origins: no localhost ---
     for client in realm.get("clients", []):

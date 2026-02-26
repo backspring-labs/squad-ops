@@ -1,8 +1,10 @@
 """Unit tests for Ollama embeddings adapter."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from adapters.embeddings.ollama import OllamaEmbeddingsAdapter, MODEL_DIMENSIONS
+import pytest
+
+from adapters.embeddings.ollama import OllamaEmbeddingsAdapter
 from squadops.embeddings.exceptions import (
     EmbeddingConnectionError,
     EmbeddingError,

@@ -17,11 +17,12 @@ Usage:
     pytest tests/smoke/test_stack_validation.py -v -m stack_validation
 """
 
+import asyncio
 import os
 import uuid
-import pytest
+
 import httpx
-import asyncio
+import pytest
 
 # Configurable via environment for different environments
 BASE_URL = os.environ.get("HEALTH_CHECK_URL", "http://localhost:8000")
@@ -43,7 +44,8 @@ async def wait_until_healthy(client: httpx.AsyncClient, timeout: int = 30) -> bo
                         online_components = [c for c in data if c.get("status") == "online"]
                         # At least RabbitMQ, PostgreSQL, and Redis should be online
                         core_online = sum(
-                            1 for c in online_components
+                            1
+                            for c in online_components
                             if c.get("component") in ["RabbitMQ", "PostgreSQL", "Redis"]
                         )
                         if core_online >= 3:
@@ -136,7 +138,7 @@ class TestStackValidation:
 
             resp = await client.post(
                 f"{BASE_URL}/console/command",
-                json={"session_id": session_id, "command": f"chat {target_agent}"}
+                json={"session_id": session_id, "command": f"chat {target_agent}"},
             )
             assert resp.status_code == 200, f"Failed to start chat: {resp.text}"
             data = resp.json()
@@ -148,7 +150,7 @@ class TestStackValidation:
 
             resp = await client.post(
                 f"{BASE_URL}/console/command",
-                json={"session_id": session_id, "command": test_message}
+                json={"session_id": session_id, "command": test_message},
             )
             assert resp.status_code == 200, f"Failed to send message: {resp.text}"
 
@@ -171,7 +173,7 @@ class TestStackValidation:
             # 5. End chat session
             await client.post(
                 f"{BASE_URL}/console/command",
-                json={"session_id": session_id, "command": "chat end"}
+                json={"session_id": session_id, "command": "chat end"},
             )
 
             assert response_received, (

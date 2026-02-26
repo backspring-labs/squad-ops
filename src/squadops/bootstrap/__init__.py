@@ -7,20 +7,21 @@ Provides factory functions for creating fully-configured system components:
 
 Part of SIP-0.8.8 Phase 7.
 """
+
+from squadops.bootstrap.handlers import (
+    create_handler_registry,
+    get_all_handlers,
+)
 from squadops.bootstrap.skills import (
     create_skill_registry,
     get_all_skills,
     get_skills_for_role,
 )
-from squadops.bootstrap.handlers import (
-    create_handler_registry,
-    get_all_handlers,
-)
 from squadops.bootstrap.system import (
+    SquadOpsSystem,
+    SystemConfig,
     create_orchestrator,
     create_system,
-    SystemConfig,
-    SquadOpsSystem,
 )
 
 __all__ = [

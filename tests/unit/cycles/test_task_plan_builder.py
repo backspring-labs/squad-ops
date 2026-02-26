@@ -4,7 +4,8 @@ Validates that generate_task_plan routes build tasks to builder.assemble
 when a builder role is present in the squad profile, and falls back to
 development.develop when absent.
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,15 +21,13 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.cycles.task_plan import (
-    BUILD_TASK_STEPS,
-    BUILDER_ASSEMBLY_TASK_STEPS,
     _has_builder_role,
     generate_task_plan,
 )
 
 pytestmark = [pytest.mark.domain_orchestration]
 
-NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -42,9 +41,7 @@ def profile_with_builder():
             AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=True),
         ),
@@ -63,9 +60,7 @@ def profile_without_builder():
             AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
         ),
         created_at=NOW,
@@ -119,9 +114,7 @@ class TestHasBuilderRole:
             description="Test",
             version=1,
             agents=(
-                AgentProfileEntry(
-                    agent_id="bob", role="builder", model="gpt-4", enabled=False
-                ),
+                AgentProfileEntry(agent_id="bob", role="builder", model="gpt-4", enabled=False),
             ),
             created_at=NOW,
         )
@@ -135,20 +128,26 @@ class TestHasBuilderRole:
 
 class TestBuilderRouting:
     def test_emits_builder_assemble_when_builder_present(
-        self, run, profile_with_builder,
+        self,
+        run,
+        profile_with_builder,
     ):
-        cycle = _make_cycle({
-            "build_tasks": ["builder.assemble", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["builder.assemble", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
         task_types = [e.task_type for e in envelopes]
         assert "builder.assemble" in task_types
 
     def test_builder_assemble_assigned_to_bob(self, run, profile_with_builder):
-        cycle = _make_cycle({
-            "build_tasks": ["builder.assemble", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["builder.assemble", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
         builder_envs = [e for e in envelopes if e.task_type == "builder.assemble"]
@@ -156,11 +155,15 @@ class TestBuilderRouting:
         assert builder_envs[0].agent_id == "bob"
 
     def test_builder_assemble_has_builder_role_in_metadata(
-        self, run, profile_with_builder,
+        self,
+        run,
+        profile_with_builder,
     ):
-        cycle = _make_cycle({
-            "build_tasks": ["builder.assemble", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["builder.assemble", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
         builder_envs = [e for e in envelopes if e.task_type == "builder.assemble"]
@@ -174,11 +177,15 @@ class TestBuilderRouting:
 
 class TestFallbackRouting:
     def test_emits_development_build_when_no_builder(
-        self, run, profile_without_builder,
+        self,
+        run,
+        profile_without_builder,
     ):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_without_builder)
 
         task_types = [e.task_type for e in envelopes]
@@ -202,50 +209,55 @@ class TestFallbackRouting:
 
 class TestRoutingReason:
     def test_builder_present_routing_reason(self, run, profile_with_builder):
-        cycle = _make_cycle({
-            "build_tasks": ["builder.assemble", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["builder.assemble", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
-        build_envs = [
-            e for e in envelopes
-            if e.task_type in ("builder.assemble", "qa.test")
-        ]
+        build_envs = [e for e in envelopes if e.task_type in ("builder.assemble", "qa.test")]
         for env in build_envs:
             assert env.metadata["routing_reason"] == ROUTING_BUILDER_PRESENT
 
     def test_fallback_routing_reason(self, run, profile_without_builder):
-        cycle = _make_cycle({
-            "build_tasks": ["development.develop", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["development.develop", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_without_builder)
 
-        build_envs = [
-            e for e in envelopes
-            if e.task_type in ("development.develop", "qa.test")
-        ]
+        build_envs = [e for e in envelopes if e.task_type in ("development.develop", "qa.test")]
         for env in build_envs:
             assert env.metadata["routing_reason"] == ROUTING_FALLBACK_NO_BUILDER
 
     def test_routing_reason_only_on_build_steps(self, run, profile_with_builder):
-        cycle = _make_cycle({
-            "build_tasks": ["builder.assemble", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["builder.assemble", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
         plan_envs = [
-            e for e in envelopes
+            e
+            for e in envelopes
             if e.task_type not in ("development.develop", "builder.assemble", "qa.test")
         ]
         for env in plan_envs:
             assert "routing_reason" not in env.metadata
 
     def test_routing_reason_uses_constants_not_free_text(
-        self, run, profile_with_builder,
+        self,
+        run,
+        profile_with_builder,
     ):
-        cycle = _make_cycle({
-            "build_tasks": ["builder.assemble", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["builder.assemble", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
 
         valid_reasons = {ROUTING_BUILDER_PRESENT, ROUTING_FALLBACK_NO_BUILDER}
@@ -262,17 +274,21 @@ class TestRoutingReason:
 
 class TestPlanPlusBuildWithBuilder:
     def test_plan_plus_build_7_envelopes(self, run, profile_with_builder):
-        cycle = _make_cycle({
-            "build_tasks": ["builder.assemble", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "build_tasks": ["builder.assemble", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
         assert len(envelopes) == 8
 
     def test_build_only_2_envelopes(self, run, profile_with_builder):
-        cycle = _make_cycle({
-            "plan_tasks": False,
-            "build_tasks": ["builder.assemble", "qa.test"],
-        })
+        cycle = _make_cycle(
+            {
+                "plan_tasks": False,
+                "build_tasks": ["builder.assemble", "qa.test"],
+            }
+        )
         envelopes = generate_task_plan(cycle, run, profile_with_builder)
         assert len(envelopes) == 3
         task_types = [e.task_type for e in envelopes]

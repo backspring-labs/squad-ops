@@ -3,6 +3,7 @@
 Factory function for creating embeddings adapters with secret resolution.
 Part of SIP-0.8.8 Agent Migration.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

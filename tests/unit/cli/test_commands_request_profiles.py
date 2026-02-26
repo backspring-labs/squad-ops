@@ -21,7 +21,9 @@ _SAMPLE_PROFILES = [
     {
         "name": "fullstack-fastapi-react",
         "description": "Fullstack profile",
-        "prompts": {"build_strategy": {"label": "Build Strategy", "choices": ["fresh", "incremental"]}},
+        "prompts": {
+            "build_strategy": {"label": "Build Strategy", "choices": ["fresh", "incremental"]}
+        },
         "defaults": {"build_strategy": "fresh", "dev_capability": "fullstack_fastapi_react"},
     },
 ]
