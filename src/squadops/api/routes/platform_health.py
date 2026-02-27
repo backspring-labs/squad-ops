@@ -13,6 +13,8 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from squadops.api.runtime.agent_labels import get_role_label
+
 router = APIRouter(prefix="/health", tags=["platform-health"])
 
 
@@ -91,9 +93,15 @@ async def get_agent_status_by_id(agent_id: str):
             "UNKNOWN" if network_status == "offline" else (row["lifecycle_state"] or "UNKNOWN")
         )
 
+        instances = hc._load_instances()
+        info = instances.get(row["agent_id"], {})
+        role = info.get("role", "unknown")
+
         return {
             "agent_id": row["agent_id"],
             "agent_name": hc._get_display_name(row["agent_id"]),
+            "role": role,
+            "role_label": get_role_label(role),
             "network_status": network_status,
             "lifecycle_state": lifecycle_state,
             "version": row["version"],

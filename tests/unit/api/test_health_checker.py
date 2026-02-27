@@ -67,22 +67,13 @@ class TestComputeNetworkStatus:
 
 
 class TestGetDefaultInstances:
-    def test_returns_five_agents(self, checker):
+    def test_returns_empty_dict(self, checker):
         defaults = checker._get_default_instances()
-        assert len(defaults) == 5
-        assert "max" in defaults
-        assert "neo" in defaults
-        assert "nat" in defaults
-        assert "eve" in defaults
-        assert "data" in defaults
+        assert defaults == {}
 
-    def test_default_instance_has_display_name(self, checker):
+    def test_no_hardcoded_agent_names(self, checker):
         defaults = checker._get_default_instances()
-        assert defaults["max"]["display_name"] == "Max"
-
-    def test_default_instance_has_role(self, checker):
-        defaults = checker._get_default_instances()
-        assert defaults["neo"]["role"] == "dev"
+        assert len(defaults) == 0
 
 
 class TestGetDisplayName:
@@ -123,8 +114,64 @@ class TestGetAgentStatus:
         mock_pg_pool.acquire.side_effect = Exception("DB down")
         result = await checker.get_agent_status()
         assert isinstance(result, list)
-        assert len(result) == 5  # from _get_default_instances
-        assert all(a["network_status"] == "offline" for a in result)
+        assert len(result) == 0  # empty fallback — no hardcoded agents
+
+    @pytest.mark.asyncio
+    async def test_agent_status_includes_role_label(self, checker, mock_pg_pool):
+        mock_row = MagicMock()
+        mock_row.__getitem__ = lambda self, key: {
+            "agent_id": "max",
+            "lifecycle_state": "READY",
+            "version": "0.9.7",
+            "tps": 5,
+            "memory_count": 10,
+            "last_heartbeat": datetime.utcnow(),
+            "current_task_id": None,
+        }[key]
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[mock_row])
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=False)
+        mock_pg_pool.acquire.return_value = mock_conn
+
+        result = await checker.get_agent_status()
+        assert len(result) >= 1
+        agent = result[0]
+        assert "role" in agent
+        assert "role_label" in agent
+        # role should come from instances info, not description
+        assert agent["role"] != "N/A"
+
+    @pytest.mark.asyncio
+    async def test_agent_status_role_not_description(self, checker, mock_pg_pool):
+        """Verify role field contains actual role, not description (bug fix)."""
+        checker._instances_cache = {
+            "neo": {"display_name": "Neo", "role": "dev", "description": "Developer Agent"},
+        }
+        checker._instances_cache_mtime = 12345.0
+
+        mock_row = MagicMock()
+        mock_row.__getitem__ = lambda self, key: {
+            "agent_id": "neo",
+            "lifecycle_state": "READY",
+            "version": "0.9.7",
+            "tps": 5,
+            "memory_count": 10,
+            "last_heartbeat": datetime.utcnow(),
+            "current_task_id": None,
+        }[key]
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[mock_row])
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=False)
+        mock_pg_pool.acquire.return_value = mock_conn
+
+        result = await checker.get_agent_status()
+        neo = [a for a in result if a["agent_id"] == "neo"][0]
+        assert neo["role"] == "dev"
+        assert neo["role_label"] == "Developer"
 
 
 class TestUpdateAgentStatusInDb:

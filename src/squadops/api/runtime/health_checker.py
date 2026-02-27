@@ -18,6 +18,8 @@ import asyncpg
 import httpx
 import yaml
 
+from squadops.api.runtime.agent_labels import get_role_label
+
 logger = logging.getLogger(__name__)
 
 
@@ -109,13 +111,8 @@ class HealthChecker:
             return []
 
     def _get_default_instances(self) -> dict[str, dict[str, Any]]:
-        return {
-            "max": {"display_name": "Max", "role": "lead", "description": "Task Lead"},
-            "neo": {"display_name": "Neo", "role": "dev", "description": "Developer"},
-            "nat": {"display_name": "Nat", "role": "strat", "description": "Product Strategy"},
-            "eve": {"display_name": "Eve", "role": "qa", "description": "QA & Security"},
-            "data": {"display_name": "Data", "role": "data", "description": "Analytics"},
-        }
+        """Empty fallback — platform code has no hardcoded agent names."""
+        return {}
 
     def _get_display_name(self, agent_id: str) -> str:
         instances = self._load_instances()
@@ -155,10 +152,12 @@ class HealthChecker:
                 else:
                     lifecycle_state = row["lifecycle_state"] or "UNKNOWN"
                 info = instances.get(agent_id, {})
+                role = info.get("role", "unknown")
                 return {
                     "agent_id": agent_id,
                     "agent_name": info.get("display_name", agent_id.title()),
-                    "role": info.get("description", "N/A"),
+                    "role": role,
+                    "role_label": get_role_label(role),
                     "network_status": network_status,
                     "lifecycle_state": lifecycle_state,
                     "version": row["version"] or "0.0.0",
@@ -186,6 +185,7 @@ class HealthChecker:
                     "agent_id": aid,
                     "agent_name": info["display_name"],
                     "role": info.get("role", "unknown"),
+                    "role_label": get_role_label(info.get("role", "unknown")),
                     "network_status": "offline",
                     "lifecycle_state": "UNKNOWN",
                     "version": "0.0.0",
