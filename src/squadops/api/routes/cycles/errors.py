@@ -9,12 +9,15 @@ from __future__ import annotations
 from fastapi import HTTPException
 
 from squadops.cycles.models import (
+    ActiveProfileDeletionError,
     ArtifactNotFoundError,
     BaselineNotAllowedError,
     CycleError,
     CycleNotFoundError,
     GateAlreadyDecidedError,
     IllegalStateTransitionError,
+    ProfileNotFoundError,
+    ProfileValidationError,
     ProjectNotFoundError,
     RunNotFoundError,
     RunTerminalError,
@@ -26,10 +29,13 @@ _ERROR_MAP: list[tuple[type, int, str]] = [
     (CycleNotFoundError, 404, "CYCLE_NOT_FOUND"),
     (RunNotFoundError, 404, "RUN_NOT_FOUND"),
     (ArtifactNotFoundError, 404, "ARTIFACT_NOT_FOUND"),
+    (ProfileNotFoundError, 404, "PROFILE_NOT_FOUND"),
     (IllegalStateTransitionError, 409, "ILLEGAL_STATE_TRANSITION"),
     (GateAlreadyDecidedError, 409, "GATE_ALREADY_DECIDED"),
     (RunTerminalError, 409, "RUN_TERMINAL"),
     (BaselineNotAllowedError, 409, "BASELINE_NOT_ALLOWED"),
+    (ActiveProfileDeletionError, 409, "ACTIVE_PROFILE_DELETION"),
+    (ProfileValidationError, 422, "PROFILE_VALIDATION_ERROR"),
     (ValidationError, 422, "VALIDATION_ERROR"),
 ]
 

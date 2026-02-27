@@ -96,7 +96,12 @@ def cycle_to_response(cycle: Cycle, runs: list[Run], status: str) -> CycleRespon
     )
 
 
-def profile_to_response(profile: SquadProfile) -> SquadProfileResponse:
+def profile_to_response(
+    profile: SquadProfile,
+    *,
+    is_active: bool = False,
+    warnings: list[str] | None = None,
+) -> SquadProfileResponse:
     return SquadProfileResponse(
         profile_id=profile.profile_id,
         name=profile.name,
@@ -115,6 +120,8 @@ def profile_to_response(profile: SquadProfile) -> SquadProfileResponse:
             for a in profile.agents
         ],
         created_at=profile.created_at,
+        is_active=is_active,
+        warnings=warnings or [],
     )
 
 

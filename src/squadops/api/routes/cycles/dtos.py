@@ -64,6 +64,50 @@ class SetActiveProfileRequest(BaseModel):
         extra = "forbid"
 
 
+class AgentProfileEntryRequest(BaseModel):
+    """Agent entry in a profile create/update request (SIP-0075)."""
+
+    agent_id: str
+    role: str
+    model: str
+    enabled: bool = True
+    config_overrides: dict = Field(default_factory=dict)
+
+    class Config:
+        extra = "forbid"
+
+
+class ProfileCreateRequest(BaseModel):
+    """Create a new squad profile (SIP-0075)."""
+
+    name: str
+    description: str = ""
+    agents: list[AgentProfileEntryRequest]
+
+    class Config:
+        extra = "forbid"
+
+
+class ProfileUpdateRequest(BaseModel):
+    """Update an existing squad profile (SIP-0075)."""
+
+    name: str | None = None
+    description: str | None = None
+    agents: list[AgentProfileEntryRequest] | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class ProfileCloneRequest(BaseModel):
+    """Clone a squad profile with a new name (SIP-0075)."""
+
+    name: str
+
+    class Config:
+        extra = "forbid"
+
+
 class BaselinePromoteRequest(BaseModel):
     artifact_id: str
 
@@ -158,6 +202,9 @@ class SquadProfileResponse(BaseModel):
     version: int
     agents: list[AgentProfileEntryResponse]
     created_at: datetime
+    is_active: bool = False
+    updated_at: datetime | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ArtifactRefResponse(BaseModel):
