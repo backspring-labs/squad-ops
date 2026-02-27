@@ -12,7 +12,7 @@ Per SIP-0.8.6 v1 semantics:
 
 import os
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -21,7 +21,7 @@ from typing import Any
 # =============================================================================
 
 
-class CheckType(str, Enum):
+class CheckType(StrEnum):
     """Acceptance check types supported in v1."""
 
     FILE_EXISTS = "file_exists"
@@ -33,7 +33,7 @@ class CheckType(str, Enum):
     COMMAND_EXIT_CODE = "command_exit_code"
 
 
-class LifecycleScope(str, Enum):
+class LifecycleScope(StrEnum):
     """Capability lifecycle scope."""
 
     CYCLE = "cycle"
@@ -41,7 +41,7 @@ class LifecycleScope(str, Enum):
     PROJECT = "project"
 
 
-class Trigger(str, Enum):
+class Trigger(StrEnum):
     """When the capability is expected to be invoked."""
 
     ON_DEMAND = "on_demand"
@@ -49,7 +49,7 @@ class Trigger(str, Enum):
     EVENT_DRIVEN = "event_driven"
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Status of a task within a workload run."""
 
     PENDING = "pending"
@@ -61,7 +61,7 @@ class TaskStatus(str, Enum):
     REJECTED = "rejected"
 
 
-class WorkloadStatus(str, Enum):
+class WorkloadStatus(StrEnum):
     """Overall status of a workload run."""
 
     PENDING = "pending"

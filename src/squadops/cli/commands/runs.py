@@ -62,7 +62,7 @@ def list_runs(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -110,7 +110,7 @@ def show_run(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -148,7 +148,7 @@ def retry_run(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -172,7 +172,7 @@ def cancel_run(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -219,7 +219,7 @@ def gate_decision(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -311,4 +311,4 @@ def assemble_run(
 
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e

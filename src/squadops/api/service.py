@@ -67,7 +67,7 @@ class TaskService:
         )
 
         # Submit to orchestrator
-        result = await self._orchestrator.submit_task(envelope)
+        await self._orchestrator.submit_task(envelope)
 
         # Return response
         return envelope_to_response(envelope)

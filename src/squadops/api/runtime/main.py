@@ -71,7 +71,7 @@ if auth_config.console:
     if auth_config.console.post_logout_redirect_uri:
         _cors_origins.add(_extract_origin(auth_config.console.post_logout_redirect_uri))
 
-from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
+from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware  # noqa: E402
 
 # Inner middleware first (Auth checks tokens)
 if auth_config.enabled:
@@ -94,12 +94,12 @@ if _cors_origins:
     )
 
 # SIP-0062 Phase 3a: Include auth routes
-from squadops.api.routes.auth import router as auth_router
+from squadops.api.routes.auth import router as auth_router  # noqa: E402
 
 app.include_router(auth_router)
 
 # SIP-0064: Include cycle execution routes
-from squadops.api.routes.cycles import (
+from squadops.api.routes.cycles import (  # noqa: E402
     artifacts_router,
     cycle_request_profiles_router,
     cycles_router,
@@ -118,7 +118,7 @@ app.include_router(cycle_request_profiles_router)  # SIP-0074
 app.include_router(models_router)  # SIP-0074
 
 # Platform health routes (replaces legacy health-check service)
-from squadops.api.routes.platform_health import router as platform_health_router
+from squadops.api.routes.platform_health import router as platform_health_router  # noqa: E402
 
 app.include_router(platform_health_router)
 

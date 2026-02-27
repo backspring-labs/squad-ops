@@ -143,8 +143,8 @@ class HandlerExecutor(CapabilityExecutor):
                     handler.handle(context, envelope.inputs or {}),
                     timeout=timeout,
                 )
-            except TimeoutError:
-                raise TimeoutError(f"Execution timed out after {timeout}s")
+            except TimeoutError as err:
+                raise TimeoutError(f"Execution timed out after {timeout}s") from err
 
             # Convert handler result to task result
             if result.success:

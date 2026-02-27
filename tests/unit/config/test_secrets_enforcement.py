@@ -95,7 +95,7 @@ def extract_url_credentials(content: str) -> list[tuple[str, str]]:
 
     # Pattern 1: user:password@host
     for match in URL_CREDENTIAL_PATTERN.finditer(content):
-        username = match.group(1)
+        match.group(1)
         password = match.group(2)
         # Find the full URL context
         start = max(0, content.rfind("://", 0, match.start()))

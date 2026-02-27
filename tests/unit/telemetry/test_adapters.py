@@ -182,9 +182,9 @@ class TestOTelAdapter:
 # SIP-0061: NoOpLLMObservabilityAdapter tests
 # ---------------------------------------------------------------------------
 
-from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter
-from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
-from squadops.telemetry.models import (
+from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter  # noqa: E402
+from squadops.ports.telemetry.llm_observability import LLMObservabilityPort  # noqa: E402
+from squadops.telemetry.models import (  # noqa: E402
     CorrelationContext,
     GenerationRecord,
     PromptLayer,

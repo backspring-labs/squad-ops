@@ -67,8 +67,8 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     json.dumps(cycle.experiment_context),
                     cycle.notes,
                 )
-        except asyncpg.UniqueViolationError:
-            raise ValidationError(f"Cycle already exists: {cycle.cycle_id}")
+        except asyncpg.UniqueViolationError as err:
+            raise ValidationError(f"Cycle already exists: {cycle.cycle_id}") from err
         return cycle
 
     async def get_cycle(self, cycle_id: str) -> Cycle:
@@ -316,11 +316,11 @@ class PostgresCycleRegistry(CycleRegistryPort):
                         decision.decided_at,
                         decision.notes,
                     )
-                except asyncpg.UniqueViolationError:
+                except asyncpg.UniqueViolationError as err:
                     # Safety net: concurrent race between two transactions
                     raise GateAlreadyDecidedError(
                         f"Gate {decision.gate_name!r} already decided (concurrent race)"
-                    )
+                    ) from err
 
         return await self.get_run(run_id)
 

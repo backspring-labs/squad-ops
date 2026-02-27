@@ -70,7 +70,7 @@ class TestExecutionSkill(Skill):
 
         test_path = inputs["test_path"]
         test_type = inputs.get("test_type", "unit")
-        options = inputs.get("options", {})
+        inputs.get("options", {})
 
         # Track filesystem call for test discovery
         context.track_port_call("filesystem", "exists", path=test_path)

@@ -70,7 +70,7 @@ class FileSystemPromptRepository(PromptRepository):
             with open(self.manifest_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
-            raise ManifestValidationError(f"Invalid manifest YAML: {e}")
+            raise ManifestValidationError(f"Invalid manifest YAML: {e}") from e
 
         if not data:
             raise ManifestValidationError("Empty manifest file")

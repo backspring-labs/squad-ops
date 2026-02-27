@@ -38,12 +38,12 @@ def pytest_collection_modifyitems(config, items):
 
 
 # Import agent manager for container management
-from testcontainers.postgres import PostgresContainer
+from testcontainers.postgres import PostgresContainer  # noqa: E402
 
 # from testcontainers.rabbitmq import RabbitMQContainer  # TODO: Fix testcontainers version
-from testcontainers.redis import RedisContainer
+from testcontainers.redis import RedisContainer  # noqa: E402
 
-from tests.integration.agent_manager import AgentManager
+from tests.integration.agent_manager import AgentManager  # noqa: E402
 
 
 def load_test_config():

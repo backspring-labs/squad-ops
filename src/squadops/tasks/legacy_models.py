@@ -9,13 +9,13 @@ These legacy Pydantic models are retained for DB ORM compatibility.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class TaskState(str, Enum):
+class TaskState(StrEnum):
     """Task state enumeration."""
 
     PENDING = "pending"
@@ -27,7 +27,7 @@ class TaskState(str, Enum):
     IN_PROGRESS = "in_progress"
 
 
-class FlowState(str, Enum):
+class FlowState(StrEnum):
     """Execution cycle (flow) state enumeration."""
 
     ACTIVE = "active"

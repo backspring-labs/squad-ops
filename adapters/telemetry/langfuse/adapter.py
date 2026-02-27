@@ -16,7 +16,7 @@ import random
 import threading
 import time
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from adapters.telemetry.langfuse.redaction import get_redaction_strategy
@@ -48,7 +48,7 @@ RETRY_BACKOFF_FACTOR = 2.0
 # ---------------------------------------------------------------------------
 
 
-class _EventType(str, Enum):
+class _EventType(StrEnum):
     START_CYCLE = "start_cycle"
     END_CYCLE = "end_cycle"
     START_PULSE = "start_pulse"

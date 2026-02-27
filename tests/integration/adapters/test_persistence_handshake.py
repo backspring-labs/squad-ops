@@ -73,7 +73,7 @@ class TestPersistenceHandshake:
 
         # Track modules loaded after
         modules_after = set(sys.modules.keys())
-        new_modules = modules_after - modules_before
+        modules_after - modules_before
 
         # Verify runtime was created
         assert runtime is not None
@@ -96,7 +96,7 @@ class TestPersistenceHandshake:
         secret_manager._resolve_reference = counting_resolve
 
         # Create runtime
-        runtime = get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
+        get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
 
         # Verify SecretManager was called
         assert call_count["count"] > 0, (
@@ -123,7 +123,7 @@ class TestPersistenceHandshake:
     def test_no_legacy_infrastructure_loaded(self, secret_manager, mock_profile_with_secret_dsn):
         """Test 5: Invariance check - no legacy infra.db or infra.secrets modules loaded."""
         # Create runtime (this triggers all necessary imports)
-        runtime = get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
+        get_db_runtime(mock_profile_with_secret_dsn, secret_manager)
 
         # Check ALL loaded modules for legacy infrastructure
         all_modules = set(sys.modules.keys())

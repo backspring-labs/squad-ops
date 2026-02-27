@@ -67,7 +67,7 @@ def create_cycle(
         crp = load_profile(profile)
     except FileNotFoundError as e:
         print_error(str(e))
-        raise typer.Exit(code=exit_codes.GENERAL_ERROR)
+        raise typer.Exit(code=exit_codes.GENERAL_ERROR) from e
 
     # 2. Parse --set flags
     user_values = _parse_set_flags(set_flags or [])
@@ -102,7 +102,7 @@ def create_cycle(
                 prd_ref = art_data["artifact_id"]
             except CLIError as e:
                 print_error(str(e))
-                raise typer.Exit(code=e.exit_code)
+                raise typer.Exit(code=e.exit_code) from e
         else:
             prd_ref = prd
 
@@ -133,7 +133,7 @@ def create_cycle(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     # 8. Verify hash round-trip
     server_hash = data.get("resolved_config_hash", "")
@@ -174,7 +174,7 @@ def list_cycles(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -217,7 +217,7 @@ def show_cycle(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -248,7 +248,7 @@ def cancel_cycle(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)

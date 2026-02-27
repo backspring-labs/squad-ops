@@ -36,7 +36,7 @@ def list_profiles(ctx: typer.Context):
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -66,7 +66,7 @@ def show_profile(ctx: typer.Context, profile_id: str = typer.Argument(...)):
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -92,7 +92,7 @@ def active_profile(ctx: typer.Context):
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -111,7 +111,7 @@ def set_active_profile(ctx: typer.Context, profile_id: str = typer.Argument(...)
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)

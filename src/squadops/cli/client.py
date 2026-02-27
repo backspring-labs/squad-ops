@@ -73,12 +73,12 @@ class APIClient:
             raise CLIError(
                 f"Error: cannot reach {self._config.base_url} — connection refused",
                 exit_codes.NETWORK_ERROR,
-            )
+            ) from None
         except httpx.TimeoutException:
             raise CLIError(
                 f"Error: request to {self._config.base_url} timed out after {self._config.timeout}s",
                 exit_codes.NETWORK_ERROR,
-            )
+            ) from None
         return self._handle_response(response)
 
     def download(self, path: str) -> tuple[bytes, str]:
@@ -89,12 +89,12 @@ class APIClient:
             raise CLIError(
                 f"Error: cannot reach {self._config.base_url} — connection refused",
                 exit_codes.NETWORK_ERROR,
-            )
+            ) from None
         except httpx.TimeoutException:
             raise CLIError(
                 f"Error: request to {self._config.base_url} timed out after {self._config.timeout}s",
                 exit_codes.NETWORK_ERROR,
-            )
+            ) from None
         if response.status_code >= 400:
             self._handle_error_status(response)
         # Extract filename from content-disposition or use fallback
@@ -122,12 +122,12 @@ class APIClient:
             raise CLIError(
                 f"Error: cannot reach {self._config.base_url} — connection refused",
                 exit_codes.NETWORK_ERROR,
-            )
+            ) from None
         except httpx.TimeoutException:
             raise CLIError(
                 f"Error: request to {self._config.base_url} timed out after {self._config.timeout}s",
                 exit_codes.NETWORK_ERROR,
-            )
+            ) from None
         return self._handle_response(response)
 
     def _handle_response(self, response: httpx.Response) -> dict:
@@ -140,7 +140,7 @@ class APIClient:
             raise CLIError(
                 f"Error: unexpected response (HTTP {response.status_code}) — {response.text[:200]}",
                 exit_codes.GENERAL_ERROR,
-            )
+            ) from None
 
     def _handle_error_status(self, response: httpx.Response) -> None:
         """Map HTTP error status to CLIError with appropriate exit code."""

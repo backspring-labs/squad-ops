@@ -230,7 +230,7 @@ class TestDispatchTask:
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
-            result = await executor._dispatch_task(envelope, "run_001")
+            await executor._dispatch_task(envelope, "run_001")
 
         # Verify publish to correct queue
         mock_queue.publish.assert_awaited_once()

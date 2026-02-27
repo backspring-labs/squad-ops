@@ -30,7 +30,7 @@ def list_projects(ctx: typer.Context):
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -57,7 +57,7 @@ def show_project(ctx: typer.Context, project_id: str = typer.Argument(...)):
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)

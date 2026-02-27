@@ -97,7 +97,7 @@ class TestGetDBRuntime:
         mock_runtime = Mock()
         mock_runtime_class.return_value = mock_runtime
 
-        runtime = get_db_runtime(profile, mock_secret_manager)
+        get_db_runtime(profile, mock_secret_manager)
 
         mock_runtime_class.assert_called_once()
         # Verify the DSN was passed (secret resolution happens in PostgresRuntime)
@@ -118,7 +118,7 @@ class TestGetDBRuntime:
         mock_runtime = Mock()
         mock_runtime_class.return_value = mock_runtime
 
-        runtime = get_db_runtime(profile, mock_secret_manager)
+        get_db_runtime(profile, mock_secret_manager)
 
         mock_runtime_class.assert_called_once()
         call_kwargs = mock_runtime_class.call_args[1]
@@ -140,7 +140,7 @@ class TestGetDBRuntime:
         mock_runtime = Mock()
         mock_runtime_class.return_value = mock_runtime
 
-        runtime = get_db_runtime(profile, mock_secret_manager)
+        get_db_runtime(profile, mock_secret_manager)
 
         call_kwargs = mock_runtime_class.call_args[1]
         assert call_kwargs["ssl_mode"] == "require"
@@ -209,7 +209,7 @@ class TestPostgresRuntime:
         mock_engine = Mock()
         mock_create_engine.return_value = mock_engine
 
-        runtime = PostgresRuntime(dsn=dsn_with_secret, secret_manager=mock_secret_manager)
+        PostgresRuntime(dsn=dsn_with_secret, secret_manager=mock_secret_manager)
 
         # Verify secret manager was called
         mock_secret_manager._replace_in_string.assert_called_once_with(dsn_with_secret)
@@ -226,7 +226,7 @@ class TestPostgresRuntime:
         mock_engine = Mock()
         mock_create_engine.return_value = mock_engine
 
-        runtime = PostgresRuntime(dsn=basic_dsn, ssl_mode="require")
+        PostgresRuntime(dsn=basic_dsn, ssl_mode="require")
 
         # Verify SSL mode was added to connection URL
         call_args = mock_create_engine.call_args
@@ -241,7 +241,7 @@ class TestPostgresRuntime:
         mock_engine = Mock()
         mock_create_engine.return_value = mock_engine
 
-        runtime = PostgresRuntime(
+        PostgresRuntime(
             dsn=basic_dsn,
             pool_size=10,
             max_overflow=5,
@@ -339,7 +339,7 @@ class TestPostgresRuntime:
         mock_engine = Mock()
         mock_create_engine.return_value = mock_engine
 
-        runtime = PostgresRuntime(
+        PostgresRuntime(
             dsn=basic_dsn, ssl_mode="verify-full", ssl_ca_bundle_path="/path/to/ca.crt"
         )
 

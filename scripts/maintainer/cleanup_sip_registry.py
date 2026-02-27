@@ -177,7 +177,7 @@ def fix_duplicate_variants(registry: dict[str, Any], dry_run: bool = False) -> i
             sip_numbers[sip_number].append(sip)
 
     # For each duplicate group, assign variants
-    for sip_number, entries in sip_numbers.items():
+    for _sip_number, entries in sip_numbers.items():
         if len(entries) > 1:
             # Check which entries already have variants
             entries_with_variants = [e for e in entries if e.get("variant")]
@@ -247,7 +247,7 @@ def add_orphaned_files(registry: dict[str, Any], dry_run: bool = False) -> int:
                 # This is a numbered file not in registry
                 sip_number = metadata.get("sip_number")
                 sip_uid = metadata.get("sip_uid")
-                status = metadata.get("status", "accepted")  # Default to accepted
+                metadata.get("status", "accepted")  # Default to accepted
 
                 # Determine folder from file location
                 folder_status = None

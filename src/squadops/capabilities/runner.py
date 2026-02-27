@@ -127,7 +127,7 @@ class WorkloadRunner:
         # Check for cycles using Kahn's algorithm
         in_degree: dict[str, int] = {tid: 0 for tid in task_ids}
         for task in workload.tasks:
-            for dep in task.depends_on:
+            for _dep in task.depends_on:
                 in_degree[task.task_id] = in_degree.get(task.task_id, 0) + 1
 
         # Start with tasks that have no dependencies

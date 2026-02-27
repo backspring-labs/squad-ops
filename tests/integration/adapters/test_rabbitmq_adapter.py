@@ -121,7 +121,7 @@ class TestRabbitMQAdapter:
         await rabbitmq_adapter.ack(message)
 
         # Verify message is gone (consume again should return empty)
-        messages_after_ack = await rabbitmq_adapter.consume(queue_name, max_messages=1)
+        await rabbitmq_adapter.consume(queue_name, max_messages=1)
         # Note: Due to timeout-based consume, this may return empty list
         # The important thing is that ack succeeded without error
 
@@ -131,7 +131,6 @@ class TestRabbitMQAdapter:
     ):
         """Test that namespace is correctly prepended to queue names."""
         queue_name = "test_queue"
-        full_queue_name = f"test_namespace.{queue_name}"
 
         # Publish message
         await rabbitmq_adapter_with_namespace.publish(queue_name, sample_task_envelope_json)

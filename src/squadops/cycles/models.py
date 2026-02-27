@@ -9,14 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 # =============================================================================
 # Enums (str, Enum) — following config/schema.py SSLMode pattern
 # =============================================================================
 
 
-class CycleStatus(str, Enum):
+class CycleStatus(StrEnum):
     """Cycle lifecycle status (derived from latest Run). SIP-0064 §6.1."""
 
     CREATED = "created"
@@ -26,7 +26,7 @@ class CycleStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class RunStatus(str, Enum):
+class RunStatus(StrEnum):
     """Run lifecycle status. SIP-0064 §6.2."""
 
     QUEUED = "queued"
@@ -37,7 +37,7 @@ class RunStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class FlowMode(str, Enum):
+class FlowMode(StrEnum):
     """Task flow orchestration mode. SIP-0064 §5.6."""
 
     SEQUENTIAL = "sequential"
@@ -45,14 +45,14 @@ class FlowMode(str, Enum):
     FAN_OUT_SOFT_GATES = "fan_out_soft_gates"
 
 
-class BuildStrategy(str, Enum):
+class BuildStrategy(StrEnum):
     """Build strategy for cycle execution."""
 
     FRESH = "fresh"
     INCREMENTAL = "incremental"
 
 
-class GateDecisionValue(str, Enum):
+class GateDecisionValue(StrEnum):
     """Gate decision values (T4: normalized to approved/rejected everywhere)."""
 
     APPROVED = "approved"

@@ -232,7 +232,7 @@ def require_auth(auth_port_getter=None):
             request.state.identity = identity
             return identity
         except Exception:
-            raise HTTPException(401, "Invalid or expired token")
+            raise HTTPException(401, "Invalid or expired token") from None
 
     return dependency
 

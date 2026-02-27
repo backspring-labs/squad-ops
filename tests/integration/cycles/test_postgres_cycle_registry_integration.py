@@ -354,7 +354,7 @@ class TestMigrationRunnerIdempotent:
 
         migrations_dir = Path(__file__).parents[3] / "infra" / "migrations"
 
-        first = await apply_migrations(pool, migrations_dir)
+        await apply_migrations(pool, migrations_dir)
         second = await apply_migrations(pool, migrations_dir)
         assert second == 0  # Nothing new to apply
 

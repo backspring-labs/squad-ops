@@ -154,7 +154,7 @@ class TestFactoryResolution:
         """Test factory validates configuration before creating adapter."""
         # Missing comms config
         profile = {}
-        secret_manager = SecretManager(MockSecretProvider({}))
+        SecretManager(MockSecretProvider({}))
 
         with pytest.raises(ValueError, match="Communication configuration"):
             validate_comms_config(profile)

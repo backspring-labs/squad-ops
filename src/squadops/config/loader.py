@@ -341,8 +341,8 @@ def _coerce_value(value: str, field_type: type, enum_class: type | None = None) 
                 if enum_member.name.upper() == value_upper:
                     return enum_member.value
             return enum_class(value)
-        except (ValueError, KeyError):
-            raise ValueError(f"Invalid enum value '{value}' for {enum_class.__name__}")
+        except (ValueError, KeyError) as err:
+            raise ValueError(f"Invalid enum value '{value}' for {enum_class.__name__}") from err
 
     # Handle bool
     if field_type is bool:
@@ -354,15 +354,15 @@ def _coerce_value(value: str, field_type: type, enum_class: type | None = None) 
     if field_type is int:
         try:
             return int(value)
-        except ValueError:
-            raise ValueError(f"Cannot convert '{value}' to int")
+        except ValueError as err:
+            raise ValueError(f"Cannot convert '{value}' to int") from err
 
     # Handle float
     if field_type is float:
         try:
             return float(value)
-        except ValueError:
-            raise ValueError(f"Cannot convert '{value}' to float")
+        except ValueError as err:
+            raise ValueError(f"Cannot convert '{value}' to float") from err
 
     # Handle Path
     if field_type is Path:
@@ -406,7 +406,7 @@ def _parse_env_overrides(prefix: str = "SQUADOPS__", strict: bool = False) -> di
                         f"Invalid value for {path_info.dot_path}: {e}",
                         field=path_info.dot_path,
                         expected=str(path_info.field_type.__name__),
-                    )
+                    ) from e
                 logger.warning(f"Invalid value for {path_info.dot_path}: {e}, using as string")
                 coerced_value = value
 
@@ -459,7 +459,7 @@ def _validate_config(
         raise ConfigValidationError(
             f"Configuration validation failed: {'; '.join(errors)}",
             expected="Valid AppConfig schema",
-        )
+        ) from e
 
 
 def _flatten_keys(d: dict[str, Any], parent: str = "") -> list[str]:

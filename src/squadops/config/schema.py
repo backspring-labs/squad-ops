@@ -2,21 +2,21 @@
 Pydantic models for SquadOps configuration schema.
 """
 
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-class TasksBackend(str, Enum):
+class TasksBackend(StrEnum):
     """Task backend selection."""
 
     SQL = "sql"
     PREFECT = "prefect"
 
 
-class SSLMode(str, Enum):
+class SSLMode(StrEnum):
     """SSL/TLS connection mode."""
 
     DISABLE = "disable"
@@ -24,7 +24,7 @@ class SSLMode(str, Enum):
     VERIFY_FULL = "verify-full"
 
 
-class MigrationMode(str, Enum):
+class MigrationMode(StrEnum):
     """Migration execution mode."""
 
     OFF = "off"
@@ -32,7 +32,7 @@ class MigrationMode(str, Enum):
     JOB = "job"
 
 
-class ConnectionMode(str, Enum):
+class ConnectionMode(StrEnum):
     """Database connection mode."""
 
     DIRECT = "direct"
@@ -309,7 +309,7 @@ class KeycloakAdminConfig(BaseModel):
             try:
                 ipaddress.ip_network(cidr, strict=False)
             except ValueError as e:
-                raise ValueError(f"Invalid CIDR in allowed_networks: {cidr!r} — {e}")
+                raise ValueError(f"Invalid CIDR in allowed_networks: {cidr!r} — {e}") from e
         return self
 
 

@@ -107,7 +107,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
             raise ContractValidationError(
                 f"Schema validation failed: {e.message}",
                 {"path": list(e.absolute_path), "schema_path": list(e.absolute_schema_path)},
-            )
+            ) from e
 
     def _parse_acceptance_check(self, data: dict) -> AcceptanceCheck:
         """Parse an acceptance check from YAML data."""
@@ -242,7 +242,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
             with open(path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
-            raise ContractValidationError(f"Invalid YAML: {e}")
+            raise ContractValidationError(f"Invalid YAML: {e}") from e
 
         if not data:
             raise ContractValidationError(f"Empty contract file: {path}")
@@ -272,7 +272,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
             with open(path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
-            raise ContractValidationError(f"Invalid YAML: {e}")
+            raise ContractValidationError(f"Invalid YAML: {e}") from e
 
         if not data:
             raise ContractValidationError(f"Empty workload file: {path}")

@@ -50,7 +50,7 @@ class TestHashGolden:
         h_cli = compute_config_hash(crp.defaults, overrides)
 
         # Path B: manual merge then hash (simulating what server does)
-        merged = merge_config(crp.defaults, overrides)
+        merge_config(crp.defaults, overrides)
         # Server computes hash from applied_defaults + execution_overrides
         # which is equivalent to merge_config(defaults, overrides)
         h_server = compute_config_hash(crp.defaults, overrides)

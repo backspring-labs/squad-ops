@@ -48,7 +48,7 @@ def mock_asyncpg_module(mock_asyncpg_pool):
     async def create_pool_mock(*args, **kwargs):
         return pool
 
-    with patch("asyncpg.create_pool", side_effect=create_pool_mock) as mock_create:
+    with patch("asyncpg.create_pool", side_effect=create_pool_mock):
         with patch("asyncpg.exceptions") as mock_exceptions:
             # Set up exception classes
             mock_exceptions.UniqueViolationError = type("UniqueViolationError", (Exception,), {})

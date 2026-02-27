@@ -73,7 +73,7 @@ def ingest_artifact(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -100,7 +100,7 @@ def get_artifact(ctx: typer.Context, artifact_id: str = typer.Argument(...)):
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -121,7 +121,7 @@ def download_artifact(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     out.write_bytes(content)
     print_success(f"Downloaded to {out}")
@@ -164,7 +164,7 @@ def list_artifacts(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -217,7 +217,7 @@ def set_baseline(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -241,7 +241,7 @@ def get_baseline(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)
@@ -267,7 +267,7 @@ def list_baselines(
         client.close()
     except CLIError as e:
         print_error(str(e))
-        raise typer.Exit(code=e.exit_code)
+        raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
         print_json(data)

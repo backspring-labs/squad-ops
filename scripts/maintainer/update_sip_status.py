@@ -242,7 +242,7 @@ def find_duplicate_sip_files(
                 continue
 
             file_sip_number = metadata.get("sip_number")
-            file_status = metadata.get("status")
+            metadata.get("status")
             file_sip_uid = metadata.get("sip_uid")
 
             # CRITICAL FIX: If this file has a sip_number that's in the registry with a different

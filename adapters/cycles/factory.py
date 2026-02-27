@@ -4,11 +4,16 @@ Adapter factory for SIP-0064 cycle execution ports.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
+
+if TYPE_CHECKING:
+    from squadops.orchestration.orchestrator import AgentOrchestrator
 
 
 def create_project_registry(provider: str = "config", **kwargs) -> ProjectRegistryPort:

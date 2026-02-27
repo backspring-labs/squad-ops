@@ -125,13 +125,13 @@ class ACICapabilityExecutor(CapabilityExecutor):
             logger.info(f"Task {task_id} completed with status: {result.status}")
             return result
 
-        except TimeoutError:
+        except TimeoutError as err:
             logger.error(f"Task {task_id} timed out after {timeout}s")
-            raise TimeoutError(f"Task {task_id} timed out after {timeout} seconds")
+            raise TimeoutError(f"Task {task_id} timed out after {timeout} seconds") from err
 
         except Exception as e:
             logger.error(f"Task {task_id} failed: {e}")
-            raise ExecutorError(f"Task execution failed: {e}", task_id=task_id)
+            raise ExecutorError(f"Task execution failed: {e}", task_id=task_id) from e
 
     async def _wait_for_result(self, response_queue: str, task_id: str) -> TaskResult:
         """

@@ -148,7 +148,7 @@ class AgentManager:
 
         try:
             # Use docker-compose to start the specific service
-            result = subprocess.run(
+            subprocess.run(
                 ["docker-compose", "up", "-d", agent_name],
                 cwd=self.project_root,
                 capture_output=True,
@@ -184,7 +184,7 @@ class AgentManager:
     async def _rebuild_image(self, agent_name: str) -> bool:
         """Rebuild Docker image for agent."""
         try:
-            result = subprocess.run(
+            subprocess.run(
                 ["docker-compose", "build", "--no-cache", agent_name],
                 cwd=self.project_root,
                 capture_output=True,
