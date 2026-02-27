@@ -354,6 +354,15 @@ async def lifespan(app: FastAPI):
         )
     )
 
+    _runtime._registry.perspectives.append(
+        PerspectiveSpec(
+            id="squad",
+            label="Squad",
+            route_prefix="/squad",
+            description="Squad configuration, agent health, and model management",
+        )
+    )
+
     # Attach runtime to app state so Continuum API routes can access it
     app.state.runtime = _runtime
 

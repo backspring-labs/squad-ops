@@ -9,7 +9,7 @@ def register(ctx):
         {
             "slot": "ui.slot.left_nav",
             "label": "Cycles",
-            "icon": "clock",
+            "icon": "refresh-cw",
             "priority": 800,
             "target": {"type": "panel", "panel_id": "cycles"},
         },

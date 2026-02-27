@@ -12,7 +12,7 @@ bundle = "plugin.js"
 [[contributions.nav]]
 slot = "ui.slot.left_nav"
 label = "Cycles"
-icon = "clock"
+icon = "refresh-cw"
 priority = 800
 
 [contributions.nav.target]

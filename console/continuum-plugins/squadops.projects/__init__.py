@@ -9,7 +9,7 @@ def register(ctx):
         {
             "slot": "ui.slot.left_nav",
             "label": "Projects",
-            "icon": "compass",
+            "icon": "folder",
             "priority": 600,
             "target": {"type": "panel", "panel_id": "discovery"},
         },

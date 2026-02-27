@@ -8,7 +8,7 @@ def register(ctx):
         {
             "slot": "ui.slot.left_nav",
             "label": "Home",
-            "icon": "activity",
+            "icon": "home",
             "priority": 999,
             "target": {"type": "panel", "panel_id": "signal"},
         },

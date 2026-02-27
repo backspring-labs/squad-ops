@@ -47,7 +47,7 @@ class TestCyclesPluginRegistration:
         assert len(nav_calls) == 1
         data = nav_calls[0][0][1]
         assert data["label"] == "Cycles"
-        assert data["icon"] == "clock"
+        assert data["icon"] == "refresh-cw"
         assert data["priority"] == 800
 
     def test_single_composite_panel(self, mock_ctx):

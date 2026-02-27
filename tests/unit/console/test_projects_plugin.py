@@ -51,7 +51,7 @@ class TestProjectsPluginRegistration:
         assert len(nav_calls) == 1
         data = nav_calls[0][0][1]
         assert data["label"] == "Projects"
-        assert data["icon"] == "compass"
+        assert data["icon"] == "folder"
         assert data["priority"] == 600
 
     def test_panel_projects_list(self, mock_ctx):

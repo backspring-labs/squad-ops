@@ -1,0 +1,26 @@
+[plugin]
+id = "squadops.squad"
+name = "Squad"
+version = "0.1.0"
+description = "Squad configuration — agent health, profiles, models, cycle comparison."
+required = false
+
+[plugin.ui]
+tag_prefix = "squadops-squad"
+bundle = "plugin.js"
+
+[[contributions.nav]]
+slot = "ui.slot.left_nav"
+label = "Squad"
+icon = "users"
+priority = 700
+
+[contributions.nav.target]
+type = "panel"
+panel_id = "squad"
+
+[[contributions.panel]]
+slot = "ui.slot.main"
+perspective = "squad"
+component = "squadops-squad-perspective"
+priority = 800
