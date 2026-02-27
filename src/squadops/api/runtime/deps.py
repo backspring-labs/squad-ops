@@ -15,6 +15,7 @@ from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
+from squadops.ports.llm.provider import LLMPort
 
 if TYPE_CHECKING:
     from squadops.api.runtime.health_checker import HealthChecker
@@ -31,6 +32,9 @@ _cycle_registry: CycleRegistryPort | None = None
 _squad_profile: SquadProfilePort | None = None
 _artifact_vault: ArtifactVaultPort | None = None
 _flow_executor: FlowExecutionPort | None = None
+
+# SIP-0075: LLM port for model management endpoints
+_llm_port: LLMPort | None = None
 
 
 def set_auth_ports(
@@ -141,3 +145,21 @@ def get_health_checker() -> HealthChecker:
     if _health_checker is None:
         raise RuntimeError("HealthChecker not configured")
     return _health_checker
+
+
+# =============================================================================
+# SIP-0075: LLM port for model management
+# =============================================================================
+
+
+def set_llm_port(llm: LLMPort) -> None:
+    """Set the LLM port instance (SIP-0075: model management endpoints)."""
+    global _llm_port
+    _llm_port = llm
+
+
+def get_llm_port() -> LLMPort:
+    """Return the LLMPort instance."""
+    if _llm_port is None:
+        raise RuntimeError("LLMPort not configured")
+    return _llm_port

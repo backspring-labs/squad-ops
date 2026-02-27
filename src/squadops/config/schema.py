@@ -405,6 +405,10 @@ class CyclesConfig(BaseModel):
         default="memory",
         description="Cycle registry provider: 'memory' or 'postgres'",
     )
+    squad_profile_provider: str = Field(
+        default="config",
+        description="Squad profile provider: 'config' or 'postgres' (SIP-0075)",
+    )
 
 
 class PrefectConfig(BaseModel):
