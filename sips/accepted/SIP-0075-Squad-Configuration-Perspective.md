@@ -1,8 +1,10 @@
 ---
 title: Squad Configuration Perspective
-status: proposed
+status: accepted
 author: SquadOps Core
 created_at: '2026-02-26'
+sip_number: 75
+updated_at: '2026-02-26T20:41:28.627627Z'
 ---
 # SIP: Squad Configuration Perspective
 
