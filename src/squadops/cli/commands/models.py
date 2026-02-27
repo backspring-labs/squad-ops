@@ -77,7 +77,7 @@ def pulled(ctx: typer.Context):
             size = m.get("size_bytes")
             size_str = _format_size(size) if size else "—"
             in_profile = "*" if m.get("in_active_profile") else ""
-            agents = ", ".join(m.get("used_by_agents", []))
+            agents = ", ".join(m.get("used_by_active_profile", []))
             rows.append([m["name"], size_str, in_profile, agents])
         print_table(
             ["Model", "Size", "Active", "Used By"],

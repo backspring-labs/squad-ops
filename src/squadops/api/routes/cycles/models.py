@@ -95,7 +95,7 @@ async def list_pulled_models():
                 size_bytes=m.get("size"),
                 modified_at=m.get("modified_at"),
                 in_active_profile=name in active_agents,
-                used_by_agents=active_agents.get(name, []),
+                used_by_active_profile=active_agents.get(name, []),
                 registry_spec=(
                     ModelSpecResponse(
                         name=spec.name,

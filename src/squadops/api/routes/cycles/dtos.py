@@ -256,7 +256,7 @@ class PulledModelResponse(BaseModel):
     size_bytes: int | None = None
     modified_at: str | None = None
     in_active_profile: bool = False
-    used_by_agents: list[str] = Field(default_factory=list)
+    used_by_active_profile: list[str] = Field(default_factory=list)
     registry_spec: ModelSpecResponse | None = None
 
 

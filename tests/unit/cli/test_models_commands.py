@@ -35,7 +35,7 @@ class TestModelsPulled:
                     "size_bytes": 4_000_000_000,
                     "modified_at": "2026-01-01T00:00:00Z",
                     "in_active_profile": True,
-                    "used_by_agents": ["neo"],
+                    "used_by_active_profile": ["neo"],
                     "registry_spec": None,
                 },
             ]
@@ -53,7 +53,7 @@ class TestModelsPulled:
                     "size_bytes": 4_000_000_000,
                     "modified_at": "2026-01-01T00:00:00Z",
                     "in_active_profile": True,
-                    "used_by_agents": ["neo"],
+                    "used_by_active_profile": ["neo"],
                     "registry_spec": None,
                 },
             ]

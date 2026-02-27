@@ -76,11 +76,11 @@ class TestListPulledModels:
         data = resp.json()
         qwen = next(m for m in data if m["name"] == "qwen2.5:7b")
         assert qwen["in_active_profile"] is True
-        assert "neo" in qwen["used_by_agents"]
+        assert "neo" in qwen["used_by_active_profile"]
 
         llama = next(m for m in data if m["name"] == "llama3.2:latest")
         assert llama["in_active_profile"] is False
-        assert llama["used_by_agents"] == []
+        assert llama["used_by_active_profile"] == []
 
     def test_ollama_unreachable(self, client, mock_ollama):
         mock_ollama.list_pulled_models.side_effect = Exception("Connection refused")
