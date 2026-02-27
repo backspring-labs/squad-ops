@@ -685,9 +685,9 @@ sips:
 - sip_uid: null
   sip_number: 75
   title: Squad Configuration Perspective
-  path: sips/accepted/SIP-0075-Squad-Configuration-Perspective.md
-  status: accepted
+  path: sips/implemented/SIP-0075-Squad-Configuration-Perspective.md
+  status: implemented
   author: SquadOps Core
   approver: jladd
   created_at: '2026-02-26'
-  updated_at: '2026-02-26T20:41:28.648906Z'
+  updated_at: '2026-02-27T18:49:15.178955Z'
