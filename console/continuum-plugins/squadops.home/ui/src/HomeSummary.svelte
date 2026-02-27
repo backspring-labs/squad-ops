@@ -6,6 +6,7 @@
   let projects = $state([]);
   let allCycles = $state([]);
   let recentRuns = $state([]);
+  let agentStatus = $state([]);
   let loading = $state(true);
   let error = $state(null);
   let pollTimer = $state(null);
@@ -27,6 +28,16 @@
   }
 
   async function fetchData() {
+    // Fetch agent status (degrade gracefully — section hidden if unavailable)
+    try {
+      const agentResp = await apiFetch(`${apiBase}/api/health/agents`);
+      if (agentResp.ok) {
+        agentStatus = await agentResp.json();
+      }
+    } catch {
+      // Agent status unavailable — section will be hidden
+    }
+
     // Fetch projects + cycles (degrade gracefully on failure)
     try {
       const projResp = await apiFetch(`${apiBase}/api/v1/projects`);
@@ -139,6 +150,22 @@
         <div class="card-label">Start a new development cycle</div>
       </div>
     </div>
+
+    <!-- Active Squad -->
+    {#if agentStatus.length > 0}
+      <div class="section">
+        <h3 class="section-title">Active Squad</h3>
+        <div class="squad-row">
+          {#each agentStatus as agent}
+            <div class="squad-member">
+              <span class="squad-dot {agent.network_status === 'online' ? 'dot-online' : 'dot-offline'}"></span>
+              <span class="squad-name">{agent.agent_name || agent.agent_id}</span>
+              <span class="squad-role">{agent.role_label || agent.role || ''}</span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
 
     <!-- Recent Runs -->
     <div class="section">
@@ -291,5 +318,38 @@
     font-size: var(--continuum-font-size-sm, 0.875rem);
     color: var(--continuum-text-muted, #94a3b8);
     text-align: center;
+  }
+
+  .squad-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--continuum-space-sm, 8px);
+  }
+
+  .squad-member {
+    display: flex;
+    align-items: center;
+    gap: var(--continuum-space-xs, 4px);
+    padding: var(--continuum-space-xs, 4px) var(--continuum-space-sm, 8px);
+    background: var(--continuum-bg-secondary, #1e293b);
+    border-radius: var(--continuum-radius-sm, 4px);
+    font-size: var(--continuum-font-size-sm, 0.875rem);
+  }
+
+  .squad-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-online { background: var(--continuum-accent-success, #22c55e); }
+  .dot-offline { background: var(--continuum-text-muted, #94a3b8); }
+
+  .squad-name { font-weight: 500; }
+
+  .squad-role {
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+    color: var(--continuum-text-muted, #94a3b8);
   }
 </style>

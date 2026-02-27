@@ -312,7 +312,7 @@
           {#if selectedSquadProfile?.agents}
             <div class="agent-summary">
               {#each selectedSquadProfile.agents as agent}
-                <span class="agent-chip">{agent.name || agent.role}</span>
+                <span class="agent-chip">{agent.display_name || agent.agent_id} ({agent.role_label || agent.role})</span>
               {/each}
             </div>
           {/if}

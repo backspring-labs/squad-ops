@@ -42,6 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements-api.t
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
 COPY adapters/ ./adapters/
+COPY agents/instances/ ./agents/instances/
 COPY config/ ./config/
 COPY examples/ ./examples/
 COPY infra/ ./infra/

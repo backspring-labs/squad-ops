@@ -15,6 +15,7 @@ from squadops.api.routes.cycles.dtos import (
     SquadProfileResponse,
     TaskFlowPolicyDTO,
 )
+from squadops.api.runtime.agent_labels import get_role_label
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -105,6 +106,8 @@ def profile_to_response(profile: SquadProfile) -> SquadProfileResponse:
             AgentProfileEntryResponse(
                 agent_id=a.agent_id,
                 role=a.role,
+                role_label=get_role_label(a.role),
+                display_name=a.agent_id.title(),
                 model=a.model,
                 enabled=a.enabled,
                 config_overrides=a.config_overrides,

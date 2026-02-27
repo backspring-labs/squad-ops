@@ -3,9 +3,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
 
-  const AGENTS = ['max', 'neo', 'nat', 'eve', 'data'];
-  const AGENT_ROLES = { max: 'Lead', neo: 'Dev', nat: 'Strategy', eve: 'QA', data: 'Analytics' };
-
   let agents = $state([]);
   let loading = $state(true);
   let pollTimer = $state(null);
@@ -14,7 +11,7 @@
     return {
       name: a.agent_name || a.agent_id || a.name,
       status: a.network_status || a.lifecycle_state || a.status || 'unknown',
-      role: AGENT_ROLES[a.agent_id] || a.role || '',
+      role: a.role_label || a.role || '',
       current_task: a.current_task_id || a.current_task || null,
     };
   }
@@ -25,10 +22,10 @@
       if (resp.ok) {
         agents = (await resp.json()).map(mapAgent);
       } else {
-        agents = AGENTS.map(name => ({ name, status: 'unknown', role: AGENT_ROLES[name] }));
+        agents = [];
       }
     } catch {
-      agents = AGENTS.map(name => ({ name, status: 'unavailable', role: AGENT_ROLES[name] }));
+      agents = [];
     }
     loading = false;
   }
@@ -55,12 +52,14 @@
 
   {#if loading}
     <div class="loading">Checking agents...</div>
+  {:else if agents.length === 0}
+    <div class="no-agents">No agents reporting</div>
   {:else}
     <div class="agent-list">
-      {#each (agents.length > 0 ? agents : AGENTS.map(n => ({name: n, status: 'unknown'}))) as agent}
+      {#each agents as agent}
         <div class="agent-card">
           <div class="agent-name">{agent.name}</div>
-          <div class="agent-role">{AGENT_ROLES[agent.name] || agent.role || ''}</div>
+          <div class="agent-role">{agent.role}</div>
           <div class="agent-status {statusClass(agent.status)}">{agent.status}</div>
           {#if agent.current_task}
             <div class="agent-task">{agent.current_task}</div>
@@ -97,5 +96,5 @@
   .busy { background: rgba(99, 102, 241, 0.15); color: var(--continuum-accent-primary, #6366f1); }
   .unhealthy { background: rgba(148, 163, 184, 0.15); color: var(--continuum-text-muted, #94a3b8); }
   .agent-task { font-size: var(--continuum-font-size-xs, 0.75rem); color: var(--continuum-text-secondary, #cbd5e1); flex: 1; text-align: right; }
-  .loading { color: var(--continuum-text-muted, #94a3b8); }
+  .loading, .no-agents { color: var(--continuum-text-muted, #94a3b8); }
 </style>
