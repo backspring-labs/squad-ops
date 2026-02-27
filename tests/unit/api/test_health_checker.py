@@ -146,10 +146,11 @@ class TestGetAgentStatus:
     @pytest.mark.asyncio
     async def test_agent_status_role_not_description(self, checker, mock_pg_pool):
         """Verify role field contains actual role, not description (bug fix)."""
-        checker._instances_cache = {
+        instances = {
             "neo": {"display_name": "Neo", "role": "dev", "description": "Developer Agent"},
         }
-        checker._instances_cache_mtime = 12345.0
+        checker._load_instances = lambda: instances
+        checker._get_instances_order = lambda: ["neo"]
 
         mock_row = MagicMock()
         mock_row.__getitem__ = lambda self, key: {
