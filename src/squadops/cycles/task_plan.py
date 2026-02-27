@@ -16,7 +16,7 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
-from squadops.cycles.models import Cycle, Run, SquadProfile
+from squadops.cycles.models import REQUIRED_PLAN_ROLES, Cycle, CycleError, Run, SquadProfile
 from squadops.tasks.models import TaskEnvelope
 
 # Pinned task_type → role mapping (SIP-0066 §5.4)
@@ -45,12 +45,17 @@ BUILDER_ASSEMBLY_TASK_STEPS: list[tuple[str, str]] = [
 _BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
 
 
-def _resolve_agent_id(profile: SquadProfile, role: str) -> str:
-    """Resolve agent_id from profile by role, fallback to role name."""
+def _resolve_agent_config(profile: SquadProfile, role: str) -> tuple[str, str | None, dict]:
+    """Resolve agent config from profile by role.
+
+    Returns:
+        (agent_id, model_or_None, config_overrides)
+    """
     for agent in profile.agents:
         if agent.role == role and agent.enabled:
-            return agent.agent_id
-    return role
+            model = agent.model if agent.model else None
+            return agent.agent_id, model, dict(agent.config_overrides or {})
+    return role, None, {}
 
 
 def _has_builder_role(profile: SquadProfile) -> bool:
@@ -97,6 +102,17 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
         else:
             steps.extend(BUILD_TASK_STEPS)
 
+    # Validate required roles are present in profile (SIP-0075 §3.1)
+    # Only enforce when plan tasks are included; build-only cycles need only dev+qa.
+    if include_plan:
+        profile_roles = {a.role for a in profile.agents if a.enabled}
+        missing_roles = REQUIRED_PLAN_ROLES - profile_roles
+        if missing_roles:
+            raise CycleError(
+                f"Squad profile '{profile.profile_id}' is missing required roles: "
+                f"{', '.join(sorted(missing_roles))}"
+            )
+
     # Shared lineage IDs for the entire plan
     correlation_id = uuid4().hex
     trace_id = uuid4().hex
@@ -116,7 +132,7 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
         span_id = uuid4().hex
         causation_id = prev_task_id or correlation_id
 
-        agent_id = _resolve_agent_id(profile, role)
+        agent_id, agent_model, agent_overrides = _resolve_agent_config(profile, role)
 
         metadata: dict = {
             "step_index": step_index,
@@ -142,6 +158,8 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
                 "prd": cycle.prd_ref,
                 "resolved_config": resolved_config,
                 "config_hash": run.resolved_config_hash,
+                "agent_model": agent_model,
+                "agent_config_overrides": agent_overrides,
             },
             metadata=metadata,
         )

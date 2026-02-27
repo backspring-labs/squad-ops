@@ -426,3 +426,133 @@ class TestHandleUsesPromptService:
         messages = call_args[0][0]
         assert messages[0].role == "system"
         assert messages[0].content == "Assembled system prompt from PromptService"
+
+
+# ---------------------------------------------------------------------------
+# 15. Config overrides flow to chat() kwargs (SIP-0075 §3.2)
+# ---------------------------------------------------------------------------
+class TestConfigOverridesFlow:
+    @pytest.mark.parametrize(
+        "cls",
+        HANDLER_CLASSES,
+        ids=[c.__name__ for c in HANDLER_CLASSES],
+    )
+    async def test_agent_model_passed_to_chat(self, cls, mock_context):
+        handler = cls()
+        inputs = {
+            "prd": "Build a widget",
+            "agent_model": "qwen2.5:7b",
+            "agent_config_overrides": {},
+        }
+        await handler.handle(mock_context, inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        assert call_kwargs["model"] == "qwen2.5:7b"
+
+    @pytest.mark.parametrize(
+        "cls",
+        HANDLER_CLASSES,
+        ids=[c.__name__ for c in HANDLER_CLASSES],
+    )
+    async def test_temperature_override_passed_to_chat(self, cls, mock_context):
+        handler = cls()
+        inputs = {
+            "prd": "Build a widget",
+            "agent_model": "qwen2.5:7b",
+            "agent_config_overrides": {"temperature": 0.3},
+        }
+        await handler.handle(mock_context, inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        assert call_kwargs["temperature"] == 0.3
+
+    @pytest.mark.parametrize(
+        "cls",
+        HANDLER_CLASSES,
+        ids=[c.__name__ for c in HANDLER_CLASSES],
+    )
+    async def test_max_tokens_override_passed_to_chat(self, cls, mock_context):
+        handler = cls()
+        inputs = {
+            "prd": "Build a widget",
+            "agent_model": "qwen2.5:7b",
+            "agent_config_overrides": {"max_completion_tokens": 4096},
+        }
+        await handler.handle(mock_context, inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        assert call_kwargs["max_tokens"] == 4096
+
+    @pytest.mark.parametrize(
+        "cls",
+        HANDLER_CLASSES,
+        ids=[c.__name__ for c in HANDLER_CLASSES],
+    )
+    async def test_timeout_override_passed_to_chat(self, cls, mock_context):
+        handler = cls()
+        inputs = {
+            "prd": "Build a widget",
+            "agent_model": "qwen2.5:7b",
+            "agent_config_overrides": {"timeout_seconds": 600},
+        }
+        await handler.handle(mock_context, inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        assert call_kwargs["timeout_seconds"] == 600
+
+    @pytest.mark.parametrize(
+        "cls",
+        HANDLER_CLASSES,
+        ids=[c.__name__ for c in HANDLER_CLASSES],
+    )
+    async def test_no_overrides_no_extra_kwargs(self, cls, mock_context):
+        handler = cls()
+        inputs = {"prd": "Build a widget"}
+        await handler.handle(mock_context, inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        assert "model" not in call_kwargs
+        assert "temperature" not in call_kwargs
+        assert "max_tokens" not in call_kwargs
+        assert "timeout_seconds" not in call_kwargs
+
+    @pytest.mark.parametrize(
+        "cls",
+        HANDLER_CLASSES,
+        ids=[c.__name__ for c in HANDLER_CLASSES],
+    )
+    async def test_empty_model_string_not_passed(self, cls, mock_context):
+        handler = cls()
+        inputs = {
+            "prd": "Build a widget",
+            "agent_model": "",
+            "agent_config_overrides": {},
+        }
+        await handler.handle(mock_context, inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        assert "model" not in call_kwargs
+
+    @pytest.mark.parametrize(
+        "cls",
+        HANDLER_CLASSES,
+        ids=[c.__name__ for c in HANDLER_CLASSES],
+    )
+    async def test_all_overrides_combined(self, cls, mock_context):
+        handler = cls()
+        inputs = {
+            "prd": "Build a widget",
+            "agent_model": "deepseek-coder:6.7b",
+            "agent_config_overrides": {
+                "temperature": 0.1,
+                "max_completion_tokens": 4096,
+                "timeout_seconds": 300,
+            },
+        }
+        await handler.handle(mock_context, inputs)
+
+        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        assert call_kwargs["model"] == "deepseek-coder:6.7b"
+        assert call_kwargs["temperature"] == 0.1
+        assert call_kwargs["max_tokens"] == 4096
+        assert call_kwargs["timeout_seconds"] == 300
