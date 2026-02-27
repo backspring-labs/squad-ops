@@ -54,7 +54,7 @@
       <table class="agent-table">
         <thead>
           <tr>
-            <th>Role</th>
+            <th>Agent</th>
             <th>Model</th>
             <th>Context Window</th>
             <th>Max Completion</th>
@@ -62,14 +62,14 @@
           </tr>
         </thead>
         <tbody>
-          {#each Object.entries(profile.agents) as [agentId, agentConfig]}
-            {@const spec = modelSpecs[agentConfig.model] || null}
+          {#each profile.agents as agent}
+            {@const spec = modelSpecs[agent.model] || null}
             <tr>
-              <td class="cell-role">{agentId}</td>
-              <td class="cell-model">{agentConfig.model || '--'}</td>
+              <td class="cell-role">{agent.display_name || agent.agent_id} ({agent.role_label || agent.role})</td>
+              <td class="cell-model">{agent.model || '--'}</td>
               <td class="cell-num">{spec ? formatNumber(spec.context_window) : '--'}</td>
               <td class="cell-num">{spec ? formatNumber(spec.default_max_completion) : '--'}</td>
-              <td class="cell-enabled">{agentConfig.enabled !== false ? 'on' : 'off'}</td>
+              <td class="cell-enabled">{agent.enabled !== false ? 'on' : 'off'}</td>
             </tr>
           {/each}
         </tbody>
