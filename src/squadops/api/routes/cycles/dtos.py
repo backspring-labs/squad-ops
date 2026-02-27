@@ -144,6 +144,8 @@ class CycleCreateResponse(BaseModel):
 class AgentProfileEntryResponse(BaseModel):
     agent_id: str
     role: str
+    role_label: str | None = None
+    display_name: str | None = None
     model: str
     enabled: bool
     config_overrides: dict = Field(default_factory=dict)
