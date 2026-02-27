@@ -48,12 +48,20 @@ def mock_squad_profile():
 
 
 @pytest.fixture
-def client(mock_squad_profile, monkeypatch):
+def mock_llm_port():
+    mock = AsyncMock()
+    mock.refresh_models.return_value = ["qwen2.5:7b", "gpt-4"]
+    return mock
+
+
+@pytest.fixture
+def client(mock_squad_profile, mock_llm_port, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     import squadops.api.runtime.deps as deps_mod
 
     monkeypatch.setattr(deps_mod, "_squad_profile", mock_squad_profile)
+    monkeypatch.setattr(deps_mod, "_llm_port", mock_llm_port)
     return TestClient(app)
 
 
@@ -86,8 +94,8 @@ class TestSetActiveProfile:
             json={"profile_id": "full-squad"},
         )
         assert resp.status_code == 200
-        assert resp.json()["profile_id"] == "full-squad"
-        assert resp.json()["is_active"] is True
+        assert resp.json()["status"] == "ok"
+        assert resp.json()["active_profile_id"] == "full-squad"
 
 
 class TestGetProfile:
@@ -187,6 +195,49 @@ class TestCreateProfile:
             },
         )
         assert resp.status_code == 422
+
+    def test_warns_on_unpulled_model(self, client, mock_llm_port):
+        mock_llm_port.refresh_models.return_value = ["qwen2.5:7b"]
+        resp = client.post(
+            "/api/v1/squad-profiles",
+            json={
+                "name": "Warn Profile",
+                "agents": [
+                    {"agent_id": "neo", "role": "dev", "model": "unpulled-model:latest"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()["warnings"]) == 1
+        assert "unpulled-model:latest" in resp.json()["warnings"][0]
+
+    def test_no_warnings_when_model_pulled(self, client, mock_llm_port):
+        mock_llm_port.refresh_models.return_value = ["qwen2.5:7b"]
+        resp = client.post(
+            "/api/v1/squad-profiles",
+            json={
+                "name": "Good Profile",
+                "agents": [
+                    {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["warnings"] == []
+
+    def test_skips_warnings_when_ollama_unreachable(self, client, mock_llm_port):
+        mock_llm_port.refresh_models.side_effect = Exception("Connection refused")
+        resp = client.post(
+            "/api/v1/squad-profiles",
+            json={
+                "name": "Offline Profile",
+                "agents": [
+                    {"agent_id": "neo", "role": "dev", "model": "anything:latest"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["warnings"] == []
 
 
 class TestUpdateProfile:

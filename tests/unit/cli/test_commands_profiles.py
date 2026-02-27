@@ -80,7 +80,7 @@ class TestSquadProfilesSetActive:
     @patch("squadops.cli.commands.profiles._get_client")
     def test_set_active(self, mock_get_client):
         mock_get_client.return_value = _mock_client(
-            post_val={"profile_id": "sp2", "is_active": True}
+            post_val={"status": "ok", "active_profile_id": "sp2"}
         )
         result = runner.invoke(app, ["squad-profiles", "set-active", "sp2"])
         assert result.exit_code == 0
