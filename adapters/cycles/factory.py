@@ -47,6 +47,13 @@ def create_squad_profile_port(provider: str = "config", **kwargs) -> SquadProfil
         from adapters.cycles.config_squad_profile import ConfigSquadProfile
 
         return ConfigSquadProfile(**kwargs)
+    elif provider == "postgres":
+        pool = kwargs.get("pool")
+        if pool is None:
+            raise ValueError("pool is required for postgres squad profile provider")
+        from adapters.cycles.postgres_squad_profile import PostgresSquadProfile
+
+        return PostgresSquadProfile(pool=pool)
     raise ValueError(f"Unknown squad profile provider: {provider}")
 
 

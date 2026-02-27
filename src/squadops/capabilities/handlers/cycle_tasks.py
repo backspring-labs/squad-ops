@@ -83,6 +83,21 @@ class _CycleTaskHandler(CapabilityHandler):
         parts.append(f"\nPlease provide your {self._role} analysis and deliverables.")
         return "\n".join(parts)
 
+    def _build_chat_kwargs(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Build chat() kwargs from agent config overrides (SIP-0075 §3.2)."""
+        overrides = inputs.get("agent_config_overrides", {})
+        agent_model = inputs.get("agent_model") or None
+        kwargs: dict[str, Any] = {}
+        if agent_model:
+            kwargs["model"] = agent_model
+        if "temperature" in overrides:
+            kwargs["temperature"] = overrides["temperature"]
+        if "max_completion_tokens" in overrides:
+            kwargs["max_tokens"] = overrides["max_completion_tokens"]
+        if "timeout_seconds" in overrides:
+            kwargs["timeout_seconds"] = overrides["timeout_seconds"]
+        return kwargs
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -103,8 +118,10 @@ class _CycleTaskHandler(CapabilityHandler):
             ChatMessage(role="user", content=user_prompt),
         ]
 
+        chat_kwargs = self._build_chat_kwargs(inputs)
+
         try:
-            response = await context.ports.llm.chat(messages)
+            response = await context.ports.llm.chat(messages, **chat_kwargs)
         except LLMError as exc:
             logger.warning(
                 "LLM call failed for %s: %s",
@@ -139,9 +156,10 @@ class _CycleTaskHandler(CapabilityHandler):
                 PromptLayerMetadata,
             )
 
+            resolved_model = chat_kwargs.get("model", context.ports.llm.default_model)
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
-                model=context.ports.llm.default_model,
+                model=resolved_model,
                 prompt_text=user_prompt[:2000],
                 response_text=content[:2000],
                 latency_ms=llm_duration_ms,
@@ -456,14 +474,21 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
 
-        # SIP-0073: compute token budget from capability + model spec
-        model_name = context.ports.llm.default_model
+        # SIP-0075 §3.3: resolve model from agent overrides, then adapter default
+        agent_overrides = inputs.get("agent_config_overrides", {})
+        agent_model = inputs.get("agent_model") or None
+        model_name = agent_model or context.ports.llm.default_model
         model_spec = get_model_spec(model_name)
+
+        # SIP-0073 + SIP-0075: token budget precedence
+        # 1. model defaults, 2. capability, 3. config_overrides, 4. applied_defaults
         max_tokens = capability.max_completion_tokens
         context_window = None
         if model_spec is not None:
             max_tokens = min(max_tokens, model_spec.default_max_completion)
             context_window = model_spec.context_window
+        if "max_completion_tokens" in agent_overrides:
+            max_tokens = agent_overrides["max_completion_tokens"]
 
         # SIP-0073: guard prompt size against context window
         try:
@@ -491,17 +516,23 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         # SIP-0073: resolve effective timeout (D6)
         generation_timeout = self._resolved_config.get("generation_timeout", 300)
 
+        # SIP-0075 §3.3: build chat kwargs from overrides
+        chat_kwargs: dict[str, Any] = {
+            "max_tokens": max_tokens,
+            "timeout_seconds": generation_timeout,
+        }
+        if agent_model:
+            chat_kwargs["model"] = agent_model
+        if "temperature" in agent_overrides:
+            chat_kwargs["temperature"] = agent_overrides["temperature"]
+
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=user_prompt),
         ]
 
         try:
-            response = await context.ports.llm.chat(
-                messages,
-                max_tokens=max_tokens,
-                timeout_seconds=generation_timeout,
-            )
+            response = await context.ports.llm.chat(messages, **chat_kwargs)
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -522,7 +553,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Record LLM generation for LangFuse tracing
-        self._record_generation(context, user_prompt, content, llm_duration_ms)
+        self._record_generation(context, user_prompt, content, llm_duration_ms, model_name)
 
         # Parse fenced code blocks
         extracted = extract_fenced_files(content)
@@ -588,6 +619,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         prompt: str,
         response: str,
         duration_ms: float,
+        resolved_model: str | None = None,
     ) -> None:
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
@@ -601,7 +633,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
-                model=context.ports.llm.default_model,
+                model=resolved_model or context.ports.llm.default_model,
                 prompt_text=prompt[:2000],
                 response_text=response[:2000],
                 latency_ms=duration_ms,
@@ -796,14 +828,20 @@ class QATestHandler(_CycleTaskHandler):
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
 
-        # SIP-0073: compute token budget from capability + model spec
-        model_name = context.ports.llm.default_model
+        # SIP-0075 §3.3: resolve model from agent overrides, then adapter default
+        agent_overrides = inputs.get("agent_config_overrides", {})
+        agent_model = inputs.get("agent_model") or None
+        model_name = agent_model or context.ports.llm.default_model
         model_spec = get_model_spec(model_name)
+
+        # SIP-0073 + SIP-0075: token budget precedence
         max_tokens = capability.max_completion_tokens
         context_window = None
         if model_spec is not None:
             max_tokens = min(max_tokens, model_spec.default_max_completion)
             context_window = model_spec.context_window
+        if "max_completion_tokens" in agent_overrides:
+            max_tokens = agent_overrides["max_completion_tokens"]
 
         # SIP-0073: guard prompt size against context window
         try:
@@ -831,17 +869,23 @@ class QATestHandler(_CycleTaskHandler):
         # SIP-0073: resolve effective timeout (D6)
         generation_timeout = resolved_config.get("generation_timeout", 300)
 
+        # SIP-0075 §3.3: build chat kwargs from overrides
+        chat_kwargs: dict[str, Any] = {
+            "max_tokens": max_tokens,
+            "timeout_seconds": generation_timeout,
+        }
+        if agent_model:
+            chat_kwargs["model"] = agent_model
+        if "temperature" in agent_overrides:
+            chat_kwargs["temperature"] = agent_overrides["temperature"]
+
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=user_prompt),
         ]
 
         try:
-            response = await context.ports.llm.chat(
-                messages,
-                max_tokens=max_tokens,
-                timeout_seconds=generation_timeout,
-            )
+            response = await context.ports.llm.chat(messages, **chat_kwargs)
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -862,7 +906,7 @@ class QATestHandler(_CycleTaskHandler):
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Record LLM generation for LangFuse tracing
-        self._record_generation(context, user_prompt, content, llm_duration_ms)
+        self._record_generation(context, user_prompt, content, llm_duration_ms, model_name)
 
         # Parse fenced code blocks
         extracted = extract_fenced_files(content)
@@ -1004,6 +1048,7 @@ class QATestHandler(_CycleTaskHandler):
         prompt: str,
         response: str,
         duration_ms: float,
+        resolved_model: str | None = None,
     ) -> None:
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
@@ -1017,7 +1062,7 @@ class QATestHandler(_CycleTaskHandler):
 
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
-                model=context.ports.llm.default_model,
+                model=resolved_model or context.ports.llm.default_model,
                 prompt_text=prompt[:2000],
                 response_text=response[:2000],
                 latency_ms=duration_ms,
@@ -1242,9 +1287,17 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             ChatMessage(role="user", content=user_prompt),
         ]
 
-        # Step 4: LLM call
+        # Step 4: LLM call — SIP-0075 §3.3 V1 boundary: builder uses only model + temperature
+        agent_overrides = inputs.get("agent_config_overrides", {})
+        agent_model = inputs.get("agent_model") or None
+        builder_kwargs: dict[str, Any] = {}
+        if agent_model:
+            builder_kwargs["model"] = agent_model
+        if "temperature" in agent_overrides:
+            builder_kwargs["temperature"] = agent_overrides["temperature"]
+
         try:
-            response = await context.ports.llm.chat(messages)
+            response = await context.ports.llm.chat(messages, **builder_kwargs)
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1265,7 +1318,8 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Record LLM generation for LangFuse tracing
-        self._record_generation(context, user_prompt, content, llm_duration_ms)
+        resolved_model = agent_model or context.ports.llm.default_model
+        self._record_generation(context, user_prompt, content, llm_duration_ms, resolved_model)
 
         # Step 5: Parse fenced code blocks
         extracted = extract_fenced_files(content)
@@ -1451,6 +1505,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         prompt: str,
         response: str,
         duration_ms: float,
+        resolved_model: str | None = None,
     ) -> None:
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
@@ -1464,7 +1519,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
 
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
-                model=context.ports.llm.default_model,
+                model=resolved_model or context.ports.llm.default_model,
                 prompt_text=prompt[:2000],
                 response_text=response[:2000],
                 latency_ms=duration_ms,

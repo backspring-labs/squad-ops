@@ -13,7 +13,7 @@ from pathlib import Path
 import yaml
 
 from squadops.cycles.lifecycle import compute_profile_snapshot_hash
-from squadops.cycles.models import AgentProfileEntry, CycleError, SquadProfile
+from squadops.cycles.models import AgentProfileEntry, CycleError, ProfileNotFoundError, SquadProfile
 from squadops.ports.cycles.squad_profile import SquadProfilePort
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ class ConfigSquadProfile(SquadProfilePort):
     async def get_profile(self, profile_id: str) -> SquadProfile:
         self._load()
         if profile_id not in self._profiles:
-            raise CycleError(f"Squad profile not found: {profile_id}")
+            raise ProfileNotFoundError(f"Squad profile not found: {profile_id}")
         return self._profiles[profile_id]
 
     async def get_active_profile(self) -> SquadProfile:
@@ -86,13 +86,43 @@ class ConfigSquadProfile(SquadProfilePort):
     async def set_active_profile(self, profile_id: str) -> None:
         self._load()
         if profile_id not in self._profiles:
-            raise CycleError(f"Squad profile not found: {profile_id}")
+            raise ProfileNotFoundError(f"Squad profile not found: {profile_id}")
         self._active_profile_id = profile_id
 
     async def resolve_snapshot(self, profile_id: str) -> tuple[SquadProfile, str]:
         self._load()
         if profile_id not in self._profiles:
-            raise CycleError(f"Squad profile not found: {profile_id}")
+            raise ProfileNotFoundError(f"Squad profile not found: {profile_id}")
         profile = self._profiles[profile_id]
         snapshot_hash = compute_profile_snapshot_hash(profile)
         return profile, snapshot_hash
+
+    # --- CRUD stubs (config provider is read-only) ---
+
+    async def create_profile(self, profile: SquadProfile) -> SquadProfile:
+        raise CycleError("Read-only: config provider does not support CRUD")
+
+    async def update_profile(
+        self,
+        profile_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        agents: tuple | None = None,
+    ) -> SquadProfile:
+        raise CycleError("Read-only: config provider does not support CRUD")
+
+    async def delete_profile(self, profile_id: str) -> None:
+        raise CycleError("Read-only: config provider does not support CRUD")
+
+    async def activate_profile(self, profile_id: str) -> SquadProfile:
+        raise CycleError("Read-only: config provider does not support CRUD")
+
+    async def get_active_profile_id(self) -> str | None:
+        self._load()
+        return self._active_profile_id
+
+    async def seed_profiles(
+        self, profiles: list[SquadProfile], active_id: str | None = None
+    ) -> int:
+        raise CycleError("Read-only: config provider does not support seeding")

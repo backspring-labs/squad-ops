@@ -64,6 +64,50 @@ class SetActiveProfileRequest(BaseModel):
         extra = "forbid"
 
 
+class AgentProfileEntryRequest(BaseModel):
+    """Agent entry in a profile create/update request (SIP-0075)."""
+
+    agent_id: str
+    role: str
+    model: str
+    enabled: bool = True
+    config_overrides: dict = Field(default_factory=dict)
+
+    class Config:
+        extra = "forbid"
+
+
+class ProfileCreateRequest(BaseModel):
+    """Create a new squad profile (SIP-0075)."""
+
+    name: str
+    description: str = ""
+    agents: list[AgentProfileEntryRequest]
+
+    class Config:
+        extra = "forbid"
+
+
+class ProfileUpdateRequest(BaseModel):
+    """Update an existing squad profile (SIP-0075)."""
+
+    name: str | None = None
+    description: str | None = None
+    agents: list[AgentProfileEntryRequest] | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class ProfileCloneRequest(BaseModel):
+    """Clone a squad profile with a new name (SIP-0075)."""
+
+    name: str
+
+    class Config:
+        extra = "forbid"
+
+
 class BaselinePromoteRequest(BaseModel):
     artifact_id: str
 
@@ -158,6 +202,9 @@ class SquadProfileResponse(BaseModel):
     version: int
     agents: list[AgentProfileEntryResponse]
     created_at: datetime
+    is_active: bool = False
+    updated_at: datetime | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ArtifactRefResponse(BaseModel):
@@ -200,6 +247,35 @@ class ModelSpecResponse(BaseModel):
     name: str
     context_window: int
     default_max_completion: int
+
+
+class PulledModelResponse(BaseModel):
+    """A locally pulled model with active profile cross-reference (SIP-0075)."""
+
+    name: str
+    size_bytes: int | None = None
+    modified_at: str | None = None
+    in_active_profile: bool = False
+    used_by_active_profile: list[str] = Field(default_factory=list)
+    registry_spec: ModelSpecResponse | None = None
+
+
+class PullModelRequest(BaseModel):
+    """Request to pull a model from Ollama registry (SIP-0075)."""
+
+    name: str
+
+    class Config:
+        extra = "forbid"
+
+
+class PullStatusResponse(BaseModel):
+    """Status of an in-progress model pull (SIP-0075)."""
+
+    pull_id: str
+    model_name: str
+    status: str
+    error: str | None = None
 
 
 class ErrorDetail(BaseModel):

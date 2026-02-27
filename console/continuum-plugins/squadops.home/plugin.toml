@@ -12,7 +12,7 @@ bundle = "plugin.js"
 [[contributions.nav]]
 slot = "ui.slot.left_nav"
 label = "Home"
-icon = "activity"
+icon = "home"
 priority = 999
 
 [contributions.nav.target]

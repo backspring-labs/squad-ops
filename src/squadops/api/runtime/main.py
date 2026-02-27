@@ -244,7 +244,23 @@ async def startup_event():
             config.cycles.registry_provider,
             **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
         )
-        squad_profile = create_squad_profile_port("config")
+        squad_profile_provider = config.cycles.squad_profile_provider
+        if squad_profile_provider == "postgres":
+            squad_profile = create_squad_profile_port("postgres", pool=pool)
+            # Seed from YAML (one-shot via seed_log)
+            try:
+                from adapters.cycles.config_squad_profile import ConfigSquadProfile
+
+                yaml_source = ConfigSquadProfile()
+                yaml_profiles = await yaml_source.list_profiles()
+                yaml_active_id = yaml_source._active_profile_id
+                seeded = await squad_profile.seed_profiles(yaml_profiles, yaml_active_id)
+                if seeded:
+                    logger.info("Seeded %d squad profiles from YAML", seeded)
+            except Exception as seed_err:
+                logger.warning("YAML seed failed (non-fatal): %s", seed_err)
+        else:
+            squad_profile = create_squad_profile_port("config")
         artifact_vault = create_artifact_vault("filesystem")
 
         # Distributed executor: dispatch tasks to agent containers via RabbitMQ.
@@ -284,6 +300,20 @@ async def startup_event():
         logger.info("SIP-0064 cycle ports + SIP-0066 orchestrator initialized")
     except Exception as e:
         logger.error(f"Failed to initialize cycle ports: {e}")
+
+    # SIP-0075: Register LLM port for model management endpoints
+    try:
+        from adapters.llm.ollama import OllamaAdapter
+        from squadops.api.runtime.deps import set_llm_port
+
+        ollama_adapter = OllamaAdapter(
+            base_url=config.llm.url,
+            default_model=config.llm.model or "qwen2.5:7b",
+        )
+        set_llm_port(ollama_adapter)
+        logger.info("LLM port registered for model management")
+    except Exception as e:
+        logger.warning("LLM port not registered (non-fatal): %s", e)
 
     # Initialize platform health checker (replaces legacy health-check service)
     global _redis_client, _health_checker_instance, _reconciliation_task

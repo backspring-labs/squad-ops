@@ -63,6 +63,14 @@ class APIClient:
         """Send POST request with JSON body, return parsed JSON."""
         return self._request("POST", path, json=json)
 
+    def put(self, path: str, json: dict | None = None) -> dict:
+        """Send PUT request with JSON body, return parsed JSON."""
+        return self._request("PUT", path, json=json)
+
+    def delete(self, path: str) -> dict:
+        """Send DELETE request, return parsed JSON."""
+        return self._request("DELETE", path)
+
     def upload(self, path: str, file_path: Path, fields: dict) -> dict:
         """Send multipart POST with file upload."""
         try:

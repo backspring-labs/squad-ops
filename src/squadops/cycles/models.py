@@ -129,6 +129,31 @@ class ValidationError(CycleError):
     """Raised for domain validation failures (e.g., unknown gate name)."""
 
 
+class ProfileNotFoundError(CycleError):
+    """Raised when a squad profile_id cannot be found."""
+
+
+class ActiveProfileDeletionError(CycleError):
+    """Raised when attempting to delete the active profile."""
+
+
+class ProfileValidationError(CycleError):
+    """Raised for squad profile validation failures (bad ID, unknown override keys)."""
+
+
+# Allowed keys in AgentProfileEntry.config_overrides (SIP-0075 §5.5.1).
+# Unknown keys are rejected with 422, not silently ignored.
+ALLOWED_CONFIG_OVERRIDE_KEYS = frozenset({
+    "temperature",
+    "max_completion_tokens",
+    "timeout_seconds",
+})
+
+# Required roles that must be present in a squad profile for plan generation.
+# Missing required roles are a hard error, not a silent fallback. (SIP-0075)
+REQUIRED_PLAN_ROLES = frozenset({"strat", "dev", "qa", "data", "lead"})
+
+
 # =============================================================================
 # Frozen dataclasses — SIP-0064 §8
 # =============================================================================
