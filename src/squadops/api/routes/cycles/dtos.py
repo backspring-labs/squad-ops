@@ -249,6 +249,35 @@ class ModelSpecResponse(BaseModel):
     default_max_completion: int
 
 
+class PulledModelResponse(BaseModel):
+    """A locally pulled model with active profile cross-reference (SIP-0075)."""
+
+    name: str
+    size_bytes: int | None = None
+    modified_at: str | None = None
+    in_active_profile: bool = False
+    used_by_agents: list[str] = Field(default_factory=list)
+    registry_spec: ModelSpecResponse | None = None
+
+
+class PullModelRequest(BaseModel):
+    """Request to pull a model from Ollama registry (SIP-0075)."""
+
+    name: str
+
+    class Config:
+        extra = "forbid"
+
+
+class PullStatusResponse(BaseModel):
+    """Status of an in-progress model pull (SIP-0075)."""
+
+    pull_id: str
+    model_name: str
+    status: str
+    error: str | None = None
+
+
 class ErrorDetail(BaseModel):
     code: str
     message: str

@@ -220,6 +220,73 @@ class OllamaAdapter(LLMPort):
                 "error": str(e),
             }
 
+    async def pull_model(self, model_name: str) -> dict[str, Any]:
+        """Pull a model from the Ollama registry.
+
+        Args:
+            model_name: Model name to pull (e.g. "qwen2.5:7b")
+
+        Returns:
+            Ollama response dict with pull status
+        """
+        client = await self._get_client()
+        try:
+            response = await client.post(
+                "/api/pull",
+                json={"name": model_name, "stream": False},
+                timeout=600.0,
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.TimeoutException as e:
+            raise LLMTimeoutError(f"Model pull timed out for '{model_name}'") from e
+        except httpx.ConnectError as e:
+            raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise LLMModelNotFoundError(f"Model '{model_name}' not found in registry") from e
+            raise LLMConnectionError(f"Ollama pull failed: {e}") from e
+
+    async def delete_model(self, model_name: str) -> dict[str, Any]:
+        """Delete a locally pulled model.
+
+        Args:
+            model_name: Model name to delete
+
+        Returns:
+            Empty dict on success
+        """
+        client = await self._get_client()
+        try:
+            response = await client.request(
+                "DELETE",
+                "/api/delete",
+                json={"name": model_name},
+            )
+            response.raise_for_status()
+            return {}
+        except httpx.ConnectError as e:
+            raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise LLMModelNotFoundError(f"Model '{model_name}' not found locally") from e
+            raise LLMConnectionError(f"Ollama delete failed: {e}") from e
+
+    async def list_pulled_models(self) -> list[dict[str, Any]]:
+        """List pulled models with full metadata (size, modified_at).
+
+        Returns:
+            List of model dicts from Ollama /api/tags
+        """
+        client = await self._get_client()
+        try:
+            response = await client.get("/api/tags", timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("models", [])
+        except httpx.ConnectError as e:
+            raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
+
     async def close(self) -> None:
         """Close the HTTP client."""
         if self._client:
