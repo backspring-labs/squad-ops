@@ -9,6 +9,7 @@ def register(ctx):
             "slot": "ui.slot.left_nav",
             "label": "Home",
             "icon": "home",
+            "icon_path": "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10",
             "priority": 999,
             "target": {"type": "panel", "panel_id": "signal"},
         },
