@@ -1,5 +1,5 @@
 """
-Tests for SIP-0064 squad profile API routes.
+Tests for SIP-0064 + SIP-0075 squad profile API routes.
 """
 
 from datetime import UTC, datetime
@@ -10,7 +10,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squadops.api.routes.cycles.profiles import router
-from squadops.cycles.models import AgentProfileEntry, CycleError, SquadProfile
+from squadops.cycles.models import (
+    ActiveProfileDeletionError,
+    AgentProfileEntry,
+    ProfileNotFoundError,
+    ProfileValidationError,
+    SquadProfile,
+)
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -32,7 +38,12 @@ def mock_squad_profile():
     mock.list_profiles.return_value = [_PROFILE]
     mock.get_profile.return_value = _PROFILE
     mock.get_active_profile.return_value = _PROFILE
+    mock.get_active_profile_id.return_value = "full-squad"
     mock.set_active_profile.return_value = None
+    mock.activate_profile.return_value = _PROFILE
+    mock.create_profile.side_effect = lambda p: p
+    mock.update_profile.return_value = _PROFILE
+    mock.delete_profile.return_value = None
     return mock
 
 
@@ -54,12 +65,18 @@ class TestListProfiles:
         assert len(data) == 1
         assert data[0]["profile_id"] == "full-squad"
 
+    def test_includes_is_active(self, client):
+        resp = client.get("/api/v1/squad-profiles")
+        data = resp.json()
+        assert data[0]["is_active"] is True
+
 
 class TestGetActiveProfile:
     def test_returns_active(self, client):
         resp = client.get("/api/v1/squad-profiles/active")
         assert resp.status_code == 200
         assert resp.json()["profile_id"] == "full-squad"
+        assert resp.json()["is_active"] is True
 
 
 class TestSetActiveProfile:
@@ -69,7 +86,8 @@ class TestSetActiveProfile:
             json={"profile_id": "full-squad"},
         )
         assert resp.status_code == 200
-        assert resp.json()["active_profile_id"] == "full-squad"
+        assert resp.json()["profile_id"] == "full-squad"
+        assert resp.json()["is_active"] is True
 
 
 class TestGetProfile:
@@ -80,6 +98,156 @@ class TestGetProfile:
         assert len(resp.json()["agents"]) == 1
 
     def test_not_found(self, client, mock_squad_profile):
-        mock_squad_profile.get_profile.side_effect = CycleError("Not found")
+        mock_squad_profile.get_profile.side_effect = ProfileNotFoundError("Not found")
         resp = client.get("/api/v1/squad-profiles/unknown")
-        assert resp.status_code == 500  # CycleError (base) → 500
+        assert resp.status_code == 404
+
+
+# --- SIP-0075 CRUD tests ---
+
+
+class TestCreateProfile:
+    def test_creates_profile(self, client):
+        resp = client.post(
+            "/api/v1/squad-profiles",
+            json={
+                "name": "Test Profile",
+                "agents": [
+                    {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["profile_id"] == "test-profile"
+        assert body["name"] == "Test Profile"
+
+    def test_empty_model_rejected(self, client):
+        resp = client.post(
+            "/api/v1/squad-profiles",
+            json={
+                "name": "Bad Profile",
+                "agents": [
+                    {"agent_id": "neo", "role": "dev", "model": ""},
+                ],
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_unknown_config_overrides_rejected(self, client):
+        resp = client.post(
+            "/api/v1/squad-profiles",
+            json={
+                "name": "Bad Profile",
+                "agents": [
+                    {
+                        "agent_id": "neo",
+                        "role": "dev",
+                        "model": "qwen2.5:7b",
+                        "config_overrides": {"bad_key": 1},
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_duplicate_agent_ids_rejected(self, client):
+        resp = client.post(
+            "/api/v1/squad-profiles",
+            json={
+                "name": "Bad Profile",
+                "agents": [
+                    {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
+                    {"agent_id": "neo", "role": "qa", "model": "qwen2.5:7b"},
+                ],
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_collision_returns_422(self, client, mock_squad_profile):
+        mock_squad_profile.create_profile.side_effect = ProfileValidationError("already exists")
+        resp = client.post(
+            "/api/v1/squad-profiles",
+            json={
+                "name": "Full Squad",
+                "agents": [
+                    {"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"},
+                ],
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_extra_fields_rejected(self, client):
+        resp = client.post(
+            "/api/v1/squad-profiles",
+            json={
+                "name": "Test",
+                "agents": [{"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"}],
+                "bogus": "bad",
+            },
+        )
+        assert resp.status_code == 422
+
+
+class TestUpdateProfile:
+    def test_updates_profile(self, client):
+        resp = client.put(
+            "/api/v1/squad-profiles/full-squad",
+            json={"name": "Updated Squad"},
+        )
+        assert resp.status_code == 200
+
+    def test_not_found(self, client, mock_squad_profile):
+        mock_squad_profile.update_profile.side_effect = ProfileNotFoundError("Not found")
+        resp = client.put(
+            "/api/v1/squad-profiles/nonexistent",
+            json={"name": "New Name"},
+        )
+        assert resp.status_code == 404
+
+
+class TestCloneProfile:
+    def test_clones_profile(self, client):
+        resp = client.post(
+            "/api/v1/squad-profiles/full-squad/clone",
+            json={"name": "Cloned Squad"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["profile_id"] == "cloned-squad"
+
+    def test_source_not_found(self, client, mock_squad_profile):
+        mock_squad_profile.get_profile.side_effect = ProfileNotFoundError("Not found")
+        resp = client.post(
+            "/api/v1/squad-profiles/nonexistent/clone",
+            json={"name": "Clone"},
+        )
+        assert resp.status_code == 404
+
+
+class TestDeleteProfile:
+    def test_deletes_profile(self, client):
+        resp = client.delete("/api/v1/squad-profiles/full-squad")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "deleted"
+
+    def test_not_found(self, client, mock_squad_profile):
+        mock_squad_profile.delete_profile.side_effect = ProfileNotFoundError("Not found")
+        resp = client.delete("/api/v1/squad-profiles/nonexistent")
+        assert resp.status_code == 404
+
+    def test_active_profile_rejected(self, client, mock_squad_profile):
+        mock_squad_profile.delete_profile.side_effect = ActiveProfileDeletionError("Active")
+        resp = client.delete("/api/v1/squad-profiles/full-squad")
+        assert resp.status_code == 409
+
+
+class TestActivateProfile:
+    def test_activates_profile(self, client):
+        resp = client.post("/api/v1/squad-profiles/full-squad/activate")
+        assert resp.status_code == 200
+        assert resp.json()["is_active"] is True
+
+    def test_not_found(self, client, mock_squad_profile):
+        mock_squad_profile.activate_profile.side_effect = ProfileNotFoundError("Not found")
+        resp = client.post("/api/v1/squad-profiles/nonexistent/activate")
+        assert resp.status_code == 404
