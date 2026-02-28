@@ -1,4 +1,4 @@
-last_assigned: 75
+last_assigned: 76
 sips:
 - sip_uid: null
   sip_number: null
@@ -691,3 +691,12 @@ sips:
   approver: jladd
   created_at: '2026-02-26'
   updated_at: '2026-02-27T18:49:15.178955Z'
+- sip_uid: null
+  sip_number: 76
+  title: Workload & Gate Canon
+  path: sips/accepted/SIP-0076-Workload-Gate-Canon.md
+  status: accepted
+  author: SquadOps Architecture
+  approver: jladd
+  created_at: '2026-02-28T00:00:00Z'
+  updated_at: '2026-02-28T10:44:17.027172Z'
