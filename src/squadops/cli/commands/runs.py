@@ -189,22 +189,47 @@ def gate_decision(
     gate_name: str = typer.Argument(...),
     approve: bool = typer.Option(False, "--approve", help="Approve the gate"),
     reject: bool = typer.Option(False, "--reject", help="Reject the gate"),
+    with_refinements: bool = typer.Option(
+        False, "--with-refinements", help="Approve with refinements needed"
+    ),
+    return_for_revision: bool = typer.Option(
+        False, "--return-for-revision", help="Return for revision on same workload path"
+    ),
     notes: str | None = typer.Option(None, "--notes", help="Decision notes"),
 ):
-    """Record a gate decision (approve or reject).
+    """Record a gate decision.
 
-    Wire mapping (D8): --approve sends {"decision": "approved"},
-    --reject sends {"decision": "rejected"}.
+    Wire mapping: --approve sends "approved", --reject sends "rejected",
+    --with-refinements sends "approved_with_refinements",
+    --return-for-revision sends "returned_for_revision".
     """
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
 
-    if approve == reject:
-        # Both true or both false
-        print_error("Error: must specify exactly one of --approve or --reject")
+    # D20: Exactly one decision flag required
+    flags = {
+        "--approve": approve,
+        "--reject": reject,
+        "--with-refinements": with_refinements,
+        "--return-for-revision": return_for_revision,
+    }
+    selected = [name for name, val in flags.items() if val]
+    if len(selected) != 1:
+        valid_flags = ", ".join(flags.keys())
+        print_error(
+            f"Error: must specify exactly one decision flag. "
+            f"Valid flags: {valid_flags}"
+        )
         raise typer.Exit(code=2)
 
-    # D8: CLI imperative → wire past tense
-    decision = "approved" if approve else "rejected"
+    # Wire mapping: CLI flag → API decision value
+    if approve:
+        decision = "approved"
+    elif reject:
+        decision = "rejected"
+    elif with_refinements:
+        decision = "approved_with_refinements"
+    else:
+        decision = "returned_for_revision"
 
     body = {"decision": decision}
     if notes:

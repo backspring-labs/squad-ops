@@ -25,9 +25,31 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "build_profile",
     "dev_capability",
     "generation_timeout",
+    "workload_sequence",
 }
 
 _ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS
+
+# SIP-0076 D11/D18: valid gate name prefixes for workload_sequence entries.
+_VALID_GATE_PREFIXES = ("progress_", "promote_")
+
+
+def _validate_workload_sequence_gates(defaults: dict) -> None:
+    """Validate that gate names in workload_sequence use allowed prefixes (case-sensitive)."""
+    sequence = defaults.get("workload_sequence")
+    if not sequence or not isinstance(sequence, list):
+        return
+    for entry in sequence:
+        if not isinstance(entry, dict):
+            continue
+        gate = entry.get("gate")
+        if gate is None:
+            continue  # null gate is valid (no gate at this boundary)
+        if not any(gate.startswith(prefix) for prefix in _VALID_GATE_PREFIXES):
+            raise ValueError(
+                f"Gate name {gate!r} in workload_sequence must start with "
+                f"'progress_' or 'promote_'. Got: {gate!r}"
+            )
 
 
 class PromptMeta(BaseModel):
@@ -59,4 +81,6 @@ class CycleRequestProfile(BaseModel):
         unknown = set(v.keys()) - _ALL_ALLOWED_KEYS
         if unknown:
             raise ValueError(f"Unknown default keys: {unknown}")
+        # SIP-0076 D11/D18: validate gate names in workload_sequence
+        _validate_workload_sequence_gates(v)
         return v
