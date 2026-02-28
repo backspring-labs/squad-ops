@@ -98,11 +98,15 @@ class TestGateDecisionValue:
     def test_members(self):
         assert set(GateDecisionValue) == {
             GateDecisionValue.APPROVED,
+            GateDecisionValue.APPROVED_WITH_REFINEMENTS,
+            GateDecisionValue.RETURNED_FOR_REVISION,
             GateDecisionValue.REJECTED,
         }
 
     def test_values(self):
         assert GateDecisionValue.APPROVED == "approved"
+        assert GateDecisionValue.APPROVED_WITH_REFINEMENTS == "approved_with_refinements"
+        assert GateDecisionValue.RETURNED_FOR_REVISION == "returned_for_revision"
         assert GateDecisionValue.REJECTED == "rejected"
 
 

@@ -53,9 +53,11 @@ class BuildStrategy(StrEnum):
 
 
 class GateDecisionValue(StrEnum):
-    """Gate decision values (T4: normalized to approved/rejected everywhere)."""
+    """Gate decision values (SIP-0076 §10.2)."""
 
     APPROVED = "approved"
+    APPROVED_WITH_REFINEMENTS = "approved_with_refinements"
+    RETURNED_FOR_REVISION = "returned_for_revision"
     REJECTED = "rejected"
 
 
@@ -82,6 +84,26 @@ class RunInitiator:
     CLI = "cli"
     RETRY = "retry"
     SYSTEM = "system"
+
+
+class WorkloadType:
+    """Well-known workload type constants.
+
+    workload_type on Run is free-form str | None. These constants
+    document the standard vocabulary. Custom values are permitted.
+    """
+
+    PLANNING = "planning"
+    IMPLEMENTATION = "implementation"
+    EVALUATION = "evaluation"
+    REFINEMENT = "refinement"
+
+
+class PromotionStatus:
+    """Well-known artifact promotion status constants."""
+
+    WORKING = "working"
+    PROMOTED = "promoted"
 
 
 # =============================================================================
@@ -152,6 +174,28 @@ ALLOWED_CONFIG_OVERRIDE_KEYS = frozenset({
 # Required roles that must be present in a squad profile for plan generation.
 # Missing required roles are a hard error, not a silent fallback. (SIP-0075)
 REQUIRED_PLAN_ROLES = frozenset({"strat", "dev", "qa", "data", "lead"})
+
+
+# =============================================================================
+# Validation helpers
+# =============================================================================
+
+
+def validate_workload_type(value: str | None) -> str | None:
+    """Validate and normalize a workload_type value.
+
+    Rules (SIP-0076 §9.8):
+    - None is valid (legacy/unclassified run).
+    - Leading/trailing whitespace is trimmed.
+    - Empty string after trim is rejected (ValidationError).
+    - Supplied value is preserved exactly after trim (no case normalization).
+    """
+    if value is None:
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        raise ValidationError("workload_type must be a non-empty string or null")
+    return trimmed
 
 
 # =============================================================================
@@ -245,6 +289,7 @@ class Run:
     finished_at: datetime | None = None
     gate_decisions: tuple[GateDecision, ...] = ()
     artifact_refs: tuple[str, ...] = ()
+    workload_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -263,6 +308,7 @@ class ArtifactRef:
     run_id: str | None = None
     metadata: dict = field(default_factory=dict)
     vault_uri: str | None = None
+    promotion_status: str = "working"
 
 
 @dataclass(frozen=True)
