@@ -131,7 +131,23 @@ class TestListProjectArtifacts:
 
 
 class TestBaselinePromotion:
-    def test_promote_incremental(self, client):
+    def test_promote_incremental(self, client, mock_artifact_vault):
+        # SIP-0076 D6: only promoted artifacts can be baselines
+        from squadops.cycles.models import ArtifactRef as AR
+
+        promoted_art = AR(
+            artifact_id="art_001",
+            project_id="hello_squad",
+            artifact_type="prd",
+            filename="prd-v1.md",
+            content_hash="sha256:abc",
+            size_bytes=100,
+            media_type="text/markdown",
+            created_at=NOW,
+            vault_uri="/data/artifacts/art_001/prd-v1.md",
+            promotion_status="promoted",
+        )
+        mock_artifact_vault.get_metadata.return_value = promoted_art
         resp = client.post(
             "/api/v1/projects/hello_squad/baseline/prd",
             json={"artifact_id": "art_001"},
@@ -152,7 +168,7 @@ class TestBaselinePromotion:
             build_strategy="fresh",
         )
         mock_cycle_registry.get_cycle.return_value = cycle
-        # Set artifact with cycle_id so enforcement triggers
+        # Set artifact with cycle_id so enforcement triggers (must be promoted too)
 
         from squadops.cycles.models import ArtifactRef
 
@@ -166,6 +182,7 @@ class TestBaselinePromotion:
             media_type="text/markdown",
             created_at=NOW,
             cycle_id="cyc_001",
+            promotion_status="promoted",
         )
 
         import squadops.api.runtime.deps as deps_mod

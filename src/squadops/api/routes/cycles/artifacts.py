@@ -11,12 +11,21 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from squadops.api.routes.cycles.dtos import BaselinePromoteRequest
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import artifact_to_response
-from squadops.cycles.models import ArtifactRef, BaselineNotAllowedError, CycleError
+from squadops.cycles.models import (
+    ArtifactRef,
+    BaselineNotAllowedError,
+    CycleError,
+    PromotionStatus,
+    ValidationError,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["artifacts"])
 
 # T16: Max upload size 50 MB
 _MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+# D15: Valid promotion_status filter values
+_VALID_PROMOTION_STATUSES = {PromotionStatus.WORKING, PromotionStatus.PROMOTED}
 
 
 @router.post("/projects/{project_id}/artifacts/ingest")
@@ -95,37 +104,91 @@ async def download_artifact(artifact_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.get("/projects/{project_id}/artifacts")
-async def list_project_artifacts(project_id: str, artifact_type: str | None = None):
+@router.post("/artifacts/{artifact_id}/promote")
+async def promote_artifact(artifact_id: str):
+    """Promote an artifact to cycle-scoped canonical status (SIP-0076 §9.5)."""
     from squadops.api.runtime.deps import get_artifact_vault
 
     try:
         vault = get_artifact_vault()
-        refs = await vault.list_artifacts(project_id=project_id, artifact_type=artifact_type)
+        promoted = await vault.promote_artifact(artifact_id)
+        return artifact_to_response(promoted)
+    except CycleError as e:
+        raise handle_cycle_error(e) from e
+
+
+@router.get("/projects/{project_id}/artifacts")
+async def list_project_artifacts(
+    project_id: str,
+    artifact_type: str | None = None,
+    promotion_status: str | None = None,
+):
+    from squadops.api.runtime.deps import get_artifact_vault
+
+    try:
+        if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
+            raise ValidationError(
+                f"Invalid promotion_status filter: {promotion_status!r}. "
+                f"Valid values: {sorted(_VALID_PROMOTION_STATUSES)}"
+            )
+        vault = get_artifact_vault()
+        refs = await vault.list_artifacts(
+            project_id=project_id,
+            artifact_type=artifact_type,
+            promotion_status=promotion_status,
+        )
         return [artifact_to_response(r) for r in refs]
     except CycleError as e:
         raise handle_cycle_error(e) from e
 
 
 @router.get("/projects/{project_id}/cycles/{cycle_id}/artifacts")
-async def list_cycle_artifacts(project_id: str, cycle_id: str):
+async def list_cycle_artifacts(
+    project_id: str,
+    cycle_id: str,
+    promotion_status: str | None = None,
+):
     from squadops.api.runtime.deps import get_artifact_vault
 
     try:
+        if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
+            raise ValidationError(
+                f"Invalid promotion_status filter: {promotion_status!r}. "
+                f"Valid values: {sorted(_VALID_PROMOTION_STATUSES)}"
+            )
         vault = get_artifact_vault()
-        refs = await vault.list_artifacts(project_id=project_id, cycle_id=cycle_id)
+        refs = await vault.list_artifacts(
+            project_id=project_id,
+            cycle_id=cycle_id,
+            promotion_status=promotion_status,
+        )
         return [artifact_to_response(r) for r in refs]
     except CycleError as e:
         raise handle_cycle_error(e) from e
 
 
 @router.get("/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/artifacts")
-async def list_run_artifacts(project_id: str, cycle_id: str, run_id: str):
+async def list_run_artifacts(
+    project_id: str,
+    cycle_id: str,
+    run_id: str,
+    promotion_status: str | None = None,
+):
     from squadops.api.runtime.deps import get_artifact_vault
 
     try:
+        if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
+            raise ValidationError(
+                f"Invalid promotion_status filter: {promotion_status!r}. "
+                f"Valid values: {sorted(_VALID_PROMOTION_STATUSES)}"
+            )
         vault = get_artifact_vault()
-        refs = await vault.list_artifacts(project_id=project_id, cycle_id=cycle_id, run_id=run_id)
+        refs = await vault.list_artifacts(
+            project_id=project_id,
+            cycle_id=cycle_id,
+            run_id=run_id,
+            promotion_status=promotion_status,
+        )
         return [artifact_to_response(r) for r in refs]
     except CycleError as e:
         raise handle_cycle_error(e) from e
@@ -150,6 +213,13 @@ async def promote_baseline(project_id: str, artifact_type: str, body: BaselinePr
                 raise BaselineNotAllowedError(
                     "Cannot promote baseline for a fresh build strategy cycle"
                 )
+
+        # D6/D16: Only promoted artifacts can be baselines (read authoritative vault state)
+        if ref.promotion_status != PromotionStatus.PROMOTED:
+            raise ValidationError(
+                "Only promoted artifacts can be set as baselines. "
+                f"Artifact {body.artifact_id} has promotion_status={ref.promotion_status!r}"
+            )
 
         await vault.set_baseline(project_id, artifact_type, body.artifact_id)
         return {"status": "ok", "project_id": project_id, "artifact_type": artifact_type}

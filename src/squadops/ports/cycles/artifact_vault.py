@@ -31,6 +31,16 @@ class ArtifactVaultPort(ABC):
         """
 
     @abstractmethod
+    async def promote_artifact(self, artifact_id: str) -> ArtifactRef:
+        """Promote an artifact from 'working' to 'promoted'.
+
+        Promotion is one-way and idempotent.
+
+        Raises:
+            ArtifactNotFoundError: If the artifact_id is not found.
+        """
+
+    @abstractmethod
     async def list_artifacts(
         self,
         *,
@@ -38,6 +48,7 @@ class ArtifactVaultPort(ABC):
         cycle_id: str | None = None,
         run_id: str | None = None,
         artifact_type: str | None = None,
+        promotion_status: str | None = None,
     ) -> list[ArtifactRef]:
         """List artifacts with optional filters."""
 

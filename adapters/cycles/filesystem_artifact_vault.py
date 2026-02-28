@@ -137,6 +137,24 @@ class FilesystemArtifactVault(ArtifactVaultPort):
             raise ArtifactNotFoundError(f"Artifact not found: {artifact_id}")
         return self._load_metadata(meta_path)
 
+    async def promote_artifact(self, artifact_id: str) -> ArtifactRef:
+        art_dir = self._resolve_artifact_dir(artifact_id)
+        meta_path = art_dir / "metadata.json"
+        if not meta_path.exists():
+            raise ArtifactNotFoundError(f"Artifact not found: {artifact_id}")
+
+        ref = self._load_metadata(meta_path)
+        if ref.promotion_status == "promoted":
+            return ref  # Idempotent
+
+        updated = dataclasses.replace(ref, promotion_status="promoted")
+        meta = dataclasses.asdict(updated)
+        for key in ("created_at",):
+            if meta.get(key) is not None:
+                meta[key] = str(meta[key])
+        meta_path.write_text(json.dumps(meta, indent=2))
+        return updated
+
     async def list_artifacts(
         self,
         *,
@@ -144,6 +162,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         cycle_id: str | None = None,
         run_id: str | None = None,
         artifact_type: str | None = None,
+        promotion_status: str | None = None,
     ) -> list[ArtifactRef]:
         results: list[ArtifactRef] = []
         if not self._base_dir.exists():
@@ -159,14 +178,17 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         else:
             scan_dir = self._base_dir
 
-        self._collect_artifacts(scan_dir, results, project_id, cycle_id, run_id, artifact_type)
+        self._collect_artifacts(
+            scan_dir, results, project_id, cycle_id, run_id, artifact_type, promotion_status
+        )
 
         # Also scan _unattached when doing unscoped or project-scoped queries
         if not (cycle_id or run_id):
             unattached = self._base_dir / "_unattached"
             if unattached.exists() and unattached != scan_dir:
                 self._collect_artifacts(
-                    unattached, results, project_id, cycle_id, run_id, artifact_type
+                    unattached, results, project_id, cycle_id, run_id,
+                    artifact_type, promotion_status
                 )
 
         return results
@@ -220,6 +242,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         cycle_id: str | None,
         run_id: str | None,
         artifact_type: str | None,
+        promotion_status: str | None = None,
     ) -> None:
         if not scan_dir.exists():
             return
@@ -233,6 +256,8 @@ class FilesystemArtifactVault(ArtifactVaultPort):
                 continue
             if artifact_type and ref.artifact_type != artifact_type:
                 continue
+            if promotion_status and ref.promotion_status != promotion_status:
+                continue
             results.append(ref)
 
     def _load_metadata(self, meta_path: Path) -> ArtifactRef:
@@ -241,6 +266,9 @@ class FilesystemArtifactVault(ArtifactVaultPort):
 
         if isinstance(data.get("created_at"), str):
             data["created_at"] = datetime.fromisoformat(data["created_at"])
+        # D19: Legacy artifacts without promotion_status default to "working" at read time
+        if "promotion_status" not in data:
+            data["promotion_status"] = "working"
         return ArtifactRef(**data)
 
     def _load_baselines(self, project_id: str) -> dict:
