@@ -4,7 +4,7 @@
 **Target Release:** SquadOps 1.0\
 **Authors:** SquadOps Architecture\
 **Created:** 2026-02-28\
-**Revision:** 2 (2026-02-28)
+**Revision:** 3 (2026-02-28)
 
 ### Revision History
 
@@ -12,6 +12,7 @@
 |-----|------------|---------|
 | 1   | 2026-02-28 | Initial proposal (~110-line outline) |
 | 2   | 2026-02-28 | Acceptance-ready rewrite: concrete domain model definitions with exact field types, DDL migration SQL, API route changes with DTOs, cycle request profile integration, gate semantic tightening with expanded `GateDecisionValue`, artifact promotion model, multi-workload cycle pattern, pulse vs gate clarification, telemetry event additions, backwards compatibility guarantees, phased rollout plan. Resolved all 5 open questions. |
+| 3   | 2026-02-28 | Implementation tightenings (12 items): (1) Gate-awaiting run status must be `paused`, not terminal, to remain gate-decidable. (2) `returned_for_revision` stays on current workload path; does not advance workload sequence. (3) Promoted artifacts are canonical inter-workload inputs (design principle 3.5). (4) Promotion endpoint is idempotent end-to-end (`200`, no `409`). (5) `workload_sequence.gate` explicitly defined as boundary after that workload. (6) `refinement` is convention, not executor control plane. (7) Gate naming validation: `progress_`/`promote_` prefix required in `workload_sequence` references. (8) `workload_type` input validation: trim, reject empty, preserve case. (9) Only promoted artifacts eligible for baseline. (10) `workload.*` telemetry events are explicit emissions, not derived. (11) Recommended cycle shape is reference canon, not execution mandate. (12) Five negative-path acceptance criteria added (ACs 17-21). |
 
 ------------------------------------------------------------------------
 
@@ -83,6 +84,15 @@ retain their types and defaults. New fields default to `None` or
 Gates serve two distinct purposes (progression between phases,
 promotion of artifacts). Making the role explicit prevents semantic
 drift as the platform gains more gate types.
+
+### 3.5 Promoted Artifacts as Canonical Inter-Workload Inputs
+
+When a downstream workload requires an authoritative artifact from a
+previous workload, it should prefer **promoted artifacts** over working
+artifacts. Working artifacts remain available for debugging and operator
+review, but promoted artifacts are the canonical inter-workload handoff
+state. This prevents later protocol SIPs from inventing inconsistent
+handoff rules.
 
 ------------------------------------------------------------------------
 
@@ -208,6 +218,14 @@ class WorkloadType:
 
 Placement: `src/squadops/cycles/models.py`, alongside existing
 `ArtifactType` and `RunInitiator` classes.
+
+`REFINEMENT` is a **recommended standard value**, not a special case in
+the executor. The V1 executor must not hardcode special orchestration
+semantics solely because `workload_type == "refinement"`. Refinement
+meaning comes from the gate outcome (`returned_for_revision`) and the
+pipeline protocol, not from the workload_type string alone. This
+prevents `workload_type` classification from quietly becoming a hidden
+control plane.
 
 ### 7.2 Run Dataclass Extension
 
@@ -483,15 +501,22 @@ POST /api/v1/artifacts/{artifact_id}/promote
 Request body: empty (no payload required).
 
 Response: `ArtifactRefResponse` with `promotion_status: "promoted"`.
+Returns `200` in all success cases, including when the artifact is
+already promoted (idempotent).
 
 Errors:
 - `404 ARTIFACT_NOT_FOUND` if artifact_id does not exist.
-- `409 ALREADY_PROMOTED` if artifact is already promoted.
 
 Implementation: the endpoint calls a new
 `ArtifactVaultPort.promote_artifact()` method that updates the
 promotion status. For the filesystem vault, this updates the metadata
 JSON. For a future Postgres vault, this updates the column.
+
+The route is idempotent end-to-end: promoting an already-promoted
+artifact returns `200` with the unchanged artifact. The UI may choose
+to show "already promoted" as an informational state based on the
+returned `promotion_status` field, not an HTTP error code. This is
+cleaner for automation, simpler for CLI/UI, and retry-safe.
 
 ### 9.6 ArtifactVaultPort.promote_artifact Extension
 
@@ -513,10 +538,8 @@ artifact retains that status permanently. This simplifies reasoning
 about artifact lifecycle and prevents accidental demotion of canonical
 artifacts.
 
-Note: idempotent rather than raising `ALREADY_PROMOTED`. The 409
-error is only for cases where the caller should be informed (e.g., a
-UI confirmation). The port method itself is idempotent for
-programmatic callers.
+Both the port method and the API route are idempotent: promoting an
+already-promoted artifact returns it unchanged with no error.
 
 ### 9.7 Artifact Filtering by Promotion Status
 
@@ -539,6 +562,16 @@ request body. For the first run created atomically with a cycle, the
 
 For retry runs created via the API, the caller may specify
 `workload_type` to match the workload of the original run.
+
+**V1 input validation rules for `workload_type`:**
+
+- Accepts any non-empty string or `null`.
+- Well-known `WorkloadType` constants are recommended, not enforced.
+- Leading/trailing whitespace is trimmed.
+- Empty string after trim is rejected (`422 VALIDATION_ERROR`).
+- Supplied value is preserved exactly after trim (no case
+  normalization). `"Planning"` and `"planning"` are distinct values;
+  callers are expected to use the well-known lowercase constants.
 
 ### 9.9 GateDecisionResponse DTO
 
@@ -565,6 +598,15 @@ The `Gate` dataclass does not gain a `role` field. Convention-based
 classification keeps the schema change minimal and avoids a
 migration on `task_flow_policy` JSONB.
 
+**V1 validation rule:** gate names referenced in `workload_sequence`
+entries must use a recognized prefix (`progress_` or `promote_`).
+Non-conforming gate names in `workload_sequence` are rejected at cycle
+request profile validation time. Gate names elsewhere (in
+`task_flow_policy.gates` without a `workload_sequence` reference) are
+unconstrained for backward compatibility. This prevents the naming
+convention from becoming fuzzy folklore while preserving existing
+behavior for non-workload cycles.
+
 ### 10.2 Gate Decision Semantics
 
 The expanded `GateDecisionValue` enum enables richer workflows:
@@ -576,7 +618,26 @@ The expanded `GateDecisionValue` enum enables richer workflows:
 | `returned_for_revision` | Current workload should produce a new run addressing feedback | Plan needs rework; cycle stays active |
 | `rejected` | No further progress on this workload path | Terminal rejection of plan or artifact |
 
-### 10.3 Interaction with Existing Gate Validation
+### 10.3 Run Status at Gate Boundaries
+
+A run that completes its workload tasks and is awaiting a progression
+gate must end in a **non-terminal, gate-decidable state**. The V1 rule:
+
+- When the executor finishes dispatching tasks for a workload phase that
+  has a progression gate, the run transitions to `paused` --- not
+  `completed`.
+- The run remains in `paused` until the gate decision is recorded.
+- Terminal run states (`completed`, `failed`, `cancelled`) are only used
+  once the run/workload path is fully closed.
+- Gate decisions are recorded against the `paused` workload-boundary
+  run.
+
+This is critical because `record_gate_decision()` rejects decisions for
+terminal runs (`RunTerminalError`). If a run were marked `completed`
+before the gate is decided, gate recording would be blocked by existing
+validation. The `paused` state keeps the run gate-decidable.
+
+### 10.4 Interaction with Existing Gate Validation
 
 The existing `record_gate_decision()` validation rules (SIP-0064 T11)
 remain unchanged:
@@ -591,7 +652,28 @@ The new decision values integrate naturally. The validation checks
 Decision values are validated by the API DTO's `Literal` type
 constraint.
 
-### 10.4 What `approved_with_refinements` Does NOT Do
+### 10.5 `returned_for_revision` and Workload Sequencing
+
+`returned_for_revision` does **not** advance the cycle to the next
+workload in `workload_sequence`. Instead:
+
+- The cycle stays on the current workload phase.
+- A new run is created for the same workload path, with
+  `workload_type="refinement"` by convention (or the same
+  `workload_type` as the original run).
+- Progression to the next workload is blocked until a subsequent
+  progression gate on a new run yields `approved` or
+  `approved_with_refinements`.
+- Prior run history is never mutated. The original run's gate decision
+  (`returned_for_revision`) and the refinement run's gate decision are
+  separate immutable records.
+
+This makes refinement a retry path within the current workload phase,
+not a sibling phase. It affects run history, UI grouping (refinement
+runs group with their parent workload), and executor logic
+(the workload sequence pointer does not advance).
+
+### 10.6 What `approved_with_refinements` Does NOT Do
 
 The platform **does not** auto-create a refinement run when
 `approved_with_refinements` is selected. The decision is recorded with
@@ -638,6 +720,12 @@ Artifact promotion and baseline promotion are orthogonal concepts:
 - **Baseline** (`set_baseline`): designates a promoted artifact as the
   project-level baseline for its artifact type. Answers: "is this the
   current reference for this project?"
+
+**Precedence rule:** only **promoted** artifacts are eligible to become
+project baselines. `set_baseline` must reject working artifacts with a
+validation error. This keeps "baseline" aligned with "authoritative
+artifact" and prevents accidental project-level anchoring to draft
+output.
 
 A typical flow: artifact is stored (`working`) -> promoted after review
 (`promoted`) -> set as baseline for incremental builds (`baseline`).
@@ -706,6 +794,12 @@ Each entry in `workload_sequence` is a dict with:
 | `type` | string | yes | `WorkloadType` value (or custom string) |
 | `gate` | string or null | no | Name of the gate that follows this workload phase. `null` means no gate (auto-proceed to next phase). |
 
+The `gate` on a workload entry represents the decision boundary **after
+completion of that workload** and before the next workload may begin.
+For example, `planning` + `progress_plan_review` means "after the
+planning run completes, this gate must be decided before implementation
+begins."
+
 The executor reads `workload_sequence` from `applied_defaults` and uses
 it to determine:
 1. What `workload_type` to set on each run.
@@ -724,7 +818,14 @@ no inter-workload gates. This preserves full backwards compatibility.
 
 ### 13.1 Recommended Cycle Shape
 
-The SIP defines a recommended (not mandatory) Cycle shape:
+The Planning -> Implementation -> Evaluation shape is the recommended
+default multi-workload pattern for 1.0, but **not a required executor
+topology**. Simpler single-workload cycles and alternative bounded
+workload sequences remain valid. The executor must not enforce this
+specific pattern; it processes whatever `workload_sequence` is provided
+(or none at all).
+
+The SIP defines the recommended shape as:
 
 ```
 Cycle
@@ -837,6 +938,13 @@ Affected event families:
 | `gate.decided` | Gate decision recorded (all values) | `gate_name`, `decision`, `decided_by`, `run_id`, `cycle_id`, `workload_type` |
 | `workload.started` | A new run with `workload_type` begins | `workload_type`, `run_id`, `cycle_id` |
 | `workload.completed` | A run with `workload_type` reaches terminal state | `workload_type`, `run_id`, `cycle_id`, `status` |
+
+`workload.started` and `workload.completed` are **explicitly emitted
+events**, not derived projections of `cycle.run.*` events. The executor
+emits them as separate calls to `LLMObservabilityPort.record_event()`
+when a run with a non-null `workload_type` begins or reaches a terminal
+state. This ensures downstream consumers can depend on them without
+ambiguity about whether they are real or inferred.
 
 ### 15.3 LangFuse Integration
 
@@ -1041,6 +1149,30 @@ correct workload_type on each run and gate decisions between phases.
     classification, gate outcomes, and artifact promotion.
 
 16. `list_artifacts` endpoints accept `?promotion_status=` filter.
+
+17. When a progression gate is decided as `returned_for_revision`, the
+    cycle does not advance to the next workload phase. A subsequent run
+    may be created for the same workload path without mutating prior run
+    history. Test: create a planning run, decide gate as
+    `returned_for_revision`, verify workload sequence pointer does not
+    advance, create refinement run, verify original run is unchanged.
+
+18. A run awaiting a progression gate remains gate-decidable and is not
+    treated as terminal before gate outcome is recorded. Test: complete
+    a workload run with a gate, verify run status is `paused` (not
+    `completed`), verify `record_gate_decision()` succeeds.
+
+19. `set_baseline` rejects working artifacts. Test: attempt to set a
+    `working` artifact as baseline, verify validation error. Promote
+    the artifact, then set as baseline, verify success.
+
+20. Gate names referenced in `workload_sequence` must use `progress_`
+    or `promote_` prefix. Test: cycle request profile with non-prefixed
+    gate name in `workload_sequence` is rejected at validation time.
+
+21. `workload_type` input validation: empty string rejected, whitespace
+    trimmed, non-empty string preserved. Test: submit `""`, `"  "`,
+    `" planning "` and verify rejection/trimming behavior.
 
 ------------------------------------------------------------------------
 
