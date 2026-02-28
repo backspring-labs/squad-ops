@@ -4,6 +4,24 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
+### v0.9.13 (2026-02-26) — LLM Budget & Timeout Controls
+- **SIP-0073** LLM Budget & Timeout Controls
+  - `chat()` budget/timeout params, model registry, prompt guard
+  - Capability-level `max_completion_tokens` and `test_timeout_seconds`
+  - Handler wiring for Dev, QA, and test runner budgets
+
+### v0.9.12 (2026-02-24) — Stack-Aware Development Capabilities
+- **SIP-0072** Stack-Aware Development Capabilities
+  - `DevelopmentCapability` registry with file classification
+  - Handler stack awareness (dev, QA, builder)
+  - Node test runner, fullstack build profile
+
+### v0.9.11 (2026-02-22) — Builder Role
+- **SIP-0071** Builder Role (Dedicated Product Builder Agent)
+
+### v0.9.10 (2026-02-20) — Squad Configuration Perspective
+- **SIP-0075** Squad Configuration Perspective (console plugin, icon distribution)
+
 ### v0.9.9 (2026-02-18) — Pulse Checks and Verification
 - **SIP-0070** Pulse Checks and Verification Framework
   - Milestone and cadence-based pulse checks in the cycle execution pipeline
@@ -32,7 +50,7 @@ Living document tracking the implementation progression from initial prototype t
 ### v0.9.6 (2026-02-12) — Durable Persistence + Observability
 - **SIP-0067** Postgres Cycle Registry (durable cycle/run/gate persistence with migrations)
 - **SIP-0066** Distributed Cycle Execution Pipeline (RabbitMQ dispatch, Prefect DAG, LangFuse cross-process traces)
-- **SIP-0065** CLI for Cycle Execution (Typer CLI with CRP contract packs)
+- **SIP-0065** CLI for Cycle Execution (Typer CLI with cycle request profile contract packs)
 
 ### v0.9.3 (2026-02-08) — Cycle Execution API
 - **SIP-0064** Project Cycle Request API (cycles, runs, gates, artifacts via REST)
@@ -88,11 +106,175 @@ Living document tracking the implementation progression from initial prototype t
 
 ---
 
+## v1.0 Progression
+
+The path to 1.0 is organized around one concrete objective: **the first trustworthy long-running DGX Spark cycle**. Every SIP is prioritized by how directly it contributes to that objective.
+
+The SIP set is divided into Spark-critical execution readiness (must land before the first long run) and 1.0 hardening (must land before the 1.0 release, but does not gate the first Spark run).
+
+### Cross-Cutting Dependency: Canonical Artifact Flow
+
+Multiple SIPs depend on a shared artifact contract. The following artifact types must have a consistent identity, storage, and promotion model across the platform:
+
+- **Planning artifact** — durable handoff from planning to implementation
+- **Plan refinement artifact** — structured deltas from human review
+- **Implementation outputs** — code, tests, build results
+- **QA findings** — defect reports, verification evidence
+- **Plan deltas** — correction records during implementation
+- **Closeout artifact** — wrap-up adjudication and evidence
+- **Next-cycle handoff artifact** — carry-forward for the next planning phase
+
+The Workload & Gate Canon SIP defines the artifact promotion model (working vs promoted). All pipeline SIPs produce or consume these artifacts. This dependency should be treated as a first-order integration concern, not an afterthought.
+
+### Spark-Critical — Execution Readiness
+
+These SIPs must land before the first DGX Spark validation run. They are sequenced by dependency.
+
+| Order | SIP | Focus |
+|-------|-----|-------|
+| 1 | Workload & Gate Canon | `workload_type` on Run, gate outcome expansion, artifact promotion, Pulse vs Gate semantics |
+| 2 | Cycle Event System (v0) | Canonical lifecycle event bus, 20-event taxonomy, bridge adapters. v0 scope only — emit + bridge. Full rewire (v1) and event-first (v2) follow later. |
+| 3 | Planning Workload Protocol | Planning contract, durable planning artifact, QA-first test strategy, proto validation, unknown classification, readiness decision |
+| 4 | Implementation Run Contract | Run contract, correction protocol (detect → RCA → decide → plan delta → resume), **durable checkpoint/resume**, bounded retry/timebox |
+| 5 | Wrap-Up Workload Protocol | Closeout artifact, planned-vs-actual comparison, confidence classification, structured unresolved issues, next-cycle handoff |
+
+**Why this order**: Workload Canon defines the execution vocabulary. Event System provides lifecycle facts. The three pipeline protocols (Planning → Implementation → Wrap-Up) build on both. Implementation Run Contract is the single most important Spark-readiness SIP — without durable checkpoint/resume, a long run is fragile regardless of how clean the architecture is. Wrap-up is execution safety, not reporting polish — it is what makes memory, evaluation, and next-cycle readiness trustworthy.
+
+### Milestone Stage 1: Local Validation (MacBook)
+
+All Spark-critical SIPs are developed, tested, and validated locally on MacBook before the DGX Spark is available. The protocols are duration-agnostic — if they don't work reliably on a 1-hour MacBook cycle, they won't work on an 8-hour Spark cycle. Duration amplifies problems; it doesn't create them.
+
+**Target**: One bounded Cycle on MacBook (1–2 hours) using the existing Docker Compose stack and Ollama with:
+- 1 approved planning workload (15–30 min, timeboxed to local model speed)
+- 1–2 bounded implementation workloads
+- Pulse Checks active throughout execution
+- At least one correction path exercised (simulated failure or real)
+- Mandatory wrap-up artifact generation
+- Checkpoint/resume tested (interrupt and resume a short cycle cleanly)
+
+**Preflight Checklist** (required before local validation):
+- [ ] Deployed platform version includes all Spark-critical SIPs
+- [ ] Reference workload/app selected and cycle request profile defined
+- [ ] Role capability readiness verified (Lead, Dev, QA, Data, Builder)
+- [ ] Model budgets and timeouts configured for local Ollama models
+- [ ] Checkpoint/resume tested on a trivial cycle (e.g., selftest profile)
+- [ ] Event emission visible in LangFuse / Prefect
+- [ ] Artifact persistence verified (create, retrieve, promote)
+- [ ] Wrap-up path verified (closeout artifact emitted on both success and failure)
+- [ ] Restart/redeploy confidence confirmed (services recover cleanly)
+- [ ] Operator can monitor cycle health via console or Prefect UI
+
+**Success Criteria** (same for both stages):
+- Cycle completes or terminates cleanly (no orphaned state)
+- Closeout artifact is produced with confidence classification
+- Planned-vs-actual comparison is present and accurate
+- Next-cycle handoff artifact is usable
+- Operator can reconstruct what happened without reading raw logs
+
+**Acceptable Failure Classes** (not a milestone failure):
+- Partial completion with honest confidence classification
+- Correction protocol triggered and executed cleanly
+- Model limitations identified and attributed correctly (expected on smaller local models)
+
+**Milestone Failure** (requires investigation before retry):
+- Orphaned or inconsistent run state
+- Missing or corrupted artifacts
+- Checkpoint/resume fails silently
+- Wrap-up does not execute or produces false confidence
+- Events missing or out of order
+
+### Milestone Stage 2: DGX Spark Validation Run
+
+Once local validation passes, the same protocols are exercised at longer duration on DGX Spark. The Spark run proves the protocols hold under sustained execution with stronger models — it should not be the first time they are tested.
+
+**Target**: One bounded Cycle on DGX Spark (4–8 hours) with:
+- 1 approved planning workload (60–90 min)
+- 2–4 bounded implementation workloads
+- Pulse Checks active throughout execution
+- At least one supported correction path exercised or verified
+- Mandatory wrap-up artifact generation
+- Checkpoint/resume tested (at minimum: verified that a resumed run recovers cleanly)
+
+**Additional Spark-specific checks**:
+- [ ] Model budgets and timeouts reconfigured for Spark-class models
+- [ ] Longer execution does not introduce state drift, memory pressure, or artifact corruption
+- [ ] Wrap-up quality does not degrade with larger evidence volume
+- [ ] Correction protocol handles real (not simulated) mid-run issues
+
+### 1.0 Hardening
+
+These SIPs are required for the 1.0 release but do not gate the first Spark validation run. If schedule pressure emerges, they trail the Spark-critical work — they do not displace it.
+
+| SIP | Focus |
+|-----|-------|
+| API Contract Hardening | Pagination, error shapes, OpenAPI response models, status codes, gate identity, artifact validation, DB retry |
+| Cycle Evaluation Scorecard | Four-dimension evaluation (outcome, quality, coordination, efficiency), failure attribution, benchmarking, Scorecard console page |
+
+**API Contract Hardening** lands as a single SIP (the P0 items are tightly coupled), sequenced after the pipeline SIPs. If the Spark run exposes specific API contract issues that affect execution safety, those items get pulled forward.
+
+**Cycle Evaluation Scorecard** depends on evidence quality from the event system and closeout artifacts. It should not outrun the fidelity of the evidence it consumes. Scorecard sophistication improves learning after runs — it does not improve the success of the first run itself.
+
+### Critical Path
+
+```
+Workload & Gate Canon ─── Planning Workload Protocol ──────────────┐
+          │                                                         │
+          │            Implementation Run Contract ─────────────────┤
+          │                                                         │
+          │            Wrap-Up Workload Protocol ───────────────────┤
+          │                                                         │
+Cycle Event System (v0) ───────────────────────────────────────────┤
+                                                                    │
+                    ┌── LOCAL VALIDATION (MacBook) ──┐              │
+                    │   1-2 hour bounded cycle       │              │
+                    └────────────────────────────────┘              │
+                                  │                                 │
+                    ┌── SPARK VALIDATION ────────────┐              │
+                    │   4-8 hour long run            │              │
+                    └────────────────────────────────┘              │
+                                                                    │
+          API Contract Hardening ───────────────────────────────────┼── v1.0
+                                                                    │
+          Cycle Evaluation Scorecard ──────────────────────────────┘
+```
+
+### Post-1.0 Horizon
+
+The following areas are identified for future work but do not block 1.0 readiness:
+
+- **WebSocket / Realtime Channels** — live event streaming to the console, real-time chat protocol between operators and agents. Depends on the Cycle Event System. See `docs/ideas/IDEA-WebSocket-*` and `docs/ideas/IDEA-Realtime-Chat-*`.
+- **Cycle Event System v1/v2** — rewire call sites (v1), event-first architecture (v2).
+- **Retrieval-enriched planning memory** — LanceDB integration for planning phases.
+- **Cross-cycle learning** — historical comparison, scored memory, trend analysis.
+- **Autonomous improvement proposals** — agent-driven suggestions based on repeated failure patterns.
+- **Advanced benchmarking** — rule-based recommendations on top of the scorecard framework.
+
+---
+
 ## Accepted (Next Up)
 
 (none — all accepted SIPs are implemented)
 
 ## Proposals (Backlog)
+
+### 1.0 Track — Spark-Critical
+
+| SIP | Title |
+|-----|-------|
+| (unnumbered) | Workload & Gate Canon |
+| (unnumbered) | Cycle Event System |
+| (unnumbered) | Planning Workload Protocol |
+| (unnumbered) | Implementation Run Contract & Correction Protocol |
+| (unnumbered) | Wrap-Up Workload Protocol |
+
+### 1.0 Track — Hardening
+
+| SIP | Title |
+|-----|-------|
+| (unnumbered) | API Contract Hardening |
+| (unnumbered) | Cycle Evaluation Scorecard |
+
+### Other Proposals
 
 | SIP | Title |
 |-----|-------|
@@ -103,14 +285,13 @@ Living document tracking the implementation progression from initial prototype t
 | SIP-0023 | Domain Expert Architecture for Product Strategy |
 | SIP-0028 | Hybrid Deployment Model (Multi-Environment) |
 | (unnumbered) | Intelligent Delegation Protocols |
-| (unnumbered) | Cycle Event System |
 
 ---
 
 ## Stats
 
-- **Framework version**: 0.9.9
-- **SIPs**: 43 implemented, 0 accepted, 8 proposals, 15 deprecated
-- **Tests**: 1,648+ passing
-- **Python source**: ~38,000 lines
+- **Framework version**: 0.9.13
+- **SIPs**: 45 implemented, 0 accepted, 14 proposals (7 on 1.0 track), 15 deprecated
+- **Tests**: 2,206+ passing
+- **Python source**: ~42,000 lines
 - **5 months** from initial repo to production-grade console UI
