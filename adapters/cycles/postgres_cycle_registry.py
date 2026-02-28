@@ -146,8 +146,8 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 await conn.execute(
                     "INSERT INTO cycle_runs "
                     "(run_id, cycle_id, run_number, status, initiated_by, "
-                    "resolved_config_hash, resolved_config_ref) "
-                    "VALUES ($1,$2,$3,$4,$5,$6,$7)",
+                    "resolved_config_hash, resolved_config_ref, workload_type) "
+                    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
                     run.run_id,
                     run.cycle_id,
                     next_num,
@@ -155,6 +155,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     run.initiated_by,
                     run.resolved_config_hash,
                     run.resolved_config_ref,
+                    run.workload_type,
                 )
         return dataclasses.replace(run, run_number=next_num)
 
@@ -170,15 +171,32 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
         return self._assemble_run(row, gate_rows)
 
-    async def list_runs(self, cycle_id: str, *, limit: int = 50, offset: int = 0) -> list[Run]:
+    async def list_runs(
+        self,
+        cycle_id: str,
+        *,
+        workload_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Run]:
         async with self._pool.acquire() as conn:
-            run_rows = await conn.fetch(
-                "SELECT * FROM cycle_runs WHERE cycle_id = $1 "
-                "ORDER BY run_number LIMIT $2 OFFSET $3",
-                cycle_id,
-                limit,
-                offset,
-            )
+            if workload_type is not None:
+                run_rows = await conn.fetch(
+                    "SELECT * FROM cycle_runs WHERE cycle_id = $1 AND workload_type = $2 "
+                    "ORDER BY run_number LIMIT $3 OFFSET $4",
+                    cycle_id,
+                    workload_type,
+                    limit,
+                    offset,
+                )
+            else:
+                run_rows = await conn.fetch(
+                    "SELECT * FROM cycle_runs WHERE cycle_id = $1 "
+                    "ORDER BY run_number LIMIT $2 OFFSET $3",
+                    cycle_id,
+                    limit,
+                    offset,
+                )
             if not run_rows:
                 return []
 
@@ -421,6 +439,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             finished_at=row["finished_at"],
             gate_decisions=gate_decisions,
             artifact_refs=tuple(row["artifact_refs"] or []),
+            workload_type=row.get("workload_type"),
         )
 
     async def _latest_run_for_cycle(self, cycle_id: str) -> Run | None:

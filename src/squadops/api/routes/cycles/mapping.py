@@ -58,6 +58,7 @@ def run_to_response(run: Run) -> RunResponse:
             for gd in run.gate_decisions
         ],
         artifact_refs=list(run.artifact_refs),
+        workload_type=run.workload_type,
     )
 
 
@@ -139,4 +140,5 @@ def artifact_to_response(artifact: ArtifactRef) -> ArtifactRefResponse:
         created_at=artifact.created_at,
         metadata=artifact.metadata,
         vault_uri=artifact.vault_uri,
+        promotion_status=artifact.promotion_status,
     )

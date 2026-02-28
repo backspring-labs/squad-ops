@@ -11,17 +11,18 @@ from squadops.api.routes.cycles.dtos import GateDecisionRequest
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import run_to_response
 from squadops.cycles.lifecycle import compute_config_hash
-from squadops.cycles.models import CycleError, GateDecision, Run
+from squadops.cycles.models import CycleError, GateDecision, Run, validate_workload_type
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles/{cycle_id}/runs", tags=["runs"])
 
 
 @router.post("")
-async def create_run(project_id: str, cycle_id: str):
+async def create_run(project_id: str, cycle_id: str, workload_type: str | None = None):
     """Create a new Run (retry) for an existing Cycle."""
     from squadops.api.runtime.deps import get_cycle_registry
 
     try:
+        validated_wt = validate_workload_type(workload_type)
         registry = get_cycle_registry()
         cycle = await registry.get_cycle(cycle_id)
         existing_runs = await registry.list_runs(cycle_id)
@@ -36,6 +37,7 @@ async def create_run(project_id: str, cycle_id: str):
             status="queued",
             initiated_by="retry",
             resolved_config_hash=config_hash,
+            workload_type=validated_wt,
         )
         created = await registry.create_run(run)
         return run_to_response(created)
@@ -44,12 +46,12 @@ async def create_run(project_id: str, cycle_id: str):
 
 
 @router.get("")
-async def list_runs(project_id: str, cycle_id: str):
+async def list_runs(project_id: str, cycle_id: str, workload_type: str | None = None):
     from squadops.api.runtime.deps import get_cycle_registry
 
     try:
         registry = get_cycle_registry()
-        runs = await registry.list_runs(cycle_id)
+        runs = await registry.list_runs(cycle_id, workload_type=workload_type)
         return [run_to_response(r) for r in runs]
     except CycleError as e:
         raise handle_cycle_error(e) from e

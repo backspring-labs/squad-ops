@@ -94,10 +94,19 @@ class MemoryCycleRegistry(CycleRegistryPort):
             raise RunNotFoundError(f"Run not found: {run_id}")
         return self._to_run(self._runs[run_id])
 
-    async def list_runs(self, cycle_id: str, *, limit: int = 50, offset: int = 0) -> list[Run]:
+    async def list_runs(
+        self,
+        cycle_id: str,
+        *,
+        workload_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Run]:
         results = [
             self._to_run(data) for data in self._runs.values() if data["cycle_id"] == cycle_id
         ]
+        if workload_type is not None:
+            results = [r for r in results if r.workload_type == workload_type]
         return results[offset : offset + limit]
 
     async def update_run_status(self, run_id: str, status: RunStatus) -> Run:
