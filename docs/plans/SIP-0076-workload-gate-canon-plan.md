@@ -25,6 +25,13 @@ The implementation touches domain models, DDL, ports, adapters (memory + Postgre
 | D11 | Gate names in `workload_sequence` must use `progress_`/`promote_` prefix | Rejected at cycle request profile validation time (SIP §10.1, tightening #7) |
 | D12 | `workload.*` telemetry events are explicit emissions, not derived projections | Downstream consumers can depend on them without ambiguity (SIP §15.2, tightening #10) |
 | D13 | CLI `gate decide` gains `--with-refinements` and `--return-for-revision` flags | Extends existing `--approve`/`--reject` pattern (SIP §7.5) |
+| D14 | `workload_type` validation is centralized in a shared helper, not API-only | Executor and CLI also create runs; all paths must get the same trim/reject-empty behavior (plan tightening #2) |
+| D15 | `promotion_status` filter rejects unknown values with 422 | Avoids silent empty responses on typos; cleaner API contract (plan tightening #3) |
+| D16 | `set_baseline` promotion check reads authoritative vault state | Must call `vault.get_metadata()` for current `promotion_status`; never trust stale/client-supplied state (plan tightening #4) |
+| D17 | Filtered `list_runs()` preserves existing ordering contract | Workload type filter does not change result ordering (plan tightening #5) |
+| D18 | Gate prefix validation in `workload_sequence` is case-sensitive | No normalization; `Progress_plan_review` is rejected (plan tightening #6) |
+| D19 | Legacy artifacts without `promotion_status` default to `"working"` at read time only | Metadata is only rewritten on next mutation, not opportunistically backfilled on read (plan tightening #8) |
+| D20 | CLI exits with usage error listing valid flags when no decision flag is provided | Standard Typer mutually exclusive group behavior, explicitly stated (plan tightening #9) |
 
 ---
 
@@ -90,7 +97,31 @@ class GateDecisionValue(StrEnum):
     REJECTED = "rejected"
 ```
 
-### 1.6 DDL migration
+### 1.6 Add `validate_workload_type()` helper
+
+**File:** `src/squadops/cycles/models.py`
+
+Centralized validation for `workload_type` input (D14). Used by API routes, executor, and CLI — all run creation paths get the same behavior.
+
+```python
+def validate_workload_type(value: str | None) -> str | None:
+    """Validate and normalize a workload_type value.
+
+    Rules (SIP §9.8):
+    - None is valid (legacy/unclassified run).
+    - Leading/trailing whitespace is trimmed.
+    - Empty string after trim is rejected (ValidationError).
+    - Supplied value is preserved exactly after trim (no case normalization).
+    """
+    if value is None:
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        raise ValidationError("workload_type must be a non-empty string or null")
+    return trimmed
+```
+
+### 1.7 DDL migration
 
 **New file:** `infra/migrations/004_workload_canon.sql`
 
@@ -170,6 +201,8 @@ decision: Literal[
 
 Add `workload_type: str | None = None` query parameter to `list_runs()`. Pass through to `registry.list_runs(cycle_id, workload_type=workload_type)`.
 
+Filtered results preserve the same default ordering as unfiltered `list_runs()` (D17). The filter is a WHERE clause, not a re-sort.
+
 ### 2.6 Extend `CycleRegistryPort.list_runs()`
 
 **File:** `src/squadops/ports/cycles/cycle_registry.py`
@@ -196,7 +229,7 @@ Add `workload_type: str | None = None` keyword parameter to the abstract `list_r
 
 **File:** `src/squadops/api/routes/cycles/runs.py`
 
-Accept optional `workload_type` in request body for retry runs. Apply input validation (D9): trim whitespace, reject empty string after trim.
+Accept optional `workload_type` in request body for retry runs. Call `validate_workload_type()` (D14) — the centralized helper from Phase 1.6. This ensures API, executor, and CLI paths all get the same trim/reject-empty behavior.
 
 ### 2.10 Tests
 
@@ -255,13 +288,13 @@ Add `promotion_status: str | None = None` parameter to `list_artifacts()`.
 - `promote_artifact()`: load metadata, set `promotion_status` to `"promoted"` via `dataclasses.replace()`, persist updated metadata JSON. Idempotent — already-promoted returns unchanged.
 - `store()`: ensure `promotion_status` is included in metadata JSON serialization.
 - `list_artifacts()`: filter by `promotion_status` when parameter is non-None.
-- `get_metadata()`: ensure `promotion_status` is read from metadata JSON, defaulting to `"working"` for legacy artifacts without it.
+- `get_metadata()`: ensure `promotion_status` is read from metadata JSON, defaulting to `"working"` for legacy artifacts without it. This default is read-time only (D19) — metadata is not rewritten to disk on read. Legacy metadata is only updated on the next mutation (e.g., `promote_artifact()` or `store()`).
 
 ### 3.4 Add `set_baseline` promotion check
 
 **File:** `src/squadops/api/routes/cycles/artifacts.py` (route level, per T6 pattern)
 
-In `promote_baseline()` route: before calling `vault.set_baseline()`, check that the artifact's `promotion_status` is `"promoted"`. If `"working"`, raise validation error. This is D6.
+In `promote_baseline()` route: before calling `vault.set_baseline()`, read the artifact's current metadata from the vault via `vault.get_metadata(body.artifact_id)` (D16) and check that `promotion_status` is `"promoted"`. If `"working"`, raise validation error. This is D6. The check must use the authoritative vault record, never client-supplied or stale state.
 
 ### 3.5 Add promotion API route
 
@@ -291,6 +324,8 @@ Add `promotion_status: str | None = None` query parameter to:
 - `list_project_artifacts()`
 - `list_cycle_artifacts()`
 - `list_run_artifacts()`
+
+Validate the filter value before passing through: reject unknown values (anything other than `"working"`, `"promoted"`, or `None`) with `422 VALIDATION_ERROR` (D15). This prevents silent empty responses on typos like `?promotion_status=promtoed`.
 
 Pass through to `vault.list_artifacts(..., promotion_status=promotion_status)`.
 
@@ -332,13 +367,16 @@ Add `"workload_sequence"` to the set.
 
 **File:** `src/squadops/contracts/cycle_request_profiles/schema.py`
 
-Add a field validator for `defaults` that checks: if `workload_sequence` is present, any non-null `gate` value must start with `progress_` or `promote_`. Reject non-conforming gate names with a clear error message (D11).
+Add a field validator for `defaults` that checks: if `workload_sequence` is present, any non-null `gate` value must start with `progress_` or `promote_`. Matching is case-sensitive (D18) — `Progress_plan_review` is rejected. Reject non-conforming gate names with a clear error message (D11).
 
 ### 4.3 Add reference cycle request profile
 
 **New file:** `src/squadops/contracts/cycle_request_profiles/profiles/multi-phase.yaml`
 
+This profile is a **reference example**, not a required executor topology or mandatory 1.0 default. Single-workload cycles and alternative workload sequences remain valid.
+
 ```yaml
+# Reference example — not a required executor topology.
 name: multi-phase
 description: "Planning → Implementation → Evaluation multi-workload cycle"
 defaults:
@@ -369,7 +407,7 @@ Add `--with-refinements` and `--return-for-revision` flags alongside existing `-
 - `--with-refinements` -> `"approved_with_refinements"`
 - `--return-for-revision` -> `"returned_for_revision"`
 
-Exactly one flag must be provided (mutually exclusive group).
+Exactly one flag must be provided (mutually exclusive group). If no decision flag is provided, the CLI exits with a usage error and clear guidance listing valid flags (D20).
 
 ### 4.5 Tests
 
@@ -397,6 +435,8 @@ Tests for expanded CLI flags:
 ## Phase 5: Gate Boundary Semantics and Negative-Path Tests
 
 This phase covers the behavioral contracts introduced by the tightenings. These are primarily test-level validations against existing domain logic — minimal new code, mostly new test coverage.
+
+The production code that enforces gate-boundary semantics already exists: `CycleRegistryPort.record_gate_decision()` checks for terminal status before accepting a decision (rejecting `completed`/`failed`/`cancelled` with `RunTerminalError`). Phase 5 tests validate that `paused` is correctly excluded from the terminal set, ensuring gate-awaiting runs remain decidable. The executor code that sets runs to `paused` at gate boundaries is a concern for the pipeline/executor SIPs — SIP-0076 defines the vocabulary and invariants, not the orchestration.
 
 ### 5.1 Gate-awaiting run status test
 
@@ -469,7 +509,7 @@ Run `./scripts/dev/run_new_arch_tests.sh -v` and verify all tests pass including
 |----|-------------|-----------|-------|
 | 1 | `Run.workload_type` field | `test_workload_canon_models.py` | 1 |
 | 2 | `WorkloadType` constants | `test_workload_canon_models.py` | 1 |
-| 3 | DDL migration | Manual verification | 1 |
+| 3 | DDL migration | Manual: verify column exists, index exists, existing rows readable with `workload_type=NULL` | 1 |
 | 4 | `GateDecisionValue` expanded | `test_workload_canon_models.py` | 1 |
 | 5 | `GateDecisionRequest` DTO | `test_workload_canon_api.py` | 2 |
 | 6 | `ArtifactRef.promotion_status` | `test_workload_canon_models.py` | 1 |
