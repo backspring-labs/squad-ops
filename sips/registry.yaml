@@ -694,9 +694,9 @@ sips:
 - sip_uid: null
   sip_number: 76
   title: Workload & Gate Canon
-  path: sips/accepted/SIP-0076-Workload-Gate-Canon.md
-  status: accepted
+  path: sips/implemented/SIP-0076-Workload-Gate-Canon.md
+  status: implemented
   author: SquadOps Architecture
   approver: jladd
   created_at: '2026-02-28T00:00:00Z'
-  updated_at: '2026-02-28T10:44:17.027172Z'
+  updated_at: '2026-02-28T12:01:03.945284Z'

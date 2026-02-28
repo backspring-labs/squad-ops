@@ -1,10 +1,10 @@
 ---
 title: Workload & Gate Canon
-status: accepted
+status: implemented
 author: SquadOps Architecture
 created_at: '2026-02-28T00:00:00Z'
 sip_number: 76
-updated_at: '2026-02-28T10:44:17.005343Z'
+updated_at: '2026-02-28T12:01:03.944490Z'
 ---
 # SIP-0XXX: Workload & Gate Canon
 
