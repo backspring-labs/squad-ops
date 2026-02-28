@@ -50,7 +50,12 @@ class CycleCreateRequest(BaseModel):
 class GateDecisionRequest(BaseModel):
     """Gate decision (T4+T13: normalized vocab, typed)."""
 
-    decision: Literal["approved", "rejected"]
+    decision: Literal[
+        "approved",
+        "approved_with_refinements",
+        "returned_for_revision",
+        "rejected",
+    ]
     notes: str | None = None
 
     class Config:
@@ -149,6 +154,7 @@ class RunResponse(BaseModel):
     finished_at: datetime | None = None
     gate_decisions: list[GateDecisionResponse] = Field(default_factory=list)
     artifact_refs: list[str] = Field(default_factory=list)
+    workload_type: str | None = None
 
 
 class CycleResponse(BaseModel):
@@ -220,6 +226,7 @@ class ArtifactRefResponse(BaseModel):
     created_at: datetime
     metadata: dict = Field(default_factory=dict)
     vault_uri: str | None = None
+    promotion_status: str = "working"
 
 
 class PromptMetaResponse(BaseModel):

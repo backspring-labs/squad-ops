@@ -67,8 +67,15 @@ class CycleRegistryPort(ABC):
         """
 
     @abstractmethod
-    async def list_runs(self, cycle_id: str, *, limit: int = 50, offset: int = 0) -> list[Run]:
-        """List runs for a cycle, with pagination."""
+    async def list_runs(
+        self,
+        cycle_id: str,
+        *,
+        workload_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Run]:
+        """List runs for a cycle, with optional workload_type filter and pagination."""
 
     @abstractmethod
     async def update_run_status(self, run_id: str, status: RunStatus) -> Run:
