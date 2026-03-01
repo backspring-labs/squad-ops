@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
     from squadops.ports.cycles.squad_profile import SquadProfilePort
+    from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         task_timeout: float = 300.0,
         llm_observability: LLMObservabilityPort | None = None,
         prefect_reporter: PrefectReporter | None = None,
+        event_bus: CycleEventBusPort | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
@@ -93,6 +95,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
         self._llm_observability = llm_observability
         self._prefect = prefect_reporter
         self._cancelled: set[str] = set()
+
+        # SIP-0077: Cycle event bus (defaults to NoOp if not provided)
+        if event_bus is None:
+            from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
+
+            event_bus = NoOpCycleEventBus()
+        self._cycle_event_bus = event_bus
         # Accumulated per-run pulse verification summaries for run report.
         # Reset at the start of each execute_run().
         self._pulse_report_entries: list[dict[str, Any]] = []
