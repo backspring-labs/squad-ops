@@ -624,6 +624,22 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 except Exception:
                     logger.warning("Prefect task run creation failed", exc_info=True)
 
+            # SIP-0077: task.dispatched
+            self._cycle_event_bus.emit(
+                EventType.TASK_DISPATCHED,
+                entity_type="task",
+                entity_id=envelope.task_id,
+                context={
+                    "cycle_id": cycle.cycle_id,
+                    "run_id": run_id,
+                    "flow_run_id": flow_run_id or "",
+                },
+                payload={
+                    "task_type": envelope.task_type,
+                    "task_name": f"{envelope.metadata.get('role', 'unknown')}: {envelope.task_type}",
+                },
+            )
+
             # Dispatch through RabbitMQ
             result = await self._dispatch_task(enriched, run_id)
 
@@ -634,6 +650,24 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     await self._prefect.set_task_run_state(task_run_id, state, state.title())
                 except Exception:
                     logger.warning("Prefect task state update failed", exc_info=True)
+
+            # SIP-0077: task.succeeded or task.failed
+            if result.status == "SUCCEEDED":
+                self._cycle_event_bus.emit(
+                    EventType.TASK_SUCCEEDED,
+                    entity_type="task",
+                    entity_id=envelope.task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={"task_type": envelope.task_type},
+                )
+            else:
+                self._cycle_event_bus.emit(
+                    EventType.TASK_FAILED,
+                    entity_type="task",
+                    entity_id=envelope.task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={"task_type": envelope.task_type, "error": result.error or ""},
+                )
 
             # Fail-fast
             if result.status != "SUCCEEDED":
@@ -774,6 +808,21 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         tasks = []
         for envelope in plan:
+            # SIP-0077: task.dispatched (fan-out path)
+            self._cycle_event_bus.emit(
+                EventType.TASK_DISPATCHED,
+                entity_type="task",
+                entity_id=envelope.task_id,
+                context={
+                    "cycle_id": cycle.cycle_id,
+                    "run_id": run_id,
+                    "flow_run_id": flow_run_id or "",
+                },
+                payload={
+                    "task_type": envelope.task_type,
+                    "task_name": f"{envelope.metadata.get('role', 'unknown')}: {envelope.task_type}",
+                },
+            )
             enriched = dataclasses.replace(
                 envelope,
                 inputs={**envelope.inputs, "prior_outputs": {}, "artifact_refs": []},
@@ -790,6 +839,14 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         await self._prefect.set_task_run_state(task_run_ids[i], "FAILED", "Failed")
                     except Exception:
                         logger.warning("Prefect task state update failed", exc_info=True)
+                # SIP-0077: task.failed (fan-out exception)
+                self._cycle_event_bus.emit(
+                    EventType.TASK_FAILED,
+                    entity_type="task",
+                    entity_id=plan[i].task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={"task_type": plan[i].task_type, "error": str(result)},
+                )
                 raise _ExecutionError(f"Task {plan[i].task_id} raised exception: {result}")
             # Prefect: update task state
             if self._prefect and task_run_ids[i]:
@@ -798,6 +855,23 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     await self._prefect.set_task_run_state(task_run_ids[i], state, state.title())
                 except Exception:
                     logger.warning("Prefect task state update failed", exc_info=True)
+            # SIP-0077: task.succeeded or task.failed (fan-out result)
+            if result.status == "SUCCEEDED":
+                self._cycle_event_bus.emit(
+                    EventType.TASK_SUCCEEDED,
+                    entity_type="task",
+                    entity_id=plan[i].task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={"task_type": plan[i].task_type},
+                )
+            else:
+                self._cycle_event_bus.emit(
+                    EventType.TASK_FAILED,
+                    entity_type="task",
+                    entity_id=plan[i].task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={"task_type": plan[i].task_type, "error": result.error or ""},
+                )
             if result.status != "SUCCEEDED":
                 raise _ExecutionError(f"Task {plan[i].task_id} failed: {result.error}")
             for art in (result.outputs or {}).get("artifacts", []):
@@ -918,6 +992,25 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 cadence_interval_id=cadence_interval_id,
             )
 
+        # SIP-0077: pulse.boundary_reached
+        self._cycle_event_bus.emit(
+            EventType.PULSE_BOUNDARY_REACHED,
+            entity_type="pulse",
+            entity_id=boundary_id,
+            context={
+                "cycle_id": cycle.cycle_id,
+                "run_id": run_id,
+                "project_id": cycle.project_id,
+            },
+            payload={
+                "boundary_id": boundary_id,
+                "cadence_interval_id": cadence_interval_id,
+                "suite_count": len(suites),
+                "suite_ids": [s.suite_id for s in suites],
+                "repair_attempt_number": repair_attempt_number,
+            },
+        )
+
         records = await run_pulse_verification(
             suites=suites,
             context=context,
@@ -951,6 +1044,25 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     cadence_interval_id=cadence_interval_id,
                 )
 
+            # SIP-0077: pulse.suite_evaluated
+            self._cycle_event_bus.emit(
+                EventType.PULSE_SUITE_EVALUATED,
+                entity_type="pulse",
+                entity_id=record.suite_id,
+                context={
+                    "cycle_id": cycle.cycle_id,
+                    "run_id": run_id,
+                    "project_id": cycle.project_id,
+                },
+                payload={
+                    "suite_id": record.suite_id,
+                    "boundary_id": boundary_id,
+                    "cadence_interval_id": cadence_interval_id,
+                    "outcome": record.suite_outcome.value,
+                    "repair_attempt_number": repair_attempt_number,
+                },
+            )
+
         decision = determine_boundary_decision(records)
 
         # Accumulate for run report
@@ -974,6 +1086,25 @@ class DistributedFlowExecutor(FlowExecutionPort):
             boundary_id=boundary_id,
             cadence_interval_id=cadence_interval_id,
             extra_attrs=(("decision", decision.value),),
+        )
+
+        # SIP-0077: pulse.boundary_decided
+        self._cycle_event_bus.emit(
+            EventType.PULSE_BOUNDARY_DECIDED,
+            entity_type="pulse",
+            entity_id=boundary_id,
+            context={
+                "cycle_id": cycle.cycle_id,
+                "run_id": run_id,
+                "project_id": cycle.project_id,
+            },
+            payload={
+                "boundary_id": boundary_id,
+                "cadence_interval_id": cadence_interval_id,
+                "decision": decision.value,
+                "suite_count": len(records),
+                "repair_attempt_number": repair_attempt_number,
+            },
         )
 
         return decision, records
@@ -1039,7 +1170,26 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         ("repair_attempts", max_repair_attempts),
                     ),
                 )
+
+                # SIP-0077: pulse.repair_exhausted
                 failed_ids = [s.suite_id for s in failed_suites]
+                self._cycle_event_bus.emit(
+                    EventType.PULSE_REPAIR_EXHAUSTED,
+                    entity_type="pulse",
+                    entity_id=boundary_id,
+                    context={
+                        "cycle_id": cycle.cycle_id,
+                        "run_id": run_id,
+                        "project_id": cycle.project_id,
+                    },
+                    payload={
+                        "boundary_id": boundary_id,
+                        "cadence_interval_id": cadence_interval_id,
+                        "max_repair_attempts": max_repair_attempts,
+                        "failed_suite_ids": failed_ids,
+                    },
+                )
+
                 raise _ExecutionError(
                     f"VERIFICATION_EXHAUSTED at boundary {boundary_id!r}: "
                     f"suites {failed_ids} still failing after "
@@ -1060,6 +1210,25 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     ("repair_attempt", repair_attempt),
                     ("failed_suite_ids", failed_suite_ids),
                 ),
+            )
+
+            # SIP-0077: pulse.repair_started
+            self._cycle_event_bus.emit(
+                EventType.PULSE_REPAIR_STARTED,
+                entity_type="pulse",
+                entity_id=boundary_id,
+                context={
+                    "cycle_id": cycle.cycle_id,
+                    "run_id": run_id,
+                    "project_id": cycle.project_id,
+                },
+                payload={
+                    "boundary_id": boundary_id,
+                    "cadence_interval_id": cadence_interval_id,
+                    "repair_attempt": repair_attempt,
+                    "max_repair_attempts": max_repair_attempts,
+                    "failed_suite_ids": failed_suite_ids,
+                },
             )
 
             # Build verification failure context for repair handlers
