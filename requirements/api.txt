@@ -22,3 +22,6 @@ python-jose[cryptography]>=3.3.0
 
 # LLM Observability (SIP-0061)
 langfuse>=2.0,<3.0
+
+# Event ID generation (SIP-0077) — optional, falls back to UUID4
+ulid-py>=1.1.0,<2.0
