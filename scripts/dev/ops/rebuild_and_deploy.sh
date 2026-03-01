@@ -25,6 +25,10 @@ export DOCKER_BUILDKIT=1
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Derive source hash for Docker cache busting (invalidates source layers on new commits)
+SOURCE_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+export SOURCE_HASH
+
 # Parse command-line arguments
 REBUILD_CONSOLE=false
 REBUILD_AGENTS=false

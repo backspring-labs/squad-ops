@@ -143,6 +143,8 @@ services:
     build:
       context: .
       dockerfile: src/squadops/api/runtime/Dockerfile
+      args:
+        SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-runtime-api  # SIP-0048: renamed from squadops-task-api
     ports:
     - 8001:8001
@@ -190,6 +192,7 @@ services:
       args:
         AGENT_ROLE: lead
         BUILD_HASH: ${BUILD_HASH:-unknown}
+        SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-max
     secrets:
       - db_password
@@ -228,6 +231,7 @@ services:
       args:
         AGENT_ROLE: strat
         BUILD_HASH: ${BUILD_HASH:-unknown}
+        SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-nat
     secrets:
       - db_password
@@ -285,6 +289,7 @@ services:
       args:
         AGENT_ROLE: dev
         BUILD_HASH: ${BUILD_HASH:-unknown}
+        SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-neo
     secrets:
       - db_password
@@ -325,6 +330,7 @@ services:
       args:
         AGENT_ROLE: qa
         BUILD_HASH: ${BUILD_HASH:-unknown}
+        SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-eve
     secrets:
       - db_password
@@ -361,6 +367,7 @@ services:
       args:
         AGENT_ROLE: data
         BUILD_HASH: ${BUILD_HASH:-unknown}
+        SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-data
     secrets:
       - db_password
@@ -401,6 +408,7 @@ services:
       args:
         AGENT_ROLE: builder
         BUILD_HASH: ${BUILD_HASH:-unknown}
+        SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-bob
     secrets:
       - db_password

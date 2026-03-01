@@ -71,6 +71,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       pip install -r "agents/instances/${AGENT_ROLE}/requirements.txt"; \
     fi
 
+# Cache-bust: when SOURCE_HASH changes, Docker invalidates this layer and below
+ARG SOURCE_HASH=unknown
+
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/
 COPY adapters/ ./adapters/
