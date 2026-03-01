@@ -25,6 +25,10 @@ export DOCKER_BUILDKIT=1
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Derive source hash for Docker cache busting (invalidates source layers on new commits)
+SOURCE_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+export SOURCE_HASH
+
 # Parse command-line arguments
 REBUILD_CONSOLE=false
 REBUILD_AGENTS=false
@@ -231,28 +235,42 @@ fi
 echo ""
 echo -e "${BLUE}🔨 Step 3: Rebuilding containers with updated code...${NC}"
 
+# Track build failures for non-blocking services
+RUNTIME_API_FAILED=0
+CONSOLE_FAILED=0
+
 # Rebuild Runtime API if requested
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "${YELLOW}📦 Rebuilding runtime-api...${NC}"
     if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-        docker-compose build --no-cache runtime-api || echo -e "${RED}  ⚠️  Build failed for runtime-api${NC}"
+        BUILD_OK=true; docker-compose build --no-cache runtime-api || BUILD_OK=false
     else
-        docker-compose build runtime-api || echo -e "${RED}  ⚠️  Build failed for runtime-api${NC}"
+        BUILD_OK=true; docker-compose build runtime-api || BUILD_OK=false
     fi
-    docker-compose up -d runtime-api
-    echo -e "${GREEN}✅ Runtime API rebuilt and restarted${NC}"
+    if [ "$BUILD_OK" = true ]; then
+        docker-compose up -d runtime-api
+        echo -e "${GREEN}✅ Runtime API rebuilt and restarted${NC}"
+    else
+        RUNTIME_API_FAILED=1
+        echo -e "${RED}  ⚠️  runtime-api build failed — skipping restart${NC}"
+    fi
 fi
 
 # Rebuild Console if requested
 if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "${YELLOW}📦 Rebuilding console...${NC}"
     if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-        docker-compose build --no-cache squadops-console || echo -e "${RED}  ⚠️  Build failed for console${NC}"
+        BUILD_OK=true; docker-compose build --no-cache squadops-console || BUILD_OK=false
     else
-        docker-compose build squadops-console || echo -e "${RED}  ⚠️  Build failed for console${NC}"
+        BUILD_OK=true; docker-compose build squadops-console || BUILD_OK=false
     fi
-    docker-compose up -d squadops-console
-    echo -e "${GREEN}✅ Console rebuilt and restarted${NC}"
+    if [ "$BUILD_OK" = true ]; then
+        docker-compose up -d squadops-console
+        echo -e "${GREEN}✅ Console rebuilt and restarted${NC}"
+    else
+        CONSOLE_FAILED=1
+        echo -e "${RED}  ⚠️  Console build failed — skipping restart, continuing with agents${NC}"
+    fi
 fi
 
 # Function to get agent role from agent ID
@@ -518,4 +536,22 @@ if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
 fi
 if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "  5. Run smoke tests: ${YELLOW}python3 -m pytest tests/smoke/ -v${NC}"
+fi
+
+# Report any build failures that were deferred
+BUILD_FAILURES=0
+if [ "${RUNTIME_API_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ runtime-api build failed. Fix the error and rebuild:${NC}"
+    echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api${NC}"
+    BUILD_FAILURES=1
+fi
+if [ "${CONSOLE_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ Console build failed. Fix the Svelte error and rebuild:${NC}"
+    echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh console${NC}"
+    BUILD_FAILURES=1
+fi
+if [ "$BUILD_FAILURES" = "1" ]; then
+    exit 1
 fi

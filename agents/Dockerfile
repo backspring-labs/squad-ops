@@ -56,11 +56,11 @@ RUN apt-get update && apt-get install -y \
 
 # Copy dependency files FIRST (for better layer caching)
 COPY pyproject.toml ./
-COPY requirements.txt requirements-agent.txt ./
+COPY requirements-agent.lock ./
 
 # Install dependencies (this layer is cached when requirements don't change)
 # BuildKit cache mount preserves pip download cache across builds
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements-agent.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements-agent.lock
 
 # Copy agent configuration (instances for role-specific config + per-role extras)
 COPY agents/instances/ ./agents/instances/
@@ -70,6 +70,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     if [ -f "agents/instances/${AGENT_ROLE}/requirements.txt" ]; then \
       pip install -r "agents/instances/${AGENT_ROLE}/requirements.txt"; \
     fi
+
+# Cache-bust: when SOURCE_HASH changes, Docker invalidates this layer and below
+ARG SOURCE_HASH=unknown
 
 # Copy source code (changes frequently, but doesn't invalidate deps layer)
 COPY src/ ./src/

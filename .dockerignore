@@ -12,4 +12,14 @@ docs/
 tests/
 .DS_Store
 *.log
+sips/
+.venv/
+.claude/
+.ruff_cache/
+.benchmarks/
+data/
+dist/
+**/node_modules/
+secrets/
+*.egg-info/
 
