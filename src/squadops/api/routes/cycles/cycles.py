@@ -97,6 +97,23 @@ async def create_cycle(
         await cycle_registry.create_cycle(cycle)
         await cycle_registry.create_run(run)
 
+        # SIP-0077: cycle.created
+        from squadops.api.runtime.deps import get_cycle_event_bus
+        from squadops.events.types import EventType
+
+        get_cycle_event_bus().emit(
+            EventType.CYCLE_CREATED,
+            entity_type="cycle",
+            entity_id=cycle.cycle_id,
+            context={"cycle_id": cycle.cycle_id, "project_id": project_id},
+            payload={
+                "project_id": project_id,
+                "created_by": cycle.created_by,
+                "squad_profile_id": cycle.squad_profile_id,
+                "prd_ref": cycle.prd_ref,
+            },
+        )
+
         # SIP-0066: Enqueue execution as background task
         flow_executor = get_flow_executor()
         background_tasks.add_task(
@@ -160,6 +177,19 @@ async def cancel_cycle(project_id: str, cycle_id: str):
     try:
         registry = get_cycle_registry()
         await registry.cancel_cycle(cycle_id)
+
+        # SIP-0077: cycle.cancelled
+        from squadops.api.runtime.deps import get_cycle_event_bus
+        from squadops.events.types import EventType
+
+        get_cycle_event_bus().emit(
+            EventType.CYCLE_CANCELLED,
+            entity_type="cycle",
+            entity_id=cycle_id,
+            context={"cycle_id": cycle_id, "project_id": project_id},
+            payload={"project_id": project_id},
+        )
+
         return {"status": "cancelled", "cycle_id": cycle_id}
     except CycleError as e:
         raise handle_cycle_error(e) from e
