@@ -59,23 +59,14 @@ TEST_DIRS=""
 
 for file in $CHANGED_FILES; do
     case "$file" in
-        src/squadops/agents/roles/lead*)
-            TEST_DIRS="$TEST_DIRS tests/unit/agents/roles/test_lead.py"
+        src/squadops/agents/roles/builder*)
+            TEST_DIRS="$TEST_DIRS tests/unit/agents/roles/test_builder_agent.py tests/unit/agent_foundation/roles/"
             ;;
-        src/squadops/agents/roles/dev*)
-            TEST_DIRS="$TEST_DIRS tests/unit/agents/roles/test_dev.py"
-            ;;
-        src/squadops/agents/roles/qa*)
-            TEST_DIRS="$TEST_DIRS tests/unit/agents/roles/test_qa.py"
-            ;;
-        src/squadops/agents/roles/strat*)
-            TEST_DIRS="$TEST_DIRS tests/unit/agents/roles/test_strat.py"
-            ;;
-        src/squadops/agents/roles/data*)
-            TEST_DIRS="$TEST_DIRS tests/unit/agents/roles/test_data.py"
+        src/squadops/agents/roles/*)
+            TEST_DIRS="$TEST_DIRS tests/unit/agent_foundation/roles/"
             ;;
         src/squadops/agents/*)
-            TEST_DIRS="$TEST_DIRS tests/unit/agents/"
+            TEST_DIRS="$TEST_DIRS tests/unit/agents/ tests/unit/agent_foundation/"
             ;;
         src/squadops/capabilities/*)
             TEST_DIRS="$TEST_DIRS tests/unit/capabilities/"
@@ -106,6 +97,24 @@ for file in $CHANGED_FILES; do
             ;;
         src/squadops/embeddings/*)
             TEST_DIRS="$TEST_DIRS tests/unit/embeddings/"
+            ;;
+        src/squadops/cycles/*|adapters/cycles/*)
+            TEST_DIRS="$TEST_DIRS tests/unit/cycles/"
+            ;;
+        src/squadops/auth/*|adapters/auth/*)
+            TEST_DIRS="$TEST_DIRS tests/unit/auth/"
+            ;;
+        src/squadops/orchestration/*)
+            TEST_DIRS="$TEST_DIRS tests/unit/agent_foundation/orchestration/"
+            ;;
+        src/squadops/cli/*)
+            TEST_DIRS="$TEST_DIRS tests/unit/cli/"
+            ;;
+        src/squadops/contracts/*)
+            TEST_DIRS="$TEST_DIRS tests/unit/contracts/"
+            ;;
+        adapters/*)
+            TEST_DIRS="$TEST_DIRS tests/unit/adapters/"
             ;;
         tests/*)
             # Test file changed - run it directly

@@ -14,12 +14,9 @@
       "**/node_modules/**",
       "**/dist/**",
       "**/build/**",
-      "**/.cursor/**",
       "**/.venv/**",
       "**/__pycache__/**",
-      "**/.git/**",
-      "**/warm-boot/**",
-      "**/_v0_legacy/**"
+      "**/.git/**"
     ],
     "useGitignore": true,
     "useDefaultPatterns": true

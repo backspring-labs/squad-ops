@@ -52,11 +52,6 @@ def sample_flow_policy(sample_gate):
 
 
 @pytest.fixture
-def sample_flow_policy_no_gates():
-    return TaskFlowPolicy(mode="sequential")
-
-
-@pytest.fixture
 def sample_cycle(now, sample_flow_policy):
     return Cycle(
         cycle_id="cyc_001",

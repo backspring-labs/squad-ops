@@ -43,12 +43,10 @@ extend-exclude = [
     ".venv",
     "venv",
     "__pycache__",
-    "warm-boot",
     "sips",
     "docs",
     "htmlcov",
     "scripts/dev/migrations",
-    "_v0_legacy",
 ]
 
 [tool.ruff.lint]
@@ -85,7 +83,8 @@ python_classes = "Test*"
 python_functions = "test_*"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-pythonpath = ["src"]
+pythonpath = [".", "src"]
+addopts = "-v --tb=short --strict-markers --disable-warnings --color=yes --durations=10"
 
 markers = [
     # Test type markers
@@ -132,18 +131,17 @@ markers = [
 branch = true
 source = [
   "src/squadops",
+  "adapters",
   "scripts",
 ]
 omit = [
   "tests/*",
   "dist/*",
   "**/__init__.py",
-  "warm-boot/*",
   "scripts/dev/migrations/*",
   "htmlcov/*",
   "sips/*",
   "docs/*",
-  "_v0_legacy/*",
 ]
 
 [tool.coverage.report]

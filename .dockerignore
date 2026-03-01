@@ -10,7 +10,6 @@ htmlcov/
 *.md
 docs/
 tests/
-warm-boot/archive/
 .DS_Store
 *.log
 
