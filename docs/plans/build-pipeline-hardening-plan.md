@@ -104,22 +104,20 @@ Add a `SOURCE_HASH` build arg derived from the git SHA to ensure Docker never se
 
 Exclude files that are never needed in containers from the build context.
 
+### Current state
+
+The `.dockerignore` already excludes: `.git/`, `__pycache__/`, `*.pyc`, `*.pyo`, `*.pyd`, `.Python`, `htmlcov/`, `.coverage`, `.pytest_cache/`, `*.md`, `docs/`, `tests/`, `.DS_Store`, `*.log`.
+
 ### Add to `.dockerignore`
 
 ```
-tests/
-docs/
 sips/
-htmlcov/
-_v0_legacy/
-*.pyc
-__pycache__/
-.git/
 .venv/
-warm-boot/
-*.md
-!README.md
-rebuild_deploy.log
+.claude/
+.ruff_cache/
+.benchmarks/
+examples/
+scripts/
 ```
 
 ### Effect
