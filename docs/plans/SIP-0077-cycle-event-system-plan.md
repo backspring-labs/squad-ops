@@ -47,7 +47,13 @@ The event system introduces an `CycleEventBusPort` with a 20-event taxonomy, an 
 - `emit(event_type, *, entity_type, entity_id, parent_type, parent_id, context, payload) -> CycleEvent | None`
 - `subscribe(subscriber: EventSubscriber) -> None`
 
-`EventSubscriber` is a `Protocol` (structural typing, no inheritance required), placed in the domain layer alongside the event models.
+**Port-level `emit()` contract:**
+- `emit()` is best-effort, non-blocking publication. It is not part of the caller's transactional success criteria in v0. Callers must not treat emission failure as an application error.
+- **Caller vs adapter responsibility:** callers provide semantic inputs (`event_type`, entity/context/payload). The adapter enriches transport/publication metadata (`event_id`, `occurred_at`, `sequence`, `semantic_key`, `source_service`, `source_version`). Application code must not construct envelope fields — that is adapter-internal.
+
+**Port-level `subscribe()` semantics:** `subscribe()` is on the port ABC because the in-process adapter uses it for local bridge registration. However, subscriber registration is adapter-defined behavior — future external adapters (e.g., persistent event store, message broker) may implement subscription differently or treat it as an adapter-local concern. `subscribe()` is not a universal consumption contract.
+
+`EventSubscriber` is a `Protocol` (structural typing, no inheritance required), placed in the domain layer alongside the event models. `EventSubscriber.on_event()` is synchronous in v0. Subscribers must be lightweight and non-blocking in practice — long-running I/O or expensive reconciliation inside a subscriber will stall the calling request/executor path.
 
 ### Commit 1c: InProcessCycleEventBus adapter + NoOpCycleEventBus adapter + factory
 
@@ -67,24 +73,27 @@ The event system introduces an `CycleEventBusPort` with a 20-event taxonomy, an 
   - `_generate_event_id()` — ULID with `evt_` prefix, UUID4 fallback
   - Subscriber exceptions: logged and swallowed (never propagate)
 
+**v0 adapter scope:** `InProcessCycleEventBus` is the v0 adapter for local publication and bridge fanout. It is not the long-term durable event continuity layer. A future persistent adapter (event store, message broker) will replace it for durable publication guarantees. The in-process adapter establishes the contract surface and proves the taxonomy; durability is a v2 concern.
+
 `NoOpCycleEventBus`:
   - Implements `CycleEventBusPort`, all methods are no-ops
   - `emit()` returns `None`
   - Follows `NoOpLLMObservabilityAdapter` pattern: `adapters/telemetry/noop_llm_observability.py`
+  - **Intent:** `NoOpCycleEventBus` is a valid degraded production adapter for best-effort publication when event infrastructure is absent. Running with NoOp means no canonical event publication guarantees are present — this is an acceptable operational mode, not a configuration mistake, but operators should be aware of it (see degraded-mode logging in Commit 3a).
 
-`create_cycle_event_bus(provider, **kwargs)`:
+`create_cycle_event_bus(provider, **kwargs)` selects the configured `CycleEventBusPort` adapter implementation:
   - `"in_process"` → `InProcessCycleEventBus(source_service=..., source_version=...)`
   - `"noop"` → `NoOpCycleEventBus()`
   - Follows `create_cycle_registry()` / `create_llm_observability_provider()` pattern
 
 **`emit()` return-value contract:** `InProcessCycleEventBus.emit()` returns a `CycleEvent`; `NoOpCycleEventBus.emit()` returns `None`. The port declares return type `CycleEvent | None`. Callers MUST NOT depend on the return value of `emit()`. This is a hard contract — any code that uses the returned event will break under NoOp substitution.
 
-**Optional dependency:** `ulid-py` added to `requirements-api.txt`. Falls back to UUID4 if not installed.
+**Optional dependency:** `ulid-py` added to `requirements/api.txt`. Falls back to UUID4 if not installed.
 
 **Tests:** `tests/unit/events/test_bus.py` (~20)
 - Emit returns CycleEvent with correct fields
 - Subscriber receives event on emit
-- Multiple subscribers called in registration order
+- Multiple subscribers called in registration order (this is an `InProcessCycleEventBus` guarantee, not a port-level contract — future adapters may not preserve ordering)
 - Subscriber failure (raises RuntimeError) does not propagate
 - Sequence monotonicity: 5 events for same run produce sequences 1-5
 - Independent sequences: different run_ids have independent counters
@@ -286,7 +295,7 @@ event_bus.emit(
 
 **Route-level emission ownership (v0):** Route-level emission is acceptable in v0 when the route is the confirmed transition boundary — the route calls the registry/vault port, receives the confirmed result, and emits the event immediately after. The route is the first code that knows the transition succeeded. In v1+, emission authority may be pushed deeper into the registry port or a domain service, but this does not change the event taxonomy or subscriber contract.
 
-**deps.py `get_cycle_event_bus()` returns `NoOpCycleEventBus` instead of raising RuntimeError** — this differs from other getters because event emission is best-effort, not required. Routes should never fail because the event bus is unconfigured.
+**deps.py `get_cycle_event_bus()` returns `NoOpCycleEventBus` instead of raising RuntimeError** — this differs from other getters because event emission is best-effort, not required. Routes should never fail because the event bus is unconfigured. When `get_cycle_event_bus()` falls back to `NoOpCycleEventBus`, it emits a warning log once per process indicating canonical event publication is disabled/degraded. This preserves best-effort behavior without making degraded event mode invisible in production.
 
 ### Commit 3e: Emission coverage tests + sequence tests
 
@@ -317,7 +326,7 @@ Uses `MemoryCycleRegistry` with a collecting `EventSubscriber`.
 
 - Bump version to `0.9.15` in `pyproject.toml`
 - `pip install -e .` to refresh
-- Update `requirements-api.txt` with `ulid-py` (optional)
+- Update `requirements/api.txt` with `ulid-py` (optional)
 - Regenerate lock files: `./scripts/maintainer/update_deps.sh`
 - Promote SIP-0077 to implemented: `python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0077-Cycle-Event-System.md implemented`
 - Update `docs/ROADMAP.md` with v0.9.15 entry
@@ -375,7 +384,7 @@ Uses `MemoryCycleRegistry` with a collecting `EventSubscriber`.
 | `src/squadops/api/routes/cycles/runs.py` | 2 emit() calls |
 | `src/squadops/api/routes/cycles/artifacts.py` | 2 emit() calls |
 | `pyproject.toml` | `domain_events` marker, version bump, `ulid-py` dep |
-| `requirements-api.txt` | `ulid-py` |
+| `requirements/api.txt` | `ulid-py` |
 
 **Estimated new tests:** ~140
 **Estimated total after:** ~2,625
@@ -383,6 +392,12 @@ Uses `MemoryCycleRegistry` with a collecting `EventSubscriber`.
 ---
 
 ## Verification
+
+**Test scope separation:** Tests are grouped by what they prove:
+- **Port contract tests** — `CycleEventBusPort` implementations accept expected calls, `emit()` returns correct type or `None`, `subscribe()` does not raise. These are universal and must pass for any adapter.
+- **In-process adapter tests** — subscriber registration-order delivery, sequence counter monotonicity, semantic key construction, ULID generation, subscriber exception swallowing. These are `InProcessCycleEventBus`-specific and would not apply to an external adapter.
+
+This separation makes future adapter additions easier — port contract tests are reusable, adapter-specific tests are scoped.
 
 1. `./scripts/dev/run_new_arch_tests.sh -v` — all existing 2,485+ tests pass (no behavioral changes)
 2. `pytest tests/unit/events/ -v` — all ~140 new event tests pass
@@ -394,7 +409,7 @@ Uses `MemoryCycleRegistry` with a collecting `EventSubscriber`.
 
 ## Gotchas
 
-- **`get_cycle_event_bus()` returns `NoOpCycleEventBus` not `RuntimeError`** — unlike other port getters. Event emission is best-effort; routes must never fail because the bus is unconfigured.
+- **`get_cycle_event_bus()` returns `NoOpCycleEventBus` not `RuntimeError`** — unlike other port getters. Event emission is best-effort; routes must never fail because the bus is unconfigured. Fallback logs a warning once per process so degraded mode is visible.
 - **Dual-emit means temporary duplicate signals** — LangFuse will see both the existing `record_event()` calls AND the bridge-forwarded events. This is intentional and acceptable for one release. v1 removes the direct calls.
 - **Pulse events: 5 taxonomy events vs ~8 existing `_emit_pulse_event()` call sites** — The SIP taxonomy has 5 pulse events. The existing `_emit_pulse_event()` has ~8 distinct event names (suite_started, suite_passed, suite_failed, boundary_decision, repair_started, binding_skipped, etc.). The new events map to the 5 taxonomy events; the others (suite_started, binding_skipped) remain as structured logs only.
 - **Fan-out path** — `_execute_fan_out()` also dispatches tasks and records Prefect state. It needs task.dispatched/succeeded/failed emissions too, same as sequential.
