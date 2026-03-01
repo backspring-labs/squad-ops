@@ -116,8 +116,6 @@ class PrefectBridge:
             # If we're in an async context, we can't await directly from sync.
             # Use run_coroutine_threadsafe for thread-safe scheduling, but
             # since PrefectReporter is best-effort, we run in a new loop as fallback.
-            import concurrent.futures
-
             future = asyncio.run_coroutine_threadsafe(coro, loop)
             return future.result(timeout=10)
         except RuntimeError:
