@@ -4,7 +4,7 @@
 
 SIP-0077 introduces a canonical lifecycle event bus for SquadOps cycles. Today the same semantic fact ("run X started") is recorded independently in 3-4 places (LangFuse `record_event()`, Prefect state, structured log, OTEL span) with different schemas, timing, and no coordination. This creates drift, makes adding new lifecycle transitions expensive (3-4 code changes per event), and blocks the pipeline protocol SIPs that depend on reliable lifecycle facts.
 
-The event system introduces a `CycleEventBus` with a 20-event taxonomy, three bridge adapters (LangFuse, Prefect, Metrics), and dual-emit alongside existing telemetry (v0 scope). No existing code is removed.
+The event system introduces an `EventBusPort` with a 20-event taxonomy, an in-process adapter (`InProcessEventBus`), three bridge subscribers (LangFuse, Prefect, Metrics), and dual-emit alongside existing telemetry (v0 scope). No existing code is removed. The event bus follows the same hexagonal port/adapter pattern as every other subsystem (`CycleRegistryPort`, `LLMObservabilityPort`, `QueuePort`, etc.).
 
 **Branch:** `feature/sip-0077-cycle-event-system` (already created off main)
 **SIP:** `sips/accepted/SIP-0077-Cycle-Event-System.md` (Rev 3)
@@ -20,7 +20,7 @@ The event system introduces a `CycleEventBus` with a 20-event taxonomy, three br
 
 | File | Contents |
 |------|----------|
-| `src/squadops/events/__init__.py` | Public exports: `CycleEvent`, `CycleEventBus`, `NoOpEventBus`, `EventSubscriber`, `EventType` |
+| `src/squadops/events/__init__.py` | Public exports: `CycleEvent`, `EventBusPort`, `EventSubscriber`, `EventType` |
 | `src/squadops/events/types.py` | `EventType` constants class (20 constants, `{entity}.{transition}` format) |
 | `src/squadops/events/models.py` | `CycleEvent` frozen dataclass (13 fields: identity, timing, source, entity, context, payload, semantic_key) |
 
@@ -32,24 +32,52 @@ The event system introduces a `CycleEventBus` with a 20-event taxonomy, three br
 - EventType constants exist and follow `{entity}.{transition}` naming
 - CycleEvent construction, immutability, field access, required fields
 
-### Commit 1b: CycleEventBus, NoOpEventBus, EventSubscriber protocol
+### Commit 1b: EventBusPort, EventSubscriber protocol
 
-**New file:** `src/squadops/events/bus.py`
+**New files:**
 
-Contents:
-- `EventSubscriber` protocol: `on_event(event: CycleEvent) -> None`
-- `CycleEventBus(source_service, source_version)`:
+| File | Contents |
+|------|----------|
+| `src/squadops/ports/events/__init__.py` | Exports: `EventBusPort` |
+| `src/squadops/ports/events/event_bus.py` | `EventBusPort` ABC with `emit()` and `subscribe()` abstract methods |
+| `src/squadops/events/subscriber.py` | `EventSubscriber` protocol: `on_event(event: CycleEvent) -> None` |
+
+`EventBusPort` follows the same pattern as `CycleRegistryPort`, `LLMObservabilityPort`, etc.:
+- ABC in `src/squadops/ports/`
+- `emit(event_type, *, entity_type, entity_id, parent_type, parent_id, context, payload) -> CycleEvent | None`
+- `subscribe(subscriber: EventSubscriber) -> None`
+
+`EventSubscriber` is a `Protocol` (structural typing, no inheritance required), placed in the domain layer alongside the event models.
+
+### Commit 1c: InProcessEventBus adapter + NoOpEventBus adapter + factory
+
+**New files:**
+
+| File | Contents |
+|------|----------|
+| `adapters/events/__init__.py` | Package init |
+| `adapters/events/in_process.py` | `InProcessEventBus(source_service, source_version)` — implements `EventBusPort` |
+| `adapters/events/noop.py` | `NoOpEventBus` — implements `EventBusPort`, all methods are no-ops |
+| `adapters/events/factory.py` | `create_event_bus(provider, **kwargs)` — config-driven selection |
+
+`InProcessEventBus` (was `CycleEventBus`):
   - `subscribe(subscriber)` — appends to `_subscribers` list
-  - `emit(event_type, *, entity_type, entity_id, parent_type, parent_id, context, payload) -> CycleEvent`
+  - `emit(event_type, ...) -> CycleEvent` — constructs event, dispatches to subscribers
   - `_sequence: dict[tuple[str, str], int]` — per `(cycle_id, run_id)` monotonic counter
   - `_generate_event_id()` — ULID with `evt_` prefix, UUID4 fallback
   - Subscriber exceptions: logged and swallowed (never propagate)
-- `NoOpEventBus`:
-  - Same interface, all methods are no-ops
-  - `emit()` returns `None` (not `CycleEvent`)
+
+`NoOpEventBus`:
+  - Implements `EventBusPort`, all methods are no-ops
+  - `emit()` returns `None`
   - Follows `NoOpLLMObservabilityAdapter` pattern: `adapters/telemetry/noop_llm_observability.py`
 
-**`emit()` return-value contract:** `CycleEventBus.emit()` returns a `CycleEvent`; `NoOpEventBus.emit()` returns `None`. Callers MUST NOT depend on the return value of `emit()`. This is a hard contract — any code that uses the returned event will break under NoOp substitution. This keeps the NoOp bus a true drop-in replacement without requiring synthetic event construction.
+`create_event_bus(provider, **kwargs)`:
+  - `"in_process"` → `InProcessEventBus(source_service=..., source_version=...)`
+  - `"noop"` → `NoOpEventBus()`
+  - Follows `create_cycle_registry()` / `create_llm_observability_provider()` pattern
+
+**`emit()` return-value contract:** `InProcessEventBus.emit()` returns a `CycleEvent`; `NoOpEventBus.emit()` returns `None`. The port declares return type `CycleEvent | None`. Callers MUST NOT depend on the return value of `emit()`. This is a hard contract — any code that uses the returned event will break under NoOp substitution.
 
 **Optional dependency:** `ulid-py` added to `requirements-api.txt`. Falls back to UUID4 if not installed.
 
@@ -65,6 +93,7 @@ Contents:
 - Event ID uniqueness (1000 IDs, all unique)
 - NoOpEventBus: subscribe and emit without errors, emit returns None
 - EventSubscriber is a Protocol (structural typing, no inheritance required)
+- Both adapters satisfy `isinstance(bus, EventBusPort)`
 
 **v0 scope note:** `semantic_key` uniqueness is validated within process lifetime and test scenarios. Durable cross-restart uniqueness is deferred until a persistent event store and sequence source exist (v2). Tests assert uniqueness within a single bus instance, not across process restarts.
 
@@ -155,19 +184,20 @@ Validates sink-equivalent semantics: for each lifecycle transition, bridge outpu
 
 | File | Change |
 |------|--------|
-| `adapters/cycles/distributed_flow_executor.py` | Add `event_bus` param to `__init__` (default `NoOpEventBus()`). Store as `self._event_bus`. |
-| `adapters/cycles/factory.py` | Pass `event_bus` kwarg to `DistributedFlowExecutor` constructor |
-| `src/squadops/api/runtime/deps.py` | Add `_event_bus` singleton, `set_event_bus()`, `get_event_bus()`. Bus is set once at startup; production code must not mutate it after startup. Test code may replace/reset it explicitly via `set_event_bus()`. |
-| `src/squadops/api/runtime/main.py` | Create `CycleEventBus("runtime-api", SQUADOPS_VERSION)`, register bridges, inject into executor, call `set_event_bus()` |
+| `adapters/cycles/distributed_flow_executor.py` | Add `event_bus: EventBusPort` param to `__init__` (default `NoOpEventBus()`). Store as `self._event_bus`. Import from port, not adapter. |
+| `adapters/cycles/factory.py` | Accept and pass `event_bus` kwarg to `DistributedFlowExecutor` constructor |
+| `src/squadops/api/runtime/deps.py` | Add `_event_bus: EventBusPort` singleton, `set_event_bus()`, `get_event_bus()`. Bus is set once at startup; production code must not mutate it after startup. Test code may replace/reset it explicitly via `set_event_bus()`. |
+| `src/squadops/api/runtime/main.py` | Create event bus via factory, register bridges, inject into executor, call `set_event_bus()` |
 
 **Wiring in `main.py` startup** (after line 290, inside the cycle ports try block):
 
 ```python
-from squadops.events import CycleEventBus
-from squadops.events.bridges.langfuse import LangFuseBridge
-from squadops.events.bridges.prefect import PrefectBridge
+from adapters.events.factory import create_event_bus
+from src.squadops.events.bridges.langfuse import LangFuseBridge
+from src.squadops.events.bridges.prefect import PrefectBridge
 
-event_bus = CycleEventBus(
+event_bus = create_event_bus(
+    "in_process",
     source_service="runtime-api",
     source_version=SQUADOPS_VERSION,
 )
@@ -182,6 +212,8 @@ set_event_bus(event_bus)
 ```
 
 Pass `event_bus=event_bus` to `create_flow_executor()`.
+
+**Type annotations:** The executor and deps module type-hint against `EventBusPort` (the port), never against `InProcessEventBus` (the adapter). This matches how the executor takes `CycleRegistryPort`, not `PostgresCycleRegistry`.
 
 ### Commit 3b: Executor emission points (run lifecycle: 6 events)
 
@@ -267,7 +299,7 @@ event_bus.emit(
 
 **Test scope distinction:** `test_event_emission.py` proves that every taxonomy event is wired to at least one emission point. `test_event_sequences.py` proves that specific scenarios produce their expected event subsets — no single scenario is expected to cover all 20 events.
 
-Emission tests mock the registry/vault/queue and inject a real `CycleEventBus` with a collecting subscriber. Verify each emission point fires the correct `EventType` with required payload fields from the taxonomy (SIP Section 7).
+Emission tests mock the registry/vault/queue and inject a real `InProcessEventBus` with a collecting subscriber. Verify each emission point fires the correct `EventType` with required payload fields from the taxonomy (SIP Section 7).
 
 ---
 
@@ -294,18 +326,24 @@ Uses `MemoryCycleRegistry` with a collecting `EventSubscriber`.
 
 ## File Summary
 
-### New files (14)
+### New files (19)
 
 | File | Purpose |
 |------|---------|
-| `src/squadops/events/__init__.py` | Public API |
+| `src/squadops/ports/events/__init__.py` | Port package exports |
+| `src/squadops/ports/events/event_bus.py` | `EventBusPort` ABC (`emit()`, `subscribe()`) |
+| `src/squadops/events/__init__.py` | Domain model public API |
 | `src/squadops/events/types.py` | EventType constants (20) |
 | `src/squadops/events/models.py` | CycleEvent frozen dataclass |
-| `src/squadops/events/bus.py` | CycleEventBus, NoOpEventBus, EventSubscriber, _generate_event_id |
+| `src/squadops/events/subscriber.py` | `EventSubscriber` protocol |
 | `src/squadops/events/bridges/__init__.py` | Bridge exports |
 | `src/squadops/events/bridges/langfuse.py` | LangFuseBridge |
 | `src/squadops/events/bridges/prefect.py` | PrefectBridge |
 | `src/squadops/events/bridges/metrics.py` | MetricsBridge |
+| `adapters/events/__init__.py` | Adapter package |
+| `adapters/events/in_process.py` | `InProcessEventBus` — v0 in-process adapter |
+| `adapters/events/noop.py` | `NoOpEventBus` — no-op adapter |
+| `adapters/events/factory.py` | `create_event_bus()` factory |
 | `tests/unit/events/__init__.py` | Test package |
 | `tests/unit/events/conftest.py` | Shared event test fixtures |
 | `tests/unit/events/bridges/__init__.py` | Bridge test package |
@@ -361,4 +399,5 @@ Uses `MemoryCycleRegistry` with a collecting `EventSubscriber`.
 - **Pulse events: 5 taxonomy events vs ~8 existing `_emit_pulse_event()` call sites** — The SIP taxonomy has 5 pulse events. The existing `_emit_pulse_event()` has ~8 distinct event names (suite_started, suite_passed, suite_failed, boundary_decision, repair_started, binding_skipped, etc.). The new events map to the 5 taxonomy events; the others (suite_started, binding_skipped) remain as structured logs only.
 - **Fan-out path** — `_execute_fan_out()` also dispatches tasks and records Prefect state. It needs task.dispatched/succeeded/failed emissions too, same as sequential.
 - **`NoOpEventBus.emit()` returns `None`** — callers MUST NOT depend on the return value (see `emit()` return-value contract in Phase 1b).
-- **Test isolation** — event tests should not import runtime-api deps. Use `CycleEventBus` directly with mock subscribers.
+- **Test isolation** — event tests should not import runtime-api deps. Use `InProcessEventBus` directly with mock subscribers.
+- **Port, not concrete class** — all type annotations in the executor, deps, and routes reference `EventBusPort`, never `InProcessEventBus`. This matches how `CycleRegistryPort` is used instead of `PostgresCycleRegistry`.
