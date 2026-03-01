@@ -19,7 +19,7 @@ sips/
 .benchmarks/
 data/
 dist/
-node_modules/
+**/node_modules/
 secrets/
 *.egg-info/
 
