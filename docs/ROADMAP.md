@@ -4,6 +4,13 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
+### v0.9.14 (2026-02-28) — Workload & Gate Canon
+- **SIP-0076** Workload & Gate Canon
+  - `WorkloadType` and `PromotionStatus` constants, DDL migration
+  - Artifact promotion (one-way, idempotent, route-level baseline check)
+  - `workload_type` filter on list_runs, gate name prefix validation
+  - CRP `workload_sequence` key, CLI gate flags with mutual exclusion
+
 ### v0.9.13 (2026-02-26) — LLM Budget & Timeout Controls
 - **SIP-0073** LLM Budget & Timeout Controls
   - `chat()` budget/timeout params, model registry, prompt guard
@@ -130,13 +137,13 @@ The Workload & Gate Canon SIP defines the artifact promotion model (working vs p
 
 These SIPs must land before the first DGX Spark validation run. They are sequenced by dependency.
 
-| Order | SIP | Focus |
-|-------|-----|-------|
-| 1 | Workload & Gate Canon | `workload_type` on Run, gate outcome expansion, artifact promotion, Pulse vs Gate semantics |
-| 2 | Cycle Event System (v0) | Canonical lifecycle event bus, 20-event taxonomy, bridge adapters. v0 scope only — emit + bridge. Full rewire (v1) and event-first (v2) follow later. |
-| 3 | Planning Workload Protocol | Planning contract, durable planning artifact, QA-first test strategy, proto validation, unknown classification, readiness decision |
-| 4 | Implementation Run Contract | Run contract, correction protocol (detect → RCA → decide → plan delta → resume), **durable checkpoint/resume**, bounded retry/timebox |
-| 5 | Wrap-Up Workload Protocol | Closeout artifact, planned-vs-actual comparison, confidence classification, structured unresolved issues, next-cycle handoff |
+| Order | SIP | Focus | Status |
+|-------|-----|-------|--------|
+| 1 | **SIP-0076** Workload & Gate Canon | `workload_type` on Run, gate outcome expansion, artifact promotion, Pulse vs Gate semantics | **Implemented (v0.9.14)** |
+| 2 | Cycle Event System (v0) | Canonical lifecycle event bus, 20-event taxonomy, bridge adapters. v0 scope only — emit + bridge. Full rewire (v1) and event-first (v2) follow later. | Proposed |
+| 3 | Planning Workload Protocol | Planning contract, durable planning artifact, QA-first test strategy, proto validation, unknown classification, readiness decision | Proposed |
+| 4 | Implementation Run Contract | Run contract, correction protocol (detect → RCA → decide → plan delta → resume), **durable checkpoint/resume**, bounded retry/timebox | Proposed |
+| 5 | Wrap-Up Workload Protocol | Closeout artifact, planned-vs-actual comparison, confidence classification, structured unresolved issues, next-cycle handoff | Proposed |
 
 **Why this order**: Workload Canon defines the execution vocabulary. Event System provides lifecycle facts. The three pipeline protocols (Planning → Implementation → Wrap-Up) build on both. Implementation Run Contract is the single most important Spark-readiness SIP — without durable checkpoint/resume, a long run is fragile regardless of how clean the architecture is. Wrap-up is execution safety, not reporting polish — it is what makes memory, evaluation, and next-cycle readiness trustworthy.
 
@@ -259,13 +266,13 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ### 1.0 Track — Spark-Critical
 
-| SIP | Title |
-|-----|-------|
-| (unnumbered) | Workload & Gate Canon |
-| (unnumbered) | Cycle Event System |
-| (unnumbered) | Planning Workload Protocol |
-| (unnumbered) | Implementation Run Contract & Correction Protocol |
-| (unnumbered) | Wrap-Up Workload Protocol |
+| SIP | Title | Status |
+|-----|-------|--------|
+| **SIP-0076** | Workload & Gate Canon | **Implemented** |
+| (unnumbered) | Cycle Event System | Proposed |
+| (unnumbered) | Planning Workload Protocol | Proposed |
+| (unnumbered) | Implementation Run Contract & Correction Protocol | Proposed |
+| (unnumbered) | Wrap-Up Workload Protocol | Proposed |
 
 ### 1.0 Track — Hardening
 
@@ -290,8 +297,8 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-- **Framework version**: 0.9.13
-- **SIPs**: 45 implemented, 0 accepted, 14 proposals (7 on 1.0 track), 15 deprecated
-- **Tests**: 2,206+ passing
+- **Framework version**: 0.9.14
+- **SIPs**: 46 implemented, 0 accepted, 13 proposals (6 on 1.0 track), 15 deprecated
+- **Tests**: 2,485+ passing
 - **Python source**: ~42,000 lines
 - **5 months** from initial repo to production-grade console UI
