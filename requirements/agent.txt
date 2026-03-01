@@ -1,5 +1,5 @@
 # SquadOps Agent Container Dependencies
--r requirements.txt
+-r base.txt
 
 # Message queue
 aio-pika==9.3.1

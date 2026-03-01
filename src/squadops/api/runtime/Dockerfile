@@ -33,11 +33,11 @@ RUN apt-get update && apt-get install -y \
 
 # Copy dependency files FIRST (for better layer caching)
 COPY pyproject.toml ./
-COPY requirements-api.lock ./
+COPY requirements/ ./requirements/
 
 # Install dependencies (this layer is cached when requirements don't change)
 # BuildKit cache mount preserves pip download cache across builds
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements-api.lock
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements/api.lock
 
 # Cache-bust: when SOURCE_HASH changes, Docker invalidates this layer and below
 ARG SOURCE_HASH=unknown
