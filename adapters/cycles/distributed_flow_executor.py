@@ -38,6 +38,7 @@ from squadops.cycles.pulse_verification import (
     run_pulse_verification,
 )
 from squadops.cycles.task_plan import generate_task_plan
+from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
@@ -147,6 +148,12 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
             # queued -> running
             await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
+            self._cycle_event_bus.emit(
+                EventType.RUN_STARTED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle_id, "run_id": run_id, "project_id": cycle.project_id},
+            )
 
             plan = generate_task_plan(cycle, run, profile)
 
@@ -240,21 +247,47 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
             # Success -> completed
             await self._cycle_registry.update_run_status(run_id, RunStatus.COMPLETED)
+            self._cycle_event_bus.emit(
+                EventType.RUN_COMPLETED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle_id, "run_id": run_id, "project_id": cycle.project_id},
+            )
             logger.info("Run %s completed successfully", run_id)
 
         except _CancellationError:
             terminal_status = "CANCELLED"
             await self._safe_transition(run_id, RunStatus.CANCELLED)
+            self._cycle_event_bus.emit(
+                EventType.RUN_CANCELLED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle_id, "run_id": run_id},
+            )
             logger.info("Run %s cancelled", run_id)
 
         except _ExecutionError as exc:
             terminal_status = "FAILED"
             await self._safe_transition(run_id, RunStatus.FAILED)
+            self._cycle_event_bus.emit(
+                EventType.RUN_FAILED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle_id, "run_id": run_id},
+                payload={"error": str(exc)},
+            )
             logger.error("Run %s failed: %s", run_id, exc)
 
         except Exception as exc:
             terminal_status = "FAILED"
             await self._safe_transition(run_id, RunStatus.FAILED)
+            self._cycle_event_bus.emit(
+                EventType.RUN_FAILED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle_id, "run_id": run_id},
+                payload={"error": str(exc)},
+            )
             logger.exception("Run %s failed with unexpected error: %s", run_id, exc)
 
         finally:
@@ -792,6 +825,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
         ]
         logger.info("Run %s paused at gate(s): %s", run_id, gate_names)
         await self._cycle_registry.update_run_status(run_id, RunStatus.PAUSED)
+        self._cycle_event_bus.emit(
+            EventType.RUN_PAUSED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+            payload={"gate_names": gate_names},
+        )
 
         poll_interval = 2.0
         while True:
@@ -804,6 +844,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     if decision.gate_name == gate_name:
                         if decision.decision == "approved":
                             await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
+                            self._cycle_event_bus.emit(
+                                EventType.RUN_RESUMED,
+                                entity_type="run",
+                                entity_id=run_id,
+                                context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                                payload={"gate_name": gate_name},
+                            )
                             logger.info("Gate %r approved, resuming run %s", gate_name, run_id)
                             return
                         elif decision.decision == "rejected":
