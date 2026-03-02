@@ -108,5 +108,6 @@ def create_flow_executor(
             task_timeout=kwargs.get("task_timeout", 300.0),
             llm_observability=kwargs.get("llm_observability"),
             prefect_reporter=prefect_reporter,
+            event_bus=kwargs.get("event_bus"),
         )
     raise ValueError(f"Unknown flow executor provider: {provider}")

@@ -56,11 +56,11 @@ RUN apt-get update && apt-get install -y \
 
 # Copy dependency files FIRST (for better layer caching)
 COPY pyproject.toml ./
-COPY requirements-agent.lock ./
+COPY requirements/ ./requirements/
 
 # Install dependencies (this layer is cached when requirements don't change)
 # BuildKit cache mount preserves pip download cache across builds
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements-agent.lock
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements/agent.lock
 
 # Copy agent configuration (instances for role-specific config + per-role extras)
 COPY agents/instances/ ./agents/instances/

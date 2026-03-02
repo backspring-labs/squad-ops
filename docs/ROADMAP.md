@@ -4,6 +4,15 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
+### v0.9.15 (2026-03-01) — Cycle Event System
+- **SIP-0077** Cycle Event System
+  - `CycleEventBusPort` with 20-event taxonomy across 6 entity types
+  - `InProcessCycleEventBus` adapter with per-run monotonic sequences
+  - Bridge subscribers: LangFuseBridge, PrefectBridge, MetricsBridge
+  - 25 emission points (19 executor + 6 API routes)
+  - Dual-emit alongside existing telemetry (v0 scope)
+  - Drift detection tests for registry/event parity
+
 ### v0.9.14 (2026-02-28) — Workload & Gate Canon
 - **SIP-0076** Workload & Gate Canon
   - `WorkloadType` and `PromotionStatus` constants, DDL migration

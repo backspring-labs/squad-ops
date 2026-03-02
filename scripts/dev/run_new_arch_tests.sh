@@ -25,6 +25,7 @@ NEW_ARCH_DIRS=(
     "tests/unit/agent_foundation/"
     "tests/unit/capabilities/"
     "tests/unit/cycles/"
+    "tests/unit/events/"
     "tests/unit/cli/"
     "tests/unit/console/"
     "tests/unit/contracts/"

@@ -69,6 +69,24 @@ async def ingest_artifact(
 
         vault = get_artifact_vault()
         stored = await vault.store(ref, content)
+
+        # SIP-0077: artifact.stored
+        from squadops.api.runtime.deps import get_cycle_event_bus
+        from squadops.events.types import EventType
+
+        get_cycle_event_bus().emit(
+            EventType.ARTIFACT_STORED,
+            entity_type="artifact",
+            entity_id=stored.artifact_id,
+            context={"project_id": project_id},
+            payload={
+                "artifact_type": stored.artifact_type,
+                "filename": stored.filename,
+                "size_bytes": stored.size_bytes,
+                "content_hash": stored.content_hash,
+            },
+        )
+
         return artifact_to_response(stored)
     except CycleError as e:
         raise handle_cycle_error(e) from e
@@ -112,6 +130,23 @@ async def promote_artifact(artifact_id: str):
     try:
         vault = get_artifact_vault()
         promoted = await vault.promote_artifact(artifact_id)
+
+        # SIP-0077: artifact.promoted
+        from squadops.api.runtime.deps import get_cycle_event_bus
+        from squadops.events.types import EventType
+
+        get_cycle_event_bus().emit(
+            EventType.ARTIFACT_PROMOTED,
+            entity_type="artifact",
+            entity_id=promoted.artifact_id,
+            context={"project_id": promoted.project_id} if promoted.project_id else {},
+            payload={
+                "artifact_type": promoted.artifact_type,
+                "filename": promoted.filename,
+                "promotion_status": promoted.promotion_status,
+            },
+        )
+
         return artifact_to_response(promoted)
     except CycleError as e:
         raise handle_cycle_error(e) from e

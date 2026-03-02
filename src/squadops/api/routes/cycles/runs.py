@@ -40,6 +40,27 @@ async def create_run(project_id: str, cycle_id: str, workload_type: str | None =
             workload_type=validated_wt,
         )
         created = await registry.create_run(run)
+
+        # SIP-0077: run.created
+        from squadops.api.runtime.deps import get_cycle_event_bus
+        from squadops.events.types import EventType
+
+        get_cycle_event_bus().emit(
+            EventType.RUN_CREATED,
+            entity_type="run",
+            entity_id=created.run_id,
+            context={
+                "cycle_id": cycle_id,
+                "run_id": created.run_id,
+                "project_id": project_id,
+            },
+            payload={
+                "run_number": created.run_number,
+                "initiated_by": created.initiated_by,
+                "workload_type": created.workload_type,
+            },
+        )
+
         return run_to_response(created)
     except CycleError as e:
         raise handle_cycle_error(e) from e
@@ -101,6 +122,28 @@ async def gate_decision(
             notes=body.notes,
         )
         updated = await registry.record_gate_decision(run_id, decision)
+
+        # SIP-0077: gate.decided
+        from squadops.api.runtime.deps import get_cycle_event_bus
+        from squadops.events.types import EventType
+
+        get_cycle_event_bus().emit(
+            EventType.GATE_DECIDED,
+            entity_type="gate",
+            entity_id=gate_name,
+            context={
+                "cycle_id": cycle_id,
+                "run_id": run_id,
+                "project_id": project_id,
+            },
+            payload={
+                "gate_name": gate_name,
+                "decision": body.decision,
+                "decided_by": decision.decided_by,
+                "notes": body.notes,
+            },
+        )
+
         return run_to_response(updated)
     except CycleError as e:
         raise handle_cycle_error(e) from e

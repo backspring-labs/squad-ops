@@ -11,7 +11,7 @@ include = ["squadops*", "adapters*"]  # Include both packages
 
 [project]
 name = "squadops"
-version = "0.9.14"
+version = "0.9.15"
 description = "SquadOps: a production-grade multi-agent orchestration framework."
 requires-python = ">=3.11"
 authors = [
@@ -121,6 +121,8 @@ markers = [
     "domain_contracts: Contract domain tests",
     # Pulse Checks (SIP-0070)
     "domain_pulse_checks: Pulse check verification domain tests",
+    # Cycle Event System (SIP-0077)
+    "domain_events: Cycle lifecycle event system tests",
 ]
 
 ###########################

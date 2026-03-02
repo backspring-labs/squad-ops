@@ -279,6 +279,26 @@ async def startup_event():
 
             _prefect_reporter = PrefectReporter(api_url=config.prefect.api_url)
 
+        # SIP-0077: Create cycle event bus and register bridge subscribers
+        from adapters.events.factory import create_cycle_event_bus
+        from squadops.api.runtime.deps import set_cycle_event_bus
+
+        event_bus = create_cycle_event_bus(
+            "in_process",
+            source_service="runtime-api",
+            source_version=SQUADOPS_VERSION,
+        )
+        if llm_obs:
+            from squadops.events.bridges.langfuse import LangFuseBridge
+
+            event_bus.subscribe(LangFuseBridge(llm_obs))
+        if _prefect_reporter:
+            from squadops.events.bridges.prefect import PrefectBridge
+
+            event_bus.subscribe(PrefectBridge(_prefect_reporter))
+        # MetricsBridge deferred: no MetricsPort wired in runtime-api yet
+        set_cycle_event_bus(event_bus)
+
         flow_executor = create_flow_executor(
             "distributed",
             cycle_registry=cycle_registry,
@@ -288,6 +308,7 @@ async def startup_event():
             queue=queue_adapter,
             llm_observability=llm_obs,
             prefect_reporter=_prefect_reporter,
+            event_bus=event_bus,
         )
 
         set_cycle_ports(

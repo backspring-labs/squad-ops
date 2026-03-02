@@ -15,6 +15,7 @@ from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
+from squadops.ports.events.cycle_event_bus import CycleEventBusPort
 from squadops.ports.llm.provider import LLMPort
 
 if TYPE_CHECKING:
@@ -32,6 +33,10 @@ _cycle_registry: CycleRegistryPort | None = None
 _squad_profile: SquadProfilePort | None = None
 _artifact_vault: ArtifactVaultPort | None = None
 _flow_executor: FlowExecutionPort | None = None
+
+# SIP-0077: Cycle event bus
+_cycle_event_bus: CycleEventBusPort | None = None
+_cycle_event_bus_warned: bool = False
 
 # SIP-0075: LLM port for model management endpoints
 _llm_port: LLMPort | None = None
@@ -145,6 +150,43 @@ def get_health_checker() -> HealthChecker:
     if _health_checker is None:
         raise RuntimeError("HealthChecker not configured")
     return _health_checker
+
+
+# =============================================================================
+# SIP-0077: Cycle event bus
+# =============================================================================
+
+
+def set_cycle_event_bus(bus: CycleEventBusPort) -> None:
+    """Set the cycle event bus instance (SIP-0077)."""
+    global _cycle_event_bus
+    _cycle_event_bus = bus
+
+
+def get_cycle_event_bus() -> CycleEventBusPort:
+    """Return the CycleEventBusPort instance.
+
+    Unlike other port getters, this returns NoOpCycleEventBus instead of
+    raising RuntimeError — event emission is best-effort, routes should
+    never fail because the bus is unconfigured. Logs a warning once per
+    process when falling back to NoOp.
+    """
+    global _cycle_event_bus_warned
+    if _cycle_event_bus is not None:
+        return _cycle_event_bus
+
+    if not _cycle_event_bus_warned:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "CycleEventBusPort not configured — using NoOpCycleEventBus. "
+            "Canonical event publication is disabled/degraded."
+        )
+        _cycle_event_bus_warned = True
+
+    from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
+
+    return NoOpCycleEventBus()
 
 
 # =============================================================================
