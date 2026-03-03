@@ -89,8 +89,11 @@ elif run.workload_type == WorkloadType.IMPLEMENTATION:
         steps = list(BUILDER_ASSEMBLY_TASK_STEPS)
     else:
         steps = list(BUILD_TASK_STEPS)
+elif run.workload_type is not None:
+    # Unknown non-null workload_type — reject, don't silently fall through to legacy
+    raise CycleError(f"Unknown workload_type: {run.workload_type!r}")
 else:
-    # Legacy: no workload_type → existing plan_tasks/build_tasks logic (unchanged)
+    # Legacy: workload_type is None → existing plan_tasks/build_tasks logic (unchanged)
     ...
 ```
 
@@ -106,6 +109,7 @@ When `workload_type` is set, the function skips the `plan_tasks`/`build_tasks` f
 - Planning produces shared correlation_id and trace_id across all 5 envelopes
 - Planning produces correct causation chain (task → task)
 - Planning with missing role → CycleError (validates REQUIRED_PLAN_ROLES explicitly in the planning branch)
+- Unknown non-null `workload_type` (e.g., `"plannnig"`) → CycleError (not silent legacy fallback)
 
 ---
 
@@ -153,13 +157,34 @@ class GovernanceAssessReadinessHandler(_CycleTaskHandler):
     _artifact_name = "planning_artifact.md"
 ```
 
+**`GovernanceAssessReadinessHandler` structural validation:** This handler owns the canonical downstream handoff artifact. In addition to the standard LLM call, its `handle()` must perform lightweight post-generation validation on the artifact content before returning success:
+- YAML frontmatter exists (text between `---` delimiters at start of content)
+- `readiness` field exists in frontmatter (one of `go`, `revise`, `no-go`)
+- `sufficiency_score` field exists and parses as integer 0–5
+
+If any of these fail, return `HandlerResult(success=False)` with a structured error describing which validation failed. This catches prompt compliance failures before a malformed artifact silently enters the artifact vault.
+
+**V1.1 deferrals (advisory via prompt only, not mechanically enforced in V1):**
+- Blocker unknowns + `readiness=go` inconsistency detection
+- Unknown-classification values validated against `UnknownClassification` canonical set
+- `sufficiency_score` cross-checked against count of "yes" rows in the sufficiency table
+
+These semantic validations require markdown table parsing. In V1, the prompt fragment instructs the LLM to follow these rules, but they are not mechanically verified.
+
 The base `_CycleTaskHandler.handle()` does most of the work: builds user prompt from PRD + prior_outputs, gets system prompt, calls LLM, records generation, returns artifacts. However, the current base class calls `context.ports.prompt_service.get_system_prompt(self._role)` which is `assemble(role, hook="agent_start")` — **without passing `task_type`**. This means the assembler skips the task_type layer entirely.
 
 **Planning handlers need a minor override** to activate the task_type prompt fragments. The planning handler base should call `context.ports.prompt_service.assemble(role=self._role, hook="agent_start", task_type=self._capability_id)` instead of `get_system_prompt()`. This is a one-line change in `handle()` — either a shared `_PlanningTaskHandler` base or individual overrides. The cleanest approach is a `_PlanningTaskHandler(_CycleTaskHandler)` base class that overrides only the prompt assembly line:
 
 ```python
 class _PlanningTaskHandler(_CycleTaskHandler):
-    """Base for planning handlers — activates task_type prompt fragments."""
+    """Base for planning/refinement handlers — activates task_type prompt fragments.
+
+    V1 specialization: exists because planning/refinement handlers need
+    assemble(task_type=...) while existing cycle/build handlers do not.
+    If future workload protocols also need task_type assembly, this may be
+    unified into _CycleTaskHandler. Until then, the split is intentional —
+    do not merge prematurely.
+    """
 
     async def handle(self, context, inputs):
         # Override: use assemble() with task_type to include task-specific prompt fragment
@@ -198,6 +223,10 @@ Registration entries:
 - Prior_outputs chaining: handler receives upstream outputs in user prompt
 - LLM failure → HandlerResult with `success=False`
 - All 5 handlers registered in HANDLER_CONFIGS with correct roles
+- `GovernanceAssessReadinessHandler.handle()` validates frontmatter exists in artifact content
+- `GovernanceAssessReadinessHandler.handle()` returns `success=False` when `readiness` missing from frontmatter
+- `GovernanceAssessReadinessHandler.handle()` returns `success=False` when `sufficiency_score` is not int 0–5
+- All 7 task_type fragments load through manifest and are included in assembled prompts for corresponding handlers
 
 Test pattern: mock `ExecutionContext` with mock LLM port (returns canned response), mock PromptService. Same pattern as existing handler tests in `tests/unit/capabilities/`.
 
@@ -288,16 +317,20 @@ Also needs a custom `handle()` that enforces D17 at execution time — if `plan_
 2. Artifact unreadable (vault retrieval fails) → caught by `handle()` during artifact resolution
 3. Resolves to no content (empty artifact) → caught by `handle()` before LLM call
 
+**Artifact-ref resolution rule (V1):** The handler resolves `plan_artifact_refs` via the executor's existing `artifact_contents` pre-resolution (same pattern as build handlers — see `_BUILD_ARTIFACT_FILTER` in `distributed_flow_executor.py`). The executor pre-resolves artifact content into `inputs["artifact_contents"]` keyed by filename. If pre-resolution is unavailable (e.g., 512KB limit exceeded), fallback to vault retrieval via `inputs["artifact_vault"]`. This follows the established pattern from `DevelopmentDevelopHandler._resolve_with_vault_fallback()`.
+
+**`plan_artifact_refs` cardinality (V1):** `plan_artifact_refs` must contain **exactly one** artifact ref. Zero → validation failure (caught by `validate_inputs()`). More than one → validation failure. Refinement must be deterministic — multiple source planning artifacts introduce ambiguity.
+
 Also needs a custom `_build_user_prompt()` that includes:
-- The original planning artifact content (from `plan_artifact_refs` resolved via artifact vault or `artifact_contents` pre-resolution)
+- The original planning artifact content (resolved from the single `plan_artifact_refs` entry)
 - Refinement instructions (from `resolved_config.get("refinement_instructions")`)
 - Prior outputs (standard)
 
 **Companion artifact (SIP §5.9):** `GovernanceIncorporateFeedbackHandler` produces TWO artifacts:
-1. `planning_artifact_revised.md` — the updated planning artifact (canonical handoff)
-2. `plan_refinement.md` — companion change-tracking artifact with YAML frontmatter (`original_plan_ref`, `refinement_source`, `scope_change`, `sequencing_changed`) and a structured Changes Applied table + Incorporation Summary
+1. `planning_artifact_revised.md` — the **canonical** downstream planning handoff artifact. This is what implementation runs reference.
+2. `plan_refinement.md` — companion audit/change-tracking artifact only. Not a handoff artifact. Has YAML frontmatter (`original_plan_ref`, `refinement_source`, `scope_change`, `sequencing_changed`) and a structured Changes Applied table + Incorporation Summary.
 
-The handler's `handle()` should emit both artifacts in the outputs list. The `_artifact_name` class attribute is `planning_artifact_revised.md` (primary), and `plan_refinement.md` is added programmatically.
+The handler's `handle()` emits both artifacts in the outputs list. The `_artifact_name` class attribute is `planning_artifact_revised.md` (primary), and `plan_refinement.md` is added programmatically. Downstream consumers select `planning_artifact_revised.md` by name/type as the canonical handoff — `plan_refinement.md` is never treated as the authoritative plan artifact.
 
 **Modified file:**
 
@@ -327,7 +360,8 @@ Registration entries:
 **Tests:** `tests/unit/capabilities/handlers/test_planning_tasks.py` (add ~18)
 - `GovernanceIncorporateFeedbackHandler` has correct capability_id and artifact_name
 - `GovernanceIncorporateFeedbackHandler.validate_inputs()` fails when `plan_artifact_refs` is missing
-- `GovernanceIncorporateFeedbackHandler.validate_inputs()` passes when `plan_artifact_refs` is present
+- `GovernanceIncorporateFeedbackHandler.validate_inputs()` passes when `plan_artifact_refs` has exactly one ref
+- `GovernanceIncorporateFeedbackHandler.validate_inputs()` fails when `plan_artifact_refs` has multiple refs
 - `GovernanceIncorporateFeedbackHandler.handle()` fails when artifact content is empty (D17 condition 3)
 - `GovernanceIncorporateFeedbackHandler.handle()` includes refinement instructions in user prompt
 - `GovernanceIncorporateFeedbackHandler.handle()` produces both `planning_artifact_revised.md` and `plan_refinement.md` (SIP §5.9)
@@ -352,6 +386,8 @@ Profile content per SIP §5.13 — includes:
 - `workload_sequence` with planning → implementation ordering (informational in 1.0)
 - 3 planning pulse check suites: `planning_scope_guard` (milestone, post-strategy), `planning_completeness` (milestone, post-consolidation), `planning_heartbeat` (cadence, optional per SIP §5.11)
 - `cadence_policy` with `max_pulse_seconds: 5400`, `max_tasks_per_pulse: 5`
+
+**V1 scope:** `planning.yaml` is valid as a canonical cycle request profile for manual/operator-created planning runs in 1.0. Its `workload_sequence` is declarative and validating (gate prefix enforcement) but not automatically orchestrated by executor logic. The multi-workload orchestration pipeline that automatically creates runs for each workload entry is a separate SIP.
 
 **Tests:** `tests/unit/contracts/test_planning_profile.py` (~5)
 - Profile loads and validates without errors
@@ -389,8 +425,8 @@ Profile content per SIP §5.13 — includes:
 | File | Tests |
 |------|-------|
 | `tests/unit/cycles/test_unknown_classification.py` | ~5 |
-| `tests/unit/cycles/test_planning_task_plan.py` | ~15 |
-| `tests/unit/capabilities/handlers/test_planning_tasks.py` | ~35 |
+| `tests/unit/cycles/test_planning_task_plan.py` | ~17 |
+| `tests/unit/capabilities/handlers/test_planning_tasks.py` | ~45 |
 | `tests/unit/contracts/test_planning_profile.py` | ~5 |
 
 ### Modified Files (4)
@@ -412,8 +448,8 @@ Profile content per SIP §5.13 — includes:
 | `src/squadops/cycles/pulse_models.py` | No new pulse models |
 | `src/squadops/contracts/cycle_request_profiles/schema.py` | `workload_sequence` already in `_APPLIED_DEFAULTS_EXTRA_KEYS` |
 
-**Estimated new tests:** ~65
-**Estimated total after:** ~2,692
+**Estimated new tests:** ~75
+**Estimated total after:** ~2,702
 
 ---
 
