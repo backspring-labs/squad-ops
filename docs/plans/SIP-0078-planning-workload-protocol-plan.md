@@ -42,7 +42,7 @@ SIP-0078 introduces planning-specific task steps, handlers, unknown classificati
 
 | File | Change |
 |------|--------|
-| `src/squadops/cycles/task_plan.py` | Add `PLANNING_TASK_STEPS`, `REFINEMENT_TASK_STEPS` constants. Add workload-type branching at top of `generate_task_plan()` — when `run.workload_type` is set, it takes precedence over `plan_tasks`/`build_tasks` flags. Import `REQUIRED_REFINEMENT_ROLES` from models, validate for refinement runs. |
+| `src/squadops/cycles/task_plan.py` | Add `PLANNING_TASK_STEPS`, `REFINEMENT_TASK_STEPS` constants. Add workload-type branching at top of `generate_task_plan()` — when `run.workload_type` is set, it takes precedence over `plan_tasks`/`build_tasks` flags. Add `WorkloadType` and `REQUIRED_REFINEMENT_ROLES` to the existing `from squadops.cycles.models import ...` line. |
 
 **Task step definitions:**
 
@@ -64,9 +64,17 @@ REFINEMENT_TASK_STEPS: list[tuple[str, str]] = [
 **Branching logic in `generate_task_plan()`** — insert before existing step selection:
 
 ```python
-from squadops.cycles.models import WorkloadType, REQUIRED_REFINEMENT_ROLES
+# Add to existing import: from squadops.cycles.models import ..., WorkloadType, REQUIRED_REFINEMENT_ROLES
 
 if run.workload_type == WorkloadType.PLANNING:
+    # Validate required roles (planning uses all 5 standard roles)
+    profile_roles = {a.role for a in profile.agents if a.enabled}
+    missing = REQUIRED_PLAN_ROLES - profile_roles
+    if missing:
+        raise CycleError(
+            f"Squad profile '{profile.profile_id}' is missing required roles: "
+            f"{', '.join(sorted(missing))}"
+        )
     steps = list(PLANNING_TASK_STEPS)
 elif run.workload_type == WorkloadType.REFINEMENT:
     # Validate required roles
@@ -97,7 +105,7 @@ When `workload_type` is set, the function skips the `plan_tasks`/`build_tasks` f
 - Refinement with missing QA role → CycleError
 - Planning produces shared correlation_id and trace_id across all 5 envelopes
 - Planning produces correct causation chain (task → task)
-- Planning validates REQUIRED_PLAN_ROLES (already covered by existing logic)
+- Planning with missing role → CycleError (validates REQUIRED_PLAN_ROLES explicitly in the planning branch)
 
 ---
 
@@ -191,7 +199,9 @@ Registration entries:
 - LLM failure → HandlerResult with `success=False`
 - All 5 handlers registered in HANDLER_CONFIGS with correct roles
 
-Test pattern: mock `ExecutionContext` with mock LLM port (returns canned response), mock PromptService. Same pattern as `tests/unit/capabilities/handlers/` existing tests.
+Test pattern: mock `ExecutionContext` with mock LLM port (returns canned response), mock PromptService. Same pattern as existing handler tests in `tests/unit/capabilities/`.
+
+**Note:** Existing handler tests live flat in `tests/unit/capabilities/` (e.g., `test_cycle_task_handlers.py`, `test_build_handlers.py`). The `tests/unit/capabilities/handlers/` subdirectory does not exist yet — it must be created. This is a deliberate choice to organize the growing number of handler test files. `run_new_arch_tests.sh` already includes `tests/unit/capabilities/` which discovers subdirectories recursively, so no script change is needed.
 
 ### Commit 2b: Task-type prompt fragments for planning
 
@@ -244,21 +254,25 @@ Each fragment is a focused markdown file (~20-40 lines) that the PromptAssembler
 |------|--------|
 | `src/squadops/capabilities/handlers/planning_tasks.py` | Add 2 refinement handlers |
 
+Both refinement handlers extend `_PlanningTaskHandler` (same as planning handlers) so their task_type prompt fragments are activated via `assemble(task_type=self._capability_id)`.
+
 ```python
-class GovernanceIncorporateFeedbackHandler(_CycleTaskHandler):
+class GovernanceIncorporateFeedbackHandler(_PlanningTaskHandler):
     _handler_name = "governance_incorporate_feedback_handler"
     _capability_id = "governance.incorporate_feedback"
     _role = "lead"
     _artifact_name = "planning_artifact_revised.md"
 
-class QAValidateRefinementHandler(_CycleTaskHandler):
+class QAValidateRefinementHandler(_PlanningTaskHandler):
     _handler_name = "qa_validate_refinement_handler"
     _capability_id = "qa.validate_refinement"
     _role = "qa"
     _artifact_name = "refinement_validation.md"
 ```
 
-**`GovernanceIncorporateFeedbackHandler` override:** This handler needs a custom `validate_inputs()` to enforce D17 — if `plan_artifact_refs` is missing from `execution_overrides` in inputs, fail immediately with a validation error:
+**`GovernanceIncorporateFeedbackHandler` overrides (D17 fail-fast):**
+
+This handler needs a custom `validate_inputs()` to enforce D17 — fail if `plan_artifact_refs` is missing from `execution_overrides`:
 
 ```python
 def validate_inputs(self, inputs, contract=None):
@@ -269,10 +283,21 @@ def validate_inputs(self, inputs, contract=None):
     return errors
 ```
 
+Also needs a custom `handle()` that enforces D17 at execution time — if `plan_artifact_refs` is present but the resolved content is empty or unreadable, return `HandlerResult(success=False)` with a structured error. The three D17 failure conditions are:
+1. `plan_artifact_refs` missing from `execution_overrides` → caught by `validate_inputs()`
+2. Artifact unreadable (vault retrieval fails) → caught by `handle()` during artifact resolution
+3. Resolves to no content (empty artifact) → caught by `handle()` before LLM call
+
 Also needs a custom `_build_user_prompt()` that includes:
 - The original planning artifact content (from `plan_artifact_refs` resolved via artifact vault or `artifact_contents` pre-resolution)
 - Refinement instructions (from `resolved_config.get("refinement_instructions")`)
 - Prior outputs (standard)
+
+**Companion artifact (SIP §5.9):** `GovernanceIncorporateFeedbackHandler` produces TWO artifacts:
+1. `planning_artifact_revised.md` — the updated planning artifact (canonical handoff)
+2. `plan_refinement.md` — companion change-tracking artifact with YAML frontmatter (`original_plan_ref`, `refinement_source`, `scope_change`, `sequencing_changed`) and a structured Changes Applied table + Incorporation Summary
+
+The handler's `handle()` should emit both artifacts in the outputs list. The `_artifact_name` class attribute is `planning_artifact_revised.md` (primary), and `plan_refinement.md` is added programmatically.
 
 **Modified file:**
 
@@ -299,12 +324,15 @@ Registration entries:
 |------|--------|
 | `src/squadops/prompts/fragments/manifest.yaml` | Add 2 refinement task_type fragment entries with SHA256 hashes |
 
-**Tests:** `tests/unit/capabilities/handlers/test_planning_tasks.py` (add ~15)
+**Tests:** `tests/unit/capabilities/handlers/test_planning_tasks.py` (add ~18)
 - `GovernanceIncorporateFeedbackHandler` has correct capability_id and artifact_name
 - `GovernanceIncorporateFeedbackHandler.validate_inputs()` fails when `plan_artifact_refs` is missing
 - `GovernanceIncorporateFeedbackHandler.validate_inputs()` passes when `plan_artifact_refs` is present
+- `GovernanceIncorporateFeedbackHandler.handle()` fails when artifact content is empty (D17 condition 3)
 - `GovernanceIncorporateFeedbackHandler.handle()` includes refinement instructions in user prompt
+- `GovernanceIncorporateFeedbackHandler.handle()` produces both `planning_artifact_revised.md` and `plan_refinement.md` (SIP §5.9)
 - `QAValidateRefinementHandler` has correct capability_id and artifact_name
+- Both refinement handlers extend `_PlanningTaskHandler` (use task_type prompt assembly)
 - Both handlers registered in HANDLER_CONFIGS
 
 ---
@@ -322,7 +350,7 @@ Registration entries:
 Profile content per SIP §5.13 — includes:
 - `task_flow_policy.gates` with `progress_plan_review` gate after `governance.assess_readiness`
 - `workload_sequence` with planning → implementation ordering (informational in 1.0)
-- 2 planning pulse check suites (`planning_scope_guard`, `planning_completeness`)
+- 3 planning pulse check suites: `planning_scope_guard` (milestone, post-strategy), `planning_completeness` (milestone, post-consolidation), `planning_heartbeat` (cadence, optional per SIP §5.11)
 - `cadence_policy` with `max_pulse_seconds: 5400`, `max_tasks_per_pulse: 5`
 
 **Tests:** `tests/unit/contracts/test_planning_profile.py` (~5)
@@ -333,11 +361,9 @@ Profile content per SIP §5.13 — includes:
 
 ### Commit 4b: Version bump + plan file + final cleanup
 
-- Copy this plan to `docs/plans/SIP-0078-planning-workload-protocol-plan.md`
 - Bump version to `0.9.16` in `pyproject.toml`
-- Add `tests/unit/capabilities/handlers/` to `run_new_arch_tests.sh` if not already present
 - Run full regression suite
-- Update `docs/ROADMAP.md` with v0.9.16 entry
+- Update `docs/ROADMAP.md` with v0.9.16 entry (and fix stale stats block which still says v0.9.14)
 
 ---
 
@@ -386,8 +412,8 @@ Profile content per SIP §5.13 — includes:
 | `src/squadops/cycles/pulse_models.py` | No new pulse models |
 | `src/squadops/contracts/cycle_request_profiles/schema.py` | `workload_sequence` already in `_APPLIED_DEFAULTS_EXTRA_KEYS` |
 
-**Estimated new tests:** ~60
-**Estimated total after:** ~2,687
+**Estimated new tests:** ~65
+**Estimated total after:** ~2,692
 
 ---
 
