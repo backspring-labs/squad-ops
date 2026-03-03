@@ -259,17 +259,27 @@ fi
 # Rebuild Console if requested
 if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "${YELLOW}📦 Rebuilding console...${NC}"
-    if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-        BUILD_OK=true; docker-compose build --no-cache squadops-console || BUILD_OK=false
-    else
-        BUILD_OK=true; docker-compose build squadops-console || BUILD_OK=false
-    fi
-    if [ "$BUILD_OK" = true ]; then
-        docker-compose up -d squadops-console
-        echo -e "${GREEN}✅ Console rebuilt and restarted${NC}"
-    else
+
+    # Generate .env.console from console/continuum.lock (required for Docker build args)
+    echo -e "${BLUE}   Generating .env.console from console/continuum.lock...${NC}"
+    if ! "$REPO_ROOT/scripts/dev/gen_console_env.sh"; then
         CONSOLE_FAILED=1
-        echo -e "${RED}  ⚠️  Console build failed — skipping restart, continuing with agents${NC}"
+        echo -e "${RED}  ⚠️  gen_console_env.sh failed — skipping console build${NC}"
+    fi
+
+    if [ "$CONSOLE_FAILED" != "1" ]; then
+        if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+            BUILD_OK=true; docker-compose build --no-cache squadops-console || BUILD_OK=false
+        else
+            BUILD_OK=true; docker-compose build squadops-console || BUILD_OK=false
+        fi
+        if [ "$BUILD_OK" = true ]; then
+            docker-compose up -d squadops-console
+            echo -e "${GREEN}✅ Console rebuilt and restarted${NC}"
+        else
+            CONSOLE_FAILED=1
+            echo -e "${RED}  ⚠️  Console build failed — skipping restart, continuing with agents${NC}"
+        fi
     fi
 fi
 
