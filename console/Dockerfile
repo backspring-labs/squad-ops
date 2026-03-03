@@ -12,22 +12,10 @@ RUN set -e && \
     git init /continuum && \
     cd /continuum && \
     git remote add origin "${CONTINUUM_GIT_URL}" && \
-    # Determine ref type and fetch accordingly
-    if echo "${CONTINUUM_REF}" | grep -qE '^[0-9a-f]{40}$'; then \
-        echo "Fetching SHA: ${CONTINUUM_REF}" && \
-        git fetch --depth 1 origin "${CONTINUUM_REF}" && \
-        git checkout FETCH_HEAD; \
-    elif echo "${CONTINUUM_REF}" | grep -q 'refs/tags/'; then \
-        TAG_REF="${CONTINUUM_REF#refs/tags/}" && \
-        echo "Fetching tag: ${TAG_REF}" && \
-        git fetch --depth 1 origin "refs/tags/${TAG_REF}" && \
-        git checkout FETCH_HEAD; \
-    else \
-        echo "Fetching branch: ${CONTINUUM_REF}" && \
-        git fetch --depth 1 origin "${CONTINUUM_REF}" && \
-        git checkout "origin/${CONTINUUM_REF}" && \
-        echo "Resolved ${CONTINUUM_REF} → $(git rev-parse HEAD)"; \
-    fi && \
+    echo "Fetching ref: ${CONTINUUM_REF}" && \
+    git fetch --depth 1 origin "${CONTINUUM_REF}" && \
+    git checkout FETCH_HEAD && \
+    echo "Resolved ${CONTINUUM_REF} → $(git rev-parse HEAD)" && \
     git rev-parse HEAD > /continuum/.resolved_sha
 
 # ── Stage 1: Build SvelteKit shell ───────────────────────────────────────────
