@@ -145,11 +145,27 @@ class GovernanceAssessReadinessHandler(_CycleTaskHandler):
     _artifact_name = "planning_artifact.md"
 ```
 
-The base `_CycleTaskHandler.handle()` does all the work: builds user prompt from PRD + prior_outputs, gets system prompt via `context.ports.prompt_service.get_system_prompt(role)`, calls LLM, records generation, returns artifacts.
+The base `_CycleTaskHandler.handle()` does most of the work: builds user prompt from PRD + prior_outputs, gets system prompt, calls LLM, records generation, returns artifacts. However, the current base class calls `context.ports.prompt_service.get_system_prompt(self._role)` which is `assemble(role, hook="agent_start")` — **without passing `task_type`**. This means the assembler skips the task_type layer entirely.
 
-**No custom `handle()` overrides needed in V1.** The differentiation comes from:
-1. Role-specific system prompts (loaded by PromptService from `prompts/roles/{role}/`)
-2. Task-type-specific prompt fragments (loaded from `prompts/shared/task_type/`)
+**Planning handlers need a minor override** to activate the task_type prompt fragments. The planning handler base should call `context.ports.prompt_service.assemble(role=self._role, hook="agent_start", task_type=self._capability_id)` instead of `get_system_prompt()`. This is a one-line change in `handle()` — either a shared `_PlanningTaskHandler` base or individual overrides. The cleanest approach is a `_PlanningTaskHandler(_CycleTaskHandler)` base class that overrides only the prompt assembly line:
+
+```python
+class _PlanningTaskHandler(_CycleTaskHandler):
+    """Base for planning handlers — activates task_type prompt fragments."""
+
+    async def handle(self, context, inputs):
+        # Override: use assemble() with task_type to include task-specific prompt fragment
+        # Everything else identical to _CycleTaskHandler.handle()
+        ...
+        assembled = context.ports.prompt_service.assemble(
+            role=self._role, hook="agent_start", task_type=self._capability_id
+        )
+        ...
+```
+
+**Differentiation comes from:**
+1. Role-specific identity prompts (existing `src/squadops/prompts/fragments/roles/{role}/identity.md`)
+2. Task-type-specific prompt fragments (new, in `src/squadops/prompts/fragments/shared/task_type/`)
 3. Prior-output chaining (each handler sees upstream outputs)
 
 **Modified file:**
@@ -179,25 +195,42 @@ Test pattern: mock `ExecutionContext` with mock LLM port (returns canned respons
 
 ### Commit 2b: Task-type prompt fragments for planning
 
+The prompt fragment infrastructure is already in place (SIP-0057):
+- Fragment directory: `src/squadops/prompts/fragments/`
+- Assembler: `src/squadops/prompts/assembler.py` — resolves `task_type.{task_type}` fragments
+- Manifest: `src/squadops/prompts/fragments/manifest.yaml` (v0.8.5, 9 existing fragments)
+- Empty `shared/task_type/` directory already exists, ready for task-type fragments
+
+Fragment naming convention: the assembler resolves `task_type.{task_type}` as the fragment_id. So for `task_type="data.research_context"`, the fragment_id is `task_type.data.research_context` and the file path is `shared/task_type/task_type.data.research_context.md`.
+
+Each fragment file uses the standard YAML frontmatter header:
+```markdown
+---
+fragment_id: task_type.data.research_context
+layer: task_type
+version: "0.8.5"
+roles: ["*"]
+---
+<prompt content>
+```
+
 **New files (prompt fragments):**
 
 | File | Purpose |
 |------|---------|
-| `prompts/shared/task_type/data.research_context.md` | Instructions for Data agent during planning: gather constraints, prior patterns, risk areas, proto validation targets |
-| `prompts/shared/task_type/strategy.frame_objective.md` | Instructions for Strategy agent: frame objective, scope, non-goals, acceptance criteria |
-| `prompts/shared/task_type/development.design_plan.md` | Instructions for Dev agent: technical design, interfaces, sequencing, proto validation, unknown classification. Includes proto constraint: "Proto work validates feasibility. Do not implement features." |
-| `prompts/shared/task_type/qa.define_test_strategy.md` | Instructions for QA agent: acceptance checklist, test strategy note, defect severity rubric. Stage A maturity: no full test suite. |
-| `prompts/shared/task_type/governance.assess_readiness.md` | Instructions for Lead agent: consolidate all outputs, design sufficiency check (5 criteria), readiness recommendation. Must produce YAML frontmatter. Blocker unknowns → readiness must be revise/no-go. |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.data.research_context.md` | Instructions for Data agent during planning: gather constraints, prior patterns, risk areas, proto validation targets |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.strategy.frame_objective.md` | Instructions for Strategy agent: frame objective, scope, non-goals, acceptance criteria |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.development.design_plan.md` | Instructions for Dev agent: technical design, interfaces, sequencing, proto validation, unknown classification. Includes proto constraint: "Proto work validates feasibility. Do not implement features." |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.qa.define_test_strategy.md` | Instructions for QA agent: acceptance checklist, test strategy note, defect severity rubric. Stage A maturity: no full test suite. |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.governance.assess_readiness.md` | Instructions for Lead agent: consolidate all outputs, design sufficiency check (5 criteria), readiness recommendation. Must produce YAML frontmatter. Blocker unknowns → readiness must be revise/no-go. |
 
-Each fragment is a focused markdown file (~20-40 lines) that the PromptService assembles into the system prompt alongside the agent's identity and global constraints. The fragments define what each role should produce during planning.
+Each fragment is a focused markdown file (~20-40 lines) that the PromptAssembler appends after the identity, constraints, and lifecycle layers. The fragments define what each role should produce during planning.
 
 **Modified file:**
 
 | File | Change |
 |------|--------|
-| `prompts/manifest.yaml` | Add 5 new task_type fragment entries |
-
-**Note:** The `prompts/` directory does not currently exist. If the PromptService is not yet wired to load task_type fragments from disk, the prompt fragments are a forward-looking preparation. Handlers will still work without them — PromptService silently skips missing fragments. The fragments become effective once the PromptService's fragment loader is implemented.
+| `src/squadops/prompts/fragments/manifest.yaml` | Add 5 new task_type fragment entries with SHA256 hashes, bump version, recompute `manifest_hash` |
 
 ---
 
@@ -257,8 +290,14 @@ Registration entries:
 
 | File | Purpose |
 |------|---------|
-| `prompts/shared/task_type/governance.incorporate_feedback.md` | Instructions for Lead: parse refinement instructions, apply targeted changes to planning artifact, produce revised artifact with YAML frontmatter, track changes in refinement artifact |
-| `prompts/shared/task_type/qa.validate_refinement.md` | Instructions for QA: verify acceptance criteria still hold after refinement, flag any gaps introduced by changes |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.governance.incorporate_feedback.md` | Instructions for Lead: parse refinement instructions, apply targeted changes to planning artifact, produce revised artifact with YAML frontmatter, track changes in refinement artifact |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.qa.validate_refinement.md` | Instructions for QA: verify acceptance criteria still hold after refinement, flag any gaps introduced by changes |
+
+**Modified file:**
+
+| File | Change |
+|------|--------|
+| `src/squadops/prompts/fragments/manifest.yaml` | Add 2 refinement task_type fragment entries with SHA256 hashes |
 
 **Tests:** `tests/unit/capabilities/handlers/test_planning_tasks.py` (add ~15)
 - `GovernanceIncorporateFeedbackHandler` has correct capability_id and artifact_name
@@ -309,15 +348,15 @@ Profile content per SIP §5.13 — includes:
 | File | Purpose |
 |------|---------|
 | `src/squadops/cycles/unknown_classification.py` | `UnknownClassification` constants class (5 values) |
-| `src/squadops/capabilities/handlers/planning_tasks.py` | 7 handler classes (5 planning + 2 refinement) |
+| `src/squadops/capabilities/handlers/planning_tasks.py` | 7 handler classes (5 planning + 2 refinement) + `_PlanningTaskHandler` base |
 | `src/squadops/contracts/cycle_request_profiles/profiles/planning.yaml` | Planning workload CRP profile |
-| `prompts/shared/task_type/data.research_context.md` | Data agent planning prompt fragment |
-| `prompts/shared/task_type/strategy.frame_objective.md` | Strategy agent planning prompt fragment |
-| `prompts/shared/task_type/development.design_plan.md` | Dev agent planning prompt fragment |
-| `prompts/shared/task_type/qa.define_test_strategy.md` | QA agent planning prompt fragment |
-| `prompts/shared/task_type/governance.assess_readiness.md` | Lead agent planning prompt fragment |
-| `prompts/shared/task_type/governance.incorporate_feedback.md` | Lead agent refinement prompt fragment |
-| `prompts/shared/task_type/qa.validate_refinement.md` | QA agent refinement prompt fragment |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.data.research_context.md` | Data agent planning prompt fragment |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.strategy.frame_objective.md` | Strategy agent planning prompt fragment |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.development.design_plan.md` | Dev agent planning prompt fragment |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.qa.define_test_strategy.md` | QA agent planning prompt fragment |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.governance.assess_readiness.md` | Lead agent planning prompt fragment |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.governance.incorporate_feedback.md` | Lead agent refinement prompt fragment |
+| `src/squadops/prompts/fragments/shared/task_type/task_type.qa.validate_refinement.md` | QA agent refinement prompt fragment |
 
 ### New Test Files (4)
 
@@ -335,7 +374,7 @@ Profile content per SIP §5.13 — includes:
 | `src/squadops/cycles/models.py` | Add `REQUIRED_REFINEMENT_ROLES` |
 | `src/squadops/cycles/task_plan.py` | Add step constants + workload-type branching |
 | `src/squadops/bootstrap/handlers.py` | Register 7 planning/refinement handlers |
-| `prompts/manifest.yaml` | Add 7 task_type fragment entries |
+| `src/squadops/prompts/fragments/manifest.yaml` | Add 7 task_type fragment entries with SHA256 hashes, bump version |
 
 ### Files NOT Modified
 
@@ -366,9 +405,10 @@ Profile content per SIP §5.13 — includes:
 ## Gotchas
 
 - **Handler registration is explicit** — adding handler classes is not enough. Each must be imported and added to `HANDLER_CONFIGS` in `src/squadops/bootstrap/handlers.py` with role tuple.
-- **Prompt fragments are optional** — if a task_type fragment doesn't exist, PromptService silently skips it. Handlers will still work, just without task-specific instructions. But planning handlers need these fragments to produce correct output structure (YAML frontmatter, unknown classification, sufficiency table).
+- **Handlers must call `assemble()` with `task_type=`** — the current `_CycleTaskHandler.handle()` calls `get_system_prompt(role)` which is `assemble(role, hook="agent_start")` without passing `task_type`. Planning handlers need to call `assemble(role, hook="agent_start", task_type=self._capability_id)` to activate the task_type prompt fragments. A `_PlanningTaskHandler` base class handles this.
+- **Prompt fragments are optional but important** — the assembler silently skips missing task_type fragments. Handlers work without them, but planning handlers need these fragments to produce correct output structure (YAML frontmatter, unknown classification, sufficiency table).
+- **`manifest.yaml` integrity** — each prompt fragment needs a SHA256 hash in `src/squadops/prompts/fragments/manifest.yaml`. The assembler verifies hashes at load time (`HashMismatchError`). The `manifest_hash` must also be recomputed after adding entries.
+- **Fragment naming convention** — files must be named `task_type.{capability_id}.md` (e.g., `task_type.data.research_context.md`) and use YAML frontmatter with matching `fragment_id` and `layer: task_type`.
 - **`GovernanceIncorporateFeedbackHandler` needs custom `validate_inputs()` and `_build_user_prompt()`** — it's the only handler that's not a pure thin subclass. It must enforce D17 (fail on missing `plan_artifact_refs`) and include refinement instructions in the prompt.
-- **`manifest.yaml` integrity** — prompt fragments need SHA256 hashes in the manifest. The assembler validates these at load time.
 - **No executor changes** — planning workloads use existing sequential dispatch. If tests try to run planning tasks through the executor, they'll need the same mock setup as existing cycle execution tests.
 - **Existing `CYCLE_TASK_STEPS` remain for `workload_type=None`** — the legacy branch is unchanged. Only workload-typed runs use the new step selection.
-- **`prompts/` directory does not exist yet** — the prompt fragment files are forward-looking. PromptService fragment loading from disk is not yet wired. Handlers work without them; fragments become effective once the loader exists.
