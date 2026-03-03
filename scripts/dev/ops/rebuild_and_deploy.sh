@@ -267,6 +267,14 @@ if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
         echo -e "${RED}  ⚠️  gen_console_env.sh failed — skipping console build${NC}"
     fi
 
+    # Export .env.console vars so docker-compose can interpolate build args
+    if [ "$CONSOLE_FAILED" != "1" ] && [ -f "$REPO_ROOT/.env.console" ]; then
+        set -a
+        source "$REPO_ROOT/.env.console"
+        set +a
+        echo -e "${BLUE}   CONTINUUM_REF=${CONTINUUM_REF}${NC}"
+    fi
+
     if [ "$CONSOLE_FAILED" != "1" ]; then
         if [ "${FORCE_REBUILD:-0}" = "1" ]; then
             BUILD_OK=true; docker-compose build --no-cache squadops-console || BUILD_OK=false
