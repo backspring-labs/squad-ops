@@ -109,7 +109,7 @@ def main():
         print("\n💡 FIX: Rewrite tests to use real components:")
         print("   - Real PostgreSQL: asyncpg.create_pool")
         print("   - Real adapters: SqlAdapter(db_pool)")
-        print("   - Real agents: LeadAgent(), DevAgent()")
+        print("   - Real agents: via AgentRunner and handler pipeline")
         print("   - Real services: No mocks, no patches")
         print("\n" + "=" * 70)
         sys.exit(1)
