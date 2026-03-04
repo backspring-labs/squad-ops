@@ -1,5 +1,5 @@
-version: 0.8.5
-updated_at: '2026-01-26T02:45:42.376194Z'
+version: 0.9.16
+updated_at: '2026-03-03T00:00:00.000000Z'
 fragments:
 - fragment_id: identity
   path: roles/data/identity.md
@@ -55,4 +55,46 @@ fragments:
   roles:
   - '*'
   sha256: 662c6121db4d6651abfa4c31c030ee2e66434e7171a54b54be8d6efc52fcb59c
-manifest_hash: 9670b21a691286c1543740556d813cb8d5f45a321f6073f92e4534bc4b1918f0
+- fragment_id: task_type.data.research_context
+  path: shared/task_type/task_type.data.research_context.md
+  layer: task_type
+  roles:
+  - data
+  sha256: 93946735beb140bdfaa3a8f9b6a4f8d4c2681c49dcbbc6b418ab07222a4af2f4
+- fragment_id: task_type.strategy.frame_objective
+  path: shared/task_type/task_type.strategy.frame_objective.md
+  layer: task_type
+  roles:
+  - strat
+  sha256: dd3af8522585bfa382665ea7b599208d0af8a4643701d2096fc145071257c0f8
+- fragment_id: task_type.development.design_plan
+  path: shared/task_type/task_type.development.design_plan.md
+  layer: task_type
+  roles:
+  - dev
+  sha256: 260bc70b3cc5c73beb7e6618afb5dae8206a8de9b8fc55527525c9ca84fb0e7f
+- fragment_id: task_type.qa.define_test_strategy
+  path: shared/task_type/task_type.qa.define_test_strategy.md
+  layer: task_type
+  roles:
+  - qa
+  sha256: 51e353106e276a8486f9f01d1755830d7ad531cc891bc6f30525e08232286d5e
+- fragment_id: task_type.governance.assess_readiness
+  path: shared/task_type/task_type.governance.assess_readiness.md
+  layer: task_type
+  roles:
+  - lead
+  sha256: a025e929358f7705c5a38f8f1e592f8c3232ba0c407be11f15d7001a31b0192d
+- fragment_id: task_type.governance.incorporate_feedback
+  path: shared/task_type/task_type.governance.incorporate_feedback.md
+  layer: task_type
+  roles:
+  - lead
+  sha256: 831e10765076ac397a765b1c0dc6f27afe377c6b1a1cd569b84a7d988d4d3219
+- fragment_id: task_type.qa.validate_refinement
+  path: shared/task_type/task_type.qa.validate_refinement.md
+  layer: task_type
+  roles:
+  - qa
+  sha256: e70bd45dae754aa767dae813acaf6e4c11acb11dbfd56d3e555762b09d9eea8a
+manifest_hash: a39d74c79a66c1e446a868dcb7a6c70ca5c61443d9586f4ede1606593d2586d0
