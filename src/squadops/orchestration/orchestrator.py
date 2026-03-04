@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.orchestration.handler_executor import HandlerExecutor
@@ -20,8 +19,7 @@ from squadops.tasks.models import TaskEnvelope, TaskResult
 from squadops.telemetry.models import CorrelationContext, StructuredEvent
 
 if TYPE_CHECKING:
-    from squadops.agents.base import BaseAgent, PortsBundle
-    from squadops.agents.factory import AgentFactory
+    from squadops.agents.base import PortsBundle
     from squadops.agents.skills.registry import SkillRegistry
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
@@ -94,7 +92,6 @@ class AgentOrchestrator:
         handler_registry: HandlerRegistry,
         skill_registry: SkillRegistry,
         ports: PortsBundle,
-        agent_factory: AgentFactory | None = None,
         llm_observability: LLMObservabilityPort | None = None,
     ) -> None:
         """Initialize orchestrator.
@@ -103,13 +100,11 @@ class AgentOrchestrator:
             handler_registry: Registry of capability handlers
             skill_registry: Registry of skills
             ports: PortsBundle for port access
-            agent_factory: Optional factory for agent creation
             llm_observability: LLM observability port (SIP-0061)
         """
         self._handler_registry = handler_registry
         self._skill_registry = skill_registry
         self._ports = ports
-        self._agent_factory = agent_factory
         self._state = OrchestratorState()
 
         # SIP-0061: Always inject NoOp when None
@@ -127,41 +122,6 @@ class AgentOrchestrator:
             ports=ports,
         )
 
-        # Registered agents
-        self._agents: dict[str, BaseAgent] = {}
-
-    def register_agent(self, agent: BaseAgent) -> None:
-        """Register an agent with the orchestrator.
-
-        Args:
-            agent: Agent instance to register
-        """
-        self._agents[agent.agent_id] = agent
-        self._state.agent_states[agent.agent_id] = {
-            "role": agent.role_id,
-            "registered_at": datetime.now(UTC).isoformat(),
-            "status": "available",
-        }
-        logger.info(
-            "agent_registered",
-            extra={"agent_id": agent.agent_id, "role": agent.role_id},
-        )
-
-    def unregister_agent(self, agent_id: str) -> bool:
-        """Unregister an agent.
-
-        Args:
-            agent_id: Agent ID to unregister
-
-        Returns:
-            True if agent was removed
-        """
-        if agent_id in self._agents:
-            del self._agents[agent_id]
-            del self._state.agent_states[agent_id]
-            return True
-        return False
-
     def route_task(self, envelope: TaskEnvelope) -> TaskRouting:
         """Determine routing for a task.
 
@@ -173,24 +133,11 @@ class AgentOrchestrator:
         """
         task_type = envelope.task_type
 
-        # Check explicit agent_id in envelope
-        if envelope.agent_id and envelope.agent_id in self._agents:
-            agent = self._agents[envelope.agent_id]
-            return TaskRouting(
-                target_role=agent.role_id,
-                target_agent_id=envelope.agent_id,
-                capability_id=task_type,
-                reason="explicit_agent_id",
-            )
-
         # Route by task type prefix
         for prefix, role in self.DEFAULT_ROUTING.items():
             if task_type.startswith(prefix):
-                # Find available agent for role
-                agent_id = self._find_agent_for_role(role)
                 return TaskRouting(
                     target_role=role,
-                    target_agent_id=agent_id,
                     capability_id=task_type,
                     reason=f"prefix_match:{prefix}",
                 )
@@ -198,24 +145,9 @@ class AgentOrchestrator:
         # Default to lead for unknown tasks
         return TaskRouting(
             target_role="lead",
-            target_agent_id=self._find_agent_for_role("lead"),
             capability_id=task_type,
             reason="default_to_lead",
         )
-
-    def _find_agent_for_role(self, role: str) -> str | None:
-        """Find an available agent for a role.
-
-        Args:
-            role: Role ID
-
-        Returns:
-            Agent ID if found, None otherwise
-        """
-        for agent_id, state in self._state.agent_states.items():
-            if state.get("role") == role and state.get("status") == "available":
-                return agent_id
-        return None
 
     async def submit_task(
         self,
@@ -401,7 +333,6 @@ class AgentOrchestrator:
         return {
             "status": "healthy",
             "executor": executor_health,
-            "registered_agents": len(self._agents),
             "active_tasks": len(self._state.active_tasks),
             "capabilities": len(self._handler_registry.list_capabilities()),
         }
