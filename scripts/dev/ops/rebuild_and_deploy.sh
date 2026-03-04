@@ -311,69 +311,6 @@ get_agent_role() {
     esac
 }
 
-# Function to extract build hash from manifest.json
-get_build_hash_from_manifest() {
-    local role=$1
-    local manifest_path="$REPO_ROOT/dist/agents/${role}/manifest.json"
-    
-    if [ ! -f "$manifest_path" ]; then
-        echo ""
-        return 1
-    fi
-    
-    # Try jq first, then python, then grep
-    if command -v jq &> /dev/null; then
-        jq -r '.build_hash' "$manifest_path" 2>/dev/null || echo ""
-    elif command -v python3 &> /dev/null; then
-        python3 -c "import json; print(json.load(open('$manifest_path')).get('build_hash', ''))" 2>/dev/null || echo ""
-    else
-        grep -o '"build_hash"[[:space:]]*:[[:space:]]*"[^"]*"' "$manifest_path" | cut -d'"' -f4 || echo ""
-    fi
-}
-
-# Function to verify build hash propagation
-verify_build_hash() {
-    local agent_id=$1
-    local role=$2
-    local expected_hash=$3
-    
-    if [ -z "$expected_hash" ] || [ "$expected_hash" = "unknown" ]; then
-        echo -e "${YELLOW}  ⚠️  Build hash not available for ${agent_id} (manifest.json may not exist)${NC}"
-        return 0  # Not a failure, just not available
-    fi
-    
-    # Wait a moment for container to be ready
-    sleep 2
-    
-    # Get runtime build hash from container
-    local container_name="squadops-${agent_id}"
-    local runtime_hash=""
-    
-    if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
-        # Try to get from agent_info.json
-        runtime_hash=$(docker exec "$container_name" cat /app/agent_info.json 2>/dev/null | \
-            (command -v jq &> /dev/null && jq -r '.build_hash' || \
-             python3 -c "import json, sys; print(json.load(sys.stdin).get('build_hash', ''))" 2>/dev/null || \
-             grep -o '"build_hash"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4) 2>/dev/null || echo "")
-    fi
-    
-    if [ -z "$runtime_hash" ]; then
-        echo -e "${YELLOW}  ⚠️  Could not read runtime build hash for ${agent_id} (container may still be starting)${NC}"
-        return 0  # Not a failure, container may still be initializing
-    fi
-    
-    if [ "$expected_hash" = "$runtime_hash" ]; then
-        echo -e "${GREEN}  ✅ Build hash verified for ${agent_id}: ${expected_hash:0:20}...${NC}"
-        return 0
-    else
-        echo -e "${RED}  ❌ Build hash mismatch for ${agent_id}!${NC}"
-        echo -e "${RED}     Expected: ${expected_hash}${NC}"
-        echo -e "${RED}     Runtime:  ${runtime_hash}${NC}"
-        echo -e "${YELLOW}     ⚠️  Container may be running old code - consider force rebuild${NC}"
-        return 1
-    fi
-}
-
 # Rebuild Agents if requested
 if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     # Determine which agents to build
@@ -409,50 +346,35 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         source "$REPO_ROOT/.venv/bin/activate"
     fi
     
-    # First, build agent packages to get build hashes
-    echo -e "${BLUE}   Building agent packages...${NC}"
+    # Validate agent packages
+    echo -e "${BLUE}   Validating agent packages...${NC}"
     for agent in $AGENTS; do
         if docker-compose config --services | grep -q "^${agent}$"; then
             role=$(get_agent_role "$agent")
             if [ "$role" != "unknown" ]; then
-                echo -e "  📦 Building package for ${agent} (role: ${role})..."
+                echo -e "  📦 Validating ${agent} (role: ${role})..."
                 if ! python3 "$REPO_ROOT/scripts/dev/build_agent.py" "$role"; then
-                    echo -e "${RED}  ❌ Build script failed for ${agent}${NC}"
+                    echo -e "${RED}  ❌ Validation failed for ${agent}${NC}"
                     exit 1
-                fi
-                
-                # Check for legacy manifest (optional — new arch uses editable install)
-                if [ ! -f "$REPO_ROOT/dist/agents/${role}/manifest.json" ]; then
-                    echo -e "${YELLOW}  ⚠️  No legacy manifest for ${agent} (new arch uses editable install)${NC}"
                 fi
             fi
         fi
     done
-    
-    # Count total agents for progress tracking
+
+    # Build Docker images
     TOTAL_AGENTS=$(echo $AGENTS | wc -w | xargs)
     CURRENT_AGENT=0
-    
-    # Now build Docker images with build hashes
+
     for agent in $AGENTS; do
         CURRENT_AGENT=$((CURRENT_AGENT + 1))
         if docker-compose config --services | grep -q "^${agent}$"; then
-            role=$(get_agent_role "$agent")
-            build_hash=$(get_build_hash_from_manifest "$role")
-
             echo -e "  🔨 Rebuilding ${agent} [${CURRENT_AGENT}/${TOTAL_AGENTS}]..."
-            if [ -n "$build_hash" ] && [ "$build_hash" != "unknown" ]; then
-                echo -e "     Build hash: ${build_hash:0:30}...${NC}"
-            fi
-
             if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-                echo -e "     ${BLUE}Building Docker image (no cache)...${NC}"
                 docker-compose build --no-cache $agent || {
                     echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
                     exit 1
                 }
             else
-                echo -e "     ${BLUE}Building Docker image...${NC}"
                 docker-compose build $agent || {
                     echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
                     exit 1
@@ -476,58 +398,6 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo ""
     echo -e "${BLUE}⏳ Step 5: Waiting for agents to be healthy (30 seconds)...${NC}"
     sleep 30
-    
-    # Step 5b: Verify build hash propagation
-    echo ""
-    echo -e "${BLUE}🔍 Step 5b: Verifying build hash propagation...${NC}"
-    VERIFICATION_FAILED=false
-    FAILED_AGENTS=()
-    
-    for agent in $AGENTS; do
-        if docker-compose config --services | grep -q "^${agent}$"; then
-            role=$(get_agent_role "$agent")
-            expected_hash=$(get_build_hash_from_manifest "$role")
-            
-            if ! verify_build_hash "$agent" "$role" "$expected_hash"; then
-                VERIFICATION_FAILED=true
-                FAILED_AGENTS+=("$agent")
-            fi
-        fi
-    done
-    
-    if [ "$VERIFICATION_FAILED" = true ]; then
-        echo -e "${RED}❌ Build hash verification failed for: ${FAILED_AGENTS[*]}${NC}"
-        echo -e "${YELLOW}   Retrying with --no-cache...${NC}"
-        
-        # Retry failed agents with --no-cache
-        for agent in "${FAILED_AGENTS[@]}"; do
-            echo -e "  🔨 Rebuilding ${agent} with --no-cache..."
-            docker-compose build --no-cache $agent || {
-                echo -e "${RED}  ❌ Rebuild failed for ${agent}${NC}"
-                exit 1
-            }
-
-            docker-compose up -d $agent
-        done
-        
-        # Wait and verify again
-        sleep 15
-        VERIFICATION_FAILED=false
-        for agent in "${FAILED_AGENTS[@]}"; do
-            role=$(get_agent_role "$agent")
-            expected_hash=$(get_build_hash_from_manifest "$role")
-            if ! verify_build_hash "$agent" "$role" "$expected_hash"; then
-                VERIFICATION_FAILED=true
-            fi
-        done
-        
-        if [ "$VERIFICATION_FAILED" = true ]; then
-            echo -e "${RED}❌ Build hash verification failed after retry. Deployment aborted.${NC}"
-            exit 1
-        else
-            echo -e "${GREEN}✅ All agents verified after retry${NC}"
-        fi
-    fi
 else
     echo -e "${BLUE}⏳ Step 4: Waiting for services to be healthy (10 seconds)...${NC}"
     sleep 10
