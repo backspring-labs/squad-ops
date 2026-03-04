@@ -712,9 +712,9 @@ sips:
 - sip_uid: null
   sip_number: 78
   title: Planning Workload Protocol
-  path: sips/accepted/SIP-0078-Planning-Workload-Protocol.md
-  status: accepted
+  path: sips/implemented/SIP-0078-Planning-Workload-Protocol.md
+  status: implemented
   author: Unknown
   approver: jladd
   created_at: '2026-02-28'
-  updated_at: '2026-03-02T21:50:44.568276Z'
+  updated_at: '2026-03-03T20:39:59.321486Z'

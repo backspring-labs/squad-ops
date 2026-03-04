@@ -1,11 +1,11 @@
 ---
 title: Planning Workload Protocol
-status: accepted
+status: implemented
 authors: SquadOps Architecture
 created_at: '2026-02-28'
 revision: 3
 sip_number: 78
-updated_at: '2026-03-02T21:50:44.546587Z'
+updated_at: '2026-03-03T20:39:59.320484Z'
 ---
 # SIP-0078: Planning Workload Protocol
 
