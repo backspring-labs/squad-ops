@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from squadops.agents.base import BaseAgent, PortsBundle
+from squadops.agents.base import PortsBundle
 from squadops.agents.skills.registry import SkillRegistry
 from squadops.capabilities.handlers.base import CapabilityHandler, HandlerEvidence, HandlerResult
 from squadops.orchestration.handler_registry import HandlerRegistry
@@ -41,32 +41,6 @@ class MockHandler(CapabilityHandler):
             success=True,
             outputs=self._outputs,
             _evidence=evidence,
-        )
-
-
-class MockAgent(BaseAgent):
-    """Mock agent for testing."""
-
-    ROLE_ID = "mock"
-
-    def __init__(self, agent_id: str, role_id: str, ports: PortsBundle):
-        super().__init__(
-            agent_id=agent_id,
-            role_id=role_id,
-            llm=ports.llm,
-            memory=ports.memory,
-            prompt_service=ports.prompt_service,
-            queue=ports.queue,
-            metrics=ports.metrics,
-            events=ports.events,
-            filesystem=ports.filesystem,
-        )
-
-    async def handle_task(self, envelope):
-        return TaskResult(
-            task_id=envelope.task_id,
-            status="SUCCEEDED",
-            outputs={},
         )
 
 
@@ -177,62 +151,6 @@ class TestTaskRouting:
         assert routing.target_role == "lead"
         assert "default" in routing.reason
 
-    def test_route_with_registered_agent(self, orchestrator, mock_ports):
-        """Should route to registered agent."""
-        agent = MockAgent("lead-agent-1", "lead", mock_ports)
-        orchestrator.register_agent(agent)
-        envelope = create_envelope("governance.task_analysis")
-
-        routing = orchestrator.route_task(envelope)
-
-        assert routing.target_agent_id == "lead-agent-1"
-
-    def test_route_explicit_agent_id(self, orchestrator, mock_ports):
-        """Should respect explicit agent_id in envelope."""
-        agent = MockAgent("specific-agent", "dev", mock_ports)
-        orchestrator.register_agent(agent)
-        envelope = create_envelope(
-            "governance.task_analysis",
-            agent_id="specific-agent",
-        )
-
-        routing = orchestrator.route_task(envelope)
-
-        assert routing.target_agent_id == "specific-agent"
-        assert routing.target_role == "dev"
-        assert "explicit" in routing.reason
-
-
-class TestAgentManagement:
-    """Tests for agent registration."""
-
-    def test_register_agent(self, orchestrator, mock_ports):
-        """Should register agent."""
-        agent = MockAgent("agent-1", "lead", mock_ports)
-
-        orchestrator.register_agent(agent)
-
-        states = orchestrator.get_agent_states()
-        assert "agent-1" in states
-        assert states["agent-1"]["role"] == "lead"
-        assert states["agent-1"]["status"] == "available"
-
-    def test_unregister_agent(self, orchestrator, mock_ports):
-        """Should unregister agent."""
-        agent = MockAgent("agent-1", "lead", mock_ports)
-        orchestrator.register_agent(agent)
-
-        result = orchestrator.unregister_agent("agent-1")
-
-        assert result is True
-        assert "agent-1" not in orchestrator.get_agent_states()
-
-    def test_unregister_not_found(self, orchestrator):
-        """Should return False for missing agent."""
-        result = orchestrator.unregister_agent("nonexistent")
-        assert result is False
-
-
 class TestTaskSubmission:
     """Tests for task submission."""
 
@@ -324,15 +242,11 @@ class TestHealthCheck:
     """Tests for health check."""
 
     @pytest.mark.asyncio
-    async def test_health_check(self, orchestrator, mock_ports):
+    async def test_health_check(self, orchestrator):
         """Should return health status."""
-        agent = MockAgent("agent-1", "lead", mock_ports)
-        orchestrator.register_agent(agent)
-
         health = await orchestrator.health_check()
 
         assert health["status"] == "healthy"
-        assert health["registered_agents"] == 1
         assert health["capabilities"] == 3
         assert "executor" in health
 

@@ -34,7 +34,6 @@ __version__ = _pkg_version("squadops")
 
 # Core exports for quick access
 from squadops.agents import (
-    AgentFactory,
     BaseAgent,
     PortsBundle,
 )
@@ -71,7 +70,6 @@ __all__ = [
     # Agents
     "BaseAgent",
     "PortsBundle",
-    "AgentFactory",
     # API
     "TaskRequestDTO",
     "TaskResponseDTO",

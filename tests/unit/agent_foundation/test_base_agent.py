@@ -8,21 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from squadops.agents.base import BaseAgent, PortsBundle
-from squadops.tasks.models import TaskEnvelope, TaskResult
 
 
 class ConcreteAgent(BaseAgent):
     """Concrete implementation for testing."""
 
     ROLE_ID = "test"
-
-    async def handle_task(self, envelope: TaskEnvelope) -> TaskResult:
-        """Simple task handler for testing."""
-        return TaskResult(
-            task_id=envelope.task_id,
-            status="completed",
-            outputs={"handled": True},
-        )
 
 
 @pytest.fixture
@@ -106,26 +97,6 @@ class TestBaseAgent:
         """Skill registry should be optional."""
         agent = ConcreteAgent(agent_id="agent-1", **mock_ports)
         assert agent.skill_registry is None
-
-    @pytest.mark.asyncio
-    async def test_handle_task_abstract(self, mock_ports):
-        """Concrete agents must implement handle_task."""
-        agent = ConcreteAgent(agent_id="agent-1", **mock_ports)
-        envelope = TaskEnvelope(
-            task_id="task-1",
-            agent_id="agent-1",
-            cycle_id="cycle-1",
-            pulse_id="pulse-1",
-            project_id="proj-1",
-            task_type="test",
-            correlation_id="corr-1",
-            causation_id="cause-1",
-            trace_id="trace-1",
-            span_id="span-1",
-        )
-        result = await agent.handle_task(envelope)
-        assert result.task_id == "task-1"
-        assert result.status == "completed"
 
     @pytest.mark.asyncio
     async def test_lifecycle_hooks_exist(self, mock_ports):

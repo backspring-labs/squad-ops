@@ -56,11 +56,6 @@ def validate_agent_build(role: str, base_path: Path) -> None:
     """
     logger.info(f"Validating agent build for role: {role}")
 
-    # Check role module exists
-    role_module = base_path / "src" / "squadops" / "agents" / "roles" / f"{role}.py"
-    if not role_module.exists():
-        raise FileNotFoundError(f"Role module not found: {role_module}")
-
     # Check skills directory exists for this role
     skills_dir = base_path / "src" / "squadops" / "agents" / "skills" / role
     if not skills_dir.exists():
@@ -99,7 +94,6 @@ def validate_agent_build(role: str, base_path: Path) -> None:
     git_commit = get_git_commit(base_path)
 
     logger.info(f"Agent build validated successfully: {role}")
-    logger.info(f"   Role module: {role_module.name}")
     logger.info(f"   Skills: {', '.join(sorted(skills)) if skills else 'none'}")
     logger.info("   Entry point: python -m squadops.agents.entrypoint")
     logger.info("   Dockerfile: agents/Dockerfile")

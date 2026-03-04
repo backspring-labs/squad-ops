@@ -59,12 +59,6 @@ TEST_DIRS=""
 
 for file in $CHANGED_FILES; do
     case "$file" in
-        src/squadops/agents/roles/builder*)
-            TEST_DIRS="$TEST_DIRS tests/unit/agents/roles/test_builder_agent.py tests/unit/agent_foundation/roles/"
-            ;;
-        src/squadops/agents/roles/*)
-            TEST_DIRS="$TEST_DIRS tests/unit/agent_foundation/roles/"
-            ;;
         src/squadops/agents/*)
             TEST_DIRS="$TEST_DIRS tests/unit/agents/ tests/unit/agent_foundation/"
             ;;

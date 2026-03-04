@@ -26,7 +26,6 @@ pytest tests/unit/agents/test_base_agent.py::TestBaseAgent::test_init -v
 
 # Run domain-specific tests
 pytest tests/unit/agents/ -v          # Agent tests
-pytest tests/unit/agents/roles/ -v    # Role-specific tests
 pytest tests/unit/capabilities/ -v    # Capability tests
 pytest tests/unit/api/ -v             # API tests
 pytest tests/unit/tasks/ -v           # Task model tests
