@@ -175,6 +175,9 @@ ALLOWED_CONFIG_OVERRIDE_KEYS = frozenset({
 # Missing required roles are a hard error, not a silent fallback. (SIP-0075)
 REQUIRED_PLAN_ROLES = frozenset({"strat", "dev", "qa", "data", "lead"})
 
+# Required roles for refinement workloads. Refinement is lead + QA only. (SIP-0078 §5.10)
+REQUIRED_REFINEMENT_ROLES = frozenset({"lead", "qa"})
+
 
 # =============================================================================
 # Validation helpers

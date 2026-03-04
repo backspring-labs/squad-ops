@@ -5,7 +5,11 @@ using pinned task_type values from SIP-0066 §5.4, with optional
 build steps from SIP-Enhanced-Agent-Build-Capabilities and builder-aware
 routing from SIP-0071.
 
-Part of SIP-0066 Phase 4 + build capabilities extension + SIP-0071.
+Workload-type branching (SIP-0078): when ``run.workload_type`` is set,
+the generator selects task steps based on workload type instead of
+the legacy ``plan_tasks``/``build_tasks`` flags.
+
+Part of SIP-0066 Phase 4 + build capabilities extension + SIP-0071 + SIP-0078.
 """
 
 from __future__ import annotations
@@ -16,7 +20,15 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
-from squadops.cycles.models import REQUIRED_PLAN_ROLES, Cycle, CycleError, Run, SquadProfile
+from squadops.cycles.models import (
+    REQUIRED_PLAN_ROLES,
+    REQUIRED_REFINEMENT_ROLES,
+    Cycle,
+    CycleError,
+    Run,
+    SquadProfile,
+    WorkloadType,
+)
 from squadops.tasks.models import TaskEnvelope
 
 # Pinned task_type → role mapping (SIP-0066 §5.4)
@@ -40,6 +52,29 @@ BUILDER_ASSEMBLY_TASK_STEPS: list[tuple[str, str]] = [
     ("builder.assemble", "builder"),
     ("qa.test", "qa"),
 ]
+
+# Planning task steps (SIP-0078 §5.3)
+PLANNING_TASK_STEPS: list[tuple[str, str]] = [
+    ("data.research_context", "data"),
+    ("strategy.frame_objective", "strat"),
+    ("development.design_plan", "dev"),
+    ("qa.define_test_strategy", "qa"),
+    ("governance.assess_readiness", "lead"),
+]
+
+# Refinement task steps (SIP-0078 §5.10)
+REFINEMENT_TASK_STEPS: list[tuple[str, str]] = [
+    ("governance.incorporate_feedback", "lead"),
+    ("qa.validate_refinement", "qa"),
+]
+
+# Well-known workload types that have dedicated step selection.
+_KNOWN_WORKLOAD_TYPES = {
+    WorkloadType.PLANNING,
+    WorkloadType.IMPLEMENTATION,
+    WorkloadType.REFINEMENT,
+    WorkloadType.EVALUATION,
+}
 
 # Task types that are build steps (for routing_reason metadata)
 _BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
@@ -70,13 +105,9 @@ def _has_builder_role(profile: SquadProfile) -> bool:
 def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
-    Produces plan steps (5 standard) and/or build steps (2) based on
-    ``applied_defaults``:
-
-    - ``plan_tasks`` (default True): include the 5 standard plan steps
-    - ``build_tasks`` (default falsy): if non-empty, append build steps
-    - When builder role present in profile, routes build through
-      ``builder.assemble`` (3-step pipeline, SIP-0071 D5)
+    When ``run.workload_type`` is set, selects task steps based on workload
+    type (SIP-0078). Otherwise falls back to legacy ``plan_tasks`` /
+    ``build_tasks`` flags from ``applied_defaults``.
 
     Args:
         cycle: The cycle containing experiment config.
@@ -86,32 +117,76 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
     Returns:
         Ordered list of TaskEnvelopes, one per pipeline step.
     """
-    # Determine which step groups to include (D7)
-    include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
-    include_build = bool(cycle.applied_defaults.get("build_tasks"))
+    profile_roles = {a.role for a in profile.agents if a.enabled}
+    builder_used = False
 
-    # Compute routing decision once before step expansion (D5, D14)
-    builder_used = include_build and _has_builder_role(profile)
-
-    steps: list[tuple[str, str]] = []
-    if include_plan:
-        steps.extend(CYCLE_TASK_STEPS)
-    if include_build:
-        if builder_used:
-            steps.extend(BUILDER_ASSEMBLY_TASK_STEPS)
-        else:
-            steps.extend(BUILD_TASK_STEPS)
-
-    # Validate required roles are present in profile (SIP-0075 §3.1)
-    # Only enforce when plan tasks are included; build-only cycles need only dev+qa.
-    if include_plan:
-        profile_roles = {a.role for a in profile.agents if a.enabled}
-        missing_roles = REQUIRED_PLAN_ROLES - profile_roles
-        if missing_roles:
+    if run.workload_type is not None:
+        # --- Workload-type branching (SIP-0078) ---
+        # Reject unknown workload types early (typos → CycleError, not silent fallback).
+        if run.workload_type not in _KNOWN_WORKLOAD_TYPES:
             raise CycleError(
-                f"Squad profile '{profile.profile_id}' is missing required roles: "
-                f"{', '.join(sorted(missing_roles))}"
+                f"Unknown workload_type '{run.workload_type}'. "
+                f"Known types: {', '.join(sorted(_KNOWN_WORKLOAD_TYPES))}"
             )
+
+        if run.workload_type == WorkloadType.PLANNING:
+            missing = REQUIRED_PLAN_ROLES - profile_roles
+            if missing:
+                raise CycleError(
+                    f"Squad profile '{profile.profile_id}' is missing required roles: "
+                    f"{', '.join(sorted(missing))}"
+                )
+            steps = list(PLANNING_TASK_STEPS)
+
+        elif run.workload_type == WorkloadType.REFINEMENT:
+            missing = REQUIRED_REFINEMENT_ROLES - profile_roles
+            if missing:
+                raise CycleError(
+                    f"Squad profile '{profile.profile_id}' is missing required "
+                    f"refinement roles: {', '.join(sorted(missing))}"
+                )
+            steps = list(REFINEMENT_TASK_STEPS)
+
+        elif run.workload_type == WorkloadType.IMPLEMENTATION:
+            builder_used = _has_builder_role(profile)
+            if builder_used:
+                steps = list(BUILDER_ASSEMBLY_TASK_STEPS)
+            else:
+                steps = list(BUILD_TASK_STEPS)
+
+        elif run.workload_type == WorkloadType.EVALUATION:
+            # Evaluation reuses standard cycle task steps for V1.
+            missing = REQUIRED_PLAN_ROLES - profile_roles
+            if missing:
+                raise CycleError(
+                    f"Squad profile '{profile.profile_id}' is missing required roles: "
+                    f"{', '.join(sorted(missing))}"
+                )
+            steps = list(CYCLE_TASK_STEPS)
+
+    else:
+        # --- Legacy path: plan_tasks / build_tasks flags (no workload_type) ---
+        include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
+        include_build = bool(cycle.applied_defaults.get("build_tasks"))
+        builder_used = include_build and _has_builder_role(profile)
+
+        steps = []
+        if include_plan:
+            steps.extend(CYCLE_TASK_STEPS)
+        if include_build:
+            if builder_used:
+                steps.extend(BUILDER_ASSEMBLY_TASK_STEPS)
+            else:
+                steps.extend(BUILD_TASK_STEPS)
+
+        # Validate required roles (SIP-0075 §3.1)
+        if include_plan:
+            missing = REQUIRED_PLAN_ROLES - profile_roles
+            if missing:
+                raise CycleError(
+                    f"Squad profile '{profile.profile_id}' is missing required roles: "
+                    f"{', '.join(sorted(missing))}"
+                )
 
     # Shared lineage IDs for the entire plan
     correlation_id = uuid4().hex
