@@ -1,0 +1,48 @@
+name: planning
+description: "Planning workload with design sufficiency review gate"
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_plan_review
+        description: "Review planning artifact before implementation"
+        after_task_types:
+          - governance.assess_readiness
+  expected_artifact_types:
+    - document
+  workload_sequence:
+    - type: planning
+      gate: progress_plan_review
+    - type: implementation
+      gate: null
+  pulse_checks:
+    - suite_id: planning_scope_guard
+      boundary_id: post_strategy
+      binding_mode: milestone
+      after_task_types:
+        - strategy
+      checks:
+        - check_type: file_exists
+          target: "{run_root}/objective_frame.md"
+        - check_type: non_empty
+          target: "{run_root}/objective_frame.md"
+      max_suite_seconds: 15
+      max_check_seconds: 5
+    - suite_id: planning_completeness
+      boundary_id: post_consolidation
+      binding_mode: milestone
+      after_task_types:
+        - governance
+      checks:
+        - check_type: file_exists
+          target: "{run_root}/planning_artifact.md"
+        - check_type: non_empty
+          target: "{run_root}/planning_artifact.md"
+      max_suite_seconds: 15
+      max_check_seconds: 5
+  cadence_policy:
+    max_pulse_seconds: 5400
+    max_tasks_per_pulse: 5
+  experiment_context: {}
+  notes: "Planning workload cycle"

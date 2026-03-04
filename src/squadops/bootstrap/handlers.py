@@ -35,6 +35,15 @@ from squadops.capabilities.handlers.governance import (
     TaskAnalysisHandler,
     TaskDelegationHandler,
 )
+from squadops.capabilities.handlers.planning_tasks import (
+    DataResearchContextHandler,
+    DevelopmentDesignPlanHandler,
+    GovernanceAssessReadinessHandler,
+    GovernanceIncorporateFeedbackHandler,
+    QADefineTestStrategyHandler,
+    QAValidateRefinementHandler,
+    StrategyFrameObjectiveHandler,
+)
 from squadops.capabilities.handlers.qa import (
     TestExecutionHandler,
     ValidationHandler,
@@ -90,6 +99,15 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (GovernanceRootCauseHandler, ("lead",)),
     (StrategyCorrectivePlanHandler, ("strat",)),
     (DevelopmentRepairHandler, ("dev",)),
+    # Planning handlers (SIP-0078: Planning Workload Protocol)
+    (DataResearchContextHandler, ("data",)),
+    (StrategyFrameObjectiveHandler, ("strat",)),
+    (DevelopmentDesignPlanHandler, ("dev",)),
+    (QADefineTestStrategyHandler, ("qa",)),
+    (GovernanceAssessReadinessHandler, ("lead",)),
+    # Refinement handlers (SIP-0078: Planning Workload Protocol)
+    (GovernanceIncorporateFeedbackHandler, ("lead",)),
+    (QAValidateRefinementHandler, ("qa",)),
 ]
 
 

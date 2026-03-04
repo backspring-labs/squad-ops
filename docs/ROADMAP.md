@@ -4,6 +4,17 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
+### v0.9.16 (2026-03-03) — Planning Workload Protocol
+- **SIP-0078** Planning Workload Protocol
+  - `PLANNING_TASK_STEPS` (5 steps) and `REFINEMENT_TASK_STEPS` (2 steps) with workload-type branching
+  - `UnknownClassification` constants (5 classification levels)
+  - 7 planning/refinement handlers with `_PlanningTaskHandler` base (task_type prompt assembly)
+  - `GovernanceAssessReadinessHandler` structural validation (YAML frontmatter, readiness, sufficiency_score)
+  - `GovernanceIncorporateFeedbackHandler` D17 fail-fast and differentiated companion artifact
+  - 7 task_type prompt fragments with manifest integrity
+  - Planning cycle request profile with `progress_plan_review` gate, 2 pulse check suites, cadence policy
+  - `REQUIRED_REFINEMENT_ROLES` validation for refinement runs
+
 ### v0.9.15 (2026-03-01) — Cycle Event System
 - **SIP-0077** Cycle Event System
   - `CycleEventBusPort` with 20-event taxonomy across 6 entity types
@@ -149,8 +160,8 @@ These SIPs must land before the first DGX Spark validation run. They are sequenc
 | Order | SIP | Focus | Status |
 |-------|-----|-------|--------|
 | 1 | **SIP-0076** Workload & Gate Canon | `workload_type` on Run, gate outcome expansion, artifact promotion, Pulse vs Gate semantics | **Implemented (v0.9.14)** |
-| 2 | Cycle Event System (v0) | Canonical lifecycle event bus, 20-event taxonomy, bridge adapters. v0 scope only — emit + bridge. Full rewire (v1) and event-first (v2) follow later. | Proposed |
-| 3 | Planning Workload Protocol | Planning contract, durable planning artifact, QA-first test strategy, proto validation, unknown classification, readiness decision | Proposed |
+| 2 | **SIP-0077** Cycle Event System (v0) | Canonical lifecycle event bus, 20-event taxonomy, bridge adapters. v0 scope only — emit + bridge. Full rewire (v1) and event-first (v2) follow later. | **Implemented (v0.9.15)** |
+| 3 | **SIP-0078** Planning Workload Protocol | Planning contract, durable planning artifact, QA-first test strategy, proto validation, unknown classification, readiness decision | **Implemented (v0.9.16)** |
 | 4 | Implementation Run Contract | Run contract, correction protocol (detect → RCA → decide → plan delta → resume), **durable checkpoint/resume**, bounded retry/timebox | Proposed |
 | 5 | Wrap-Up Workload Protocol | Closeout artifact, planned-vs-actual comparison, confidence classification, structured unresolved issues, next-cycle handoff | Proposed |
 
@@ -278,8 +289,8 @@ The following areas are identified for future work but do not block 1.0 readines
 | SIP | Title | Status |
 |-----|-------|--------|
 | **SIP-0076** | Workload & Gate Canon | **Implemented** |
-| (unnumbered) | Cycle Event System | Proposed |
-| (unnumbered) | Planning Workload Protocol | Proposed |
+| **SIP-0077** | Cycle Event System | **Implemented** |
+| **SIP-0078** | Planning Workload Protocol | **Implemented** |
 | (unnumbered) | Implementation Run Contract & Correction Protocol | Proposed |
 | (unnumbered) | Wrap-Up Workload Protocol | Proposed |
 
@@ -306,8 +317,8 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-- **Framework version**: 0.9.14
-- **SIPs**: 46 implemented, 0 accepted, 13 proposals (6 on 1.0 track), 15 deprecated
-- **Tests**: 2,485+ passing
+- **Framework version**: 0.9.16
+- **SIPs**: 48 implemented, 0 accepted, 11 proposals (4 on 1.0 track), 15 deprecated
+- **Tests**: 2,870+ passing
 - **Python source**: ~42,000 lines
 - **5 months** from initial repo to production-grade console UI

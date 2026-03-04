@@ -76,8 +76,8 @@ def validate_agent_build(role: str, base_path: Path) -> None:
     if not dockerfile.exists():
         raise FileNotFoundError(f"Dockerfile not found: {dockerfile}")
 
-    # Check requirements.txt exists
-    requirements = base_path / "requirements.txt"
+    # Check requirements directory exists (Dockerfile uses requirements/agent.lock)
+    requirements = base_path / "requirements" / "agent.lock"
     if not requirements.exists():
         raise FileNotFoundError(f"Requirements not found: {requirements}")
 
