@@ -16,8 +16,11 @@ Part of SIP-0078.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
@@ -31,6 +34,9 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
+
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+_VALID_READINESS = {"go", "revise", "no-go"}
 
 
 class _PlanningTaskHandler(_CycleTaskHandler):
@@ -210,12 +216,108 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
     Produces the canonical ``planning_artifact.md`` — a reconstituted document
     that synthesizes all upstream planning outputs into a coherent plan with
     YAML frontmatter containing readiness recommendation and sufficiency score.
+
+    Performs lightweight post-generation validation on the artifact content:
+    - YAML frontmatter exists (``---`` delimiters)
+    - ``readiness`` field is one of ``go``, ``revise``, ``no-go``
+    - ``sufficiency_score`` is an integer 0–5
     """
 
     _handler_name = "governance_assess_readiness_handler"
     _capability_id = "governance.assess_readiness"
     _role = "lead"
     _artifact_name = "planning_artifact.md"
+
+    async def handle(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+    ) -> HandlerResult:
+        result = await super().handle(context, inputs)
+        if not result.success:
+            return result
+
+        content = result.outputs["artifacts"][0]["content"]
+
+        # Structural validation: YAML frontmatter
+        m = _FRONTMATTER_RE.match(content)
+        if not m:
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=result._evidence,
+                error="Planning artifact missing YAML frontmatter (expected --- delimiters)",
+            )
+
+        try:
+            fm = yaml.safe_load(m.group(1))
+        except yaml.YAMLError as exc:
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=result._evidence,
+                error=f"Planning artifact has invalid YAML frontmatter: {exc}",
+            )
+
+        if not isinstance(fm, dict):
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=result._evidence,
+                error="Planning artifact YAML frontmatter is not a mapping",
+            )
+
+        # Validate readiness field
+        if "readiness" not in fm:
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=result._evidence,
+                error="Planning artifact frontmatter missing 'readiness' field",
+            )
+
+        if fm["readiness"] not in _VALID_READINESS:
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=result._evidence,
+                error=(
+                    f"Planning artifact 'readiness' must be one of "
+                    f"{sorted(_VALID_READINESS)}, got: {fm['readiness']!r}"
+                ),
+            )
+
+        # Validate sufficiency_score field
+        if "sufficiency_score" not in fm:
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=result._evidence,
+                error="Planning artifact frontmatter missing 'sufficiency_score' field",
+            )
+
+        try:
+            score = int(fm["sufficiency_score"])
+        except (TypeError, ValueError):
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=result._evidence,
+                error=(
+                    f"Planning artifact 'sufficiency_score' must be an integer 0-5, "
+                    f"got: {fm['sufficiency_score']!r}"
+                ),
+            )
+
+        if not (0 <= score <= 5):
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=result._evidence,
+                error=f"Planning artifact 'sufficiency_score' must be 0-5, got: {score}",
+            )
+
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -297,18 +399,65 @@ class GovernanceIncorporateFeedbackHandler(_PlanningTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        """Override to produce two artifacts: revised planning artifact + refinement log."""
+        """Override to enforce D17 and produce differentiated companion artifact."""
+        # D17 conditions 2/3: fail-fast if artifact content is empty/missing
+        prior_outputs = inputs.get("prior_outputs") or {}
+        artifact_contents = prior_outputs.get("artifact_contents", {})
+        if not artifact_contents or all(
+            not str(v).strip() for v in artifact_contents.values()
+        ):
+            duration_ms = 0.0
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
+            )
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=evidence,
+                error=(
+                    "D17 fail-fast: planning artifact content is empty or unreadable. "
+                    "Cannot incorporate feedback without the original planning artifact."
+                ),
+            )
+
         result = await super().handle(context, inputs)
         if not result.success:
             return result
 
-        # The LLM response is the revised planning artifact.
-        # Add a companion refinement artifact documenting what changed.
-        content = result.outputs["artifacts"][0]["content"]
+        # Build differentiated companion artifact (SIP §5.9)
+        resolved_config = inputs.get("resolved_config", {})
+        plan_refs = resolved_config.get("plan_artifact_refs", [])
+        ref_name = plan_refs[0] if plan_refs else "unknown"
+        refinement_instructions = prior_outputs.get("refinement_instructions", "")
+
+        companion_lines = [
+            "---",
+            f'original_plan_ref: "{ref_name}"',
+            "refinement_source: execution_overrides",
+            "---",
+            "",
+            "## Refinement Log",
+            "",
+            f"**Original artifact:** `{ref_name}`",
+            "",
+            "### Refinement Instructions",
+            "",
+            refinement_instructions if refinement_instructions else "(none provided)",
+            "",
+            "### Incorporation Summary",
+            "",
+            "The revised planning artifact (`planning_artifact_revised.md`) incorporates",
+            "the refinement instructions above. See the revised artifact for the complete",
+            "updated plan with all changes applied.",
+        ]
+
         result.outputs["artifacts"].append(
             {
                 "name": "plan_refinement.md",
-                "content": content,
+                "content": "\n".join(companion_lines),
                 "media_type": "text/markdown",
                 "type": "document",
             },

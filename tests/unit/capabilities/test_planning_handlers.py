@@ -57,6 +57,29 @@ REFINEMENT_HANDLER_SPECS = [
 ALL_HANDLER_SPECS = PLANNING_HANDLER_SPECS + REFINEMENT_HANDLER_SPECS
 ALL_HANDLER_CLASSES = [cls for cls, _, _, _ in ALL_HANDLER_SPECS]
 
+# Handlers that work with generic "LLM planning output" and no special prior_outputs.
+# GovernanceAssessReadinessHandler requires valid YAML frontmatter in LLM response.
+# GovernanceIncorporateFeedbackHandler requires artifact_contents in prior_outputs (D17).
+_SPECIAL_HANDLERS = (GovernanceAssessReadinessHandler, GovernanceIncorporateFeedbackHandler)
+GENERIC_HANDLER_SPECS = [s for s in ALL_HANDLER_SPECS if s[0] not in _SPECIAL_HANDLERS]
+GENERIC_HANDLER_CLASSES = [cls for cls, _, _, _ in GENERIC_HANDLER_SPECS]
+# Handlers where LLM is always reached (GovernanceIncorporateFeedbackHandler may
+# short-circuit at D17 before calling LLM).
+LLM_REACHABLE_SPECS = [s for s in ALL_HANDLER_SPECS if s[0] != GovernanceIncorporateFeedbackHandler]
+LLM_REACHABLE_CLASSES = [cls for cls, _, _, _ in LLM_REACHABLE_SPECS]
+
+VALID_PLANNING_ARTIFACT = """\
+---
+readiness: go
+sufficiency_score: 4
+blocker_unknowns: 0
+---
+
+## Consolidated Planning Artifact
+
+This is a valid planning artifact with proper YAML frontmatter.
+"""
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -223,8 +246,8 @@ class TestHandleUsesAssemble:
 
     @pytest.mark.parametrize(
         "cls, expected_cap_id, expected_role, _artifact",
-        ALL_HANDLER_SPECS,
-        ids=[c.__name__ for c, _, _, _ in ALL_HANDLER_SPECS],
+        LLM_REACHABLE_SPECS,
+        ids=[c.__name__ for c, _, _, _ in LLM_REACHABLE_SPECS],
     )
     async def test_assemble_called_with_task_type(
         self, cls, expected_cap_id, expected_role, _artifact, mock_context
@@ -259,8 +282,8 @@ class TestHandleUsesAssemble:
 class TestHandleSuccess:
     @pytest.mark.parametrize(
         "cls, _cap_id, expected_role, expected_artifact",
-        ALL_HANDLER_SPECS,
-        ids=[c.__name__ for c, _, _, _ in ALL_HANDLER_SPECS],
+        GENERIC_HANDLER_SPECS,
+        ids=[c.__name__ for c, _, _, _ in GENERIC_HANDLER_SPECS],
     )
     async def test_returns_success(
         self, cls, _cap_id, expected_role, expected_artifact, mock_context
@@ -274,8 +297,11 @@ class TestHandleSuccess:
 
     @pytest.mark.parametrize(
         "cls, _cap_id, _role, expected_artifact",
-        PLANNING_HANDLER_SPECS,
-        ids=[c.__name__ for c, _, _, _ in PLANNING_HANDLER_SPECS],
+        [s for s in PLANNING_HANDLER_SPECS if s[0] != GovernanceAssessReadinessHandler],
+        ids=[
+            c.__name__ for c, _, _, _ in PLANNING_HANDLER_SPECS
+            if c != GovernanceAssessReadinessHandler
+        ],
     )
     async def test_planning_artifact_name(
         self, cls, _cap_id, _role, expected_artifact, mock_context
@@ -311,8 +337,8 @@ class TestHandleSuccess:
 class TestHandleLLMError:
     @pytest.mark.parametrize(
         "cls",
-        ALL_HANDLER_CLASSES,
-        ids=[c.__name__ for c in ALL_HANDLER_CLASSES],
+        LLM_REACHABLE_CLASSES,
+        ids=[c.__name__ for c in LLM_REACHABLE_CLASSES],
     )
     async def test_llm_error_returns_failure(self, cls):
         ctx = _make_context()
@@ -381,8 +407,8 @@ class TestHandlePriorOutputs:
 class TestLLMCallVerification:
     @pytest.mark.parametrize(
         "cls",
-        ALL_HANDLER_CLASSES,
-        ids=[c.__name__ for c in ALL_HANDLER_CLASSES],
+        LLM_REACHABLE_CLASSES,
+        ids=[c.__name__ for c in LLM_REACHABLE_CLASSES],
     )
     async def test_llm_chat_called_once(self, cls, mock_context):
         h = cls()
@@ -391,8 +417,8 @@ class TestLLMCallVerification:
 
     @pytest.mark.parametrize(
         "cls",
-        ALL_HANDLER_CLASSES,
-        ids=[c.__name__ for c in ALL_HANDLER_CLASSES],
+        LLM_REACHABLE_CLASSES,
+        ids=[c.__name__ for c in LLM_REACHABLE_CLASSES],
     )
     async def test_user_message_contains_prd(self, cls, mock_context):
         h = cls()
@@ -409,9 +435,24 @@ class TestLLMCallVerification:
 
 
 class TestGovernanceIncorporateFeedback:
+    """Tests for GovernanceIncorporateFeedbackHandler custom behavior.
+
+    All tests provide artifact_contents to satisfy D17 precondition.
+    """
+
+    def _inputs_with_artifact(self, **extra_prior):
+        """Build inputs with required artifact_contents for D17."""
+        prior_outputs = {
+            "artifact_contents": {
+                "planning_artifact.md": "Original planning content",
+            },
+        }
+        prior_outputs.update(extra_prior)
+        return {"prd": "Build a widget", "prior_outputs": prior_outputs}
+
     async def test_produces_two_artifacts(self, mock_context):
         h = GovernanceIncorporateFeedbackHandler()
-        result = await h.handle(mock_context, {"prd": "Build a widget"})
+        result = await h.handle(mock_context, self._inputs_with_artifact())
 
         assert result.success is True
         artifacts = result.outputs["artifacts"]
@@ -419,14 +460,46 @@ class TestGovernanceIncorporateFeedback:
         assert artifacts[0]["name"] == "planning_artifact_revised.md"
         assert artifacts[1]["name"] == "plan_refinement.md"
 
+    async def test_companion_artifact_differs_from_primary(self, mock_context):
+        h = GovernanceIncorporateFeedbackHandler()
+        result = await h.handle(mock_context, self._inputs_with_artifact())
+
+        artifacts = result.outputs["artifacts"]
+        assert artifacts[0]["content"] != artifacts[1]["content"]
+
+    async def test_companion_has_original_plan_ref(self, mock_context):
+        h = GovernanceIncorporateFeedbackHandler()
+        inputs = self._inputs_with_artifact()
+        inputs["resolved_config"] = {"plan_artifact_refs": ["artifact-ref-123"]}
+        result = await h.handle(mock_context, inputs)
+
+        companion = result.outputs["artifacts"][1]["content"]
+        assert "artifact-ref-123" in companion
+
+    async def test_companion_has_refinement_instructions(self, mock_context):
+        h = GovernanceIncorporateFeedbackHandler()
+        inputs = self._inputs_with_artifact(
+            refinement_instructions="Clarify the auth boundary"
+        )
+        result = await h.handle(mock_context, inputs)
+
+        companion = result.outputs["artifacts"][1]["content"]
+        assert "Clarify the auth boundary" in companion
+
+    async def test_companion_has_frontmatter(self, mock_context):
+        h = GovernanceIncorporateFeedbackHandler()
+        result = await h.handle(mock_context, self._inputs_with_artifact())
+
+        companion = result.outputs["artifacts"][1]["content"]
+        assert companion.startswith("---\n")
+        assert "original_plan_ref:" in companion
+        assert "refinement_source:" in companion
+
     async def test_refinement_instructions_in_prompt(self, mock_context):
         h = GovernanceIncorporateFeedbackHandler()
-        inputs = {
-            "prd": "Build a widget",
-            "prior_outputs": {
-                "refinement_instructions": "Clarify the auth boundary",
-            },
-        }
+        inputs = self._inputs_with_artifact(
+            refinement_instructions="Clarify the auth boundary"
+        )
         await h.handle(mock_context, inputs)
 
         call_args = mock_context.ports.llm.chat.call_args
@@ -474,3 +547,183 @@ class TestBootstrapRegistration:
         registered_classes = {entry[0] for entry in HANDLER_CONFIGS}
         for cls in ALL_HANDLER_CLASSES:
             assert cls in registered_classes, f"{cls.__name__} missing from HANDLER_CONFIGS"
+
+
+# ---------------------------------------------------------------------------
+# 10. GovernanceAssessReadinessHandler — structural validation (Fix B)
+# ---------------------------------------------------------------------------
+
+
+class TestGovernanceAssessReadinessValidation:
+    """Validate YAML frontmatter in planning artifact (readiness, sufficiency_score)."""
+
+    async def test_valid_frontmatter_passes(self):
+        ctx = _make_context(VALID_PLANNING_ARTIFACT)
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is True
+        assert result.outputs["artifacts"][0]["name"] == "planning_artifact.md"
+
+    async def test_missing_frontmatter_fails(self):
+        ctx = _make_context("No frontmatter here, just plain text.")
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert "YAML frontmatter" in result.error
+
+    async def test_invalid_yaml_fails(self):
+        ctx = _make_context("---\n[invalid: yaml: content\n---\n\nBody")
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert "invalid YAML" in result.error
+
+    async def test_missing_readiness_fails(self):
+        content = "---\nsufficiency_score: 3\nblocker_unknowns: 0\n---\n\nBody"
+        ctx = _make_context(content)
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert "readiness" in result.error
+
+    async def test_invalid_readiness_value_fails(self):
+        content = "---\nreadiness: maybe\nsufficiency_score: 3\n---\n\nBody"
+        ctx = _make_context(content)
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert "readiness" in result.error
+        assert "maybe" in result.error
+
+    async def test_missing_sufficiency_score_fails(self):
+        content = "---\nreadiness: go\nblocker_unknowns: 0\n---\n\nBody"
+        ctx = _make_context(content)
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert "sufficiency_score" in result.error
+
+    async def test_non_integer_sufficiency_score_fails(self):
+        content = "---\nreadiness: go\nsufficiency_score: high\n---\n\nBody"
+        ctx = _make_context(content)
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert "sufficiency_score" in result.error
+        assert "integer" in result.error
+
+    async def test_sufficiency_score_out_of_range_fails(self):
+        content = "---\nreadiness: go\nsufficiency_score: 7\n---\n\nBody"
+        ctx = _make_context(content)
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert "0-5" in result.error
+
+    async def test_sufficiency_score_zero_valid(self):
+        content = "---\nreadiness: no-go\nsufficiency_score: 0\n---\n\nBody"
+        ctx = _make_context(content)
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is True
+
+    @pytest.mark.parametrize("readiness", ["go", "revise", "no-go"])
+    async def test_all_valid_readiness_values(self, readiness):
+        content = f"---\nreadiness: {readiness}\nsufficiency_score: 3\n---\n\nBody"
+        ctx = _make_context(content)
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is True
+
+    async def test_evidence_preserved_on_validation_failure(self):
+        ctx = _make_context("No frontmatter")
+        h = GovernanceAssessReadinessHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert result._evidence is not None
+        assert result._evidence.capability_id == "governance.assess_readiness"
+
+
+# ---------------------------------------------------------------------------
+# 11. D17 artifact content validation (Fix E)
+# ---------------------------------------------------------------------------
+
+
+class TestD17ArtifactContentValidation:
+    """GovernanceIncorporateFeedbackHandler fails fast on missing/empty artifact content."""
+
+    async def test_no_prior_outputs_fails(self):
+        ctx = _make_context()
+        h = GovernanceIncorporateFeedbackHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert "D17" in result.error
+
+    async def test_empty_artifact_contents_fails(self):
+        ctx = _make_context()
+        h = GovernanceIncorporateFeedbackHandler()
+        inputs = {
+            "prd": "Build a widget",
+            "prior_outputs": {"artifact_contents": {}},
+        }
+        result = await h.handle(ctx, inputs)
+
+        assert result.success is False
+        assert "D17" in result.error
+
+    async def test_blank_artifact_content_fails(self):
+        ctx = _make_context()
+        h = GovernanceIncorporateFeedbackHandler()
+        inputs = {
+            "prd": "Build a widget",
+            "prior_outputs": {
+                "artifact_contents": {"planning_artifact.md": "   "},
+            },
+        }
+        result = await h.handle(ctx, inputs)
+
+        assert result.success is False
+        assert "D17" in result.error
+
+    async def test_valid_artifact_content_proceeds(self):
+        ctx = _make_context()
+        h = GovernanceIncorporateFeedbackHandler()
+        inputs = {
+            "prd": "Build a widget",
+            "prior_outputs": {
+                "artifact_contents": {
+                    "planning_artifact.md": "Real planning content",
+                },
+            },
+        }
+        result = await h.handle(ctx, inputs)
+
+        assert result.success is True
+
+    async def test_evidence_on_d17_failure(self):
+        ctx = _make_context()
+        h = GovernanceIncorporateFeedbackHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert result._evidence is not None
+        assert result._evidence.capability_id == "governance.incorporate_feedback"
+
+    async def test_llm_not_called_on_d17_failure(self):
+        ctx = _make_context()
+        h = GovernanceIncorporateFeedbackHandler()
+        await h.handle(ctx, {"prd": "Build a widget"})
+
+        ctx.ports.llm.chat.assert_not_awaited()
