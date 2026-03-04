@@ -7,11 +7,8 @@ Part of SIP-0.8.8 Agent Foundation.
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-
-from squadops.tasks.models import TaskEnvelope, TaskResult
 
 if TYPE_CHECKING:
     from squadops.agents.skills.registry import SkillRegistry
@@ -45,17 +42,14 @@ class PortsBundle:
     llm_observability: LLMObservabilityPort | None = None
 
 
-class BaseAgent(ABC):
+class BaseAgent:
     """Base agent with full port injection.
 
     This class provides the foundation for all agents with:
     - Dependency-injected access to all required ports
     - Standardized identity (agent_id, role_id)
     - Lifecycle hooks (on_agent_start, on_agent_stop, etc.)
-    - Task handling interface
     - Skill registry integration
-
-    Subclasses must implement handle_task() for task processing.
     """
 
     ROLE_ID: str = "base"  # Override in subclasses
@@ -246,22 +240,6 @@ class BaseAgent(ABC):
             "pulse_end",
             extra={"agent_id": self._agent_id, "pulse_id": pulse_id},
         )
-
-    # Task handling
-
-    @abstractmethod
-    async def handle_task(self, envelope: TaskEnvelope) -> TaskResult:
-        """Process incoming task.
-
-        Subclasses must implement this method to handle tasks.
-
-        Args:
-            envelope: Task envelope with task details
-
-        Returns:
-            Task result with execution outcome
-        """
-        ...
 
     # Utility methods
 
