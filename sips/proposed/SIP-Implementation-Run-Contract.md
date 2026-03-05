@@ -1,10 +1,16 @@
+---
+title: Implementation Run Contract & Correction Protocol
+status: proposed
+author: SquadOps Architecture
+created_at: '2026-02-28T00:00:00Z'
+---
 # SIP-0XXX: Implementation Run Contract & Correction Protocol
 
 **Status:** Proposed
 **Authors:** SquadOps Architecture
 **Created:** 2026-02-28
 **Updated:** 2026-03-04
-**Revision:** 2
+**Revision:** 3
 
 ---
 
@@ -156,7 +162,7 @@ A new handler `GovernanceEstablishContractHandler` executes as the **first task*
 - `run_contract` artifact stored in vault
 - `run_contract_ref` — artifact ID for downstream reference
 
-This handler is Lead-owned. It extracts structure from the approved plan and materializes it as a platform-validated contract. If the planning artifact lacks sufficient structure for contract generation, the handler emits a failure with classification `NeedsReplan`.
+This handler is Lead-owned. It extracts structure from the approved plan and materializes it as a platform-validated contract. If the planning artifact lacks sufficient structure for contract generation, the handler returns a `TaskResult` with `status = "FAILED"` and `outcome_class = TaskOutcome.NEEDS_REPLAN`. The executor treats this as an **immediate run abort** — no correction protocol, no retry. The run transitions to `FAILED` and the cycle must return to planning. This is the platform's last chance to reject an unprepared implementation run, and it should fail fast rather than enter a correction loop with no valid contract to correct against.
 
 ### 7.3 Structured Task Outcome Classification
 
@@ -191,7 +197,16 @@ class TaskResult:
     outcome_class: str | None = None  # New: TaskOutcome constant (optional, backward compat)
 ```
 
-When `outcome_class` is `None` (backward compatibility), the executor treats `FAILED` as `RETRYABLE_FAILURE` for the first attempt and `SEMANTIC_FAILURE` after exhausting retries. When present, the executor uses the classification directly.
+When `outcome_class` is `None` (backward compatibility), the executor applies the following deterministic escalation:
+
+| `status` | Attempt | Inferred `outcome_class` | Action |
+|-----------|---------|--------------------------|--------|
+| `SUCCEEDED` | any | `SUCCESS` | Checkpoint, continue |
+| `FAILED` | < `max_task_retries` | `RETRYABLE_FAILURE` | Retry |
+| `FAILED` | = `max_task_retries` | `SEMANTIC_FAILURE` | Trigger correction protocol |
+| `SKIPPED` | any | (no classification) | Skip, no checkpoint |
+
+When `outcome_class` is present, the executor uses the classification directly and ignores attempt count for routing.
 
 ### 7.4 Checkpoint Model
 
@@ -223,7 +238,7 @@ async def get_latest_checkpoint(self, run_id: str) -> RunCheckpoint | None: ...
 
 Both `MemoryCycleRegistry` and `PostgresCycleRegistry` implement these methods. The Postgres adapter stores checkpoints in a new `run_checkpoints` table (see §7.12). The memory adapter stores them in a dict.
 
-**Checkpoint frequency:** Every task boundary (after each successful task completion). This is the minimum resume granularity for v1.0.
+**Checkpoint frequency:** Every task boundary, **only after successful task completion**. Failed and skipped tasks do NOT create checkpoints. This means `checkpoint.checkpoint_index` equals the count of `SUCCESS` tasks at that point, not the task's ordinal position in the plan. This is the minimum resume granularity for v1.0.
 
 ### 7.5 Resume Protocol
 
@@ -231,9 +246,9 @@ When a run is resumed from a checkpoint:
 
 1. **Trigger:** API route `POST /runs/{run_id}/resume` or CLI `squadops runs resume <project> <cycle_id> <run_id>`.
 2. **State transition:** `PAUSED → RUNNING` (or `FAILED → RUNNING` for retry-from-checkpoint).
-3. **Checkpoint load:** Executor loads `get_latest_checkpoint(run_id)`.
+3. **Checkpoint load:** Executor loads `get_latest_checkpoint(run_id)`. **In v1.0, resume always uses the latest checkpoint.** Selecting an earlier checkpoint is a v1.1 consideration (requires the API to accept `checkpoint_index` and the executor to validate that rewinding further is safe).
 4. **Task plan regeneration:** `generate_task_plan()` produces the full task list. The executor skips tasks whose `task_id` appears in `checkpoint.completed_task_ids`.
-5. **Context restoration:** `prior_outputs` and `artifact_refs` are restored from the checkpoint. The resumed task receives the same chain context as if the prior tasks had just completed.
+5. **Context restoration:** `prior_outputs` is restored **from the checkpoint** — meaning the resumed task's chain context only includes outputs from tasks that were completed at the checkpoint point. `artifact_refs` are restored from the checkpoint for context injection, but all artifacts ever stored (including those produced after the checkpoint) remain in the vault and are accessible via API. This distinction matters on rewind: `prior_outputs` rolls back to the checkpoint state, while the vault retains everything for auditability.
 6. **Event emission:** `RUN_RESUMED` event (already defined in EventType but currently never emitted).
 7. **Plan delta injection:** If plan deltas were recorded before the pause, they are loaded and injected into the resumed task's inputs as `plan_delta_refs`.
 
@@ -245,7 +260,12 @@ When a run is resumed from a checkpoint:
 
 When a pulse check or task failure indicates drift or degradation, the correction protocol activates:
 
-**Step 1 — Detect.** A pulse check identifies the problem (plan divergence, repeated failure, scope drift, regression). The detection signal is a `PULSE_BOUNDARY_DECIDED` event with decision `FAIL`.
+**Step 1 — Detect.** A problem is detected via one of two paths:
+
+- **Pulse check failure:** A pulse check identifies plan divergence, scope drift, or regression. The detection signal is a `PULSE_BOUNDARY_DECIDED` event with decision `FAIL`.
+- **Task failure with semantic outcome:** A task returns `outcome_class` in `{SEMANTIC_FAILURE, NEEDS_REPAIR, NEEDS_REPLAN}`, or a task exhausts retries when `outcome_class` is `None` (see §7.3 fallback table).
+
+**Precedence:** If a task failure and a pulse check failure occur in the same pulse boundary, the **task failure takes precedence** — the correction protocol uses the task's `outcome_class` and error evidence as its primary input. The pulse check failure is recorded as supplementary evidence in the plan delta but does not trigger a separate correction sequence.
 
 **Step 2 — Root Cause Analysis.** A correction task sequence executes. The first task is `data.analyze_failure` — Data agent analyzes the failure evidence and classifies it using the failure taxonomy (§7.7).
 
@@ -269,15 +289,17 @@ class PlanDelta:
     run_id: str
     correction_path: str          # continue | patch | rewind | abort
     trigger: str                  # What triggered the correction (pulse check ID, task failure, etc.)
-    failure_classification: str   # From failure taxonomy (§7.7)
-    analysis_summary: str         # RCA output from Data agent
-    decision_rationale: str       # Lead agent's reasoning
-    changes: tuple[str, ...]      # What changed in the approach
-    affected_task_types: tuple[str, ...]  # Which remaining tasks are affected
+    failure_classification: str   # REQUIRED: From failure taxonomy (§7.7) — must not be empty
+    analysis_summary: str         # REQUIRED: RCA output from Data agent — must not be empty
+    decision_rationale: str       # REQUIRED: Lead agent's reasoning — must not be empty
+    changes: tuple[str, ...]      # What changed in the approach (may be empty for `continue`)
+    affected_task_types: tuple[str, ...]  # Which remaining tasks are affected (may be empty for `continue`)
     created_at: datetime
 ```
 
 **Placement:** `src/squadops/cycles/plan_delta.py`
+
+**Validation:** `failure_classification`, `analysis_summary`, and `decision_rationale` are required (non-empty) for all correction paths. The `changes` tuple may be empty for `continue` (acknowledging the issue without plan changes) but must be non-empty for `patch` and `rewind`. An `abort` delta records the reason for halting in `decision_rationale` with no required `changes`.
 
 **Step 5 — Resume.** Execution continues from the current point (for `continue`/`patch`) or from a prior checkpoint (for `rewind`), with the plan delta injected into downstream task inputs.
 
@@ -356,7 +378,7 @@ After the correction decision, additional steps depend on the chosen path:
 
 The `DistributedFlowExecutor._execute_sequential()` method gains:
 
-1. **Checkpoint persistence** — after each successful task, call `save_checkpoint()`.
+1. **Checkpoint persistence** — after each successful task, call `save_checkpoint()`. This applies to **all** tasks including correction tasks (`data.analyze_failure`, `governance.correction_decision`, `development.repair`, `qa.validate_repair`). Correction tasks are not special-cased — they checkpoint on success like any other task. This means a correction sequence interrupted mid-way can resume from the last completed correction step.
 2. **Resume detection** — on run start, check `get_latest_checkpoint(run_id)`. If present, skip completed tasks and restore context.
 3. **Outcome routing** — read `TaskResult.outcome_class` to determine retry vs correction:
    - `retryable_failure` → retry up to `max_task_retries`
@@ -451,7 +473,10 @@ Request body:
 
 Response: Updated run DTO with `status: "running"`.
 
-**Preconditions:** Run must be in `PAUSED` or `FAILED` status. A checkpoint must exist for the run.
+**Preconditions (all must be met):**
+1. Run status is `PAUSED` or `FAILED`. Runs in `COMPLETED`, `CANCELLED`, or `PENDING_GATE` status are rejected with `409 Conflict`.
+2. At least one checkpoint exists for the run. Runs without checkpoints are rejected with `422 Unprocessable Entity`.
+3. The parent cycle is not in a terminal state (`COMPLETED`, `CANCELLED`). Resuming a run in a finished cycle is rejected with `409 Conflict`.
 
 **New route:** `GET /projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/checkpoints`
 
@@ -527,6 +552,8 @@ All new keys (`max_task_retries`, etc.) have defaults. Existing profiles that do
 ### 8.4 Event Bus
 
 5 new EventType constants are additive. Existing bridge adapters (LangFuse, Prefect, Metrics) receive new events via the existing subscriber pattern. Unknown events are safely ignored by bridges that do not handle them.
+
+**Bridge updates required for this SIP:** The LangFuse and Prefect bridges should be extended to handle `CHECKPOINT_CREATED`, `CHECKPOINT_RESTORED`, and `CORRECTION_*` events as part of Phase 4 (not Phase 1). Without bridge updates, these events are emitted but not forwarded to LangFuse/Prefect — they remain visible only via the event bus itself. The Metrics bridge should emit counters for correction events (`correction.initiated`, `correction.decided` with path label) for operational dashboards.
 
 ### 8.5 Tests
 
@@ -690,17 +717,27 @@ When a `rewind` correction path is selected, execution state (prior_outputs chai
 
 Only the latest N checkpoints per run are retained (configurable, default 5). Older checkpoints are deleted when a new one is saved. For a 10-task implementation run, this means at most 5 checkpoints at any time. The latest checkpoint is always available for resume.
 
+**Pruning vs rewind interaction:** In v1.0, rewind always targets the **latest checkpoint** (see §7.5). Since pruning retains at least the latest checkpoint, there is no conflict. If v1.1 introduces rewind-to-earlier-checkpoint, the pruning window must be >= the maximum rewind depth, or pruning must be suspended for runs with active correction sequences. This interaction is deferred to the v1.1 SIP.
+
 ### D8: Correction tasks are injected dynamically, not pre-planned
 
 The task plan generator does not include correction tasks in the initial plan. When the executor's correction protocol triggers, it dynamically injects `CORRECTION_TASK_STEPS` followed by path-specific tasks (e.g., repair tasks for `patch`). This keeps the happy-path plan clean and avoids speculative task generation.
 
 ### D9: Implementation step 0 is always contract establishment
 
-The `governance.establish_contract` task executes before any dev/test tasks. If it fails (e.g., planning artifact insufficient), the run fails immediately rather than proceeding without a contract. This is the platform's last chance to reject an unprepared implementation run.
+The `governance.establish_contract` task executes before any dev/test tasks. If it fails (e.g., planning artifact insufficient), the run fails immediately with `outcome_class = NEEDS_REPLAN` and no correction protocol is triggered (see §7.2). The run transitions directly to `FAILED`. This is the platform's last chance to reject an unprepared implementation run — there is no valid contract to correct against, so entering the correction loop would be circular.
 
 ### D10: TaskFailed events remain observational
 
 Following the Prefect/Event Bus boundary IDEA, `TASK_FAILED` events on the event bus remain observational (telemetry, evidence, threshold inputs). Task-level recovery routing happens in the executor via `outcome_class`, not in event handlers. This prevents the event bus from becoming a second orchestrator.
+
+### D12: Task ID stability across plan regeneration
+
+Task IDs within a run must be **deterministic and stable** across calls to `generate_task_plan()`. The executor relies on matching `checkpoint.completed_task_ids` against the regenerated plan to skip completed tasks. If task IDs change between the original execution and the resume, the executor cannot identify which tasks were already completed.
+
+**Rule:** Task IDs are derived from `(run_id, task_type, step_index)` — not from UUIDs or timestamps. The existing `create_envelope()` helper must use this deterministic scheme for implementation runs. Example: `task-{run_id[:12]}-{step_index:03d}-{task_type}`.
+
+**Invariant:** For a given `(run_id, task_plan_inputs)`, `generate_task_plan()` must produce the same task IDs in the same order. Plan deltas may append or replace tasks, but they must not reorder or renumber existing completed tasks.
 
 ### D11: FAILED → RUNNING is a valid resume transition
 
@@ -761,3 +798,4 @@ Resolved: The existing LangFuse trace/span model (trace = cycle, span = task) re
 |-----|------|---------|
 | 1 | 2026-02-28 | Initial proposal: approach sketch, goals, open questions |
 | 2 | 2026-03-04 | Acceptance-ready rewrite: terminology, design principles, 16 design sections, 11 design decisions, 4-phase rollout, file-level design, test plan (~130 tests), failure taxonomy, backwards compatibility, risks, resolved all 5 open questions |
+| 3 | 2026-03-04 | Incorporated 12 reviewer tightenings: checkpoint-only-on-success (#1), resume=latest-only in v1.0 (#2), prior_outputs vs artifact_refs restoration semantics (#3), deterministic outcome_class=None fallback table (#4), contract failure as immediate abort with NEEDS_REPLAN (#5), pulse-check vs task-failure precedence (#6), PlanDelta field validation rules incl. empty changes for continue (#7), correction tasks checkpoint like normal tasks (#8), D12 task ID stability invariant (#9), pruning vs rewind depth interaction (#10), full resume precondition set incl. terminal state rejection (#11), bridge update notes for new events (#12) |
