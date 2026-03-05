@@ -204,10 +204,16 @@ python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature
 **Tests** (see `docs/TEST_QUALITY_STANDARD.md` for full standard with examples):
 - Never delete/skip tests to make suite pass — fix implementation, not tests
 - **Before writing any test, answer: "What bug would this catch?"** If you cannot name a specific, realistic bug, do not write the test.
-- **Do NOT write**: tautological tests (enum values equal themselves, dataclass fields store what you pass), mock-call-count-only assertions, `isinstance`/`is not None` as sole assertions, happy-path-only suites
-- **DO write**: exact value assertions, error/edge case tests, varied inputs via parametrize, output assertions not call-count assertions
+- **Do NOT write**:
+  - Tautological tests: checking class attributes equal their hardcoded values (`assert h.capability_id == "foo"`), checking enum/constants members exist, checking dataclass fields store what you pass, checking `_artifact_name` or `_role` attributes
+  - Mock-call-count-only assertions as the sole assertion (pair with output/state assertions)
+  - `isinstance`/`is not None` as sole assertions
+  - Near-duplicate tests that vary only the input data — use `@pytest.mark.parametrize` instead
+  - Happy-path-only suites with no error/edge cases
+- **DO write**: exact value assertions on outputs, error/edge case tests, varied inputs via parametrize, tests that exercise real code paths (call `handle()`, `execute()`, etc.)
 - Every test file must include at least one error/edge case test per public function tested
 - Prefer 4 strong tests over 20 weak ones — quality over count
+- **Self-check before committing tests**: re-read each test and delete any that only assert class attributes, only check `is not None`, or duplicate another test's coverage with different constants
 
 **Docker**:
 - Don't modify `docker-compose.yml` or change service/container names without explicit request

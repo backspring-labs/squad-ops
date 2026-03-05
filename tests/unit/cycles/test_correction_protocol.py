@@ -129,7 +129,10 @@ def mock_squad_profile():
                 agent_id="eve", role="qa", model="gpt-4", enabled=True
             ),
             AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
+                agent_id="data-agent",
+                role="data",
+                model="gpt-4",
+                enabled=True,
             ),
             AgentProfileEntry(
                 agent_id="max", role="lead", model="gpt-4", enabled=True
@@ -175,7 +178,13 @@ def run():
 
 @pytest.fixture
 def executor(
-    mock_registry, mock_vault, mock_queue, mock_squad_profile, mock_event_bus, cycle, run
+    mock_registry,
+    mock_vault,
+    mock_queue,
+    mock_squad_profile,
+    mock_event_bus,
+    cycle,
+    run,
 ):
     from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
 
@@ -244,12 +253,11 @@ class TestCorrectionContinue:
     async def test_continue_path_allows_remaining_tasks(
         self, executor, mock_queue, mock_registry, mock_event_bus
     ):
-        """Semantic failure → correction decides 'continue' → remaining tasks run."""
+        """Semantic failure -> correction decides 'continue' -> remaining tasks run."""
         semantic_outputs = {
             "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
             "role": "strat",
         }
-        # Correction decision returns "continue"
         correction_decision = {
             "summary": "continue",
             "role": "lead",
@@ -276,7 +284,9 @@ class TestCorrectionContinue:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        mock_queue.consume.side_effect = _build_scripted_consume(
+            mock_queue, script
+        )
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -303,7 +313,7 @@ class TestCorrectionPatch:
     async def test_patch_dispatches_repair_tasks(
         self, executor, mock_queue, mock_registry, mock_event_bus
     ):
-        """Patch path → repair tasks dispatched, then remaining tasks proceed."""
+        """Patch path -> repair tasks dispatched, then remaining tasks proceed."""
         semantic_outputs = {
             "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
             "role": "strat",
@@ -326,7 +336,7 @@ class TestCorrectionPatch:
                 "analysis_summary": "quality",
                 "role": "data",
             }, None),
-            # Correction: correction_decision → patch
+            # Correction: correction_decision -> patch
             ("SUCCEEDED", correction_decision, None),
             # Repair: development.repair
             ("SUCCEEDED", {"summary": "repaired", "role": "dev"}, None),
@@ -338,7 +348,9 @@ class TestCorrectionPatch:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        mock_queue.consume.side_effect = _build_scripted_consume(
+            mock_queue, script
+        )
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -355,90 +367,55 @@ class TestCorrectionPatch:
 
 
 # ---------------------------------------------------------------------------
-# Correction protocol: abort path
+# Correction protocol: abort and rewind paths
 # ---------------------------------------------------------------------------
 
 
-class TestCorrectionAbort:
-    """Correction path 'abort': run fails."""
+class TestCorrectionTerminalPaths:
+    """Abort and rewind paths both terminate the run as FAILED."""
 
-    async def test_abort_fails_run(
-        self, executor, mock_queue, mock_registry, mock_event_bus
+    @pytest.mark.parametrize(
+        "correction_path,rationale",
+        [
+            ("abort", "Unrecoverable"),
+            ("rewind", "Need to go back"),
+        ],
+    )
+    async def test_terminal_path_fails_run(
+        self,
+        executor,
+        mock_queue,
+        mock_registry,
+        mock_event_bus,
+        correction_path,
+        rationale,
     ):
-        """Abort path → run transitions to FAILED."""
+        """Both abort and rewind -> run transitions to FAILED."""
         semantic_outputs = {
             "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
             "role": "strat",
         }
         correction_decision = {
-            "summary": "abort",
+            "summary": correction_path,
             "role": "lead",
-            "correction_path": "abort",
-            "decision_rationale": "Unrecoverable",
+            "correction_path": correction_path,
+            "decision_rationale": rationale,
             "affected_task_types": [],
-            "classification": "model_limitation",
-            "analysis_summary": "Cannot fix",
+            "classification": "execution",
+            "analysis_summary": "Issue found",
         }
         script = [
             ("FAILED", semantic_outputs, "bad"),
             ("SUCCEEDED", {
-                "classification": "model_limitation",
-                "analysis_summary": "gap",
+                "classification": "execution",
+                "analysis_summary": "issue",
                 "role": "data",
             }, None),
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
-
-        with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
-
-        # 1 (task) + 2 (correction) = 3
-        assert mock_queue.publish.call_count == 3
-
-        status_calls = mock_registry.update_run_status.call_args_list
-        terminal_statuses = [c.args[1] for c in status_calls]
-        assert RunStatus.FAILED in terminal_statuses
-
-
-# ---------------------------------------------------------------------------
-# Correction protocol: rewind path
-# ---------------------------------------------------------------------------
-
-
-class TestCorrectionRewind:
-    """Correction path 'rewind': raises execution error to trigger checkpoint."""
-
-    async def test_rewind_fails_run(
-        self, executor, mock_queue, mock_registry, mock_event_bus
-    ):
-        """Rewind path → run transitions to FAILED (resume handled externally)."""
-        semantic_outputs = {
-            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
-            "role": "strat",
-        }
-        correction_decision = {
-            "summary": "rewind",
-            "role": "lead",
-            "correction_path": "rewind",
-            "decision_rationale": "Need to go back",
-            "affected_task_types": ["strategy.analyze_prd"],
-            "classification": "decision",
-            "analysis_summary": "Wrong approach",
-        }
-        script = [
-            ("FAILED", semantic_outputs, "bad"),
-            ("SUCCEEDED", {
-                "classification": "decision",
-                "analysis_summary": "wrong",
-                "role": "data",
-            }, None),
-            ("SUCCEEDED", correction_decision, None),
-        ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        mock_queue.consume.side_effect = _build_scripted_consume(
+            mock_queue, script
+        )
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -492,7 +469,7 @@ class TestMaxCorrectionAttempts:
         script = [
             # Task 1: semantic failure
             ("FAILED", semantic_outputs, "bad"),
-            # Correction 1: analyze + decide → continue
+            # Correction 1: analyze + decide -> continue
             ("SUCCEEDED", {
                 "classification": "execution",
                 "analysis_summary": "ok",
@@ -501,7 +478,7 @@ class TestMaxCorrectionAttempts:
             ("SUCCEEDED", correction_decision, None),
             # Task 2: also semantic failure
             ("FAILED", semantic_outputs_2, "bad again"),
-            # Would need correction 2, but max_correction_attempts=1 → abort
+            # max_correction_attempts=1 exhausted -> abort
         ]
         mock_queue.consume.side_effect = _build_scripted_consume(
             mock_queue, script
@@ -555,7 +532,9 @@ class TestPlanDelta:
             }, None),
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        mock_queue.consume.side_effect = _build_scripted_consume(
+            mock_queue, script
+        )
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -566,7 +545,9 @@ class TestPlanDelta:
         # Check that a plan_delta artifact was stored
         store_calls = mock_vault.store.call_args_list
         delta_stores = [
-            c for c in store_calls if c.args[0].artifact_type == "plan_delta"
+            c
+            for c in store_calls
+            if c.args[0].artifact_type == "plan_delta"
         ]
         assert len(delta_stores) == 1
 
@@ -602,16 +583,18 @@ class TestCorrectionCheckpoints:
         }
         script = [
             ("FAILED", semantic_outputs, "bad"),
-            # analyze_failure succeeds → checkpoint
+            # analyze_failure succeeds -> checkpoint
             ("SUCCEEDED", {
                 "classification": "execution",
                 "analysis_summary": "ok",
                 "role": "data",
             }, None),
-            # correction_decision succeeds → checkpoint
+            # correction_decision succeeds -> checkpoint
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        mock_queue.consume.side_effect = _build_scripted_consume(
+            mock_queue, script
+        )
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -619,7 +602,7 @@ class TestCorrectionCheckpoints:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # 2 successful correction tasks → 2 checkpoint saves
+        # 2 successful correction tasks -> 2 checkpoint saves
         assert mock_registry.save_checkpoint.call_count == 2
 
     async def test_failed_correction_task_not_checkpointed(
@@ -637,7 +620,9 @@ class TestCorrectionCheckpoints:
             # correction_decision fails
             ("FAILED", None, "corr fail"),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        mock_queue.consume.side_effect = _build_scripted_consume(
+            mock_queue, script
+        )
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -645,7 +630,7 @@ class TestCorrectionCheckpoints:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # 0 successful tasks → 0 checkpoints
+        # 0 successful tasks -> 0 checkpoints
         assert mock_registry.save_checkpoint.call_count == 0
 
 
@@ -657,10 +642,10 @@ class TestCorrectionCheckpoints:
 class TestCorrectionEvents:
     """CORRECTION_INITIATED/DECIDED/COMPLETED events emitted."""
 
-    async def test_correction_events_emitted(
+    async def test_correction_events_emitted_in_order(
         self, executor, mock_queue, mock_registry, mock_event_bus
     ):
-        """All 3 correction events emitted in sequence."""
+        """All 3 correction events emitted in INITIATED < DECIDED < COMPLETED order."""
         semantic_outputs = {
             "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
             "role": "strat",
@@ -683,7 +668,9 @@ class TestCorrectionEvents:
             }, None),
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        mock_queue.consume.side_effect = _build_scripted_consume(
+            mock_queue, script
+        )
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -735,7 +722,9 @@ class TestCorrectionEvents:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        mock_queue.consume.side_effect = _build_scripted_consume(
+            mock_queue, script
+        )
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
