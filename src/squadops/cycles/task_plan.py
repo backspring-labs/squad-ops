@@ -68,6 +68,25 @@ REFINEMENT_TASK_STEPS: list[tuple[str, str]] = [
     ("qa.validate_refinement", "qa"),
 ]
 
+# Implementation task steps (SIP-0079 §7.2): contract + build steps
+IMPLEMENTATION_TASK_STEPS: list[tuple[str, str]] = [
+    ("governance.establish_contract", "lead"),
+    ("development.develop", "dev"),
+    ("qa.test", "qa"),
+]
+
+# Correction protocol task steps (SIP-0079 §7.7)
+CORRECTION_TASK_STEPS: list[tuple[str, str]] = [
+    ("data.analyze_failure", "data"),
+    ("governance.correction_decision", "lead"),
+]
+
+# Repair task steps (SIP-0079 §7.7)
+REPAIR_TASK_STEPS: list[tuple[str, str]] = [
+    ("development.repair", "dev"),
+    ("qa.validate_repair", "qa"),
+]
+
 # Well-known workload types that have dedicated step selection.
 _KNOWN_WORKLOAD_TYPES = {
     WorkloadType.PLANNING,
@@ -150,9 +169,9 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
         elif run.workload_type == WorkloadType.IMPLEMENTATION:
             builder_used = _has_builder_role(profile)
             if builder_used:
-                steps = list(BUILDER_ASSEMBLY_TASK_STEPS)
+                steps = list(IMPLEMENTATION_TASK_STEPS[:1]) + list(BUILDER_ASSEMBLY_TASK_STEPS)
             else:
-                steps = list(BUILD_TASK_STEPS)
+                steps = list(IMPLEMENTATION_TASK_STEPS)
 
         elif run.workload_type == WorkloadType.EVALUATION:
             # Evaluation reuses standard cycle task steps for V1.
@@ -198,11 +217,19 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
     # Routing reason for build step metadata (D14)
     routing_reason = ROUTING_BUILDER_PRESENT if builder_used else ROUTING_FALLBACK_NO_BUILDER
 
+    # RC-1: Deterministic task IDs for implementation runs (stable across resume).
+    use_deterministic_ids = (
+        run.workload_type is not None and run.workload_type == WorkloadType.IMPLEMENTATION
+    )
+
     envelopes: list[TaskEnvelope] = []
     prev_task_id: str | None = None
 
     for step_index, (task_type, role) in enumerate(steps):
-        task_id = uuid4().hex
+        if use_deterministic_ids:
+            task_id = f"task-{run.run_id[:12]}-{step_index:03d}-{task_type}"
+        else:
+            task_id = uuid4().hex
         pulse_id = uuid4().hex
         span_id = uuid4().hex
         causation_id = prev_task_id or correlation_id

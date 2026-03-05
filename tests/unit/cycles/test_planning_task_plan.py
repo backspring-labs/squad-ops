@@ -22,6 +22,7 @@ from squadops.cycles.task_plan import (
     BUILD_TASK_STEPS,
     BUILDER_ASSEMBLY_TASK_STEPS,
     CYCLE_TASK_STEPS,
+    IMPLEMENTATION_TASK_STEPS,
     PLANNING_TASK_STEPS,
     REFINEMENT_TASK_STEPS,
     generate_task_plan,
@@ -216,16 +217,19 @@ class TestRefinementWorkload:
 
 
 class TestImplementationWorkload:
-    def test_no_builder_produces_build_task_steps(self, cycle, full_profile):
+    def test_no_builder_produces_implementation_task_steps(self, cycle, full_profile):
         envelopes = generate_task_plan(cycle, _run("implementation"), full_profile)
         actual = [e.task_type for e in envelopes]
-        expected = [s[0] for s in BUILD_TASK_STEPS]
+        expected = [s[0] for s in IMPLEMENTATION_TASK_STEPS]
         assert actual == expected
 
-    def test_builder_present_produces_assembly_steps(self, cycle, builder_profile):
+    def test_builder_present_produces_contract_plus_assembly_steps(self, cycle, builder_profile):
         envelopes = generate_task_plan(cycle, _run("implementation"), builder_profile)
         actual = [e.task_type for e in envelopes]
-        expected = [s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS]
+        # SIP-0079: governance.establish_contract prepended before builder assembly steps
+        expected = [s[0] for s in IMPLEMENTATION_TASK_STEPS[:1]] + [
+            s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS
+        ]
         assert actual == expected
 
 
