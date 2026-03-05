@@ -26,9 +26,8 @@ _ALL_EVENT_TYPE_ATTRS = [
 ]
 
 # SIP-0079 event types — emission points added in Phase 2/3
+# SIP-0079 correction events — emission points added in Phase 3
 _SIP_0079_PENDING_EMISSION = {
-    "CHECKPOINT_CREATED",
-    "CHECKPOINT_RESTORED",
     "CORRECTION_INITIATED",
     "CORRECTION_DECIDED",
     "CORRECTION_COMPLETED",
@@ -116,13 +115,15 @@ class TestExecutorEmissionPoints:
             "PULSE_BOUNDARY_DECIDED",
             "PULSE_REPAIR_STARTED",
             "PULSE_REPAIR_EXHAUSTED",
+            "CHECKPOINT_CREATED",
+            "CHECKPOINT_RESTORED",
         ],
     )
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_14_types(self, executor_refs: set[str]) -> None:
-        assert len(executor_refs) == 14
+    def test_executor_has_16_types(self, executor_refs: set[str]) -> None:
+        assert len(executor_refs) == 16
 
 
 class TestRouteEmissionPoints:
@@ -221,12 +222,12 @@ class TestEmitCallSitePayloadFields:
                 total_calls += 1
                 if any(kw.arg == "payload" for kw in call.keywords):
                     with_payload += 1
-        # At least 22 of 25 calls have payload (3 run lifecycle events omit it)
-        assert with_payload >= 22
+        # At least 24 of 29 calls have payload (a few lifecycle events omit it)
+        assert with_payload >= 24
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 19 executor + 6 route = 25 total emit calls."""
+        """Sanity check: 23 executor + 6 route = 29 total emit calls."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 25
+        assert total == 29

@@ -114,6 +114,8 @@ def mock_registry():
         resolved_config_hash="hash",
     )
     mock.append_artifact_refs.return_value = mock.get_run.return_value
+    mock.get_latest_checkpoint.return_value = None
+    mock.save_checkpoint.return_value = None
     return mock
 
 

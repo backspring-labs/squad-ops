@@ -22,6 +22,7 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import ArtifactRef, Cycle, RunStatus
 from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
@@ -65,6 +66,10 @@ class _ExecutionError(Exception):
 
 class _CancellationError(Exception):
     """Internal: run was cancelled."""
+
+
+class _PausedError(Exception):
+    """Internal: run paused due to BLOCKED outcome."""
 
 
 class DistributedFlowExecutor(FlowExecutionPort):
@@ -146,14 +151,34 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # Materialize run_root directory with seed files (PRD)
             run_root = await self._materialize_run_root(cycle, run_id)
 
-            # queued -> running
+            # queued/failed/paused -> running
             await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
-            self._cycle_event_bus.emit(
-                EventType.RUN_STARTED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle_id, "run_id": run_id, "project_id": cycle.project_id},
-            )
+
+            # SIP-0079: Check if resuming from checkpoint
+            existing_checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
+            if existing_checkpoint:
+                self._cycle_event_bus.emit(
+                    EventType.RUN_RESUMED,
+                    entity_type="run",
+                    entity_id=run_id,
+                    context={
+                        "cycle_id": cycle_id,
+                        "run_id": run_id,
+                        "project_id": cycle.project_id,
+                    },
+                    payload={"checkpoint_index": existing_checkpoint.checkpoint_index},
+                )
+            else:
+                self._cycle_event_bus.emit(
+                    EventType.RUN_STARTED,
+                    entity_type="run",
+                    entity_id=run_id,
+                    context={
+                        "cycle_id": cycle_id,
+                        "run_id": run_id,
+                        "project_id": cycle.project_id,
+                    },
+                )
 
             plan = generate_task_plan(cycle, run, profile)
 
@@ -265,6 +290,17 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 context={"cycle_id": cycle_id, "run_id": run_id},
             )
             logger.info("Run %s cancelled", run_id)
+
+        except _PausedError:
+            terminal_status = "PAUSED"
+            await self._safe_transition(run_id, RunStatus.PAUSED)
+            self._cycle_event_bus.emit(
+                EventType.RUN_PAUSED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle_id, "run_id": run_id},
+            )
+            logger.info("Run %s paused", run_id)
 
         except _ExecutionError as exc:
             terminal_status = "FAILED"
@@ -506,6 +542,50 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # Track stored artifacts with their refs for build pre-resolution
         stored_artifacts: list[tuple[str, ArtifactRef]] = []
 
+        # SIP-0079: Checkpoint/resume state tracking
+        completed_task_ids: list[str] = []
+        plan_delta_refs: list[str] = []
+        skip_task_ids: set[str] = set()
+
+        # SIP-0079: Time budget enforcement (RC-8)
+        time_budget = cycle.applied_defaults.get("time_budget_seconds")
+        run_start_time = time.monotonic()
+
+        # SIP-0079: Resume from checkpoint — restore prior state
+        checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
+        if checkpoint:
+            skip_task_ids = set(checkpoint.completed_task_ids)
+            prior_outputs = dict(checkpoint.prior_outputs)
+            completed_task_ids = list(checkpoint.completed_task_ids)
+            plan_delta_refs = list(checkpoint.plan_delta_refs)
+            # Restore artifact refs from checkpoint
+            for art_id in checkpoint.artifact_refs:
+                if art_id not in all_artifact_refs:
+                    all_artifact_refs.append(art_id)
+                try:
+                    ref, _ = await self._artifact_vault.retrieve(art_id)
+                    stored_artifacts.append((art_id, ref))
+                except Exception:
+                    logger.warning(
+                        "Failed to restore artifact %s from checkpoint", art_id, exc_info=True
+                    )
+            self._cycle_event_bus.emit(
+                EventType.CHECKPOINT_RESTORED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                payload={
+                    "checkpoint_index": checkpoint.checkpoint_index,
+                    "completed_task_count": len(skip_task_ids),
+                },
+            )
+            logger.info(
+                "Resumed run %s from checkpoint %d (%d tasks completed)",
+                run_id,
+                checkpoint.checkpoint_index,
+                len(skip_task_ids),
+            )
+
         # Seed from prior plan artifacts for build-only runs (§2.3)
         if seed_artifact_refs:
             for art_id in seed_artifact_refs:
@@ -585,6 +665,22 @@ class DistributedFlowExecutor(FlowExecutionPort):
         for task_idx, envelope in enumerate(plan):
             if await self._is_cancelled(run_id):
                 raise _CancellationError(run_id)
+
+            # SIP-0079: Skip tasks already completed in a prior checkpoint
+            if envelope.task_id in skip_task_ids:
+                logger.info(
+                    "Skipping completed task %s (%s) from checkpoint",
+                    envelope.task_id,
+                    envelope.task_type,
+                )
+                continue
+
+            # SIP-0079: Time budget enforcement (RC-8)
+            if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
+                raise _ExecutionError(
+                    f"Time budget exhausted ({time_budget}s) after "
+                    f"{len(completed_task_ids)} tasks"
+                )
 
             # Build extra inputs for chain context
             extra_inputs: dict[str, Any] = {
@@ -697,6 +793,30 @@ class DistributedFlowExecutor(FlowExecutionPort):
             prior_outputs[role] = {
                 k: v for k, v in (result.outputs or {}).items() if k != "artifacts"
             }
+
+            # SIP-0079: Checkpoint after successful task (RC-4)
+            completed_task_ids.append(envelope.task_id)
+            checkpoint_index = len(completed_task_ids)
+            new_checkpoint = RunCheckpoint(
+                run_id=run_id,
+                checkpoint_index=checkpoint_index,
+                completed_task_ids=tuple(completed_task_ids),
+                prior_outputs=dict(prior_outputs),
+                artifact_refs=tuple(all_artifact_refs),
+                plan_delta_refs=tuple(plan_delta_refs),
+                created_at=datetime.now(UTC),
+            )
+            await self._cycle_registry.save_checkpoint(new_checkpoint)
+            self._cycle_event_bus.emit(
+                EventType.CHECKPOINT_CREATED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                payload={
+                    "checkpoint_index": checkpoint_index,
+                    "completed_task_id": envelope.task_id,
+                },
+            )
 
             # ----------------------------------------------------------
             # SIP-0070: Pulse boundary evaluation (after task, before gate)

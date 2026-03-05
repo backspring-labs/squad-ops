@@ -59,6 +59,9 @@ def executor():
     squad = AsyncMock()
     project = AsyncMock()
 
+    registry.get_latest_checkpoint.return_value = None
+    registry.save_checkpoint.return_value = None
+
     ex = DistributedFlowExecutor(
         cycle_registry=registry,
         artifact_vault=vault,
@@ -287,6 +290,8 @@ class TestBuildOnlyValidation:
         registry.get_cycle = AsyncMock(return_value=cycle)
         registry.get_run = AsyncMock(return_value=run)
         registry.update_run_status = AsyncMock()
+        registry.get_latest_checkpoint = AsyncMock(return_value=None)
+        registry.save_checkpoint = AsyncMock(return_value=None)
 
         squad = AsyncMock()
         from squadops.cycles.models import AgentProfileEntry, SquadProfile
@@ -401,6 +406,8 @@ class TestBuildOnlySeeding:
         registry.get_run = AsyncMock(return_value=run)
         registry.update_run_status = AsyncMock()
         registry.append_artifact_refs = AsyncMock()
+        registry.get_latest_checkpoint = AsyncMock(return_value=None)
+        registry.save_checkpoint = AsyncMock(return_value=None)
 
         vault = AsyncMock()
         vault.retrieve = AsyncMock(return_value=(ref_plan, b"Plan content"))
@@ -500,6 +507,8 @@ class TestPlanOnlyCyclesUnaffected:
         registry.get_cycle = AsyncMock(return_value=cycle)
         registry.get_run = AsyncMock(return_value=run)
         registry.update_run_status = AsyncMock()
+        registry.get_latest_checkpoint = AsyncMock(return_value=None)
+        registry.save_checkpoint = AsyncMock(return_value=None)
 
         queue = AsyncMock()
         # Simulate task results
