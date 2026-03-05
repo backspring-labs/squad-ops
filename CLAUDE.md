@@ -201,8 +201,13 @@ python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature
 - New SIP drafts go in `sips/proposed/` (unnumbered)
 - Do not create scripts in the project root
 
-**Tests**:
+**Tests** (see `docs/TEST_QUALITY_STANDARD.md` for full standard with examples):
 - Never delete/skip tests to make suite pass — fix implementation, not tests
+- **Before writing any test, answer: "What bug would this catch?"** If you cannot name a specific, realistic bug, do not write the test.
+- **Do NOT write**: tautological tests (enum values equal themselves, dataclass fields store what you pass), mock-call-count-only assertions, `isinstance`/`is not None` as sole assertions, happy-path-only suites
+- **DO write**: exact value assertions, error/edge case tests, varied inputs via parametrize, output assertions not call-count assertions
+- Every test file must include at least one error/edge case test per public function tested
+- Prefer 4 strong tests over 20 weak ones — quality over count
 
 **Docker**:
 - Don't modify `docker-compose.yml` or change service/container names without explicit request
