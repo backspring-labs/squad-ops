@@ -86,9 +86,9 @@ class TestValidateRunTransition:
         with pytest.raises(IllegalStateTransitionError):
             validate_run_transition(RunStatus.COMPLETED, RunStatus.CANCELLED)
 
-    def test_failed_to_running_illegal(self):
-        with pytest.raises(IllegalStateTransitionError):
-            validate_run_transition(RunStatus.FAILED, RunStatus.RUNNING)
+    def test_failed_to_running_legal(self):
+        """SIP-0079: resume_from_failed allows FAILED → RUNNING."""
+        validate_run_transition(RunStatus.FAILED, RunStatus.RUNNING)
 
     def test_failed_to_completed_illegal(self):
         with pytest.raises(IllegalStateTransitionError):
@@ -142,11 +142,21 @@ class TestValidateRunTransition:
             {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
         )
 
-    def test_all_terminal_states_reject_all_targets(self):
-        for terminal in TERMINAL_STATES:
+    def test_completed_and_cancelled_reject_all_targets(self):
+        """COMPLETED and CANCELLED have no outgoing transitions."""
+        for terminal in (RunStatus.COMPLETED, RunStatus.CANCELLED):
             for target in RunStatus:
                 with pytest.raises(IllegalStateTransitionError):
                     validate_run_transition(terminal, target)
+
+    def test_failed_rejects_all_except_running(self):
+        """FAILED only allows resume_from_failed → RUNNING (SIP-0079)."""
+        for target in RunStatus:
+            if target == RunStatus.RUNNING:
+                validate_run_transition(RunStatus.FAILED, RunStatus.RUNNING)  # legal
+            else:
+                with pytest.raises(IllegalStateTransitionError):
+                    validate_run_transition(RunStatus.FAILED, target)
 
 
 # =============================================================================

@@ -12,6 +12,7 @@ import logging
 
 import asyncpg
 
+from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.lifecycle import TERMINAL_STATES, derive_cycle_status, validate_run_transition
 from squadops.cycles.models import (
     Cycle,
@@ -375,6 +376,58 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
         return await self.get_run(run_id)
 
+    # --- Checkpoint (SIP-0079) ---
+
+    async def save_checkpoint(self, checkpoint: RunCheckpoint, max_keep: int = 5) -> None:
+        """Persist a run checkpoint, pruning older checkpoints beyond max_keep."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "INSERT INTO run_checkpoints "
+                    "(run_id, checkpoint_index, completed_task_ids, prior_outputs, "
+                    "artifact_refs, plan_delta_refs, created_at) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    checkpoint.run_id,
+                    checkpoint.checkpoint_index,
+                    json.dumps(list(checkpoint.completed_task_ids)),
+                    json.dumps(checkpoint.prior_outputs),
+                    json.dumps(list(checkpoint.artifact_refs)),
+                    json.dumps(list(checkpoint.plan_delta_refs)),
+                    checkpoint.created_at,
+                )
+                # Prune: keep only the latest max_keep checkpoints
+                await conn.execute(
+                    "DELETE FROM run_checkpoints WHERE run_id = $1 "
+                    "AND checkpoint_index NOT IN ("
+                    "  SELECT checkpoint_index FROM run_checkpoints "
+                    "  WHERE run_id = $1 ORDER BY checkpoint_index DESC LIMIT $2"
+                    ")",
+                    checkpoint.run_id,
+                    max_keep,
+                )
+
+    async def get_latest_checkpoint(self, run_id: str) -> RunCheckpoint | None:
+        """Return the latest checkpoint for a run, or None."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM run_checkpoints WHERE run_id = $1 "
+                "ORDER BY checkpoint_index DESC LIMIT 1",
+                run_id,
+            )
+        if row is None:
+            return None
+        return self._row_to_checkpoint(row)
+
+    async def list_checkpoints(self, run_id: str) -> list[RunCheckpoint]:
+        """Return all checkpoints for a run, ordered by checkpoint_index ascending."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM run_checkpoints WHERE run_id = $1 "
+                "ORDER BY checkpoint_index ASC",
+                run_id,
+            )
+        return [self._row_to_checkpoint(r) for r in rows]
+
     # --- Internal helpers ---
 
     @staticmethod
@@ -440,6 +493,18 @@ class PostgresCycleRegistry(CycleRegistryPort):
             gate_decisions=gate_decisions,
             artifact_refs=tuple(row["artifact_refs"] or []),
             workload_type=row.get("workload_type"),
+        )
+
+    def _row_to_checkpoint(self, row: asyncpg.Record) -> RunCheckpoint:
+        """Reconstruct frozen RunCheckpoint from asyncpg Record."""
+        return RunCheckpoint(
+            run_id=row["run_id"],
+            checkpoint_index=row["checkpoint_index"],
+            completed_task_ids=tuple(self._parse_jsonb(row["completed_task_ids"])),
+            prior_outputs=self._parse_jsonb(row["prior_outputs"]),
+            artifact_refs=tuple(self._parse_jsonb(row["artifact_refs"])),
+            plan_delta_refs=tuple(self._parse_jsonb(row["plan_delta_refs"])),
+            created_at=row["created_at"],
         )
 
     async def _latest_run_for_cycle(self, cycle_id: str) -> Run | None:

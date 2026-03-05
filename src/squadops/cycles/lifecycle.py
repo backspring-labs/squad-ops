@@ -31,6 +31,7 @@ _RUN_TRANSITIONS: list[tuple[str, RunStatus, RunStatus]] = [
     ("cancel", RunStatus.QUEUED, RunStatus.CANCELLED),
     ("cancel", RunStatus.RUNNING, RunStatus.CANCELLED),
     ("cancel", RunStatus.PAUSED, RunStatus.CANCELLED),
+    ("resume_from_failed", RunStatus.FAILED, RunStatus.RUNNING),
 ]
 
 # Derived lookup: source → set of valid destinations
