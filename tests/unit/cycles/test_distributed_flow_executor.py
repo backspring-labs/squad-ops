@@ -411,10 +411,20 @@ class TestSequentialHappyPath:
 
 
 class TestFailFast:
-    """Sequential fail-fast: first failure stops the pipeline."""
+    """Outcome routing: persistent failures retry, trigger correction, then abort."""
 
-    async def test_first_failure_stops_pipeline(self, executor, mock_queue, mock_registry) -> None:
-        """First task FAILED -> run transitions to FAILED, remaining skipped."""
+    async def test_persistent_failure_retries_then_aborts(
+        self, executor, mock_queue, mock_registry
+    ) -> None:
+        """All dispatches FAILED → retry + correction protocol → run FAILED.
+
+        With outcome routing (SIP-0079):
+        1. First dispatch: FAILED → RETRYABLE_FAILURE (attempt 1 < max_retries 2)
+        2. Retry same task: FAILED → SEMANTIC_FAILURE (attempt 2 >= max_retries 2)
+        3. Correction protocol: dispatches analyze_failure + correction_decision
+        4. Both correction tasks also fail → correction_path defaults to "abort"
+        Total publishes: 2 (task retries) + 2 (correction tasks) = 4
+        """
 
         async def consume_side_effect(queue_name, max_messages=1):
             if not queue_name.startswith("cycle_results_"):
@@ -441,8 +451,8 @@ class TestFailFast:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # Only 1 publish (fail-fast on first task)
-        assert mock_queue.publish.call_count == 1
+        # 2 (retry) + 2 (correction tasks) = 4 publishes
+        assert mock_queue.publish.call_count == 4
 
         status_calls = mock_registry.update_run_status.call_args_list
         terminal_statuses = [c.args[1] for c in status_calls]
