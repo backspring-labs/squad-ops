@@ -1,4 +1,4 @@
-last_assigned: 78
+last_assigned: 79
 sips:
 - sip_uid: null
   sip_number: null
@@ -718,3 +718,12 @@ sips:
   approver: jladd
   created_at: '2026-02-28'
   updated_at: '2026-03-03T20:39:59.321486Z'
+- sip_uid: null
+  sip_number: 79
+  title: Implementation Run Contract & Correction Protocol
+  path: sips/accepted/SIP-0079-Implementation-Run-Contract-Correction.md
+  status: accepted
+  author: SquadOps Architecture
+  approver: jladd
+  created_at: '2026-02-28T00:00:00Z'
+  updated_at: '2026-03-04T20:41:42.263187Z'
