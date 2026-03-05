@@ -88,6 +88,7 @@ class TaskResult:
     outputs: dict[str, Any] | None = None
     error: str | None = None
     execution_evidence: dict[str, Any] | None = None  # SIP-0.8.8
+    outcome_class: str | None = None  # SIP-0079: TaskOutcome constant (optional, backward compat)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for JSON transport."""

@@ -1,6 +1,6 @@
 """Emission coverage tests — every taxonomy event has at least one valid emission point.
 
-Phase 3e: Validates that each of the 20 EventType constants is referenced
+Phase 3e: Validates that each of the 25 EventType constants is referenced
 in at least one emit() call site (executor or route). Uses AST-level source
 scanning to verify wiring without executing the full pipeline.
 """
@@ -8,7 +8,6 @@ scanning to verify wiring without executing the full pipeline.
 from __future__ import annotations
 
 import ast
-import inspect
 from pathlib import Path
 
 import pytest
@@ -19,12 +18,21 @@ pytestmark = [pytest.mark.domain_events]
 
 # ---- Source-level coverage: every EventType constant appears in an emit() call ----
 
-# Collect all 20 event type constant names
+# Collect all 25 event type constant names
 _ALL_EVENT_TYPE_ATTRS = [
     attr
     for attr in dir(EventType)
     if not attr.startswith("_") and attr == attr.upper() and isinstance(getattr(EventType, attr), str)
 ]
+
+# SIP-0079 event types — emission points added in Phase 2/3
+_SIP_0079_PENDING_EMISSION = {
+    "CHECKPOINT_CREATED",
+    "CHECKPOINT_RESTORED",
+    "CORRECTION_INITIATED",
+    "CORRECTION_DECIDED",
+    "CORRECTION_COMPLETED",
+}
 
 
 def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
@@ -65,17 +73,23 @@ def all_emitted_types() -> set[str]:
 class TestEmissionCoverage:
     """Every EventType constant must appear in at least one emission source file."""
 
-    @pytest.mark.parametrize("attr", _ALL_EVENT_TYPE_ATTRS)
+    @pytest.mark.parametrize(
+        "attr",
+        [a for a in _ALL_EVENT_TYPE_ATTRS if a not in _SIP_0079_PENDING_EMISSION],
+    )
     def test_event_type_has_emission_point(self, attr: str, all_emitted_types: set[str]) -> None:
         assert attr in all_emitted_types, (
             f"EventType.{attr} ({getattr(EventType, attr)}) has no emit() call site "
             f"in any emission source file"
         )
 
-    def test_all_20_types_covered(self, all_emitted_types: set[str]) -> None:
-        missing = set(_ALL_EVENT_TYPE_ATTRS) - all_emitted_types
+    def test_all_25_types_defined(self, all_emitted_types: set[str]) -> None:
+        assert len(_ALL_EVENT_TYPE_ATTRS) == 25
+
+    def test_pre_sip0079_types_covered(self, all_emitted_types: set[str]) -> None:
+        pre_0079 = set(_ALL_EVENT_TYPE_ATTRS) - _SIP_0079_PENDING_EMISSION
+        missing = pre_0079 - all_emitted_types
         assert not missing, f"Missing emission points for: {sorted(missing)}"
-        assert len(_ALL_EVENT_TYPE_ATTRS) == 20
 
 
 class TestExecutorEmissionPoints:

@@ -7,9 +7,9 @@ from squadops.events.types import EventType
 
 @pytest.mark.domain_events
 class TestEventType:
-    def test_all_returns_20_events(self):
+    def test_all_returns_25_events(self):
         all_types = EventType.all()
-        assert len(all_types) == 20
+        assert len(all_types) == 25
 
     def test_entity_transition_format(self):
         for event_type in EventType.all():
@@ -19,9 +19,12 @@ class TestEventType:
             assert entity, f"Empty entity in: {event_type}"
             assert transition, f"Empty transition in: {event_type}"
 
-    def test_all_six_entity_types_present(self):
+    def test_all_eight_entity_types_present(self):
         entities = {et.split(".")[0] for et in EventType.all()}
-        assert entities == {"cycle", "run", "gate", "task", "pulse", "artifact"}
+        assert entities == {
+            "cycle", "run", "gate", "task", "pulse", "artifact",
+            "checkpoint", "correction",
+        }
 
     def test_entity_counts(self):
         by_entity: dict[str, int] = {}
@@ -35,6 +38,8 @@ class TestEventType:
             "task": 3,
             "pulse": 5,
             "artifact": 2,
+            "checkpoint": 2,
+            "correction": 3,
         }
 
     def test_constants_match_all(self):
