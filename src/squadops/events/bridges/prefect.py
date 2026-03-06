@@ -26,6 +26,7 @@ _RUN_STATE_MAP: dict[str, tuple[str, str]] = {
     EventType.RUN_FAILED: ("FAILED", "Failed"),
     EventType.RUN_CANCELLED: ("CANCELLED", "Cancelled"),
     EventType.RUN_PAUSED: ("PAUSED", "Paused"),
+    EventType.RUN_RESUMED: ("RUNNING", "Running"),
 }
 
 # Task events → Prefect task run state (state_type, state_name)
@@ -56,9 +57,7 @@ class PrefectBridge:
         # Run state transitions
         if event.event_type in _RUN_STATE_MAP and flow_run_id:
             state_type, state_name = _RUN_STATE_MAP[event.event_type]
-            self._schedule(
-                self._prefect.set_flow_run_state(flow_run_id, state_type, state_name)
-            )
+            self._schedule(self._prefect.set_flow_run_state(flow_run_id, state_type, state_name))
             return
 
         # Task dispatched → create task run + set RUNNING
@@ -80,9 +79,7 @@ class PrefectBridge:
                     self._prefect.create_task_run(flow_run_id, task_key, task_name)
                 )
                 self._dispatched_tasks[dedup_key] = task_run_id
-                self._schedule(
-                    self._prefect.set_task_run_state(task_run_id, "RUNNING", "Running")
-                )
+                self._schedule(self._prefect.set_task_run_state(task_run_id, "RUNNING", "Running"))
             return
 
         # Task succeeded/failed → set task run state
