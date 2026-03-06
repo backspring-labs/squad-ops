@@ -24,6 +24,8 @@ _COUNTER_MAP: dict[str, str] = {
     EventType.RUN_FAILED: "runs_failed_total",
     EventType.TASK_SUCCEEDED: "tasks_succeeded_total",
     EventType.TASK_FAILED: "tasks_failed_total",
+    EventType.CORRECTION_INITIATED: "corrections_initiated_total",
+    EventType.CORRECTION_COMPLETED: "corrections_completed_total",
 }
 
 

@@ -1,0 +1,60 @@
+name: implementation
+description: "Implementation workload with correction protocol and checkpoint/resume"
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_implement
+        description: "Review implementation artifacts before promotion"
+        after_task_types:
+          - qa.test
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  workload_sequence:
+    - type: implementation
+      gate: progress_implement
+  build_tasks: true
+  max_task_retries: 2
+  max_task_seconds: 600
+  max_consecutive_failures: 3
+  max_correction_attempts: 2
+  time_budget_seconds: 7200
+  implementation_pulse_checks:
+    - suite_id: impl_progress
+      boundary_id: post_implementation_task
+      binding_mode: milestone
+      after_task_types:
+        - development.develop
+        - development.repair
+        - qa.test
+        - qa.validate_repair
+      checks:
+        - check_type: plan_alignment
+          target: "{run_root}/run_contract.json"
+        - check_type: acceptance_progress
+          target: "{run_root}/run_contract.json"
+        - check_type: regression_check
+          target: "{run_root}/test_results/"
+      max_suite_seconds: 30
+      max_check_seconds: 10
+    - suite_id: impl_cadence
+      boundary_id: cadence_check
+      binding_mode: cadence
+      checks:
+        - check_type: forward_progress
+          target: "{run_root}/checkpoint_latest.json"
+        - check_type: scope_drift
+          target: "{run_root}/run_contract.json"
+        - check_type: failure_pattern
+          target: "{run_root}/plan_deltas/"
+      max_suite_seconds: 30
+      max_check_seconds: 10
+  cadence_policy:
+    max_pulse_seconds: 600
+    max_tasks_per_pulse: 3
+  experiment_context: {}
+  notes: "Implementation workload with correction protocol"

@@ -26,6 +26,12 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "dev_capability",
     "generation_timeout",
     "workload_sequence",
+    "max_task_retries",
+    "max_task_seconds",
+    "max_consecutive_failures",
+    "max_correction_attempts",
+    "time_budget_seconds",
+    "implementation_pulse_checks",
 }
 
 _ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS

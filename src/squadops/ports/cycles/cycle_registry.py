@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import (
     Cycle,
     CycleStatus,
@@ -136,3 +137,17 @@ class CycleRegistryPort(ABC):
             RunNotFoundError: If the run_id is not found.
             RunTerminalError: If the run is in a terminal state.
         """
+
+    # --- Checkpoint (SIP-0079) ---
+
+    @abstractmethod
+    async def save_checkpoint(self, checkpoint: RunCheckpoint, max_keep: int = 5) -> None:
+        """Persist a run checkpoint, pruning older checkpoints beyond max_keep."""
+
+    @abstractmethod
+    async def get_latest_checkpoint(self, run_id: str) -> RunCheckpoint | None:
+        """Return the latest checkpoint for a run, or None if no checkpoints exist."""
+
+    @abstractmethod
+    async def list_checkpoints(self, run_id: str) -> list[RunCheckpoint]:
+        """Return all checkpoints for a run, ordered by checkpoint_index ascending."""

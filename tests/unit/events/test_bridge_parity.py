@@ -191,14 +191,10 @@ class TestPrefectParity:
         bridge = PrefectBridge(reporter)
 
         ctx = {"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"}
-        bridge.on_event(
-            _event(EventType.TASK_DISPATCHED, "task", "t_1", context=ctx)
-        )
+        bridge.on_event(_event(EventType.TASK_DISPATCHED, "task", "t_1", context=ctx))
         reporter.reset_mock()
 
-        bridge.on_event(
-            _event(EventType.TASK_SUCCEEDED, "task", "t_1", context=ctx)
-        )
+        bridge.on_event(_event(EventType.TASK_SUCCEEDED, "task", "t_1", context=ctx))
         reporter.set_task_run_state.assert_called_with("tr_99", "COMPLETED", "Completed")
 
     def test_task_failure_sets_failed(self):
@@ -209,14 +205,10 @@ class TestPrefectParity:
         bridge = PrefectBridge(reporter)
 
         ctx = {"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"}
-        bridge.on_event(
-            _event(EventType.TASK_DISPATCHED, "task", "t_1", context=ctx)
-        )
+        bridge.on_event(_event(EventType.TASK_DISPATCHED, "task", "t_1", context=ctx))
         reporter.reset_mock()
 
-        bridge.on_event(
-            _event(EventType.TASK_FAILED, "task", "t_1", context=ctx)
-        )
+        bridge.on_event(_event(EventType.TASK_FAILED, "task", "t_1", context=ctx))
         reporter.set_task_run_state.assert_called_with("tr_99", "FAILED", "Failed")
 
 
@@ -241,9 +233,7 @@ class TestMetricsParity:
         metrics = MagicMock()
         bridge = MetricsBridge(metrics)
         bridge.on_event(_event(EventType.RUN_FAILED, "run", "run_1"))
-        metrics.counter.assert_called_once_with(
-            "runs_failed_total", labels={"entity_type": "run"}
-        )
+        metrics.counter.assert_called_once_with("runs_failed_total", labels={"entity_type": "run"})
 
     def test_task_succeeded_counter_and_histogram(self):
         metrics = MagicMock()
@@ -264,9 +254,55 @@ class TestMetricsParity:
         )
 
     def test_non_mapped_event_produces_no_metrics(self):
-        """Events outside the 5-event counter map produce no metric calls."""
+        """Events outside the counter map produce no metric calls."""
         metrics = MagicMock()
         bridge = MetricsBridge(metrics)
         bridge.on_event(_event(EventType.RUN_STARTED, "run", "run_1"))
         metrics.counter.assert_not_called()
         metrics.histogram.assert_not_called()
+
+    def test_correction_initiated_counter(self):
+        """CORRECTION_INITIATED increments corrections_initiated_total."""
+        metrics = MagicMock()
+        bridge = MetricsBridge(metrics)
+        bridge.on_event(_event(EventType.CORRECTION_INITIATED, "correction", "corr_1"))
+        metrics.counter.assert_called_once_with(
+            "corrections_initiated_total", labels={"entity_type": "correction"}
+        )
+
+    def test_correction_completed_counter(self):
+        """CORRECTION_COMPLETED increments corrections_completed_total."""
+        metrics = MagicMock()
+        bridge = MetricsBridge(metrics)
+        bridge.on_event(_event(EventType.CORRECTION_COMPLETED, "correction", "corr_1"))
+        metrics.counter.assert_called_once_with(
+            "corrections_completed_total", labels={"entity_type": "correction"}
+        )
+
+    def test_checkpoint_event_produces_no_counter(self):
+        """CHECKPOINT_CREATED is not in the counter map — no metric call."""
+        metrics = MagicMock()
+        bridge = MetricsBridge(metrics)
+        bridge.on_event(_event(EventType.CHECKPOINT_CREATED, "checkpoint", "cp_1"))
+        metrics.counter.assert_not_called()
+
+
+@pytest.mark.domain_events
+class TestPrefectResumedParity:
+    """Verify RUN_RESUMED transitions flow run back to RUNNING."""
+
+    def test_run_resumed_sets_running(self):
+        """RUN_RESUMED maps to (RUNNING, Running) in Prefect."""
+        reporter = MagicMock()
+        reporter.set_flow_run_state = AsyncMock()
+        bridge = PrefectBridge(reporter)
+
+        bridge.on_event(
+            _event(
+                EventType.RUN_RESUMED,
+                "run",
+                "run_1",
+                context={"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"},
+            )
+        )
+        reporter.set_flow_run_state.assert_called_with("fr_1", "RUNNING", "Running")

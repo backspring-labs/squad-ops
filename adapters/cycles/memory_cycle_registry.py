@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 
+from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.lifecycle import TERMINAL_STATES, validate_run_transition
 from squadops.cycles.models import (
     Cycle,
@@ -35,6 +36,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         self._runs: dict[str, dict] = {}
         self._cancelled_cycles: set[str] = set()
         self._pulse_verifications: dict[str, list[dict]] = {}
+        self._checkpoints: dict[str, list[RunCheckpoint]] = {}
 
     # --- Cycle CRUD ---
 
@@ -246,3 +248,24 @@ class MemoryCycleRegistry(CycleRegistryPort):
         )
         d["artifact_refs"] = tuple(d.get("artifact_refs", ()))
         return Run(**d)
+
+    # --- Checkpoint (SIP-0079) ---
+
+    async def save_checkpoint(self, checkpoint: RunCheckpoint, max_keep: int = 5) -> None:
+        """Persist a run checkpoint, pruning older checkpoints beyond max_keep."""
+        run_id = checkpoint.run_id
+        if run_id not in self._checkpoints:
+            self._checkpoints[run_id] = []
+        self._checkpoints[run_id].append(checkpoint)
+        # Prune: keep only the latest max_keep
+        if len(self._checkpoints[run_id]) > max_keep:
+            self._checkpoints[run_id] = self._checkpoints[run_id][-max_keep:]
+
+    async def get_latest_checkpoint(self, run_id: str) -> RunCheckpoint | None:
+        """Return the latest checkpoint for a run, or None."""
+        checkpoints = self._checkpoints.get(run_id, [])
+        return checkpoints[-1] if checkpoints else None
+
+    async def list_checkpoints(self, run_id: str) -> list[RunCheckpoint]:
+        """Return all checkpoints for a run, ordered by checkpoint_index ascending."""
+        return list(self._checkpoints.get(run_id, []))

@@ -22,7 +22,10 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import ArtifactRef, Cycle, RunStatus
+from squadops.cycles.plan_delta import PlanDelta
+from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
     CadencePolicy,
@@ -65,6 +68,10 @@ class _ExecutionError(Exception):
 
 class _CancellationError(Exception):
     """Internal: run was cancelled."""
+
+
+class _PausedError(Exception):
+    """Internal: run paused due to BLOCKED outcome."""
 
 
 class DistributedFlowExecutor(FlowExecutionPort):
@@ -146,14 +153,34 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # Materialize run_root directory with seed files (PRD)
             run_root = await self._materialize_run_root(cycle, run_id)
 
-            # queued -> running
+            # queued/failed/paused -> running
             await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
-            self._cycle_event_bus.emit(
-                EventType.RUN_STARTED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle_id, "run_id": run_id, "project_id": cycle.project_id},
-            )
+
+            # SIP-0079: Check if resuming from checkpoint
+            existing_checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
+            if existing_checkpoint:
+                self._cycle_event_bus.emit(
+                    EventType.RUN_RESUMED,
+                    entity_type="run",
+                    entity_id=run_id,
+                    context={
+                        "cycle_id": cycle_id,
+                        "run_id": run_id,
+                        "project_id": cycle.project_id,
+                    },
+                    payload={"checkpoint_index": existing_checkpoint.checkpoint_index},
+                )
+            else:
+                self._cycle_event_bus.emit(
+                    EventType.RUN_STARTED,
+                    entity_type="run",
+                    entity_id=run_id,
+                    context={
+                        "cycle_id": cycle_id,
+                        "run_id": run_id,
+                        "project_id": cycle.project_id,
+                    },
+                )
 
             plan = generate_task_plan(cycle, run, profile)
 
@@ -265,6 +292,17 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 context={"cycle_id": cycle_id, "run_id": run_id},
             )
             logger.info("Run %s cancelled", run_id)
+
+        except _PausedError:
+            terminal_status = "PAUSED"
+            await self._safe_transition(run_id, RunStatus.PAUSED)
+            self._cycle_event_bus.emit(
+                EventType.RUN_PAUSED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle_id, "run_id": run_id},
+            )
+            logger.info("Run %s paused", run_id)
 
         except _ExecutionError as exc:
             terminal_status = "FAILED"
@@ -506,6 +544,55 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # Track stored artifacts with their refs for build pre-resolution
         stored_artifacts: list[tuple[str, ArtifactRef]] = []
 
+        # SIP-0079: Checkpoint/resume state tracking
+        completed_task_ids: list[str] = []
+        plan_delta_refs: list[str] = []
+        skip_task_ids: set[str] = set()
+
+        # SIP-0079 Phase 3: Outcome routing state
+        consecutive_failures: int = 0
+        correction_attempts: int = 0
+        task_attempt_counts: dict[str, int] = {}
+
+        # SIP-0079: Time budget enforcement (RC-8)
+        time_budget = cycle.applied_defaults.get("time_budget_seconds")
+        run_start_time = time.monotonic()
+
+        # SIP-0079: Resume from checkpoint — restore prior state
+        checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
+        if checkpoint:
+            skip_task_ids = set(checkpoint.completed_task_ids)
+            prior_outputs = dict(checkpoint.prior_outputs)
+            completed_task_ids = list(checkpoint.completed_task_ids)
+            plan_delta_refs = list(checkpoint.plan_delta_refs)
+            # Restore artifact refs from checkpoint
+            for art_id in checkpoint.artifact_refs:
+                if art_id not in all_artifact_refs:
+                    all_artifact_refs.append(art_id)
+                try:
+                    ref, _ = await self._artifact_vault.retrieve(art_id)
+                    stored_artifacts.append((art_id, ref))
+                except Exception:
+                    logger.warning(
+                        "Failed to restore artifact %s from checkpoint", art_id, exc_info=True
+                    )
+            self._cycle_event_bus.emit(
+                EventType.CHECKPOINT_RESTORED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                payload={
+                    "checkpoint_index": checkpoint.checkpoint_index,
+                    "completed_task_count": len(skip_task_ids),
+                },
+            )
+            logger.info(
+                "Resumed run %s from checkpoint %d (%d tasks completed)",
+                run_id,
+                checkpoint.checkpoint_index,
+                len(skip_task_ids),
+            )
+
         # Seed from prior plan artifacts for build-only runs (§2.3)
         if seed_artifact_refs:
             for art_id in seed_artifact_refs:
@@ -586,6 +673,22 @@ class DistributedFlowExecutor(FlowExecutionPort):
             if await self._is_cancelled(run_id):
                 raise _CancellationError(run_id)
 
+            # SIP-0079: Skip tasks already completed in a prior checkpoint
+            if envelope.task_id in skip_task_ids:
+                logger.info(
+                    "Skipping completed task %s (%s) from checkpoint",
+                    envelope.task_id,
+                    envelope.task_type,
+                )
+                continue
+
+            # SIP-0079: Time budget enforcement (RC-8)
+            if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
+                raise _ExecutionError(
+                    f"Time budget exhausted ({time_budget}s) after "
+                    f"{len(completed_task_ids)} tasks"
+                )
+
             # Build extra inputs for chain context
             extra_inputs: dict[str, Any] = {
                 "prior_outputs": prior_outputs,
@@ -640,40 +743,142 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 },
             )
 
-            # Dispatch through RabbitMQ
-            result = await self._dispatch_task(enriched, run_id)
+            # Dispatch + retry loop for retryable failures (SIP-0079)
+            task_succeeded = False
+            while True:
+                # Dispatch through RabbitMQ
+                result = await self._dispatch_task(enriched, run_id)
 
-            # Prefect: update task state
-            if self._prefect and task_run_id:
-                try:
-                    state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
-                    await self._prefect.set_task_run_state(task_run_id, state, state.title())
-                except Exception:
-                    logger.warning("Prefect task state update failed", exc_info=True)
+                # Prefect: update task state
+                if self._prefect and task_run_id:
+                    try:
+                        state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
+                        await self._prefect.set_task_run_state(
+                            task_run_id, state, state.title()
+                        )
+                    except Exception:
+                        logger.warning("Prefect task state update failed", exc_info=True)
 
-            # SIP-0077: task.succeeded or task.failed
-            if result.status == "SUCCEEDED":
-                self._cycle_event_bus.emit(
-                    EventType.TASK_SUCCEEDED,
-                    entity_type="task",
-                    entity_id=envelope.task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-                    payload={"task_type": envelope.task_type},
-                )
-            else:
-                self._cycle_event_bus.emit(
-                    EventType.TASK_FAILED,
-                    entity_type="task",
-                    entity_id=envelope.task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-                    payload={"task_type": envelope.task_type, "error": result.error or ""},
-                )
+                # SIP-0077: task.succeeded or task.failed
+                if result.status == "SUCCEEDED":
+                    self._cycle_event_bus.emit(
+                        EventType.TASK_SUCCEEDED,
+                        entity_type="task",
+                        entity_id=envelope.task_id,
+                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                        payload={"task_type": envelope.task_type},
+                    )
+                else:
+                    self._cycle_event_bus.emit(
+                        EventType.TASK_FAILED,
+                        entity_type="task",
+                        entity_id=envelope.task_id,
+                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                        payload={
+                            "task_type": envelope.task_type,
+                            "error": result.error or "",
+                        },
+                    )
 
-            # Fail-fast
-            if result.status != "SUCCEEDED":
-                raise _ExecutionError(
-                    f"Task {envelope.task_id} ({envelope.task_type}) failed: {result.error}"
-                )
+                # SIP-0079: Outcome routing (replaces fail-fast)
+                if result.status != "SUCCEEDED":
+                    outcome = (
+                        (result.outputs or {}).get("outcome_class")
+                        if result.outputs
+                        else None
+                    )
+
+                    # D5 fallback table: classify unclassified failures
+                    if outcome is None:
+                        task_attempt_counts[envelope.task_id] = (
+                            task_attempt_counts.get(envelope.task_id, 0) + 1
+                        )
+                        max_retries = cycle.applied_defaults.get("max_task_retries", 2)
+                        if task_attempt_counts[envelope.task_id] >= max_retries:
+                            outcome = TaskOutcome.SEMANTIC_FAILURE
+                        else:
+                            outcome = TaskOutcome.RETRYABLE_FAILURE
+
+                    if outcome == TaskOutcome.BLOCKED:
+                        raise _PausedError(
+                            f"Task {envelope.task_id} ({envelope.task_type}) blocked"
+                        )
+
+                    if outcome == TaskOutcome.RETRYABLE_FAILURE:
+                        logger.info(
+                            "Retryable failure for %s (attempt %d), retrying",
+                            envelope.task_id,
+                            task_attempt_counts.get(envelope.task_id, 1),
+                        )
+                        continue  # retry same task in while loop
+
+                    # SEMANTIC_FAILURE / NEEDS_REPAIR / NEEDS_REPLAN → correction
+                    consecutive_failures += 1
+
+                    # D9: contract task failure → immediate abort, no correction
+                    is_contract_task = (
+                        envelope.task_type == "governance.establish_contract"
+                    )
+                    if is_contract_task:
+                        raise _ExecutionError(
+                            f"Contract task {envelope.task_id} failed "
+                            f"(no correction): {result.error}"
+                        )
+
+                    # Trigger correction protocol
+                    max_corrections = cycle.applied_defaults.get(
+                        "max_correction_attempts", 2
+                    )
+
+                    if correction_attempts >= max_corrections:
+                        raise _ExecutionError(
+                            f"Max correction attempts ({max_corrections}) exhausted"
+                        )
+
+                    correction_path = await self._run_correction_protocol(
+                        run_id=run_id,
+                        cycle=cycle,
+                        envelope=envelope,
+                        result=result,
+                        correction_attempts=correction_attempts,
+                        prior_outputs=prior_outputs,
+                        all_artifact_refs=all_artifact_refs,
+                        stored_artifacts=stored_artifacts,
+                        completed_task_ids=completed_task_ids,
+                        plan_delta_refs=plan_delta_refs,
+                        profile=profile,
+                    )
+                    correction_attempts += 1
+
+                    if correction_path == "abort":
+                        raise _ExecutionError(
+                            f"Correction protocol decided to abort after "
+                            f"{envelope.task_type} failure"
+                        )
+                    elif correction_path == "rewind":
+                        raise _ExecutionError(
+                            f"Rewinding to checkpoint after "
+                            f"{envelope.task_type} failure"
+                        )
+                    elif correction_path in ("continue", "patch"):
+                        consecutive_failures = 0
+                        break  # break while loop; for loop advances
+                    else:
+                        raise _ExecutionError(
+                            f"Unknown correction path: {correction_path}"
+                        )
+                    break  # safety break after correction handling
+
+                # Success
+                task_succeeded = True
+                break
+
+            if not task_succeeded:
+                # Correction "continue"/"patch" handled — skip to next task
+                continue
+
+            # Reset consecutive failures on success
+            consecutive_failures = 0
 
             # Collect artifacts (with producing_task_type metadata)
             new_refs: list[str] = []
@@ -697,6 +902,30 @@ class DistributedFlowExecutor(FlowExecutionPort):
             prior_outputs[role] = {
                 k: v for k, v in (result.outputs or {}).items() if k != "artifacts"
             }
+
+            # SIP-0079: Checkpoint after successful task (RC-4)
+            completed_task_ids.append(envelope.task_id)
+            checkpoint_index = len(completed_task_ids)
+            new_checkpoint = RunCheckpoint(
+                run_id=run_id,
+                checkpoint_index=checkpoint_index,
+                completed_task_ids=tuple(completed_task_ids),
+                prior_outputs=dict(prior_outputs),
+                artifact_refs=tuple(all_artifact_refs),
+                plan_delta_refs=tuple(plan_delta_refs),
+                created_at=datetime.now(UTC),
+            )
+            await self._cycle_registry.save_checkpoint(new_checkpoint)
+            self._cycle_event_bus.emit(
+                EventType.CHECKPOINT_CREATED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                payload={
+                    "checkpoint_index": checkpoint_index,
+                    "completed_task_id": envelope.task_id,
+                },
+            )
 
             # ----------------------------------------------------------
             # SIP-0070: Pulse boundary evaluation (after task, before gate)
@@ -777,6 +1006,293 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # Post-task gate check (runs after verification)
             if self._is_gate_boundary(cycle, envelope.task_type):
                 await self._handle_gate(run_id, cycle, envelope.task_type)
+
+    async def _run_correction_protocol(
+        self,
+        run_id: str,
+        cycle: Cycle,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        correction_attempts: int,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any = None,
+    ) -> str:
+        """Run the correction protocol: analyze → decide → act.
+
+        Returns the correction_path chosen by the governance handler.
+        Side effects: dispatches correction/repair tasks, stores plan delta,
+        emits correction events.
+        """
+        from uuid import uuid4
+
+        from squadops.cycles.task_plan import CORRECTION_TASK_STEPS, REPAIR_TASK_STEPS
+
+        # 1. Emit CORRECTION_INITIATED
+        self._cycle_event_bus.emit(
+            EventType.CORRECTION_INITIATED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+            payload={
+                "failed_task_id": envelope.task_id,
+                "failed_task_type": envelope.task_type,
+                "correction_attempt": correction_attempts + 1,
+            },
+        )
+
+        # 2. Build correction task envelopes (deterministic IDs)
+        failure_evidence = {
+            "failed_task_id": envelope.task_id,
+            "failed_task_type": envelope.task_type,
+            "error": result.error or "",
+            "outcome_class": (result.outputs or {}).get("outcome_class", ""),
+        }
+
+        correction_outputs: dict[str, Any] = {}
+        corr_correlation_id = uuid4().hex
+
+        for step_idx, (task_type, role) in enumerate(CORRECTION_TASK_STEPS):
+            corr_task_id = f"corr-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
+            agent_id = role
+            if profile:
+                for agent in profile.agents:
+                    if agent.role == role and agent.enabled:
+                        agent_id = agent.agent_id
+                        break
+
+            corr_inputs: dict[str, Any] = {
+                "prd": cycle.prd_ref,
+                "failure_evidence": failure_evidence,
+                "prior_outputs": prior_outputs,
+                "artifact_refs": list(all_artifact_refs),
+            }
+            if correction_outputs:
+                corr_inputs["failure_analysis"] = correction_outputs
+
+            corr_envelope = TaskEnvelope(
+                task_id=corr_task_id,
+                agent_id=agent_id,
+                cycle_id=cycle.cycle_id,
+                pulse_id=uuid4().hex,
+                project_id=cycle.project_id,
+                task_type=task_type,
+                correlation_id=corr_correlation_id,
+                causation_id=envelope.task_id,
+                trace_id=uuid4().hex,
+                span_id=uuid4().hex,
+                inputs=corr_inputs,
+                metadata={"role": role, "step_index": step_idx},
+            )
+
+            # 3. Dispatch correction task
+            self._cycle_event_bus.emit(
+                EventType.TASK_DISPATCHED,
+                entity_type="task",
+                entity_id=corr_task_id,
+                context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                payload={"task_type": task_type},
+            )
+
+            corr_result = await self._dispatch_task(corr_envelope, run_id)
+
+            if corr_result.status == "SUCCEEDED":
+                self._cycle_event_bus.emit(
+                    EventType.TASK_SUCCEEDED,
+                    entity_type="task",
+                    entity_id=corr_task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={"task_type": task_type},
+                )
+                # Checkpoint correction tasks on success
+                completed_task_ids.append(corr_task_id)
+                checkpoint_index = len(completed_task_ids)
+                new_checkpoint = RunCheckpoint(
+                    run_id=run_id,
+                    checkpoint_index=checkpoint_index,
+                    completed_task_ids=tuple(completed_task_ids),
+                    prior_outputs=dict(prior_outputs),
+                    artifact_refs=tuple(all_artifact_refs),
+                    plan_delta_refs=tuple(plan_delta_refs),
+                    created_at=datetime.now(UTC),
+                )
+                await self._cycle_registry.save_checkpoint(new_checkpoint)
+                self._cycle_event_bus.emit(
+                    EventType.CHECKPOINT_CREATED,
+                    entity_type="run",
+                    entity_id=run_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={
+                        "checkpoint_index": checkpoint_index,
+                        "completed_task_id": corr_task_id,
+                    },
+                )
+            else:
+                self._cycle_event_bus.emit(
+                    EventType.TASK_FAILED,
+                    entity_type="task",
+                    entity_id=corr_task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={"task_type": task_type, "error": corr_result.error or ""},
+                )
+
+            # Collect correction task outputs
+            correction_outputs = {
+                k: v for k, v in (corr_result.outputs or {}).items() if k != "artifacts"
+            }
+
+        # 4. Read correction_path
+        correction_path = correction_outputs.get("correction_path", "abort")
+
+        # 5. Emit CORRECTION_DECIDED
+        self._cycle_event_bus.emit(
+            EventType.CORRECTION_DECIDED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+            payload={
+                "correction_path": correction_path,
+                "decision_rationale": correction_outputs.get("decision_rationale", ""),
+            },
+        )
+
+        # 6. Store plan delta as artifact
+        delta = PlanDelta(
+            delta_id=uuid4().hex,
+            run_id=run_id,
+            correction_path=correction_path,
+            trigger=f"task_failure:{envelope.task_type}",
+            failure_classification=correction_outputs.get("classification", "unknown"),
+            analysis_summary=correction_outputs.get("analysis_summary", "N/A"),
+            decision_rationale=correction_outputs.get("decision_rationale", "N/A"),
+            changes=tuple(correction_outputs.get("affected_task_types", [])),
+            affected_task_types=tuple(correction_outputs.get("affected_task_types", [])),
+            created_at=datetime.now(UTC),
+        )
+        delta_content = json.dumps(delta.to_dict(), default=str).encode()
+        delta_ref = ArtifactRef(
+            artifact_id=f"delta_{delta.delta_id[:12]}",
+            project_id=cycle.project_id,
+            artifact_type="plan_delta",
+            filename=f"plan_delta_{correction_attempts}.json",
+            content_hash=sha256(delta_content).hexdigest(),
+            size_bytes=len(delta_content),
+            media_type="application/json",
+            created_at=datetime.now(UTC),
+            cycle_id=cycle.cycle_id,
+            run_id=run_id,
+        )
+        await self._artifact_vault.store(delta_ref, delta_content)
+        all_artifact_refs.append(delta_ref.artifact_id)
+        plan_delta_refs.append(delta_ref.artifact_id)
+
+        # 7. Handle patch path: dispatch repair tasks
+        if correction_path == "patch":
+            for step_idx, (task_type, role) in enumerate(REPAIR_TASK_STEPS):
+                repair_task_id = (
+                    f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
+                )
+                agent_id = role
+                if profile:
+                    for agent in profile.agents:
+                        if agent.role == role and agent.enabled:
+                            agent_id = agent.agent_id
+                            break
+
+                repair_inputs: dict[str, Any] = {
+                    "prd": cycle.prd_ref,
+                    "failure_evidence": failure_evidence,
+                    "correction_decision": correction_outputs,
+                    "prior_outputs": prior_outputs,
+                    "artifact_refs": list(all_artifact_refs),
+                }
+
+                repair_envelope = TaskEnvelope(
+                    task_id=repair_task_id,
+                    agent_id=agent_id,
+                    cycle_id=cycle.cycle_id,
+                    pulse_id=uuid4().hex,
+                    project_id=cycle.project_id,
+                    task_type=task_type,
+                    correlation_id=corr_correlation_id,
+                    causation_id=envelope.task_id,
+                    trace_id=uuid4().hex,
+                    span_id=uuid4().hex,
+                    inputs=repair_inputs,
+                    metadata={"role": role, "step_index": step_idx},
+                )
+
+                self._cycle_event_bus.emit(
+                    EventType.TASK_DISPATCHED,
+                    entity_type="task",
+                    entity_id=repair_task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={"task_type": task_type},
+                )
+
+                repair_result = await self._dispatch_task(repair_envelope, run_id)
+
+                if repair_result.status == "SUCCEEDED":
+                    self._cycle_event_bus.emit(
+                        EventType.TASK_SUCCEEDED,
+                        entity_type="task",
+                        entity_id=repair_task_id,
+                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                        payload={"task_type": task_type},
+                    )
+                    # Checkpoint repair tasks
+                    completed_task_ids.append(repair_task_id)
+                    checkpoint_index = len(completed_task_ids)
+                    new_checkpoint = RunCheckpoint(
+                        run_id=run_id,
+                        checkpoint_index=checkpoint_index,
+                        completed_task_ids=tuple(completed_task_ids),
+                        prior_outputs=dict(prior_outputs),
+                        artifact_refs=tuple(all_artifact_refs),
+                        plan_delta_refs=tuple(plan_delta_refs),
+                        created_at=datetime.now(UTC),
+                    )
+                    await self._cycle_registry.save_checkpoint(new_checkpoint)
+                    self._cycle_event_bus.emit(
+                        EventType.CHECKPOINT_CREATED,
+                        entity_type="run",
+                        entity_id=run_id,
+                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                        payload={
+                            "checkpoint_index": checkpoint_index,
+                            "completed_task_id": repair_task_id,
+                        },
+                    )
+                else:
+                    self._cycle_event_bus.emit(
+                        EventType.TASK_FAILED,
+                        entity_type="task",
+                        entity_id=repair_task_id,
+                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                        payload={"task_type": task_type, "error": repair_result.error or ""},
+                    )
+
+                # Collect repair outputs
+                role_key = repair_envelope.metadata.get("role", "unknown")
+                prior_outputs[role_key] = {
+                    k: v
+                    for k, v in (repair_result.outputs or {}).items()
+                    if k != "artifacts"
+                }
+
+        # 8. Emit CORRECTION_COMPLETED
+        self._cycle_event_bus.emit(
+            EventType.CORRECTION_COMPLETED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+            payload={"correction_path": correction_path},
+        )
+
+        return correction_path
 
     async def _execute_fan_out(
         self,

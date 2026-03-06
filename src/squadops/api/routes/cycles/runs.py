@@ -7,11 +7,24 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter
 
-from squadops.api.routes.cycles.dtos import GateDecisionRequest
+from squadops.api.routes.cycles.dtos import (
+    CheckpointSummaryResponse,
+    GateDecisionRequest,
+    RunResumeRequest,
+)
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import run_to_response
-from squadops.cycles.lifecycle import compute_config_hash
-from squadops.cycles.models import CycleError, GateDecision, Run, validate_workload_type
+from squadops.cycles.lifecycle import compute_config_hash, derive_cycle_status
+from squadops.cycles.models import (
+    CycleError,
+    CycleStatus,
+    GateDecision,
+    Run,
+    RunStatus,
+    RunTerminalError,
+    ValidationError,
+    validate_workload_type,
+)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles/{cycle_id}/runs", tags=["runs"])
 
@@ -145,5 +158,88 @@ async def gate_decision(
         )
 
         return run_to_response(updated)
+    except CycleError as e:
+        raise handle_cycle_error(e) from e
+
+
+@router.post("/{run_id}/resume")
+async def resume_run(
+    project_id: str,
+    cycle_id: str,
+    run_id: str,
+    body: RunResumeRequest | None = None,
+):
+    """Resume a paused or failed run from its latest checkpoint (SIP-0079)."""
+    from squadops.api.runtime.deps import get_cycle_registry
+
+    try:
+        registry = get_cycle_registry()
+
+        # 1. Fetch run — validates existence
+        run = await registry.get_run(run_id)
+
+        # 2. Status must be paused or failed
+        if run.status not in (RunStatus.PAUSED.value, RunStatus.FAILED.value):
+            raise RunTerminalError(
+                f"Cannot resume run in status {run.status!r} — must be paused or failed"
+            )
+
+        # 3. Must have at least one checkpoint
+        latest_cp = await registry.get_latest_checkpoint(run_id)
+        if latest_cp is None:
+            raise ValidationError("Cannot resume run without a checkpoint")
+
+        # 4. Parent cycle must not be terminal
+        await registry.get_cycle(cycle_id)  # validates cycle exists
+        runs = await registry.list_runs(cycle_id)
+        cycle_status = derive_cycle_status(runs, False)
+        if cycle_status in (CycleStatus.COMPLETED, CycleStatus.CANCELLED):
+            raise RunTerminalError(f"Cannot resume run — parent cycle is {cycle_status.value}")
+
+        # 5. Transition to running
+        updated = await registry.update_run_status(run_id, RunStatus.RUNNING)
+
+        # SIP-0077: run.resumed
+        from squadops.api.runtime.deps import get_cycle_event_bus
+        from squadops.events.types import EventType
+
+        resume_reason = body.resume_reason if body else None
+        get_cycle_event_bus().emit(
+            EventType.RUN_RESUMED,
+            entity_type="run",
+            entity_id=run_id,
+            context={
+                "cycle_id": cycle_id,
+                "run_id": run_id,
+                "project_id": project_id,
+            },
+            payload={
+                "resume_reason": resume_reason,
+                "checkpoint_index": latest_cp.checkpoint_index,
+            },
+        )
+
+        return run_to_response(updated)
+    except CycleError as e:
+        raise handle_cycle_error(e) from e
+
+
+@router.get("/{run_id}/checkpoints")
+async def list_checkpoints(project_id: str, cycle_id: str, run_id: str):
+    """List checkpoints for a run (SIP-0079)."""
+    from squadops.api.runtime.deps import get_cycle_registry
+
+    try:
+        registry = get_cycle_registry()
+        checkpoints = await registry.list_checkpoints(run_id)
+        return [
+            CheckpointSummaryResponse(
+                checkpoint_index=cp.checkpoint_index,
+                completed_task_count=len(cp.completed_task_ids),
+                artifact_ref_count=len(cp.artifact_refs),
+                created_at=cp.created_at,
+            )
+            for cp in checkpoints
+        ]
     except CycleError as e:
         raise handle_cycle_error(e) from e
