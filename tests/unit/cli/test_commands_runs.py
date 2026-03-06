@@ -128,3 +128,58 @@ class TestRunsGate:
 
         result = runner.invoke(app, ["runs", "gate", "proj1", "cyc_1", "run_1", "g1", "--approve"])
         assert result.exit_code == exit_codes.CONFLICT
+
+
+class TestRunsResume:
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_resume_success(self, mock_get_client):
+        mock_get_client.return_value = _mock_client(
+            post_val={"run_id": "run_1", "status": "running"}
+        )
+        result = runner.invoke(app, ["runs", "resume", "proj1", "cyc_1", "run_1"])
+        assert result.exit_code == 0
+        assert "resumed" in result.output
+
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_resume_error(self, mock_get_client):
+        mock = MagicMock()
+        mock.post.side_effect = CLIError("conflict", exit_codes.CONFLICT)
+        mock_get_client.return_value = mock
+        result = runner.invoke(app, ["runs", "resume", "proj1", "cyc_1", "run_1"])
+        assert result.exit_code == exit_codes.CONFLICT
+
+
+class TestRunsCheckpoints:
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_checkpoints_table(self, mock_get_client):
+        mock_get_client.return_value = _mock_client(
+            get_val=[
+                {
+                    "checkpoint_index": 0,
+                    "completed_task_count": 3,
+                    "artifact_ref_count": 2,
+                    "created_at": "2026-01-15T12:00:00Z",
+                }
+            ]
+        )
+        result = runner.invoke(app, ["runs", "checkpoints", "proj1", "cyc_1", "run_1"])
+        assert result.exit_code == 0
+        assert "3" in result.output
+
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_checkpoints_json(self, mock_get_client):
+        mock_get_client.return_value = _mock_client(
+            get_val=[
+                {
+                    "checkpoint_index": 0,
+                    "completed_task_count": 3,
+                    "artifact_ref_count": 2,
+                    "created_at": "2026-01-15T12:00:00Z",
+                }
+            ]
+        )
+        result = runner.invoke(
+            app, ["--format", "json", "runs", "checkpoints", "proj1", "cyc_1", "run_1"]
+        )
+        assert result.exit_code == 0
+        assert "checkpoint_index" in result.output

@@ -215,10 +215,7 @@ def gate_decision(
     selected = [name for name, val in flags.items() if val]
     if len(selected) != 1:
         valid_flags = ", ".join(flags.keys())
-        print_error(
-            f"Error: must specify exactly one decision flag. "
-            f"Valid flags: {valid_flags}"
-        )
+        print_error(f"Error: must specify exactly one decision flag. Valid flags: {valid_flags}")
         raise typer.Exit(code=2)
 
     # Wire mapping: CLI flag → API decision value
@@ -250,6 +247,74 @@ def gate_decision(
         print_json(data)
     else:
         print_success(f"Gate {gate_name!r} {decision}")
+
+
+@app.command("resume")
+def resume_run(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    cycle_id: str = typer.Argument(...),
+    run_id: str = typer.Argument(...),
+    reason: str | None = typer.Option(None, "--reason", help="Reason for resuming"),
+):
+    """Resume a paused or failed run from its latest checkpoint."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+
+    body = {}
+    if reason:
+        body["resume_reason"] = reason
+
+    try:
+        client = _get_client(ctx)
+        data = client.post(
+            f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/resume",
+            json=body if body else None,
+        )
+        client.close()
+    except CLIError as e:
+        print_error(str(e))
+        raise typer.Exit(code=e.exit_code) from e
+
+    if fmt == "json":
+        print_json(data)
+    else:
+        print_success(f"Run {run_id} resumed")
+
+
+@app.command("checkpoints")
+def list_checkpoints(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    cycle_id: str = typer.Argument(...),
+    run_id: str = typer.Argument(...),
+):
+    """List checkpoints for a run."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    quiet = ctx.obj.get("quiet", False) if ctx.obj else False
+
+    try:
+        client = _get_client(ctx)
+        data = client.get(
+            f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/checkpoints"
+        )
+        client.close()
+    except CLIError as e:
+        print_error(str(e))
+        raise typer.Exit(code=e.exit_code) from e
+
+    if fmt == "json":
+        print_json(data)
+    else:
+        rows = [
+            [
+                str(cp["checkpoint_index"]),
+                str(cp["completed_task_count"]),
+                str(cp["artifact_ref_count"]),
+                cp.get("created_at", ""),
+            ]
+            for cp in data
+        ]
+        print_table(["Index", "Tasks Completed", "Artifacts", "Created At"], rows, quiet=quiet)
 
 
 # Build artifact types eligible for assembly (D9)
