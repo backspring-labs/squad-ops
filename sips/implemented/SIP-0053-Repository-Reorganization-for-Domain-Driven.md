@@ -9,6 +9,11 @@ created_at: '2026-01-10T15:05:29Z'
 updated_at: '2026-01-10T11:26:01.485581Z'
 original_filename: SIP-REPO-REORG-DDD.md
 ---
+
+> **Historical Note (2026-03-06 audit):** This SIP is a migration guide written in future tense.
+> The migration it describes has been completed — the `src/squadops/` hexagonal layout is in place
+> and DDD boundaries are established. This document is retained for historical reference only.
+
 # SIP-REPO-REORG-DDD — Version Target 1.0.0
 Repository Reorganization for Domain-Driven Design (DDD) and Hexagonal Isolation
 

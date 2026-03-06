@@ -9,6 +9,12 @@ created_at: '2026-01-29T00:00:00Z'
 updated_at: '2026-02-01T09:46:27.764693Z'
 original_filename: SIP-Agent-Migration-0-8-8.md
 ---
+
+> **Historical Note (2026-03-06 audit):** This SIP is a migration guide written in future tense.
+> The migration it describes has been completed — agents are implemented in `src/squadops/agents/`
+> following hexagonal patterns and the legacy `_v0_legacy/` code has been retired.
+> This document is retained for historical reference only.
+
 # SIP-AGENT-MIGRATION-0_8_8 — Version Target 0.8.8
 ## Agent Migration — Hexagonal Application Layer & Legacy Retirement
 

@@ -10,6 +10,12 @@ updated_at: "2025-11-27T10:12:48.890518Z"
 original_filename: "SIP-021-Agent-Memory-Protocol.md"
 ---
 
+> **Implementation Note (2026-03-06 audit):** Only the data model skeleton is implemented
+> (`MemoryEntry`, `MemoryQuery`, `MemoryResult` frozen dataclasses in `src/squadops/memory/models.py`).
+> The full memory system described below (LanceDB persistence, semantic search, agent-specific
+> memory managers, cleanup policies) has not been built. This SIP should be treated as a design
+> spec for future implementation, not a description of current functionality.
+
 # SIP-021: Agent Memory Protocol
 
 ## Summary

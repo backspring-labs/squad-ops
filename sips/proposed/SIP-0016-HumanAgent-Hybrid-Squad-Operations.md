@@ -2,7 +2,7 @@
 sip_uid: "17642554775868264"
 sip_number: 16
 title: "HumanAgent-Hybrid-Squad-Operations"
-status: "accepted"
+status: "proposed"
 author: "Unknown"
 approver: "None"
 created_at: "early fixes** or reprioritize."
