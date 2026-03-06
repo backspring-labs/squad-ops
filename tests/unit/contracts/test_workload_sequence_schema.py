@@ -40,7 +40,7 @@ class TestGateNameValidation:
     """AC 20: Gate names in workload_sequence must use progress_/promote_ prefix."""
 
     def test_progress_prefix_passes(self):
-        CycleRequestProfile(
+        profile = CycleRequestProfile(
             name="test",
             defaults={
                 "workload_sequence": [
@@ -48,9 +48,10 @@ class TestGateNameValidation:
                 ],
             },
         )
+        assert profile.name == "test"
 
     def test_promote_prefix_passes(self):
-        CycleRequestProfile(
+        profile = CycleRequestProfile(
             name="test",
             defaults={
                 "workload_sequence": [
@@ -58,9 +59,10 @@ class TestGateNameValidation:
                 ],
             },
         )
+        assert profile.name == "test"
 
     def test_null_gate_passes(self):
-        CycleRequestProfile(
+        profile = CycleRequestProfile(
             name="test",
             defaults={
                 "workload_sequence": [
@@ -68,6 +70,7 @@ class TestGateNameValidation:
                 ],
             },
         )
+        assert profile.name == "test"
 
     def test_invalid_prefix_rejected(self):
         with pytest.raises(Exception, match="must start with"):
