@@ -58,6 +58,13 @@ from squadops.capabilities.handlers.warmboot import (
     ContextSyncHandler,
     WarmbootHandler,
 )
+from squadops.capabilities.handlers.wrapup_tasks import (
+    DataClassifyUnresolvedHandler,
+    DataGatherEvidenceHandler,
+    GovernanceCloseoutDecisionHandler,
+    GovernancePublishHandoffHandler,
+    QAAssessOutcomesHandler,
+)
 from squadops.orchestration.handler_registry import HandlerRegistry
 
 if TYPE_CHECKING:
@@ -108,6 +115,12 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     # Refinement handlers (SIP-0078: Planning Workload Protocol)
     (GovernanceIncorporateFeedbackHandler, ("lead",)),
     (QAValidateRefinementHandler, ("qa",)),
+    # Wrap-up handlers (SIP-0080: Wrap-Up Workload Protocol)
+    (DataGatherEvidenceHandler, ("data",)),
+    (QAAssessOutcomesHandler, ("qa",)),
+    (DataClassifyUnresolvedHandler, ("data",)),
+    (GovernanceCloseoutDecisionHandler, ("lead",)),
+    (GovernancePublishHandoffHandler, ("lead",)),
 ]
 
 
