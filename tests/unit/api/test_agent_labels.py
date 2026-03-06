@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from squadops.api.runtime.agent_labels import ROLE_DISPLAY_LABELS, get_role_label
 
 

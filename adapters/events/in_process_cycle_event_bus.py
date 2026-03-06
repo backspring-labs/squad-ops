@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from squadops.events.models import CycleEvent
@@ -75,7 +75,7 @@ class InProcessCycleEventBus(CycleEventBusPort):
 
         event = CycleEvent(
             event_id=_generate_event_id(),
-            occurred_at=datetime.now(tz=timezone.utc),
+            occurred_at=datetime.now(tz=UTC),
             source_service=self._source_service,
             source_version=self._source_version,
             event_type=event_type,
