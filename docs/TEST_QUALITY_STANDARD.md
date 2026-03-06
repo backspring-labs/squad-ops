@@ -212,5 +212,5 @@ When modifying a test file, take 60 seconds to scan for anti-patterns. If you fi
 
 - **CLAUDE.md** contains the condensed rules that are checked every conversation.
 - **This document** is the full reference with examples and rationale.
-- **AST linter** (`scripts/dev/lint_test_quality.py`) detects anti-patterns 1-4 automatically. It runs as a Claude Code `PostToolUse` hook (`.claude/hooks/lint-test-quality.sh`) after every test file Write/Edit, providing immediate feedback before violations land.
+- **AST linter** (`scripts/dev/lint_test_quality.py`) detects anti-patterns 1-4 automatically. It runs as a Claude Code `PostToolUse` hook (`.claude/hooks/lint-test-quality.sh`) after every test file Write/Edit, providing immediate feedback before violations land. The linter is also **blocking** in `run_new_arch_tests.sh` — any violation fails the regression suite. All 235 pre-existing violations have been resolved.
 - When writing tests, the question "what bug does this catch?" must have a concrete answer.

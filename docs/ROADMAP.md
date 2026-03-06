@@ -4,6 +4,34 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
+### v0.9.18 (2026-03-06) — Wrap-Up Workload Protocol & Test Quality Enforcement
+- **SIP-0080** Wrap-Up Workload Protocol
+  - Domain models: ConfidenceClassification, CloseoutRecommendation, UnresolvedIssueType/Severity, NextCycleRecommendation
+  - 5 wrap-up handlers (gather_evidence, assess_outcomes, classify_unresolved, closeout_decision, publish_handoff)
+  - YAML frontmatter validation for structured closeout/handoff decisions
+  - wrapup.yaml cycle request profile with 3 milestone pulse check suites
+  - WRAPUP_TASK_STEPS and REQUIRED_WRAPUP_ROLES validation
+- **Test Quality Enforcement**
+  - AST linter made blocking in regression script (was non-blocking)
+  - 235 tautological tests removed across 77 files (attribute-only, sole isinstance, issubclass-only)
+  - Linter false-positive fix: gate isinstance/is-not-None on has_calls
+  - Codebase fully ruff-clean (4 pre-existing violations fixed)
+
+### v0.9.17 (2026-03-05) — Implementation Run Contract & Correction Protocol
+- **SIP-0079** Implementation Run Contract & Correction Protocol
+  - Domain models: RunContract, RunCheckpoint, PlanDelta, TaskOutcome, FailureClassification
+  - Checkpoint persistence in both registry adapters, FAILED→RUNNING FSM transition
+  - Implementation/correction/repair task steps with deterministic IDs
+  - 6 bounded execution CRP schema keys (`max_task_retries`, `max_task_seconds`, `max_consecutive_failures`, `max_correction_attempts`, `time_budget_seconds`, `implementation_pulse_checks`)
+  - Executor checkpoint/resume, time budget enforcement, `_PausedError`
+  - Correction protocol handlers (analyze_failure, correction_decision, establish_contract, repair handlers)
+  - Outcome routing with `outcome_class` on TaskResult
+  - Resume and checkpoints API routes (`POST /{run_id}/resume`, `GET /{run_id}/checkpoints`)
+  - Resume and checkpoints CLI commands (`squadops runs resume`, `squadops runs checkpoints`)
+  - Implementation cycle request profile with milestone + cadence pulse check suites
+  - MetricsBridge correction counters, PrefectBridge RUN_RESUMED state mapping
+  - AST-based test quality linter with Claude Code PostToolUse hook
+
 ### v0.9.16 (2026-03-03) — Planning Workload Protocol
 - **SIP-0078** Planning Workload Protocol
   - `PLANNING_TASK_STEPS` (5 steps) and `REFINEMENT_TASK_STEPS` (2 steps) with workload-type branching
@@ -162,8 +190,8 @@ These SIPs must land before the first DGX Spark validation run. They are sequenc
 | 1 | **SIP-0076** Workload & Gate Canon | `workload_type` on Run, gate outcome expansion, artifact promotion, Pulse vs Gate semantics | **Implemented (v0.9.14)** |
 | 2 | **SIP-0077** Cycle Event System (v0) | Canonical lifecycle event bus, 20-event taxonomy, bridge adapters. v0 scope only — emit + bridge. Full rewire (v1) and event-first (v2) follow later. | **Implemented (v0.9.15)** |
 | 3 | **SIP-0078** Planning Workload Protocol | Planning contract, durable planning artifact, QA-first test strategy, proto validation, unknown classification, readiness decision | **Implemented (v0.9.16)** |
-| 4 | Implementation Run Contract | Run contract, correction protocol (detect → RCA → decide → plan delta → resume), **durable checkpoint/resume**, bounded retry/timebox | Proposed |
-| 5 | Wrap-Up Workload Protocol | Closeout artifact, planned-vs-actual comparison, confidence classification, structured unresolved issues, next-cycle handoff | Proposed |
+| 4 | **SIP-0079** Implementation Run Contract | Run contract, correction protocol (detect → RCA → decide → plan delta → resume), **durable checkpoint/resume**, bounded retry/timebox | **Implemented (v0.9.17)** |
+| 5 | **SIP-0080** Wrap-Up Workload Protocol | Closeout artifact, planned-vs-actual comparison, confidence classification, structured unresolved issues, next-cycle handoff | **Implemented (v0.9.18)** |
 
 **Why this order**: Workload Canon defines the execution vocabulary. Event System provides lifecycle facts. The three pipeline protocols (Planning → Implementation → Wrap-Up) build on both. Implementation Run Contract is the single most important Spark-readiness SIP — without durable checkpoint/resume, a long run is fragile regardless of how clean the architecture is. Wrap-up is execution safety, not reporting polish — it is what makes memory, evaluation, and next-cycle readiness trustworthy.
 
@@ -291,8 +319,8 @@ The following areas are identified for future work but do not block 1.0 readines
 | **SIP-0076** | Workload & Gate Canon | **Implemented** |
 | **SIP-0077** | Cycle Event System | **Implemented** |
 | **SIP-0078** | Planning Workload Protocol | **Implemented** |
-| (unnumbered) | Implementation Run Contract & Correction Protocol | Proposed |
-| (unnumbered) | Wrap-Up Workload Protocol | Proposed |
+| **SIP-0079** | Implementation Run Contract & Correction Protocol | **Implemented (v0.9.17)** |
+| **SIP-0080** | Wrap-Up Workload Protocol | **Implemented (v0.9.18)** |
 
 ### 1.0 Track — Hardening
 
@@ -317,8 +345,8 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-- **Framework version**: 0.9.16
-- **SIPs**: 48 implemented, 0 accepted, 11 proposals (4 on 1.0 track), 15 deprecated
-- **Tests**: 2,870+ passing
-- **Python source**: ~42,000 lines
+- **Framework version**: 0.9.18
+- **SIPs**: 54 implemented, 0 accepted, 11 proposals (2 on 1.0 track), 15 deprecated
+- **Tests**: 2,890+ passing
+- **Python source**: ~39,000 lines (~51,000 test lines, ~84,000 doc lines)
 - **5 months** from initial repo to production-grade console UI
