@@ -6,7 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TasksBackend(StrEnum):
@@ -669,10 +669,4 @@ class AppConfig(BaseModel):
             v["root"] = Path(v["root"])
         return v
 
-    class Config:
-        """Pydantic model configuration."""
-
-        # Forbid extra fields - unknown keys will cause validation errors
-        extra = "forbid"
-        validate_assignment = True
-        use_enum_values = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True, use_enum_values=True)

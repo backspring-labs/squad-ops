@@ -21,11 +21,11 @@ from squadops.capabilities.handlers.cycle_tasks import (
     _classify_file,
     _is_test_file,
 )
-from squadops.capabilities.handlers.test_runner import TestRunResult
+from squadops.capabilities.handlers.test_runner import RunTestsResult
 from squadops.llm.exceptions import LLMConnectionError
 from squadops.llm.models import ChatMessage
 
-_MOCK_TEST_RESULT_PASSED = TestRunResult(
+_MOCK_TEST_RESULT_PASSED = RunTestsResult(
     executed=True,
     exit_code=0,
     stdout="1 passed",
@@ -34,7 +34,7 @@ _MOCK_TEST_RESULT_PASSED = TestRunResult(
     source_file_count=2,
 )
 
-_MOCK_TEST_RESULT_FAILED = TestRunResult(
+_MOCK_TEST_RESULT_FAILED = RunTestsResult(
     executed=True,
     exit_code=1,
     stdout="1 failed",
@@ -43,7 +43,7 @@ _MOCK_TEST_RESULT_FAILED = TestRunResult(
     source_file_count=2,
 )
 
-_MOCK_TEST_RESULT_NOT_RUN = TestRunResult(
+_MOCK_TEST_RESULT_NOT_RUN = RunTestsResult(
     executed=False,
     error="no test files provided",
     test_file_count=0,

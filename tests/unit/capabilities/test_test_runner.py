@@ -1,6 +1,6 @@
 """Unit tests for the QA test runner (real subprocess execution).
 
-Tests ``TestRunResult``, ``_materialize_files``, and ``run_generated_tests``
+Tests ``RunTestsResult``, ``_materialize_files``, and ``run_generated_tests``
 from ``squadops.capabilities.handlers.test_runner``.
 """
 
@@ -12,7 +12,7 @@ import tempfile
 import pytest
 
 from squadops.capabilities.handlers.test_runner import (
-    TestRunResult,
+    RunTestsResult,
     _materialize_files,
     run_generated_tests,
 )
@@ -21,29 +21,29 @@ pytestmark = [pytest.mark.domain_capabilities]
 
 
 # ---------------------------------------------------------------------------
-# TestRunResult properties
+# RunTestsResult properties
 # ---------------------------------------------------------------------------
 
 
-class TestTestRunResultProperties:
+class TestRunTestsResultProperties:
     def test_summary_passed(self):
-        r = TestRunResult(executed=True, exit_code=0, test_file_count=2, source_file_count=3)
+        r = RunTestsResult(executed=True, exit_code=0, test_file_count=2, source_file_count=3)
         assert "all tests passed" in r.summary
         assert "2 test file(s)" in r.summary
         assert "3 source file(s)" in r.summary
 
     def test_summary_failed(self):
-        r = TestRunResult(executed=True, exit_code=1, test_file_count=1, source_file_count=1)
+        r = RunTestsResult(executed=True, exit_code=1, test_file_count=1, source_file_count=1)
         assert "tests failed" in r.summary
         assert "exit code 1" in r.summary
 
     def test_summary_not_run_with_error(self):
-        r = TestRunResult(executed=False, error="no test files provided")
+        r = RunTestsResult(executed=False, error="no test files provided")
         assert "tests not run" in r.summary
         assert "no test files" in r.summary
 
     def test_frozen(self):
-        r = TestRunResult(executed=True, exit_code=0)
+        r = RunTestsResult(executed=True, exit_code=0)
         with pytest.raises(AttributeError):
             r.exit_code = 42  # type: ignore[misc]
 

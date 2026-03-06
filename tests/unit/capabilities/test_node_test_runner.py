@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from squadops.capabilities.handlers.test_runner import (
-    TestRunResult,
+    RunTestsResult,
     run_fullstack_tests,
     run_node_tests,
 )
@@ -220,7 +220,7 @@ class TestRunNodeTestsTargetDir:
 _RUN_PYTEST_PATH = "squadops.capabilities.handlers.test_runner.run_generated_tests"
 _RUN_NODE_PATH = "squadops.capabilities.handlers.test_runner.run_node_tests"
 
-_BACKEND_PASS = TestRunResult(
+_BACKEND_PASS = RunTestsResult(
     executed=True,
     exit_code=0,
     stdout="backend ok",
@@ -228,7 +228,7 @@ _BACKEND_PASS = TestRunResult(
     test_file_count=2,
     source_file_count=3,
 )
-_BACKEND_FAIL = TestRunResult(
+_BACKEND_FAIL = RunTestsResult(
     executed=True,
     exit_code=1,
     stdout="backend fail",
@@ -236,7 +236,7 @@ _BACKEND_FAIL = TestRunResult(
     test_file_count=2,
     source_file_count=3,
 )
-_FRONTEND_PASS = TestRunResult(
+_FRONTEND_PASS = RunTestsResult(
     executed=True,
     exit_code=0,
     stdout="frontend ok",
@@ -244,7 +244,7 @@ _FRONTEND_PASS = TestRunResult(
     test_file_count=1,
     source_file_count=2,
 )
-_FRONTEND_FAIL = TestRunResult(
+_FRONTEND_FAIL = RunTestsResult(
     executed=True,
     exit_code=1,
     stdout="frontend fail",
@@ -252,7 +252,7 @@ _FRONTEND_FAIL = TestRunResult(
     test_file_count=1,
     source_file_count=2,
 )
-_FRONTEND_NOT_RUN = TestRunResult(
+_FRONTEND_NOT_RUN = RunTestsResult(
     executed=False,
     error="npm not found — Node.js is not installed",
     test_file_count=1,
