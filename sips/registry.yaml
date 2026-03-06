@@ -1,4 +1,4 @@
-last_assigned: 79
+last_assigned: 80
 sips:
 - sip_uid: null
   sip_number: null
@@ -727,3 +727,12 @@ sips:
   approver: jladd
   created_at: '2026-02-28T00:00:00Z'
   updated_at: '2026-03-05T19:38:22.120843Z'
+- sip_uid: null
+  sip_number: 80
+  title: Wrap-Up Workload Protocol
+  path: sips/implemented/SIP-0080-Wrap-Up-Workload-Protocol.md
+  status: implemented
+  author: SquadOps Architecture
+  approver: jladd
+  created_at: '2026-02-28'
+  updated_at: '2026-03-06T08:29:55.250573Z'

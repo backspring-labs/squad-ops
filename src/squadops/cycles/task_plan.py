@@ -23,6 +23,7 @@ from squadops.capabilities.handlers.build_profiles import (
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
     REQUIRED_REFINEMENT_ROLES,
+    REQUIRED_WRAPUP_ROLES,
     Cycle,
     CycleError,
     Run,
@@ -87,12 +88,22 @@ REPAIR_TASK_STEPS: list[tuple[str, str]] = [
     ("qa.validate_repair", "qa"),
 ]
 
+# Wrap-up task steps (SIP-0080 §7.1)
+WRAPUP_TASK_STEPS: list[tuple[str, str]] = [
+    ("data.gather_evidence", "data"),
+    ("qa.assess_outcomes", "qa"),
+    ("data.classify_unresolved", "data"),
+    ("governance.closeout_decision", "lead"),
+    ("governance.publish_handoff", "lead"),
+]
+
 # Well-known workload types that have dedicated step selection.
 _KNOWN_WORKLOAD_TYPES = {
     WorkloadType.PLANNING,
     WorkloadType.IMPLEMENTATION,
     WorkloadType.REFINEMENT,
     WorkloadType.EVALUATION,
+    WorkloadType.WRAPUP,
 }
 
 # Task types that are build steps (for routing_reason metadata)
@@ -182,6 +193,15 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
                     f"{', '.join(sorted(missing))}"
                 )
             steps = list(CYCLE_TASK_STEPS)
+
+        elif run.workload_type == WorkloadType.WRAPUP:
+            missing = REQUIRED_WRAPUP_ROLES - profile_roles
+            if missing:
+                raise CycleError(
+                    f"Squad profile '{profile.profile_id}' is missing required "
+                    f"wrap-up roles: {', '.join(sorted(missing))}"
+                )
+            steps = list(WRAPUP_TASK_STEPS)
 
     else:
         # --- Legacy path: plan_tasks / build_tasks flags (no workload_type) ---

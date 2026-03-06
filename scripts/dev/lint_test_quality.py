@@ -49,6 +49,12 @@ def _has_nontrivial_call(body: list[ast.stmt]) -> bool:
     Nontrivial means: method calls (obj.method()), awaits, or non-constructor function calls.
     Plain constructors (ClassName(...)) in assignments are just setup, not behavior.
     """
+    # Builtins that inspect structure but don't exercise behavior
+    _PASSIVE_BUILTINS = frozenset({
+        "isinstance", "issubclass", "type", "len", "str",
+        "getattr", "hasattr", "setattr", "vars", "dir",
+    })
+
     for node in ast.walk(ast.Module(body=body, type_ignores=[])):
         if isinstance(node, ast.Await):
             return True
@@ -57,8 +63,8 @@ def _has_nontrivial_call(body: list[ast.stmt]) -> bool:
             # Method calls (obj.method()) always count — they exercise behavior
             if isinstance(func, ast.Attribute):
                 return True
-            # Skip builtins that are passive checks
-            if isinstance(func, ast.Name) and func.id in ("isinstance", "type", "len", "str"):
+            # Skip passive builtins (inspection, not behavior)
+            if isinstance(func, ast.Name) and func.id in _PASSIVE_BUILTINS:
                 continue
             # Skip constructor-like calls: CapitalizedName(...)
             # These are just setting up the test subject
@@ -150,6 +156,41 @@ def _is_sole_isinstance(asserts: list[ast.Assert]) -> bool:
     return isinstance(func, ast.Name) and func.id == "isinstance"
 
 
+def _is_issubclass_check(node: ast.Assert) -> bool:
+    """Return True if assert is `assert [not] issubclass(X, Y)`.
+
+    Catches both `assert issubclass(X, Y)` and `assert not issubclass(X, Y)`.
+    """
+    test = node.test
+    # Unwrap `not` — `assert not issubclass(X, Y)` has UnaryOp(Not, Call)
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+        test = test.operand
+    if isinstance(test, ast.Call):
+        func = test.func
+        return isinstance(func, ast.Name) and func.id == "issubclass"
+    return False
+
+
+def _is_getattr_eq_any(node: ast.Assert) -> bool:
+    """Return True if assert is `assert getattr(X, Y) == <anything>`.
+
+    Catches attribute-constant comparison via getattr() indirection,
+    including parametrized patterns like `assert getattr(Cls, attr) == expected`.
+    """
+    test = node.test
+    if not isinstance(test, ast.Compare):
+        return False
+    if len(test.ops) != 1 or not isinstance(test.ops[0], (ast.Eq, ast.Is)):
+        return False
+    if len(test.comparators) != 1:
+        return False
+    # Left side must be a getattr() call
+    if not isinstance(test.left, ast.Call):
+        return False
+    func = test.left.func
+    return isinstance(func, ast.Name) and func.id == "getattr"
+
+
 def lint_file(filepath: str) -> list[str]:
     """Lint a test file and return a list of diagnostic messages."""
     source = Path(filepath).read_text(encoding="utf-8")
@@ -197,6 +238,32 @@ def lint_file(filepath: str) -> list[str]:
             )
             continue
 
+        # Anti-pattern 5: issubclass-only test
+        if (
+            len(asserts) >= 1
+            and all(_is_issubclass_check(a) for a in asserts)
+            and not _has_nontrivial_call(body)
+        ):
+            diagnostics.append(
+                f"{filepath}:{node.lineno}: {node.name}: "
+                f"issubclass-only test — verifying class hierarchy is structural, "
+                f"not behavioral"
+            )
+            continue
+
+        # Anti-pattern 6: getattr indirection for attribute-constant comparison
+        if (
+            len(asserts) >= 1
+            and all(_is_getattr_eq_any(a) for a in asserts)
+            and not _has_nontrivial_call(body)
+        ):
+            diagnostics.append(
+                f"{filepath}:{node.lineno}: {node.name}: "
+                f"getattr-attribute test — all assertions check class attributes "
+                f"via getattr() without exercising behavior"
+            )
+            continue
+
         # Anti-pattern 2: Sole `is not None` assertion
         if _is_sole_is_not_none(asserts) and not has_raises:
             diagnostics.append(
@@ -216,21 +283,51 @@ def lint_file(filepath: str) -> list[str]:
     return diagnostics
 
 
+def _collect_test_files(paths: list[str]) -> list[Path]:
+    """Expand a mix of files and directories into a sorted list of test_*.py files."""
+    result: list[Path] = []
+    for p in paths:
+        path = Path(p)
+        if path.is_file() and path.name.startswith("test_") and path.suffix == ".py":
+            result.append(path)
+        elif path.is_dir():
+            result.extend(sorted(path.rglob("test_*.py")))
+        elif path.is_file():
+            # Non-test file — skip silently (allows glob expansions)
+            pass
+        else:
+            print(f"Path not found: {p}", file=sys.stderr)
+    return result
+
+
 def main() -> int:
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <test_file.py>", file=sys.stderr)
+    if len(sys.argv) < 2:
+        print(
+            f"Usage: {sys.argv[0]} <test_file.py|directory> [...]",
+            file=sys.stderr,
+        )
         return 2
 
-    filepath = sys.argv[1]
-    if not Path(filepath).exists():
-        print(f"File not found: {filepath}", file=sys.stderr)
+    test_files = _collect_test_files(sys.argv[1:])
+    if not test_files:
+        print("No test files found.", file=sys.stderr)
         return 2
 
-    diagnostics = lint_file(filepath)
-    if diagnostics:
-        for d in diagnostics:
+    all_diagnostics: list[str] = []
+    for filepath in test_files:
+        all_diagnostics.extend(lint_file(str(filepath)))
+
+    if all_diagnostics:
+        for d in all_diagnostics:
             print(d, file=sys.stderr)
+        print(
+            f"\n{len(all_diagnostics)} violation(s) in {len(test_files)} file(s).",
+            file=sys.stderr,
+        )
         return 1
+
+    file_count = len(test_files)
+    print(f"Test quality lint: {file_count} file(s) clean.", file=sys.stderr)
     return 0
 
 

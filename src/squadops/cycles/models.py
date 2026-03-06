@@ -97,6 +97,7 @@ class WorkloadType:
     IMPLEMENTATION = "implementation"
     EVALUATION = "evaluation"
     REFINEMENT = "refinement"
+    WRAPUP = "wrapup"
 
 
 class PromotionStatus:
@@ -177,6 +178,9 @@ REQUIRED_PLAN_ROLES = frozenset({"strat", "dev", "qa", "data", "lead"})
 
 # Required roles for refinement workloads. Refinement is lead + QA only. (SIP-0078 §5.10)
 REQUIRED_REFINEMENT_ROLES = frozenset({"lead", "qa"})
+
+# Required roles for wrap-up workloads. Wrap-up is data + QA + lead. (SIP-0080 §7.1)
+REQUIRED_WRAPUP_ROLES = frozenset({"data", "qa", "lead"})
 
 
 # =============================================================================

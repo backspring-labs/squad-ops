@@ -1,0 +1,62 @@
+name: wrapup
+description: "Wrap-up workload with closeout review gate"
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_wrapup_review
+        description: "Review closeout artifact before cycle completion"
+        after_task_types:
+          - governance.publish_handoff
+  expected_artifact_types:
+    - document
+  workload_sequence:
+    - type: wrapup
+      gate: progress_wrapup_review
+  pulse_checks:
+    - suite_id: wrapup_evidence_guard
+      boundary_id: post_evidence
+      binding_mode: milestone
+      after_task_types:
+        - data.gather_evidence
+      checks:
+        - check_type: file_exists
+          target: "{run_root}/evidence_inventory.md"
+        - check_type: non_empty
+          target: "{run_root}/evidence_inventory.md"
+      max_suite_seconds: 15
+      max_check_seconds: 5
+    - suite_id: wrapup_completeness
+      boundary_id: post_closeout
+      binding_mode: milestone
+      after_task_types:
+        - governance.closeout_decision
+      checks:
+        - check_type: file_exists
+          target: "{run_root}/closeout_artifact.md"
+        - check_type: non_empty
+          target: "{run_root}/closeout_artifact.md"
+      max_suite_seconds: 15
+      max_check_seconds: 5
+    - suite_id: wrapup_handoff_guard
+      boundary_id: post_handoff
+      binding_mode: milestone
+      after_task_types:
+        - governance.publish_handoff
+      checks:
+        - check_type: file_exists
+          target: "{run_root}/handoff_artifact.md"
+        - check_type: non_empty
+          target: "{run_root}/handoff_artifact.md"
+      max_suite_seconds: 15
+      max_check_seconds: 5
+  cadence_policy:
+    max_pulse_seconds: 3600
+    max_tasks_per_pulse: 5
+  experiment_context: {}
+  notes: >-
+    Wrap-up workload cycle. Requires execution_overrides with impl_run_id
+    (the implementation run being wrapped up) and optionally plan_artifact_refs
+    (planning artifact IDs for scope baseline). Example:
+    execution_overrides: { impl_run_id: "<run_id>", plan_artifact_refs: ["<artifact_id>"] }
