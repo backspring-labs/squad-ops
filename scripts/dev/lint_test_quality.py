@@ -283,21 +283,51 @@ def lint_file(filepath: str) -> list[str]:
     return diagnostics
 
 
+def _collect_test_files(paths: list[str]) -> list[Path]:
+    """Expand a mix of files and directories into a sorted list of test_*.py files."""
+    result: list[Path] = []
+    for p in paths:
+        path = Path(p)
+        if path.is_file() and path.name.startswith("test_") and path.suffix == ".py":
+            result.append(path)
+        elif path.is_dir():
+            result.extend(sorted(path.rglob("test_*.py")))
+        elif path.is_file():
+            # Non-test file — skip silently (allows glob expansions)
+            pass
+        else:
+            print(f"Path not found: {p}", file=sys.stderr)
+    return result
+
+
 def main() -> int:
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <test_file.py>", file=sys.stderr)
+    if len(sys.argv) < 2:
+        print(
+            f"Usage: {sys.argv[0]} <test_file.py|directory> [...]",
+            file=sys.stderr,
+        )
         return 2
 
-    filepath = sys.argv[1]
-    if not Path(filepath).exists():
-        print(f"File not found: {filepath}", file=sys.stderr)
+    test_files = _collect_test_files(sys.argv[1:])
+    if not test_files:
+        print("No test files found.", file=sys.stderr)
         return 2
 
-    diagnostics = lint_file(filepath)
-    if diagnostics:
-        for d in diagnostics:
+    all_diagnostics: list[str] = []
+    for filepath in test_files:
+        all_diagnostics.extend(lint_file(str(filepath)))
+
+    if all_diagnostics:
+        for d in all_diagnostics:
             print(d, file=sys.stderr)
+        print(
+            f"\n{len(all_diagnostics)} violation(s) in {len(test_files)} file(s).",
+            file=sys.stderr,
+        )
         return 1
+
+    file_count = len(test_files)
+    print(f"Test quality lint: {file_count} file(s) clean.", file=sys.stderr)
     return 0
 
 
