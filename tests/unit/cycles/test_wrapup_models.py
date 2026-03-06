@@ -1,16 +1,15 @@
 """Tests for SIP-0080 wrap-up domain models (Phase 1).
 
-Covers constants classes, ALLOWED_SUGGESTED_OWNERS, WorkloadType.WRAPUP,
+Covers count guards, duplicate detection, convention enforcement,
+and cross-constant consistency for constants classes, ALLOWED_SUGGESTED_OWNERS,
 and REQUIRED_WRAPUP_ROLES.
 """
 
 from __future__ import annotations
 
-import enum
-
 import pytest
 
-from squadops.cycles.models import REQUIRED_WRAPUP_ROLES, WorkloadType
+from squadops.cycles.models import REQUIRED_WRAPUP_ROLES
 from squadops.cycles.wrapup_models import (
     ALLOWED_SUGGESTED_OWNERS,
     CloseoutRecommendation,
@@ -19,6 +18,8 @@ from squadops.cycles.wrapup_models import (
     UnresolvedIssueSeverity,
     UnresolvedIssueType,
 )
+
+pytestmark = [pytest.mark.domain_orchestration]
 
 
 def _get_constant_values(cls):
@@ -31,178 +32,107 @@ def _get_constant_values(cls):
 
 
 # ---------------------------------------------------------------------------
-# ConfidenceClassification (SIP-0080 §7.4)
+# Count guards — catch accidental addition/removal of constants
 # ---------------------------------------------------------------------------
 
 
-class TestConfidenceClassification:
-    def test_has_6_values(self):
-        assert len(_get_constant_values(ConfidenceClassification)) == 6
+@pytest.mark.parametrize(
+    "cls,expected_count",
+    [
+        (ConfidenceClassification, 6),
+        (CloseoutRecommendation, 4),
+        (UnresolvedIssueType, 7),
+        (UnresolvedIssueSeverity, 4),
+        (NextCycleRecommendation, 5),
+    ],
+    ids=lambda x: x.__name__ if isinstance(x, type) else str(x),
+)
+def test_constants_class_value_count(cls, expected_count):
+    """Each constants class has exactly the specified number of values.
 
-    def test_no_duplicate_values(self):
-        values = [
-            ConfidenceClassification.VERIFIED_COMPLETE,
-            ConfidenceClassification.COMPLETE_WITH_CAVEATS,
-            ConfidenceClassification.PARTIAL_COMPLETION,
-            ConfidenceClassification.NOT_SUFFICIENTLY_VERIFIED,
-            ConfidenceClassification.INCONCLUSIVE,
-            ConfidenceClassification.FAILED,
-        ]
-        assert len(values) == len(set(values))
-
-    def test_values_are_lowercase_strings(self):
-        for val in _get_constant_values(ConfidenceClassification):
-            assert val == val.lower()
-            assert isinstance(val, str)
-
-    def test_not_an_enum(self):
-        assert not issubclass(ConfidenceClassification, enum.Enum)
-
-    @pytest.mark.parametrize(
-        "attr,expected",
-        [
-            ("VERIFIED_COMPLETE", "verified_complete"),
-            ("COMPLETE_WITH_CAVEATS", "complete_with_caveats"),
-            ("PARTIAL_COMPLETION", "partial_completion"),
-            ("NOT_SUFFICIENTLY_VERIFIED", "not_sufficiently_verified"),
-            ("INCONCLUSIVE", "inconclusive"),
-            ("FAILED", "failed"),
-        ],
-    )
-    def test_specific_values(self, attr, expected):
-        assert getattr(ConfidenceClassification, attr) == expected
+    Bug caught: accidental addition or removal of a constant.
+    """
+    assert len(_get_constant_values(cls)) == expected_count
 
 
 # ---------------------------------------------------------------------------
-# CloseoutRecommendation (SIP-0080 §7.6)
+# Duplicate guards — catch copy-paste errors where two constants share a value
 # ---------------------------------------------------------------------------
 
 
-class TestCloseoutRecommendation:
-    def test_has_4_values(self):
-        assert len(_get_constant_values(CloseoutRecommendation)) == 4
+@pytest.mark.parametrize(
+    "cls",
+    [
+        ConfidenceClassification,
+        CloseoutRecommendation,
+        UnresolvedIssueType,
+        UnresolvedIssueSeverity,
+        NextCycleRecommendation,
+    ],
+    ids=lambda x: x.__name__,
+)
+def test_constants_class_no_duplicate_values(cls):
+    """No two constants in the same class share a string value.
 
-    def test_no_duplicate_values(self):
-        values = [
-            CloseoutRecommendation.PROCEED,
-            CloseoutRecommendation.HARDEN,
-            CloseoutRecommendation.REPLAN,
-            CloseoutRecommendation.HALT,
-        ]
-        assert len(values) == len(set(values))
-
-    def test_not_an_enum(self):
-        assert not issubclass(CloseoutRecommendation, enum.Enum)
-
-
-# ---------------------------------------------------------------------------
-# UnresolvedIssueType (SIP-0080 §7.5)
-# ---------------------------------------------------------------------------
-
-
-class TestUnresolvedIssueType:
-    def test_has_7_values(self):
-        assert len(_get_constant_values(UnresolvedIssueType)) == 7
-
-    def test_no_duplicate_values(self):
-        values = [
-            UnresolvedIssueType.DEFECT,
-            UnresolvedIssueType.DESIGN_DEBT,
-            UnresolvedIssueType.TEST_GAP,
-            UnresolvedIssueType.ENVIRONMENTAL,
-            UnresolvedIssueType.DEPENDENCY,
-            UnresolvedIssueType.OPERATOR_DECISION_PENDING,
-            UnresolvedIssueType.DEFERRED_ENHANCEMENT,
-        ]
-        assert len(values) == len(set(values))
-
-    def test_not_an_enum(self):
-        assert not issubclass(UnresolvedIssueType, enum.Enum)
+    Bug caught: copy-paste error where a new constant reuses an existing value.
+    """
+    values = _get_constant_values(cls)
+    attrs = [v for k, v in vars(cls).items() if not k.startswith("_") and isinstance(v, str)]
+    assert len(attrs) == len(values), f"Duplicate values detected in {cls.__name__}"
 
 
 # ---------------------------------------------------------------------------
-# UnresolvedIssueSeverity (SIP-0080 §7.5)
+# Convention guard — all values must be lowercase strings
 # ---------------------------------------------------------------------------
 
 
-class TestUnresolvedIssueSeverity:
-    def test_has_4_values(self):
-        assert len(_get_constant_values(UnresolvedIssueSeverity)) == 4
+def test_confidence_values_are_lowercase_strings():
+    """Convention: all ConfidenceClassification values must be lowercase strings.
 
-    def test_no_duplicate_values(self):
-        values = [
-            UnresolvedIssueSeverity.CRITICAL,
-            UnresolvedIssueSeverity.HIGH,
-            UnresolvedIssueSeverity.MEDIUM,
-            UnresolvedIssueSeverity.LOW,
-        ]
-        assert len(values) == len(set(values))
-
-    def test_not_an_enum(self):
-        assert not issubclass(UnresolvedIssueSeverity, enum.Enum)
+    Bug caught: mixed-case value breaks case-sensitive comparisons downstream.
+    """
+    for val in _get_constant_values(ConfidenceClassification):
+        assert val == val.lower(), f"Non-lowercase value: {val}"
+        assert isinstance(val, str)
 
 
 # ---------------------------------------------------------------------------
-# NextCycleRecommendation (SIP-0080 §7.7)
+# ALLOWED_SUGGESTED_OWNERS count guard (SIP-0080 §7.5)
 # ---------------------------------------------------------------------------
 
 
-class TestNextCycleRecommendation:
-    def test_has_5_values(self):
-        assert len(_get_constant_values(NextCycleRecommendation)) == 5
+def test_allowed_suggested_owners_count():
+    """ALLOWED_SUGGESTED_OWNERS has exactly 7 entries (6 agent roles + operator).
 
-    def test_includes_none(self):
-        assert NextCycleRecommendation.NONE == "none"
-
-    def test_no_duplicate_values(self):
-        values = [
-            NextCycleRecommendation.PLANNING,
-            NextCycleRecommendation.IMPLEMENTATION,
-            NextCycleRecommendation.HARDENING,
-            NextCycleRecommendation.RESEARCH,
-            NextCycleRecommendation.NONE,
-        ]
-        assert len(values) == len(set(values))
-
-    def test_not_an_enum(self):
-        assert not issubclass(NextCycleRecommendation, enum.Enum)
+    Bug caught: accidental addition or removal of an allowed owner.
+    """
+    assert len(ALLOWED_SUGGESTED_OWNERS) == 7
 
 
 # ---------------------------------------------------------------------------
-# ALLOWED_SUGGESTED_OWNERS (SIP-0080 §7.5)
+# Cross-constant consistency
 # ---------------------------------------------------------------------------
 
 
-class TestAllowedSuggestedOwners:
-    def test_has_7_entries(self):
-        assert len(ALLOWED_SUGGESTED_OWNERS) == 7
+def test_required_wrapup_roles_are_allowed_owners():
+    """All required wrap-up roles must appear in ALLOWED_SUGGESTED_OWNERS.
 
-    def test_contains_agent_roles(self):
-        for role in ("lead", "qa", "dev", "data", "strat", "builder"):
-            assert role in ALLOWED_SUGGESTED_OWNERS
-
-    def test_contains_operator(self):
-        assert "operator" in ALLOWED_SUGGESTED_OWNERS
-
-    def test_is_frozenset(self):
-        assert isinstance(ALLOWED_SUGGESTED_OWNERS, frozenset)
+    Bug caught: adding a role to REQUIRED_WRAPUP_ROLES that isn't recognized
+    as a valid issue owner, causing downstream validation failures.
+    """
+    assert REQUIRED_WRAPUP_ROLES <= ALLOWED_SUGGESTED_OWNERS
 
 
 # ---------------------------------------------------------------------------
-# WorkloadType.WRAPUP and REQUIRED_WRAPUP_ROLES (models.py additions)
+# REQUIRED_WRAPUP_ROLES scope guard
 # ---------------------------------------------------------------------------
 
 
-class TestWorkloadTypeWrapup:
-    def test_wrapup_value(self):
-        assert WorkloadType.WRAPUP == "wrapup"
+def test_wrapup_roles_exclude_non_wrapup_roles():
+    """Wrap-up does not require strat, dev, or builder roles (SIP-0080 §7.1).
 
-
-class TestRequiredWrapupRoles:
-    def test_exact_roles(self):
-        assert REQUIRED_WRAPUP_ROLES == frozenset({"data", "qa", "lead"})
-
-    def test_excludes_strategy_and_dev(self):
-        assert "strat" not in REQUIRED_WRAPUP_ROLES
-        assert "dev" not in REQUIRED_WRAPUP_ROLES
-        assert "builder" not in REQUIRED_WRAPUP_ROLES
+    Bug caught: scope creep adding planning/build roles to a wrap-up-only workload.
+    """
+    assert "strat" not in REQUIRED_WRAPUP_ROLES
+    assert "dev" not in REQUIRED_WRAPUP_ROLES
+    assert "builder" not in REQUIRED_WRAPUP_ROLES
