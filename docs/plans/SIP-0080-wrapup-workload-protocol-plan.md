@@ -238,20 +238,61 @@ All 5 wrap-up handlers extend `_PlanningTaskHandler` (not `_CycleTaskHandler` di
 WRAPUP_TASK_STEPS (SIP-0080 §7.1). All extend ``_PlanningTaskHandler``
 to activate the task_type prompt layer for role-specific wrap-up behavior.
 
+DataGatherEvidenceHandler has a validate_inputs() override (requires impl_run_id).
+GovernanceCloseoutDecisionHandler and GovernancePublishHandoffHandler have
+handle() overrides with structural YAML frontmatter validation.
+DataClassifyUnresolvedHandler has lightweight suggested_owner validation (warn, not fail).
+
 Part of SIP-0080.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Any
 
+import yaml
+
+from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.planning_tasks import _PlanningTaskHandler
+from squadops.cycles.wrapup_models import (
+    ALLOWED_SUGGESTED_OWNERS,
+    CloseoutRecommendation,
+    ConfidenceClassification,
+    NextCycleRecommendation,
+)
 
 if TYPE_CHECKING:
-    pass
+    from squadops.capabilities.handlers.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
+
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+_VALID_CONFIDENCE = {
+    ConfidenceClassification.VERIFIED_COMPLETE,
+    ConfidenceClassification.COMPLETE_WITH_CAVEATS,
+    ConfidenceClassification.PARTIAL_COMPLETION,
+    ConfidenceClassification.NOT_SUFFICIENTLY_VERIFIED,
+    ConfidenceClassification.INCONCLUSIVE,
+    ConfidenceClassification.FAILED,
+}
+
+_VALID_RECOMMENDATION = {
+    CloseoutRecommendation.PROCEED,
+    CloseoutRecommendation.HARDEN,
+    CloseoutRecommendation.REPLAN,
+    CloseoutRecommendation.HALT,
+}
+
+_VALID_NEXT_CYCLE = {
+    NextCycleRecommendation.PLANNING,
+    NextCycleRecommendation.IMPLEMENTATION,
+    NextCycleRecommendation.HARDENING,
+    NextCycleRecommendation.RESEARCH,
+    NextCycleRecommendation.NONE,
+}
 
 
 class DataGatherEvidenceHandler(_PlanningTaskHandler):
@@ -259,6 +300,15 @@ class DataGatherEvidenceHandler(_PlanningTaskHandler):
     _capability_id = "data.gather_evidence"
     _role = "data"
     _artifact_name = "evidence_inventory.md"
+
+    def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
+        errors = super().validate_inputs(inputs, contract)
+        resolved_config = inputs.get("resolved_config", {})
+        if not resolved_config.get("impl_run_id"):
+            errors.append(
+                "'impl_run_id' is required in execution_overrides for wrap-up runs"
+            )
+        return errors
 
 
 class QAAssessOutcomesHandler(_PlanningTaskHandler):
@@ -269,36 +319,97 @@ class QAAssessOutcomesHandler(_PlanningTaskHandler):
 
 
 class DataClassifyUnresolvedHandler(_PlanningTaskHandler):
+    """Categorizes unresolved items. Warns on invalid suggested_owner values."""
+
     _handler_name = "data_classify_unresolved_handler"
     _capability_id = "data.classify_unresolved"
     _role = "data"
     _artifact_name = "unresolved_items.md"
 
+    # Post-generation validation is in handle() override — scans for
+    # suggested_owner values and logs warnings for unrecognized ones.
+    # See ALLOWED_SUGGESTED_OWNERS in wrapup_models.py.
+
 
 class GovernanceCloseoutDecisionHandler(_PlanningTaskHandler):
+    """Produces closeout artifact with structural frontmatter validation."""
+
     _handler_name = "governance_closeout_decision_handler"
     _capability_id = "governance.closeout_decision"
     _role = "lead"
     _artifact_name = "closeout_artifact.md"
 
+    # handle() override: after LLM call, validates YAML frontmatter
+    # contains valid `confidence` and `readiness_recommendation` values.
+    # Invalid → HandlerResult(success=False).
+
 
 class GovernancePublishHandoffHandler(_PlanningTaskHandler):
+    """Produces handoff artifact with structural frontmatter validation."""
+
     _handler_name = "governance_publish_handoff_handler"
     _capability_id = "governance.publish_handoff"
     _role = "lead"
     _artifact_name = "handoff_artifact.md"
+
+    # handle() override: after LLM call, validates YAML frontmatter
+    # contains valid `next_cycle_type` value.
+    # Invalid → HandlerResult(success=False).
 ```
 
-**Design note — handler simplicity for V1:**
+**Design note — handler complexity spectrum:**
 
-Unlike the `GovernanceEstablishContractHandler` (SIP-0079) which has custom JSON parsing and outcome routing, wrap-up handlers are **thin subclasses** for V1. The LLM produces markdown artifacts with YAML frontmatter; the handlers do not parse or validate the frontmatter content mechanically. Content validation (confidence classification, evidence completeness) is enforced by the system prompt and verified by the operator at the closeout gate.
+Three of the five handlers are thin subclasses (no custom `handle()` override):
+- `DataGatherEvidenceHandler` — thin, except for `validate_inputs()` override requiring `impl_run_id`
+- `QAAssessOutcomesHandler` — thin
+- `DataClassifyUnresolvedHandler` — thin (with lightweight `suggested_owner` validation, see below)
+
+Two handlers have custom `handle()` overrides with structural validation:
+- `GovernanceCloseoutDecisionHandler` — validates closeout artifact YAML frontmatter
+- `GovernancePublishHandoffHandler` — validates handoff artifact YAML frontmatter
+
+**`DataGatherEvidenceHandler.validate_inputs()` override:**
+
+Missing `impl_run_id` is a hard error — wrap-up cannot run "about nothing." Missing `artifact_contents` is degraded mode (D5).
+
+```python
+def validate_inputs(self, inputs, contract=None):
+    errors = super().validate_inputs(inputs, contract)
+    resolved_config = inputs.get("resolved_config", {})
+    if not resolved_config.get("impl_run_id"):
+        errors.append("'impl_run_id' is required in execution_overrides for wrap-up runs")
+    return errors
+```
+
+**`GovernanceCloseoutDecisionHandler` structural validation:**
+
+After the LLM produces the closeout artifact, the handler validates YAML frontmatter before returning success. Following the `GovernanceAssessReadinessHandler` precedent from SIP-0078:
+
+- YAML frontmatter exists (text between `---` delimiters at start of content)
+- `confidence` field exists and is one of the 6 `ConfidenceClassification` values
+- `readiness_recommendation` field exists and is one of the 4 `CloseoutRecommendation` values
+
+If any validation fails → `HandlerResult(success=False)` with structured error describing which validation failed. Do not silently promote malformed canonical artifacts.
+
+**`GovernancePublishHandoffHandler` structural validation:**
+
+Same pattern — validates YAML frontmatter after LLM generation:
+
+- YAML frontmatter exists
+- `next_cycle_type` field exists and is one of the 5 `NextCycleRecommendation` values
+
+If validation fails → `HandlerResult(success=False)`.
+
+**`DataClassifyUnresolvedHandler` lightweight `suggested_owner` validation:**
+
+After the LLM produces the unresolved items artifact, scan for `suggested_owner` values in the markdown. Any value not in `ALLOWED_SUGGESTED_OWNERS` triggers a **warning log** (not a failure) in V1.0. This is lightweight enforcement that improves downstream consistency without requiring full structured JSON parsing.
 
 **Why not `_CycleTaskHandler` directly?** The handlers need `task_type`-aware prompt assembly to get wrap-up-specific instructions. `_PlanningTaskHandler` already provides this via `assemble(role, hook, task_type=self._capability_id)`. Inheriting from `_PlanningTaskHandler` is a pragmatic reuse — the "planning" in the name is historical; the behavior is "task_type-aware prompt assembly."
 
 **V1.1 deferrals:**
-- YAML frontmatter validation on closeout artifact (confidence value is valid, evidence_completeness matches rubric)
-- Confidence ceiling mechanical enforcement (D19 — currently prompt-enforced, not code-enforced)
-- Structured JSON output from unresolved items handler (currently markdown tables)
+- Confidence ceiling mechanical enforcement (D19 — currently prompt-enforced, not code-enforced in the handler validation)
+- Evidence completeness cross-check (handler validates confidence constraints against evidence_completeness)
+- Structured JSON output from unresolved items handler (currently markdown tables; `suggested_owner` validation becomes strict)
 
 **Modified file:**
 
@@ -327,7 +438,7 @@ Add registration entries (after the refinement handler entries):
     (GovernancePublishHandoffHandler, ("lead",)),
 ```
 
-**Tests:** `tests/unit/capabilities/handlers/test_wrapup_tasks.py` (~30)
+**Tests:** `tests/unit/capabilities/handlers/test_wrapup_tasks.py` (~38)
 
 Handler attribute tests (5 handlers × 4 attributes):
 - Each handler has correct `capability_id` matching WRAPUP_TASK_STEPS task_type
@@ -343,11 +454,29 @@ Handler execution tests (5 handlers):
 - LLM failure → `HandlerResult` with `success=False` and error message
 - Prior_outputs chaining: handler includes upstream outputs in user prompt
 
-Specific handler tests:
-- `DataGatherEvidenceHandler` includes `artifact_contents` from inputs in prompt when present
-- `DataGatherEvidenceHandler` succeeds even when `artifact_contents` is empty (degraded mode, D5)
-- `GovernanceCloseoutDecisionHandler` receives all 3 prior outputs in user prompt
-- `GovernancePublishHandoffHandler` receives all 4 prior outputs in user prompt
+`DataGatherEvidenceHandler` specific tests:
+- Includes `artifact_contents` from inputs in prompt when present
+- Succeeds even when `artifact_contents` is empty (degraded mode, D5)
+- `validate_inputs()` fails when `impl_run_id` missing from `resolved_config`
+- `validate_inputs()` passes when `impl_run_id` present
+
+`GovernanceCloseoutDecisionHandler` structural validation tests:
+- Receives all 3 prior outputs in user prompt
+- LLM returns valid closeout with YAML frontmatter → `success=True`
+- LLM returns content without YAML frontmatter → `success=False`
+- LLM returns frontmatter with invalid `confidence` value → `success=False`
+- LLM returns frontmatter with missing `readiness_recommendation` → `success=False`
+- LLM returns frontmatter with valid `confidence` and `readiness_recommendation` → `success=True`
+
+`GovernancePublishHandoffHandler` structural validation tests:
+- Receives all 4 prior outputs in user prompt
+- LLM returns valid handoff with YAML frontmatter → `success=True`
+- LLM returns frontmatter with invalid `next_cycle_type` → `success=False`
+- LLM returns frontmatter with missing `next_cycle_type` → `success=False`
+
+`DataClassifyUnresolvedHandler` validation tests:
+- LLM output with valid `suggested_owner` values → no warning logged
+- LLM output with invalid `suggested_owner` value → warning logged (but `success=True`)
 
 Registration tests:
 - All 5 handlers are present in `HANDLER_CONFIGS` in `bootstrap/handlers.py`
@@ -443,14 +572,32 @@ defaults:
           target: "{run_root}/closeout_artifact.md"
       max_suite_seconds: 15
       max_check_seconds: 5
+    - suite_id: wrapup_handoff_guard
+      boundary_id: post_handoff
+      binding_mode: milestone
+      after_task_types:
+        - governance.publish_handoff
+      checks:
+        - check_type: file_exists
+          target: "{run_root}/handoff_artifact.md"
+        - check_type: non_empty
+          target: "{run_root}/handoff_artifact.md"
+      max_suite_seconds: 15
+      max_check_seconds: 5
   cadence_policy:
     max_pulse_seconds: 3600
     max_tasks_per_pulse: 5
   experiment_context: {}
-  notes: "Wrap-up workload cycle"
+  notes: >-
+    Wrap-up workload cycle. Requires execution_overrides with impl_run_id
+    (the implementation run being wrapped up) and optionally plan_artifact_refs
+    (planning artifact IDs for scope baseline). Example:
+    execution_overrides: { impl_run_id: "<run_id>", plan_artifact_refs: ["<artifact_id>"] }
 ```
 
 No schema changes needed — all keys (`pulse_checks`, `cadence_policy`, `workload_sequence`) are already in `_APPLIED_DEFAULTS_EXTRA_KEYS` (confirmed in `schema.py`).
+
+**Canonical artifact precedence:** `closeout_artifact.md` is the canonical adjudication record (confidence, recommendation, acceptance criteria assessment). `handoff_artifact.md` is the canonical forward-looking instruction record (carry-forward items, next cycle type, "what not to retry"). Both are promoted; neither overwrites the other. Downstream tools select by producing task type: `governance.closeout_decision` vs `governance.publish_handoff`.
 
 ---
 
@@ -469,7 +616,8 @@ Profile tests:
 - Profile `name` is `"wrapup"`
 - Profile `defaults` contains `task_flow_policy` with `progress_wrapup_review` gate
 - Gate name `progress_wrapup_review` passes `progress_` prefix validation (SIP-0076)
-- Pulse check suites contain `wrapup_evidence_guard` and `wrapup_completeness` with correct `after_task_types`
+- Pulse check suites contain all 3 suites (`wrapup_evidence_guard`, `wrapup_completeness`, `wrapup_handoff_guard`) with correct `after_task_types`
+- Profile `notes` documents required `execution_overrides` (mentions `impl_run_id`)
 - Profile appears in profile listing (`list_profiles()` includes `wrapup`)
 
 Test pattern: same as `tests/unit/contracts/test_planning_profile.py` — load YAML, validate against schema helpers.
@@ -499,6 +647,15 @@ The handler's system prompt instructs the LLM to reference implementation artifa
 
 **Decision:** Do NOT modify `distributed_flow_executor.py` in this SIP. The handler is tested with injected `artifact_contents` in inputs. Actual executor wiring for cross-run artifact resolution is a follow-up concern. This is consistent with SIP-0080 §7.15 and D11.
 
+**V1.0 evidence contract (explicit):**
+
+- Wrap-up is *best-effort evidence inventory* unless `artifact_contents` is injected by existing mechanisms.
+- `data.gather_evidence` must set `evidence_completeness` based on what is actually present in inputs; it must not imply it accessed artifacts it cannot see.
+- If cross-run artifact injection is not available, `evidence_completeness` will typically be `partial` or `sparse`, and confidence ceilings follow accordingly.
+- **Missing `impl_run_id` is a hard error.** `DataGatherEvidenceHandler.validate_inputs()` rejects inputs where `resolved_config.impl_run_id` is absent — wrap-up cannot run "about nothing." Missing `artifact_contents` is degraded mode (allowed per D5); missing run identity is not.
+
+**Manual verification scenario:** Run a wrap-up workload against a completed implementation run *without* injected `artifact_contents` and confirm the evidence inventory correctly marks missing evidence (completeness = `sparse`) rather than hallucinating content.
+
 ---
 
 ## File Summary
@@ -522,8 +679,8 @@ The handler's system prompt instructs the LLM to reference implementation artifa
 |------|-------|
 | `tests/unit/cycles/test_wrapup_models.py` | ~15 |
 | `tests/unit/cycles/test_wrapup_task_plan.py` | ~8 |
-| `tests/unit/capabilities/handlers/test_wrapup_tasks.py` | ~30 |
-| `tests/unit/contracts/test_wrapup_profile.py` | ~5 |
+| `tests/unit/capabilities/handlers/test_wrapup_tasks.py` | ~38 |
+| `tests/unit/contracts/test_wrapup_profile.py` | ~7 |
 
 ### Modified Files (4)
 
@@ -566,10 +723,11 @@ The handler's system prompt instructs the LLM to reference implementation artifa
 1. `ruff check . && ruff format --check .` — no lint or format issues on all modified files
 2. `pytest tests/unit/cycles/test_wrapup_models.py -v` — all constants class tests pass
 3. `pytest tests/unit/cycles/test_wrapup_task_plan.py -v` — task plan generator tests pass
-4. `pytest tests/unit/capabilities/handlers/test_wrapup_tasks.py -v` — all handler tests pass
-5. `pytest tests/unit/contracts/test_wrapup_profile.py -v` — profile loads and validates
+4. `pytest tests/unit/capabilities/handlers/test_wrapup_tasks.py -v` — all handler tests pass (including frontmatter validation)
+5. `pytest tests/unit/contracts/test_wrapup_profile.py -v` — profile loads and validates (3 pulse check suites)
 6. `pytest tests/unit/cycles/test_task_plan.py -v` — existing task plan tests unchanged (backward compat)
 7. `./scripts/dev/run_new_arch_tests.sh -v` — full regression green
+8. Manual scenario: run `DataGatherEvidenceHandler.handle()` with valid `impl_run_id` but empty `artifact_contents` — confirm evidence inventory marks completeness as `sparse` and handler returns `success=True` (degraded mode, not failure)
 
 ---
 
@@ -579,8 +737,10 @@ The handler's system prompt instructs the LLM to reference implementation artifa
 - **`_PlanningTaskHandler` not `_CycleTaskHandler`** — wrap-up handlers need `task_type`-aware prompt assembly. `_CycleTaskHandler.handle()` calls `get_system_prompt(role)` which skips the task_type layer entirely. `_PlanningTaskHandler.handle()` calls `assemble(role, hook, task_type=...)` which activates the task_type prompt fragments.
 - **`manifest.yaml` integrity** — each prompt fragment needs a SHA256 hash in `manifest.yaml`. The assembler verifies hashes at load time (`HashMismatchError`). The `manifest_hash` must also be recomputed after adding entries.
 - **Fragment naming convention** — files must be named `task_type.{capability_id}.md` (e.g., `task_type.data.gather_evidence.md`) and use YAML frontmatter with matching `fragment_id` and `layer: task_type`.
-- **No executor changes** — artifact pre-resolution for `impl_run_id` is deferred. Handlers receive `execution_overrides` with `impl_run_id` in `inputs["resolved_config"]` but do not have automatic artifact content injection. This is acceptable for V1 — the handler works with whatever context it receives.
+- **No executor changes** — artifact pre-resolution for `impl_run_id` is deferred. Handlers receive `execution_overrides` with `impl_run_id` in `inputs["resolved_config"]` but do not have automatic artifact content injection. Without injection, `evidence_completeness` will be `partial` or `sparse` and confidence ceilings follow.
+- **Missing `impl_run_id` is a hard error** — `DataGatherEvidenceHandler.validate_inputs()` rejects inputs without `impl_run_id`. Missing `artifact_contents` is degraded mode (allowed per D5); missing run identity is not. This prevents wrap-up running "about nothing."
+- **Closeout/handoff frontmatter validation** — `GovernanceCloseoutDecisionHandler` and `GovernancePublishHandoffHandler` validate YAML frontmatter after LLM generation. Invalid `confidence`, `readiness_recommendation`, or `next_cycle_type` → `success=False`. This follows the `GovernanceAssessReadinessHandler` precedent from SIP-0078.
 - **Gate name prefix** — the gate `progress_wrapup_review` uses the `progress_` prefix, which is validated case-sensitively by SIP-0076.
 - **`_KNOWN_WORKLOAD_TYPES` must include `WRAPUP`** — without this, `generate_task_plan()` raises `CycleError("Unknown workload_type 'wrapup'")` instead of selecting `WRAPUP_TASK_STEPS`.
 - **Tests directory** — `tests/unit/capabilities/handlers/` already exists (created by SIP-0078). No new directory creation needed.
-- **Estimated total tests after:** ~2,685 (current 2,627 + ~58 new)
+- **Estimated total tests after:** ~2,695 (current 2,627 + ~68 new)
