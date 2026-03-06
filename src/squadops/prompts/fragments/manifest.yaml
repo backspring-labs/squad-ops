@@ -1,5 +1,5 @@
-version: 0.9.16
-updated_at: '2026-03-03T00:00:00.000000Z'
+version: 0.9.18
+updated_at: '2026-03-06T00:00:00.000000Z'
 fragments:
 - fragment_id: identity
   path: roles/data/identity.md
@@ -97,4 +97,34 @@ fragments:
   roles:
   - qa
   sha256: e70bd45dae754aa767dae813acaf6e4c11acb11dbfd56d3e555762b09d9eea8a
-manifest_hash: a39d74c79a66c1e446a868dcb7a6c70ca5c61443d9586f4ede1606593d2586d0
+- fragment_id: task_type.data.gather_evidence
+  path: shared/task_type/task_type.data.gather_evidence.md
+  layer: task_type
+  roles:
+  - data
+  sha256: 24a8bc208faae6b57be90c3499c20c4714c00291126c5a426ec2d1e19f5fe5b9
+- fragment_id: task_type.qa.assess_outcomes
+  path: shared/task_type/task_type.qa.assess_outcomes.md
+  layer: task_type
+  roles:
+  - qa
+  sha256: 0de51e4e736a26e8304f9aef7b14cd33473e248673b99e3a6b86289928f768ea
+- fragment_id: task_type.data.classify_unresolved
+  path: shared/task_type/task_type.data.classify_unresolved.md
+  layer: task_type
+  roles:
+  - data
+  sha256: 06aca38104fb2e0a5e6e49a43b66a1d989aae11928a836ab1d631a15cf58abd0
+- fragment_id: task_type.governance.closeout_decision
+  path: shared/task_type/task_type.governance.closeout_decision.md
+  layer: task_type
+  roles:
+  - lead
+  sha256: 2a9d0de5534c244a3418e4b26cf1f0b998b77e1d8a36e8ee1345160e358af66b
+- fragment_id: task_type.governance.publish_handoff
+  path: shared/task_type/task_type.governance.publish_handoff.md
+  layer: task_type
+  roles:
+  - lead
+  sha256: 4cfba1d696ffae453dd045e49b28e27b8db2b7be9669cc9220dfa3f9bd6876e0
+manifest_hash: be7f2b2e08092ccde7164c3292e8205a53dd667cb25343b2c2d73dcc1b115547

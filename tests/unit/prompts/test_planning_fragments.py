@@ -172,8 +172,8 @@ class TestPlanningFragmentsContent:
         _, content = _load_fragment(spec["path"])
         assert len(content) > 50, f"Fragment content too short: {len(content)} chars"
 
-    def test_seven_planning_fragments_total(self):
-        """Exactly 7 planning/refinement task_type fragments exist."""
+    def test_task_type_fragments_total(self):
+        """Exactly 12 task_type fragments exist (5 planning + 2 refinement + 5 wrap-up)."""
         task_type_dir = FRAGMENTS_DIR / "shared" / "task_type"
         md_files = list(task_type_dir.glob("*.md"))
-        assert len(md_files) == 7
+        assert len(md_files) == 12
