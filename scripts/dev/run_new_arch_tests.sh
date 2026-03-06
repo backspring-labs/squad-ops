@@ -34,7 +34,7 @@ NEW_ARCH_DIRS=(
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "Running test quality lint..."
-python "$SCRIPT_DIR/lint_test_quality.py" "${NEW_ARCH_DIRS[@]}" || echo "⚠ Test quality violations found (non-blocking — fix separately)"
+python "$SCRIPT_DIR/lint_test_quality.py" "${NEW_ARCH_DIRS[@]}"
 echo ""
 
 echo "Running new architecture tests (SIP-0.8.9)..."

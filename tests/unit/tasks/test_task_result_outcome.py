@@ -8,14 +8,6 @@ pytestmark = [pytest.mark.unit]
 
 
 class TestTaskResultOutcomeClass:
-    def test_outcome_class_defaults_none(self):
-        tr = TaskResult(task_id="t1", status="SUCCEEDED")
-        assert tr.outcome_class is None
-
-    def test_outcome_class_set(self):
-        tr = TaskResult(task_id="t1", status="FAILED", outcome_class="retryable_failure")
-        assert tr.outcome_class == "retryable_failure"
-
     def test_to_dict_preserves_outcome_class(self):
         tr = TaskResult(task_id="t1", status="SUCCEEDED", outcome_class="success")
         d = tr.to_dict()

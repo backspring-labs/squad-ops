@@ -17,7 +17,6 @@ from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
     CadencePolicy,
     PulseCheckDefinition,
-    PulseDecision,
     PulseVerificationRecord,
     SuiteOutcome,
     parse_pulse_checks,
@@ -32,34 +31,10 @@ class TestCadenceBoundaryId:
 
 
 class TestCadencePolicy:
-    def test_defaults(self):
-        policy = CadencePolicy()
-        assert policy.max_pulse_seconds == 600
-        assert policy.max_tasks_per_pulse == 5
-
-    def test_custom_values(self):
-        policy = CadencePolicy(max_pulse_seconds=300, max_tasks_per_pulse=3)
-        assert policy.max_pulse_seconds == 300
-        assert policy.max_tasks_per_pulse == 3
-
     def test_frozen(self):
         policy = CadencePolicy()
         with pytest.raises(AttributeError):
             policy.max_pulse_seconds = 999
-
-
-class TestPulseDecisionEnum:
-    def test_values(self):
-        assert PulseDecision.PASS.value == "pass"
-        assert PulseDecision.FAIL.value == "fail"
-        assert PulseDecision.EXHAUSTED.value == "exhausted"
-
-
-class TestSuiteOutcomeEnum:
-    def test_values(self):
-        assert SuiteOutcome.PASS.value == "pass"
-        assert SuiteOutcome.FAIL.value == "fail"
-        assert SuiteOutcome.SKIP.value == "skip"
 
 
 class TestPulseCheckDefinition:

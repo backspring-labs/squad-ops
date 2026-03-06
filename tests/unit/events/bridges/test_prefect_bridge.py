@@ -1,6 +1,6 @@
 """Tests for PrefectBridge subscriber."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,7 +13,7 @@ from squadops.events.types import EventType
 def _make_event(**overrides) -> CycleEvent:
     defaults = {
         "event_id": "evt_test1",
-        "occurred_at": datetime(2026, 3, 1, tzinfo=timezone.utc),
+        "occurred_at": datetime(2026, 3, 1, tzinfo=UTC),
         "source_service": "test",
         "source_version": "0.0.1",
         "event_type": EventType.RUN_STARTED,
@@ -50,33 +50,23 @@ def bridge(mock_reporter):
 class TestPrefectBridge:
     def test_run_started_sets_flow_running(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_STARTED))
-        mock_reporter.set_flow_run_state.assert_called_once_with(
-            "fr_abc", "RUNNING", "Running"
-        )
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "RUNNING", "Running")
 
     def test_run_completed_sets_flow_completed(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_COMPLETED))
-        mock_reporter.set_flow_run_state.assert_called_once_with(
-            "fr_abc", "COMPLETED", "Completed"
-        )
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "COMPLETED", "Completed")
 
     def test_run_failed_sets_flow_failed(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_FAILED))
-        mock_reporter.set_flow_run_state.assert_called_once_with(
-            "fr_abc", "FAILED", "Failed"
-        )
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "FAILED", "Failed")
 
     def test_run_cancelled_sets_flow_cancelled(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_CANCELLED))
-        mock_reporter.set_flow_run_state.assert_called_once_with(
-            "fr_abc", "CANCELLED", "Cancelled"
-        )
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "CANCELLED", "Cancelled")
 
     def test_run_paused_sets_flow_paused(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_PAUSED))
-        mock_reporter.set_flow_run_state.assert_called_once_with(
-            "fr_abc", "PAUSED", "Paused"
-        )
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "PAUSED", "Paused")
 
     def test_task_dispatched_creates_and_runs(self, bridge, mock_reporter):
         event = _make_event(
@@ -86,12 +76,8 @@ class TestPrefectBridge:
             payload={"task_name": "My Task"},
         )
         bridge.on_event(event)
-        mock_reporter.create_task_run.assert_called_once_with(
-            "fr_abc", "task_a", "My Task"
-        )
-        mock_reporter.set_task_run_state.assert_called_once_with(
-            "tr_123", "RUNNING", "Running"
-        )
+        mock_reporter.create_task_run.assert_called_once_with("fr_abc", "task_a", "My Task")
+        mock_reporter.set_task_run_state.assert_called_once_with("tr_123", "RUNNING", "Running")
 
     def test_task_succeeded_sets_completed(self, bridge, mock_reporter):
         # First dispatch to register the task_run_id
@@ -109,9 +95,7 @@ class TestPrefectBridge:
             entity_id="task_a",
         )
         bridge.on_event(succeed)
-        mock_reporter.set_task_run_state.assert_called_once_with(
-            "tr_123", "COMPLETED", "Completed"
-        )
+        mock_reporter.set_task_run_state.assert_called_once_with("tr_123", "COMPLETED", "Completed")
 
     def test_task_failed_sets_failed(self, bridge, mock_reporter):
         dispatch = _make_event(
@@ -128,9 +112,7 @@ class TestPrefectBridge:
             entity_id="task_a",
         )
         bridge.on_event(fail)
-        mock_reporter.set_task_run_state.assert_called_once_with(
-            "tr_123", "FAILED", "Failed"
-        )
+        mock_reporter.set_task_run_state.assert_called_once_with("tr_123", "FAILED", "Failed")
 
     def test_unrelated_event_no_calls(self, bridge, mock_reporter):
         event = _make_event(event_type=EventType.CYCLE_CREATED)

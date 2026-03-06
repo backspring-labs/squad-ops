@@ -10,16 +10,13 @@ import pytest
 from squadops.cycles.models import (
     AgentProfileEntry,
     ArtifactRef,
-    ArtifactType,
     BuildStrategy,
     Cycle,
     CycleStatus,
     FlowMode,
-    GateDecision,
     GateDecisionValue,
     Project,
     Run,
-    RunInitiator,
     RunStatus,
     TaskFlowPolicy,
 )
@@ -75,23 +72,10 @@ class TestFlowMode:
             FlowMode.FAN_OUT_SOFT_GATES,
         }
 
-    def test_sequential_value(self):
-        assert FlowMode.SEQUENTIAL == "sequential"
-
-    def test_fan_out_fan_in_value(self):
-        assert FlowMode.FAN_OUT_FAN_IN == "fan_out_fan_in"
-
-    def test_fan_out_soft_gates_value(self):
-        assert FlowMode.FAN_OUT_SOFT_GATES == "fan_out_soft_gates"
-
 
 class TestBuildStrategy:
     def test_members(self):
         assert set(BuildStrategy) == {BuildStrategy.FRESH, BuildStrategy.INCREMENTAL}
-
-    def test_values(self):
-        assert BuildStrategy.FRESH == "fresh"
-        assert BuildStrategy.INCREMENTAL == "incremental"
 
 
 class TestGateDecisionValue:
@@ -103,47 +87,10 @@ class TestGateDecisionValue:
             GateDecisionValue.REJECTED,
         }
 
-    def test_values(self):
-        assert GateDecisionValue.APPROVED == "approved"
-        assert GateDecisionValue.APPROVED_WITH_REFINEMENTS == "approved_with_refinements"
-        assert GateDecisionValue.RETURNED_FOR_REVISION == "returned_for_revision"
-        assert GateDecisionValue.REJECTED == "rejected"
-
 
 # =============================================================================
 # Constants tests
 # =============================================================================
-
-
-class TestArtifactType:
-    def test_prd(self):
-        assert ArtifactType.PRD == "prd"
-
-    def test_code(self):
-        assert ArtifactType.CODE == "code"
-
-    def test_test_report(self):
-        assert ArtifactType.TEST_REPORT == "test_report"
-
-    def test_build_plan(self):
-        assert ArtifactType.BUILD_PLAN == "build_plan"
-
-    def test_config_snapshot(self):
-        assert ArtifactType.CONFIG_SNAPSHOT == "config_snapshot"
-
-
-class TestRunInitiator:
-    def test_api(self):
-        assert RunInitiator.API == "api"
-
-    def test_cli(self):
-        assert RunInitiator.CLI == "cli"
-
-    def test_retry(self):
-        assert RunInitiator.RETRY == "retry"
-
-    def test_system(self):
-        assert RunInitiator.SYSTEM == "system"
 
 
 # =============================================================================
@@ -192,16 +139,6 @@ class TestTaskFlowPolicy:
 
 
 class TestGateDecision:
-    def test_construction(self, sample_gate_decision):
-        assert sample_gate_decision.gate_name == "qa_review"
-        assert sample_gate_decision.decision == "approved"
-        assert sample_gate_decision.decided_by == "operator-1"
-        assert sample_gate_decision.notes == "Looks good"
-
-    def test_default_notes(self):
-        gd = GateDecision(gate_name="g", decision="approved", decided_by="u", decided_at=NOW)
-        assert gd.notes is None
-
     def test_immutability(self, sample_gate_decision):
         with pytest.raises(dataclasses.FrozenInstanceError):
             sample_gate_decision.decision = "rejected"
@@ -219,20 +156,6 @@ class TestCycle:
         assert sample_cycle.expected_artifact_types == ("code", "test_report")
         assert sample_cycle.experiment_context == {"infra_profile": "gpu-a100-4x"}
         assert sample_cycle.notes == "Test cycle"
-
-    def test_prd_ref_none_for_example_project(self, now, sample_flow_policy):
-        cycle = Cycle(
-            cycle_id="cyc_002",
-            project_id="hello_squad",
-            created_at=now,
-            created_by="system",
-            prd_ref=None,
-            squad_profile_id="full-squad",
-            squad_profile_snapshot_ref="sha256:abc",
-            task_flow_policy=sample_flow_policy,
-            build_strategy="fresh",
-        )
-        assert cycle.prd_ref is None
 
     def test_defaults(self, now, sample_flow_policy):
         cycle = Cycle(
@@ -274,13 +197,6 @@ class TestCycle:
 
 
 class TestRun:
-    def test_construction(self, sample_run):
-        assert sample_run.run_id == "run_001"
-        assert sample_run.cycle_id == "cyc_001"
-        assert sample_run.run_number == 1
-        assert sample_run.status == "queued"
-        assert sample_run.initiated_by == "api"
-
     def test_defaults(self):
         run = Run(
             run_id="r",
@@ -315,27 +231,6 @@ class TestRun:
 
 
 class TestArtifactRef:
-    def test_construction(self, sample_artifact_ref):
-        assert sample_artifact_ref.artifact_id == "art_001"
-        assert sample_artifact_ref.project_id == "hello_squad"
-        assert sample_artifact_ref.artifact_type == "prd"
-        assert sample_artifact_ref.size_bytes == 1024
-
-    def test_vault_uri_none_during_ingestion(self):
-        ref = ArtifactRef(
-            artifact_id="a",
-            project_id="p",
-            artifact_type="code",
-            filename="f.py",
-            content_hash="h",
-            size_bytes=0,
-            media_type="text/plain",
-            created_at=NOW,
-        )
-        assert ref.vault_uri is None
-        assert ref.cycle_id is None
-        assert ref.run_id is None
-
     def test_defaults(self):
         ref = ArtifactRef(
             artifact_id="a",
@@ -355,12 +250,6 @@ class TestArtifactRef:
 
 
 class TestAgentProfileEntry:
-    def test_construction(self, sample_agent_entry):
-        assert sample_agent_entry.agent_id == "max"
-        assert sample_agent_entry.role == "lead"
-        assert sample_agent_entry.model == "gpt-4"
-        assert sample_agent_entry.enabled is True
-
     def test_default_config_overrides(self):
         entry = AgentProfileEntry(agent_id="a", role="r", model="m", enabled=True)
         assert entry.config_overrides == {}

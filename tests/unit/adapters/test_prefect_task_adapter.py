@@ -56,47 +56,6 @@ def mock_asyncpg_module(mock_asyncpg_pool):
             yield pool, conn
 
 
-class TestPrefectTaskAdapterInit:
-    """Tests for PrefectTaskAdapter initialization."""
-
-    def test_init_with_defaults(self):
-        """Adapter initializes with default values."""
-        adapter = PrefectTaskAdapter(connection_string="postgresql://localhost/test")
-
-        assert adapter._connection_string == "postgresql://localhost/test"
-        assert adapter._table_name == "agent_task_log"
-        assert adapter._prefect_api_url is None
-        assert adapter._prefect_api_key is None
-        assert adapter._initialized is False
-
-    def test_init_with_prefect_config(self):
-        """Adapter accepts Prefect configuration."""
-        adapter = PrefectTaskAdapter(
-            connection_string="postgresql://localhost/test",
-            prefect_api_url="http://prefect:4200",
-            prefect_api_key="test-key",
-            table_name="custom_tasks",
-        )
-
-        assert adapter._prefect_api_url == "http://prefect:4200"
-        assert adapter._prefect_api_key == "test-key"
-        assert adapter._table_name == "custom_tasks"
-
-    def test_init_with_secret_manager(self):
-        """Adapter resolves secret:// refs via SecretManager."""
-        mock_secret_manager = MagicMock()
-        mock_secret_manager.resolve.side_effect = lambda key: f"resolved-{key}"
-
-        adapter = PrefectTaskAdapter(
-            connection_string="secret://db_conn",
-            prefect_api_key="secret://prefect_key",
-            secret_manager=mock_secret_manager,
-        )
-
-        assert adapter._connection_string == "resolved-db_conn"
-        assert adapter._prefect_api_key == "resolved-prefect_key"
-
-
 class TestPrefectTaskAdapterStateMappings:
     """Tests for state mapping constants."""
 

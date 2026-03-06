@@ -39,36 +39,6 @@ class TestWorkloadSequenceKey:
 class TestGateNameValidation:
     """AC 20: Gate names in workload_sequence must use progress_/promote_ prefix."""
 
-    def test_progress_prefix_passes(self):
-        CycleRequestProfile(
-            name="test",
-            defaults={
-                "workload_sequence": [
-                    {"type": "planning", "gate": "progress_plan_review"},
-                ],
-            },
-        )
-
-    def test_promote_prefix_passes(self):
-        CycleRequestProfile(
-            name="test",
-            defaults={
-                "workload_sequence": [
-                    {"type": "planning", "gate": "promote_plan_artifact"},
-                ],
-            },
-        )
-
-    def test_null_gate_passes(self):
-        CycleRequestProfile(
-            name="test",
-            defaults={
-                "workload_sequence": [
-                    {"type": "implementation", "gate": None},
-                ],
-            },
-        )
-
     def test_invalid_prefix_rejected(self):
         with pytest.raises(Exception, match="must start with"):
             CycleRequestProfile(

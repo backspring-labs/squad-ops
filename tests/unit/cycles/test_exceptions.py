@@ -34,14 +34,6 @@ _EXCEPTION_CLASSES = [
 
 class TestExceptionHierarchy:
     @pytest.mark.parametrize("exc_cls", _EXCEPTION_CLASSES)
-    def test_inherits_from_cycle_error(self, exc_cls):
-        assert issubclass(exc_cls, CycleError)
-
-    @pytest.mark.parametrize("exc_cls", _EXCEPTION_CLASSES)
-    def test_inherits_from_exception(self, exc_cls):
-        assert issubclass(exc_cls, Exception)
-
-    @pytest.mark.parametrize("exc_cls", _EXCEPTION_CLASSES)
     def test_can_instantiate_with_message(self, exc_cls):
         e = exc_cls("test message")
         assert str(e) == "test message"

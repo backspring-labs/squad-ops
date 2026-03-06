@@ -81,23 +81,17 @@ class TestPromoteArtifact:
 
 class TestListArtifactsPromotionFilter:
     async def test_filter_working(self, vault, stored_artifact):
-        results = await vault.list_artifacts(
-            project_id="proj_001", promotion_status="working"
-        )
+        results = await vault.list_artifacts(project_id="proj_001", promotion_status="working")
         assert len(results) == 1
         assert results[0].promotion_status == "working"
 
     async def test_filter_promoted_empty_initially(self, vault, stored_artifact):
-        results = await vault.list_artifacts(
-            project_id="proj_001", promotion_status="promoted"
-        )
+        results = await vault.list_artifacts(project_id="proj_001", promotion_status="promoted")
         assert len(results) == 0
 
     async def test_filter_promoted_after_promote(self, vault, stored_artifact):
         await vault.promote_artifact("art_001")
-        results = await vault.list_artifacts(
-            project_id="proj_001", promotion_status="promoted"
-        )
+        results = await vault.list_artifacts(project_id="proj_001", promotion_status="promoted")
         assert len(results) == 1
         assert results[0].promotion_status == "promoted"
 

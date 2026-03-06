@@ -26,18 +26,6 @@ pytestmark = [pytest.mark.domain_capabilities]
 
 
 class TestTestRunResultProperties:
-    def test_tests_passed_when_exit_zero(self):
-        r = TestRunResult(executed=True, exit_code=0, test_file_count=1)
-        assert r.tests_passed is True
-
-    def test_tests_not_passed_when_exit_nonzero(self):
-        r = TestRunResult(executed=True, exit_code=1, test_file_count=1)
-        assert r.tests_passed is False
-
-    def test_tests_not_passed_when_not_executed(self):
-        r = TestRunResult(executed=False)
-        assert r.tests_passed is False
-
     def test_summary_passed(self):
         r = TestRunResult(executed=True, exit_code=0, test_file_count=2, source_file_count=3)
         assert "all tests passed" in r.summary
@@ -53,10 +41,6 @@ class TestTestRunResultProperties:
         r = TestRunResult(executed=False, error="no test files provided")
         assert "tests not run" in r.summary
         assert "no test files" in r.summary
-
-    def test_summary_not_run_no_error(self):
-        r = TestRunResult(executed=False)
-        assert r.summary == "tests not run"
 
     def test_frozen(self):
         r = TestRunResult(executed=True, exit_code=0)

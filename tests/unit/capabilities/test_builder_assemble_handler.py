@@ -181,20 +181,6 @@ def builder_inputs():
 # ---------------------------------------------------------------------------
 
 
-class TestBuilderAssembleHandlerMeta:
-    def test_capability_id(self):
-        handler = BuilderAssembleHandler()
-        assert handler.capability_id == "builder.assemble"
-
-    def test_handler_name(self):
-        handler = BuilderAssembleHandler()
-        assert handler.name == "builder_assemble_handler"
-
-    def test_role_is_builder(self):
-        handler = BuilderAssembleHandler()
-        assert handler._role == "builder"
-
-
 # ---------------------------------------------------------------------------
 # Successful assembly
 # ---------------------------------------------------------------------------

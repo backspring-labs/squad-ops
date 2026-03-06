@@ -13,7 +13,7 @@ from squadops.agents.skills.registry import SkillRegistry
 from squadops.capabilities.handlers.base import CapabilityHandler, HandlerEvidence, HandlerResult
 from squadops.orchestration.handler_registry import HandlerRegistry
 from squadops.orchestration.orchestrator import AgentOrchestrator
-from squadops.tasks.models import TaskEnvelope, TaskResult
+from squadops.tasks.models import TaskEnvelope
 
 
 class MockHandler(CapabilityHandler):
@@ -150,6 +150,7 @@ class TestTaskRouting:
 
         assert routing.target_role == "lead"
         assert "default" in routing.reason
+
 
 class TestTaskSubmission:
     """Tests for task submission."""

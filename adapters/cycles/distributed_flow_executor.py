@@ -25,7 +25,6 @@ from uuid import uuid4
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import ArtifactRef, Cycle, RunStatus
 from squadops.cycles.plan_delta import PlanDelta
-from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
     CadencePolicy,
@@ -40,6 +39,7 @@ from squadops.cycles.pulse_verification import (
     resolve_milestone_bindings,
     run_pulse_verification,
 )
+from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort

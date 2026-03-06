@@ -19,16 +19,6 @@ class TestOllamaAdapter:
         assert adapter._timeout == 180.0
         assert adapter._models_cache == []
 
-    def test_init_custom(self):
-        adapter = OllamaAdapter(
-            base_url="http://custom:8080",
-            default_model="mistral",
-            timeout_seconds=60.0,
-        )
-        assert adapter._base_url == "http://custom:8080"
-        assert adapter._default_model == "mistral"
-        assert adapter._timeout == 60.0
-
     def test_list_models_returns_cache(self):
         adapter = OllamaAdapter()
         adapter._models_cache = ["llama3.2", "mistral"]

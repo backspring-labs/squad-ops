@@ -23,16 +23,6 @@ class TestCycleEventBusPort:
 
 @pytest.mark.domain_events
 class TestEventSubscriber:
-    def test_is_runtime_checkable_protocol(self):
-        """EventSubscriber is a runtime-checkable Protocol."""
-
-        class MySubscriber:
-            def on_event(self, event: CycleEvent) -> None:
-                pass
-
-        sub = MySubscriber()
-        assert isinstance(sub, EventSubscriber)
-
     def test_non_conforming_class_is_not_subscriber(self):
         """A class without on_event does not satisfy the Protocol."""
 

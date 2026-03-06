@@ -31,7 +31,12 @@ WRAPUP_HANDLER_SPECS = [
     (DataGatherEvidenceHandler, "data.gather_evidence", "data", "evidence_inventory.md"),
     (QAAssessOutcomesHandler, "qa.assess_outcomes", "qa", "outcome_assessment.md"),
     (DataClassifyUnresolvedHandler, "data.classify_unresolved", "data", "unresolved_items.md"),
-    (GovernanceCloseoutDecisionHandler, "governance.closeout_decision", "lead", "closeout_artifact.md"),
+    (
+        GovernanceCloseoutDecisionHandler,
+        "governance.closeout_decision",
+        "lead",
+        "closeout_artifact.md",
+    ),
     (GovernancePublishHandoffHandler, "governance.publish_handoff", "lead", "handoff_artifact.md"),
 ]
 
@@ -99,7 +104,11 @@ VALID_INPUTS = {
 )
 class TestAssembleCalledWithTaskType:
     async def test_assemble_called_with_task_type(
-        self, cls, expected_cap_id, expected_role, _artifact,
+        self,
+        cls,
+        expected_cap_id,
+        expected_role,
+        _artifact,
     ):
         ctx = _make_context()
         h = cls()
@@ -125,7 +134,11 @@ class TestAssembleCalledWithTaskType:
 )
 class TestHandleSuccess:
     async def test_returns_success_with_artifact(
-        self, cls, _cap_id, expected_role, expected_artifact,
+        self,
+        cls,
+        _cap_id,
+        expected_role,
+        expected_artifact,
     ):
         # Closeout and handoff handlers need valid frontmatter
         if cls is GovernanceCloseoutDecisionHandler:
@@ -257,9 +270,7 @@ class TestCloseoutFrontmatterValidation:
         assert "readiness_recommendation" in result.error
 
     async def test_invalid_readiness_recommendation_fails(self):
-        content = (
-            "---\nconfidence: failed\nreadiness_recommendation: maybe\n---\nBody"
-        )
+        content = "---\nconfidence: failed\nreadiness_recommendation: maybe\n---\nBody"
         ctx = _make_context(content)
         h = GovernanceCloseoutDecisionHandler()
         result = await h.handle(ctx, VALID_INPUTS)
@@ -269,8 +280,12 @@ class TestCloseoutFrontmatterValidation:
     async def test_all_six_confidence_values_accepted(self):
         """Every ConfidenceClassification value passes validation."""
         valid_values = [
-            "verified_complete", "complete_with_caveats", "partial_completion",
-            "not_sufficiently_verified", "inconclusive", "failed",
+            "verified_complete",
+            "complete_with_caveats",
+            "partial_completion",
+            "not_sufficiently_verified",
+            "inconclusive",
+            "failed",
         ]
         for val in valid_values:
             content = f"---\nconfidence: {val}\nreadiness_recommendation: proceed\n---\nBody"
@@ -416,7 +431,11 @@ class TestBootstrapRegistration:
         ids=[s[1] for s in WRAPUP_HANDLER_SPECS],
     )
     def test_handler_registered_with_correct_role(
-        self, cls, _cap_id, expected_role, _artifact,
+        self,
+        cls,
+        _cap_id,
+        expected_role,
+        _artifact,
     ):
         """Handler registered with wrong role → dispatched to wrong agent."""
         for config_cls, roles in HANDLER_CONFIGS:

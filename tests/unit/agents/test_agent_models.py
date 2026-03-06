@@ -22,12 +22,6 @@ class TestBuilderRoleInDefaultRoles:
     def test_builder_value_is_builder_role(self):
         assert DEFAULT_ROLES["builder"] is BUILDER_ROLE
 
-    def test_builder_role_id(self):
-        assert BUILDER_ROLE.role_id == "builder"
-
-    def test_builder_display_name(self):
-        assert BUILDER_ROLE.display_name == "Builder Agent"
-
     def test_builder_default_skills_include_artifact_generation(self):
         assert "artifact_generation" in BUILDER_ROLE.default_skills
 

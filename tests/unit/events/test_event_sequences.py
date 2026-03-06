@@ -10,7 +10,6 @@ from __future__ import annotations
 import pytest
 
 from adapters.events.in_process_cycle_event_bus import InProcessCycleEventBus
-from squadops.events.models import CycleEvent
 from squadops.events.types import EventType
 from tests.unit.events.conftest import CollectingSubscriber
 

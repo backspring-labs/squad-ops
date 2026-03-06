@@ -69,12 +69,6 @@ class TestRunContract:
         assert isinstance(rc.stop_conditions, tuple)
         assert isinstance(rc.required_artifacts, tuple)
 
-    def test_tuple_fields_are_tuples_not_lists(self):
-        rc = _make_contract()
-        for field_name in ("acceptance_criteria", "non_goals", "stop_conditions",
-                           "required_artifacts"):
-            assert isinstance(getattr(rc, field_name), tuple)
-
     def test_dataclasses_replace(self):
         rc = _make_contract()
         modified = dataclasses.replace(rc, objective="New objective")

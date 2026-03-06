@@ -149,9 +149,7 @@ def mock_squad_profile():
             AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
             AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
         ),
         created_at=NOW,
@@ -205,9 +203,7 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, impl_cyc
 class TestCheckpointOnSuccess:
     """Checkpoint saved after each successful task."""
 
-    async def test_checkpoint_saved_per_task(
-        self, executor, mock_registry, mock_queue
-    ) -> None:
+    async def test_checkpoint_saved_per_task(self, executor, mock_registry, mock_queue) -> None:
         """save_checkpoint called once per successful task (3 for implementation)."""
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
@@ -219,9 +215,7 @@ class TestCheckpointOnSuccess:
 
         assert mock_registry.save_checkpoint.call_count == 3
 
-    async def test_checkpoint_indices_increment(
-        self, executor, mock_registry, mock_queue
-    ) -> None:
+    async def test_checkpoint_indices_increment(self, executor, mock_registry, mock_queue) -> None:
         """Each checkpoint has sequential checkpoint_index."""
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
@@ -303,9 +297,7 @@ class TestCheckpointOnSuccess:
 class TestCheckpointEvents:
     """CHECKPOINT_CREATED event emitted after each save."""
 
-    async def test_checkpoint_created_event(
-        self, executor, mock_event_bus, mock_queue
-    ) -> None:
+    async def test_checkpoint_created_event(self, executor, mock_event_bus, mock_queue) -> None:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
@@ -321,9 +313,7 @@ class TestCheckpointEvents:
         ]
         assert len(checkpoint_events) == 3
 
-    async def test_checkpoint_created_payload(
-        self, executor, mock_event_bus, mock_queue
-    ) -> None:
+    async def test_checkpoint_created_payload(self, executor, mock_event_bus, mock_queue) -> None:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
@@ -376,9 +366,7 @@ class TestResumeFromCheckpoint:
         # Only 2 tasks dispatched (skipped the first)
         assert mock_queue.publish.call_count == 2
 
-    async def test_prior_outputs_restored(
-        self, executor, mock_registry, mock_queue
-    ) -> None:
+    async def test_prior_outputs_restored(self, executor, mock_registry, mock_queue) -> None:
         """Prior outputs from checkpoint are available to subsequent tasks."""
         prior = {"lead": {"contract": "established"}}
         mock_registry.get_latest_checkpoint.return_value = RunCheckpoint(
@@ -530,9 +518,7 @@ class TestTimeBudget:
         """Run fails when time budget is exhausted."""
         import dataclasses
 
-        budget_cycle = dataclasses.replace(
-            impl_cycle, applied_defaults={"time_budget_seconds": 0}
-        )
+        budget_cycle = dataclasses.replace(impl_cycle, applied_defaults={"time_budget_seconds": 0})
         mock_registry.get_cycle.return_value = budget_cycle
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
@@ -547,9 +533,7 @@ class TestTimeBudget:
         final_status = status_calls[-1].args[1]
         assert final_status == RunStatus.FAILED
 
-    async def test_no_time_budget_no_enforcement(
-        self, executor, mock_registry, mock_queue
-    ) -> None:
+    async def test_no_time_budget_no_enforcement(self, executor, mock_registry, mock_queue) -> None:
         """When time_budget_seconds is not set, no enforcement."""
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
@@ -569,9 +553,7 @@ class TestTimeBudget:
         """Error message includes time budget details."""
         import dataclasses
 
-        budget_cycle = dataclasses.replace(
-            impl_cycle, applied_defaults={"time_budget_seconds": 0}
-        )
+        budget_cycle = dataclasses.replace(impl_cycle, applied_defaults={"time_budget_seconds": 0})
         mock_registry.get_cycle.return_value = budget_cycle
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
@@ -582,9 +564,7 @@ class TestTimeBudget:
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
 
         fail_events = [
-            c
-            for c in mock_event_bus.emit.call_args_list
-            if c.args[0] == EventType.RUN_FAILED
+            c for c in mock_event_bus.emit.call_args_list if c.args[0] == EventType.RUN_FAILED
         ]
         assert len(fail_events) == 1
         error_msg = fail_events[0].kwargs.get("payload", {}).get("error", "")
@@ -606,9 +586,7 @@ class TestPausedHandler:
         from adapters.cycles.distributed_flow_executor import _PausedError
 
         with (
-            patch.object(
-                executor, "_execute_sequential", side_effect=_PausedError("blocked")
-            ),
+            patch.object(executor, "_execute_sequential", side_effect=_PausedError("blocked")),
             patch(
                 "adapters.cycles.distributed_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
@@ -628,9 +606,7 @@ class TestPausedHandler:
         from adapters.cycles.distributed_flow_executor import _PausedError
 
         with (
-            patch.object(
-                executor, "_execute_sequential", side_effect=_PausedError("blocked")
-            ),
+            patch.object(executor, "_execute_sequential", side_effect=_PausedError("blocked")),
             patch(
                 "adapters.cycles.distributed_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,

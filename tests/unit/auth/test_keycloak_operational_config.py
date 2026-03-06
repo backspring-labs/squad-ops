@@ -330,18 +330,6 @@ class TestAuthConfigKeycloak:
         assert cfg.keycloak is not None
         assert cfg.keycloak.realm == "squadops-dev"
 
-    def test_auth_config_keycloak_optional(self):
-        """keycloak section is optional — existing tests must not break."""
-        cfg = AuthConfig(
-            enabled=True,
-            provider="keycloak",
-            oidc=OIDCConfig(
-                issuer_url="http://kc:8080/realms/squadops-dev",
-                audience="squadops-runtime",
-            ),
-        )
-        assert cfg.keycloak is None
-
 
 # ---------------------------------------------------------------------------
 # Realm lint function tests

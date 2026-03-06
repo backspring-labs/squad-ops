@@ -30,10 +30,6 @@ class TestBuilderSkillDiscovery:
 
 
 class TestArtifactGenerationSkillMeta:
-    def test_name(self):
-        skill = ArtifactGenerationSkill()
-        assert skill.name == "artifact_generation"
-
     def test_description(self):
         skill = ArtifactGenerationSkill()
         assert len(skill.description) > 0

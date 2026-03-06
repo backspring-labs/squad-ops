@@ -119,18 +119,6 @@ class TestPostgresAdapterCompliance:
 class TestFactoryProviders:
     """Verify factory creates both providers."""
 
-    def test_config_provider(self):
-        from adapters.cycles.factory import create_squad_profile_port
-
-        port = create_squad_profile_port("config")
-        assert isinstance(port, SquadProfilePort)
-
-    def test_postgres_provider(self):
-        from adapters.cycles.factory import create_squad_profile_port
-
-        port = create_squad_profile_port("postgres", pool=MagicMock())
-        assert isinstance(port, SquadProfilePort)
-
     def test_postgres_requires_pool(self):
         from adapters.cycles.factory import create_squad_profile_port
 

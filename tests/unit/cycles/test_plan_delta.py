@@ -54,11 +54,6 @@ class TestPlanDelta:
         restored = PlanDelta.from_dict(d)
         assert restored == pd
 
-    def test_to_dict_serializes_datetime_as_iso(self):
-        pd = _make_delta()
-        d = pd.to_dict()
-        assert isinstance(d["created_at"], str)
-
     def test_from_dict_coerces_lists_to_tuples(self):
         d = {
             "delta_id": "d1",

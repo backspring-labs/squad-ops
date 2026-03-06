@@ -22,8 +22,14 @@ class TestEventType:
     def test_all_eight_entity_types_present(self):
         entities = {et.split(".")[0] for et in EventType.all()}
         assert entities == {
-            "cycle", "run", "gate", "task", "pulse", "artifact",
-            "checkpoint", "correction",
+            "cycle",
+            "run",
+            "gate",
+            "task",
+            "pulse",
+            "artifact",
+            "checkpoint",
+            "correction",
         }
 
     def test_entity_counts(self):

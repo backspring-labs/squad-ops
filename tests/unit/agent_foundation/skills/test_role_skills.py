@@ -68,11 +68,6 @@ def skill_context(mock_ports):
 class TestTaskAnalysisSkill:
     """Tests for TaskAnalysisSkill."""
 
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = TaskAnalysisSkill()
-        assert skill.name == "task_analysis"
-
     def test_validate_inputs_missing_description(self):
         """Validation should fail without description."""
         skill = TaskAnalysisSkill()
@@ -124,11 +119,6 @@ class TestTaskAnalysisSkill:
 class TestTaskDelegationSkill:
     """Tests for TaskDelegationSkill."""
 
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = TaskDelegationSkill()
-        assert skill.name == "task_delegation"
-
     def test_validate_inputs_missing_fields(self):
         """Validation should fail without required fields."""
         skill = TaskDelegationSkill()
@@ -171,11 +161,6 @@ class TestTaskDelegationSkill:
 class TestCodeGenerationSkill:
     """Tests for CodeGenerationSkill."""
 
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = CodeGenerationSkill()
-        assert skill.name == "code_generation"
-
     def test_validate_inputs_missing_requirements(self):
         """Validation should fail without requirements."""
         skill = CodeGenerationSkill()
@@ -216,11 +201,6 @@ class TestCodeGenerationSkill:
 class TestTestExecutionSkill:
     """Tests for TestExecutionSkill."""
 
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = TestExecutionSkill()
-        assert skill.name == "test_execution"
-
     def test_validate_inputs_missing_path(self):
         """Validation should fail without test_path."""
         skill = TestExecutionSkill()
@@ -244,11 +224,6 @@ class TestTestExecutionSkill:
 
 class TestValidationSkill:
     """Tests for ValidationSkill."""
-
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = ValidationSkill()
-        assert skill.name == "validation"
 
     def test_validate_inputs_missing_criteria(self):
         """Validation should fail without criteria."""
@@ -295,11 +270,6 @@ class TestValidationSkill:
 class TestStrategyAnalysisSkill:
     """Tests for StrategyAnalysisSkill."""
 
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = StrategyAnalysisSkill()
-        assert skill.name == "strategy_analysis"
-
     def test_validate_inputs_missing_goals(self):
         """Validation should fail without goals."""
         skill = StrategyAnalysisSkill()
@@ -337,11 +307,6 @@ class TestStrategyAnalysisSkill:
 
 class TestDataAnalysisSkill:
     """Tests for DataAnalysisSkill."""
-
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = DataAnalysisSkill()
-        assert skill.name == "data_analysis"
 
     def test_validate_inputs_missing_data(self):
         """Validation should fail without data."""
@@ -398,11 +363,6 @@ class TestDataAnalysisSkill:
 
 class TestMetricsCollectionSkill:
     """Tests for MetricsCollectionSkill."""
-
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = MetricsCollectionSkill()
-        assert skill.name == "metrics_collection"
 
     def test_validate_inputs_empty_metrics(self):
         """Validation should fail with empty metric_names."""

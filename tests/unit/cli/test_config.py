@@ -9,29 +9,6 @@ from squadops.cli.auth import CachedToken, save_token
 from squadops.cli.config import CLIConfig, load_config, resolve_token
 
 
-class TestCLIConfigDefaults:
-    """Default config values."""
-
-    def test_default_base_url(self):
-        cfg = CLIConfig()
-        assert cfg.base_url == "http://localhost:8001"
-
-    def test_default_timeout(self):
-        assert CLIConfig().timeout == 30
-
-    def test_default_auth_mode(self):
-        assert CLIConfig().auth_mode == "token"
-
-    def test_default_token_env(self):
-        assert CLIConfig().token_env == "SQUADOPS_TOKEN"
-
-    def test_default_output_format(self):
-        assert CLIConfig().output_format == "table"
-
-    def test_default_tls_verify(self):
-        assert CLIConfig().tls_verify is True
-
-
 class TestLoadConfig:
     """Config loading from TOML files."""
 

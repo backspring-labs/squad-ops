@@ -1,6 +1,6 @@
 """Tests for MetricsBridge subscriber."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,7 +13,7 @@ from squadops.events.types import EventType
 def _make_event(**overrides) -> CycleEvent:
     defaults = {
         "event_id": "evt_test1",
-        "occurred_at": datetime(2026, 3, 1, tzinfo=timezone.utc),
+        "occurred_at": datetime(2026, 3, 1, tzinfo=UTC),
         "source_service": "test",
         "source_version": "0.0.1",
         "event_type": EventType.RUN_COMPLETED,
@@ -127,9 +127,5 @@ class TestMetricsBridge:
         ]
         for event_type, entity_type in events:
             mock_metrics.reset_mock()
-            bridge.on_event(
-                _make_event(event_type=event_type, entity_type=entity_type)
-            )
-            assert mock_metrics.counter.call_count == 1, (
-                f"Expected counter call for {event_type}"
-            )
+            bridge.on_event(_make_event(event_type=event_type, entity_type=entity_type))
+            assert mock_metrics.counter.call_count == 1, f"Expected counter call for {event_type}"

@@ -143,9 +143,7 @@ class TestAnalyzeFailure:
 
     async def test_unparseable_falls_back_to_execution(self, mock_context):
         mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(
-                role="assistant", content="unstructured analysis text"
-            ),
+            return_value=ChatMessage(role="assistant", content="unstructured analysis text"),
         )
 
         h = DataAnalyzeFailureHandler()
@@ -169,9 +167,7 @@ class TestCorrectionDecision:
             "affected_task_types": ["development.develop"],
         }
         mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(
-                role="assistant", content=json.dumps(decision)
-            ),
+            return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
         )
 
         h = GovernanceCorrectionDecisionHandler()
@@ -190,9 +186,7 @@ class TestCorrectionDecision:
             "affected_task_types": ["development.develop"],
         }
         mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(
-                role="assistant", content=json.dumps(decision)
-            ),
+            return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
         )
 
         h = GovernanceCorrectionDecisionHandler()
@@ -208,9 +202,7 @@ class TestCorrectionDecision:
             "affected_task_types": [],
         }
         mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(
-                role="assistant", content=json.dumps(decision)
-            ),
+            return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
         )
 
         h = GovernanceCorrectionDecisionHandler()
@@ -220,9 +212,7 @@ class TestCorrectionDecision:
 
     async def test_unparseable_falls_back_to_abort(self, mock_context):
         mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(
-                role="assistant", content="I think we should..."
-            ),
+            return_value=ChatMessage(role="assistant", content="I think we should..."),
         )
 
         h = GovernanceCorrectionDecisionHandler()

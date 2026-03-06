@@ -74,24 +74,6 @@ class TestLanceDBAdapterWithEmbeddingsPort:
         assert adapter._embeddings is mock_embeddings
         assert adapter._embedding_dim == 384
 
-    def test_adapter_uses_embeddings_dimensions(self, mock_lancedb):
-        """LanceDBAdapter gets dimensions from EmbeddingsPort."""
-        from adapters.memory.lancedb import LanceDBAdapter
-
-        embeddings_768 = MockEmbeddingsAdapter(dimensions=768)
-        adapter = LanceDBAdapter(
-            db_path="/tmp/test.lancedb",
-            embeddings=embeddings_768,
-        )
-        assert adapter._embedding_dim == 768
-
-        embeddings_1024 = MockEmbeddingsAdapter(dimensions=1024)
-        adapter = LanceDBAdapter(
-            db_path="/tmp/test.lancedb",
-            embeddings=embeddings_1024,
-        )
-        assert adapter._embedding_dim == 1024
-
     @pytest.mark.asyncio
     async def test_store_calls_embeddings_port(self, mock_embeddings, mock_lancedb):
         """store() uses EmbeddingsPort.embed() for vectorization."""

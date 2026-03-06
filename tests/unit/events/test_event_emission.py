@@ -22,7 +22,9 @@ pytestmark = [pytest.mark.domain_events]
 _ALL_EVENT_TYPE_ATTRS = [
     attr
     for attr in dir(EventType)
-    if not attr.startswith("_") and attr == attr.upper() and isinstance(getattr(EventType, attr), str)
+    if not attr.startswith("_")
+    and attr == attr.upper()
+    and isinstance(getattr(EventType, attr), str)
 ]
 
 # SIP-0079 correction events — all emission points now present
@@ -166,9 +168,7 @@ class TestEmitCallSitePayloadFields:
                 if (
                     isinstance(func, ast.Attribute)
                     and func.attr == "emit"
-                    and any(
-                        kw.arg == "entity_type" for kw in node.keywords
-                    )
+                    and any(kw.arg == "entity_type" for kw in node.keywords)
                 ):
                     calls.append(node)
         return calls
@@ -187,27 +187,21 @@ class TestEmitCallSitePayloadFields:
             calls = self._extract_emit_calls(path)
             for call in calls:
                 entity_type = self._get_keyword_value(call, "entity_type")
-                assert entity_type is not None, (
-                    f"emit() in {path} missing entity_type keyword"
-                )
+                assert entity_type is not None, f"emit() in {path} missing entity_type keyword"
 
     def test_all_emit_calls_have_entity_id(self) -> None:
         for path in _ALL_EMISSION_FILES:
             calls = self._extract_emit_calls(path)
             for call in calls:
                 has_entity_id = any(kw.arg == "entity_id" for kw in call.keywords)
-                assert has_entity_id, (
-                    f"emit() in {path} missing entity_id keyword"
-                )
+                assert has_entity_id, f"emit() in {path} missing entity_id keyword"
 
     def test_all_emit_calls_have_context(self) -> None:
         for path in _ALL_EMISSION_FILES:
             calls = self._extract_emit_calls(path)
             for call in calls:
                 has_context = any(kw.arg == "context" for kw in call.keywords)
-                assert has_context, (
-                    f"emit() in {path} missing context keyword"
-                )
+                assert has_context, f"emit() in {path} missing context keyword"
 
     def test_most_emit_calls_have_payload(self) -> None:
         """Most emit calls include payload; some (run.started, run.completed,

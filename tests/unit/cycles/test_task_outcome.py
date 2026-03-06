@@ -18,29 +18,28 @@ class TestTaskOutcome:
             "NEEDS_REPLAN",
         }
         actual = {
-            k for k, v in vars(TaskOutcome).items()
-            if not k.startswith("_") and isinstance(v, str)
+            k for k, v in vars(TaskOutcome).items() if not k.startswith("_") and isinstance(v, str)
         }
         assert actual == expected
 
     def test_values_are_lowercase_strings(self):
-        for attr in ("SUCCESS", "RETRYABLE_FAILURE", "SEMANTIC_FAILURE",
-                      "BLOCKED", "NEEDS_REPAIR", "NEEDS_REPLAN"):
+        for attr in (
+            "SUCCESS",
+            "RETRYABLE_FAILURE",
+            "SEMANTIC_FAILURE",
+            "BLOCKED",
+            "NEEDS_REPAIR",
+            "NEEDS_REPLAN",
+        ):
             val = getattr(TaskOutcome, attr)
             assert isinstance(val, str)
             assert val == val.lower()
 
     def test_no_duplicate_values(self):
         values = [
-            v for k, v in vars(TaskOutcome).items()
-            if not k.startswith("_") and isinstance(v, str)
+            v for k, v in vars(TaskOutcome).items() if not k.startswith("_") and isinstance(v, str)
         ]
         assert len(values) == len(set(values))
-
-    def test_is_constants_class_not_enum(self):
-        """TaskOutcome is a plain class, not an enum."""
-        import enum
-        assert not issubclass(TaskOutcome, enum.Enum)
 
 
 class TestFailureClassification:
@@ -53,25 +52,22 @@ class TestFailureClassification:
             "MODEL_LIMITATION",
         }
         actual = {
-            k for k, v in vars(FailureClassification).items()
+            k
+            for k, v in vars(FailureClassification).items()
             if not k.startswith("_") and isinstance(v, str)
         }
         assert actual == expected
 
     def test_values_are_lowercase_strings(self):
-        for attr in ("EXECUTION", "WORK_PRODUCT", "ALIGNMENT",
-                      "DECISION", "MODEL_LIMITATION"):
+        for attr in ("EXECUTION", "WORK_PRODUCT", "ALIGNMENT", "DECISION", "MODEL_LIMITATION"):
             val = getattr(FailureClassification, attr)
             assert isinstance(val, str)
             assert val == val.lower()
 
     def test_no_duplicate_values(self):
         values = [
-            v for k, v in vars(FailureClassification).items()
+            v
+            for k, v in vars(FailureClassification).items()
             if not k.startswith("_") and isinstance(v, str)
         ]
         assert len(values) == len(set(values))
-
-    def test_is_constants_class_not_enum(self):
-        import enum
-        assert not issubclass(FailureClassification, enum.Enum)

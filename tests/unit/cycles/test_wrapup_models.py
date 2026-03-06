@@ -24,11 +24,7 @@ pytestmark = [pytest.mark.domain_orchestration]
 
 def _get_constant_values(cls):
     """Extract all public string constant values from a constants class."""
-    return {
-        v
-        for k, v in vars(cls).items()
-        if not k.startswith("_") and isinstance(v, str)
-    }
+    return {v for k, v in vars(cls).items() if not k.startswith("_") and isinstance(v, str)}
 
 
 # ---------------------------------------------------------------------------

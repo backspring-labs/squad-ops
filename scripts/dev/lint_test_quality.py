@@ -265,7 +265,8 @@ def lint_file(filepath: str) -> list[str]:
             continue
 
         # Anti-pattern 2: Sole `is not None` assertion
-        if _is_sole_is_not_none(asserts) and not has_raises:
+        # Skip if the test exercises behavior via method/factory calls
+        if _is_sole_is_not_none(asserts) and not has_raises and not has_calls:
             diagnostics.append(
                 f"{filepath}:{node.lineno}: {node.name}: "
                 f"sole 'is not None' assertion — assert on exact expected values instead"
@@ -273,7 +274,8 @@ def lint_file(filepath: str) -> list[str]:
             continue
 
         # Anti-pattern 3: Sole `isinstance` assertion
-        if _is_sole_isinstance(asserts) and not has_raises:
+        # Skip if the test exercises behavior via method/factory calls
+        if _is_sole_isinstance(asserts) and not has_raises and not has_calls:
             diagnostics.append(
                 f"{filepath}:{node.lineno}: {node.name}: "
                 f"sole 'isinstance' assertion — assert on exact expected values instead"

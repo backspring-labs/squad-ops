@@ -25,7 +25,6 @@ from squadops.capabilities.handlers.planning_tasks import (
     QADefineTestStrategyHandler,
     QAValidateRefinementHandler,
     StrategyFrameObjectiveHandler,
-    _PlanningTaskHandler,
 )
 from squadops.llm.exceptions import LLMError
 
@@ -41,7 +40,12 @@ PLANNING_HANDLER_SPECS = [
     (StrategyFrameObjectiveHandler, "strategy.frame_objective", "strat", "objective_frame.md"),
     (DevelopmentDesignPlanHandler, "development.design_plan", "dev", "technical_design.md"),
     (QADefineTestStrategyHandler, "qa.define_test_strategy", "qa", "test_strategy.md"),
-    (GovernanceAssessReadinessHandler, "governance.assess_readiness", "lead", "planning_artifact.md"),
+    (
+        GovernanceAssessReadinessHandler,
+        "governance.assess_readiness",
+        "lead",
+        "planning_artifact.md",
+    ),
 ]
 
 REFINEMENT_HANDLER_SPECS = [
@@ -158,14 +162,6 @@ class TestPlanningHandlerAttributes:
         assert isinstance(h.name, str)
         assert len(h.name) > 0
 
-    @pytest.mark.parametrize(
-        "cls",
-        ALL_HANDLER_CLASSES,
-        ids=[c.__name__ for c in ALL_HANDLER_CLASSES],
-    )
-    def test_inherits_from_planning_task_handler(self, cls):
-        assert issubclass(cls, _PlanningTaskHandler)
-
 
 # ---------------------------------------------------------------------------
 # 2. validate_inputs
@@ -186,11 +182,7 @@ class TestValidateInputs:
     @pytest.mark.parametrize(
         "cls",
         [c for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
-        ids=[
-            c.__name__
-            for c in ALL_HANDLER_CLASSES
-            if c != GovernanceIncorporateFeedbackHandler
-        ],
+        ids=[c.__name__ for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
     )
     def test_valid_inputs_with_prd(self, cls):
         h = cls()
@@ -208,26 +200,32 @@ class TestRefinementValidation:
 
     def test_empty_plan_artifact_refs(self):
         h = GovernanceIncorporateFeedbackHandler()
-        errors = h.validate_inputs({
-            "prd": "test",
-            "resolved_config": {"plan_artifact_refs": []},
-        })
+        errors = h.validate_inputs(
+            {
+                "prd": "test",
+                "resolved_config": {"plan_artifact_refs": []},
+            }
+        )
         assert any("plan_artifact_refs" in e for e in errors)
 
     def test_multiple_plan_artifact_refs_rejected(self):
         h = GovernanceIncorporateFeedbackHandler()
-        errors = h.validate_inputs({
-            "prd": "test",
-            "resolved_config": {"plan_artifact_refs": ["ref1", "ref2"]},
-        })
+        errors = h.validate_inputs(
+            {
+                "prd": "test",
+                "resolved_config": {"plan_artifact_refs": ["ref1", "ref2"]},
+            }
+        )
         assert any("exactly one" in e for e in errors)
 
     def test_valid_single_ref(self):
         h = GovernanceIncorporateFeedbackHandler()
-        errors = h.validate_inputs({
-            "prd": "test",
-            "resolved_config": {"plan_artifact_refs": ["ref1"]},
-        })
+        errors = h.validate_inputs(
+            {
+                "prd": "test",
+                "resolved_config": {"plan_artifact_refs": ["ref1"]},
+            }
+        )
         assert errors == []
 
     def test_no_resolved_config_at_all(self):
@@ -299,7 +297,8 @@ class TestHandleSuccess:
         "cls, _cap_id, _role, expected_artifact",
         [s for s in PLANNING_HANDLER_SPECS if s[0] != GovernanceAssessReadinessHandler],
         ids=[
-            c.__name__ for c, _, _, _ in PLANNING_HANDLER_SPECS
+            c.__name__
+            for c, _, _, _ in PLANNING_HANDLER_SPECS
             if c != GovernanceAssessReadinessHandler
         ],
     )
@@ -359,11 +358,7 @@ class TestHandlePriorOutputs:
     @pytest.mark.parametrize(
         "cls",
         [c for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
-        ids=[
-            c.__name__
-            for c in ALL_HANDLER_CLASSES
-            if c != GovernanceIncorporateFeedbackHandler
-        ],
+        ids=[c.__name__ for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
     )
     async def test_prior_outputs_included_in_prompt(self, cls, mock_context):
         h = cls()
@@ -384,11 +379,7 @@ class TestHandlePriorOutputs:
     @pytest.mark.parametrize(
         "cls",
         [c for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
-        ids=[
-            c.__name__
-            for c in ALL_HANDLER_CLASSES
-            if c != GovernanceIncorporateFeedbackHandler
-        ],
+        ids=[c.__name__ for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
     )
     async def test_no_prior_outputs_omits_section(self, cls, mock_context):
         h = cls()
@@ -478,9 +469,7 @@ class TestGovernanceIncorporateFeedback:
 
     async def test_companion_has_refinement_instructions(self, mock_context):
         h = GovernanceIncorporateFeedbackHandler()
-        inputs = self._inputs_with_artifact(
-            refinement_instructions="Clarify the auth boundary"
-        )
+        inputs = self._inputs_with_artifact(refinement_instructions="Clarify the auth boundary")
         result = await h.handle(mock_context, inputs)
 
         companion = result.outputs["artifacts"][1]["content"]
@@ -497,9 +486,7 @@ class TestGovernanceIncorporateFeedback:
 
     async def test_refinement_instructions_in_prompt(self, mock_context):
         h = GovernanceIncorporateFeedbackHandler()
-        inputs = self._inputs_with_artifact(
-            refinement_instructions="Clarify the auth boundary"
-        )
+        inputs = self._inputs_with_artifact(refinement_instructions="Clarify the auth boundary")
         await h.handle(mock_context, inputs)
 
         call_args = mock_context.ports.llm.chat.call_args

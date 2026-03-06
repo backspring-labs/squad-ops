@@ -5,6 +5,8 @@ Covers AC 10 (adapter level).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
@@ -13,8 +15,6 @@ from squadops.cycles.models import (
     Run,
     TaskFlowPolicy,
 )
-
-from datetime import UTC, datetime
 
 pytestmark = [pytest.mark.domain_orchestration]
 
