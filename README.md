@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.9.10) with hexagonal architecture, distributed cycle execution pipeline, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, and 1,830+ passing tests.
+**Current Status**: Production-ready framework (v0.9.18) with hexagonal architecture, distributed cycle execution pipeline, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 2,890+ passing tests.
 
 ---
 
@@ -22,22 +22,25 @@
 - **Hexagonal Architecture** – Ports & adapters pattern with clean domain/infrastructure separation
 - **Dependency Injection** – Constructor-injected dependencies for testability
 - **Unified Agent Build** – Single multi-stage Dockerfile for all agent roles
-- **Distributed Execution** – RabbitMQ-based task dispatch across 5 agent containers
+- **Distributed Execution** – RabbitMQ-based task dispatch across 6 agent containers
 
 ### Agent Framework
-- **Agent Squad** – 5 agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics)
+- **Agent Squad** – 6 agents: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics)
 - **BaseAgent** – DI-enabled base class with SecretManager, DbRuntime, and port injection
 - **Capability Contracts** – Declarative delivery expectations with acceptance checks (SIP-0058)
 
-### Cycle Execution Pipeline (SIP-0064/0066/0068)
+### Cycle Execution Pipeline (SIP-0064/0066/0068/0076–0080)
 - **Cycle API** – Create, monitor, and manage execution cycles via REST API
 - **Task Planning** – Automatic task plan generation from PRD references
 - **Distributed Flow Executor** – Sequential task dispatch to agent containers via RabbitMQ
 - **Gate Decisions** – Human-in-the-loop approval gates between pipeline stages
-- **Artifact Management** – Typed artifact ingestion and retrieval per run
+- **Artifact Management** – Typed artifact ingestion and retrieval per run with promotion model
 - **Build Capabilities** – Agents produce executable source code, tests, and config from plans (SIP-0068)
 - **Pulse Verification** – Cadence-bounded checks at pipeline boundaries with bounded repair loops (SIP-0070)
 - **Assembly** – CLI command to assemble build artifacts into a runnable project directory
+- **Workload Protocols** – Planning, implementation, and wrapup lifecycle with structured handoffs (SIP-0078/0079/0080)
+- **Event System** – 25-event taxonomy with lifecycle bus and bridge subscribers (SIP-0077)
+- **Correction Protocol** – Detect → RCA → decide → repair with durable checkpoint/resume (SIP-0079)
 
 ### Infrastructure Adapters
 - **Secrets** – Pluggable providers (env, file, docker_secret) with `secret://` URI resolution
@@ -66,15 +69,15 @@
 ## Documentation
 Comprehensive documentation and protocols are available in `/docs/`:
 
-- **SIPs (SquadOps Improvement Proposals)** – 68 protocol specifications in `sips/` directory (44 implemented, 9 proposals, 15 deprecated)
-- **IDEA Documents** – 25+ strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance
+- **SIPs (SquadOps Improvement Proposals)** – ~80 protocol specifications in `sips/` directory (54 implemented, 11 proposals, 15 deprecated)
+- **IDEA Documents** – 79 strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance
 - **Architecture Documents** – Design guides for agent implementations and handoff templates
 - **Book Chapters** – 9 chapters covering methodology, implementation, and operations
 - **Plans** – Implementation plans for major SIPs in `docs/plans/`
 - **Retrospectives** – WarmBoot run analyses and lessons learned
 - **Protocols** – Testing, data governance, communication patterns
 
-**Total Documentation**: ~61,665 lines across 215+ markdown files
+**Total Documentation**: ~84,000 lines across 260+ markdown files
 
 ---
 
@@ -84,7 +87,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── ports/            # Abstract interfaces (secrets, db, comms, cycles, auth, telemetry)
 ├── agents/           # BaseAgent with DI, entrypoint, role definitions
 ├── capabilities/     # Capability contracts & workload runner (SIP-0058)
-│   └── handlers/     # Cycle task handlers (strategy, dev, QA, data, governance, build)
+│   └── handlers/     # Cycle task handlers (strategy, dev, QA, data, governance, build, wrapup)
 ├── orchestration/    # AgentOrchestrator, HandlerExecutor
 ├── cycles/           # Cycle models, lifecycle state machine, task planning
 ├── auth/             # Auth models, JWT validation, middleware
@@ -96,6 +99,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── llm/              # LLM router abstraction with dynamic provider registry
 ├── config/           # Configuration loading (SQUADOPS__* env vars)
 ├── tasks/            # TaskEnvelope, TaskResult models (A2A message format)
+├── events/           # Cycle event bus, event types, bridge subscribers (SIP-0077)
 └── core/             # Core utilities (SecretManager)
 /adapters/            # Concrete implementations
 ├── secrets/          # env, file, docker_secret providers
@@ -114,7 +118,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── accepted/         # Numbered, approved
 ├── implemented/      # Matched to code
 └── registry.yaml     # Canonical index
-/tests/               # Test suite (1,830+ tests)
+/tests/               # Test suite (2,890+ tests)
 ├── unit/             # Unit tests (mocked deps)
 ├── integration/      # Integration tests (real services)
 └── conftest.py       # Global fixtures
@@ -186,38 +190,46 @@ squadops runs assemble play_game <cycle-id> <run-id> --out ./output
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v0.9.10 — Codebase audit cleanup, artifact updates
+**Current**: v0.9.18 — Wrap-Up Workload Protocol, test quality enforcement
 
 ---
 
 ## Current Status
-**Framework Version**: 0.9.10
-**Development Status**: Production-ready multi-agent orchestration with console UI, distributed cycle execution, agent build capabilities, durable persistence, authentication, CLI tooling, and full observability stack. Recent 5-phase codebase audit removed legacy endpoints, dead tables, stale config, and orphaned wiring.
+**Framework Version**: 0.9.18
+**Development Status**: Production-ready multi-agent orchestration with console UI, distributed cycle execution, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, durable persistence, authentication, CLI tooling, test quality enforcement, and full observability stack.
 
 ### Project Statistics
-- **~38,000 lines** of Python source code
-- **~31,000 lines** of test code
-- **~62,000 lines** of documentation
-- **1,830+ tests** passing in regression suite
-- **68 SIPs** (44 implemented, 9 proposals, 15 deprecated)
+- **~39,000 lines** of Python source code
+- **~51,000 lines** of test code
+- **~84,000 lines** of documentation
+- **2,890+ tests** passing in regression suite
+- **~80 SIPs** (54 implemented, 11 proposals, 15 deprecated)
 
 ### Functional Components
-- 5 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Eve (QA), Data (Analytics)
+- 6 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics)
 - Cycle Execution API with runs, gates, and artifact management (SIP-0064)
 - Distributed flow execution via RabbitMQ (SIP-0066)
 - Postgres-backed cycle registry with migrations (SIP-0067)
+- Workload protocols: planning, implementation, and wrapup lifecycle (SIP-0078/0079/0080)
+- Cycle event system with 25-event taxonomy and bridge subscribers (SIP-0077)
+- Correction protocol: detect → RCA → decide → repair with checkpoint/resume (SIP-0079)
+- Workload & gate canon with artifact promotion model (SIP-0076)
 - LangFuse LLM observability with cross-process trace linking (SIP-0061)
 - Keycloak OIDC authentication with JWT middleware and audit logging (SIP-0062)
-- CLI for cycle management with CRP contract packs (SIP-0065)
+- CLI for cycle management with cycle request profile contract packs (SIP-0065)
 - Capability contracts with declarative acceptance checks (SIP-0058)
 - Task planning with automatic task flow generation (plan + build modes)
 - Agent build capabilities: source code, tests, and config generation (SIP-0068)
+- Builder role: dedicated product builder agent (SIP-0071)
+- Stack-aware development capabilities with file classification (SIP-0072)
+- LLM budget and timeout controls with prompt guard (SIP-0073)
 - Pulse verification at pipeline boundaries with bounded repair loops (SIP-0070)
 - Assembly CLI command for extracting build artifacts into runnable projects
 - LLM router abstraction with Ollama adapter
 - LanceDB semantic memory (SIP-042)
 - OpenTelemetry with trace correlation
 - Console Control-Plane UI with Continuum plugin shell and auth BFF (SIP-0069)
+- Test quality enforcement: AST linter blocking in regression suite
 - Docker build system with deterministic multi-stage builds
 - 17-service Docker Compose development environment
 
@@ -248,7 +260,3 @@ python scripts/dev/build_agent.py <role>
 # Rebuild everything
 ./scripts/dev/ops/rebuild_and_deploy.sh all
 ```
-
----
-
-> **Note:** This project is part of the broader **SquadOps Field Guide** initiative – documenting how AI squads can operate as autonomous product-building teams with traceability, governance, and continuous optimization.
