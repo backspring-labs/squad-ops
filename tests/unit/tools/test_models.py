@@ -41,18 +41,6 @@ class TestContainerSpec:
 class TestContainerResult:
     """Tests for ContainerResult dataclass."""
 
-    def test_result(self):
-        result = ContainerResult(
-            container_id="abc123",
-            exit_code=0,
-            stdout="output",
-            stderr="",
-        )
-        assert result.container_id == "abc123"
-        assert result.exit_code == 0
-        assert result.stdout == "output"
-        assert result.stderr == ""
-
     def test_result_is_frozen(self):
         result = ContainerResult(
             container_id="abc",

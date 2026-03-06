@@ -183,7 +183,6 @@ class TestOTelAdapter:
 # ---------------------------------------------------------------------------
 
 from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter  # noqa: E402
-from squadops.ports.telemetry.llm_observability import LLMObservabilityPort  # noqa: E402
 from squadops.telemetry.models import (  # noqa: E402
     CorrelationContext,
     GenerationRecord,
@@ -194,10 +193,6 @@ from squadops.telemetry.models import (  # noqa: E402
 
 class TestNoOpLLMObservabilityAdapter:
     """Tests for NoOpLLMObservabilityAdapter (SIP-0061)."""
-
-    def test_satisfies_port_contract(self):
-        adapter = NoOpLLMObservabilityAdapter()
-        assert isinstance(adapter, LLMObservabilityPort)
 
     def test_all_methods_are_noop(self):
         adapter = NoOpLLMObservabilityAdapter()

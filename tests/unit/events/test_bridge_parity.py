@@ -7,8 +7,8 @@ and entity correlation as the existing direct calls in the executor:
   - Metrics: counter/histogram effect (metric name + value)
 """
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, call
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -23,7 +23,7 @@ from squadops.telemetry.models import CorrelationContext
 def _event(event_type: str, entity_type: str, entity_id: str, **kw) -> CycleEvent:
     return CycleEvent(
         event_id="evt_parity",
-        occurred_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        occurred_at=datetime(2026, 3, 1, tzinfo=UTC),
         source_service="test",
         source_version="0.0.1",
         event_type=event_type,

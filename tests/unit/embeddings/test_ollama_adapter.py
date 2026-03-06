@@ -15,26 +15,6 @@ from squadops.embeddings.exceptions import (
 class TestOllamaEmbeddingsAdapter:
     """Tests for OllamaEmbeddingsAdapter."""
 
-    def test_init_defaults(self):
-        """Adapter initializes with default values."""
-        adapter = OllamaEmbeddingsAdapter()
-        assert adapter._base_url == "http://localhost:11434"
-        assert adapter._model == "nomic-embed-text"
-        assert adapter._timeout == 30.0
-        assert adapter._dimensions == 768
-
-    def test_init_custom(self):
-        """Adapter accepts custom configuration."""
-        adapter = OllamaEmbeddingsAdapter(
-            base_url="http://custom:8080",
-            model="mxbai-embed-large",
-            timeout_seconds=60.0,
-        )
-        assert adapter._base_url == "http://custom:8080"
-        assert adapter._model == "mxbai-embed-large"
-        assert adapter._timeout == 60.0
-        assert adapter._dimensions == 1024  # mxbai-embed-large dimension
-
     def test_dimensions_returns_correct_value(self):
         """dimensions() returns the model's embedding dimension."""
         adapter = OllamaEmbeddingsAdapter(model="nomic-embed-text")

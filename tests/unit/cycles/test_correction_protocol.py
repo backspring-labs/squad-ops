@@ -119,24 +119,16 @@ def mock_squad_profile():
         description="All",
         version=1,
         agents=(
-            AgentProfileEntry(
-                agent_id="nat", role="strat", model="gpt-4", enabled=True
-            ),
-            AgentProfileEntry(
-                agent_id="neo", role="dev", model="gpt-4", enabled=True
-            ),
-            AgentProfileEntry(
-                agent_id="eve", role="qa", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
             AgentProfileEntry(
                 agent_id="data-agent",
                 role="data",
                 model="gpt-4",
                 enabled=True,
             ),
-            AgentProfileEntry(
-                agent_id="max", role="lead", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
         ),
         created_at=NOW,
     )
@@ -271,11 +263,15 @@ class TestCorrectionContinue:
             # Task 1: semantic failure
             ("FAILED", semantic_outputs, "bad output"),
             # Correction: analyze_failure succeeds
-            ("SUCCEEDED", {
-                "classification": "execution",
-                "analysis_summary": "ok",
-                "role": "data",
-            }, None),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "execution",
+                    "analysis_summary": "ok",
+                    "role": "data",
+                },
+                None,
+            ),
             # Correction: correction_decision succeeds with "continue"
             ("SUCCEEDED", correction_decision, None),
             # Tasks 2-5: succeed
@@ -284,9 +280,7 @@ class TestCorrectionContinue:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(
-            mock_queue, script
-        )
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -331,11 +325,15 @@ class TestCorrectionPatch:
             # Task 1: semantic failure
             ("FAILED", semantic_outputs, "bad output"),
             # Correction: analyze_failure
-            ("SUCCEEDED", {
-                "classification": "work_product",
-                "analysis_summary": "quality",
-                "role": "data",
-            }, None),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "work_product",
+                    "analysis_summary": "quality",
+                    "role": "data",
+                },
+                None,
+            ),
             # Correction: correction_decision -> patch
             ("SUCCEEDED", correction_decision, None),
             # Repair: development.repair
@@ -348,9 +346,7 @@ class TestCorrectionPatch:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(
-            mock_queue, script
-        )
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -406,16 +402,18 @@ class TestCorrectionTerminalPaths:
         }
         script = [
             ("FAILED", semantic_outputs, "bad"),
-            ("SUCCEEDED", {
-                "classification": "execution",
-                "analysis_summary": "issue",
-                "role": "data",
-            }, None),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "execution",
+                    "analysis_summary": "issue",
+                    "role": "data",
+                },
+                None,
+            ),
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(
-            mock_queue, script
-        )
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -439,14 +437,10 @@ class TestCorrectionTerminalPaths:
 class TestMaxCorrectionAttempts:
     """max_correction_attempts enforced."""
 
-    async def test_max_corrections_exhausted(
-        self, executor, mock_queue, mock_registry, cycle
-    ):
+    async def test_max_corrections_exhausted(self, executor, mock_queue, mock_registry, cycle):
         import dataclasses
 
-        cycle_1 = dataclasses.replace(
-            cycle, applied_defaults={"max_correction_attempts": 1}
-        )
+        cycle_1 = dataclasses.replace(cycle, applied_defaults={"max_correction_attempts": 1})
         mock_registry.get_cycle.return_value = cycle_1
 
         semantic_outputs = {
@@ -470,19 +464,21 @@ class TestMaxCorrectionAttempts:
             # Task 1: semantic failure
             ("FAILED", semantic_outputs, "bad"),
             # Correction 1: analyze + decide -> continue
-            ("SUCCEEDED", {
-                "classification": "execution",
-                "analysis_summary": "ok",
-                "role": "data",
-            }, None),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "execution",
+                    "analysis_summary": "ok",
+                    "role": "data",
+                },
+                None,
+            ),
             ("SUCCEEDED", correction_decision, None),
             # Task 2: also semantic failure
             ("FAILED", semantic_outputs_2, "bad again"),
             # max_correction_attempts=1 exhausted -> abort
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(
-            mock_queue, script
-        )
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -525,16 +521,18 @@ class TestPlanDelta:
         }
         script = [
             ("FAILED", semantic_outputs, "bad"),
-            ("SUCCEEDED", {
-                "classification": "execution",
-                "analysis_summary": "broke",
-                "role": "data",
-            }, None),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "execution",
+                    "analysis_summary": "broke",
+                    "role": "data",
+                },
+                None,
+            ),
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(
-            mock_queue, script
-        )
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -544,11 +542,7 @@ class TestPlanDelta:
 
         # Check that a plan_delta artifact was stored
         store_calls = mock_vault.store.call_args_list
-        delta_stores = [
-            c
-            for c in store_calls
-            if c.args[0].artifact_type == "plan_delta"
-        ]
+        delta_stores = [c for c in store_calls if c.args[0].artifact_type == "plan_delta"]
         assert len(delta_stores) == 1
 
         delta_ref = delta_stores[0].args[0]
@@ -584,17 +578,19 @@ class TestCorrectionCheckpoints:
         script = [
             ("FAILED", semantic_outputs, "bad"),
             # analyze_failure succeeds -> checkpoint
-            ("SUCCEEDED", {
-                "classification": "execution",
-                "analysis_summary": "ok",
-                "role": "data",
-            }, None),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "execution",
+                    "analysis_summary": "ok",
+                    "role": "data",
+                },
+                None,
+            ),
             # correction_decision succeeds -> checkpoint
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(
-            mock_queue, script
-        )
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -620,9 +616,7 @@ class TestCorrectionCheckpoints:
             # correction_decision fails
             ("FAILED", None, "corr fail"),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(
-            mock_queue, script
-        )
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -661,16 +655,18 @@ class TestCorrectionEvents:
         }
         script = [
             ("FAILED", semantic_outputs, "bad"),
-            ("SUCCEEDED", {
-                "classification": "execution",
-                "analysis_summary": "ok",
-                "role": "data",
-            }, None),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "execution",
+                    "analysis_summary": "ok",
+                    "role": "data",
+                },
+                None,
+            ),
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(
-            mock_queue, script
-        )
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -710,11 +706,15 @@ class TestCorrectionEvents:
         }
         script = [
             ("FAILED", semantic_outputs, "bad"),
-            ("SUCCEEDED", {
-                "classification": "execution",
-                "analysis_summary": "ok",
-                "role": "data",
-            }, None),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "execution",
+                    "analysis_summary": "ok",
+                    "role": "data",
+                },
+                None,
+            ),
             ("SUCCEEDED", correction_decision, None),
             # Remaining 4 tasks succeed
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
@@ -722,9 +722,7 @@ class TestCorrectionEvents:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(
-            mock_queue, script
-        )
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",

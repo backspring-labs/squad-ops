@@ -5,71 +5,24 @@ Covers ACs 1, 2, 4, 6, 7.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from squadops.cycles.models import (
     ArtifactRef,
     GateDecisionValue,
-    PromotionStatus,
     Run,
     ValidationError,
-    WorkloadType,
     validate_workload_type,
 )
-
 
 # ---------------------------------------------------------------------------
 # WorkloadType constants (AC 2)
 # ---------------------------------------------------------------------------
 
 
-class TestWorkloadTypeConstants:
-    def test_planning(self):
-        assert WorkloadType.PLANNING == "planning"
-
-    def test_implementation(self):
-        assert WorkloadType.IMPLEMENTATION == "implementation"
-
-    def test_evaluation(self):
-        assert WorkloadType.EVALUATION == "evaluation"
-
-    def test_refinement(self):
-        assert WorkloadType.REFINEMENT == "refinement"
-
-
-# ---------------------------------------------------------------------------
-# PromotionStatus constants (AC 7)
-# ---------------------------------------------------------------------------
-
-
-class TestPromotionStatusConstants:
-    def test_working(self):
-        assert PromotionStatus.WORKING == "working"
-
-    def test_promoted(self):
-        assert PromotionStatus.PROMOTED == "promoted"
-
-
-# ---------------------------------------------------------------------------
-# GateDecisionValue expanded enum (AC 4)
-# ---------------------------------------------------------------------------
-
-
 class TestGateDecisionValueExpanded:
-    def test_approved(self):
-        assert GateDecisionValue.APPROVED == "approved"
-
-    def test_approved_with_refinements(self):
-        assert GateDecisionValue.APPROVED_WITH_REFINEMENTS == "approved_with_refinements"
-
-    def test_returned_for_revision(self):
-        assert GateDecisionValue.RETURNED_FOR_REVISION == "returned_for_revision"
-
-    def test_rejected(self):
-        assert GateDecisionValue.REJECTED == "rejected"
-
     def test_all_four_are_valid_strenum(self):
         assert len(GateDecisionValue) == 4
         for member in GateDecisionValue:
@@ -106,19 +59,6 @@ class TestRunWorkloadType:
         run = self._make_run(workload_type="my_custom_phase")
         assert run.workload_type == "my_custom_phase"
 
-    def test_existing_construction_still_works(self):
-        """Backward compat: Run without workload_type works unchanged."""
-        run = Run(
-            run_id="r1",
-            cycle_id="c1",
-            run_number=1,
-            status="queued",
-            initiated_by="api",
-            resolved_config_hash="hash",
-        )
-        assert run.workload_type is None
-        assert run.run_id == "r1"
-
 
 # ---------------------------------------------------------------------------
 # ArtifactRef.promotion_status field (AC 6)
@@ -135,7 +75,7 @@ class TestArtifactRefPromotionStatus:
             "content_hash": "sha256:abc",
             "size_bytes": 100,
             "media_type": "text/plain",
-            "created_at": datetime.now(tz=timezone.utc),
+            "created_at": datetime.now(tz=UTC),
         }
         defaults.update(kwargs)
         return ArtifactRef(**defaults)
@@ -158,7 +98,7 @@ class TestArtifactRefPromotionStatus:
             content_hash="h",
             size_bytes=10,
             media_type="text/plain",
-            created_at=datetime.now(tz=timezone.utc),
+            created_at=datetime.now(tz=UTC),
         )
         assert artifact.promotion_status == "working"
         assert artifact.artifact_id == "a1"

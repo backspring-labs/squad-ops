@@ -1,8 +1,9 @@
 """Tests for CycleEvent domain model."""
 
-import pytest
 from dataclasses import FrozenInstanceError
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+import pytest
 
 from squadops.events.models import CycleEvent
 from squadops.events.types import EventType
@@ -11,7 +12,7 @@ from squadops.events.types import EventType
 def _make_event(**overrides) -> CycleEvent:
     defaults = {
         "event_id": "evt_test123",
-        "occurred_at": datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc),
+        "occurred_at": datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
         "source_service": "runtime-api",
         "source_version": "0.9.15",
         "event_type": EventType.RUN_STARTED,
@@ -47,7 +48,7 @@ class TestCycleEvent:
     def test_context_defaults_to_empty_dict(self):
         event = CycleEvent(
             event_id="evt_1",
-            occurred_at=datetime.now(tz=timezone.utc),
+            occurred_at=datetime.now(tz=UTC),
             source_service="test",
             source_version="0.0.0",
             event_type=EventType.CYCLE_CREATED,
@@ -60,7 +61,7 @@ class TestCycleEvent:
     def test_sequence_defaults_to_zero(self):
         event = CycleEvent(
             event_id="evt_1",
-            occurred_at=datetime.now(tz=timezone.utc),
+            occurred_at=datetime.now(tz=UTC),
             source_service="test",
             source_version="0.0.0",
             event_type=EventType.CYCLE_CREATED,
@@ -108,7 +109,7 @@ class TestCycleEvent:
             entity = et.split(".")[0]
             event = CycleEvent(
                 event_id=f"evt_{et}",
-                occurred_at=datetime.now(tz=timezone.utc),
+                occurred_at=datetime.now(tz=UTC),
                 source_service="test",
                 source_version="0.0.0",
                 event_type=et,

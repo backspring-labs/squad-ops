@@ -232,9 +232,7 @@ class TestHappyPathDrift:
         registry_transitions = [call.args[1] for call in status_calls]
 
         # Extract run-level events (filter out task events)
-        run_events = [
-            e for e in collector.events if e.entity_type == "run"
-        ]
+        run_events = [e for e in collector.events if e.entity_type == "run"]
         run_event_types = [e.event_type for e in run_events]
 
         # queued → running → completed
@@ -246,8 +244,7 @@ class TestHappyPathDrift:
             expected_event = _STATUS_TO_EVENT.get(status)
             if expected_event:
                 assert expected_event in run_event_types, (
-                    f"Registry transition to {status.value} has no matching "
-                    f"{expected_event} event"
+                    f"Registry transition to {status.value} has no matching {expected_event} event"
                 )
 
     async def test_no_orphan_run_events(
@@ -287,9 +284,7 @@ class TestTaskFailureDrift:
     async def test_failure_transitions_match_events(
         self, executor, mock_registry, mock_queue, collector
     ) -> None:
-        mock_queue.consume.side_effect = _make_queue_consume(
-            mock_queue, result_status="FAILED"
-        )
+        mock_queue.consume.side_effect = _make_queue_consume(mock_queue, result_status="FAILED")
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -306,9 +301,7 @@ class TestTaskFailureDrift:
     async def test_task_failed_precedes_run_failed(
         self, executor, mock_registry, mock_queue, collector
     ) -> None:
-        mock_queue.consume.side_effect = _make_queue_consume(
-            mock_queue, result_status="FAILED"
-        )
+        mock_queue.consume.side_effect = _make_queue_consume(mock_queue, result_status="FAILED")
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -340,9 +333,7 @@ class TestTaskEventsMatchDispatches:
         dispatched_events = [
             e for e in collector.events if e.event_type == EventType.TASK_DISPATCHED
         ]
-        succeeded_events = [
-            e for e in collector.events if e.event_type == EventType.TASK_SUCCEEDED
-        ]
+        succeeded_events = [e for e in collector.events if e.event_type == EventType.TASK_SUCCEEDED]
 
         # Each dispatch should have a corresponding success
         assert len(dispatched_events) == len(succeeded_events)

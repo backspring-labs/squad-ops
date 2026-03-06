@@ -118,21 +118,11 @@ def mock_squad_profile():
         description="All",
         version=1,
         agents=(
-            AgentProfileEntry(
-                agent_id="nat", role="strat", model="gpt-4", enabled=True
-            ),
-            AgentProfileEntry(
-                agent_id="neo", role="dev", model="gpt-4", enabled=True
-            ),
-            AgentProfileEntry(
-                agent_id="eve", role="qa", model="gpt-4", enabled=True
-            ),
-            AgentProfileEntry(
-                agent_id="data-agent", role="data", model="gpt-4", enabled=True
-            ),
-            AgentProfileEntry(
-                agent_id="max", role="lead", model="gpt-4", enabled=True
-            ),
+            AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
         ),
         created_at=NOW,
     )
@@ -231,9 +221,7 @@ def _build_consume_side_effect(mock_queue, responses):
 class TestRetryableFailure:
     """RETRYABLE_FAILURE outcome → retry the same task."""
 
-    async def test_retryable_retries_same_task(
-        self, executor, mock_queue, mock_registry
-    ):
+    async def test_retryable_retries_same_task(self, executor, mock_queue, mock_registry):
         """First dispatch fails, retried, succeeds on second attempt."""
         # Publish call 0: first task → FAILED (no outcome_class → RETRYABLE)
         # Publish call 1: retry same task → SUCCEEDED
@@ -241,9 +229,7 @@ class TestRetryableFailure:
         responses = {
             0: ("FAILED", None, "transient"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, responses
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -265,16 +251,12 @@ class TestRetryableFailure:
         """With max_task_retries=3, task gets 3 attempts before SEMANTIC."""
         import dataclasses
 
-        cycle_3 = dataclasses.replace(
-            cycle, applied_defaults={"max_task_retries": 3}
-        )
+        cycle_3 = dataclasses.replace(cycle, applied_defaults={"max_task_retries": 3})
         mock_registry.get_cycle.return_value = cycle_3
 
         # All dispatches fail → attempt 1,2 = RETRYABLE, attempt 3 = SEMANTIC
         responses = {i: ("FAILED", None, "boom") for i in range(10)}
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, responses
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -309,9 +291,7 @@ class TestSemanticFailure:
             1: ("FAILED", None, "correction failed"),
             2: ("FAILED", None, "correction failed"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, responses
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -340,9 +320,7 @@ class TestBlockedOutcome:
         responses = {
             0: ("FAILED", outputs_blocked, "blocked"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, responses
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -364,9 +342,7 @@ class TestSuccessOutcome:
     async def test_success_checkpoints(self, executor, mock_queue, mock_registry):
         """Each successful task triggers a checkpoint save."""
         # All 5 tasks succeed
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, {}
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, {})
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -377,16 +353,12 @@ class TestSuccessOutcome:
         # 5 tasks → 5 checkpoint saves
         assert mock_registry.save_checkpoint.call_count == 5
 
-    async def test_success_after_retry_still_checkpoints(
-        self, executor, mock_queue, mock_registry
-    ):
+    async def test_success_after_retry_still_checkpoints(self, executor, mock_queue, mock_registry):
         """Task fails once (retried), then succeeds → checkpoint saved."""
         responses = {
             0: ("FAILED", None, "transient"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, responses
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -418,9 +390,7 @@ class TestNeedReplanFromContract:
         responses = {
             0: ("FAILED", outputs_replan, "parse error"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, responses
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -439,17 +409,13 @@ class TestNeedReplanFromContract:
 class TestFallbackTable:
     """D5 fallback table: None outcome_class → RETRYABLE first, SEMANTIC after."""
 
-    async def test_none_outcome_first_failure_retries(
-        self, executor, mock_queue, mock_registry
-    ):
+    async def test_none_outcome_first_failure_retries(self, executor, mock_queue, mock_registry):
         """First unclassified failure → RETRYABLE → retry."""
         # First dispatch fails (no outcome), second succeeds, rest succeed
         responses = {
             0: ("FAILED", None, "transient"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, responses
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -463,14 +429,10 @@ class TestFallbackTable:
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.COMPLETED in terminal_statuses
 
-    async def test_exhausted_retries_becomes_semantic(
-        self, executor, mock_queue, mock_registry
-    ):
+    async def test_exhausted_retries_becomes_semantic(self, executor, mock_queue, mock_registry):
         """All retries exhausted → SEMANTIC_FAILURE → correction → abort."""
         responses = {i: ("FAILED", None, "boom") for i in range(10)}
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, responses
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -489,9 +451,7 @@ class TestFallbackTable:
 class TestNeedsRepairOutcome:
     """NEEDS_REPAIR outcome → triggers correction protocol."""
 
-    async def test_needs_repair_triggers_correction(
-        self, executor, mock_queue, mock_registry
-    ):
+    async def test_needs_repair_triggers_correction(self, executor, mock_queue, mock_registry):
         """Explicit NEEDS_REPAIR → correction protocol."""
         outputs_repair = {
             "outcome_class": TaskOutcome.NEEDS_REPAIR,
@@ -503,9 +463,7 @@ class TestNeedsRepairOutcome:
             1: ("FAILED", None, "corr"),
             2: ("FAILED", None, "corr"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(
-            mock_queue, responses
-        )
+        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",

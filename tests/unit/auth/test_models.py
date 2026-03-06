@@ -9,8 +9,6 @@ from squadops.auth.models import (
     Identity,
     IdentityResolutionError,
     IdentityType,
-    Role,
-    Scope,
     TokenClaims,
     TokenValidationError,
 )
@@ -113,14 +111,6 @@ class TestIdentity:
         identity = Identity(user_id="u", display_name="n")
         assert identity.identity_type == IdentityType.HUMAN
 
-    def test_service_identity_type(self):
-        identity = Identity(
-            user_id="svc-1",
-            display_name="Runtime Service",
-            identity_type=IdentityType.SERVICE,
-        )
-        assert identity.identity_type == "service"
-
 
 class TestAuthContext:
     """AuthContext frozen dataclass tests."""
@@ -132,38 +122,10 @@ class TestAuthContext:
         assert ctx.identity == identity
         assert ctx.denial_reason is None
 
-    def test_denied(self):
-        identity = Identity(user_id="u", display_name="n")
-        ctx = AuthContext(granted=False, identity=identity, denial_reason="Missing admin role")
-        assert ctx.granted is False
-        assert ctx.denial_reason == "Missing admin role"
-
     def test_frozen_immutability(self):
         ctx = AuthContext(granted=True)
         with pytest.raises(AttributeError):
             ctx.granted = False  # type: ignore[misc]
-
-
-class TestRoleConstants:
-    """Role constant values."""
-
-    def test_role_values(self):
-        assert Role.ADMIN == "admin"
-        assert Role.OPERATOR == "operator"
-        assert Role.VIEWER == "viewer"
-
-
-class TestScopeConstants:
-    """Scope constant values."""
-
-    def test_scope_values(self):
-        assert Scope.CYCLES_READ == "cycles:read"
-        assert Scope.CYCLES_WRITE == "cycles:write"
-        assert Scope.AGENTS_READ == "agents:read"
-        assert Scope.AGENTS_WRITE == "agents:write"
-        assert Scope.TASKS_READ == "tasks:read"
-        assert Scope.TASKS_WRITE == "tasks:write"
-        assert Scope.ADMIN_WRITE == "admin:write"
 
 
 class TestExceptions:

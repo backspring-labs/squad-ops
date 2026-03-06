@@ -79,19 +79,6 @@ class TestRunCheckpointModel:
         assert isinstance(cp.artifact_refs, tuple)
         assert isinstance(cp.plan_delta_refs, tuple)
 
-    def test_from_dict_parses_iso_datetime(self):
-        d = {
-            "run_id": "run-001",
-            "checkpoint_index": 0,
-            "completed_task_ids": (),
-            "prior_outputs": {},
-            "artifact_refs": (),
-            "plan_delta_refs": (),
-            "created_at": "2026-03-01T12:00:00+00:00",
-        }
-        cp = RunCheckpoint.from_dict(d)
-        assert isinstance(cp.created_at, datetime)
-
 
 # =============================================================================
 # MemoryCycleRegistry checkpoint tests

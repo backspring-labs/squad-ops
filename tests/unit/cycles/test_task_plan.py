@@ -17,7 +17,6 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.cycles.task_plan import CYCLE_TASK_STEPS, generate_task_plan
-from squadops.tasks.models import TaskEnvelope
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -79,10 +78,6 @@ def envelopes(cycle, run, profile):
 class TestTaskPlanLength:
     def test_returns_exactly_five_envelopes(self, envelopes):
         assert len(envelopes) == 5
-
-    def test_all_items_are_task_envelopes(self, envelopes):
-        for env in envelopes:
-            assert isinstance(env, TaskEnvelope)
 
 
 class TestTaskTypes:

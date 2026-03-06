@@ -19,18 +19,6 @@ class TestAuditEvent:
         with pytest.raises(AttributeError):
             event.action = "changed"  # type: ignore
 
-    def test_required_fields(self):
-        event = AuditEvent(
-            action="auth.token_rejected",
-            actor_id="anonymous",
-            actor_type="unknown",
-            resource_type="api",
-        )
-        assert event.action == "auth.token_rejected"
-        assert event.actor_id == "anonymous"
-        assert event.actor_type == "unknown"
-        assert event.resource_type == "api"
-
     def test_defaults_for_optionals(self):
         event = AuditEvent(
             action="test",

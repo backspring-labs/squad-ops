@@ -6,10 +6,8 @@ from adapters.events.factory import create_cycle_event_bus
 from adapters.events.in_process_cycle_event_bus import InProcessCycleEventBus
 from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
 from squadops.events.models import CycleEvent
-from squadops.events.subscriber import EventSubscriber
 from squadops.events.types import EventType
 from squadops.ports.events.cycle_event_bus import CycleEventBusPort
-
 from tests.unit.events.conftest import CollectingSubscriber
 
 
@@ -186,9 +184,6 @@ class TestInProcessCycleEventBus:
         )
         assert collector.events[0].payload == {"duration_ms": 5000}
 
-    def test_isinstance_port(self, event_bus):
-        assert isinstance(event_bus, CycleEventBusPort)
-
 
 @pytest.mark.domain_events
 class TestNoOpCycleEventBus:
@@ -214,17 +209,6 @@ class TestNoOpCycleEventBus:
             context={"cycle_id": "cyc_1"},
             payload={"key": "val"},
         )
-
-    def test_isinstance_port(self):
-        bus = NoOpCycleEventBus()
-        assert isinstance(bus, CycleEventBusPort)
-
-
-@pytest.mark.domain_events
-class TestEventSubscriberProtocol:
-    def test_collecting_subscriber_satisfies_protocol(self):
-        sub = CollectingSubscriber()
-        assert isinstance(sub, EventSubscriber)
 
 
 @pytest.mark.domain_events

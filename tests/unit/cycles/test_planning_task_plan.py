@@ -19,7 +19,6 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.cycles.task_plan import (
-    BUILD_TASK_STEPS,
     BUILDER_ASSEMBLY_TASK_STEPS,
     CYCLE_TASK_STEPS,
     IMPLEMENTATION_TASK_STEPS,
@@ -185,9 +184,7 @@ class TestRefinementWorkload:
             name="QA Only",
             description="",
             version=1,
-            agents=(
-                AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
-            ),
+            agents=(AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),),
             created_at=NOW,
         )
         with pytest.raises(CycleError, match="missing required refinement roles.*lead"):
@@ -199,9 +196,7 @@ class TestRefinementWorkload:
             name="Lead Only",
             description="",
             version=1,
-            agents=(
-                AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
-            ),
+            agents=(AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),),
             created_at=NOW,
         )
         with pytest.raises(CycleError, match="missing required refinement roles.*qa"):

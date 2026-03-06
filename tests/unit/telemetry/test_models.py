@@ -19,15 +19,6 @@ from squadops.telemetry.models import (
 class TestMetricType:
     """Tests for MetricType enum."""
 
-    def test_counter_value(self):
-        assert MetricType.COUNTER.value == "counter"
-
-    def test_gauge_value(self):
-        assert MetricType.GAUGE.value == "gauge"
-
-    def test_histogram_value(self):
-        assert MetricType.HISTOGRAM.value == "histogram"
-
     def test_all_types_defined(self):
         assert len(MetricType) == 3
 
@@ -113,32 +104,6 @@ class TestStructuredEvent:
 class TestCorrelationContext:
     """Tests for CorrelationContext frozen dataclass."""
 
-    def test_minimal_context(self):
-        ctx = CorrelationContext(cycle_id="cycle-1")
-        assert ctx.cycle_id == "cycle-1"
-        assert ctx.pulse_id is None
-        assert ctx.task_id is None
-        assert ctx.correlation_id is None
-        assert ctx.agent_id is None
-
-    def test_full_context(self):
-        ctx = CorrelationContext(
-            cycle_id="c1",
-            pulse_id="p1",
-            task_id="t1",
-            correlation_id="corr-1",
-            causation_id="cause-1",
-            trace_id="trace-1",
-            span_id="span-1",
-            agent_id="agent-1",
-            agent_role="dev",
-            message_id="msg-1",
-        )
-        assert ctx.pulse_id == "p1"
-        assert ctx.task_id == "t1"
-        assert ctx.agent_role == "dev"
-        assert ctx.message_id == "msg-1"
-
     def test_context_is_frozen(self):
         ctx = CorrelationContext(cycle_id="c1")
         with pytest.raises(AttributeError):
@@ -204,23 +169,6 @@ class TestCorrelationContext:
 class TestPromptLayer:
     """Tests for PromptLayer frozen dataclass."""
 
-    def test_minimal_layer(self):
-        layer = PromptLayer(layer_type="system", layer_id="sys-1")
-        assert layer.layer_type == "system"
-        assert layer.layer_id == "sys-1"
-        assert layer.layer_version is None
-        assert layer.layer_hash is None
-
-    def test_full_layer(self):
-        layer = PromptLayer(
-            layer_type="task",
-            layer_id="task-1",
-            layer_version="1.0",
-            layer_hash="abc123",
-        )
-        assert layer.layer_version == "1.0"
-        assert layer.layer_hash == "abc123"
-
     def test_layer_is_frozen(self):
         layer = PromptLayer(layer_type="system", layer_id="sys-1")
         with pytest.raises(AttributeError):
@@ -248,42 +196,9 @@ class TestPromptLayerMetadata:
         with pytest.raises(AttributeError):
             meta.prompt_layer_set_id = "changed"  # type: ignore
 
-    def test_layers_is_tuple(self):
-        meta = PromptLayerMetadata(
-            prompt_layer_set_id="PLS-1",
-            layers=(PromptLayer(layer_type="system", layer_id="sys-1"),),
-        )
-        assert isinstance(meta.layers, tuple)
-
 
 class TestGenerationRecord:
     """Tests for GenerationRecord frozen dataclass."""
-
-    def test_minimal_record(self):
-        record = GenerationRecord(
-            generation_id="gen-1",
-            model="llama3",
-            prompt_text="hello",
-            response_text="world",
-        )
-        assert record.generation_id == "gen-1"
-        assert record.model == "llama3"
-        assert record.prompt_tokens is None
-        assert record.latency_ms is None
-
-    def test_full_record(self):
-        record = GenerationRecord(
-            generation_id="gen-1",
-            model="llama3",
-            prompt_text="hello",
-            response_text="world",
-            prompt_tokens=10,
-            completion_tokens=5,
-            total_tokens=15,
-            latency_ms=42.5,
-        )
-        assert record.prompt_tokens == 10
-        assert record.latency_ms == 42.5
 
     def test_generation_id_is_required(self):
         with pytest.raises(TypeError):

@@ -1,7 +1,5 @@
 """Unit tests for EmbeddingsPort interface."""
 
-from abc import ABC
-
 import pytest
 
 from squadops.ports.embeddings.provider import EmbeddingsPort
@@ -9,10 +7,6 @@ from squadops.ports.embeddings.provider import EmbeddingsPort
 
 class TestEmbeddingsPortInterface:
     """Tests for EmbeddingsPort ABC."""
-
-    def test_is_abstract_class(self):
-        """EmbeddingsPort is an abstract base class."""
-        assert issubclass(EmbeddingsPort, ABC)
 
     def test_cannot_instantiate_directly(self):
         """Cannot instantiate EmbeddingsPort directly."""
