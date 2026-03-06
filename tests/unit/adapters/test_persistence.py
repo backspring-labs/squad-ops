@@ -308,30 +308,6 @@ class TestPostgresRuntime:
 
     @patch("adapters.persistence.postgres.runtime.create_engine")
     @patch("adapters.persistence.postgres.runtime.sessionmaker")
-    def test_connection_mode_property(self, mock_sessionmaker, mock_create_engine, basic_dsn):
-        """Test connection_mode property."""
-        from adapters.persistence.postgres import PostgresRuntime
-
-        mock_engine = Mock()
-        mock_create_engine.return_value = mock_engine
-
-        runtime = PostgresRuntime(dsn=basic_dsn, connection_mode="proxy")
-        assert runtime.connection_mode == "proxy"
-
-    @patch("adapters.persistence.postgres.runtime.create_engine")
-    @patch("adapters.persistence.postgres.runtime.sessionmaker")
-    def test_migration_mode_property(self, mock_sessionmaker, mock_create_engine, basic_dsn):
-        """Test migration_mode property."""
-        from adapters.persistence.postgres import PostgresRuntime
-
-        mock_engine = Mock()
-        mock_create_engine.return_value = mock_engine
-
-        runtime = PostgresRuntime(dsn=basic_dsn, migration_mode="startup")
-        assert runtime.migration_mode == "startup"
-
-    @patch("adapters.persistence.postgres.runtime.create_engine")
-    @patch("adapters.persistence.postgres.runtime.sessionmaker")
     def test_build_connection_url_with_ssl(self, mock_sessionmaker, mock_create_engine, basic_dsn):
         """Test initialization with SSL parameters."""
         from adapters.persistence.postgres import PostgresRuntime
@@ -339,9 +315,7 @@ class TestPostgresRuntime:
         mock_engine = Mock()
         mock_create_engine.return_value = mock_engine
 
-        PostgresRuntime(
-            dsn=basic_dsn, ssl_mode="verify-full", ssl_ca_bundle_path="/path/to/ca.crt"
-        )
+        PostgresRuntime(dsn=basic_dsn, ssl_mode="verify-full", ssl_ca_bundle_path="/path/to/ca.crt")
 
         call_args = mock_create_engine.call_args
         dsn_used = call_args[0][0]

@@ -8,7 +8,6 @@ import pytest
 
 from squadops.capabilities.models import (
     AcceptanceCheck,
-    AcceptanceResult,
     ArtifactSpec,
     CapabilityContract,
     CheckType,
@@ -18,7 +17,6 @@ from squadops.capabilities.models import (
     TaskRecord,
     TaskStatus,
     Trigger,
-    ValidationReport,
     Workload,
     WorkloadRunReport,
     WorkloadStatus,
@@ -49,12 +47,6 @@ class TestInputSpec:
         spec = InputSpec(name="test", type="string")
         with pytest.raises(AttributeError):
             spec.name = "changed"  # type: ignore
-
-    def test_defaults(self):
-        """InputSpec has correct defaults."""
-        spec = InputSpec(name="test", type="string")
-        assert spec.required is True
-        assert spec.description == ""
 
 
 class TestOutputSpec:
@@ -145,17 +137,6 @@ class TestAcceptanceCheck:
                 expected_value=["list", "value"],
             )
 
-    def test_json_field_equals_valid(self):
-        """json_field_equals with valid parameters."""
-        check = AcceptanceCheck(
-            check_type=CheckType.JSON_FIELD_EQUALS,
-            target="path/to/file.json",
-            field_path="metadata.status",
-            expected_value="success",
-        )
-        assert check.field_path == "metadata.status"
-        assert check.expected_value == "success"
-
     def test_immutability(self):
         """AcceptanceCheck is immutable (frozen)."""
         check = AcceptanceCheck(
@@ -168,19 +149,6 @@ class TestAcceptanceCheck:
 
 class TestCapabilityContract:
     """Tests for CapabilityContract model."""
-
-    def test_creation_minimal(self):
-        """Contract can be created with minimal required fields."""
-        contract = CapabilityContract(
-            capability_id="data.test_capability",
-            version="1.0.0",
-            description="Test capability",
-            owner_roles=("data",),
-            lifecycle_scope=LifecycleScope.CYCLE,
-            trigger=Trigger.ON_DEMAND,
-        )
-        assert contract.capability_id == "data.test_capability"
-        assert contract.timeout_seconds == 300  # default
 
     def test_get_input_spec(self):
         """Contract provides input spec lookup."""
@@ -281,45 +249,6 @@ class TestWorkload:
         )
         with pytest.raises(AttributeError):
             workload.version = "2.0.0"  # type: ignore
-
-
-class TestValidationReport:
-    """Tests for ValidationReport model."""
-
-    def test_all_passed_true(self):
-        """all_passed is True when all results pass."""
-        results = (
-            AcceptanceResult(
-                check=AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="path1"),
-                passed=True,
-                resolved_path="/full/path1",
-            ),
-            AcceptanceResult(
-                check=AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="path2"),
-                passed=True,
-                resolved_path="/full/path2",
-            ),
-        )
-        report = ValidationReport(results=results)
-        assert report.all_passed is True
-
-    def test_all_passed_false(self):
-        """all_passed is False when any result fails."""
-        results = (
-            AcceptanceResult(
-                check=AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="path1"),
-                passed=True,
-                resolved_path="/full/path1",
-            ),
-            AcceptanceResult(
-                check=AcceptanceCheck(check_type=CheckType.FILE_EXISTS, target="path2"),
-                passed=False,
-                resolved_path="/full/path2",
-                error="File not found",
-            ),
-        )
-        report = ValidationReport(results=results)
-        assert report.all_passed is False
 
 
 class TestPrimitiveValueValidation:

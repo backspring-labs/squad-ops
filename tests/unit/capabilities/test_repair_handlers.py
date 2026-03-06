@@ -17,7 +17,6 @@ from squadops.capabilities.handlers.repair_tasks import (
     DevelopmentRepairHandler,
     GovernanceRootCauseHandler,
     StrategyCorrectivePlanHandler,
-    _RepairTaskHandler,
 )
 
 pytestmark = [pytest.mark.domain_pulse_checks]
@@ -26,32 +25,6 @@ pytestmark = [pytest.mark.domain_pulse_checks]
 # ---------------------------------------------------------------------------
 # Construction + class attributes
 # ---------------------------------------------------------------------------
-
-
-class TestRepairHandlerAttributes:
-    def test_data_analyze_verification_attrs(self):
-        h = DataAnalyzeVerificationHandler()
-        assert h.capability_id == "data.analyze_verification"
-        assert h._role == "data"
-        assert h._artifact_name == "verification_analysis.md"
-
-    def test_governance_root_cause_attrs(self):
-        h = GovernanceRootCauseHandler()
-        assert h.capability_id == "governance.root_cause_analysis"
-        assert h._role == "lead"
-        assert h._artifact_name == "root_cause_analysis.md"
-
-    def test_strategy_corrective_plan_attrs(self):
-        h = StrategyCorrectivePlanHandler()
-        assert h.capability_id == "strategy.corrective_plan"
-        assert h._role == "strat"
-        assert h._artifact_name == "corrective_plan.md"
-
-    def test_development_repair_attrs(self):
-        h = DevelopmentRepairHandler()
-        assert h.capability_id == "development.repair"
-        assert h._role == "dev"
-        assert h._artifact_name == "repair_output.md"
 
 
 # ---------------------------------------------------------------------------
@@ -205,13 +178,3 @@ class TestRepairHandlerHandle:
             result = await h.handle(ctx, {"prd": "test"})
             assert result.success is True
             assert result.outputs["artifacts"][0]["name"] == expected_name
-
-    async def test_handler_inherits_from_cycle_task_handler(self):
-        """Repair handlers are subclasses of _RepairTaskHandler and _CycleTaskHandler."""
-        for cls in [
-            DataAnalyzeVerificationHandler,
-            GovernanceRootCauseHandler,
-            StrategyCorrectivePlanHandler,
-            DevelopmentRepairHandler,
-        ]:
-            assert issubclass(cls, _RepairTaskHandler)

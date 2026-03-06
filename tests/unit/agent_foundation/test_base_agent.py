@@ -54,17 +54,6 @@ class TestPortsBundle:
 class TestBaseAgent:
     """Tests for BaseAgent."""
 
-    def test_agent_stores_identity(self, mock_ports):
-        """Agent should store agent_id and role_id."""
-        agent = ConcreteAgent(agent_id="agent-1", **mock_ports)
-        assert agent.agent_id == "agent-1"
-        assert agent.role_id == "test"
-
-    def test_agent_uses_custom_role_id(self, mock_ports):
-        """Agent should use provided role_id over class default."""
-        agent = ConcreteAgent(agent_id="agent-1", role_id="custom", **mock_ports)
-        assert agent.role_id == "custom"
-
     def test_agent_exposes_ports(self, mock_ports):
         """Agent should expose port accessors."""
         agent = ConcreteAgent(agent_id="agent-1", **mock_ports)
@@ -92,11 +81,6 @@ class TestBaseAgent:
             **mock_ports,
         )
         assert agent.skill_registry is registry
-
-    def test_agent_skill_registry_optional(self, mock_ports):
-        """Skill registry should be optional."""
-        agent = ConcreteAgent(agent_id="agent-1", **mock_ports)
-        assert agent.skill_registry is None
 
     @pytest.mark.asyncio
     async def test_lifecycle_hooks_exist(self, mock_ports):

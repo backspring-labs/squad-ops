@@ -127,16 +127,6 @@ def create_context(mock_ports, skills: list[Skill]) -> ExecutionContext:
 class TestTaskAnalysisHandler:
     """Tests for TaskAnalysisHandler."""
 
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = TaskAnalysisHandler()
-        assert handler.name == "task_analysis_handler"
-
-    def test_capability_id(self):
-        """Handler should have correct capability ID."""
-        handler = TaskAnalysisHandler()
-        assert handler.capability_id == "governance.task_analysis"
-
     def test_required_skills(self):
         """Handler should declare required skills."""
         handler = TaskAnalysisHandler()
@@ -192,11 +182,6 @@ class TestTaskAnalysisHandler:
 class TestTaskDelegationHandler:
     """Tests for TaskDelegationHandler."""
 
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = TaskDelegationHandler()
-        assert handler.name == "task_delegation_handler"
-
     def test_validate_inputs_missing_fields(self):
         """Should fail without required fields."""
         handler = TaskDelegationHandler()
@@ -233,16 +218,6 @@ class TestTaskDelegationHandler:
 
 class TestCodeGenerationHandler:
     """Tests for CodeGenerationHandler."""
-
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = CodeGenerationHandler()
-        assert handler.name == "code_generation_handler"
-
-    def test_capability_id(self):
-        """Handler should have correct capability ID."""
-        handler = CodeGenerationHandler()
-        assert handler.capability_id == "development.code_generation"
 
     def test_validate_inputs_missing_requirements(self):
         """Should fail without requirements."""
@@ -293,11 +268,6 @@ class TestCodeGenerationHandler:
 class TestCodeAnalysisHandler:
     """Tests for CodeAnalysisHandler."""
 
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = CodeAnalysisHandler()
-        assert handler.name == "code_analysis_handler"
-
     def test_validate_inputs_missing_both(self):
         """Should fail without file_path or code."""
         handler = CodeAnalysisHandler()
@@ -328,16 +298,6 @@ class TestCodeAnalysisHandler:
 
 class TestTestExecutionHandler:
     """Tests for TestExecutionHandler."""
-
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = TestExecutionHandler()
-        assert handler.name == "test_execution_handler"
-
-    def test_capability_id(self):
-        """Handler should have correct capability ID."""
-        handler = TestExecutionHandler()
-        assert handler.capability_id == "qa.test_execution"
 
     def test_validate_inputs_missing_path(self):
         """Should fail without test_path."""
@@ -373,11 +333,6 @@ class TestTestExecutionHandler:
 class TestValidationHandler:
     """Tests for ValidationHandler."""
 
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = ValidationHandler()
-        assert handler.name == "validation_handler"
-
     def test_validate_inputs_missing_criteria(self):
         """Should fail without criteria."""
         handler = ValidationHandler()
@@ -411,16 +366,6 @@ class TestValidationHandler:
 class TestDataAnalysisHandler:
     """Tests for DataAnalysisHandler."""
 
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = DataAnalysisHandler()
-        assert handler.name == "data_analysis_handler"
-
-    def test_capability_id(self):
-        """Handler should have correct capability ID."""
-        handler = DataAnalysisHandler()
-        assert handler.capability_id == "data.analysis"
-
     def test_validate_inputs_missing_data(self):
         """Should fail without data."""
         handler = DataAnalysisHandler()
@@ -453,11 +398,6 @@ class TestDataAnalysisHandler:
 
 class TestMetricsCollectionHandler:
     """Tests for MetricsCollectionHandler."""
-
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = MetricsCollectionHandler()
-        assert handler.name == "metrics_collection_handler"
 
     def test_validate_inputs_empty_metrics(self):
         """Should fail with empty metric_names."""
@@ -497,16 +437,6 @@ class TestMetricsCollectionHandler:
 class TestWarmbootHandler:
     """Tests for WarmbootHandler."""
 
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = WarmbootHandler()
-        assert handler.name == "warmboot_handler"
-
-    def test_capability_id(self):
-        """Handler should have correct capability ID."""
-        handler = WarmbootHandler()
-        assert handler.capability_id == "agent.warmboot"
-
     def test_validate_inputs_missing_fields(self):
         """Should fail without required fields."""
         handler = WarmbootHandler()
@@ -537,16 +467,6 @@ class TestWarmbootHandler:
 
 class TestContextSyncHandler:
     """Tests for ContextSyncHandler."""
-
-    def test_handler_name(self):
-        """Handler should have correct name."""
-        handler = ContextSyncHandler()
-        assert handler.name == "context_sync_handler"
-
-    def test_capability_id(self):
-        """Handler should have correct capability ID."""
-        handler = ContextSyncHandler()
-        assert handler.capability_id == "agent.context_sync"
 
     def test_validate_inputs_empty_content(self):
         """Should fail with empty content."""

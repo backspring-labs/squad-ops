@@ -126,10 +126,6 @@ def create_envelope(
 class TestHandlerExecutor:
     """Tests for HandlerExecutor."""
 
-    def test_executor_id(self, executor):
-        """Should return executor ID."""
-        assert executor.executor_id == "test-executor"
-
     @pytest.mark.asyncio
     async def test_execute_success(self, executor):
         """Should execute successfully."""

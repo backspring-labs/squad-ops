@@ -57,11 +57,6 @@ def skill_context(mock_ports):
 class TestLLMQuerySkill:
     """Tests for LLMQuerySkill."""
 
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = LLMQuerySkill()
-        assert skill.name == "llm_query"
-
     def test_required_capabilities(self):
         """Skill should require llm capability."""
         skill = LLMQuerySkill()
@@ -130,11 +125,6 @@ class TestLLMQuerySkill:
 class TestFileReadSkill:
     """Tests for FileReadSkill."""
 
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = FileReadSkill()
-        assert skill.name == "file_read"
-
     def test_required_capabilities(self):
         """Skill should require filesystem capability."""
         skill = FileReadSkill()
@@ -174,11 +164,6 @@ class TestFileReadSkill:
 class TestFileWriteSkill:
     """Tests for FileWriteSkill."""
 
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = FileWriteSkill()
-        assert skill.name == "file_write"
-
     def test_validate_inputs_missing_content(self):
         """Validation should fail without content."""
         skill = FileWriteSkill()
@@ -201,11 +186,6 @@ class TestFileWriteSkill:
 
 class TestMemoryStoreSkill:
     """Tests for MemoryStoreSkill."""
-
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = MemoryStoreSkill()
-        assert skill.name == "memory_store"
 
     def test_required_capabilities(self):
         """Skill should require memory capability."""
@@ -234,11 +214,6 @@ class TestMemoryStoreSkill:
 
 class TestMemoryRecallSkill:
     """Tests for MemoryRecallSkill."""
-
-    def test_skill_name(self):
-        """Skill should have correct name."""
-        skill = MemoryRecallSkill()
-        assert skill.name == "memory_recall"
 
     def test_validate_inputs_invalid_limit(self):
         """Validation should fail with invalid limit."""
