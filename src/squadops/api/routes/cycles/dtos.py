@@ -285,6 +285,24 @@ class PullStatusResponse(BaseModel):
     error: str | None = None
 
 
+class RunResumeRequest(BaseModel):
+    """Resume a paused or failed run (SIP-0079)."""
+
+    resume_reason: str | None = None
+
+    class Config:
+        extra = "forbid"
+
+
+class CheckpointSummaryResponse(BaseModel):
+    """Checkpoint summary for list endpoint (SIP-0079)."""
+
+    checkpoint_index: int
+    completed_task_count: int
+    artifact_ref_count: int
+    created_at: datetime
+
+
 class ErrorDetail(BaseModel):
     code: str
     message: str
