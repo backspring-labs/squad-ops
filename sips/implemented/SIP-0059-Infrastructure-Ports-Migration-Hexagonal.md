@@ -9,6 +9,11 @@ created_at: '2026-01-29T00:00:00Z'
 updated_at: '2026-01-31T21:57:11.607147Z'
 original_filename: SIP-Infrastructure-Ports-Migration-0-8-7.md
 ---
+
+> **Historical Note (2026-03-06 audit):** This SIP is a migration guide written in future tense.
+> The migration it describes has been completed — all infrastructure ports and adapters are in place
+> under `src/squadops/ports/` and `adapters/`. This document is retained for historical reference only.
+
 # SIP-INFRASTRUCTURE-PORTS-MIGRATION-0_8_7 — Version Target 0.8.7
 ## Infrastructure Ports Migration — Hexagonal Foundation Layer
 
