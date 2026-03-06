@@ -2,11 +2,11 @@
 
 Materialises source + test files into a temporary workspace and runs
 test frameworks (pytest, vitest, or both) as subprocesses.  The result
-is captured as a ``TestRunResult`` frozen dataclass that the QA handler
+is captured as a ``RunTestsResult`` frozen dataclass that the QA handler
 can attach as an artifact.
 
 All exceptions are caught so that a test-runner failure never crashes
-the handler — callers always get a ``TestRunResult``.
+the handler — callers always get a ``RunTestsResult``.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ _STDOUT_LIMIT = 64 * 1024  # 64 KB
 
 
 @dataclass(frozen=True)
-class TestRunResult:
+class RunTestsResult:
     """Outcome of running generated tests in a temporary workspace."""
 
     executed: bool
@@ -73,15 +73,15 @@ async def run_generated_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
     timeout_seconds: int = 60,
-) -> TestRunResult:
+) -> RunTestsResult:
     """Run *test_files* against *source_files* in an isolated temp directory.
 
     Each element is ``{"path": "<relative>", "content": "<text>"}``.
 
-    Returns a ``TestRunResult`` — never raises.
+    Returns a ``RunTestsResult`` — never raises.
     """
     if not test_files:
-        return TestRunResult(
+        return RunTestsResult(
             executed=False,
             error="no test files provided",
             test_file_count=0,
@@ -113,7 +113,7 @@ async def run_generated_tests(
         except TimeoutError:
             proc.kill()
             await proc.wait()
-            return TestRunResult(
+            return RunTestsResult(
                 executed=False,
                 error=f"pytest timed out after {timeout_seconds}s",
                 test_file_count=len(test_files),
@@ -123,7 +123,7 @@ async def run_generated_tests(
         stdout = raw_stdout.decode(errors="replace")[:_STDOUT_LIMIT]
         stderr = raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT]
 
-        return TestRunResult(
+        return RunTestsResult(
             executed=True,
             exit_code=proc.returncode or 0,
             stdout=stdout,
@@ -134,7 +134,7 @@ async def run_generated_tests(
 
     except Exception as exc:
         logger.warning("Test runner error: %s", exc, exc_info=True)
-        return TestRunResult(
+        return RunTestsResult(
             executed=False,
             error=str(exc),
             test_file_count=len(test_files),
@@ -149,17 +149,17 @@ async def run_node_tests(
     test_files: list[dict[str, str]],
     target_dir: str | None = None,
     timeout_seconds: int = 60,
-) -> TestRunResult:
+) -> RunTestsResult:
     """Run vitest in a Node workspace (D6).
 
     Materializes files, runs ``npm install`` then ``npx vitest run``.
     *target_dir* is the subdirectory within the workspace where
     ``package.json`` lives (e.g., ``"frontend"`` for fullstack projects).
 
-    Returns a ``TestRunResult`` — never raises.
+    Returns a ``RunTestsResult`` — never raises.
     """
     if not test_files:
-        return TestRunResult(
+        return RunTestsResult(
             executed=False,
             error="no test files provided",
             test_file_count=0,
@@ -176,7 +176,7 @@ async def run_node_tests(
 
         # Check for package.json
         if not os.path.isfile(os.path.join(cwd, "package.json")):
-            return TestRunResult(
+            return RunTestsResult(
                 executed=False,
                 error=f"No package.json found in {target_dir or 'workspace root'}",
                 test_file_count=len(test_files),
@@ -202,7 +202,7 @@ async def run_node_tests(
             except TimeoutError:
                 install_proc.kill()
                 await install_proc.wait()
-                return TestRunResult(
+                return RunTestsResult(
                     executed=False,
                     error=f"npm install timed out after {timeout_seconds}s",
                     test_file_count=len(test_files),
@@ -210,14 +210,14 @@ async def run_node_tests(
                 )
 
             if install_proc.returncode != 0:
-                return TestRunResult(
+                return RunTestsResult(
                     executed=False,
                     error="npm install failed (dependency resolution error)",
                     test_file_count=len(test_files),
                     source_file_count=len(source_files),
                 )
         except FileNotFoundError:
-            return TestRunResult(
+            return RunTestsResult(
                 executed=False,
                 error="npm not found — Node.js is not installed",
                 test_file_count=len(test_files),
@@ -236,7 +236,7 @@ async def run_node_tests(
                 stderr=asyncio.subprocess.PIPE,
             )
         except FileNotFoundError:
-            return TestRunResult(
+            return RunTestsResult(
                 executed=False,
                 error="npx not found — Node.js is not installed",
                 test_file_count=len(test_files),
@@ -251,7 +251,7 @@ async def run_node_tests(
         except TimeoutError:
             proc.kill()
             await proc.wait()
-            return TestRunResult(
+            return RunTestsResult(
                 executed=False,
                 error=f"vitest timed out after {timeout_seconds}s",
                 test_file_count=len(test_files),
@@ -261,7 +261,7 @@ async def run_node_tests(
         stdout = raw_stdout.decode(errors="replace")[:_STDOUT_LIMIT]
         stderr = raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT]
 
-        return TestRunResult(
+        return RunTestsResult(
             executed=True,
             exit_code=proc.returncode or 0,
             stdout=stdout,
@@ -272,7 +272,7 @@ async def run_node_tests(
 
     except Exception as exc:
         logger.warning("Node test runner error: %s", exc, exc_info=True)
-        return TestRunResult(
+        return RunTestsResult(
             executed=False,
             error=str(exc),
             test_file_count=len(test_files),
@@ -286,14 +286,14 @@ async def run_fullstack_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
     timeout_seconds: int = 60,
-) -> TestRunResult:
+) -> RunTestsResult:
     """Run both pytest (backend) and vitest (frontend) tests (D12).
 
     Splits files by path prefix (``backend/`` vs ``frontend/``), runs
     both test suites, and merges results per the V1 merge policy (D13):
     backend pytest controls pass/fail; frontend vitest is non-blocking.
 
-    Returns a ``TestRunResult`` — never raises.
+    Returns a ``RunTestsResult`` — never raises.
     """
     # Split files by path prefix
     backend_source, frontend_source = [], []
@@ -350,7 +350,7 @@ async def run_fullstack_tests(
     if frontend_result.error:
         error_parts.append(f"frontend (non-blocking): {frontend_result.error}")
 
-    return TestRunResult(
+    return RunTestsResult(
         executed=combined_executed,
         exit_code=combined_exit_code,
         stdout="\n\n".join(combined_stdout_parts)[:_STDOUT_LIMIT],

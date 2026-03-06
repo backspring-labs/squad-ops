@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # =============================================================================
 # Nested DTOs
@@ -43,8 +43,7 @@ class CycleCreateRequest(BaseModel):
     experiment_context: dict = Field(default_factory=dict)
     notes: str | None = None
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class GateDecisionRequest(BaseModel):
@@ -58,15 +57,13 @@ class GateDecisionRequest(BaseModel):
     ]
     notes: str | None = None
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class SetActiveProfileRequest(BaseModel):
     profile_id: str
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class AgentProfileEntryRequest(BaseModel):
@@ -78,8 +75,7 @@ class AgentProfileEntryRequest(BaseModel):
     enabled: bool = True
     config_overrides: dict = Field(default_factory=dict)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ProfileCreateRequest(BaseModel):
@@ -89,8 +85,7 @@ class ProfileCreateRequest(BaseModel):
     description: str = ""
     agents: list[AgentProfileEntryRequest]
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -100,8 +95,7 @@ class ProfileUpdateRequest(BaseModel):
     description: str | None = None
     agents: list[AgentProfileEntryRequest] | None = None
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ProfileCloneRequest(BaseModel):
@@ -109,15 +103,13 @@ class ProfileCloneRequest(BaseModel):
 
     name: str
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class BaselinePromoteRequest(BaseModel):
     artifact_id: str
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 # =============================================================================
@@ -272,8 +264,7 @@ class PullModelRequest(BaseModel):
 
     name: str
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class PullStatusResponse(BaseModel):
@@ -290,8 +281,7 @@ class RunResumeRequest(BaseModel):
 
     resume_reason: str | None = None
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class CheckpointSummaryResponse(BaseModel):

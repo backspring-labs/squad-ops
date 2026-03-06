@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskState(StrEnum):
@@ -112,10 +112,7 @@ class Task(BaseModel):
     delegated_to: str | None = None
     created_at: datetime | None = None
 
-    class Config:
-        """Pydantic model configuration."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LegacyTaskEnvelope(BaseModel):
