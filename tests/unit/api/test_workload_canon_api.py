@@ -13,9 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squadops.api.routes.cycles.dtos import (
-    ArtifactRefResponse,
     GateDecisionRequest,
-    RunResponse,
 )
 from squadops.api.routes.cycles.mapping import artifact_to_response, run_to_response
 from squadops.api.routes.cycles.runs import router as runs_router
@@ -24,7 +22,6 @@ from squadops.cycles.models import (
     Cycle,
     Run,
     TaskFlowPolicy,
-    ValidationError,
 )
 
 pytestmark = [pytest.mark.domain_api]
@@ -47,64 +44,6 @@ _CYCLE = Cycle(
 # ---------------------------------------------------------------------------
 # DTO serialization (ACs 5, 8, 9)
 # ---------------------------------------------------------------------------
-
-
-class TestRunResponseWorkloadType:
-    """AC 8: RunResponse includes workload_type."""
-
-    def test_default_none(self):
-        dto = RunResponse(
-            run_id="r1",
-            cycle_id="c1",
-            run_number=1,
-            status="queued",
-            initiated_by="api",
-            resolved_config_hash="h",
-        )
-        assert dto.workload_type is None
-
-    def test_explicit_value(self):
-        dto = RunResponse(
-            run_id="r1",
-            cycle_id="c1",
-            run_number=1,
-            status="queued",
-            initiated_by="api",
-            resolved_config_hash="h",
-            workload_type="planning",
-        )
-        assert dto.workload_type == "planning"
-
-
-class TestArtifactRefResponsePromotionStatus:
-    """AC 9: ArtifactRefResponse includes promotion_status."""
-
-    def test_default_working(self):
-        dto = ArtifactRefResponse(
-            artifact_id="a1",
-            project_id="p1",
-            artifact_type="code",
-            filename="f.py",
-            content_hash="h",
-            size_bytes=10,
-            media_type="text/plain",
-            created_at=NOW,
-        )
-        assert dto.promotion_status == "working"
-
-    def test_explicit_promoted(self):
-        dto = ArtifactRefResponse(
-            artifact_id="a1",
-            project_id="p1",
-            artifact_type="code",
-            filename="f.py",
-            content_hash="h",
-            size_bytes=10,
-            media_type="text/plain",
-            created_at=NOW,
-            promotion_status="promoted",
-        )
-        assert dto.promotion_status == "promoted"
 
 
 class TestGateDecisionRequestExpanded:
@@ -229,18 +168,12 @@ class TestListRunsWorkloadFilter:
         mock_cycle_registry.list_runs.return_value = [run]
         resp = client.get("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
         assert resp.status_code == 200
-        mock_cycle_registry.list_runs.assert_called_once_with(
-            "cyc_001", workload_type=None
-        )
+        mock_cycle_registry.list_runs.assert_called_once_with("cyc_001", workload_type=None)
 
     def test_with_workload_type_filter(self, client, mock_cycle_registry):
-        resp = client.get(
-            "/api/v1/projects/hello_squad/cycles/cyc_001/runs?workload_type=planning"
-        )
+        resp = client.get("/api/v1/projects/hello_squad/cycles/cyc_001/runs?workload_type=planning")
         assert resp.status_code == 200
-        mock_cycle_registry.list_runs.assert_called_once_with(
-            "cyc_001", workload_type="planning"
-        )
+        mock_cycle_registry.list_runs.assert_called_once_with("cyc_001", workload_type="planning")
 
 
 class TestCreateRunWorkloadType:

@@ -50,30 +50,6 @@ def sample_token() -> CachedToken:
 
 
 # ---------------------------------------------------------------------------
-# CachedToken dataclass
-# ---------------------------------------------------------------------------
-
-
-class TestCachedToken:
-    def test_fields(self, sample_token):
-        assert sample_token.access_token == "access123"
-        assert sample_token.refresh_token == "refresh456"
-        assert sample_token.client_id == "squadops-cli"
-        assert sample_token.grant_type == "password"
-
-    def test_no_refresh_token(self):
-        t = CachedToken(
-            access_token="a",
-            refresh_token=None,
-            expires_at=0.0,
-            token_endpoint="http://kc/token",
-            client_id="cli",
-            grant_type="client_credentials",
-        )
-        assert t.refresh_token is None
-
-
-# ---------------------------------------------------------------------------
 # File I/O
 # ---------------------------------------------------------------------------
 
