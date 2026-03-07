@@ -26,6 +26,7 @@ Define a profile-driven bootstrap system that takes a fresh machine from clone t
 3. Bootstrap profiles extend the existing `config/profiles/` mechanism with system-level dependency declarations.
 4. Three first-class profiles ship in Phase 1: `dev-mac`, `dev-pc`, `local-spark`.
 5. Scripts are idempotent — safe to re-run after partial failures or upgrades.
+6. v1.0 bootstrap runs on the **target machine itself**. Remote orchestration (e.g., bootstrapping a Spark over SSH from a laptop) is out of scope.
 
 ---
 
@@ -35,6 +36,19 @@ Define a profile-driven bootstrap system that takes a fresh machine from clone t
 - Managing cloud infrastructure (AWS/GCP/Azure provisioning is out of scope).
 - Auto-detecting the correct profile (user chooses explicitly).
 - Installing CUDA drivers on Spark (NVIDIA ships those pre-installed; we validate, not install).
+- Remote bootstrap orchestration (SSH-based setup of remote machines).
+
+---
+
+## Design Principles
+
+Three rules govern the relationship between profiles, scripts, and doctor:
+
+1. **Profile YAML defines what is required.** It is the authoritative source of environment expectations. Scripts must not hardcode requirements that are absent from the profile.
+2. **Bootstrap scripts define how to install or start it.** Scripts are the execution layer — they read the profile contract and act on it.
+3. **Doctor defines whether the declared contract is satisfied right now.** It validates the profile's requirements against the actual machine state.
+
+If a requirement is not in the profile YAML, it does not exist. If a script installs something not declared in the profile, that is a bug.
 
 ---
 
@@ -44,27 +58,36 @@ Define a profile-driven bootstrap system that takes a fresh machine from clone t
 
 Each bootstrap profile is a YAML file in `config/profiles/bootstrap/`. It declares the system-level contract for that environment.
 
+All profiles require a `schema_version` field. In v1, unknown fields are rejected and missing required fields fail load immediately. Future schema changes must bump the version explicitly.
+
 ```yaml
 # config/profiles/bootstrap/dev-mac.yaml
+schema_version: 1
 name: dev-mac
 description: "macOS development workstation"
-platform: darwin
+
+platform:
+  os: darwin
+  min_version: "14.0"           # macOS Sonoma+
 
 python:
   version: "3.11"
-  manager: pyenv          # pyenv | system
+  manager: pyenv                # pyenv | system
+  extras: []                    # pip extras groups (empty = base only in v1)
+  test_deps: "tests/requirements.txt"
 
 system_deps:
   - name: docker
     check: "docker --version"
-    install: brew
-    package: "docker"       # Docker Desktop cask
-    cask: true
+    install: brew               # brew | apt | bundled | script | manual | none
+    package: "docker"           # Required for brew/apt
+    cask: true                  # Only valid with install: brew
     required: true
+    confirm: true               # Heavyweight install — require confirmation unless --yes
 
   - name: docker-compose
     check: "docker compose version"
-    install: bundled        # Ships with Docker Desktop
+    install: bundled            # Ships with Docker Desktop
     required: true
 
   - name: ollama
@@ -80,12 +103,35 @@ system_deps:
     required: true
 
 docker_services:
-  - rabbitmq
-  - postgres
-  - redis
-  - prefect-server
-  - runtime-api
-  - squadops-keycloak
+  - name: rabbitmq
+    healthcheck: tcp
+    port: 5672
+    timeout_seconds: 30
+
+  - name: postgres
+    healthcheck: tcp
+    port: 5432
+    timeout_seconds: 30
+
+  - name: redis
+    healthcheck: tcp
+    port: 6379
+    timeout_seconds: 15
+
+  - name: prefect-server
+    healthcheck: http
+    endpoint: "http://localhost:4200/api/health"
+    timeout_seconds: 60
+
+  - name: runtime-api
+    healthcheck: http
+    endpoint: "http://localhost:8001/health"
+    timeout_seconds: 60
+
+  - name: squadops-keycloak
+    healthcheck: http
+    endpoint: "http://localhost:8180/health/ready"
+    timeout_seconds: 90
 
 ollama_models:
   - name: "qwen2.5:7b"
@@ -95,23 +141,57 @@ ollama_models:
   - name: "qwen2.5:3b-instruct"
     required: true
 
-deployment_profile: local    # Links to existing config/profiles/local.yaml
-squad_profile: full-squad    # Links to config/squad-profiles.yaml
+deployment_profile: local       # Links to existing config/profiles/local.yaml
+squad_profile: full-squad       # Links to config/squad-profiles.yaml
 ```
+
+#### Schema Validation Rules (v1)
+
+| Rule | Behavior |
+|------|----------|
+| `schema_version` missing or != 1 | Fail load with clear error |
+| Unknown top-level fields | Rejected — fail load |
+| Missing `name`, `platform`, `python` | Fail load |
+| `install` not in `{brew, apt, bundled, script, manual, none}` | Rejected |
+| `cask: true` with `install` != `brew` | Rejected |
+| `package` missing when `install` is `brew` or `apt` | Rejected |
+| `check` missing when `install` != `none` | Rejected |
+| `healthcheck` not in `{http, tcp, docker_health}` | Rejected |
+| `endpoint` missing when `healthcheck` is `http` | Rejected |
+| `port` missing when `healthcheck` is `tcp` | Rejected |
 
 ### D2: Three First-Class Profiles
 
 | Profile | Platform | Python Manager | Package Manager | Models | Docker Services |
 |---------|----------|---------------|-----------------|--------|-----------------|
-| `dev-mac` | darwin | pyenv | Homebrew | 7b/8b/3b (small) | Full dev stack |
-| `dev-pc` | linux (WSL2) | pyenv | apt | 7b/8b/3b (small) | Full dev stack |
-| `local-spark` | linux | system (3.11+) | apt | 72b/70b/7b (large) | Full stack + GPU Ollama |
+| `dev-mac` | darwin (14.0+) | pyenv | Homebrew | 7b/8b/3b (small) | Full dev stack |
+| `dev-pc` | linux/WSL2 (Ubuntu 22.04+) | pyenv | apt | 7b/8b/3b (small) | Full dev stack |
+| `local-spark` | linux (Ubuntu 24.04+) | system (3.11+) | apt | 72b/70b/7b (large) | Full stack + GPU Ollama |
 
 Key differences for `local-spark`:
-- `nvidia-container-toolkit` as a system dep (validate, don't install — NVIDIA pre-installs drivers)
-- Large models (`qwen2.5:72b`, `llama3:70b`) instead of small ones
+- `nvidia-smi` and `nvidia-container-toolkit` as system deps with `install: none` (validate only — NVIDIA pre-installs drivers on DGX hardware)
+- Large models (`qwen2.5:72b`, `llama3:70b`) in addition to small ones
 - Ollama runs with `--gpus all` flag
 - `deployment_profile: staging` (links to the existing DGX Spark auth profile)
+
+#### Flexible Model Requirements
+
+Models can be declared as exact requirements or as alternatives:
+
+```yaml
+ollama_models:
+  # Exact requirement — this specific model must be present
+  - name: "qwen2.5:7b"
+    required: true
+
+  # Alternative — at least one of these must be present
+  - required_one_of:
+      - "qwen2.5:72b"
+      - "qwen2.5:32b"
+    tier: large               # Informational label for doctor output
+```
+
+This prevents profile rewrites when a specific model tag changes, while keeping the contract precise when an exact model is needed.
 
 ### D3: CLI Entry Points
 
@@ -144,8 +224,8 @@ $ squadops bootstrap dev-mac
 
 Steps in order:
 1. **Python** — ensure correct version via configured manager
-2. **System deps** — install missing tools via platform package manager
-3. **Python environment** — create venv, `pip install -e .`, install test deps
+2. **System deps** — install missing tools via platform package manager; deps with `confirm: true` prompt for confirmation unless `--yes` is passed
+3. **Python environment** — create venv, `pip install -e .`; if `test_deps` is set, also install from that file; if `extras` is non-empty, install those extras groups
 4. **Docker services** — `docker compose up -d` for the profile's service set
 5. **Ollama models** — `ollama pull` each required model (skip if present)
 6. **Preflight** — run `squadops doctor` automatically at the end
@@ -154,7 +234,13 @@ Flags:
 - `--skip-docker` — skip Docker service startup (useful for CI or partial setups)
 - `--skip-models` — skip Ollama model pulls (useful on slow networks)
 - `--dry-run` — show what would be done without executing
-- `--yes` / `-y` — skip confirmation prompts
+- `--yes` / `-y` — skip confirmation prompts (required for heavyweight installs like Docker Desktop)
+
+#### Docker Desktop vs Docker Engine
+
+- `dev-mac` expects **Docker Desktop** via Homebrew cask. Docker Desktop has licensing requirements; bootstrap prompts for confirmation before installing.
+- `dev-pc` expects **Docker Engine** + compose plugin via `apt`. No licensing concerns.
+- Heavyweight installs that may affect licensing or require user login always require confirmation unless `--yes` is passed.
 
 #### `squadops doctor <profile>`
 
@@ -176,13 +262,16 @@ $ squadops doctor dev-mac
     ✓ ollama 0.6.2
     ✓ git 2.48.1
 
+  Platform
+    ✓ macOS 15.3 (requires 14.0+)
+
   Docker Services
-    ✓ rabbitmq ........... healthy (localhost:5672)
-    ✓ postgres ........... healthy (localhost:5432)
-    ✓ redis .............. healthy (localhost:6379)
-    ✓ prefect-server ..... healthy (localhost:4200)
-    ✓ runtime-api ........ healthy (localhost:8001, v0.9.18)
-    ✓ keycloak ........... healthy (localhost:8180)
+    ✓ rabbitmq ........... healthy (tcp:5672)
+    ✓ postgres ........... healthy (tcp:5432)
+    ✓ redis .............. healthy (tcp:6379)
+    ✓ prefect-server ..... healthy (http://localhost:4200/api/health)
+    ✓ runtime-api ........ healthy (http://localhost:8001/health, v0.9.18)
+    ✓ keycloak ........... healthy (http://localhost:8180/health/ready)
 
   Ollama Models
     ✓ qwen2.5:7b ........ available
@@ -192,12 +281,28 @@ $ squadops doctor dev-mac
   Auth
     ✓ token cached, expires in 47m
 
-  Result: 15/15 checks passed ✓
+  Result: 16/16 checks passed ✓
+```
+
+When a check **fails**, doctor outputs:
+1. **What** failed — the check name and category
+2. **Why** it failed — the observed vs expected state
+3. **How to fix** — the exact command or step bootstrap would use to remediate
+4. **Auto-fixable?** — whether `squadops bootstrap` can fix it automatically or manual action is needed
+
+```
+  System Tools
+    ✗ ollama ............. not found
+      Fix: brew install ollama
+      Auto-fixable: yes (run squadops bootstrap dev-mac)
+    ✗ docker ............. not found
+      Fix: brew install --cask docker
+      Auto-fixable: yes (requires confirmation)
 ```
 
 Flags:
 - `--json` — machine-readable output
-- `--check <name>` — run a single check category (python, tools, docker, models, auth)
+- `--check <name>` — run a single check category (python, platform, tools, docker, models, auth)
 - Exit code 0 = all pass, 1 = any failure
 
 ### D4: Bootstrap Script Machinery
@@ -246,7 +351,7 @@ pyenv local 3.11.14
 
 # System deps via Homebrew
 brew install ollama git
-brew install --cask docker
+brew install --cask docker    # Prompts for confirmation (licensing)
 
 # Models (small, suitable for laptop)
 ollama pull qwen2.5:7b
@@ -282,7 +387,7 @@ ollama pull qwen2.5:3b-instruct
 python3 --version  # validate >= 3.11
 
 # Validate NVIDIA stack (pre-installed, don't attempt to install)
-nvidia-smi                          # GPU driver
+nvidia-smi                          # GPU driver presence
 nvidia-container-toolkit --version  # Container GPU passthrough
 
 # System deps via apt
@@ -290,8 +395,6 @@ sudo apt-get install -y docker.io docker-compose-plugin git curl
 
 # Ollama with GPU support
 curl -fsSL https://ollama.com/install.sh | sh
-# Verify GPU detection
-ollama run --gpu qwen2.5:7b "test" 2>&1 | head -1
 
 # Large models (Spark has 128GB unified memory)
 ollama pull qwen2.5:72b
@@ -303,9 +406,30 @@ ollama pull llama3.1:8b
 export SQUADOPS_PROFILE=staging
 ```
 
-### D6: Doctor Check Registry
+### D6: DGX Spark GPU Validation
 
-Each check is a named, self-contained validation function. The doctor command runs all checks for the active profile and reports results.
+GPU checks use a layered validation strategy rather than ad hoc CLI output parsing:
+
+| Layer | Check | Method | Result Type |
+|-------|-------|--------|-------------|
+| 1. Driver presence | `nvidia-smi` exits 0 | Exit code | Definitive |
+| 2. Container runtime | `nvidia-container-toolkit --version` exits 0 | Exit code | Definitive |
+| 3. Ollama GPU access | `ollama ps` shows GPU layers after a brief model load | Output parse | Heuristic |
+
+When a GPU check result is heuristic (layer 3), doctor marks it explicitly in output:
+
+```
+  GPU
+    ✓ nvidia-smi ......... driver 570.86.15
+    ✓ nvidia-container ... toolkit 1.17.3
+    ~ ollama GPU access .. detected (heuristic — verify with ollama ps)
+```
+
+The `~` marker distinguishes heuristic results from definitive pass/fail, preventing false confidence.
+
+### D7: Doctor Check Registry
+
+Each check is a named, self-contained validation function. The doctor command runs all checks declared in the active profile and reports results.
 
 ```python
 # src/squadops/cli/commands/doctor.py
@@ -313,31 +437,56 @@ Each check is a named, self-contained validation function. The doctor command ru
 @dataclass(frozen=True)
 class CheckResult:
     name: str
-    category: str          # python | tools | docker | models | auth
+    category: str              # python | platform | tools | docker | models | gpu | auth
     passed: bool
-    message: str           # "python 3.11.14 via pyenv"
-    detail: str | None     # Extra info on failure
+    message: str               # "python 3.11.14 via pyenv"
+    detail: str | None         # Extra info on failure
+    fix_command: str | None    # "brew install ollama"
+    auto_fixable: bool         # Can bootstrap fix this automatically?
+    heuristic: bool = False    # True if result is best-effort, not definitive
 
 CheckFn = Callable[[BootstrapProfile], CheckResult]
+```
 
-# Registry — checks are tagged by which profiles need them
-CHECKS: dict[str, CheckFn] = {
-    "python_version": check_python_version,
-    "venv_exists": check_venv_exists,
-    "docker_available": check_docker_available,
-    "docker_compose": check_docker_compose,
-    "ollama_available": check_ollama_available,
-    "git_available": check_git_available,
-    "nvidia_smi": check_nvidia_smi,            # local-spark only
-    "nvidia_container": check_nvidia_container, # local-spark only
-    "docker_service_*": check_docker_service,   # Per declared service
-    "ollama_model_*": check_ollama_model,       # Per declared model
-    "auth_token": check_auth_token,
-    "runtime_api_health": check_runtime_api,
+Docker service checks are driven entirely by the profile's `docker_services` declarations — the check function reads `healthcheck`, `endpoint`/`port`, and `timeout_seconds` from the profile YAML. No service-specific logic is hardcoded in doctor.
+
+### D8: Bootstrap State File
+
+Bootstrap writes a local state file for idempotency tracking and debugging:
+
+```
+.squadops/bootstrap/dev-mac.json
+```
+
+Contents:
+```json
+{
+  "profile": "dev-mac",
+  "schema_version": 1,
+  "last_run": "2026-03-06T14:32:18Z",
+  "steps_completed": ["python", "system_deps", "python_env", "docker", "models", "doctor"],
+  "detected_versions": {
+    "python": "3.11.14",
+    "docker": "27.5.1",
+    "ollama": "0.6.2"
+  },
+  "doctor_summary": {
+    "total": 16,
+    "passed": 16,
+    "failed": 0,
+    "heuristic": 0
+  }
 }
 ```
 
-### D7: Relationship to Existing Profile Layers
+This file is:
+- Written after each bootstrap run (overwritten, not appended)
+- Read by `squadops doctor` to show "last bootstrap" context
+- Useful for debugging partial failures ("which steps completed?")
+- `.squadops/` is gitignored
+- Future use: detect when a profile schema change requires re-bootstrap
+
+### D9: Relationship to Existing Profile Layers
 
 This SIP adds a new profile layer that **complements** the existing ones. No existing profiles are modified.
 
@@ -356,7 +505,7 @@ New (this SIP):
 
 Each bootstrap profile references the deployment profile it pairs with (`deployment_profile: local` or `deployment_profile: staging`), creating a clear link without coupling.
 
-### D8: Documentation
+### D10: Documentation
 
 A single `docs/GETTING_STARTED.md` replaces ad-hoc setup instructions:
 
@@ -397,9 +546,9 @@ starts services, and validates everything.
 
 | Profile       | Target           | Models        | Notes                    |
 |---------------|------------------|---------------|--------------------------|
-| `dev-mac`     | macOS laptop     | 7b/8b/3b      | Homebrew, Docker Desktop |
-| `dev-pc`      | Windows WSL2     | 7b/8b/3b      | apt, Docker Engine       |
-| `local-spark` | DGX Spark        | 72b/70b/7b/8b | GPU Ollama, large models |
+| `dev-mac`     | macOS 14+ laptop | 7b/8b/3b      | Homebrew, Docker Desktop |
+| `dev-pc`      | WSL2 Ubuntu 22+  | 7b/8b/3b      | apt, Docker Engine       |
+| `local-spark` | DGX Spark 24.04+ | 72b/70b/7b/8b | GPU Ollama, large models |
 
 ## Troubleshooting
 
@@ -413,17 +562,21 @@ starts services, and validates everything.
 
 ### Phase 1: Bootstrap Profile Schema + Doctor Command
 - Define `BootstrapProfile` model (frozen dataclass, loaded from YAML)
+- Implement strict schema validation (v1 rules: reject unknowns, require mandatories, validate enums)
 - Write 3 profile YAML files (`dev-mac`, `dev-pc`, `local-spark`)
 - Implement `squadops doctor <profile>` with check registry
-- Implement check functions for: python, tools, docker services, ollama models, auth
-- Tests: profile loading, check pass/fail, output formatting
+- Implement check functions for: python, platform, tools, docker services (declarative from profile), ollama models, GPU (Spark only), auth
+- Doctor failure output includes: what failed, why, fix command, auto-fixable flag
+- Tests: profile loading, schema validation (accept/reject), check pass/fail, output formatting, failure guidance
 
-### Phase 2: Bootstrap Shell Scripts
+### Phase 2: Bootstrap Shell Scripts + State File
 - Create `scripts/bootstrap/bootstrap.sh` entry point
 - Create `scripts/bootstrap/lib/` helper scripts (python, brew, apt, docker, ollama)
 - Create profile-specific scripts in `scripts/bootstrap/profiles/`
+- Implement bootstrap state file (`.squadops/bootstrap/<profile>.json`)
 - Idempotency: every script checks before acting, safe to re-run
-- Tests: dry-run mode, mock-based script validation
+- Confirmation prompts for heavyweight installs (`confirm: true` deps)
+- Tests: dry-run mode, state file write/read, idempotency assertions
 
 ### Phase 3: CLI Bootstrap Command + Integration
 - Implement `squadops bootstrap <profile>` Typer command
@@ -446,13 +599,24 @@ starts services, and validates everything.
 | # | Decision | Rationale |
 |---|----------|-----------|
 | D1 | Bootstrap profiles are separate YAML files in `config/profiles/bootstrap/`, not extensions to existing deployment profiles | Separation of concerns — auth config and system deps are different layers. Avoids bloating existing profiles. |
-| D2 | `bootstrap.sh` works before `pip install` | A fresh machine has no Python env. The shell script must be self-sufficient for the initial setup. |
-| D3 | Doctor checks are a Python registry, not shell scripts | Python gives us structured output (JSON), testability, and richer formatting. Shell scripts do the installing; Python does the validating. |
-| D4 | Bootstrap scripts are idempotent | Users re-run after failures, upgrades, or adding new profiles. Every step checks before acting. |
-| D5 | DGX Spark validates but does not install NVIDIA drivers/toolkit | NVIDIA pre-installs GPU drivers on DGX hardware. Installing/upgrading GPU drivers remotely is dangerous. We verify, not provision. |
-| D6 | Models are pulled by the bootstrap script, not pre-baked into Docker images | Model files are large (4-40GB). Pulling on first run is standard Ollama practice and allows model updates without rebuilding images. |
-| D7 | Each bootstrap profile references a deployment profile by name | Creates a link (`dev-mac → local`, `local-spark → staging`) without coupling the schemas. The bootstrap profile says "after setup, use this deployment profile." |
-| D8 | Single `docs/GETTING_STARTED.md` for all profiles | One place to maintain, profile-specific sections within. Avoids doc sprawl across multiple getting-started guides. |
+| D2 | `schema_version: 1` is required; unknown fields rejected; missing required fields fail load | Prevents "mystery YAML" drift. Makes the profile layer safe to evolve with explicit version bumps. |
+| D3 | Profile YAML is the authoritative source of requirements — scripts must not hardcode requirements absent from the profile | Keeps the design profile-first. If it's not in the YAML, it doesn't exist. |
+| D4 | `install` method validated against closed enum: `brew`, `apt`, `bundled`, `script`, `manual`, `none` | Prevents typo-driven silent failures. Makes doctor/bootstrap output deterministic. |
+| D5 | `bootstrap.sh` works before `pip install` | A fresh machine has no Python env. The shell script must be self-sufficient for the initial setup. |
+| D6 | Doctor checks are a Python registry, not shell scripts | Python gives us structured output (JSON), testability, and richer formatting. Shell scripts do the installing; Python does the validating. |
+| D7 | Docker service health checks are declarative in the profile (`healthcheck`, `endpoint`/`port`, `timeout_seconds`) | Prevents doctor from accumulating service-specific hardcoded logic. Keeps validation profile-driven. |
+| D8 | Bootstrap scripts are idempotent, with a state file at `.squadops/bootstrap/<profile>.json` | Users re-run after failures. State file aids debugging and enables future "needs re-bootstrap" detection. |
+| D9 | DGX Spark validates but does not install NVIDIA drivers/toolkit | NVIDIA pre-installs GPU drivers on DGX hardware. Installing/upgrading GPU drivers remotely is dangerous. We verify, not provision. |
+| D10 | GPU validation uses layered checks with heuristic results marked explicitly | Prevents false confidence. Makes Spark readiness easier to troubleshoot. |
+| D11 | Models support `required_one_of` alternative syntax alongside exact requirements | Makes profiles resilient to model tag changes without rewriting scripts. |
+| D12 | Models are pulled by the bootstrap script, not pre-baked into Docker images | Model files are large (4-40GB). Pulling on first run is standard Ollama practice and allows model updates without rebuilding images. |
+| D13 | Each bootstrap profile references a deployment profile by name | Creates a link (`dev-mac → local`, `local-spark → staging`) without coupling the schemas. |
+| D14 | `dev-mac` expects Docker Desktop (confirmation required); `dev-pc` expects Docker Engine + compose plugin | Makes licensing and operator intent explicit. Heavyweight installs always prompt unless `--yes`. |
+| D15 | Doctor failure output always includes: what failed, why, fix command, auto-fixable flag | Makes doctor valuable even for users who don't want bootstrap to mutate their machine. |
+| D16 | v1.0 bootstrap runs on the target machine only — no remote orchestration | Keeps the first version grounded. Remote deployment tooling is a future concern. |
+| D17 | Single `docs/GETTING_STARTED.md` for all profiles | One place to maintain, profile-specific sections within. Avoids doc sprawl. |
+| D18 | Python extras and test deps are declared in the profile (`extras`, `test_deps` fields) | Avoids bootstrap becoming a hidden place where dependency policy drifts. Explicit is better than implicit. |
+| D19 | Platform compatibility declared with `os`, `min_version`, `distro`, `distro_min_version` | Lets doctor fail fast with a clear explanation instead of allowing obscure downstream install failures. |
 
 ---
 
@@ -460,11 +624,14 @@ starts services, and validates everything.
 
 | Risk | Mitigation |
 |------|------------|
-| Homebrew/apt install commands break across OS versions | Pin to stable package names, test on current LTS versions, document minimum OS versions |
-| Docker Desktop licensing changes (macOS/Windows) | Document as a requirement, don't auto-install without consent (`--yes` flag) |
+| Homebrew/apt install commands break across OS versions | Pin to stable package names, test on current LTS versions, enforce `platform.min_version` in doctor |
+| Docker Desktop licensing changes (macOS/Windows) | `confirm: true` on Docker dep — always prompt before installing. Document licensing in GETTING_STARTED. |
 | Large model pulls take hours on slow networks | `--skip-models` flag, progress bars, resume-capable `ollama pull` |
 | WSL2 Docker networking differences | Profile-specific Docker Compose overrides if needed |
 | Script maintenance burden | Keep scripts thin — delegate to package managers, don't reimplement installers |
+| Profile YAML schema drift | `schema_version` + strict validation. Unknown fields rejected. |
+| GPU check brittleness | Layered validation (exit codes first, output parsing last). Heuristic results marked explicitly. |
+| Bootstrap state file stale after manual changes | State file is informational, not authoritative. Doctor always re-checks live state. |
 
 ---
 
@@ -473,5 +640,7 @@ starts services, and validates everything.
 1. A contributor with a fresh macOS laptop can go from `git clone` to `squadops doctor` all-green in under 15 minutes (excluding model download time).
 2. A maintainer can set up a DGX Spark from clone to running cycles in under 30 minutes.
 3. `squadops doctor` catches 100% of the "missing dependency" issues that currently require trial-and-error discovery.
-4. Bootstrap scripts are idempotent — running twice produces the same result with no errors.
-5. No tribal knowledge required — `docs/GETTING_STARTED.md` is the complete guide.
+4. Doctor failure output always includes the fix command — no check fails without guidance.
+5. Bootstrap scripts are idempotent — running twice produces the same result with no errors.
+6. No tribal knowledge required — `docs/GETTING_STARTED.md` is the complete guide.
+7. Profile schema validation rejects malformed YAML at load time, not at runtime.
