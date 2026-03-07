@@ -1,5 +1,6 @@
 """Tests for PrefectBridge subscriber."""
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -130,6 +131,19 @@ class TestPrefectBridge:
         bridge.on_event(event)
         bridge.on_event(event)
         assert mock_reporter.create_task_run.call_count == 1
+
+    async def test_task_dispatched_no_deadlock_in_async_context(self, bridge, mock_reporter):
+        """on_event from async context must not block the event loop."""
+        event = _make_event(
+            event_type=EventType.TASK_DISPATCHED,
+            entity_type="task",
+            entity_id="task_a",
+            payload={"task_name": "My Task"},
+        )
+        bridge.on_event(event)
+        await asyncio.sleep(0)  # yield to let scheduled task complete
+        mock_reporter.create_task_run.assert_called_once()
+        mock_reporter.set_task_run_state.assert_called_once_with("tr_123", "RUNNING", "Running")
 
     def test_no_flow_run_id_skips_run_state(self, bridge, mock_reporter):
         event = _make_event(

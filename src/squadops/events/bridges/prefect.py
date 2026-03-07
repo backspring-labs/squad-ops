@@ -75,11 +75,10 @@ class PrefectBridge:
 
             task_name = event.payload.get("task_name", task_key)
             if flow_run_id:
-                task_run_id = self._schedule_with_result(
-                    self._prefect.create_task_run(flow_run_id, task_key, task_name)
+                self._dispatched_tasks[dedup_key] = ""  # placeholder enables dedup immediately
+                self._schedule(
+                    self._create_and_start_task(flow_run_id, task_key, task_name, dedup_key)
                 )
-                self._dispatched_tasks[dedup_key] = task_run_id
-                self._schedule(self._prefect.set_task_run_state(task_run_id, "RUNNING", "Running"))
             return
 
         # Task succeeded/failed → set task run state
@@ -95,6 +94,14 @@ class PrefectBridge:
                 )
             return
 
+    async def _create_and_start_task(
+        self, flow_run_id: str, task_key: str, task_name: str, dedup_key: tuple[str, str]
+    ) -> None:
+        """Create a Prefect task run and set it to RUNNING (non-blocking)."""
+        task_run_id = await self._prefect.create_task_run(flow_run_id, task_key, task_name)
+        self._dispatched_tasks[dedup_key] = task_run_id
+        await self._prefect.set_task_run_state(task_run_id, "RUNNING", "Running")
+
     @staticmethod
     def _schedule(coro) -> None:  # noqa: ANN001
         """Schedule an async coroutine from synchronous context."""
@@ -104,16 +111,3 @@ class PrefectBridge:
         except RuntimeError:
             # No running event loop — run synchronously as fallback
             asyncio.run(coro)
-
-    @staticmethod
-    def _schedule_with_result(coro) -> str:  # noqa: ANN001
-        """Run an async coroutine and return its result."""
-        try:
-            loop = asyncio.get_running_loop()
-            # If we're in an async context, we can't await directly from sync.
-            # Use run_coroutine_threadsafe for thread-safe scheduling, but
-            # since PrefectReporter is best-effort, we run in a new loop as fallback.
-            future = asyncio.run_coroutine_threadsafe(coro, loop)
-            return future.result(timeout=10)
-        except RuntimeError:
-            return asyncio.run(coro)
