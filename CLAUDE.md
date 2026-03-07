@@ -13,8 +13,8 @@ SquadOps is a multi-agent orchestration framework for software development. It u
 
 ### Testing
 ```bash
-# Run new architecture tests (recommended, 2400+ tests always pass)
-./scripts/dev/run_new_arch_tests.sh -v
+# Run regression test suite (recommended, 2900+ tests always pass)
+./scripts/dev/run_regression_tests.sh -v
 
 # Run tests affected by your changes
 ./scripts/dev/run_affected_tests.sh           # Staged changes
