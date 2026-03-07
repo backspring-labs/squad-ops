@@ -16,6 +16,25 @@ from squadops.cli.output import print_detail, print_error, print_json, print_tab
 app = typer.Typer(name="meta", help="Meta commands (version, status)")
 
 
+def _get_bootstrap_info() -> dict | None:
+    """Read bootstrap state for status display (R11 — never implies current health)."""
+    try:
+        from squadops.bootstrap.setup.state import read_state
+
+        # Try each known profile — return the first (most recently written) match
+        for profile in ("dev-mac", "dev-pc", "local-spark"):
+            state = read_state(profile)
+            if state is not None:
+                return {
+                    "profile": state.profile,
+                    "last_run": state.last_run,
+                    "doctor_summary": state.doctor_summary,
+                }
+    except Exception:
+        pass
+    return None
+
+
 @app.command()
 def version(ctx: typer.Context):
     """Show CLI version (local only; no server call)."""
@@ -76,12 +95,16 @@ def status(ctx: typer.Context):
     if client:
         client.close()
 
+    # --- Bootstrap state (R11 — stale-state behavior) ---
+    bootstrap_info = _get_bootstrap_info()
+
     # --- Render ---
     if fmt == "json":
         combined = {
             "runtime": runtime_result,
             "infrastructure": infra_data,
             "agents": agents_data,
+            "bootstrap": bootstrap_info,
         }
         print_json(combined)
         if runtime_result.get("status") != "connected":
@@ -136,6 +159,14 @@ def status(ctx: typer.Context):
     else:
         typer.echo()
         print_error(f"Agent status unavailable (runtime-api at {config.base_url})")
+
+    # Bootstrap state
+    typer.echo()
+    if bootstrap_info:
+        typer.echo(f"Bootstrap: {bootstrap_info['profile']} (last run: {bootstrap_info['last_run']})")
+        typer.echo("  (run `squadops doctor` for current status)")
+    else:
+        typer.echo("Bootstrap: No bootstrap state found — run `squadops bootstrap <profile>`")
 
     if runtime_result.get("status") != "connected":
         raise typer.Exit(code=exit_codes.NETWORK_ERROR)

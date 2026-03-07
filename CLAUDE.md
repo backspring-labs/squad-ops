@@ -62,6 +62,22 @@ docker-compose up -d                       # Start all services
 docker-compose up -d postgres redis rabbitmq  # Start core services only
 ```
 
+### Bootstrap & Doctor
+```bash
+# Bootstrap a fresh environment (one command)
+./scripts/bootstrap/bootstrap.sh dev-mac           # macOS
+./scripts/bootstrap/bootstrap.sh dev-pc            # WSL2/Ubuntu
+./scripts/bootstrap/bootstrap.sh local-spark       # DGX Spark (GPU)
+
+# Or via CLI wrapper (validates profile schema first)
+squadops bootstrap dev-mac [--skip-docker] [--skip-models] [--dry-run] [--yes]
+
+# Validate environment against profile contract
+squadops doctor dev-mac                            # Full check
+squadops doctor dev-mac --check python             # Single category
+squadops doctor dev-mac --json                     # Machine-readable output
+```
+
 ### CLI (Cycle Execution)
 ```bash
 squadops login                             # Authenticate via Keycloak
