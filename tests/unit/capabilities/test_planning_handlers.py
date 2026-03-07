@@ -853,3 +853,18 @@ class TestTimeBudgetAwareness:
         call_args = ctx.ports.llm.chat.call_args
         user_msg = call_args[0][0][1].content
         assert "Time Budget" not in user_msg
+
+    async def test_budget_coerced_from_string(self):
+        """CLI --set flags pass values as strings; handle() must coerce to int."""
+        ctx = _make_context()
+        h = DataResearchContextHandler()
+        inputs = {
+            "prd": "Build a widget",
+            "resolved_config": {"time_budget_seconds": "1800"},
+        }
+        await h.handle(ctx, inputs)
+
+        call_args = ctx.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "Time Budget" in user_msg
+        assert "30 minutes" in user_msg

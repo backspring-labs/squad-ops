@@ -127,7 +127,8 @@ class _PlanningTaskHandler(_CycleTaskHandler):
 
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
-        time_budget_seconds = inputs.get("resolved_config", {}).get("time_budget_seconds")
+        raw_budget = inputs.get("resolved_config", {}).get("time_budget_seconds")
+        time_budget_seconds = int(raw_budget) if raw_budget is not None else None
 
         user_prompt = self._build_user_prompt(prd, prior_outputs, time_budget_seconds)
 
