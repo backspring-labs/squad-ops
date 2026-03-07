@@ -149,40 +149,23 @@ squadops runs assemble play_game <cycle-id> <run-id> --out ./output
 
 ## Getting Started
 
-### Prerequisites
+Bootstrap a fresh machine with one command using a [bootstrap profile](docs/GETTING_STARTED.md):
 
-- **Python 3.11+** (required for local development and testing)
-  - Recommended: Use [pyenv](https://github.com/pyenv/pyenv) for version management
-- **Docker** and **Docker Compose** (required for running agents and services)
-- **Ollama** (for local LLMs) - Required for agent task execution
+```bash
+./scripts/bootstrap/bootstrap.sh dev-mac      # macOS
+./scripts/bootstrap/bootstrap.sh dev-pc       # WSL2 / Ubuntu
+./scripts/bootstrap/bootstrap.sh local-spark  # DGX Spark (GPU)
+```
 
-### Quick Start
+Then verify and start working:
 
-1. **Set up Python environment**:
-   ```bash
-   brew install pyenv
-   pyenv install 3.11.14
-   pyenv local 3.11.14
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -e .
-   pip install -r tests/requirements.txt
-   ```
+```bash
+squadops doctor dev-mac                       # Validate environment
+squadops login                                # Authenticate via Keycloak
+squadops cycles create play_game --squad-profile full-squad --profile selftest
+```
 
-2. **Start Infrastructure**: `docker-compose up -d`
-
-3. **Login** (Keycloak auth required):
-   ```bash
-   squadops login
-   ```
-
-4. **Run a cycle**:
-   ```bash
-   squadops cycles create play_game --squad-profile full-squad --profile selftest
-   squadops cycles show <cycle-id>
-   ```
-
-5. **Monitor**: Check LangFuse UI at `http://localhost:3001` and Prefect UI at `http://localhost:4200`
+See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructions, profile details, and troubleshooting
 
 ---
 

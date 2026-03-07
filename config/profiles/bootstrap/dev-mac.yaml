@@ -1,0 +1,81 @@
+schema_version: 1
+name: dev-mac
+description: "macOS development workstation"
+
+platform:
+  os: darwin
+  min_version: "14.0"  # macOS Sonoma+
+
+python:
+  version: "3.11"
+  manager: pyenv
+  extras: []
+  test_deps: "tests/requirements.txt"
+
+system_deps:
+  - name: docker
+    check: "docker --version"
+    install: brew
+    package: "docker"
+    cask: true
+    required: true
+    confirm: true  # Docker Desktop has licensing requirements
+
+  - name: docker-compose
+    check: "docker compose version"
+    install: bundled  # Ships with Docker Desktop
+    required: true
+
+  - name: ollama
+    check: "ollama --version"
+    install: brew
+    package: "ollama"
+    required: true
+
+  - name: git
+    check: "git --version"
+    install: brew
+    package: "git"
+    required: true
+
+docker_services:
+  - name: rabbitmq
+    healthcheck: tcp
+    port: 5672
+    timeout_seconds: 30
+
+  - name: postgres
+    healthcheck: tcp
+    port: 5432
+    timeout_seconds: 30
+
+  - name: redis
+    healthcheck: tcp
+    port: 6379
+    timeout_seconds: 15
+
+  - name: prefect-server
+    healthcheck: http
+    endpoint: "http://localhost:4200/api/health"
+    timeout_seconds: 60
+
+  - name: runtime-api
+    healthcheck: http
+    endpoint: "http://localhost:8001/health"
+    timeout_seconds: 60
+
+  - name: squadops-keycloak
+    healthcheck: http
+    endpoint: "http://localhost:8180/health/ready"
+    timeout_seconds: 90
+
+ollama_models:
+  - name: "qwen2.5:7b"
+    required: true
+  - name: "llama3.1:8b"
+    required: true
+  - name: "qwen2.5:3b-instruct"
+    required: true
+
+deployment_profile: local
+squad_profile: full-squad

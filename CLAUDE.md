@@ -13,8 +13,8 @@ SquadOps is a multi-agent orchestration framework for software development. It u
 
 ### Testing
 ```bash
-# Run new architecture tests (recommended, 2400+ tests always pass)
-./scripts/dev/run_new_arch_tests.sh -v
+# Run regression test suite (recommended, 2900+ tests always pass)
+./scripts/dev/run_regression_tests.sh -v
 
 # Run tests affected by your changes
 ./scripts/dev/run_affected_tests.sh           # Staged changes
@@ -60,6 +60,22 @@ python scripts/dev/build_agent.py <role>           # Build agent package locally
 ```bash
 docker-compose up -d                       # Start all services
 docker-compose up -d postgres redis rabbitmq  # Start core services only
+```
+
+### Bootstrap & Doctor
+```bash
+# Bootstrap a fresh environment (one command)
+./scripts/bootstrap/bootstrap.sh dev-mac           # macOS
+./scripts/bootstrap/bootstrap.sh dev-pc            # WSL2/Ubuntu
+./scripts/bootstrap/bootstrap.sh local-spark       # DGX Spark (GPU)
+
+# Or via CLI wrapper (validates profile schema first)
+squadops bootstrap dev-mac [--skip-docker] [--skip-models] [--dry-run] [--yes]
+
+# Validate environment against profile contract
+squadops doctor dev-mac                            # Full check
+squadops doctor dev-mac --check python             # Single category
+squadops doctor dev-mac --json                     # Machine-readable output
 ```
 
 ### CLI (Cycle Execution)
