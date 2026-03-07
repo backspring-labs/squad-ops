@@ -12,6 +12,7 @@ import typer
 from squadops.cli.commands.artifacts import artifacts_app, baseline_app
 from squadops.cli.commands.auth import auth_app, login, logout
 from squadops.cli.commands.cycles import app as cycles_app
+from squadops.cli.commands.doctor import doctor
 from squadops.cli.commands.meta import app as meta_app
 from squadops.cli.commands.models import app as models_app
 from squadops.cli.commands.profiles import app as profiles_app
@@ -70,9 +71,10 @@ def main(
 # Register status as a root command (index 1 = status in meta.py)
 app.command("status")(meta_app.registered_commands[1].callback)
 
-# Register login/logout as root commands
+# Register login/logout/doctor as root commands
 app.command("login")(login)
 app.command("logout")(logout)
+app.command("doctor")(doctor)
 
 # Register command groups
 app.add_typer(projects_app, name="projects")
