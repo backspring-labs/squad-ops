@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Bootstrap profile: local-spark (DGX Spark with GPU) — SIP-0081.
+# Sourced by bootstrap.sh — not executed directly.
+# This script hardcodes install steps matching config/profiles/bootstrap/local-spark.yaml (R1).
+
+run_bootstrap() {
+    # ── GPU validation (hard checks only per R10) ──────────────────
+    info "=== GPU Validation ==="
+
+    if check_command nvidia-smi; then
+        success "nvidia-smi found"
+        run_or_dry nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+    else
+        error "nvidia-smi not found — NVIDIA drivers required for local-spark profile"
+        exit 1
+    fi
+
+    if check_command nvidia-container-toolkit; then
+        success "nvidia-container-toolkit found"
+    else
+        error "nvidia-container-toolkit not found — required for GPU containers"
+        exit 1
+    fi
+
+    # ── System deps (fail-fast per R7) ─────────────────────────────
+    info "=== System Dependencies ==="
+
+    apt_install_package "docker.io"
+    apt_install_package "docker-compose-plugin"
+    apt_install_package "git"
+    apt_install_package "curl"
+    install_ollama
+
+    # ── Python (R5: system Python, R4: still uses .venv) ───────────
+    info "=== Python Setup ==="
+
+    setup_system_python "3.11"
+    create_venv "3.11"
+    install_python_deps "" "tests/requirements.txt"
+
+    # ── Docker services ────────────────────────────────────────────
+    info "=== Docker Services ==="
+
+    if ! start_docker_services; then
+        DOCKER_OK=0
+        warn "Docker startup failed — skipping model pulls"
+        return 0
+    fi
+    wait_for_services 60 || warn "Some services may not be ready"
+
+    # ── Ollama models (large models for DGX Spark) ─────────────────
+    info "=== Ollama Models ==="
+
+    pull_model "qwen2.5:72b"
+    pull_model "llama3:70b"
+    pull_model "qwen2.5:7b"
+    pull_model "llama3.1:8b"
+}
