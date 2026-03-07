@@ -1,4 +1,4 @@
-last_assigned: 80
+last_assigned: 81
 sips:
 - sip_uid: null
   sip_number: null
@@ -727,3 +727,12 @@ sips:
   approver: jladd
   created_at: '2026-02-28'
   updated_at: '2026-03-06T08:29:55.250573Z'
+- sip_uid: null
+  sip_number: 81
+  title: Profile-Driven Bootstrap
+  path: sips/accepted/SIP-0081-Profile-Driven-Bootstrap.md
+  status: accepted
+  author: JL (Maintainer)
+  approver: jladd
+  created_at: '2026-03-06'
+  updated_at: '2026-03-06T20:25:16.638948Z'

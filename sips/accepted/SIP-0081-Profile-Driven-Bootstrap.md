@@ -1,8 +1,10 @@
 ---
 title: Profile-Driven Bootstrap
-status: proposed
+status: accepted
 author: JL (Maintainer)
 created_at: '2026-03-06'
+sip_number: 81
+updated_at: '2026-03-06T20:25:16.616017Z'
 ---
 # SIP: Profile-Driven Bootstrap
 
