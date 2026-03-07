@@ -1,10 +1,10 @@
 ---
 title: Time Budget Awareness in Planning Prompts
-status: accepted
+status: implemented
 author: SquadOps Architecture
 created_at: '2026-03-07'
 sip_number: 82
-updated_at: '2026-03-07T09:55:32.789985Z'
+updated_at: '2026-03-07T11:22:37.722952Z'
 ---
 # SIP: Time Budget Awareness in Planning Prompts
 
