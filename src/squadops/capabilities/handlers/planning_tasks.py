@@ -39,6 +39,55 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _VALID_READINESS = {"go", "revise", "no-go"}
 
 
+# ---------------------------------------------------------------------------
+# Time budget awareness helpers (SIP-0082)
+# ---------------------------------------------------------------------------
+
+
+def _format_time_budget(seconds: int) -> str:
+    """Format seconds as coarse human-readable duration for planning guidance.
+
+    Uses hours/minutes granularity; sub-minute remainders are dropped.
+    """
+    if seconds < 60:
+        return f"{seconds} second{'s' if seconds != 1 else ''}"
+    hours, remainder = divmod(seconds, 3600)
+    minutes = remainder // 60
+    parts: list[str] = []
+    if hours:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if minutes:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    return " ".join(parts)
+
+
+def _build_time_budget_section(time_budget_seconds: int | None) -> str:
+    """Build time budget prompt section for initial planning handlers."""
+    if not time_budget_seconds or time_budget_seconds <= 0:
+        return ""
+    formatted = _format_time_budget(time_budget_seconds)
+    return (
+        f"\n\n## Time Budget\n\n"
+        f"This cycle has a **{formatted}** time budget ({time_budget_seconds}s). "
+        f"Scope only what can reasonably be planned and executed within this window. "
+        f"Prefer a smaller executable plan over a broader incomplete plan. "
+        f"Explicitly defer out-of-budget work."
+    )
+
+
+def _build_refinement_time_budget_section(time_budget_seconds: int | None) -> str:
+    """Build time budget prompt section for refinement handlers."""
+    if not time_budget_seconds or time_budget_seconds <= 0:
+        return ""
+    formatted = _format_time_budget(time_budget_seconds)
+    return (
+        f"\n\n## Time Budget\n\n"
+        f"This cycle has a **{formatted}** time budget ({time_budget_seconds}s). "
+        f"Preserve budget realism while incorporating feedback. "
+        f"Do not expand scope beyond what can execute within this cycle budget."
+    )
+
+
 class _PlanningTaskHandler(_CycleTaskHandler):
     """Base class for planning and refinement task handlers.
 
@@ -51,6 +100,24 @@ class _PlanningTaskHandler(_CycleTaskHandler):
     and ``_artifact_name``.
     """
 
+    def _build_user_prompt(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        time_budget_seconds: int | None = None,
+    ) -> str:
+        """Assemble user prompt with optional time budget awareness (SIP-0082)."""
+        parts = [f"## Product Requirements Document\n\n{prd}"]
+        budget_section = _build_time_budget_section(time_budget_seconds)
+        if budget_section:
+            parts.append(budget_section)
+        if prior_outputs:
+            parts.append("\n\n## Prior Analysis from Upstream Roles\n")
+            for role, summary in prior_outputs.items():
+                parts.append(f"### {role}\n{summary}\n")
+        parts.append(f"\nPlease provide your {self._role} analysis and deliverables.")
+        return "\n".join(parts)
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -60,8 +127,9 @@ class _PlanningTaskHandler(_CycleTaskHandler):
 
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
+        time_budget_seconds = inputs.get("resolved_config", {}).get("time_budget_seconds")
 
-        user_prompt = self._build_user_prompt(prd, prior_outputs)
+        user_prompt = self._build_user_prompt(prd, prior_outputs, time_budget_seconds)
 
         # Key difference: assemble with task_type to activate task_type layer
         assembled = context.ports.prompt_service.assemble(
@@ -349,22 +417,23 @@ class GovernanceIncorporateFeedbackHandler(_PlanningTaskHandler):
         plan_refs = resolved_config.get("plan_artifact_refs")
         if not plan_refs:
             errors.append(
-                "'plan_artifact_refs' is required in execution_overrides "
-                "for refinement runs"
+                "'plan_artifact_refs' is required in execution_overrides for refinement runs"
             )
         elif not isinstance(plan_refs, list) or len(plan_refs) != 1:
-            errors.append(
-                "'plan_artifact_refs' must contain exactly one artifact reference"
-            )
+            errors.append("'plan_artifact_refs' must contain exactly one artifact reference")
         return errors
 
     def _build_user_prompt(
         self,
         prd: str,
         prior_outputs: dict[str, Any] | None,
+        time_budget_seconds: int | None = None,
     ) -> str:
         """Build prompt with PRD, original planning artifact, and refinement instructions."""
         parts = [f"## Product Requirements Document\n\n{prd}"]
+        budget_section = _build_refinement_time_budget_section(time_budget_seconds)
+        if budget_section:
+            parts.append(budget_section)
 
         # Include original planning artifact content if pre-resolved
         if prior_outputs and "artifact_contents" in prior_outputs:
@@ -389,9 +458,7 @@ class GovernanceIncorporateFeedbackHandler(_PlanningTaskHandler):
                 for role, summary in upstream.items():
                     parts.append(f"### {role}\n{summary}\n")
 
-        parts.append(
-            f"\nPlease provide your {self._role} analysis and deliverables."
-        )
+        parts.append(f"\nPlease provide your {self._role} analysis and deliverables.")
         return "\n".join(parts)
 
     async def handle(
@@ -403,9 +470,7 @@ class GovernanceIncorporateFeedbackHandler(_PlanningTaskHandler):
         # D17 conditions 2/3: fail-fast if artifact content is empty/missing
         prior_outputs = inputs.get("prior_outputs") or {}
         artifact_contents = prior_outputs.get("artifact_contents", {})
-        if not artifact_contents or all(
-            not str(v).strip() for v in artifact_contents.values()
-        ):
+        if not artifact_contents or all(not str(v).strip() for v in artifact_contents.values()):
             duration_ms = 0.0
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
