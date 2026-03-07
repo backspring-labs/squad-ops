@@ -125,6 +125,34 @@ class TestCreateCycle:
         )
         assert resp.status_code == 404
 
+    def test_workload_type_from_workload_sequence(self, client, mock_cycle_registry):
+        """When applied_defaults has workload_sequence, run gets workload_type from first entry."""
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles",
+            json={
+                "squad_profile_id": "full-squad",
+                "applied_defaults": {
+                    "workload_sequence": [
+                        {"type": "planning", "gate": "progress_plan_review"},
+                        {"type": "implementation", "gate": None},
+                    ],
+                },
+            },
+        )
+        assert resp.status_code == 200
+        run = mock_cycle_registry.create_run.call_args[0][0]
+        assert run.workload_type == "planning"
+
+    def test_workload_type_none_without_workload_sequence(self, client, mock_cycle_registry):
+        """Without workload_sequence, run.workload_type stays None (legacy path)."""
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles",
+            json={"squad_profile_id": "full-squad"},
+        )
+        assert resp.status_code == 200
+        run = mock_cycle_registry.create_run.call_args[0][0]
+        assert run.workload_type is None
+
     def test_create_cycle_extra_fields_rejected(self, client):
         resp = client.post(
             "/api/v1/projects/hello_squad/cycles",
