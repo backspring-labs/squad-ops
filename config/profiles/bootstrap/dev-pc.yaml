@@ -1,0 +1,86 @@
+schema_version: 1
+name: dev-pc
+description: "Windows WSL2 / Ubuntu development workstation"
+
+platform:
+  os: linux
+  distro: ubuntu
+  distro_min_version: "22.04"
+
+python:
+  version: "3.11"
+  manager: pyenv
+  extras: []
+  test_deps: "tests/requirements.txt"
+
+system_deps:
+  - name: docker
+    check: "docker --version"
+    install: apt
+    package: "docker.io"
+    required: true
+
+  - name: docker-compose
+    check: "docker compose version"
+    install: apt
+    package: "docker-compose-plugin"
+    required: true
+
+  - name: ollama
+    check: "ollama --version"
+    install: script  # curl -fsSL https://ollama.com/install.sh | sh
+    required: true
+
+  - name: git
+    check: "git --version"
+    install: apt
+    package: "git"
+    required: true
+
+  - name: curl
+    check: "curl --version"
+    install: apt
+    package: "curl"
+    required: true
+
+docker_services:
+  - name: rabbitmq
+    healthcheck: tcp
+    port: 5672
+    timeout_seconds: 30
+
+  - name: postgres
+    healthcheck: tcp
+    port: 5432
+    timeout_seconds: 30
+
+  - name: redis
+    healthcheck: tcp
+    port: 6379
+    timeout_seconds: 15
+
+  - name: prefect-server
+    healthcheck: http
+    endpoint: "http://localhost:4200/api/health"
+    timeout_seconds: 60
+
+  - name: runtime-api
+    healthcheck: http
+    endpoint: "http://localhost:8001/health"
+    timeout_seconds: 60
+
+  - name: squadops-keycloak
+    healthcheck: http
+    endpoint: "http://localhost:8180/health/ready"
+    timeout_seconds: 90
+
+ollama_models:
+  - name: "qwen2.5:7b"
+    required: true
+  - name: "llama3.1:8b"
+    required: true
+  - name: "qwen2.5:3b-instruct"
+    required: true
+
+deployment_profile: local
+squad_profile: full-squad

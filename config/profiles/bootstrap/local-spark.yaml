@@ -1,0 +1,105 @@
+schema_version: 1
+name: local-spark
+description: "DGX Spark with GPU — local network deployment"
+
+# Uses system Python intentionally — DGX Spark ships with Python 3.11+
+# on Ubuntu 24.04. Installing pyenv adds complexity with no benefit on
+# a controlled hardware target (design rule R5). Still uses .venv for
+# the project runtime (R4).
+
+platform:
+  os: linux
+  distro: ubuntu
+  distro_min_version: "24.04"
+
+python:
+  version: "3.11"
+  manager: system
+  extras: []
+  test_deps: "tests/requirements.txt"
+
+system_deps:
+  - name: docker
+    check: "docker --version"
+    install: apt
+    package: "docker.io"
+    required: true
+
+  - name: docker-compose
+    check: "docker compose version"
+    install: apt
+    package: "docker-compose-plugin"
+    required: true
+
+  - name: ollama
+    check: "ollama --version"
+    install: script  # curl -fsSL https://ollama.com/install.sh | sh
+    required: true
+
+  - name: git
+    check: "git --version"
+    install: apt
+    package: "git"
+    required: true
+
+  - name: curl
+    check: "curl --version"
+    install: apt
+    package: "curl"
+    required: true
+
+  # GPU deps — validate only, do not install (R9/R10 in plan).
+  # NVIDIA pre-installs drivers on DGX hardware.
+  - name: nvidia-smi
+    check: "nvidia-smi"
+    install: none
+    required: true
+
+  - name: nvidia-container-toolkit
+    check: "nvidia-container-toolkit --version"
+    install: none
+    required: true
+
+docker_services:
+  - name: rabbitmq
+    healthcheck: tcp
+    port: 5672
+    timeout_seconds: 30
+
+  - name: postgres
+    healthcheck: tcp
+    port: 5432
+    timeout_seconds: 30
+
+  - name: redis
+    healthcheck: tcp
+    port: 6379
+    timeout_seconds: 15
+
+  - name: prefect-server
+    healthcheck: http
+    endpoint: "http://localhost:4200/api/health"
+    timeout_seconds: 60
+
+  - name: runtime-api
+    healthcheck: http
+    endpoint: "http://localhost:8001/health"
+    timeout_seconds: 60
+
+  - name: squadops-keycloak
+    healthcheck: http
+    endpoint: "http://localhost:8180/health/ready"
+    timeout_seconds: 90
+
+ollama_models:
+  - name: "qwen2.5:72b"
+    required: true
+  - name: "llama3:70b"
+    required: true
+  - name: "qwen2.5:7b"
+    required: true
+  - name: "llama3.1:8b"
+    required: true
+
+deployment_profile: staging
+squad_profile: full-squad
