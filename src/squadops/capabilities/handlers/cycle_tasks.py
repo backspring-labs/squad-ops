@@ -160,8 +160,8 @@ class _CycleTaskHandler(CapabilityHandler):
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
                 model=resolved_model,
-                prompt_text=user_prompt[:2000],
-                response_text=content[:2000],
+                prompt_text=user_prompt[:10000],
+                response_text=content[:10000],
                 latency_ms=llm_duration_ms,
             )
             layers = PromptLayerMetadata(
@@ -634,8 +634,8 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
                 model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:2000],
-                response_text=response[:2000],
+                prompt_text=prompt[:10000],
+                response_text=response[:10000],
                 latency_ms=duration_ms,
             )
             layers = PromptLayerMetadata(
@@ -1063,8 +1063,8 @@ class QATestHandler(_CycleTaskHandler):
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
                 model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:2000],
-                response_text=response[:2000],
+                prompt_text=prompt[:10000],
+                response_text=response[:10000],
                 latency_ms=duration_ms,
             )
             layers = PromptLayerMetadata(
@@ -1520,8 +1520,8 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
                 model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:2000],
-                response_text=response[:2000],
+                prompt_text=prompt[:10000],
+                response_text=response[:10000],
                 latency_ms=duration_ms,
             )
             layers = PromptLayerMetadata(

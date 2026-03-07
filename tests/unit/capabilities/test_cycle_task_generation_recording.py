@@ -147,7 +147,7 @@ class TestHandlerRecordsGeneration:
 
         call_args = mock_obs.record_generation.call_args
         gen_record = call_args[0][1]
-        assert len(gen_record.prompt_text) <= 2000
+        assert len(gen_record.prompt_text) <= 10000
 
 
 class TestHandlerSkipsRecordingWhenNoObservability:
