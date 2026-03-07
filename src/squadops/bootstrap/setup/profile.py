@@ -22,7 +22,7 @@ VALID_HEALTHCHECK_TYPES = frozenset({"http", "tcp", "docker_health"})
 VALID_PYTHON_MANAGERS = frozenset({"pyenv", "system"})
 VALID_PLATFORMS = frozenset({"darwin", "linux"})
 
-_BOOTSTRAP_PROFILES_DIR = Path(__file__).resolve().parents[3] / "config" / "profiles" / "bootstrap"
+_BOOTSTRAP_PROFILES_DIR = Path(__file__).resolve().parents[4] / "config" / "profiles" / "bootstrap"
 
 # Top-level keys allowed in v1 schema (unknown fields are rejected).
 _ALLOWED_TOP_LEVEL_KEYS = frozenset(
