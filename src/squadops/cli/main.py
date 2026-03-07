@@ -11,6 +11,7 @@ import typer
 
 from squadops.cli.commands.artifacts import artifacts_app, baseline_app
 from squadops.cli.commands.auth import auth_app, login, logout
+from squadops.cli.commands.bootstrap import bootstrap
 from squadops.cli.commands.cycles import app as cycles_app
 from squadops.cli.commands.doctor import doctor
 from squadops.cli.commands.meta import app as meta_app
@@ -75,6 +76,7 @@ app.command("status")(meta_app.registered_commands[1].callback)
 app.command("login")(login)
 app.command("logout")(logout)
 app.command("doctor")(doctor)
+app.command("bootstrap")(bootstrap)
 
 # Register command groups
 app.add_typer(projects_app, name="projects")
