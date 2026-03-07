@@ -151,6 +151,7 @@ class _CycleTaskHandler(CapabilityHandler):
             import uuid
 
             from squadops.telemetry.models import (
+                MAX_OBSERVABILITY_TEXT_LENGTH,
                 GenerationRecord,
                 PromptLayer,
                 PromptLayerMetadata,
@@ -160,8 +161,8 @@ class _CycleTaskHandler(CapabilityHandler):
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
                 model=resolved_model,
-                prompt_text=user_prompt[:10000],
-                response_text=content[:10000],
+                prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=llm_duration_ms,
             )
             layers = PromptLayerMetadata(
@@ -626,6 +627,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             import uuid
 
             from squadops.telemetry.models import (
+                MAX_OBSERVABILITY_TEXT_LENGTH,
                 GenerationRecord,
                 PromptLayer,
                 PromptLayerMetadata,
@@ -634,8 +636,8 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
                 model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:10000],
-                response_text=response[:10000],
+                prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
             )
             layers = PromptLayerMetadata(
@@ -1055,6 +1057,7 @@ class QATestHandler(_CycleTaskHandler):
             import uuid
 
             from squadops.telemetry.models import (
+                MAX_OBSERVABILITY_TEXT_LENGTH,
                 GenerationRecord,
                 PromptLayer,
                 PromptLayerMetadata,
@@ -1063,8 +1066,8 @@ class QATestHandler(_CycleTaskHandler):
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
                 model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:10000],
-                response_text=response[:10000],
+                prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
             )
             layers = PromptLayerMetadata(
@@ -1512,6 +1515,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             import uuid
 
             from squadops.telemetry.models import (
+                MAX_OBSERVABILITY_TEXT_LENGTH,
                 GenerationRecord,
                 PromptLayer,
                 PromptLayerMetadata,
@@ -1520,8 +1524,8 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             gen_record = GenerationRecord(
                 generation_id=str(uuid.uuid4()),
                 model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:10000],
-                response_text=response[:10000],
+                prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
             )
             layers = PromptLayerMetadata(
