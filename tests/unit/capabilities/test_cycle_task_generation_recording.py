@@ -13,6 +13,7 @@ import pytest
 
 from squadops.capabilities.handlers.cycle_tasks import StrategyAnalyzeHandler
 from squadops.llm.models import ChatMessage
+from squadops.telemetry.models import MAX_OBSERVABILITY_TEXT_LENGTH
 from squadops.telemetry.models import CorrelationContext
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -147,7 +148,7 @@ class TestHandlerRecordsGeneration:
 
         call_args = mock_obs.record_generation.call_args
         gen_record = call_args[0][1]
-        assert len(gen_record.prompt_text) <= 2000
+        assert len(gen_record.prompt_text) <= MAX_OBSERVABILITY_TEXT_LENGTH
 
 
 class TestHandlerSkipsRecordingWhenNoObservability:

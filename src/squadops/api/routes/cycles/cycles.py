@@ -83,6 +83,10 @@ async def create_cycle(
             notes=body.notes,
         )
 
+        # Resolve workload_type from workload_sequence (fixes #26)
+        ws = applied_defaults.get("workload_sequence", [])
+        workload_type = ws[0]["type"] if ws else None
+
         run = Run(
             run_id=f"run_{uuid.uuid4().hex[:12]}",
             cycle_id=cycle_id,
@@ -90,6 +94,7 @@ async def create_cycle(
             status="queued",
             initiated_by="api",
             resolved_config_hash=config_hash,
+            workload_type=workload_type,
         )
 
         # Persist atomically (T17)

@@ -127,6 +127,10 @@ class PromptLayerMetadata:
     layers: tuple[PromptLayer, ...]
 
 
+MAX_OBSERVABILITY_TEXT_LENGTH = 10000
+"""Safety cap for prompt/response text stored in LLM observability records."""
+
+
 @dataclass(frozen=True)
 class GenerationRecord:
     """Record of a single LLM generation (model call).

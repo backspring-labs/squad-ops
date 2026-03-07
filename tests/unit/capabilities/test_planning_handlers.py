@@ -25,6 +25,9 @@ from squadops.capabilities.handlers.planning_tasks import (
     QADefineTestStrategyHandler,
     QAValidateRefinementHandler,
     StrategyFrameObjectiveHandler,
+    _build_refinement_time_budget_section,
+    _build_time_budget_section,
+    _format_time_budget,
 )
 from squadops.llm.exceptions import LLMError
 
@@ -714,3 +717,154 @@ class TestD17ArtifactContentValidation:
         await h.handle(ctx, {"prd": "Build a widget"})
 
         ctx.ports.llm.chat.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# 12. Time budget awareness (SIP-0082)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatTimeBudget:
+    @pytest.mark.parametrize(
+        "seconds, expected",
+        [
+            (1, "1 second"),
+            (45, "45 seconds"),
+            (60, "1 minute"),
+            (1800, "30 minutes"),
+            (3600, "1 hour"),
+            (5400, "1 hour 30 minutes"),
+            (7200, "2 hours"),
+        ],
+        ids=["1s", "45s", "1min", "30min", "1h", "1h30m", "2h"],
+    )
+    def test_format(self, seconds, expected):
+        assert _format_time_budget(seconds) == expected
+
+
+class TestBuildTimeBudgetSection:
+    @pytest.mark.parametrize(
+        "value",
+        [None, 0, -100],
+        ids=["none", "zero", "negative"],
+    )
+    def test_no_section_for_non_positive(self, value):
+        assert _build_time_budget_section(value) == ""
+
+    def test_positive_budget_produces_section(self):
+        result = _build_time_budget_section(7200)
+        assert "## Time Budget" in result
+        assert "2 hours" in result
+        assert "defer" in result
+
+    @pytest.mark.parametrize(
+        "value",
+        [None, 0, -100],
+        ids=["none", "zero", "negative"],
+    )
+    def test_refinement_no_section_for_non_positive(self, value):
+        assert _build_refinement_time_budget_section(value) == ""
+
+    def test_refinement_positive_budget_produces_section(self):
+        result = _build_refinement_time_budget_section(1800)
+        assert "## Time Budget" in result
+        assert "30 minutes" in result
+        assert "Preserve budget realism" in result
+
+
+class TestTimeBudgetAwareness:
+    """Verify time budget injection in real handle() calls across all handlers."""
+
+    @pytest.mark.parametrize(
+        "cls",
+        [c for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
+        ids=[c.__name__ for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
+    )
+    async def test_budget_injected_when_present(self, cls):
+        ctx = _make_context()
+        h = cls()
+        inputs = {
+            "prd": "Build a widget",
+            "resolved_config": {"time_budget_seconds": 7200},
+        }
+        await h.handle(ctx, inputs)
+
+        call_args = ctx.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "Time Budget" in user_msg
+        assert "2 hours" in user_msg
+
+    async def test_budget_injected_in_refinement_handler(self):
+        ctx = _make_context()
+        h = GovernanceIncorporateFeedbackHandler()
+        inputs = {
+            "prd": "Build a widget",
+            "resolved_config": {"time_budget_seconds": 1800},
+            "prior_outputs": {
+                "artifact_contents": {
+                    "planning_artifact.md": "Original planning content",
+                },
+            },
+        }
+        await h.handle(ctx, inputs)
+
+        call_args = ctx.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "Time Budget" in user_msg
+        assert "30 minutes" in user_msg
+        assert "Preserve budget realism" in user_msg
+
+    @pytest.mark.parametrize(
+        "cls",
+        [c for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
+        ids=[c.__name__ for c in ALL_HANDLER_CLASSES if c != GovernanceIncorporateFeedbackHandler],
+    )
+    async def test_no_budget_section_when_absent(self, cls):
+        ctx = _make_context()
+        h = cls()
+        await h.handle(ctx, {"prd": "Build a widget"})
+
+        call_args = ctx.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "Time Budget" not in user_msg
+
+    async def test_no_budget_section_when_zero(self):
+        ctx = _make_context()
+        h = DataResearchContextHandler()
+        inputs = {
+            "prd": "Build a widget",
+            "resolved_config": {"time_budget_seconds": 0},
+        }
+        await h.handle(ctx, inputs)
+
+        call_args = ctx.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "Time Budget" not in user_msg
+
+    async def test_no_budget_section_when_none(self):
+        ctx = _make_context()
+        h = DataResearchContextHandler()
+        inputs = {
+            "prd": "Build a widget",
+            "resolved_config": {"time_budget_seconds": None},
+        }
+        await h.handle(ctx, inputs)
+
+        call_args = ctx.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "Time Budget" not in user_msg
+
+    async def test_budget_coerced_from_string(self):
+        """CLI --set flags pass values as strings; handle() must coerce to int."""
+        ctx = _make_context()
+        h = DataResearchContextHandler()
+        inputs = {
+            "prd": "Build a widget",
+            "resolved_config": {"time_budget_seconds": "1800"},
+        }
+        await h.handle(ctx, inputs)
+
+        call_args = ctx.ports.llm.chat.call_args
+        user_msg = call_args[0][0][1].content
+        assert "Time Budget" in user_msg
+        assert "30 minutes" in user_msg
