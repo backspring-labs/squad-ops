@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.envsetup.profile import (
+from squadops.preflight.profile import (
     BootstrapProfile,
     BootstrapProfileError,
     DockerService,

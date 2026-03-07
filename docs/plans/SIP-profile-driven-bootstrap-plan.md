@@ -89,8 +89,8 @@ Doctor marks heuristic results with `~` and never counts them as failures in the
 
 | File | Contents |
 |------|----------|
-| `src/squadops/bootstrap/__init__.py` | Module docstring |
-| `src/squadops/bootstrap/profile.py` | `BootstrapProfile` frozen dataclass, nested models, schema validation |
+| `src/squadops/preflight/__init__.py` | Module docstring |
+| `src/squadops/preflight/profile.py` | `BootstrapProfile` frozen dataclass, nested models, schema validation |
 
 **Models:**
 
@@ -208,9 +208,9 @@ class BootstrapProfile:
 
 | File | Contents |
 |------|----------|
-| `tests/unit/bootstrap/__init__.py` | Empty |
-| `tests/unit/bootstrap/conftest.py` | Fixtures: `tmp_profile_dir`, `valid_profile_yaml`, `minimal_profile_yaml` |
-| `tests/unit/bootstrap/test_profile.py` | Schema validation tests |
+| `tests/unit/preflight/__init__.py` | Empty |
+| `tests/unit/preflight/conftest.py` | Fixtures: `tmp_profile_dir`, `valid_profile_yaml`, `minimal_profile_yaml` |
+| `tests/unit/preflight/test_profile.py` | Schema validation tests |
 
 **Tests (parametrized where possible):**
 
@@ -248,7 +248,7 @@ class BootstrapProfile:
 
 | File | Contents |
 |------|----------|
-| `src/squadops/bootstrap/checks.py` | `CheckResult` dataclass, check functions, `run_checks()` orchestrator |
+| `src/squadops/preflight/checks.py` | `CheckResult` dataclass, check functions, `run_checks()` orchestrator |
 
 ```python
 @dataclass(frozen=True)
@@ -320,7 +320,7 @@ def doctor(
 
 | File | Contents |
 |------|----------|
-| `tests/unit/bootstrap/test_checks.py` | Check function unit tests |
+| `tests/unit/preflight/test_checks.py` | Check function unit tests |
 | `tests/unit/cli/test_doctor.py` | CLI command tests |
 
 **Check function tests:**
@@ -419,7 +419,7 @@ def doctor(
 
 | File | Contents |
 |------|----------|
-| `src/squadops/bootstrap/state.py` | `BootstrapState` dataclass, `write_state()`, `read_state()` |
+| `src/squadops/preflight/state.py` | `BootstrapState` dataclass, `write_state()`, `read_state()` |
 
 State file location: `.squadops/bootstrap/<profile>.json`
 
@@ -450,7 +450,7 @@ class BootstrapState:
 
 | File | Contents |
 |------|----------|
-| `tests/unit/bootstrap/test_state.py` | State file read/write tests |
+| `tests/unit/preflight/test_state.py` | State file read/write tests |
 
 | Test | Bug it catches |
 |------|----------------|
@@ -567,10 +567,10 @@ Sections:
 
 | File | Phase |
 |------|-------|
-| `src/squadops/bootstrap/__init__.py` | 1a |
-| `src/squadops/bootstrap/profile.py` | 1a |
-| `src/squadops/bootstrap/checks.py` | 2a |
-| `src/squadops/bootstrap/state.py` | 3c |
+| `src/squadops/preflight/__init__.py` | 1a |
+| `src/squadops/preflight/profile.py` | 1a |
+| `src/squadops/preflight/checks.py` | 2a |
+| `src/squadops/preflight/state.py` | 3c |
 | `src/squadops/cli/commands/doctor.py` | 2b |
 | `src/squadops/cli/commands/bootstrap.py` | 4a |
 | `config/profiles/bootstrap/dev-mac.yaml` | 1b |
@@ -587,11 +587,11 @@ Sections:
 | `scripts/bootstrap/profiles/dev-pc.sh` | 3b |
 | `scripts/bootstrap/profiles/local-spark.sh` | 3b |
 | `docs/GETTING_STARTED.md` | 5a |
-| `tests/unit/bootstrap/__init__.py` | 1c |
-| `tests/unit/bootstrap/conftest.py` | 1c |
-| `tests/unit/bootstrap/test_profile.py` | 1c |
-| `tests/unit/bootstrap/test_checks.py` | 2c |
-| `tests/unit/bootstrap/test_state.py` | 3d |
+| `tests/unit/preflight/__init__.py` | 1c |
+| `tests/unit/preflight/conftest.py` | 1c |
+| `tests/unit/preflight/test_profile.py` | 1c |
+| `tests/unit/preflight/test_checks.py` | 2c |
+| `tests/unit/preflight/test_state.py` | 3d |
 | `tests/unit/cli/test_doctor.py` | 2c |
 | `tests/unit/cli/test_bootstrap.py` | 4b |
 
