@@ -15,10 +15,7 @@ import typer
 from squadops.bootstrap.setup.checks import CheckResult, run_checks
 from squadops.bootstrap.setup.profile import BootstrapProfileError, load_bootstrap_profile
 
-app = typer.Typer(name="doctor", help="Validate bootstrap profile contract")
 
-
-@app.command()
 def doctor(
     profile_name: str = typer.Argument(
         ..., help="Bootstrap profile name (dev-mac, dev-pc, local-spark)"

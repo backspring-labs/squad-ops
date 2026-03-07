@@ -21,10 +21,6 @@ from squadops.bootstrap.setup.state import BootstrapState, write_state
 
 _BOOTSTRAP_SCRIPT = Path(__file__).resolve().parents[4] / "scripts" / "bootstrap" / "bootstrap.sh"
 
-app = typer.Typer(name="bootstrap", help="Profile-driven environment bootstrap")
-
-
-@app.command()
 def bootstrap(
     profile_name: str = typer.Argument(
         ..., help="Bootstrap profile (dev-mac, dev-pc, local-spark)"
