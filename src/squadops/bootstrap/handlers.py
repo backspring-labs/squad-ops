@@ -54,6 +54,15 @@ from squadops.capabilities.handlers.repair_tasks import (
     GovernanceRootCauseHandler,
     StrategyCorrectivePlanHandler,
 )
+from squadops.capabilities.handlers.impl.analyze_failure import (
+    DataAnalyzeFailureHandler,
+)
+from squadops.capabilities.handlers.impl.correction_decision import (
+    GovernanceCorrectionDecisionHandler,
+)
+from squadops.capabilities.handlers.impl.establish_contract import (
+    GovernanceEstablishContractHandler,
+)
 from squadops.capabilities.handlers.warmboot import (
     ContextSyncHandler,
     WarmbootHandler,
@@ -106,6 +115,10 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (GovernanceRootCauseHandler, ("lead",)),
     (StrategyCorrectivePlanHandler, ("strat",)),
     (DevelopmentRepairHandler, ("dev",)),
+    # Implementation handlers (SIP-0079: Implementation Run Contract)
+    (GovernanceEstablishContractHandler, ("lead",)),
+    (DataAnalyzeFailureHandler, ("data",)),
+    (GovernanceCorrectionDecisionHandler, ("lead",)),
     # Planning handlers (SIP-0078: Planning Workload Protocol)
     (DataResearchContextHandler, ("data",)),
     (StrategyFrameObjectiveHandler, ("strat",)),
