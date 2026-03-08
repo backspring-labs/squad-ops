@@ -84,7 +84,7 @@ fragments:
   layer: task_type
   roles:
   - lead
-  sha256: a025e929358f7705c5a38f8f1e592f8c3232ba0c407be11f15d7001a31b0192d
+  sha256: 561a7f5a11532a9dd9d4197c94cda4904d33662c0a8101b7364243458d9c8331
 - fragment_id: task_type.governance.incorporate_feedback
   path: shared/task_type/task_type.governance.incorporate_feedback.md
   layer: task_type

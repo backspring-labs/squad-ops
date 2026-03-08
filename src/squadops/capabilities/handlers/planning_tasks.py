@@ -298,6 +298,16 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
     _role = "lead"
     _artifact_name = "planning_artifact.md"
 
+    _DEFAULT_FRONTMATTER = "---\nreadiness: revise\nsufficiency_score: 3\nblocker_unknowns: 0\n---\n\n"
+
+    def _synthesize_frontmatter(self, content: str) -> str:
+        """Prepend default frontmatter when LLM omits it."""
+        logger.warning(
+            "assess_readiness: LLM omitted YAML frontmatter — "
+            "synthesizing default (readiness=revise, score=3)"
+        )
+        return self._DEFAULT_FRONTMATTER + content
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -312,12 +322,12 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
         # Structural validation: YAML frontmatter
         m = _FRONTMATTER_RE.match(content)
         if not m:
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=result._evidence,
-                error="Planning artifact missing YAML frontmatter (expected --- delimiters)",
-            )
+            # Graceful degradation: synthesize default frontmatter so the
+            # cycle can proceed.  The default readiness=revise ensures the
+            # plan is flagged for review rather than silently accepted.
+            content = self._synthesize_frontmatter(content)
+            result.outputs["artifacts"][0]["content"] = content
+            m = _FRONTMATTER_RE.match(content)
 
         try:
             fm = yaml.safe_load(m.group(1))
@@ -337,55 +347,26 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
                 error="Planning artifact YAML frontmatter is not a mapping",
             )
 
-        # Validate readiness field
-        if "readiness" not in fm:
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=result._evidence,
-                error="Planning artifact frontmatter missing 'readiness' field",
+        # Validate readiness field — default to "revise" if missing/invalid
+        readiness = fm.get("readiness")
+        if readiness not in _VALID_READINESS:
+            logger.warning(
+                "assess_readiness: frontmatter readiness=%r invalid, defaulting to 'revise'",
+                readiness,
             )
+            fm["readiness"] = "revise"
 
-        if fm["readiness"] not in _VALID_READINESS:
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=result._evidence,
-                error=(
-                    f"Planning artifact 'readiness' must be one of "
-                    f"{sorted(_VALID_READINESS)}, got: {fm['readiness']!r}"
-                ),
-            )
-
-        # Validate sufficiency_score field
-        if "sufficiency_score" not in fm:
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=result._evidence,
-                error="Planning artifact frontmatter missing 'sufficiency_score' field",
-            )
-
+        # Validate sufficiency_score — default to 3 if missing/invalid
         try:
-            score = int(fm["sufficiency_score"])
+            score = int(fm.get("sufficiency_score", 3))
+            if not (0 <= score <= 5):
+                raise ValueError
         except (TypeError, ValueError):
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=result._evidence,
-                error=(
-                    f"Planning artifact 'sufficiency_score' must be an integer 0-5, "
-                    f"got: {fm['sufficiency_score']!r}"
-                ),
+            logger.warning(
+                "assess_readiness: frontmatter sufficiency_score=%r invalid, defaulting to 3",
+                fm.get("sufficiency_score"),
             )
-
-        if not (0 <= score <= 5):
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=result._evidence,
-                error=f"Planning artifact 'sufficiency_score' must be 0-5, got: {score}",
-            )
+            score = 3
 
         return result
 

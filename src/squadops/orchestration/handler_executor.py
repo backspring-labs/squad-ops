@@ -148,6 +148,13 @@ class HandlerExecutor(CapabilityExecutor):
 
             # Convert handler result to task result
             if result.success:
+                logger.info(
+                    "handler_succeeded",
+                    extra={
+                        "task_id": task_id,
+                        "capability_id": capability_id,
+                    },
+                )
                 return TaskResult(
                     task_id=task_id,
                     status="SUCCEEDED",
@@ -156,6 +163,14 @@ class HandlerExecutor(CapabilityExecutor):
                     execution_evidence=self._evidence_to_dict(result.evidence),
                 )
             else:
+                logger.warning(
+                    "handler_failed",
+                    extra={
+                        "task_id": task_id,
+                        "capability_id": capability_id,
+                        "error": result.error,
+                    },
+                )
                 return TaskResult(
                     task_id=task_id,
                     status="FAILED",

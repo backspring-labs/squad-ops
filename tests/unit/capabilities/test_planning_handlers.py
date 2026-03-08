@@ -555,13 +555,15 @@ class TestGovernanceAssessReadinessValidation:
         assert result.success is True
         assert result.outputs["artifacts"][0]["name"] == "planning_artifact.md"
 
-    async def test_missing_frontmatter_fails(self):
+    async def test_missing_frontmatter_synthesizes_default(self):
         ctx = _make_context("No frontmatter here, just plain text.")
         h = GovernanceAssessReadinessHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
-        assert result.success is False
-        assert "YAML frontmatter" in result.error
+        assert result.success is True
+        content = result.outputs["artifacts"][0]["content"]
+        assert content.startswith("---\n")
+        assert "readiness: revise" in content
 
     async def test_invalid_yaml_fails(self):
         ctx = _make_context("---\n[invalid: yaml: content\n---\n\nBody")
@@ -571,52 +573,45 @@ class TestGovernanceAssessReadinessValidation:
         assert result.success is False
         assert "invalid YAML" in result.error
 
-    async def test_missing_readiness_fails(self):
+    async def test_missing_readiness_defaults_to_revise(self):
         content = "---\nsufficiency_score: 3\nblocker_unknowns: 0\n---\n\nBody"
         ctx = _make_context(content)
         h = GovernanceAssessReadinessHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
-        assert result.success is False
-        assert "readiness" in result.error
+        assert result.success is True
 
-    async def test_invalid_readiness_value_fails(self):
+    async def test_invalid_readiness_value_defaults_to_revise(self):
         content = "---\nreadiness: maybe\nsufficiency_score: 3\n---\n\nBody"
         ctx = _make_context(content)
         h = GovernanceAssessReadinessHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
-        assert result.success is False
-        assert "readiness" in result.error
-        assert "maybe" in result.error
+        assert result.success is True
 
-    async def test_missing_sufficiency_score_fails(self):
+    async def test_missing_sufficiency_score_defaults_to_3(self):
         content = "---\nreadiness: go\nblocker_unknowns: 0\n---\n\nBody"
         ctx = _make_context(content)
         h = GovernanceAssessReadinessHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
-        assert result.success is False
-        assert "sufficiency_score" in result.error
+        assert result.success is True
 
-    async def test_non_integer_sufficiency_score_fails(self):
+    async def test_non_integer_sufficiency_score_defaults_to_3(self):
         content = "---\nreadiness: go\nsufficiency_score: high\n---\n\nBody"
         ctx = _make_context(content)
         h = GovernanceAssessReadinessHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
-        assert result.success is False
-        assert "sufficiency_score" in result.error
-        assert "integer" in result.error
+        assert result.success is True
 
-    async def test_sufficiency_score_out_of_range_fails(self):
+    async def test_sufficiency_score_out_of_range_defaults_to_3(self):
         content = "---\nreadiness: go\nsufficiency_score: 7\n---\n\nBody"
         ctx = _make_context(content)
         h = GovernanceAssessReadinessHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
-        assert result.success is False
-        assert "0-5" in result.error
+        assert result.success is True
 
     async def test_sufficiency_score_zero_valid(self):
         content = "---\nreadiness: no-go\nsufficiency_score: 0\n---\n\nBody"
@@ -635,12 +630,12 @@ class TestGovernanceAssessReadinessValidation:
 
         assert result.success is True
 
-    async def test_evidence_preserved_on_validation_failure(self):
+    async def test_evidence_preserved_on_frontmatter_synthesis(self):
         ctx = _make_context("No frontmatter")
         h = GovernanceAssessReadinessHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
-        assert result.success is False
+        assert result.success is True
         assert result._evidence is not None
         assert result._evidence.capability_id == "governance.assess_readiness"
 
