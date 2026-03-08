@@ -1,4 +1,4 @@
-"""Tests for _compute_workload_progress (SIP-0083 §5.8).
+"""Tests for compute_workload_progress (SIP-0083 §5.8).
 
 Verifies positional alignment of runs to workload_sequence entries,
 domain-to-DTO status mapping, cancelled run exclusion, and gate
@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from squadops.api.routes.cycles.mapping import _compute_workload_progress
+from squadops.api.routes.cycles.mapping import compute_workload_progress
 from squadops.cycles.models import GateDecision, GateDecisionValue, Run, RunStatus
 
 pytestmark = [pytest.mark.domain_api]
@@ -39,11 +39,11 @@ def _run(
 
 
 class TestWorkloadProgress:
-    """_compute_workload_progress maps runs to workload_sequence entries."""
+    """compute_workload_progress maps runs to workload_sequence entries."""
 
     def test_empty_sequence_returns_empty(self):
         """No workload_sequence → no progress entries."""
-        result = _compute_workload_progress([], [])
+        result = compute_workload_progress([], [])
         assert result == []
 
     def test_one_completed_two_pending(self):
@@ -55,7 +55,7 @@ class TestWorkloadProgress:
         ]
         runs = [_run("run_001", 1, "completed", "planning")]
 
-        result = _compute_workload_progress(ws, runs)
+        result = compute_workload_progress(ws, runs)
 
         assert len(result) == 3
         assert result[0].index == 0
@@ -78,7 +78,7 @@ class TestWorkloadProgress:
             _run("run_002", 2, "completed", "implementation"),
         ]
 
-        result = _compute_workload_progress(ws, runs)
+        result = compute_workload_progress(ws, runs)
 
         assert all(e.status == "completed" for e in result)
         assert result[0].run_id == "run_001"
@@ -96,7 +96,7 @@ class TestWorkloadProgress:
             _run("run_003", 3, "completed", "implementation"),
         ]
 
-        result = _compute_workload_progress(ws, runs)
+        result = compute_workload_progress(ws, runs)
 
         # run_001 (cancelled) excluded; run_002 aligns to index 0
         assert result[0].run_id == "run_002"
@@ -117,7 +117,7 @@ class TestWorkloadProgress:
         )
         runs = [_run("run_001", 1, "completed", "planning", gate_decisions=(decision,))]
 
-        result = _compute_workload_progress(ws, runs)
+        result = compute_workload_progress(ws, runs)
 
         assert result[0].status == "rejected"
         assert result[1].status == "pending"
@@ -127,7 +127,7 @@ class TestWorkloadProgress:
         ws = [{"type": "planning"}]
         runs = [_run("run_001", 1, RunStatus.PAUSED.value)]
 
-        result = _compute_workload_progress(ws, runs)
+        result = compute_workload_progress(ws, runs)
 
         assert result[0].status == "gate_awaiting"
 
@@ -136,7 +136,7 @@ class TestWorkloadProgress:
         ws = [{"type": "planning"}]
         runs = [_run("run_001", 1, RunStatus.QUEUED.value)]
 
-        result = _compute_workload_progress(ws, runs)
+        result = compute_workload_progress(ws, runs)
 
         assert result[0].status == "pending"
 
@@ -145,7 +145,7 @@ class TestWorkloadProgress:
         ws = [{"type": "implementation"}]
         runs = [_run("run_001", 1, RunStatus.RUNNING.value)]
 
-        result = _compute_workload_progress(ws, runs)
+        result = compute_workload_progress(ws, runs)
 
         assert result[0].status == "running"
 
@@ -164,6 +164,6 @@ class TestWorkloadProgress:
         )
         runs = [_run("run_001", 1, "completed", "planning", gate_decisions=(decision,))]
 
-        result = _compute_workload_progress(ws, runs)
+        result = compute_workload_progress(ws, runs)
 
         assert result[0].status == "completed"

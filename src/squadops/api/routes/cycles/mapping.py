@@ -17,6 +17,7 @@ from squadops.api.routes.cycles.dtos import (
     WorkloadProgressEntry,
 )
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.cycles.lifecycle import resolve_cycle_status
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -88,7 +89,7 @@ _RUN_STATUS_TO_PROGRESS: dict[str, str] = {
 }
 
 
-def _compute_workload_progress(
+def compute_workload_progress(
     workload_sequence: list[dict], runs: list[Run],
 ) -> list[WorkloadProgressEntry]:
     """Derive workload_progress by positional alignment (SIP-0083 §5.8).
@@ -132,8 +133,12 @@ def _compute_workload_progress(
     return entries
 
 
-def cycle_to_response(cycle: Cycle, runs: list[Run], status: str) -> CycleResponse:
+def cycle_to_response(cycle: Cycle, runs: list[Run]) -> CycleResponse:
     ws = cycle.applied_defaults.get("workload_sequence", [])
+    progress = compute_workload_progress(ws, runs)
+    workload_statuses = [e.status for e in progress] if progress else None
+    status = resolve_cycle_status(runs, cycle_cancelled=False,
+                                  workload_statuses=workload_statuses)
     return CycleResponse(
         cycle_id=cycle.cycle_id,
         project_id=cycle.project_id,
@@ -149,9 +154,9 @@ def cycle_to_response(cycle: Cycle, runs: list[Run], status: str) -> CycleRespon
         expected_artifact_types=list(cycle.expected_artifact_types),
         experiment_context=cycle.experiment_context,
         notes=cycle.notes,
-        status=status,
+        status=status.value,
         runs=[run_to_response(r) for r in runs],
-        workload_progress=_compute_workload_progress(ws, runs),
+        workload_progress=progress,
     )
 
 
