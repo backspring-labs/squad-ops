@@ -7,10 +7,12 @@ from datetime import UTC, datetime
 import pytest
 
 from squadops.cycles.lifecycle import (
+    GATE_REJECTED_STATES,
     TERMINAL_STATES,
     compute_config_hash,
     compute_profile_snapshot_hash,
     derive_cycle_status,
+    resolve_cycle_status,
     validate_run_transition,
 )
 from squadops.cycles.models import (
@@ -309,3 +311,90 @@ class TestComputeProfileSnapshotHash:
     def test_hex_length(self, sample_profile):
         h = compute_profile_snapshot_hash(sample_profile)
         assert len(h) == 64  # SHA-256 hex
+
+
+# =============================================================================
+# GATE_REJECTED_STATES tests (SIP-0083 D15)
+# =============================================================================
+
+
+class TestGateRejectedStates:
+    def test_excludes_completed(self):
+        """COMPLETED must NOT be in GATE_REJECTED_STATES — inter-workload gates
+        are decided on completed runs."""
+        assert RunStatus.COMPLETED not in GATE_REJECTED_STATES
+
+    def test_includes_failed_and_cancelled(self):
+        """Failed and cancelled runs should reject gate decisions."""
+        assert RunStatus.FAILED in GATE_REJECTED_STATES
+        assert RunStatus.CANCELLED in GATE_REJECTED_STATES
+
+
+# =============================================================================
+# resolve_cycle_status tests (SIP-0083 D5)
+# =============================================================================
+
+
+class TestResolveCycleStatus:
+    def test_no_workload_statuses_delegates_to_derive(self):
+        """Without workload_statuses, resolve equals derive — backward compat."""
+        runs = [_make_run(status="completed")]
+        assert resolve_cycle_status(runs, False) == CycleStatus.COMPLETED
+        assert resolve_cycle_status(runs, False) == derive_cycle_status(runs, False)
+
+    def test_empty_workload_statuses_delegates_to_derive(self):
+        """Empty list is equivalent to None — backward compat."""
+        runs = [_make_run(status="completed")]
+        assert resolve_cycle_status(runs, False, workload_statuses=[]) == CycleStatus.COMPLETED
+
+    def test_gate_awaiting_returns_paused(self):
+        """Cycle at inter-workload gate must show PAUSED, not COMPLETED."""
+        runs = [_make_run(status="completed")]
+        statuses = ["gate_awaiting", "pending", "pending"]
+        assert resolve_cycle_status(runs, False, statuses) == CycleStatus.PAUSED
+
+    def test_rejected_returns_failed(self):
+        """Rejected gate means the pipeline failed to complete."""
+        runs = [_make_run(status="completed")]
+        statuses = ["rejected", "pending", "pending"]
+        assert resolve_cycle_status(runs, False, statuses) == CycleStatus.FAILED
+
+    def test_gate_awaiting_takes_precedence_over_rejected(self):
+        """P6-RC5: gate_awaiting wins — the gate is still actionable."""
+        runs = [_make_run(status="completed")]
+        statuses = ["rejected", "gate_awaiting", "pending"]
+        assert resolve_cycle_status(runs, False, statuses) == CycleStatus.PAUSED
+
+    def test_completed_without_pending_stays_completed(self):
+        """All workloads completed, no pending entries → COMPLETED."""
+        runs = [
+            _make_run(run_number=1, status="completed"),
+            _make_run(run_number=2, status="completed"),
+            _make_run(run_number=3, status="completed"),
+        ]
+        statuses = ["completed", "completed", "completed"]
+        assert resolve_cycle_status(runs, False, statuses) == CycleStatus.COMPLETED
+
+    def test_pending_workloads_prevent_completed(self):
+        """P6-RC5 rule 3: completed run + pending workloads → ACTIVE."""
+        runs = [_make_run(status="completed")]
+        statuses = ["completed", "pending", "pending"]
+        assert resolve_cycle_status(runs, False, statuses) == CycleStatus.ACTIVE
+
+    def test_running_workload_stays_active(self):
+        """Mid-workload execution shows ACTIVE via derive_cycle_status."""
+        runs = [_make_run(status="running")]
+        statuses = ["running", "pending", "pending"]
+        assert resolve_cycle_status(runs, False, statuses) == CycleStatus.ACTIVE
+
+    def test_cycle_cancelled_overrides_workload_statuses(self):
+        """cycle_cancelled=True wins regardless of workload statuses."""
+        runs = [_make_run(status="completed")]
+        statuses = ["gate_awaiting", "pending", "pending"]
+        assert resolve_cycle_status(runs, True, statuses) == CycleStatus.CANCELLED
+
+    def test_pending_guard_skipped_when_derive_not_completed(self):
+        """Rule 3 only fires when derive returns COMPLETED — running stays ACTIVE."""
+        runs = [_make_run(status="running")]
+        statuses = ["running", "pending", "pending"]
+        assert resolve_cycle_status(runs, False, statuses) == CycleStatus.ACTIVE

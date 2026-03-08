@@ -71,6 +71,7 @@ def list_runs(
             [
                 r["run_id"],
                 str(r["run_number"]),
+                r.get("workload_type", "") or "",
                 r["status"],
                 r.get("started_at", "") or "",
                 r.get("finished_at", "") or "",
@@ -79,7 +80,7 @@ def list_runs(
             for r in data
         ]
         print_table(
-            ["Run ID", "#", "Status", "Started", "Finished", "Duration"],
+            ["Run ID", "#", "Workload", "Status", "Started", "Finished", "Duration"],
             rows,
             quiet=quiet,
         )

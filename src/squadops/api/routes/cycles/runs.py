@@ -13,8 +13,8 @@ from squadops.api.routes.cycles.dtos import (
     RunResumeRequest,
 )
 from squadops.api.routes.cycles.errors import handle_cycle_error
-from squadops.api.routes.cycles.mapping import run_to_response
-from squadops.cycles.lifecycle import compute_config_hash, derive_cycle_status
+from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
+from squadops.cycles.lifecycle import compute_config_hash, resolve_cycle_status
 from squadops.cycles.models import (
     CycleError,
     CycleStatus,
@@ -190,9 +190,12 @@ async def resume_run(
             raise ValidationError("Cannot resume run without a checkpoint")
 
         # 4. Parent cycle must not be terminal
-        await registry.get_cycle(cycle_id)  # validates cycle exists
+        cycle = await registry.get_cycle(cycle_id)  # validates cycle exists
         runs = await registry.list_runs(cycle_id)
-        cycle_status = derive_cycle_status(runs, False)
+        ws = cycle.applied_defaults.get("workload_sequence", [])
+        progress = compute_workload_progress(ws, runs)
+        workload_statuses = [e.status for e in progress] if progress else None
+        cycle_status = resolve_cycle_status(runs, False, workload_statuses=workload_statuses)
         if cycle_status in (CycleStatus.COMPLETED, CycleStatus.CANCELLED):
             raise RunTerminalError(f"Cannot resume run — parent cycle is {cycle_status.value}")
 

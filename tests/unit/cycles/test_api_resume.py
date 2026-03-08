@@ -33,6 +33,25 @@ _CYCLE = Cycle(
     build_strategy="fresh",
 )
 
+_MULTI_WORKLOAD_CYCLE = Cycle(
+    cycle_id="cyc_001",
+    project_id="hello_squad",
+    created_at=NOW,
+    created_by="system",
+    prd_ref=None,
+    squad_profile_id="full-squad",
+    squad_profile_snapshot_ref="sha256:abc",
+    task_flow_policy=TaskFlowPolicy(mode="sequential"),
+    build_strategy="fresh",
+    applied_defaults={
+        "workload_sequence": [
+            {"type": "planning", "gate": "progress_plan_review"},
+            {"type": "implementation"},
+            {"type": "wrapup"},
+        ],
+    },
+)
+
 _PAUSED_RUN = Run(
     run_id="run_001",
     cycle_id="cyc_001",
@@ -165,6 +184,50 @@ class TestResumeRun:
         mock_cycle_registry.list_runs.return_value = [completed_run]
         resp = client.post(f"{_URL_PREFIX}/run_001/resume")
         assert resp.status_code == 409
+
+    def test_resume_allowed_when_cycle_paused_at_gate(self, client, mock_cycle_registry):
+        """SIP-0083 D16: PAUSED cycle (gate_awaiting) allows resume."""
+        mock_cycle_registry.get_cycle.return_value = _MULTI_WORKLOAD_CYCLE
+        # Run 1 completed (planning), run 2 paused (impl) — gate_awaiting on index 0
+        paused_impl_run = Run(
+            run_id="run_002",
+            cycle_id="cyc_001",
+            run_number=2,
+            status="paused",
+            initiated_by="api",
+            resolved_config_hash="hash123",
+            workload_type="implementation",
+        )
+        mock_cycle_registry.get_run.return_value = paused_impl_run
+        mock_cycle_registry.list_runs.return_value = [
+            _COMPLETED_RUN,  # run_001: completed planning
+            paused_impl_run,  # run_002: paused impl
+        ]
+        resp = client.post(f"{_URL_PREFIX}/run_002/resume")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "running"
+
+    def test_resume_allowed_when_pending_workloads_remain(self, client, mock_cycle_registry):
+        """SIP-0083 D5 rule 3: completed run + pending workloads → ACTIVE, not
+        COMPLETED — resume is allowed."""
+        mock_cycle_registry.get_cycle.return_value = _MULTI_WORKLOAD_CYCLE
+        # Only run 1 completed, workloads 2+3 still pending — cycle is ACTIVE
+        failed_run = Run(
+            run_id="run_002",
+            cycle_id="cyc_001",
+            run_number=2,
+            status="failed",
+            initiated_by="api",
+            resolved_config_hash="hash123",
+            workload_type="implementation",
+        )
+        mock_cycle_registry.get_run.return_value = failed_run
+        mock_cycle_registry.list_runs.return_value = [
+            _COMPLETED_RUN,  # run_001: completed planning
+            failed_run,       # run_002: failed impl (wants resume)
+        ]
+        resp = client.post(f"{_URL_PREFIX}/run_002/resume")
+        assert resp.status_code == 200
 
 
 class TestListCheckpoints:

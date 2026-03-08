@@ -49,7 +49,7 @@ def _parse_set_flags(set_flags: list[str]) -> dict:
 def create_cycle(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
-    profile: str = typer.Option("default", "--profile", help="CRP profile name"),
+    profile: str = typer.Option("default", "--request-profile", help="Cycle request profile name"),
     prd: str | None = typer.Option(None, "--prd", help="PRD file path or artifact ID"),
     squad_profile_id: str = typer.Option(..., "--squad-profile", help="Squad profile ID"),
     set_flags: list[str] | None = typer.Option(None, "--set", help="Override: key=value"),
@@ -222,7 +222,25 @@ def show_cycle(
     if fmt == "json":
         print_json(data)
     else:
+        # Extract workload_progress for dedicated rendering
+        wp = data.pop("workload_progress", [])
         print_detail(data, quiet=quiet)
+        if wp:
+            rows = [
+                [
+                    str(e.get("index", "")),
+                    e.get("workload_type", ""),
+                    e.get("status", ""),
+                    e.get("run_id", "") or "",
+                ]
+                for e in wp
+            ]
+            print_table(
+                ["#", "Workload", "Status", "Run ID"],
+                rows,
+                quiet=quiet,
+                title="Workload Progress",
+            )
 
 
 @app.command("cat", hidden=True)

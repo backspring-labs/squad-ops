@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks
 from squadops.api.routes.cycles.dtos import CycleCreateRequest, CycleCreateResponse
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import cycle_to_response
-from squadops.cycles.lifecycle import compute_config_hash, derive_cycle_status
+from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import (
     Cycle,
     CycleError,
@@ -119,10 +119,10 @@ async def create_cycle(
             },
         )
 
-        # SIP-0066: Enqueue execution as background task
+        # SIP-0083: Enqueue cycle execution (wraps execute_run for multi-workload)
         flow_executor = get_flow_executor()
         background_tasks.add_task(
-            flow_executor.execute_run,
+            flow_executor.execute_cycle,
             cycle.cycle_id,
             run.run_id,
             body.squad_profile_id,
@@ -154,8 +154,7 @@ async def list_cycles(project_id: str, status: CycleStatus | None = None):
         results = []
         for c in cycles:
             runs = await registry.list_runs(c.cycle_id)
-            derived = derive_cycle_status(runs, cycle_cancelled=False)
-            results.append(cycle_to_response(c, runs, derived.value))
+            results.append(cycle_to_response(c, runs))
         return results
     except CycleError as e:
         raise handle_cycle_error(e) from e
@@ -169,8 +168,7 @@ async def get_cycle(project_id: str, cycle_id: str):
         registry = get_cycle_registry()
         cycle = await registry.get_cycle(cycle_id)
         runs = await registry.list_runs(cycle_id)
-        derived = derive_cycle_status(runs, cycle_cancelled=False)
-        return cycle_to_response(cycle, runs, derived.value)
+        return cycle_to_response(cycle, runs)
     except CycleError as e:
         raise handle_cycle_error(e) from e
 

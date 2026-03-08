@@ -34,6 +34,33 @@ class TestRunsList:
         assert result.exit_code == 0
         assert "run_1" in result.output
 
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_list_shows_workload_type(self, mock_get_client):
+        """runs list renders workload_type column for multi-workload cycles."""
+        mock_get_client.return_value = _mock_client(
+            get_val=[
+                {
+                    "run_id": "run_1",
+                    "run_number": 1,
+                    "status": "completed",
+                    "workload_type": "planning",
+                    "started_at": None,
+                },
+                {
+                    "run_id": "run_2",
+                    "run_number": 2,
+                    "status": "running",
+                    "workload_type": "implementation",
+                    "started_at": None,
+                },
+            ]
+        )
+        result = runner.invoke(app, ["runs", "list", "proj1", "cyc_1"])
+        assert result.exit_code == 0
+        assert "planning" in result.output
+        assert "implementation" in result.output
+        assert "Workload" in result.output
+
 
 class TestRunsShow:
     @patch("squadops.cli.commands.runs._get_client")

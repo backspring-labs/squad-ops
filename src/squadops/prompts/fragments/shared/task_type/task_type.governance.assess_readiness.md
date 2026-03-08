@@ -25,15 +25,28 @@ assess whether the plan is ready for implementation.
 
 ### Output Format
 
-Produce `planning_artifact.md` with YAML frontmatter containing:
+Your response MUST start with YAML frontmatter between `---` delimiters,
+followed by the consolidated plan body. Do NOT start with a heading or
+any other text before the frontmatter.
 
-```yaml
----
-readiness: go | revise | no-go
-sufficiency_score: <integer 1-5>
-blocker_unknowns: <count of blocker-classified unknowns>
----
+Example of correct output format:
+
 ```
+---
+readiness: go
+sufficiency_score: 4
+blocker_unknowns: 0
+---
+
+## Consolidated Plan
+
+(plan body here...)
+```
+
+Frontmatter fields:
+- `readiness`: exactly one of `go`, `revise`, or `no-go`
+- `sufficiency_score`: integer from 1 to 5
+- `blocker_unknowns`: integer count of blocker-classified unknowns
 
 If any unknowns are classified as `blocker`, readiness MUST be `revise` or
 `no-go`. A `go` recommendation with outstanding blockers is invalid.

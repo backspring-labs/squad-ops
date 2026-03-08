@@ -1,4 +1,4 @@
-last_assigned: 82
+last_assigned: 83
 sips:
 - sip_uid: null
   sip_number: null
@@ -745,3 +745,12 @@ sips:
   approver: jladd
   created_at: '2026-03-07'
   updated_at: '2026-03-07T11:22:37.723758Z'
+- sip_uid: null
+  sip_number: 83
+  title: Multi-Run Cycle Orchestration
+  path: sips/accepted/SIP-0083-Multi-Run-Cycle-Orchestration.md
+  status: accepted
+  author: Unknown
+  approver: jladd
+  created_at: '2026-03-07'
+  updated_at: '2026-03-07T21:35:02.364991Z'

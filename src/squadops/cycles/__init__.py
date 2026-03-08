@@ -6,9 +6,11 @@ Runs, Squad Profiles, Task Flow Policy, and Artifact Vault integration.
 """
 
 from squadops.cycles.lifecycle import (
+    GATE_REJECTED_STATES,
     compute_config_hash,
     compute_profile_snapshot_hash,
     derive_cycle_status,
+    resolve_cycle_status,
     validate_run_transition,
 )
 from squadops.cycles.models import (
@@ -74,6 +76,9 @@ __all__ = [
     # Lifecycle
     "validate_run_transition",
     "derive_cycle_status",
+    "resolve_cycle_status",
     "compute_config_hash",
     "compute_profile_snapshot_hash",
+    # Lifecycle constants
+    "GATE_REJECTED_STATES",
 ]

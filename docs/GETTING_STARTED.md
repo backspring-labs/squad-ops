@@ -59,7 +59,7 @@ squadops doctor dev-mac --json            # Machine-readable output
 
 2. **Run a cycle**:
    ```bash
-   squadops cycles create play_game --squad-profile full-squad --profile selftest
+   squadops cycles create play_game --squad-profile full-squad --request-profile selftest
    squadops cycles show <cycle-id>
    ```
 

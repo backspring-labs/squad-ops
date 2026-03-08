@@ -112,14 +112,15 @@ class CycleRegistryPort(ABC):
 
         Validation:
         - gate_name must exist in the Cycle's TaskFlowPolicy.gates
-        - Run must not be in a terminal state (RunTerminalError)
+        - Run must not be in a gate-rejected state, i.e. FAILED or CANCELLED
+          (RunTerminalError). COMPLETED runs accept gate decisions (SIP-0083 D15).
         - Conflicting decision raises GateAlreadyDecidedError
         - Same decision is idempotent (no-op, return current Run)
 
         Raises:
             RunNotFoundError: If the run_id is not found.
             ValidationError: If gate_name is not in the policy.
-            RunTerminalError: If the run is in a terminal state.
+            RunTerminalError: If the run is in a gate-rejected state (FAILED/CANCELLED).
             GateAlreadyDecidedError: If a conflicting decision exists.
         """
 

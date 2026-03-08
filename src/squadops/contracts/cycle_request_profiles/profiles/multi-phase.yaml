@@ -1,20 +1,20 @@
 # Reference example — not a required executor topology.
 # Single-workload cycles and alternative workload sequences remain valid.
 name: multi-phase
-description: "Planning → Implementation → Evaluation multi-workload cycle"
+description: "Planning → Implementation → Wrap-up multi-workload cycle"
 defaults:
   squad_profile_id: full-squad
   build_strategy: fresh
   task_flow_policy:
     mode: sequential
     gates:
-      - name: progress_plan_review
-        description: "Human reviews plan before implementation"
+      - name: progress_approval_required
+        description: "Human approval required before advancing to next workload"
         after_task_types: []
   workload_sequence:
     - type: planning
-      gate: progress_plan_review
+      gate: progress_approval_required
     - type: implementation
-      gate: null
-    - type: evaluation
+      gate: auto
+    - type: wrapup
       gate: null

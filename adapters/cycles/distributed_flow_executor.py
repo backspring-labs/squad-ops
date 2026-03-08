@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.models import ArtifactRef, Cycle, RunStatus
+from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, Run, RunStatus
 from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from adapters.cycles.prefect_reporter import PrefectReporter
     from squadops.capabilities.acceptance import AcceptanceCheckEngine
     from squadops.capabilities.models import AcceptanceContext
-    from squadops.cycles.models import SquadProfile
+    from squadops.cycles.models import GateDecision, SquadProfile
     from squadops.cycles.pulse_models import PulseCheckDefinition, PulseVerificationRecord
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
@@ -113,6 +113,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # Accumulated per-run pulse verification summaries for run report.
         # Reset at the start of each execute_run().
         self._pulse_report_entries: list[dict[str, Any]] = []
+        # SIP-0083: forwarding overrides set by execute_cycle() before
+        # calling execute_run() for subsequent workloads. Merged into
+        # cycle.execution_overrides via dataclasses.replace().
+        self._forwarding_overrides: dict = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -127,6 +131,18 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         try:
             cycle = await self._cycle_registry.get_cycle(cycle_id)
+            # SIP-0083: merge forwarding overrides from multi-workload orchestration
+            if self._forwarding_overrides:
+                import dataclasses as _dc_fwd
+
+                cycle = _dc_fwd.replace(
+                    cycle,
+                    execution_overrides={
+                        **cycle.execution_overrides,
+                        **self._forwarding_overrides,
+                    },
+                )
+                self._forwarding_overrides = {}
             run = await self._cycle_registry.get_run(run_id)
             profile, _ = await self._squad_profile.resolve_snapshot(profile_id)
 
@@ -374,6 +390,235 @@ class DistributedFlowExecutor(FlowExecutionPort):
             await self._cycle_registry.cancel_run(run_id)
         except Exception:
             logger.warning("cancel_run: registry cancel failed for %s", run_id, exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Multi-workload orchestration (SIP-0083)
+    # ------------------------------------------------------------------
+
+    async def execute_cycle(
+        self, cycle_id: str, first_run_id: str, profile_id: str | None = None
+    ) -> None:
+        """Execute a full cycle by iterating over workload_sequence.
+
+        Assumes execute_run() returns only after the run reaches a terminal
+        state (completed, failed, cancelled). Decision semantics for inter-
+        workload gates are interpreted here, not in the polling helper.
+        """
+        cycle = await self._cycle_registry.get_cycle(cycle_id)
+        workload_sequence = cycle.applied_defaults.get("workload_sequence", [])
+
+        # Single-workload fast path (D7)
+        if len(workload_sequence) <= 1:
+            await self.execute_run(cycle_id, first_run_id, profile_id)
+            return
+
+        current_run_id = first_run_id
+        for i, workload_entry in enumerate(workload_sequence):
+            await self.execute_run(cycle_id, current_run_id, profile_id)
+
+            # Check terminal status (compare persisted string values)
+            run = await self._cycle_registry.get_run(current_run_id)
+            if run.status in (RunStatus.FAILED.value, RunStatus.CANCELLED.value):
+                self._cycle_event_bus.emit(
+                    EventType.WORKLOAD_COMPLETED,
+                    entity_type="workload",
+                    entity_id=current_run_id,
+                    context={"cycle_id": cycle_id, "run_id": current_run_id},
+                    payload={
+                        "workload_type": workload_entry.get("type"),
+                        "terminal_status": run.status,
+                    },
+                )
+                break
+
+            self._cycle_event_bus.emit(
+                EventType.WORKLOAD_COMPLETED,
+                entity_type="workload",
+                entity_id=current_run_id,
+                context={"cycle_id": cycle_id, "run_id": current_run_id},
+                payload={
+                    "workload_type": workload_entry.get("type"),
+                    "terminal_status": RunStatus.COMPLETED.value,
+                },
+            )
+
+            # Last workload — done
+            if i >= len(workload_sequence) - 1:
+                break
+
+            # Inter-workload gate
+            gate_name = workload_entry.get("gate")
+            if gate_name and gate_name != "auto":
+                self._cycle_event_bus.emit(
+                    EventType.WORKLOAD_GATE_AWAITING,
+                    entity_type="workload",
+                    entity_id=current_run_id,
+                    context={"cycle_id": cycle_id, "run_id": current_run_id},
+                    payload={"gate_name": gate_name},
+                )
+                decision = await self._poll_inter_workload_gate(
+                    current_run_id,
+                    cycle,
+                    gate_name,
+                )
+
+                if decision.decision == GateDecisionValue.REJECTED:
+                    break  # Run stays COMPLETED; rejection in gate_decisions
+
+                # Write refinement notes as artifact (D10)
+                if (
+                    decision.decision == GateDecisionValue.APPROVED_WITH_REFINEMENTS
+                    and decision.notes
+                ):
+                    artifact_content = f"# Refinement Notes\n\n{decision.notes}\n"
+                    content_bytes = artifact_content.encode()
+                    refinement_ref = ArtifactRef(
+                        artifact_id=f"art_{uuid4().hex[:12]}",
+                        project_id=cycle.project_id,
+                        cycle_id=cycle.cycle_id,
+                        run_id=current_run_id,
+                        artifact_type="document",
+                        filename="refinement_notes.md",
+                        content_hash=sha256(content_bytes).hexdigest(),
+                        size_bytes=len(content_bytes),
+                        media_type="text/markdown",
+                        created_at=datetime.now(UTC),
+                        metadata={"producing_task_type": "gate.refinement_notes"},
+                    )
+                    await self._artifact_vault.store(refinement_ref, content_bytes)
+                    await self._cycle_registry.append_artifact_refs(
+                        current_run_id, (refinement_ref.artifact_id,)
+                    )
+
+            # Positional duplicate guard (D14).
+            # Assumes runs are created in sequence order by this orchestration
+            # loop and no out-of-band run creation targets the same position.
+            next_workload = workload_sequence[i + 1]
+            all_runs = await self._cycle_registry.list_runs(cycle_id)
+            non_cancelled = sorted(
+                [r for r in all_runs if r.status != RunStatus.CANCELLED.value],
+                key=lambda r: r.run_number,
+            )
+
+            # Build forwarding overrides for the next workload's execute_run()
+            self._forwarding_overrides = await self._build_forwarding_overrides(
+                cycle,
+                run,
+            )
+
+            if len(non_cancelled) > i + 1:
+                current_run_id = non_cancelled[i + 1].run_id
+            else:
+                next_run = await self._create_next_workload_run(
+                    cycle,
+                    run,
+                    next_workload,
+                    config_hash=run.resolved_config_hash,
+                )
+                current_run_id = next_run.run_id
+
+            self._cycle_event_bus.emit(
+                EventType.WORKLOAD_ADVANCED,
+                entity_type="workload",
+                entity_id=current_run_id,
+                context={"cycle_id": cycle_id, "run_id": current_run_id},
+                payload={"workload_type": next_workload.get("type")},
+            )
+
+    async def _poll_inter_workload_gate(
+        self, run_id: str, cycle: Cycle, gate_name: str
+    ) -> GateDecision:
+        """Poll for and return the inter-workload gate decision on a completed run.
+
+        Decision semantics (approved, rejected, etc.) are interpreted by
+        execute_cycle(), not here. This helper only waits for any decision
+        to appear on the named gate.
+        """
+        poll_interval = 2.0
+        while True:
+            if await self._is_cancelled(run_id):
+                raise _CancellationError(run_id)
+            run = await self._cycle_registry.get_run(run_id)
+            for decision in run.gate_decisions:
+                if decision.gate_name == gate_name:
+                    return decision
+            await asyncio.sleep(poll_interval)
+
+    async def _build_forwarding_overrides(
+        self,
+        cycle: Cycle,
+        completed_run: Run,
+    ) -> dict:
+        """Build execution_overrides with artifact refs from the completed run.
+
+        Forwarded artifact lists are sorted by creation time for deterministic
+        ordering.  Operator-supplied overrides in cycle.execution_overrides
+        always take precedence.
+
+        Merge semantics:
+        - List keys (plan_artifact_refs, prior_workload_artifact_refs):
+          merge with existing values, deduplicate.
+        - Scalar keys (impl_run_id): only write when no explicit override exists.
+        """
+        overrides = dict(cycle.execution_overrides)
+
+        # promoted artifacts only — empty list if nothing promoted (D9, §5.6 rule 6)
+        promoted = await self._artifact_vault.list_artifacts(
+            run_id=completed_run.run_id,
+            promotion_status="promoted",
+        )
+        promoted_refs = [a.artifact_id for a in sorted(promoted, key=lambda a: a.created_at)]
+        if "prior_workload_artifact_refs" in overrides:
+            existing = overrides["prior_workload_artifact_refs"]
+            seen = set(existing)
+            merged = list(existing) + [r for r in promoted_refs if r not in seen]
+            overrides["prior_workload_artifact_refs"] = merged
+        else:
+            overrides["prior_workload_artifact_refs"] = promoted_refs
+
+        # workload-type-specific keys
+        wt = completed_run.workload_type
+        if wt == "planning":
+            plan_docs = await self._artifact_vault.list_artifacts(
+                run_id=completed_run.run_id,
+                artifact_type="document",
+                promotion_status="promoted",
+            )
+            plan_refs = [a.artifact_id for a in sorted(plan_docs, key=lambda a: a.created_at)]
+            if "plan_artifact_refs" in overrides:
+                existing = overrides["plan_artifact_refs"]
+                seen = set(existing)
+                merged = list(existing) + [r for r in plan_refs if r not in seen]
+                overrides["plan_artifact_refs"] = merged
+            else:
+                overrides["plan_artifact_refs"] = plan_refs
+        elif wt == "implementation":
+            if "impl_run_id" not in overrides:
+                overrides["impl_run_id"] = completed_run.run_id
+
+        return overrides
+
+    async def _create_next_workload_run(
+        self,
+        cycle: Cycle,
+        completed_run: Run,
+        workload_entry: dict,
+        config_hash: str,
+    ) -> Run:
+        """Create the next workload Run."""
+        all_runs = await self._cycle_registry.list_runs(cycle.cycle_id)
+        next_number = max(r.run_number for r in all_runs) + 1
+
+        next_run = Run(
+            run_id=f"run_{uuid4().hex[:12]}",
+            cycle_id=cycle.cycle_id,
+            run_number=next_number,
+            status=RunStatus.QUEUED.value,
+            initiated_by="system",
+            resolved_config_hash=config_hash,
+            workload_type=workload_entry.get("type"),
+        )
+        return await self._cycle_registry.create_run(next_run)
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -685,8 +930,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # SIP-0079: Time budget enforcement (RC-8)
             if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
                 raise _ExecutionError(
-                    f"Time budget exhausted ({time_budget}s) after "
-                    f"{len(completed_task_ids)} tasks"
+                    f"Time budget exhausted ({time_budget}s) after {len(completed_task_ids)} tasks"
                 )
 
             # Build extra inputs for chain context
@@ -713,21 +957,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 },
             )
 
-            # Prefect: create task run
-            task_run_id = None
-            if self._prefect and flow_run_id:
-                try:
-                    role = envelope.metadata.get("role", "unknown")
-                    task_run_id = await self._prefect.create_task_run(
-                        flow_run_id,
-                        task_key=envelope.task_type,
-                        task_name=f"{role}: {envelope.task_type}",
-                    )
-                    await self._prefect.set_task_run_state(task_run_id, "RUNNING", "Running")
-                except Exception:
-                    logger.warning("Prefect task run creation failed", exc_info=True)
-
-            # SIP-0077: task.dispatched
+            # SIP-0077: task.dispatched (PrefectBridge handles task run creation)
             self._cycle_event_bus.emit(
                 EventType.TASK_DISPATCHED,
                 entity_type="task",
@@ -749,17 +979,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 # Dispatch through RabbitMQ
                 result = await self._dispatch_task(enriched, run_id)
 
-                # Prefect: update task state
-                if self._prefect and task_run_id:
-                    try:
-                        state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
-                        await self._prefect.set_task_run_state(
-                            task_run_id, state, state.title()
-                        )
-                    except Exception:
-                        logger.warning("Prefect task state update failed", exc_info=True)
-
-                # SIP-0077: task.succeeded or task.failed
+                # SIP-0077: task.succeeded or task.failed (PrefectBridge handles state)
                 if result.status == "SUCCEEDED":
                     self._cycle_event_bus.emit(
                         EventType.TASK_SUCCEEDED,
@@ -783,9 +1003,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 # SIP-0079: Outcome routing (replaces fail-fast)
                 if result.status != "SUCCEEDED":
                     outcome = (
-                        (result.outputs or {}).get("outcome_class")
-                        if result.outputs
-                        else None
+                        (result.outputs or {}).get("outcome_class") if result.outputs else None
                     )
 
                     # D5 fallback table: classify unclassified failures
@@ -816,9 +1034,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     consecutive_failures += 1
 
                     # D9: contract task failure → immediate abort, no correction
-                    is_contract_task = (
-                        envelope.task_type == "governance.establish_contract"
-                    )
+                    is_contract_task = envelope.task_type == "governance.establish_contract"
                     if is_contract_task:
                         raise _ExecutionError(
                             f"Contract task {envelope.task_id} failed "
@@ -826,9 +1042,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         )
 
                     # Trigger correction protocol
-                    max_corrections = cycle.applied_defaults.get(
-                        "max_correction_attempts", 2
-                    )
+                    max_corrections = cycle.applied_defaults.get("max_correction_attempts", 2)
 
                     if correction_attempts >= max_corrections:
                         raise _ExecutionError(
@@ -857,16 +1071,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         )
                     elif correction_path == "rewind":
                         raise _ExecutionError(
-                            f"Rewinding to checkpoint after "
-                            f"{envelope.task_type} failure"
+                            f"Rewinding to checkpoint after {envelope.task_type} failure"
                         )
                     elif correction_path in ("continue", "patch"):
                         consecutive_failures = 0
                         break  # break while loop; for loop advances
                     else:
-                        raise _ExecutionError(
-                            f"Unknown correction path: {correction_path}"
-                        )
+                        raise _ExecutionError(f"Unknown correction path: {correction_path}")
                     break  # safety break after correction handling
 
                 # Success
@@ -1192,9 +1403,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # 7. Handle patch path: dispatch repair tasks
         if correction_path == "patch":
             for step_idx, (task_type, role) in enumerate(REPAIR_TASK_STEPS):
-                repair_task_id = (
-                    f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-                )
+                repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
                 agent_id = role
                 if profile:
                     for agent in profile.agents:
@@ -1278,9 +1487,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 # Collect repair outputs
                 role_key = repair_envelope.metadata.get("role", "unknown")
                 prior_outputs[role_key] = {
-                    k: v
-                    for k, v in (repair_result.outputs or {}).items()
-                    if k != "artifacts"
+                    k: v for k, v in (repair_result.outputs or {}).items() if k != "artifacts"
                 }
 
         # 8. Emit CORRECTION_COMPLETED
@@ -1306,21 +1513,6 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         if await self._is_cancelled(run_id):
             raise _CancellationError(run_id)
-
-        # Prefect: pre-create task runs for all concurrent tasks
-        task_run_ids: list[str | None] = [None] * len(plan)
-        if self._prefect and flow_run_id:
-            for i, envelope in enumerate(plan):
-                try:
-                    role = envelope.metadata.get("role", "unknown")
-                    task_run_ids[i] = await self._prefect.create_task_run(
-                        flow_run_id,
-                        task_key=envelope.task_type,
-                        task_name=f"{role}: {envelope.task_type}",
-                    )
-                    await self._prefect.set_task_run_state(task_run_ids[i], "RUNNING", "Running")
-                except Exception:
-                    logger.warning("Prefect task run creation failed", exc_info=True)
 
         tasks = []
         for envelope in plan:
@@ -1350,12 +1542,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         all_artifact_refs: list[str] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                if self._prefect and task_run_ids[i]:
-                    try:
-                        await self._prefect.set_task_run_state(task_run_ids[i], "FAILED", "Failed")
-                    except Exception:
-                        logger.warning("Prefect task state update failed", exc_info=True)
-                # SIP-0077: task.failed (fan-out exception)
+                # SIP-0077: task.failed (fan-out exception, PrefectBridge handles state)
                 self._cycle_event_bus.emit(
                     EventType.TASK_FAILED,
                     entity_type="task",
@@ -1364,14 +1551,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     payload={"task_type": plan[i].task_type, "error": str(result)},
                 )
                 raise _ExecutionError(f"Task {plan[i].task_id} raised exception: {result}")
-            # Prefect: update task state
-            if self._prefect and task_run_ids[i]:
-                try:
-                    state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
-                    await self._prefect.set_task_run_state(task_run_ids[i], state, state.title())
-                except Exception:
-                    logger.warning("Prefect task state update failed", exc_info=True)
-            # SIP-0077: task.succeeded or task.failed (fan-out result)
+            # SIP-0077: task.succeeded or task.failed (PrefectBridge handles state)
             if result.status == "SUCCEEDED":
                 self._cycle_event_bus.emit(
                     EventType.TASK_SUCCEEDED,
@@ -1432,7 +1612,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
             for gate_name in gate_names:
                 for decision in run.gate_decisions:
                     if decision.gate_name == gate_name:
-                        if decision.decision == "approved":
+                        if decision.decision in (
+                            GateDecisionValue.APPROVED,
+                            GateDecisionValue.APPROVED_WITH_REFINEMENTS,
+                        ):
                             await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
                             self._cycle_event_bus.emit(
                                 EventType.RUN_RESUMED,
@@ -1441,10 +1624,22 @@ class DistributedFlowExecutor(FlowExecutionPort):
                                 context={"cycle_id": cycle.cycle_id, "run_id": run_id},
                                 payload={"gate_name": gate_name},
                             )
-                            logger.info("Gate %r approved, resuming run %s", gate_name, run_id)
+                            logger.info(
+                                "Gate %r %s, resuming run %s",
+                                gate_name,
+                                decision.decision,
+                                run_id,
+                            )
                             return
-                        elif decision.decision == "rejected":
+                        elif decision.decision == GateDecisionValue.REJECTED:
                             raise _ExecutionError(f"Gate {gate_name!r} rejected: {decision.notes}")
+                        elif decision.decision == GateDecisionValue.RETURNED_FOR_REVISION:
+                            raise _ExecutionError(
+                                f"Gate {gate_name!r} returned_for_revision: "
+                                "returned_for_revision requires manual retry-run "
+                                "creation; automatic retry-in-same-phase is not "
+                                "implemented in this version."
+                            )
 
             await asyncio.sleep(poll_interval)
 
@@ -1784,43 +1979,53 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     },
                 )
 
-                # Prefect: create repair task run
-                task_run_id = None
-                if self._prefect and flow_run_id:
-                    try:
-                        role = repair_env.metadata.get("role", "unknown")
-                        task_run_id = await self._prefect.create_task_run(
-                            flow_run_id,
-                            task_key=repair_env.task_type,
-                            task_name=f"{role}: {repair_env.task_type} (repair #{repair_attempt})",
-                        )
-                        await self._prefect.set_task_run_state(
-                            task_run_id,
-                            "RUNNING",
-                            "Running",
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Prefect repair task run creation failed",
-                            exc_info=True,
-                        )
+                # SIP-0077: task.dispatched (PrefectBridge handles task run creation)
+                role = repair_env.metadata.get("role", "unknown")
+                self._cycle_event_bus.emit(
+                    EventType.TASK_DISPATCHED,
+                    entity_type="task",
+                    entity_id=repair_env.task_id,
+                    context={
+                        "cycle_id": cycle.cycle_id,
+                        "run_id": run_id,
+                        "flow_run_id": flow_run_id or "",
+                    },
+                    payload={
+                        "task_type": repair_env.task_type,
+                        "task_name": f"{role}: {repair_env.task_type} (repair #{repair_attempt})",
+                    },
+                )
 
                 result = await self._dispatch_task(enriched_repair, run_id)
 
-                # Prefect: update repair task state
-                if self._prefect and task_run_id:
-                    try:
-                        state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
-                        await self._prefect.set_task_run_state(
-                            task_run_id,
-                            state,
-                            state.title(),
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Prefect repair task state update failed",
-                            exc_info=True,
-                        )
+                # SIP-0077: task.succeeded or task.failed
+                if result.status == "SUCCEEDED":
+                    self._cycle_event_bus.emit(
+                        EventType.TASK_SUCCEEDED,
+                        entity_type="task",
+                        entity_id=repair_env.task_id,
+                        context={
+                            "cycle_id": cycle.cycle_id,
+                            "run_id": run_id,
+                            "flow_run_id": flow_run_id or "",
+                        },
+                        payload={"task_type": repair_env.task_type},
+                    )
+                else:
+                    self._cycle_event_bus.emit(
+                        EventType.TASK_FAILED,
+                        entity_type="task",
+                        entity_id=repair_env.task_id,
+                        context={
+                            "cycle_id": cycle.cycle_id,
+                            "run_id": run_id,
+                            "flow_run_id": flow_run_id or "",
+                        },
+                        payload={
+                            "task_type": repair_env.task_type,
+                            "error": result.error or "",
+                        },
+                    )
 
                 # Collect repair artifacts
                 for art in (result.outputs or {}).get("artifacts", []):

@@ -13,7 +13,12 @@ import logging
 import asyncpg
 
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.lifecycle import TERMINAL_STATES, derive_cycle_status, validate_run_transition
+from squadops.cycles.lifecycle import (
+    GATE_REJECTED_STATES,
+    TERMINAL_STATES,
+    derive_cycle_status,
+    validate_run_transition,
+)
 from squadops.cycles.models import (
     Cycle,
     CycleNotFoundError,
@@ -286,9 +291,10 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 )
                 if run_row is None:
                     raise RunNotFoundError(f"Run not found: {run_id}")
-                if RunStatus(run_row["status"]) in TERMINAL_STATES:
+                if RunStatus(run_row["status"]) in GATE_REJECTED_STATES:
                     raise RunTerminalError(
-                        f"Cannot record gate decision on terminal run (status={run_row['status']})"
+                        f"Cannot record gate decision on gate-rejected run"
+                        f" (status={run_row['status']})"
                     )
 
                 # 2. Validate gate_name exists in cycle's policy
@@ -422,8 +428,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         """Return all checkpoints for a run, ordered by checkpoint_index ascending."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT * FROM run_checkpoints WHERE run_id = $1 "
-                "ORDER BY checkpoint_index ASC",
+                "SELECT * FROM run_checkpoints WHERE run_id = $1 ORDER BY checkpoint_index ASC",
                 run_id,
             )
         return [self._row_to_checkpoint(r) for r in rows]

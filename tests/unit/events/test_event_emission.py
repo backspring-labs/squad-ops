@@ -1,6 +1,6 @@
 """Emission coverage tests — every taxonomy event has at least one valid emission point.
 
-Phase 3e: Validates that each of the 25 EventType constants is referenced
+Phase 3e: Validates that each of the 28 EventType constants is referenced
 in at least one emit() call site (executor or route). Uses AST-level source
 scanning to verify wiring without executing the full pipeline.
 """
@@ -18,7 +18,7 @@ pytestmark = [pytest.mark.domain_events]
 
 # ---- Source-level coverage: every EventType constant appears in an emit() call ----
 
-# Collect all 25 event type constant names
+# Collect all 28 event type constant names
 _ALL_EVENT_TYPE_ATTRS = [
     attr
     for attr in dir(EventType)
@@ -27,8 +27,8 @@ _ALL_EVENT_TYPE_ATTRS = [
     and isinstance(getattr(EventType, attr), str)
 ]
 
-# SIP-0079 correction events — all emission points now present
-_SIP_0079_PENDING_EMISSION: set[str] = set()
+# SIP-0083 workload events — all emission points now present
+_SIP_0083_PENDING_EMISSION: set[str] = set()
 
 
 def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
@@ -71,7 +71,7 @@ class TestEmissionCoverage:
 
     @pytest.mark.parametrize(
         "attr",
-        [a for a in _ALL_EVENT_TYPE_ATTRS if a not in _SIP_0079_PENDING_EMISSION],
+        [a for a in _ALL_EVENT_TYPE_ATTRS if a not in _SIP_0083_PENDING_EMISSION],
     )
     def test_event_type_has_emission_point(self, attr: str, all_emitted_types: set[str]) -> None:
         assert attr in all_emitted_types, (
@@ -79,12 +79,12 @@ class TestEmissionCoverage:
             f"in any emission source file"
         )
 
-    def test_all_25_types_defined(self, all_emitted_types: set[str]) -> None:
-        assert len(_ALL_EVENT_TYPE_ATTRS) == 25
+    def test_all_28_types_defined(self, all_emitted_types: set[str]) -> None:
+        assert len(_ALL_EVENT_TYPE_ATTRS) == 28
 
-    def test_pre_sip0079_types_covered(self, all_emitted_types: set[str]) -> None:
-        pre_0079 = set(_ALL_EVENT_TYPE_ATTRS) - _SIP_0079_PENDING_EMISSION
-        missing = pre_0079 - all_emitted_types
+    def test_wired_types_covered(self, all_emitted_types: set[str]) -> None:
+        wired = set(_ALL_EVENT_TYPE_ATTRS) - _SIP_0083_PENDING_EMISSION
+        missing = wired - all_emitted_types
         assert not missing, f"Missing emission points for: {sorted(missing)}"
 
 
@@ -117,13 +117,16 @@ class TestExecutorEmissionPoints:
             "CORRECTION_INITIATED",
             "CORRECTION_DECIDED",
             "CORRECTION_COMPLETED",
+            "WORKLOAD_COMPLETED",
+            "WORKLOAD_GATE_AWAITING",
+            "WORKLOAD_ADVANCED",
         ],
     )
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_19_types(self, executor_refs: set[str]) -> None:
-        assert len(executor_refs) == 19
+    def test_executor_has_22_types(self, executor_refs: set[str]) -> None:
+        assert len(executor_refs) == 22
 
 
 class TestRouteEmissionPoints:
@@ -214,12 +217,12 @@ class TestEmitCallSitePayloadFields:
                 total_calls += 1
                 if any(kw.arg == "payload" for kw in call.keywords):
                     with_payload += 1
-        # At least 35 of 40 calls have payload (a few lifecycle events omit it)
-        assert with_payload >= 35
+        # At least 38 of 48 calls have payload (a few lifecycle events omit it)
+        assert with_payload >= 38
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 34 executor + 7 route = 41 total emit calls."""
+        """Sanity check: 41 executor + 7 route = 48 total emit calls."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 41
+        assert total == 48

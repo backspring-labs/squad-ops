@@ -313,9 +313,10 @@ class TestPrefectFlowRun:
 
 
 class TestPrefectTaskRuns:
-    """Verify 5 task runs created during sequential execution."""
+    """Verify task lifecycle delegated to event bus (PrefectBridge handles Prefect calls)."""
 
-    async def test_creates_task_runs(self, executor, mock_queue, mock_prefect):
+    async def test_no_direct_prefect_task_calls(self, executor, mock_queue, mock_prefect):
+        """Executor delegates task run management to PrefectBridge via events."""
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
@@ -324,10 +325,24 @@ class TestPrefectTaskRuns:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        assert mock_prefect.create_task_run.call_count == 5
+        # No direct task-level Prefect calls — PrefectBridge handles via events
+        mock_prefect.create_task_run.assert_not_awaited()
+        mock_prefect.set_task_run_state.assert_not_awaited()
 
-    async def test_task_run_states_updated(self, executor, mock_queue, mock_prefect):
+    async def test_emits_task_dispatched_events(self, executor, mock_queue, mock_prefect):
+        """Executor emits TASK_DISPATCHED for each of the 5 sequential tasks."""
+        from squadops.events.types import EventType
+
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
+
+        emitted: list[str] = []
+        original_emit = executor._cycle_event_bus.emit
+
+        def capture_emit(event_type, **kwargs):
+            emitted.append(event_type)
+            return original_emit(event_type, **kwargs)
+
+        executor._cycle_event_bus.emit = capture_emit
 
         with patch(
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
@@ -335,5 +350,7 @@ class TestPrefectTaskRuns:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # Each task: set RUNNING + set COMPLETED = 10 calls
-        assert mock_prefect.set_task_run_state.call_count == 10
+        dispatched = [e for e in emitted if e == EventType.TASK_DISPATCHED]
+        succeeded = [e for e in emitted if e == EventType.TASK_SUCCEEDED]
+        assert len(dispatched) == 5
+        assert len(succeeded) == 5

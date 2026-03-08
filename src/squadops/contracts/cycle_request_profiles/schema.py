@@ -49,8 +49,8 @@ def _validate_workload_sequence_gates(defaults: dict) -> None:
         if not isinstance(entry, dict):
             continue
         gate = entry.get("gate")
-        if gate is None:
-            continue  # null gate is valid (no gate at this boundary)
+        if gate is None or gate == "auto":
+            continue  # null = no gate, auto = auto-progress
         if not any(gate.startswith(prefix) for prefix in _VALID_GATE_PREFIXES):
             raise ValueError(
                 f"Gate name {gate!r} in workload_sequence must start with "
