@@ -448,7 +448,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
             # Inter-workload gate
             gate_name = workload_entry.get("gate")
-            if gate_name:
+            if gate_name and gate_name != "auto":
                 self._cycle_event_bus.emit(
                     EventType.WORKLOAD_GATE_AWAITING,
                     entity_type="workload",

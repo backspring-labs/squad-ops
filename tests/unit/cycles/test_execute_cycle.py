@@ -367,6 +367,79 @@ class TestInterWorkloadGates:
         # No GATE_AWAITING event emitted
         assert EventType.WORKLOAD_GATE_AWAITING not in _emit_types(mock_event_bus)
 
+    async def test_auto_gate_skips_polling(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """gate: "auto" advances without polling — no GATE_AWAITING emitted."""
+        cycle = _make_cycle(workload_sequence=[
+            {"type": "implementation", "gate": "auto"},
+            {"type": "wrapup"},
+        ])
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "implementation")
+        run2 = _make_run("run_002", 2, "completed", "wrapup")
+
+        mock_registry.get_run.side_effect = [run1, run2]
+        mock_registry.list_runs.return_value = [run1]
+        mock_registry.create_run.side_effect = lambda r: r
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        assert executor.execute_run.await_count == 2
+        assert EventType.WORKLOAD_GATE_AWAITING not in _emit_types(mock_event_bus)
+
+    async def test_mixed_named_and_auto_gates(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """Named gate polls, auto gate auto-progresses in same cycle."""
+        cycle = _make_cycle(workload_sequence=[
+            {"type": "planning", "gate": "progress_approval_required"},
+            {"type": "implementation", "gate": "auto"},
+            {"type": "wrapup"},
+        ])
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1_decided = _make_run(
+            "run_001", 1, "completed", "planning",
+            gate_decisions=(_gate_decision(
+                "progress_approval_required", GateDecisionValue.APPROVED
+            ),),
+        )
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+        run3 = _make_run("run_003", 3, "completed", "wrapup")
+
+        # get_run calls:
+        # 1. status check after run1 execute_run
+        # 2. _is_cancelled in poll
+        # 3. poll finds decision
+        # 4. status check after run2 execute_run
+        # 5. status check after run3 execute_run
+        mock_registry.get_run.side_effect = [
+            run1,              # status check
+            run1,              # _is_cancelled
+            run1_decided,      # poll finds decision
+            run2,              # status check
+            run3,              # status check
+        ]
+        mock_registry.list_runs.side_effect = [
+            [run1_decided],    # dup guard after workload 0
+            [run1_decided],    # create run for workload 1
+            [run1_decided, run2],  # dup guard after workload 1
+            [run1_decided, run2],  # create run for workload 2
+        ]
+        mock_registry.create_run.side_effect = lambda r: r
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        assert executor.execute_run.await_count == 3
+        types = _emit_types(mock_event_bus)
+        # Named gate emits GATE_AWAITING, auto gate does not
+        assert types.count(EventType.WORKLOAD_GATE_AWAITING) == 1
+        assert types.count(EventType.WORKLOAD_COMPLETED) == 3
+
 
 # ---------------------------------------------------------------------------
 # Positional duplicate guard

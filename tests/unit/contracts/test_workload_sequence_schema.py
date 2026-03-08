@@ -36,6 +36,24 @@ class TestWorkloadSequenceKey:
         assert "workload_sequence" not in profile.defaults
 
 
+class TestAutoGateValue:
+    """Auto gate sentinel is accepted by schema validation."""
+
+    def test_auto_gate_accepted(self):
+        profile = CycleRequestProfile(
+            name="test",
+            defaults={
+                "workload_sequence": [
+                    {"type": "planning", "gate": "progress_approval_required"},
+                    {"type": "implementation", "gate": "auto"},
+                    {"type": "wrapup", "gate": None},
+                ],
+            },
+        )
+        seq = profile.defaults["workload_sequence"]
+        assert seq[1]["gate"] == "auto"
+
+
 class TestGateNameValidation:
     """AC 20: Gate names in workload_sequence must use progress_/promote_ prefix."""
 

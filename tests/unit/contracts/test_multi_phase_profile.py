@@ -38,27 +38,25 @@ class TestMultiPhaseWorkloadSequence:
 
 
 class TestMultiPhaseGates:
-    def test_has_two_gates(self):
+    def test_has_one_named_gate(self):
         profile = load_profile("multi-phase")
         gates = profile.defaults["task_flow_policy"]["gates"]
-        assert len(gates) == 2
+        assert len(gates) == 1
 
-    def test_gate_names(self):
+    def test_gate_name(self):
         profile = load_profile("multi-phase")
         gates = profile.defaults["task_flow_policy"]["gates"]
-        names = [g["name"] for g in gates]
-        assert "progress_plan_review" in names
-        assert "progress_impl_review" in names
+        assert gates[0]["name"] == "progress_approval_required"
 
-    def test_plan_review_gate_on_planning_workload(self):
+    def test_planning_workload_has_named_gate(self):
         profile = load_profile("multi-phase")
         seq = profile.defaults["workload_sequence"]
-        assert seq[0]["gate"] == "progress_plan_review"
+        assert seq[0]["gate"] == "progress_approval_required"
 
-    def test_impl_review_gate_on_implementation_workload(self):
+    def test_implementation_workload_has_auto_gate(self):
         profile = load_profile("multi-phase")
         seq = profile.defaults["workload_sequence"]
-        assert seq[1]["gate"] == "progress_impl_review"
+        assert seq[1]["gate"] == "auto"
 
     def test_wrapup_has_no_gate(self):
         profile = load_profile("multi-phase")
