@@ -340,6 +340,60 @@ class TestCyclesShow:
         assert result.exit_code == 0
         assert "cyc_1" in result.output
 
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_show_renders_workload_progress_table(self, mock_get_client):
+        """cycles show renders workload_progress as a dedicated sub-table."""
+        mock_get_client.return_value = _mock_client(
+            get_val={
+                "cycle_id": "cyc_1",
+                "project_id": "proj1",
+                "status": "active",
+                "workload_progress": [
+                    {
+                        "index": 0,
+                        "workload_type": "planning",
+                        "status": "completed",
+                        "run_id": "run_001",
+                    },
+                    {
+                        "index": 1,
+                        "workload_type": "implementation",
+                        "status": "running",
+                        "run_id": "run_002",
+                    },
+                    {
+                        "index": 2,
+                        "workload_type": "wrapup",
+                        "status": "pending",
+                        "run_id": None,
+                    },
+                ],
+            }
+        )
+        result = runner.invoke(app, ["cycles", "show", "proj1", "cyc_1"])
+        assert result.exit_code == 0
+        # Sub-table renders workload types and statuses
+        assert "planning" in result.output
+        assert "implementation" in result.output
+        assert "wrapup" in result.output
+        assert "Workload Progress" in result.output
+        # Raw nested dict is NOT in output (workload_progress popped before print_detail)
+        assert "workload_progress" not in result.output
+
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_show_no_workload_progress(self, mock_get_client):
+        """cycles show without workload_progress does not render sub-table."""
+        mock_get_client.return_value = _mock_client(
+            get_val={
+                "cycle_id": "cyc_1",
+                "project_id": "proj1",
+                "status": "active",
+            }
+        )
+        result = runner.invoke(app, ["cycles", "show", "proj1", "cyc_1"])
+        assert result.exit_code == 0
+        assert "Workload Progress" not in result.output
+
 
 class TestCyclesCancel:
     @patch("squadops.cli.commands.cycles._get_client")

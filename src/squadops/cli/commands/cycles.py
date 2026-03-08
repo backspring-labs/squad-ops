@@ -222,7 +222,25 @@ def show_cycle(
     if fmt == "json":
         print_json(data)
     else:
+        # Extract workload_progress for dedicated rendering
+        wp = data.pop("workload_progress", [])
         print_detail(data, quiet=quiet)
+        if wp:
+            rows = [
+                [
+                    str(e.get("index", "")),
+                    e.get("workload_type", ""),
+                    e.get("status", ""),
+                    e.get("run_id", "") or "",
+                ]
+                for e in wp
+            ]
+            print_table(
+                ["#", "Workload", "Status", "Run ID"],
+                rows,
+                quiet=quiet,
+                title="Workload Progress",
+            )
 
 
 @app.command("cat", hidden=True)
