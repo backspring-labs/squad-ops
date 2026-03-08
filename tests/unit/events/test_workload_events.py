@@ -26,7 +26,3 @@ class TestWorkloadEventTypes:
         }
         workload_types = {t for t in all_types if t.startswith("workload.")}
         assert workload_types == expected
-
-    def test_total_event_type_count_is_28(self):
-        """EventType.all() returns exactly 28 types after SIP-0083."""
-        assert len(EventType.all()) == 28

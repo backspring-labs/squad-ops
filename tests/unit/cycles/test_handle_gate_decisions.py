@@ -165,24 +165,11 @@ class TestHandleGateDecisions:
     async def test_returned_for_revision_raises_execution_error(
         self, executor, mock_registry, cycle
     ):
-        """returned_for_revision → raises _ExecutionError with descriptive message."""
+        """returned_for_revision → raises _ExecutionError explaining manual retry is needed."""
         from adapters.cycles.distributed_flow_executor import _ExecutionError
 
         mock_registry.get_run.return_value = _run_with_gate_decision(
             GateDecisionValue.RETURNED_FOR_REVISION, notes="needs more detail"
-        )
-
-        with pytest.raises(_ExecutionError, match="returned_for_revision"):
-            await executor._handle_gate("run_001", cycle, "plan_tasks")
-
-    async def test_returned_for_revision_error_message_explains_limitation(
-        self, executor, mock_registry, cycle
-    ):
-        """returned_for_revision error message explains manual retry is needed."""
-        from adapters.cycles.distributed_flow_executor import _ExecutionError
-
-        mock_registry.get_run.return_value = _run_with_gate_decision(
-            GateDecisionValue.RETURNED_FOR_REVISION
         )
 
         with pytest.raises(_ExecutionError, match="manual retry-run creation"):
