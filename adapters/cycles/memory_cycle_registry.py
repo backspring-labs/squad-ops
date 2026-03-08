@@ -156,7 +156,8 @@ class MemoryCycleRegistry(CycleRegistryPort):
         current_status = RunStatus(run_data["status"])
         if current_status in GATE_REJECTED_STATES:
             raise RunTerminalError(
-                f"Cannot record gate decision on terminal run (status={current_status.value})"
+                f"Cannot record gate decision on gate-rejected run"
+                f" (status={current_status.value})"
             )
 
         # Check gate_name exists in policy

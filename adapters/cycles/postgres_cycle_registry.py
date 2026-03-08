@@ -293,7 +293,8 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     raise RunNotFoundError(f"Run not found: {run_id}")
                 if RunStatus(run_row["status"]) in GATE_REJECTED_STATES:
                     raise RunTerminalError(
-                        f"Cannot record gate decision on terminal run (status={run_row['status']})"
+                        f"Cannot record gate decision on gate-rejected run"
+                        f" (status={run_row['status']})"
                     )
 
                 # 2. Validate gate_name exists in cycle's policy

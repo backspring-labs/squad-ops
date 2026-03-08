@@ -335,12 +335,13 @@ class TestMemoryCycleRegistry:
         with pytest.raises(GateAlreadyDecidedError):
             await registry.record_gate_decision("run_001", rejected)
 
-    async def test_gate_decision_gate_rejected_run(self, registry, cycle, run):
+    @pytest.mark.parametrize("terminal_status", [RunStatus.FAILED, RunStatus.CANCELLED])
+    async def test_gate_decision_gate_rejected_run(self, registry, cycle, run, terminal_status):
         """GATE_REJECTED_STATES (failed/cancelled) reject gate decisions."""
         await registry.create_cycle(cycle)
         await registry.create_run(run)
         await registry.update_run_status("run_001", RunStatus.RUNNING)
-        await registry.update_run_status("run_001", RunStatus.FAILED)
+        await registry.update_run_status("run_001", terminal_status)
 
         decision = GateDecision(
             gate_name="qa_review",
