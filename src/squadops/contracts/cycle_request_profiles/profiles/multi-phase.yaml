@@ -1,7 +1,7 @@
 # Reference example — not a required executor topology.
 # Single-workload cycles and alternative workload sequences remain valid.
 name: multi-phase
-description: "Planning → Implementation → Evaluation multi-workload cycle"
+description: "Planning → Implementation → Wrap-up multi-workload cycle"
 defaults:
   squad_profile_id: full-squad
   build_strategy: fresh
@@ -10,11 +10,15 @@ defaults:
     gates:
       - name: progress_plan_review
         description: "Human reviews plan before implementation"
+        after_task_types:
+          - governance.task_plan
+      - name: progress_impl_review
+        description: "Human reviews implementation before wrap-up"
         after_task_types: []
   workload_sequence:
     - type: planning
       gate: progress_plan_review
     - type: implementation
-      gate: null
-    - type: evaluation
+      gate: progress_impl_review
+    - type: wrapup
       gate: null

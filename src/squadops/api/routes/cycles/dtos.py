@@ -149,6 +149,15 @@ class RunResponse(BaseModel):
     workload_type: str | None = None
 
 
+class WorkloadProgressEntry(BaseModel):
+    """Per-workload status in a multi-workload cycle (SIP-0083 §5.8)."""
+
+    index: int
+    workload_type: str
+    run_id: str | None = None
+    status: str  # "pending" | "running" | "completed" | "failed" | "gate_awaiting" | "rejected"
+
+
 class CycleResponse(BaseModel):
     cycle_id: str
     project_id: str
@@ -166,6 +175,7 @@ class CycleResponse(BaseModel):
     notes: str | None = None
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)
+    workload_progress: list[WorkloadProgressEntry] = Field(default_factory=list)
 
 
 class CycleCreateResponse(BaseModel):

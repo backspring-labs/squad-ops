@@ -14,13 +14,16 @@ from squadops.api.routes.cycles.dtos import (
     RunResponse,
     SquadProfileResponse,
     TaskFlowPolicyDTO,
+    WorkloadProgressEntry,
 )
 from squadops.api.runtime.agent_labels import get_role_label
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
+    GateDecisionValue,
     Project,
     Run,
+    RunStatus,
     SquadProfile,
 )
 
@@ -76,7 +79,61 @@ def _policy_to_dto(policy) -> TaskFlowPolicyDTO:
     )
 
 
+_RUN_STATUS_TO_PROGRESS: dict[str, str] = {
+    RunStatus.QUEUED.value: "pending",
+    RunStatus.RUNNING.value: "running",
+    RunStatus.PAUSED.value: "gate_awaiting",
+    RunStatus.COMPLETED.value: "completed",
+    RunStatus.FAILED.value: "failed",
+}
+
+
+def _compute_workload_progress(
+    workload_sequence: list[dict], runs: list[Run],
+) -> list[WorkloadProgressEntry]:
+    """Derive workload_progress by positional alignment (SIP-0083 §5.8).
+
+    Non-cancelled runs are sorted by run_number and aligned to
+    workload_sequence entries positionally.  Domain run statuses are
+    mapped to the DTO vocabulary; raw status values are never passed
+    through.
+    """
+    non_cancelled = sorted(
+        [r for r in runs if r.status != RunStatus.CANCELLED.value],
+        key=lambda r: r.run_number,
+    )
+    entries = []
+    for i, ws_entry in enumerate(workload_sequence):
+        if i < len(non_cancelled):
+            run = non_cancelled[i]
+            gate_name = ws_entry.get("gate")
+            rejected = gate_name and any(
+                gd.decision == GateDecisionValue.REJECTED
+                for gd in run.gate_decisions
+                if gd.gate_name == gate_name
+            )
+            if rejected:
+                status = "rejected"
+            else:
+                status = _RUN_STATUS_TO_PROGRESS.get(run.status, run.status)
+            entries.append(WorkloadProgressEntry(
+                index=i,
+                workload_type=ws_entry.get("type", "unknown"),
+                run_id=run.run_id,
+                status=status,
+            ))
+        else:
+            entries.append(WorkloadProgressEntry(
+                index=i,
+                workload_type=ws_entry.get("type", "unknown"),
+                run_id=None,
+                status="pending",
+            ))
+    return entries
+
+
 def cycle_to_response(cycle: Cycle, runs: list[Run], status: str) -> CycleResponse:
+    ws = cycle.applied_defaults.get("workload_sequence", [])
     return CycleResponse(
         cycle_id=cycle.cycle_id,
         project_id=cycle.project_id,
@@ -94,6 +151,7 @@ def cycle_to_response(cycle: Cycle, runs: list[Run], status: str) -> CycleRespon
         notes=cycle.notes,
         status=status,
         runs=[run_to_response(r) for r in runs],
+        workload_progress=_compute_workload_progress(ws, runs),
     )
 
 

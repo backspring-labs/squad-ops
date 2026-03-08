@@ -119,10 +119,10 @@ async def create_cycle(
             },
         )
 
-        # SIP-0066: Enqueue execution as background task
+        # SIP-0083: Enqueue cycle execution (wraps execute_run for multi-workload)
         flow_executor = get_flow_executor()
         background_tasks.add_task(
-            flow_executor.execute_run,
+            flow_executor.execute_cycle,
             cycle.cycle_id,
             run.run_id,
             body.squad_profile_id,
