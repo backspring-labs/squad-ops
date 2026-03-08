@@ -47,7 +47,7 @@ These were addressed in SIP-0083 Rev 4 with design decisions D5 (revised), D15, 
 
 **P6-RC4 (derive_cycle_status backward compat):** `derive_cycle_status()` is preserved unchanged with its full test suite. Existing tests must not be modified or deleted. `resolve_cycle_status()` composes on top of it.
 
-**P6-RC5 (resolve_cycle_status precedence):** When `workload_progress` contains both `gate_awaiting` and `rejected` entries (which should not happen in normal operation but could if state is inconsistent), `gate_awaiting` takes precedence and the function returns `PAUSED`. Rationale: a cycle with an undecided gate is still actionable — the operator can approve or reject. Returning `FAILED` prematurely would be misleading. This precedence rule must be stated in the function docstring, not just tested.
+**P6-RC5 (resolve_cycle_status precedence):** The function applies four rules in order: (1) `gate_awaiting` → `PAUSED`, (2) `rejected` → `FAILED`, (3) `pending` workloads + derive returns `COMPLETED` → `ACTIVE`, (4) fallthrough to `derive_cycle_status()`. When both `gate_awaiting` and `rejected` appear (shouldn't happen normally), `PAUSED` wins because the gate is still actionable. Rule 3 prevents showing `COMPLETED` when the pipeline still has pending workloads — e.g., the transient window between gate approval and next-Run creation. This precedence must be stated in the function docstring, not just tested.
 
 ### 6a. Add `CycleStatus.PAUSED`
 
@@ -93,14 +93,17 @@ def resolve_cycle_status(
 ) -> CycleStatus:
     """Resolve cycle status with workload awareness (SIP-0083 D5).
 
-    Composes on top of derive_cycle_status():
-    - If any workload status is "gate_awaiting" → PAUSED (P6-RC5: takes precedence)
-    - If any workload status is "rejected" → FAILED
-    - Otherwise → derive_cycle_status(runs, cycle_cancelled)
+    Composes on top of derive_cycle_status() with explicit precedence:
+    1. If any workload status is "gate_awaiting" → PAUSED
+    2. If any workload status is "rejected" → FAILED
+    3. If "pending" workloads remain and derive would return COMPLETED → ACTIVE
+    4. Otherwise → derive_cycle_status(runs, cycle_cancelled)
 
-    Precedence: gate_awaiting > rejected > derive_cycle_status fallthrough.
+    Precedence: gate_awaiting > rejected > pending-guard > derive fallthrough.
     A cycle with an undecided gate is still actionable (the operator can
     approve or reject), so PAUSED wins over FAILED if both somehow appear.
+    Rule 3 prevents showing COMPLETED when the pipeline still has pending
+    workloads (e.g., between gate approval and next-Run creation).
 
     When workload_statuses is None or empty, this is equivalent to
     derive_cycle_status() — preserving backward compatibility for
@@ -120,7 +123,18 @@ def resolve_cycle_status(
         if "rejected" in workload_statuses:
             return CycleStatus.FAILED
 
-    return derive_cycle_status(runs, cycle_cancelled)
+    derived = derive_cycle_status(runs, cycle_cancelled)
+
+    # Rule 3: if pending workloads remain, the pipeline isn't done —
+    # don't show COMPLETED just because the latest run completed.
+    if (
+        workload_statuses
+        and "pending" in workload_statuses
+        and derived == CycleStatus.COMPLETED
+    ):
+        return CycleStatus.ACTIVE
+
+    return derived
 ```
 
 **Design note on the `workload_statuses` parameter type:** The function accepts `Sequence[str] | None` — a list of normalized status strings — rather than DTO objects or duck-typed sequences. This avoids:
@@ -168,7 +182,8 @@ New class `TestResolveCycleStatus`:
 | `test_gate_awaiting_returns_paused` | Cycle at inter-workload gate must show PAUSED, not COMPLETED |
 | `test_rejected_returns_failed` | Rejected gate must show FAILED, not COMPLETED |
 | `test_gate_awaiting_takes_precedence_over_rejected` | P6-RC5: if both exist, PAUSED wins — gate is still actionable |
-| `test_completed_without_gate_awaiting_stays_completed` | Cycle with completed workloads and no pending gates stays COMPLETED |
+| `test_completed_without_gate_awaiting_stays_completed` | Cycle with all workloads completed and no pending entries stays COMPLETED |
+| `test_pending_workloads_prevent_completed` | P6-RC5 rule 3: completed run + pending workloads → ACTIVE, not COMPLETED |
 | `test_running_workload_stays_active` | Mid-workload execution shows ACTIVE via derive_cycle_status |
 
 New tests for `GATE_REJECTED_STATES`:
@@ -405,5 +420,3 @@ After Phase 6, rebuild and retest the multi-phase cycle flow that failed in the 
 ## Known Follow-Up Risks
 
 1. **`cycle_cancelled=False` hardcoding.** All four call sites pass `cycle_cancelled=False` to `resolve_cycle_status()` (inherited from the existing `derive_cycle_status()` callers). The cancel route uses a separate path (`registry.cancel_cycle()`) that does not flow through status resolution. Now that `resolve_cycle_status()` is the central status path, this assumption is more visible. If future work adds cycle-level cancellation semantics beyond the registry flag, this hardcoding will need revisiting. Not a blocker for Phase 6, but worth tracking.
-
-2. **Transient COMPLETED between gate approval and next-Run creation.** After a gate is approved but before the next Run is created, `resolve_cycle_status()` returns `COMPLETED` because no `gate_awaiting` or `rejected` entries exist in `workload_progress`. This is a millisecond-scale window in normal operation but could persist after a process restart. See the interruption scenarios table in SIP §9 for the documented recovery path. Persistent orchestration checkpointing (future SIP) would eliminate this gap.

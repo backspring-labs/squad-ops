@@ -412,11 +412,15 @@ def resolve_cycle_status(
     Composes on top of derive_cycle_status() with explicit precedence:
     1. If any workload status is "gate_awaiting" → PAUSED
     2. If any workload status is "rejected" → FAILED
-    3. Otherwise → derive_cycle_status(runs, cycle_cancelled)
+    3. If "pending" workloads remain and derive would return COMPLETED → ACTIVE
+    4. Otherwise → derive_cycle_status(runs, cycle_cancelled)
 
-    Precedence rule: gate_awaiting > rejected > derive fallthrough.
+    Precedence rule: gate_awaiting > rejected > pending-guard > derive fallthrough.
     A cycle with an undecided gate is still actionable (the operator
     can approve or reject), so PAUSED wins over FAILED if both appear.
+    Rule 3 prevents a transient COMPLETED between gate approval and
+    next-Run creation — if the pipeline still has pending workloads,
+    the cycle is ACTIVE, not COMPLETED.
 
     Args:
         workload_statuses: Normalized status strings extracted from
@@ -573,10 +577,8 @@ If the runtime-api restarts mid-orchestration, the loop is lost. Runs remain in 
 |--------------------|------------------------------|-----------------|
 | During `execute_run()` | Current Run is `running` or `failed`; Cycle is `ACTIVE` or `FAILED` | Resume or re-create the Run |
 | During inter-workload gate polling | Current Run is `completed` (gate undecided); Cycle is `PAUSED` | Decide the gate; re-invoke `execute_cycle()` |
-| After gate decided, before next Run created | Current Run is `completed` with gate decision; Cycle shows `COMPLETED` transiently (see note below) | Re-invoke `execute_cycle()`; loop skips completed workloads |
+| After gate decided, before next Run created | Current Run is `completed` with gate decision; Cycle is `ACTIVE` (pending workloads remain) | Re-invoke `execute_cycle()`; loop skips completed workloads |
 | After next Run created, before `execute_run()` | Next Run is `queued`; Cycle is `ACTIVE` | Re-invoke `execute_cycle()`; D14 guard reuses existing Run |
-
-**Transient COMPLETED note:** Between gate approval and next-Run creation, `resolve_cycle_status()` sees no `gate_awaiting` or `rejected` entries and falls through to `derive_cycle_status()`, which returns `COMPLETED` for the latest completed run. This is a transient window (milliseconds in normal operation). After a process restart in this window, the operator must re-invoke `execute_cycle()` to create the next Run, which returns the cycle to `ACTIVE`. This is a known limitation of the query-time resolution model (P6-RC2) — persistent orchestration checkpointing would eliminate this gap but is deferred to a future SIP.
 
 ### Gate polling resource usage
 Each orchestration loop holds an async task polling for gate decisions. For a 3-workload cycle, at most 2 gates are polled (sequentially, not concurrently). This matches existing resource usage patterns.
