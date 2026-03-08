@@ -44,6 +44,12 @@ TERMINAL_STATES: frozenset[RunStatus] = frozenset(
     {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
 )
 
+# States that reject gate decisions — COMPLETED is intentionally excluded
+# because inter-workload gates are decided on completed runs (SIP-0083 D15).
+GATE_REJECTED_STATES: frozenset[RunStatus] = frozenset(
+    {RunStatus.FAILED, RunStatus.CANCELLED}
+)
+
 
 def validate_run_transition(current: RunStatus, target: RunStatus) -> None:
     """Raise IllegalStateTransitionError if transition is illegal.
@@ -96,6 +102,63 @@ def derive_cycle_status(runs: Sequence[Run], cycle_cancelled: bool) -> CycleStat
         return CycleStatus.FAILED
 
     return CycleStatus.ACTIVE
+
+
+def resolve_cycle_status(
+    runs: Sequence[Run],
+    cycle_cancelled: bool,
+    workload_statuses: Sequence[str] | None = None,
+) -> CycleStatus:
+    """Resolve cycle status with workload awareness (SIP-0083 D5).
+
+    Composes on top of derive_cycle_status() with explicit precedence:
+    0. If cycle_cancelled → CANCELLED (operator intent always wins)
+    1. If any workload status is "gate_awaiting" → PAUSED
+    2. If any workload status is "rejected" → FAILED
+    3. If "pending" workloads remain and derive would return COMPLETED → ACTIVE
+    4. Otherwise → derive_cycle_status(runs, cycle_cancelled)
+
+    Precedence: cancelled > gate_awaiting > rejected > pending-guard > derive.
+    A cycle with an undecided gate is still actionable (the operator can
+    approve or reject), so PAUSED wins over FAILED if both appear.
+    Rule 3 prevents showing COMPLETED when the pipeline still has pending
+    workloads (e.g., between gate approval and next-Run creation).
+
+    When workload_statuses is None or empty, this is equivalent to
+    derive_cycle_status() — preserving backward compatibility for
+    single-workload cycles.
+
+    Args:
+        runs: All runs for the cycle.
+        cycle_cancelled: Whether the cycle was explicitly cancelled.
+        workload_statuses: Normalized status strings extracted from
+            WorkloadProgressEntry objects (e.g., ["completed",
+            "gate_awaiting", "pending"]). Callers extract these
+            before calling to avoid coupling lifecycle resolution
+            to DTO types.
+    """
+    # Explicit cancellation always wins — operator intent overrides gate state.
+    if cycle_cancelled:
+        return CycleStatus.CANCELLED
+
+    if workload_statuses:
+        if "gate_awaiting" in workload_statuses:
+            return CycleStatus.PAUSED
+        if "rejected" in workload_statuses:
+            return CycleStatus.FAILED
+
+    derived = derive_cycle_status(runs, cycle_cancelled)
+
+    # Rule 3: if pending workloads remain, the pipeline isn't done —
+    # don't show COMPLETED just because the latest run completed.
+    if (
+        workload_statuses
+        and "pending" in workload_statuses
+        and derived == CycleStatus.COMPLETED
+    ):
+        return CycleStatus.ACTIVE
+
+    return derived
 
 
 def _canonical_json(obj: dict) -> str:

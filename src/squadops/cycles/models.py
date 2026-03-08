@@ -21,6 +21,7 @@ class CycleStatus(StrEnum):
 
     CREATED = "created"
     ACTIVE = "active"
+    PAUSED = "paused"  # SIP-0083 D16: waiting for human input at inter-workload gate
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
