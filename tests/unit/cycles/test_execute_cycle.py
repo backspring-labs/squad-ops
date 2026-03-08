@@ -1,7 +1,7 @@
-"""Tests for execute_cycle() multi-workload orchestration (SIP-0083 Phase 2).
+"""Tests for execute_cycle() multi-workload orchestration (SIP-0083 Phases 2-3).
 
 Covers the orchestration loop, gate polling, run creation, duplicate guard,
-and event emission for multi-workload cycle execution.
+event emission, refinement artifact writing, and artifact forwarding.
 
 Test strategy: mock _cycle_registry and _cycle_event_bus. Patch execute_run
 on the executor instance to track calls without dispatching real tasks.
@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from squadops.cycles.models import (
+    ArtifactRef,
     Cycle,
     GateDecision,
     GateDecisionValue,
@@ -105,9 +106,11 @@ def mock_event_bus():
 def executor(mock_registry, mock_event_bus):
     from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
 
+    vault = AsyncMock()
+    vault.list_artifacts.return_value = []  # Default: no promoted artifacts
     exec_ = DistributedFlowExecutor(
         cycle_registry=mock_registry,
-        artifact_vault=AsyncMock(),
+        artifact_vault=vault,
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
@@ -637,3 +640,281 @@ class TestCreateNextWorkloadRun:
         )
 
         assert result.run_number == 4  # max(1,3) + 1
+
+
+# ---------------------------------------------------------------------------
+# Helpers for Phase 3 (artifact forwarding)
+# ---------------------------------------------------------------------------
+
+T1 = datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC)
+T2 = datetime(2026, 1, 15, 11, 0, 0, tzinfo=UTC)
+T3 = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+
+
+def _make_artifact_ref(
+    artifact_id: str,
+    run_id: str = "run_001",
+    artifact_type: str = "code",
+    promotion_status: str = "promoted",
+    created_at: datetime = T1,
+) -> ArtifactRef:
+    return ArtifactRef(
+        artifact_id=artifact_id,
+        project_id="proj_001",
+        artifact_type=artifact_type,
+        filename=f"{artifact_id}.txt",
+        content_hash="abc",
+        size_bytes=100,
+        media_type="text/plain",
+        created_at=created_at,
+        cycle_id="cyc_001",
+        run_id=run_id,
+        promotion_status=promotion_status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Refinement artifact writing (Phase 3a)
+# ---------------------------------------------------------------------------
+
+
+class TestRefinementArtifactWriting:
+    """approved_with_refinements writes refinement_notes.md artifact."""
+
+    async def test_approved_with_refinements_writes_artifact(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """approved_with_refinements with notes writes refinement_notes.md."""
+        cycle = _make_cycle(workload_sequence=[
+            {"type": "planning", "gate": "progress_plan_review"},
+            {"type": "implementation"},
+        ])
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1_decided = _make_run(
+            "run_001", 1, "completed", "planning",
+            gate_decisions=(_gate_decision(
+                "progress_plan_review",
+                GateDecisionValue.APPROVED_WITH_REFINEMENTS,
+                notes="Add error handling to the parser",
+            ),),
+        )
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+
+        # get_run: status check, _is_cancelled, poll finds decision, status check run2
+        mock_registry.get_run.side_effect = [run1, run1, run1_decided, run2]
+        mock_registry.list_runs.side_effect = [[run1_decided], [run1_decided]]
+        mock_registry.create_run.side_effect = lambda r: r
+        # Vault returns empty for forwarding overrides
+        executor._artifact_vault.list_artifacts.return_value = []
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        # store() called with a refinement artifact
+        vault = executor._artifact_vault
+        vault.store.assert_called_once()
+        stored_ref = vault.store.call_args[0][0]
+        stored_content = vault.store.call_args[0][1]
+        assert stored_ref.filename == "refinement_notes.md"
+        assert stored_ref.artifact_type == "document"
+        assert stored_ref.run_id == "run_001"
+        assert stored_ref.media_type == "text/markdown"
+        assert stored_ref.metadata == {"producing_task_type": "gate.refinement_notes"}
+        assert b"Add error handling to the parser" in stored_content
+
+        # append_artifact_refs called to register on run
+        mock_registry.append_artifact_refs.assert_called_once()
+        call_args = mock_registry.append_artifact_refs.call_args
+        assert call_args[0][0] == "run_001"
+        assert stored_ref.artifact_id in call_args[0][1]
+
+    @pytest.mark.parametrize("notes", [None, ""])
+    async def test_empty_notes_does_not_write_artifact(
+        self, executor, mock_registry, mock_event_bus, notes
+    ):
+        """approved_with_refinements with empty/None notes skips artifact."""
+        cycle = _make_cycle(workload_sequence=[
+            {"type": "planning", "gate": "progress_plan_review"},
+            {"type": "implementation"},
+        ])
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1_decided = _make_run(
+            "run_001", 1, "completed", "planning",
+            gate_decisions=(_gate_decision(
+                "progress_plan_review",
+                GateDecisionValue.APPROVED_WITH_REFINEMENTS,
+                notes=notes,
+            ),),
+        )
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+
+        mock_registry.get_run.side_effect = [run1, run1, run1_decided, run2]
+        mock_registry.list_runs.side_effect = [[run1_decided], [run1_decided]]
+        mock_registry.create_run.side_effect = lambda r: r
+        executor._artifact_vault.list_artifacts.return_value = []
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        # No artifact stored
+        executor._artifact_vault.store.assert_not_called()
+
+    async def test_refinement_still_advances_to_next_workload(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """approved_with_refinements proceeds to next workload (not blocked)."""
+        cycle = _make_cycle(workload_sequence=[
+            {"type": "planning", "gate": "progress_plan_review"},
+            {"type": "implementation"},
+        ])
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1_decided = _make_run(
+            "run_001", 1, "completed", "planning",
+            gate_decisions=(_gate_decision(
+                "progress_plan_review",
+                GateDecisionValue.APPROVED_WITH_REFINEMENTS,
+                notes="Minor fix needed",
+            ),),
+        )
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+
+        mock_registry.get_run.side_effect = [run1, run1, run1_decided, run2]
+        mock_registry.list_runs.side_effect = [[run1_decided], [run1_decided]]
+        mock_registry.create_run.side_effect = lambda r: r
+        executor._artifact_vault.list_artifacts.return_value = []
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        # Both workloads executed
+        assert executor.execute_run.await_count == 2
+        mock_registry.create_run.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Artifact forwarding (Phase 3b)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildForwardingOverrides:
+    """_build_forwarding_overrides builds correct overrides dict."""
+
+    async def test_promoted_artifacts_forwarded_as_prior_workload_refs(
+        self, executor
+    ):
+        """Promoted artifacts become prior_workload_artifact_refs."""
+        cycle = _make_cycle()
+        completed = _make_run("run_001", 1, "completed", "implementation")
+        art1 = _make_artifact_ref("art_001", created_at=T2)
+        art2 = _make_artifact_ref("art_002", created_at=T1)
+
+        executor._artifact_vault.list_artifacts.return_value = [art1, art2]
+
+        result = await executor._build_forwarding_overrides(cycle, completed)
+
+        # Sorted by created_at: art_002 (T1) before art_001 (T2)
+        assert result["prior_workload_artifact_refs"] == ["art_002", "art_001"]
+
+    async def test_no_promoted_artifacts_returns_empty_list(
+        self, executor
+    ):
+        """No promoted artifacts → empty prior_workload_artifact_refs."""
+        cycle = _make_cycle()
+        completed = _make_run("run_001", 1, "completed", "planning")
+
+        executor._artifact_vault.list_artifacts.return_value = []
+
+        result = await executor._build_forwarding_overrides(cycle, completed)
+
+        assert result["prior_workload_artifact_refs"] == []
+
+    async def test_planning_run_forwards_plan_artifact_refs(
+        self, executor
+    ):
+        """Planning workload forwards promoted documents as plan_artifact_refs."""
+        cycle = _make_cycle()
+        completed = _make_run("run_001", 1, "completed", "planning")
+        doc1 = _make_artifact_ref("art_plan_01", artifact_type="document", created_at=T2)
+        doc2 = _make_artifact_ref("art_plan_02", artifact_type="document", created_at=T1)
+
+        # First call: promoted artifacts (all types), second: promoted documents
+        executor._artifact_vault.list_artifacts.side_effect = [
+            [doc1, doc2],  # all promoted
+            [doc1, doc2],  # promoted documents
+        ]
+
+        result = await executor._build_forwarding_overrides(cycle, completed)
+
+        assert result["plan_artifact_refs"] == ["art_plan_02", "art_plan_01"]
+        assert "impl_run_id" not in result
+
+    async def test_implementation_run_forwards_impl_run_id(
+        self, executor
+    ):
+        """Implementation workload sets impl_run_id."""
+        cycle = _make_cycle()
+        completed = _make_run("run_001", 1, "completed", "implementation")
+
+        executor._artifact_vault.list_artifacts.return_value = []
+
+        result = await executor._build_forwarding_overrides(cycle, completed)
+
+        assert result["impl_run_id"] == "run_001"
+        assert "plan_artifact_refs" not in result
+
+    async def test_scalar_override_not_overwritten(
+        self, executor
+    ):
+        """Operator override for impl_run_id takes precedence."""
+        cycle = _make_cycle(execution_overrides={"impl_run_id": "run_operator"})
+        completed = _make_run("run_001", 1, "completed", "implementation")
+
+        executor._artifact_vault.list_artifacts.return_value = []
+
+        result = await executor._build_forwarding_overrides(cycle, completed)
+
+        assert result["impl_run_id"] == "run_operator"
+
+    async def test_list_override_merged_and_deduped(
+        self, executor
+    ):
+        """Operator list overrides merge with forwarded refs, no duplicates."""
+        cycle = _make_cycle(
+            execution_overrides={"prior_workload_artifact_refs": ["art_existing", "art_001"]}
+        )
+        completed = _make_run("run_001", 1, "completed", "planning")
+        art1 = _make_artifact_ref("art_001", created_at=T1)
+        art2 = _make_artifact_ref("art_new", created_at=T2)
+
+        executor._artifact_vault.list_artifacts.return_value = [art1, art2]
+
+        result = await executor._build_forwarding_overrides(cycle, completed)
+
+        refs = result["prior_workload_artifact_refs"]
+        # Operator values first, then new ones (deduped: art_001 already present)
+        assert refs == ["art_existing", "art_001", "art_new"]
+
+    async def test_forwarded_refs_sorted_by_creation_time(
+        self, executor
+    ):
+        """Forwarded artifact refs are deterministically sorted by created_at."""
+        cycle = _make_cycle()
+        completed = _make_run("run_001", 1, "completed", "planning")
+        # Out of order by creation time
+        art_late = _make_artifact_ref("art_late", created_at=T3)
+        art_early = _make_artifact_ref("art_early", created_at=T1)
+        art_mid = _make_artifact_ref("art_mid", created_at=T2)
+
+        executor._artifact_vault.list_artifacts.return_value = [art_late, art_early, art_mid]
+
+        result = await executor._build_forwarding_overrides(cycle, completed)
+
+        assert result["prior_workload_artifact_refs"] == [
+            "art_early", "art_mid", "art_late"
+        ]

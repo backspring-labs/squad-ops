@@ -113,6 +113,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # Accumulated per-run pulse verification summaries for run report.
         # Reset at the start of each execute_run().
         self._pulse_report_entries: list[dict[str, Any]] = []
+        # SIP-0083: forwarding overrides set by execute_cycle() before
+        # calling execute_run() for subsequent workloads. Merged into
+        # cycle.execution_overrides via dataclasses.replace().
+        self._forwarding_overrides: dict = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -127,6 +131,18 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         try:
             cycle = await self._cycle_registry.get_cycle(cycle_id)
+            # SIP-0083: merge forwarding overrides from multi-workload orchestration
+            if self._forwarding_overrides:
+                import dataclasses as _dc_fwd
+
+                cycle = _dc_fwd.replace(
+                    cycle,
+                    execution_overrides={
+                        **cycle.execution_overrides,
+                        **self._forwarding_overrides,
+                    },
+                )
+                self._forwarding_overrides = {}
             run = await self._cycle_registry.get_run(run_id)
             profile, _ = await self._squad_profile.resolve_snapshot(profile_id)
 
@@ -447,7 +463,30 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 if decision.decision == GateDecisionValue.REJECTED:
                     break  # Run stays COMPLETED; rejection in gate_decisions
 
-                # approved_with_refinements artifact writing (Phase 3)
+                # Write refinement notes as artifact (D10)
+                if (
+                    decision.decision == GateDecisionValue.APPROVED_WITH_REFINEMENTS
+                    and decision.notes
+                ):
+                    artifact_content = f"# Refinement Notes\n\n{decision.notes}\n"
+                    content_bytes = artifact_content.encode()
+                    refinement_ref = ArtifactRef(
+                        artifact_id=f"art_{uuid4().hex[:12]}",
+                        project_id=cycle.project_id,
+                        cycle_id=cycle.cycle_id,
+                        run_id=current_run_id,
+                        artifact_type="document",
+                        filename="refinement_notes.md",
+                        content_hash=sha256(content_bytes).hexdigest(),
+                        size_bytes=len(content_bytes),
+                        media_type="text/markdown",
+                        created_at=datetime.now(UTC),
+                        metadata={"producing_task_type": "gate.refinement_notes"},
+                    )
+                    await self._artifact_vault.store(refinement_ref, content_bytes)
+                    await self._cycle_registry.append_artifact_refs(
+                        current_run_id, (refinement_ref.artifact_id,)
+                    )
 
             # Positional duplicate guard (D14).
             # Assumes runs are created in sequence order by this orchestration
@@ -457,6 +496,11 @@ class DistributedFlowExecutor(FlowExecutionPort):
             non_cancelled = sorted(
                 [r for r in all_runs if r.status != RunStatus.CANCELLED.value],
                 key=lambda r: r.run_number,
+            )
+
+            # Build forwarding overrides for the next workload's execute_run()
+            self._forwarding_overrides = await self._build_forwarding_overrides(
+                cycle, run,
             )
 
             if len(non_cancelled) > i + 1:
@@ -495,11 +539,66 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     return decision
             await asyncio.sleep(poll_interval)
 
+    async def _build_forwarding_overrides(
+        self, cycle: Cycle, completed_run: Run,
+    ) -> dict:
+        """Build execution_overrides with artifact refs from the completed run.
+
+        Forwarded artifact lists are sorted by creation time for deterministic
+        ordering.  Operator-supplied overrides in cycle.execution_overrides
+        always take precedence.
+
+        Merge semantics:
+        - List keys (plan_artifact_refs, prior_workload_artifact_refs):
+          merge with existing values, deduplicate.
+        - Scalar keys (impl_run_id): only write when no explicit override exists.
+        """
+        overrides = dict(cycle.execution_overrides)
+
+        # promoted artifacts only — empty list if nothing promoted (D9, §5.6 rule 6)
+        promoted = await self._artifact_vault.list_artifacts(
+            run_id=completed_run.run_id, promotion_status="promoted",
+        )
+        promoted_refs = [
+            a.artifact_id for a in sorted(promoted, key=lambda a: a.created_at)
+        ]
+        if "prior_workload_artifact_refs" in overrides:
+            existing = overrides["prior_workload_artifact_refs"]
+            seen = set(existing)
+            merged = list(existing) + [r for r in promoted_refs if r not in seen]
+            overrides["prior_workload_artifact_refs"] = merged
+        else:
+            overrides["prior_workload_artifact_refs"] = promoted_refs
+
+        # workload-type-specific keys
+        wt = completed_run.workload_type
+        if wt == "planning":
+            plan_docs = await self._artifact_vault.list_artifacts(
+                run_id=completed_run.run_id,
+                artifact_type="document",
+                promotion_status="promoted",
+            )
+            plan_refs = [
+                a.artifact_id for a in sorted(plan_docs, key=lambda a: a.created_at)
+            ]
+            if "plan_artifact_refs" in overrides:
+                existing = overrides["plan_artifact_refs"]
+                seen = set(existing)
+                merged = list(existing) + [r for r in plan_refs if r not in seen]
+                overrides["plan_artifact_refs"] = merged
+            else:
+                overrides["plan_artifact_refs"] = plan_refs
+        elif wt == "implementation":
+            if "impl_run_id" not in overrides:
+                overrides["impl_run_id"] = completed_run.run_id
+
+        return overrides
+
     async def _create_next_workload_run(
         self, cycle: Cycle, completed_run: Run, workload_entry: dict,
         config_hash: str,
     ) -> Run:
-        """Create the next workload Run with forwarded overrides."""
+        """Create the next workload Run."""
         all_runs = await self._cycle_registry.list_runs(cycle.cycle_id)
         next_number = max(r.run_number for r in all_runs) + 1
 
