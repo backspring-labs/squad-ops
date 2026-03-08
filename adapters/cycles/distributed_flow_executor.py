@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, RunStatus
+from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, Run, RunStatus
 from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from adapters.cycles.prefect_reporter import PrefectReporter
     from squadops.capabilities.acceptance import AcceptanceCheckEngine
     from squadops.capabilities.models import AcceptanceContext
-    from squadops.cycles.models import SquadProfile
+    from squadops.cycles.models import GateDecision, SquadProfile
     from squadops.cycles.pulse_models import PulseCheckDefinition, PulseVerificationRecord
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
@@ -374,6 +374,148 @@ class DistributedFlowExecutor(FlowExecutionPort):
             await self._cycle_registry.cancel_run(run_id)
         except Exception:
             logger.warning("cancel_run: registry cancel failed for %s", run_id, exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Multi-workload orchestration (SIP-0083)
+    # ------------------------------------------------------------------
+
+    async def execute_cycle(
+        self, cycle_id: str, first_run_id: str, profile_id: str | None = None
+    ) -> None:
+        """Execute a full cycle by iterating over workload_sequence.
+
+        Assumes execute_run() returns only after the run reaches a terminal
+        state (completed, failed, cancelled). Decision semantics for inter-
+        workload gates are interpreted here, not in the polling helper.
+        """
+        cycle = await self._cycle_registry.get_cycle(cycle_id)
+        workload_sequence = cycle.applied_defaults.get("workload_sequence", [])
+
+        # Single-workload fast path (D7)
+        if len(workload_sequence) <= 1:
+            await self.execute_run(cycle_id, first_run_id, profile_id)
+            return
+
+        current_run_id = first_run_id
+        for i, workload_entry in enumerate(workload_sequence):
+            await self.execute_run(cycle_id, current_run_id, profile_id)
+
+            # Check terminal status (compare persisted string values)
+            run = await self._cycle_registry.get_run(current_run_id)
+            if run.status in (RunStatus.FAILED.value, RunStatus.CANCELLED.value):
+                self._cycle_event_bus.emit(
+                    EventType.WORKLOAD_COMPLETED,
+                    entity_type="workload",
+                    entity_id=current_run_id,
+                    context={"cycle_id": cycle_id, "run_id": current_run_id},
+                    payload={
+                        "workload_type": workload_entry.get("type"),
+                        "terminal_status": run.status,
+                    },
+                )
+                break
+
+            self._cycle_event_bus.emit(
+                EventType.WORKLOAD_COMPLETED,
+                entity_type="workload",
+                entity_id=current_run_id,
+                context={"cycle_id": cycle_id, "run_id": current_run_id},
+                payload={
+                    "workload_type": workload_entry.get("type"),
+                    "terminal_status": RunStatus.COMPLETED.value,
+                },
+            )
+
+            # Last workload — done
+            if i >= len(workload_sequence) - 1:
+                break
+
+            # Inter-workload gate
+            gate_name = workload_entry.get("gate")
+            if gate_name:
+                self._cycle_event_bus.emit(
+                    EventType.WORKLOAD_GATE_AWAITING,
+                    entity_type="workload",
+                    entity_id=current_run_id,
+                    context={"cycle_id": cycle_id, "run_id": current_run_id},
+                    payload={"gate_name": gate_name},
+                )
+                decision = await self._poll_inter_workload_gate(
+                    current_run_id, cycle, gate_name,
+                )
+
+                if decision.decision == GateDecisionValue.REJECTED:
+                    break  # Run stays COMPLETED; rejection in gate_decisions
+
+                # approved_with_refinements artifact writing (Phase 3)
+
+            # Positional duplicate guard (D14).
+            # Assumes runs are created in sequence order by this orchestration
+            # loop and no out-of-band run creation targets the same position.
+            next_workload = workload_sequence[i + 1]
+            all_runs = await self._cycle_registry.list_runs(cycle_id)
+            non_cancelled = sorted(
+                [r for r in all_runs if r.status != RunStatus.CANCELLED.value],
+                key=lambda r: r.run_number,
+            )
+
+            if len(non_cancelled) > i + 1:
+                current_run_id = non_cancelled[i + 1].run_id
+            else:
+                next_run = await self._create_next_workload_run(
+                    cycle, run, next_workload,
+                    config_hash=run.resolved_config_hash,
+                )
+                current_run_id = next_run.run_id
+
+            self._cycle_event_bus.emit(
+                EventType.WORKLOAD_ADVANCED,
+                entity_type="workload",
+                entity_id=current_run_id,
+                context={"cycle_id": cycle_id, "run_id": current_run_id},
+                payload={"workload_type": next_workload.get("type")},
+            )
+
+    async def _poll_inter_workload_gate(
+        self, run_id: str, cycle: Cycle, gate_name: str
+    ) -> GateDecision:
+        """Poll for and return the inter-workload gate decision on a completed run.
+
+        Decision semantics (approved, rejected, etc.) are interpreted by
+        execute_cycle(), not here. This helper only waits for any decision
+        to appear on the named gate.
+        """
+        poll_interval = 2.0
+        while True:
+            if await self._is_cancelled(run_id):
+                raise _CancellationError(run_id)
+            run = await self._cycle_registry.get_run(run_id)
+            for decision in run.gate_decisions:
+                if decision.gate_name == gate_name:
+                    return decision
+            await asyncio.sleep(poll_interval)
+
+    async def _create_next_workload_run(
+        self, cycle: Cycle, completed_run: Run, workload_entry: dict,
+        config_hash: str,
+    ) -> Run:
+        """Create the next workload Run with forwarded overrides."""
+        all_runs = await self._cycle_registry.list_runs(cycle.cycle_id)
+        next_number = max(r.run_number for r in all_runs) + 1
+
+        # Build forwarding overrides (Phase 3 adds artifact forwarding)
+        execution_overrides = dict(cycle.execution_overrides)
+
+        next_run = Run(
+            run_id=f"run_{uuid4().hex[:12]}",
+            cycle_id=cycle.cycle_id,
+            run_number=next_number,
+            status=RunStatus.QUEUED.value,
+            initiated_by="system",
+            resolved_config_hash=config_hash,
+            workload_type=workload_entry.get("type"),
+        )
+        return await self._cycle_registry.create_run(next_run)
 
     # ------------------------------------------------------------------
     # Dispatch

@@ -27,12 +27,8 @@ _ALL_EVENT_TYPE_ATTRS = [
     and isinstance(getattr(EventType, attr), str)
 ]
 
-# SIP-0083 workload events — emission points added in Phase 2
-_SIP_0083_PENDING_EMISSION: set[str] = {
-    "WORKLOAD_COMPLETED",
-    "WORKLOAD_GATE_AWAITING",
-    "WORKLOAD_ADVANCED",
-}
+# SIP-0083 workload events — all emission points now present
+_SIP_0083_PENDING_EMISSION: set[str] = set()
 
 
 def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
@@ -121,13 +117,16 @@ class TestExecutorEmissionPoints:
             "CORRECTION_INITIATED",
             "CORRECTION_DECIDED",
             "CORRECTION_COMPLETED",
+            "WORKLOAD_COMPLETED",
+            "WORKLOAD_GATE_AWAITING",
+            "WORKLOAD_ADVANCED",
         ],
     )
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_19_types(self, executor_refs: set[str]) -> None:
-        assert len(executor_refs) == 19
+    def test_executor_has_22_types(self, executor_refs: set[str]) -> None:
+        assert len(executor_refs) == 22
 
 
 class TestRouteEmissionPoints:
@@ -222,8 +221,8 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 34 executor + 7 route = 41 total emit calls."""
+        """Sanity check: 38 executor + 7 route = 45 total emit calls."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 41
+        assert total == 45
