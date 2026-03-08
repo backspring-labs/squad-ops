@@ -1,9 +1,11 @@
 ---
 title: Multi-Run Cycle Orchestration
-status: proposed
+status: accepted
 authors: SquadOps Architecture
 created_at: '2026-03-07'
 revision: 3
+sip_number: 83
+updated_at: '2026-03-07T21:35:02.342067Z'
 ---
 # SIP: Multi-Run Cycle Orchestration
 
