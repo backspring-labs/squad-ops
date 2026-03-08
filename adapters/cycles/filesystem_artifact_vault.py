@@ -187,8 +187,13 @@ class FilesystemArtifactVault(ArtifactVaultPort):
             unattached = self._base_dir / "_unattached"
             if unattached.exists() and unattached != scan_dir:
                 self._collect_artifacts(
-                    unattached, results, project_id, cycle_id, run_id,
-                    artifact_type, promotion_status
+                    unattached,
+                    results,
+                    project_id,
+                    cycle_id,
+                    run_id,
+                    artifact_type,
+                    promotion_status,
                 )
 
         return results

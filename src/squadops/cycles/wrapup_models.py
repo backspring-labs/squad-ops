@@ -75,12 +75,14 @@ class NextCycleRecommendation:
 
 # Controlled vocabulary for suggested_owner field in unresolved items.
 # First 6 are agent roles; "operator" indicates a human decision is required.
-ALLOWED_SUGGESTED_OWNERS = frozenset({
-    "lead",
-    "qa",
-    "dev",
-    "data",
-    "strat",
-    "builder",
-    "operator",
-})
+ALLOWED_SUGGESTED_OWNERS = frozenset(
+    {
+        "lead",
+        "qa",
+        "dev",
+        "data",
+        "strat",
+        "builder",
+        "operator",
+    }
+)

@@ -457,7 +457,9 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     payload={"gate_name": gate_name},
                 )
                 decision = await self._poll_inter_workload_gate(
-                    current_run_id, cycle, gate_name,
+                    current_run_id,
+                    cycle,
+                    gate_name,
                 )
 
                 if decision.decision == GateDecisionValue.REJECTED:
@@ -500,14 +502,17 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
             # Build forwarding overrides for the next workload's execute_run()
             self._forwarding_overrides = await self._build_forwarding_overrides(
-                cycle, run,
+                cycle,
+                run,
             )
 
             if len(non_cancelled) > i + 1:
                 current_run_id = non_cancelled[i + 1].run_id
             else:
                 next_run = await self._create_next_workload_run(
-                    cycle, run, next_workload,
+                    cycle,
+                    run,
+                    next_workload,
                     config_hash=run.resolved_config_hash,
                 )
                 current_run_id = next_run.run_id
@@ -540,7 +545,9 @@ class DistributedFlowExecutor(FlowExecutionPort):
             await asyncio.sleep(poll_interval)
 
     async def _build_forwarding_overrides(
-        self, cycle: Cycle, completed_run: Run,
+        self,
+        cycle: Cycle,
+        completed_run: Run,
     ) -> dict:
         """Build execution_overrides with artifact refs from the completed run.
 
@@ -557,11 +564,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         # promoted artifacts only — empty list if nothing promoted (D9, §5.6 rule 6)
         promoted = await self._artifact_vault.list_artifacts(
-            run_id=completed_run.run_id, promotion_status="promoted",
+            run_id=completed_run.run_id,
+            promotion_status="promoted",
         )
-        promoted_refs = [
-            a.artifact_id for a in sorted(promoted, key=lambda a: a.created_at)
-        ]
+        promoted_refs = [a.artifact_id for a in sorted(promoted, key=lambda a: a.created_at)]
         if "prior_workload_artifact_refs" in overrides:
             existing = overrides["prior_workload_artifact_refs"]
             seen = set(existing)
@@ -578,9 +584,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 artifact_type="document",
                 promotion_status="promoted",
             )
-            plan_refs = [
-                a.artifact_id for a in sorted(plan_docs, key=lambda a: a.created_at)
-            ]
+            plan_refs = [a.artifact_id for a in sorted(plan_docs, key=lambda a: a.created_at)]
             if "plan_artifact_refs" in overrides:
                 existing = overrides["plan_artifact_refs"]
                 seen = set(existing)
@@ -595,7 +599,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
         return overrides
 
     async def _create_next_workload_run(
-        self, cycle: Cycle, completed_run: Run, workload_entry: dict,
+        self,
+        cycle: Cycle,
+        completed_run: Run,
+        workload_entry: dict,
         config_hash: str,
     ) -> Run:
         """Create the next workload Run."""
@@ -923,8 +930,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # SIP-0079: Time budget enforcement (RC-8)
             if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
                 raise _ExecutionError(
-                    f"Time budget exhausted ({time_budget}s) after "
-                    f"{len(completed_task_ids)} tasks"
+                    f"Time budget exhausted ({time_budget}s) after {len(completed_task_ids)} tasks"
                 )
 
             # Build extra inputs for chain context
@@ -997,9 +1003,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 # SIP-0079: Outcome routing (replaces fail-fast)
                 if result.status != "SUCCEEDED":
                     outcome = (
-                        (result.outputs or {}).get("outcome_class")
-                        if result.outputs
-                        else None
+                        (result.outputs or {}).get("outcome_class") if result.outputs else None
                     )
 
                     # D5 fallback table: classify unclassified failures
@@ -1030,9 +1034,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     consecutive_failures += 1
 
                     # D9: contract task failure → immediate abort, no correction
-                    is_contract_task = (
-                        envelope.task_type == "governance.establish_contract"
-                    )
+                    is_contract_task = envelope.task_type == "governance.establish_contract"
                     if is_contract_task:
                         raise _ExecutionError(
                             f"Contract task {envelope.task_id} failed "
@@ -1040,9 +1042,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         )
 
                     # Trigger correction protocol
-                    max_corrections = cycle.applied_defaults.get(
-                        "max_correction_attempts", 2
-                    )
+                    max_corrections = cycle.applied_defaults.get("max_correction_attempts", 2)
 
                     if correction_attempts >= max_corrections:
                         raise _ExecutionError(
@@ -1071,16 +1071,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         )
                     elif correction_path == "rewind":
                         raise _ExecutionError(
-                            f"Rewinding to checkpoint after "
-                            f"{envelope.task_type} failure"
+                            f"Rewinding to checkpoint after {envelope.task_type} failure"
                         )
                     elif correction_path in ("continue", "patch"):
                         consecutive_failures = 0
                         break  # break while loop; for loop advances
                     else:
-                        raise _ExecutionError(
-                            f"Unknown correction path: {correction_path}"
-                        )
+                        raise _ExecutionError(f"Unknown correction path: {correction_path}")
                     break  # safety break after correction handling
 
                 # Success
@@ -1406,9 +1403,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # 7. Handle patch path: dispatch repair tasks
         if correction_path == "patch":
             for step_idx, (task_type, role) in enumerate(REPAIR_TASK_STEPS):
-                repair_task_id = (
-                    f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-                )
+                repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
                 agent_id = role
                 if profile:
                     for agent in profile.agents:
@@ -1492,9 +1487,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 # Collect repair outputs
                 role_key = repair_envelope.metadata.get("role", "unknown")
                 prior_outputs[role_key] = {
-                    k: v
-                    for k, v in (repair_result.outputs or {}).items()
-                    if k != "artifacts"
+                    k: v for k, v in (repair_result.outputs or {}).items() if k != "artifacts"
                 }
 
         # 8. Emit CORRECTION_COMPLETED
@@ -1623,9 +1616,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                             GateDecisionValue.APPROVED,
                             GateDecisionValue.APPROVED_WITH_REFINEMENTS,
                         ):
-                            await self._cycle_registry.update_run_status(
-                                run_id, RunStatus.RUNNING
-                            )
+                            await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
                             self._cycle_event_bus.emit(
                                 EventType.RUN_RESUMED,
                                 entity_type="run",
@@ -1641,9 +1632,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                             )
                             return
                         elif decision.decision == GateDecisionValue.REJECTED:
-                            raise _ExecutionError(
-                                f"Gate {gate_name!r} rejected: {decision.notes}"
-                            )
+                            raise _ExecutionError(f"Gate {gate_name!r} rejected: {decision.notes}")
                         elif decision.decision == GateDecisionValue.RETURNED_FOR_REVISION:
                             raise _ExecutionError(
                                 f"Gate {gate_name!r} returned_for_revision: "

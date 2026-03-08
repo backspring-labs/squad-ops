@@ -36,6 +36,7 @@ class TestCycleStatus:
         assert set(CycleStatus) == {
             CycleStatus.CREATED,
             CycleStatus.ACTIVE,
+            CycleStatus.PAUSED,
             CycleStatus.COMPLETED,
             CycleStatus.FAILED,
             CycleStatus.CANCELLED,

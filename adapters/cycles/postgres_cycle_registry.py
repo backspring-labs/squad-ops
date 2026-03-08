@@ -428,8 +428,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         """Return all checkpoints for a run, ordered by checkpoint_index ascending."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT * FROM run_checkpoints WHERE run_id = $1 "
-                "ORDER BY checkpoint_index ASC",
+                "SELECT * FROM run_checkpoints WHERE run_id = $1 ORDER BY checkpoint_index ASC",
                 run_id,
             )
         return [self._row_to_checkpoint(r) for r in rows]

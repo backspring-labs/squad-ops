@@ -46,9 +46,7 @@ TERMINAL_STATES: frozenset[RunStatus] = frozenset(
 
 # States that reject gate decisions — COMPLETED is intentionally excluded
 # because inter-workload gates are decided on completed runs (SIP-0083 D15).
-GATE_REJECTED_STATES: frozenset[RunStatus] = frozenset(
-    {RunStatus.FAILED, RunStatus.CANCELLED}
-)
+GATE_REJECTED_STATES: frozenset[RunStatus] = frozenset({RunStatus.FAILED, RunStatus.CANCELLED})
 
 
 def validate_run_transition(current: RunStatus, target: RunStatus) -> None:
@@ -151,11 +149,7 @@ def resolve_cycle_status(
 
     # Rule 3: if pending workloads remain, the pipeline isn't done —
     # don't show COMPLETED just because the latest run completed.
-    if (
-        workload_statuses
-        and "pending" in workload_statuses
-        and derived == CycleStatus.COMPLETED
-    ):
+    if workload_statuses and "pending" in workload_statuses and derived == CycleStatus.COMPLETED:
         return CycleStatus.ACTIVE
 
     return derived

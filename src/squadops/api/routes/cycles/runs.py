@@ -195,8 +195,7 @@ async def resume_run(
         ws = cycle.applied_defaults.get("workload_sequence", [])
         progress = compute_workload_progress(ws, runs)
         workload_statuses = [e.status for e in progress] if progress else None
-        cycle_status = resolve_cycle_status(runs, False,
-                                            workload_statuses=workload_statuses)
+        cycle_status = resolve_cycle_status(runs, False, workload_statuses=workload_statuses)
         if cycle_status in (CycleStatus.COMPLETED, CycleStatus.CANCELLED):
             raise RunTerminalError(f"Cannot resume run — parent cycle is {cycle_status.value}")
 

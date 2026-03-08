@@ -90,7 +90,8 @@ _RUN_STATUS_TO_PROGRESS: dict[str, str] = {
 
 
 def compute_workload_progress(
-    workload_sequence: list[dict], runs: list[Run],
+    workload_sequence: list[dict],
+    runs: list[Run],
 ) -> list[WorkloadProgressEntry]:
     """Derive workload_progress by positional alignment (SIP-0083 §5.8).
 
@@ -117,19 +118,23 @@ def compute_workload_progress(
                 status = "rejected"
             else:
                 status = _RUN_STATUS_TO_PROGRESS.get(run.status, run.status)
-            entries.append(WorkloadProgressEntry(
-                index=i,
-                workload_type=ws_entry.get("type", "unknown"),
-                run_id=run.run_id,
-                status=status,
-            ))
+            entries.append(
+                WorkloadProgressEntry(
+                    index=i,
+                    workload_type=ws_entry.get("type", "unknown"),
+                    run_id=run.run_id,
+                    status=status,
+                )
+            )
         else:
-            entries.append(WorkloadProgressEntry(
-                index=i,
-                workload_type=ws_entry.get("type", "unknown"),
-                run_id=None,
-                status="pending",
-            ))
+            entries.append(
+                WorkloadProgressEntry(
+                    index=i,
+                    workload_type=ws_entry.get("type", "unknown"),
+                    run_id=None,
+                    status="pending",
+                )
+            )
     return entries
 
 
@@ -137,8 +142,7 @@ def cycle_to_response(cycle: Cycle, runs: list[Run]) -> CycleResponse:
     ws = cycle.applied_defaults.get("workload_sequence", [])
     progress = compute_workload_progress(ws, runs)
     workload_statuses = [e.status for e in progress] if progress else None
-    status = resolve_cycle_status(runs, cycle_cancelled=False,
-                                  workload_statuses=workload_statuses)
+    status = resolve_cycle_status(runs, cycle_cancelled=False, workload_statuses=workload_statuses)
     return CycleResponse(
         cycle_id=cycle.cycle_id,
         project_id=cycle.project_id,

@@ -167,11 +167,13 @@ class ProfileValidationError(CycleError):
 
 # Allowed keys in AgentProfileEntry.config_overrides (SIP-0075 §5.5.1).
 # Unknown keys are rejected with 422, not silently ignored.
-ALLOWED_CONFIG_OVERRIDE_KEYS = frozenset({
-    "temperature",
-    "max_completion_tokens",
-    "timeout_seconds",
-})
+ALLOWED_CONFIG_OVERRIDE_KEYS = frozenset(
+    {
+        "temperature",
+        "max_completion_tokens",
+        "timeout_seconds",
+    }
+)
 
 # Required roles that must be present in a squad profile for plan generation.
 # Missing required roles are a hard error, not a silent fallback. (SIP-0075)
