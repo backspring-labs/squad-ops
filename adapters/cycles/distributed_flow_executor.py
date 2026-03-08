@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.models import ArtifactRef, Cycle, RunStatus
+from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, RunStatus
 from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
@@ -1432,8 +1432,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
             for gate_name in gate_names:
                 for decision in run.gate_decisions:
                     if decision.gate_name == gate_name:
-                        if decision.decision == "approved":
-                            await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
+                        if decision.decision in (
+                            GateDecisionValue.APPROVED,
+                            GateDecisionValue.APPROVED_WITH_REFINEMENTS,
+                        ):
+                            await self._cycle_registry.update_run_status(
+                                run_id, RunStatus.RUNNING
+                            )
                             self._cycle_event_bus.emit(
                                 EventType.RUN_RESUMED,
                                 entity_type="run",
@@ -1441,10 +1446,24 @@ class DistributedFlowExecutor(FlowExecutionPort):
                                 context={"cycle_id": cycle.cycle_id, "run_id": run_id},
                                 payload={"gate_name": gate_name},
                             )
-                            logger.info("Gate %r approved, resuming run %s", gate_name, run_id)
+                            logger.info(
+                                "Gate %r %s, resuming run %s",
+                                gate_name,
+                                decision.decision,
+                                run_id,
+                            )
                             return
-                        elif decision.decision == "rejected":
-                            raise _ExecutionError(f"Gate {gate_name!r} rejected: {decision.notes}")
+                        elif decision.decision == GateDecisionValue.REJECTED:
+                            raise _ExecutionError(
+                                f"Gate {gate_name!r} rejected: {decision.notes}"
+                            )
+                        elif decision.decision == GateDecisionValue.RETURNED_FOR_REVISION:
+                            raise _ExecutionError(
+                                f"Gate {gate_name!r} returned_for_revision: "
+                                "returned_for_revision requires manual retry-run "
+                                "creation; automatic retry-in-same-phase is not "
+                                "implemented in this version."
+                            )
 
             await asyncio.sleep(poll_interval)
 

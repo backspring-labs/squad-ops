@@ -8,8 +8,8 @@ pytestmark = [pytest.mark.domain_events]
 
 
 class TestSIP0079EventTypes:
-    def test_all_returns_25_items(self):
-        assert len(EventType.all()) == 25
+    def test_all_returns_28_items(self):
+        assert len(EventType.all()) == 28
 
     def test_no_duplicate_values(self):
         all_values = EventType.all()
