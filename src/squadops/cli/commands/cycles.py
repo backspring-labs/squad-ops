@@ -49,7 +49,7 @@ def _parse_set_flags(set_flags: list[str]) -> dict:
 def create_cycle(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
-    profile: str = typer.Option("default", "--profile", help="CRP profile name"),
+    profile: str = typer.Option("default", "--request-profile", help="Cycle request profile name"),
     prd: str | None = typer.Option(None, "--prd", help="PRD file path or artifact ID"),
     squad_profile_id: str = typer.Option(..., "--squad-profile", help="Squad profile ID"),
     set_flags: list[str] | None = typer.Option(None, "--set", help="Override: key=value"),

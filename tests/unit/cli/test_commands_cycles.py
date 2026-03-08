@@ -74,7 +74,7 @@ class TestCyclesCreate:
                 "proj1",
                 "--squad-profile",
                 "sp1",
-                "--profile",
+                "--request-profile",
                 "benchmark",
             ],
         )

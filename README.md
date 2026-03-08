@@ -139,7 +139,7 @@ Each ships with a PRD (`examples/<project>/prd.md`) and a cycle request profile.
 
 ```bash
 # Run a full plan-then-build cycle
-squadops cycles create play_game --squad-profile full-squad --profile build
+squadops cycles create play_game --squad-profile full-squad --request-profile build
 squadops cycles show play_game <cycle-id>
 squadops runs gate play_game <cycle-id> <run-id> plan-review --approve
 squadops runs assemble play_game <cycle-id> <run-id> --out ./output
@@ -162,7 +162,7 @@ Then verify and start working:
 ```bash
 squadops doctor dev-mac                       # Validate environment
 squadops login                                # Authenticate via Keycloak
-squadops cycles create play_game --squad-profile full-squad --profile selftest
+squadops cycles create play_game --squad-profile full-squad --request-profile selftest
 ```
 
 See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructions, profile details, and troubleshooting

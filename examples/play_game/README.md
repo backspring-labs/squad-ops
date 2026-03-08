@@ -19,7 +19,7 @@ squadops artifacts ingest examples/play_game/prd.md \
 
 # Create a cycle using the sample PCR profile
 squadops cycles create play_game \
-  --profile examples/play_game/pcr.yaml
+  --request-profile examples/play_game/pcr.yaml
 
 # Watch it run
 squadops runs status play_game <cycle_id> --follow
