@@ -748,9 +748,9 @@ sips:
 - sip_uid: null
   sip_number: 83
   title: Multi-Run Cycle Orchestration
-  path: sips/accepted/SIP-0083-Multi-Run-Cycle-Orchestration.md
-  status: accepted
+  path: sips/implemented/SIP-0083-Multi-Run-Cycle-Orchestration.md
+  status: implemented
   author: Unknown
   approver: jladd
   created_at: '2026-03-07'
-  updated_at: '2026-03-07T21:35:02.364991Z'
+  updated_at: '2026-03-08T19:10:29.150661Z'
