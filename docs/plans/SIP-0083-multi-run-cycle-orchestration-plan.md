@@ -47,6 +47,8 @@ These were addressed in SIP-0083 Rev 4 with design decisions D5 (revised), D15, 
 
 **P6-RC4 (derive_cycle_status backward compat):** `derive_cycle_status()` is preserved unchanged with its full test suite. Existing tests must not be modified or deleted. `resolve_cycle_status()` composes on top of it.
 
+**P6-RC5 (resolve_cycle_status precedence):** When `workload_progress` contains both `gate_awaiting` and `rejected` entries (which should not happen in normal operation but could if state is inconsistent), `gate_awaiting` takes precedence and the function returns `PAUSED`. Rationale: a cycle with an undecided gate is still actionable — the operator can approve or reject. Returning `FAILED` prematurely would be misleading. This precedence rule must be stated in the function docstring, not just tested.
+
 ### 6a. Add `CycleStatus.PAUSED`
 
 **File:** `src/squadops/cycles/models.py`
@@ -65,7 +67,7 @@ class CycleStatus(StrEnum):
     CANCELLED = "cancelled"
 ```
 
-**No tests needed** — `CycleStatus` is a simple enum. Testing that enum members equal their hardcoded values is tautological (CLAUDE.md test standard).
+**No direct enum tests** — testing that `CycleStatus.PAUSED == "paused"` is tautological (CLAUDE.md test standard). The behavioral impact of `PAUSED` is validated through the `TestResolveCycleStatus` tests (6b), the API response tests (6d), and the E2E revalidation (Phase 7).
 
 ### 6b. Add `GATE_REJECTED_STATES` and `resolve_cycle_status()`
 
@@ -87,31 +89,46 @@ Add after `derive_cycle_status()`:
 def resolve_cycle_status(
     runs: Sequence[Run],
     cycle_cancelled: bool,
-    workload_progress: Sequence | None = None,
+    workload_statuses: Sequence[str] | None = None,
 ) -> CycleStatus:
     """Resolve cycle status with workload awareness (SIP-0083 D5).
 
     Composes on top of derive_cycle_status():
-    - If any workload_progress entry has status "gate_awaiting" → PAUSED
-    - If any workload_progress entry has status "rejected" → FAILED
+    - If any workload status is "gate_awaiting" → PAUSED (P6-RC5: takes precedence)
+    - If any workload status is "rejected" → FAILED
     - Otherwise → derive_cycle_status(runs, cycle_cancelled)
 
-    When workload_progress is None or empty, this is equivalent to
+    Precedence: gate_awaiting > rejected > derive_cycle_status fallthrough.
+    A cycle with an undecided gate is still actionable (the operator can
+    approve or reject), so PAUSED wins over FAILED if both somehow appear.
+
+    When workload_statuses is None or empty, this is equivalent to
     derive_cycle_status() — preserving backward compatibility for
     single-workload cycles.
+
+    Args:
+        runs: All runs for the cycle.
+        cycle_cancelled: Whether the cycle was explicitly cancelled.
+        workload_statuses: List of workload progress status strings
+            (e.g., ["completed", "gate_awaiting", "pending"]).
+            Callers extract these from WorkloadProgressEntry objects
+            before calling.
     """
-    if workload_progress:
-        for entry in workload_progress:
-            status = entry.status if hasattr(entry, "status") else entry.get("status")
-            if status == "gate_awaiting":
-                return CycleStatus.PAUSED
-            if status == "rejected":
-                return CycleStatus.FAILED
+    if workload_statuses:
+        if "gate_awaiting" in workload_statuses:
+            return CycleStatus.PAUSED
+        if "rejected" in workload_statuses:
+            return CycleStatus.FAILED
 
     return derive_cycle_status(runs, cycle_cancelled)
 ```
 
-**Design note on the `workload_progress` parameter type:** The function accepts `Sequence | None` rather than importing `WorkloadProgressEntry` from `dtos.py`. This avoids a circular dependency between the domain layer (`cycles/lifecycle.py`) and the API layer (`api/routes/cycles/dtos.py`). It uses duck typing — any object with a `.status` attribute or dict with a `"status"` key works. The `hasattr` check supports both DTO instances and plain dicts, which is useful for testing.
+**Design note on the `workload_statuses` parameter type:** The function accepts `Sequence[str] | None` — a list of normalized status strings — rather than DTO objects or duck-typed sequences. This avoids:
+- Circular dependency between the domain layer (`cycles/lifecycle.py`) and the API layer (`api/routes/cycles/dtos.py`)
+- Loose duck typing (`hasattr` + `.get()`) on a core lifecycle resolver
+- Any coupling to the DTO shape
+
+Callers extract status strings before calling: `[e.status for e in progress]`. This is a one-liner at the call site and keeps the domain function's contract explicit and type-safe.
 
 **File:** `src/squadops/cycles/__init__.py`
 
@@ -146,14 +163,13 @@ New class `TestResolveCycleStatus`:
 
 | Test | What bug would this catch? |
 |------|---------------------------|
-| `test_no_workload_progress_delegates_to_derive` | `resolve_cycle_status` with `workload_progress=None` must match `derive_cycle_status` — ensures backward compat |
-| `test_empty_workload_progress_delegates_to_derive` | Same, with empty list |
+| `test_no_workload_statuses_delegates_to_derive` | `resolve_cycle_status` with `workload_statuses=None` must match `derive_cycle_status` — ensures backward compat |
+| `test_empty_workload_statuses_delegates_to_derive` | Same, with empty list |
 | `test_gate_awaiting_returns_paused` | Cycle at inter-workload gate must show PAUSED, not COMPLETED |
 | `test_rejected_returns_failed` | Rejected gate must show FAILED, not COMPLETED |
-| `test_gate_awaiting_takes_precedence_over_rejected` | If both exist (shouldn't happen, but defensive), PAUSED wins |
+| `test_gate_awaiting_takes_precedence_over_rejected` | P6-RC5: if both exist, PAUSED wins — gate is still actionable |
 | `test_completed_without_gate_awaiting_stays_completed` | Cycle with completed workloads and no pending gates stays COMPLETED |
 | `test_running_workload_stays_active` | Mid-workload execution shows ACTIVE via derive_cycle_status |
-| `test_accepts_dict_workload_progress` | Duck typing: plain dicts with `"status"` key work |
 
 New tests for `GATE_REJECTED_STATES`:
 
@@ -220,19 +236,22 @@ These correctly use `TERMINAL_STATES` for their own purposes.
 `tests/unit/cycles/test_gate_boundary_status.py` — verify line 119 (which tests gate decision rejection on a completed run):
 - This test asserts `RunTerminalError` on a COMPLETED run — it must be updated to expect success
 
-### 6d. Switch callers from `derive_cycle_status` to `resolve_cycle_status`
+### 6d. Promote `_compute_workload_progress` and switch callers to `resolve_cycle_status`
 
-Four call sites need updating. Each needs `workload_progress` computed before resolving status.
+Four call sites need updating. First, promote the workload progress helper to a public function so the resume route doesn't import a private underscore helper from another module.
 
 **File:** `src/squadops/api/routes/cycles/mapping.py`
 
-`cycle_to_response()` (line 135) — this is the central mapping function. Currently receives `status: str` as a parameter. Change to compute status internally:
+Rename `_compute_workload_progress` → `compute_workload_progress` (drop leading underscore). This makes it a first-class public function that both the response mapper and the resume route can call without reaching into private internals.
+
+Update `cycle_to_response()` (line 135) — currently receives `status: str` as a parameter. Change to compute status internally:
 
 ```python
 def cycle_to_response(cycle: Cycle, runs: list[Run]) -> CycleResponse:
     ws = cycle.applied_defaults.get("workload_sequence", [])
-    progress = _compute_workload_progress(ws, runs)
-    status = resolve_cycle_status(runs, cycle_cancelled=False, workload_progress=progress)
+    progress = compute_workload_progress(ws, runs)
+    statuses = [e.status for e in progress]
+    status = resolve_cycle_status(runs, cycle_cancelled=False, workload_statuses=statuses)
     return CycleResponse(
         # ...existing fields...
         status=status.value,
@@ -277,11 +296,12 @@ Line 195 — the resume route checks parent cycle status:
 cycle_status = derive_cycle_status(runs, False)
 
 # After:
-from squadops.api.routes.cycles.mapping import _compute_workload_progress
+from squadops.api.routes.cycles.mapping import compute_workload_progress
 cycle = await registry.get_cycle(cycle_id)
 ws = cycle.applied_defaults.get("workload_sequence", [])
-progress = _compute_workload_progress(ws, runs)
-cycle_status = resolve_cycle_status(runs, False, workload_progress=progress)
+progress = compute_workload_progress(ws, runs)
+statuses = [e.status for e in progress]
+cycle_status = resolve_cycle_status(runs, False, workload_statuses=statuses)
 ```
 
 Update import line 17 — switch from `derive_cycle_status` to `resolve_cycle_status`.
@@ -366,11 +386,11 @@ After Phase 6, rebuild and retest the multi-phase cycle flow that failed in the 
 
 1. **`GATE_REJECTED_STATES` vs `TERMINAL_STATES` scope** — only `record_gate_decision()` switches guards. `update_run_status` (finished_at logic) and `record_pulse_verification` continue using `TERMINAL_STATES`. Do not conflate the two (P6-RC3).
 
-2. **`resolve_cycle_status()` parameter type** — uses `Sequence | None` with duck typing to avoid circular imports between domain and API layers. Both `WorkloadProgressEntry` DTOs and plain dicts work.
+2. **`resolve_cycle_status()` parameter type** — accepts `Sequence[str] | None` (normalized status strings), not DTO objects. Callers extract statuses before calling: `[e.status for e in progress]`. This avoids circular imports and keeps the domain function's contract explicit.
 
-3. **`cycle_to_response()` signature change** — the `status: str` parameter is removed. The function now internally calls `_compute_workload_progress()` then `resolve_cycle_status()`. All callers simplify.
+3. **`cycle_to_response()` signature change** — the `status: str` parameter is removed. The function now internally calls `compute_workload_progress()` then `resolve_cycle_status()`. All callers simplify.
 
-4. **`cycle_cancelled` parameter** — currently hardcoded to `False` at all call sites (cancel logic uses a different path). This is existing behavior; no change needed.
+4. **`compute_workload_progress` is public** — renamed from `_compute_workload_progress` (drop leading underscore) so the resume route can call it without importing a private helper from the mapping module.
 
 5. **Test updates scope** — gate decision terminal-run tests in postgres registry, memory registry, contract, and boundary tests all need updating to expect COMPLETED runs to accept decisions. Search for `RunTerminalError` combined with `completed` status in test assertions.
 
@@ -379,3 +399,11 @@ After Phase 6, rebuild and retest the multi-phase cycle flow that failed in the 
 7. **`__init__.py` exports** — add `resolve_cycle_status` and `GATE_REJECTED_STATES` to both the import block and `__all__` in `src/squadops/cycles/__init__.py`.
 
 8. **Emission count update** — if Phase 6 adds or removes any `self._cycle_event_bus.emit()` calls (it shouldn't — no executor changes), update `tests/unit/events/test_event_emission.py` accordingly. Current count is 48 emit calls / 38 with payloads.
+
+---
+
+## Known Follow-Up Risks
+
+1. **`cycle_cancelled=False` hardcoding.** All four call sites pass `cycle_cancelled=False` to `resolve_cycle_status()` (inherited from the existing `derive_cycle_status()` callers). The cancel route uses a separate path (`registry.cancel_cycle()`) that does not flow through status resolution. Now that `resolve_cycle_status()` is the central status path, this assumption is more visible. If future work adds cycle-level cancellation semantics beyond the registry flag, this hardcoding will need revisiting. Not a blocker for Phase 6, but worth tracking.
+
+2. **Transient COMPLETED between gate approval and next-Run creation.** After a gate is approved but before the next Run is created, `resolve_cycle_status()` returns `COMPLETED` because no `gate_awaiting` or `rejected` entries exist in `workload_progress`. This is a millisecond-scale window in normal operation but could persist after a process restart. See the interruption scenarios table in SIP §9 for the documented recovery path. Persistent orchestration checkpointing (future SIP) would eliminate this gap.
