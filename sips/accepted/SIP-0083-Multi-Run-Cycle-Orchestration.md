@@ -3,16 +3,16 @@ title: Multi-Run Cycle Orchestration
 status: accepted
 authors: SquadOps Architecture
 created_at: '2026-03-07'
-revision: 3
+revision: 4
 sip_number: 83
-updated_at: '2026-03-07T21:35:02.342067Z'
+updated_at: '2026-03-08'
 ---
 # SIP: Multi-Run Cycle Orchestration
 
 **Status:** Proposed
 **Authors:** SquadOps Architecture
 **Created:** 2026-03-07
-**Revision:** 3
+**Revision:** 4
 
 ## 1. Abstract
 
@@ -54,7 +54,7 @@ This defeats the purpose of `workload_sequence`. The gap creates operational fri
 - **Automatic recovery after process restart** — if the orchestration loop is interrupted, the operator can manually resume. Startup recovery is a future enhancement.
 - **Dedicated worker process** — `execute_cycle()` runs as a background task, matching the existing `execute_run()` pattern. Moving to a separate worker is a future SIP.
 - **Automatic retry-in-same-phase for `returned_for_revision`** — `returned_for_revision` is accepted by the gate API but is non-resuming in `_handle_gate()` and non-advancing in `execute_cycle()`. It fails the current run with a descriptive error. Automatic retry-in-same-phase is deferred to a follow-on SIP.
-- **Changing `derive_cycle_status()`** — existing status derivation from the latest non-cancelled Run remains correct for multi-run cycles.
+- **Changing `derive_cycle_status()`** — the existing function remains as-is for backward compatibility. A new `resolve_cycle_status()` composes on top of it with workload awareness (see D5).
 
 ## 5. Design
 
@@ -154,12 +154,14 @@ execute_cycle(cycle_id, first_run_id, profile_id):
         gate_name = workload_entry.get("gate")
         if gate_name:
             emit(workload.gate_awaiting, gate_name=gate_name)
+            # Cycle is PAUSED — run is COMPLETED but pipeline awaits human input.
+            # resolve_cycle_status() detects "gate_awaiting" in workload_progress → PAUSED.
             decision = await poll_inter_workload_gate(run, gate_name)
 
             if decision.value == "rejected":
                 # Orchestration stops. The completed run's gate_decisions
-                # record the rejection. derive_cycle_status() shows COMPLETED
-                # for the latest run; workload_progress shows the rejection.
+                # record the rejection. resolve_cycle_status() detects
+                # "rejected" in workload_progress → FAILED.
                 break
 
             if decision.value == "approved_with_refinements":
@@ -194,19 +196,22 @@ Three active decision values control inter-workload progression:
 |----------|----------|
 | `approved` | Create next workload Run, proceed |
 | `approved_with_refinements` | Write refinement notes as `document` artifact on completed Run (auditable, flows forward via artifact forwarding), then create next Run, proceed |
-| `rejected` | Orchestration stops. The Run remains `COMPLETED` (terminal — cannot transition to `FAILED`). The rejection is recorded in `gate_decisions`. `workload_progress` surfaces the rejection; `derive_cycle_status()` shows `COMPLETED` for the latest run. |
+| `rejected` | Orchestration stops. The Run remains `COMPLETED` — its work finished successfully; the rejection is a cycle-level decision, not a run-level failure. The rejection is recorded in `gate_decisions`. `workload_progress` surfaces the rejection; `resolve_cycle_status()` shows `FAILED` for the cycle (the pipeline did not complete). |
 
-`returned_for_revision` is not handled as an inter-workload advancement decision in this SIP. At the intra-run gate level it fails the run (§5.0), and the orchestration loop stops when it observes the failed run. `derive_cycle_status()` reflects the failure. Automatic retry-in-same-phase is deferred to a follow-on SIP.
+The gate decision is recorded against the **completed Run** — the Run whose artifacts are being reviewed. This requires narrowing the gate decision guard in `record_gate_decision()` from `TERMINAL_STATES` (which includes `COMPLETED`) to `GATE_REJECTED_STATES = {FAILED, CANCELLED}` only. A completed run that is awaiting an inter-workload gate decision must accept gate decisions (D15).
+
+`returned_for_revision` is not handled as an inter-workload advancement decision in this SIP. At the intra-run gate level it fails the run (§5.0), and the orchestration loop stops when it observes the failed run. `resolve_cycle_status()` reflects the failure. Automatic retry-in-same-phase is deferred to a follow-on SIP.
 
 ### 5.4 Gate Polling
 
 Inter-workload gate polling reuses the existing gate polling pattern from `DistributedFlowExecutor.execute_run()`. The executor:
 
-1. Checks if the gate has already been decided (from the Run's `gate_decisions`).
-2. If not, sleeps and re-polls at the configured interval.
-3. Returns the `GateDecision` when found.
+1. Sets the cycle status to `PAUSED` via `resolve_cycle_status()` — the workload run is COMPLETED but the cycle is awaiting human input.
+2. Checks if the gate has already been decided (from the Run's `gate_decisions`).
+3. If not, sleeps and re-polls at the configured interval.
+4. Returns the `GateDecision` when found.
 
-The gate decision is recorded against the **completed Run** — the Run whose artifacts are being reviewed. This is consistent with the existing intra-run gate pattern from SIP-0076.
+The gate decision is recorded against the **completed Run** — the Run whose artifacts are being reviewed. This is consistent with the existing intra-run gate pattern from SIP-0076. The run stays `COMPLETED` throughout gate polling; only the cycle-level status shows `PAUSED`.
 
 ### 5.5 Refinement Notes Artifact
 
@@ -388,11 +393,40 @@ The alternative (passing notes only via `execution_overrides`) loses auditabilit
 
 The cycle carries a single `applied_defaults` dict. Workload-type-specific keys already exist (`implementation_pulse_checks`, `build_tasks`, `plan_tasks`, `time_budget_seconds`, etc.). Each workload's handlers read the keys relevant to them. This avoids nested-dict complexity and is consistent with how all existing SIPs use `applied_defaults`.
 
-### D5: derive_cycle_status() is unchanged
+### D5: `resolve_cycle_status()` adds workload awareness; `derive_cycle_status()` preserved
 
-The existing `derive_cycle_status()` derives cycle status from the **latest non-cancelled Run** (by `run_number`): `queued`/`running`/`paused` → ACTIVE, `completed` → COMPLETED, `failed` → FAILED. In multi-workload cycles, the latest Run is the most-recently-created workload Run, so the cycle status naturally reflects the current workload's state. No changes to `derive_cycle_status()` or `CycleStatus` are needed.
+A new `CycleStatus.PAUSED` value is added. A cycle is `PAUSED` when it is waiting for human input at an inter-workload gate.
 
-**Edge case — `rejected` at inter-workload gate:** For v1, cycle top-level status remains derived from the latest run and may therefore show `COMPLETED` even when inter-workload progression was halted by gate rejection. Consumers that care about full pipeline completion must inspect `workload_progress`, which shows the rejection and remaining workloads as `pending`. A future enhancement could add a `REJECTED` cycle status if this proves confusing operationally.
+The existing `derive_cycle_status(runs, cycle_cancelled)` is **preserved unchanged** — it derives cycle status from the latest non-cancelled Run and remains correct for single-workload cycles. However, it is no longer the top-level call site for cycle status resolution.
+
+A new `resolve_cycle_status(runs, cycle_cancelled, workload_progress)` composes on top of `derive_cycle_status()`:
+
+```python
+def resolve_cycle_status(
+    runs: Sequence[Run],
+    cycle_cancelled: bool,
+    workload_progress: Sequence[WorkloadProgressEntry] | None = None,
+) -> CycleStatus:
+    """Resolve cycle status with workload awareness.
+
+    Composes on top of derive_cycle_status():
+    - If any workload_progress entry has status "gate_awaiting" → PAUSED
+    - If any workload_progress entry has status "rejected" → FAILED
+    - Otherwise → derive_cycle_status(runs, cycle_cancelled)
+
+    When workload_progress is None or empty, this is equivalent to
+    derive_cycle_status() — preserving backward compatibility.
+    """
+```
+
+All callers that previously called `derive_cycle_status()` switch to `resolve_cycle_status()`. `derive_cycle_status()` remains available as an internal building block.
+
+**Key semantic distinction:**
+- A **run** is `COMPLETED` when its tasks and gates finish — the run did its work.
+- A **cycle** is `PAUSED` when a completed run is awaiting an inter-workload gate decision — the pipeline is suspended, waiting for human input.
+- A **cycle** is `FAILED` when an inter-workload gate is `rejected` — the pipeline did not complete its full workload sequence.
+
+This avoids the confusion of showing `COMPLETED` when more workloads are pending. It also has natural future use for manual operator pausing of cycles.
 
 ### D6: 1:1 Run ↔ Prefect flow run preserved
 
@@ -430,17 +464,36 @@ The current executor only matches `"approved"` and `"rejected"` in `_handle_gate
 
 If `execute_cycle()` is interrupted after creating a next-workload Run but before executing it, a re-invocation must not create a duplicate. The guard is positional: if the cycle already has more non-cancelled Runs than the current sequence index, the next Run already exists and is reused (§5.2 pseudocode). This is consistent with the positional alignment used by `workload_progress` (D12) and avoids relying on `workload_type` as a join key.
 
+### D15: Gate decision guard narrowed from TERMINAL_STATES to GATE_REJECTED_STATES
+
+The existing `record_gate_decision()` in both registry adapters rejects gate decisions on runs in `TERMINAL_STATES` (`{COMPLETED, FAILED, CANCELLED}`). This is correct for intra-run gates (a completed run cannot have pending intra-run gates), but incorrect for inter-workload gates: the gate decision is recorded against the **completed Run** whose artifacts are being reviewed (D2).
+
+A new `GATE_REJECTED_STATES = frozenset({RunStatus.FAILED, RunStatus.CANCELLED})` constant is added to `lifecycle.py`. The guard in `record_gate_decision()` switches from `TERMINAL_STATES` to `GATE_REJECTED_STATES`. This allows gate decisions on completed runs while still preventing decisions on failed or cancelled runs (which have no meaningful work to review).
+
+### D16: CycleStatus.PAUSED distinguishes "waiting for human input" from "active" and "completed"
+
+Without `CycleStatus.PAUSED`, a cycle at an inter-workload gate shows `COMPLETED` (because the latest run is completed) or `ACTIVE` (if workload awareness is added but no distinct state exists). Both are misleading:
+
+- `COMPLETED` implies the pipeline finished successfully — dangerous if operators or automation treat it as "done."
+- `ACTIVE` implies work is in progress — but nothing is running; the cycle is waiting for human input.
+
+`PAUSED` is semantically precise: work is suspended, awaiting external action. It has natural future use for manual operator pausing of cycles. The state is resolved by `resolve_cycle_status()` (D5) — it is never set directly on the cycle model.
+
 ## 7. File-Level Design
 
 ### Modified Files
 
 | File | Change |
 |------|--------|
+| `src/squadops/cycles/models.py` | Add `CycleStatus.PAUSED` value |
+| `src/squadops/cycles/lifecycle.py` | Add `GATE_REJECTED_STATES`, `resolve_cycle_status()` composing on `derive_cycle_status()` |
+| `adapters/cycles/postgres_cycle_registry.py` | Narrow gate decision guard from `TERMINAL_STATES` to `GATE_REJECTED_STATES` |
+| `adapters/cycles/memory_cycle_registry.py` | Narrow gate decision guard from `TERMINAL_STATES` to `GATE_REJECTED_STATES` |
 | `src/squadops/ports/cycles/flow_execution.py` | Add `execute_cycle()` with default fallback to `execute_run()` |
 | `adapters/cycles/distributed_flow_executor.py` | Override `execute_cycle()`: workload loop, gate polling, Run creation, artifact forwarding, event emission |
 | `src/squadops/api/routes/cycles/cycles.py` | Line 125: `flow_executor.execute_run` → `flow_executor.execute_cycle` |
 | `src/squadops/events/types.py` | Add 3 workload event types, update `all()` count comment |
-| `src/squadops/api/routes/cycles/dtos.py` | Add `WorkloadProgressEntry` model, add `workload_progress` field to `CycleResponse` |
+| `src/squadops/api/routes/cycles/dtos.py` | Add `WorkloadProgressEntry` model, add `workload_progress` field to `CycleResponse`; use `resolve_cycle_status()` in DTO mapping |
 | `src/squadops/contracts/cycle_request_profiles/profiles/multi-phase.yaml` | Update to functional 3-workload profile with `progress_impl_review` gate |
 
 ### New Test Files
@@ -457,10 +510,8 @@ If `execute_cycle()` is interrupted after creating a next-workload Run but befor
 
 | File | Why |
 |------|-----|
-| `src/squadops/cycles/models.py` | No new domain model fields — multiple Runs per Cycle already supported |
-| `infra/migrations/` | No DB schema changes |
+| `infra/migrations/` | No DB schema changes — `CycleStatus.PAUSED` is a domain enum value, not a DB constraint |
 | `src/squadops/cycles/task_plan.py` | Task plan generation already workload-type-aware (SIP-0078) |
-| `src/squadops/cycles/status.py` | `derive_cycle_status()` works correctly for multi-run cycles (D5) |
 
 ## 8. Implementation Phases
 
@@ -468,6 +519,12 @@ If `execute_cycle()` is interrupted after creating a next-workload Run but befor
 - Fix `_handle_gate()` to handle all 4 `GateDecisionValue` values (D13). Land as standalone PR.
 - Add `execute_cycle()` to `FlowExecutionPort` with default fallback.
 - Add 3 workload event types to `EventType`.
+
+### Phase 1b: Cycle Status + Gate Guard Corrections
+- Add `CycleStatus.PAUSED` to `models.py`.
+- Add `GATE_REJECTED_STATES` and `resolve_cycle_status()` to `lifecycle.py` (D5, D15).
+- Narrow gate decision guard in both registries from `TERMINAL_STATES` to `GATE_REJECTED_STATES` (D15).
+- Update DTO mapping to use `resolve_cycle_status()` (D5 acceptance criterion 19).
 
 ### Phase 2: Executor Orchestration Loop
 - Implement `execute_cycle()` in `DistributedFlowExecutor`.
@@ -503,10 +560,10 @@ If the runtime-api restarts mid-orchestration, the loop is lost. Runs remain in 
 
 | Interruption point | Registry state after restart | Manual recovery |
 |--------------------|------------------------------|-----------------|
-| During `execute_run()` | Current Run is `running` or `failed` | Resume or re-create the Run |
-| During inter-workload gate polling | Current Run is `paused` (gate undecided) | Decide the gate; re-invoke `execute_cycle()` |
-| After gate decided, before next Run created | Current Run is `completed` with gate decision | Re-invoke `execute_cycle()`; loop skips completed workloads |
-| After next Run created, before `execute_run()` | Next Run is `queued` | Re-invoke `execute_cycle()`; D14 guard reuses existing Run |
+| During `execute_run()` | Current Run is `running` or `failed`; Cycle is `ACTIVE` or `FAILED` | Resume or re-create the Run |
+| During inter-workload gate polling | Current Run is `completed` (gate undecided); Cycle is `PAUSED` | Decide the gate; re-invoke `execute_cycle()` |
+| After gate decided, before next Run created | Current Run is `completed` with gate decision; Cycle is `COMPLETED` | Re-invoke `execute_cycle()`; loop skips completed workloads |
+| After next Run created, before `execute_run()` | Next Run is `queued`; Cycle is `ACTIVE` | Re-invoke `execute_cycle()`; D14 guard reuses existing Run |
 
 ### Gate polling resource usage
 Each orchestration loop holds an async task polling for gate decisions. For a 3-workload cycle, at most 2 gates are polled (sequentially, not concurrently). This matches existing resource usage patterns.
@@ -520,7 +577,7 @@ Each orchestration loop holds an async task polling for gate decisions. For a 3-
 5. Single-workload cycles (no `workload_sequence` or length 1) behave identically to today — `execute_run()` called directly.
 6. `approved` gate decision creates the next workload Run and proceeds.
 7. `approved_with_refinements` writes `refinement_notes.md` as a `document` artifact on the completed Run, then creates the next Run.
-8. `rejected` gate decision stops orchestration. The Run remains `COMPLETED`; the rejection is recorded in `gate_decisions`. `workload_progress` surfaces the rejection and shows remaining workloads as `pending`.
+8. `rejected` gate decision stops orchestration. The Run remains `COMPLETED`; the rejection is recorded in `gate_decisions`. `resolve_cycle_status()` returns `FAILED`; `workload_progress` surfaces the rejection and shows remaining workloads as `pending`.
 9. Artifact forwarding populates `execution_overrides` on subsequent Runs using deterministic rules (§5.6). Explicit operator overrides take precedence over auto-forwarded values.
 10. Three new event types (`workload.completed`, `workload.gate_awaiting`, `workload.advanced`) are emitted at correct transition points.
 11. `CycleResponse.workload_progress` shows per-workload status with positional `index`, derived from Runs matched in creation order.
@@ -528,9 +585,16 @@ Each orchestration loop holds an async task polling for gate decisions. For a 3-
 13. If a next-workload Run already exists (e.g., after process restart), the orchestration loop reuses it rather than creating a duplicate.
 14. Existing single-workload tests pass without modification (no regressions).
 15. No database schema changes required.
+16. `CycleStatus.PAUSED` exists and is returned by `resolve_cycle_status()` when any workload is in `gate_awaiting` status.
+17. `resolve_cycle_status()` returns `FAILED` when any workload progress entry has status `rejected`.
+18. Gate decisions are accepted on `COMPLETED` runs — `record_gate_decision()` only rejects decisions on `FAILED` and `CANCELLED` runs (`GATE_REJECTED_STATES`).
+19. All callers that previously used `derive_cycle_status()` switch to `resolve_cycle_status()`. `derive_cycle_status()` remains as an internal building block.
 
 ## 11. Scope Summary
 
 - **New event types:** 3
+- **New CycleStatus value:** `PAUSED`
+- **New lifecycle function:** `resolve_cycle_status()` (composes on `derive_cycle_status()`)
+- **New lifecycle constant:** `GATE_REJECTED_STATES` (narrows gate guard from `TERMINAL_STATES`)
 - **Prerequisite PR:** Fix `_handle_gate()` to handle all 4 `GateDecisionValue` values
-- **No new domain models, no DB migrations, no new ports**
+- **No DB migrations, no new ports**
