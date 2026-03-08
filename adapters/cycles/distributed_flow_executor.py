@@ -503,9 +503,6 @@ class DistributedFlowExecutor(FlowExecutionPort):
         all_runs = await self._cycle_registry.list_runs(cycle.cycle_id)
         next_number = max(r.run_number for r in all_runs) + 1
 
-        # Build forwarding overrides (Phase 3 adds artifact forwarding)
-        execution_overrides = dict(cycle.execution_overrides)
-
         next_run = Run(
             run_id=f"run_{uuid4().hex[:12]}",
             cycle_id=cycle.cycle_id,

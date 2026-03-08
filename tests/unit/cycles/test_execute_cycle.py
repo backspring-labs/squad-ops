@@ -240,62 +240,30 @@ class TestMultiWorkloadOrchestration:
 class TestOrchestrationStopping:
     """Failed or cancelled run stops the orchestration loop."""
 
-    async def test_failed_run_stops_orchestration(
-        self, executor, mock_registry, mock_event_bus
+    @pytest.mark.parametrize("terminal_status", ["failed", "cancelled"])
+    async def test_terminal_run_stops_orchestration(
+        self, executor, mock_registry, mock_event_bus, terminal_status
     ):
-        """Failed first run → no second run created."""
+        """Failed or cancelled first run → no second run created."""
         cycle = _make_cycle(workload_sequence=[
             {"type": "planning"},
             {"type": "implementation"},
         ])
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "failed", "planning")
+        run1 = _make_run("run_001", 1, terminal_status, "planning")
         mock_registry.get_run.return_value = run1
 
         await executor.execute_cycle("cyc_001", "run_001")
 
         executor.execute_run.assert_awaited_once()
         mock_registry.create_run.assert_not_called()
-
-    async def test_failed_run_emits_workload_completed_with_terminal_status(
-        self, executor, mock_registry, mock_event_bus
-    ):
-        """WORKLOAD_COMPLETED payload includes terminal_status for failed run."""
-        cycle = _make_cycle(workload_sequence=[
-            {"type": "planning"},
-            {"type": "implementation"},
-        ])
-        mock_registry.get_cycle.return_value = cycle
-
-        run1 = _make_run("run_001", 1, "failed", "planning")
-        mock_registry.get_run.return_value = run1
-
-        await executor.execute_cycle("cyc_001", "run_001")
-
+        # WORKLOAD_COMPLETED emitted with correct terminal_status
         emit_call = mock_event_bus.emit.call_args
         assert emit_call[0][0] == EventType.WORKLOAD_COMPLETED
         payload = emit_call[1]["payload"]
-        assert payload["terminal_status"] == "failed"
+        assert payload["terminal_status"] == terminal_status
         assert payload["workload_type"] == "planning"
-
-    async def test_cancelled_run_stops_orchestration(
-        self, executor, mock_registry, mock_event_bus
-    ):
-        """Cancelled first run → no second run created."""
-        cycle = _make_cycle(workload_sequence=[
-            {"type": "planning"},
-            {"type": "implementation"},
-        ])
-        mock_registry.get_cycle.return_value = cycle
-
-        run1 = _make_run("run_001", 1, "cancelled", "planning")
-        mock_registry.get_run.return_value = run1
-
-        await executor.execute_cycle("cyc_001", "run_001")
-
-        executor.execute_run.assert_awaited_once()
-        mock_registry.create_run.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
