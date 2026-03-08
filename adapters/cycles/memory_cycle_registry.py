@@ -9,7 +9,11 @@ from __future__ import annotations
 import dataclasses
 
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.lifecycle import TERMINAL_STATES, validate_run_transition
+from squadops.cycles.lifecycle import (
+    GATE_REJECTED_STATES,
+    TERMINAL_STATES,
+    validate_run_transition,
+)
 from squadops.cycles.models import (
     Cycle,
     CycleNotFoundError,
@@ -150,7 +154,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
 
         # Check terminal state
         current_status = RunStatus(run_data["status"])
-        if current_status in TERMINAL_STATES:
+        if current_status in GATE_REJECTED_STATES:
             raise RunTerminalError(
                 f"Cannot record gate decision on terminal run (status={current_status.value})"
             )

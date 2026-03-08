@@ -13,7 +13,12 @@ import logging
 import asyncpg
 
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.lifecycle import TERMINAL_STATES, derive_cycle_status, validate_run_transition
+from squadops.cycles.lifecycle import (
+    GATE_REJECTED_STATES,
+    TERMINAL_STATES,
+    derive_cycle_status,
+    validate_run_transition,
+)
 from squadops.cycles.models import (
     Cycle,
     CycleNotFoundError,
@@ -286,7 +291,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 )
                 if run_row is None:
                     raise RunNotFoundError(f"Run not found: {run_id}")
-                if RunStatus(run_row["status"]) in TERMINAL_STATES:
+                if RunStatus(run_row["status"]) in GATE_REJECTED_STATES:
                     raise RunTerminalError(
                         f"Cannot record gate decision on terminal run (status={run_row['status']})"
                     )

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import pytest
 
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
-from squadops.cycles.lifecycle import TERMINAL_STATES
+from squadops.cycles.lifecycle import GATE_REJECTED_STATES, TERMINAL_STATES
 from squadops.cycles.models import (
     Cycle,
     Gate,
@@ -74,8 +74,19 @@ class TestPausedIsNotTerminal:
         assert RunStatus.CANCELLED in TERMINAL_STATES
 
 
+class TestGateRejectedVsTerminal:
+    """SIP-0083 D15: GATE_REJECTED_STATES is a strict subset of TERMINAL_STATES."""
+
+    def test_gate_rejected_is_subset_of_terminal(self):
+        assert GATE_REJECTED_STATES < TERMINAL_STATES
+
+    def test_completed_is_terminal_but_not_gate_rejected(self):
+        assert RunStatus.COMPLETED in TERMINAL_STATES
+        assert RunStatus.COMPLETED not in GATE_REJECTED_STATES
+
+
 class TestGateDecisionOnPausedRun:
-    """AC 18: paused run accepts gate decisions, terminal run rejects."""
+    """AC 18: paused run accepts gate decisions, gate-rejected run rejects."""
 
     async def test_paused_run_accepts_gate_decision(self, registry, cycle_with_gate):
         run = Run(
@@ -98,7 +109,9 @@ class TestGateDecisionOnPausedRun:
         assert len(updated.gate_decisions) == 1
         assert updated.gate_decisions[0].decision == "approved"
 
-    async def test_completed_run_rejects_gate_decision(self, registry, cycle_with_gate):
+    async def test_completed_run_accepts_gate_decision(self, registry, cycle_with_gate):
+        """SIP-0083 D15: COMPLETED is NOT gate-rejected — inter-workload gates
+        are decided on completed runs."""
         run = Run(
             run_id="run_002",
             cycle_id="cyc_001",
@@ -115,8 +128,29 @@ class TestGateDecisionOnPausedRun:
             decided_by="user",
             decided_at=NOW,
         )
+        updated = await registry.record_gate_decision("run_002", decision)
+        assert len(updated.gate_decisions) == 1
+
+    async def test_failed_run_rejects_gate_decision(self, registry, cycle_with_gate):
+        """FAILED runs are in GATE_REJECTED_STATES and cannot accept gate decisions."""
+        run = Run(
+            run_id="run_004",
+            cycle_id="cyc_001",
+            run_number=4,
+            status="failed",
+            initiated_by="api",
+            resolved_config_hash="h",
+        )
+        await registry.create_run(run)
+
+        decision = GateDecision(
+            gate_name="progress_plan_review",
+            decision="approved",
+            decided_by="user",
+            decided_at=NOW,
+        )
         with pytest.raises(RunTerminalError):
-            await registry.record_gate_decision("run_002", decision)
+            await registry.record_gate_decision("run_004", decision)
 
     async def test_paused_run_accepts_new_decision_values(self, registry, cycle_with_gate):
         """New gate decision values work on paused runs."""

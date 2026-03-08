@@ -335,7 +335,24 @@ class TestMemoryCycleRegistry:
         with pytest.raises(GateAlreadyDecidedError):
             await registry.record_gate_decision("run_001", rejected)
 
-    async def test_gate_decision_terminal_run(self, registry, cycle, run):
+    async def test_gate_decision_gate_rejected_run(self, registry, cycle, run):
+        """GATE_REJECTED_STATES (failed/cancelled) reject gate decisions."""
+        await registry.create_cycle(cycle)
+        await registry.create_run(run)
+        await registry.update_run_status("run_001", RunStatus.RUNNING)
+        await registry.update_run_status("run_001", RunStatus.FAILED)
+
+        decision = GateDecision(
+            gate_name="qa_review",
+            decision="approved",
+            decided_by="op",
+            decided_at=NOW,
+        )
+        with pytest.raises(RunTerminalError):
+            await registry.record_gate_decision("run_001", decision)
+
+    async def test_gate_decision_completed_run_accepted(self, registry, cycle, run):
+        """SIP-0083 D15: COMPLETED runs accept gate decisions."""
         await registry.create_cycle(cycle)
         await registry.create_run(run)
         await registry.update_run_status("run_001", RunStatus.RUNNING)
@@ -347,8 +364,8 @@ class TestMemoryCycleRegistry:
             decided_by="op",
             decided_at=NOW,
         )
-        with pytest.raises(RunTerminalError):
-            await registry.record_gate_decision("run_001", decision)
+        updated = await registry.record_gate_decision("run_001", decision)
+        assert len(updated.gate_decisions) == 1
 
     async def test_gate_decision_unknown_gate(self, registry, cycle, run):
         await registry.create_cycle(cycle)

@@ -536,7 +536,8 @@ class TestPostgresCycleRegistry:
     # 16. record_gate_decision — terminal run raises RunTerminalError
     # ------------------------------------------------------------------
 
-    async def test_record_gate_decision_terminal_run_raises(self, registry, conn):
+    async def test_record_gate_decision_gate_rejected_run_raises(self, registry, conn):
+        """GATE_REJECTED_STATES (failed/cancelled) raise RunTerminalError."""
         decision = GateDecision(
             gate_name="qa_gate",
             decision="approved",
@@ -545,7 +546,7 @@ class TestPostgresCycleRegistry:
         )
 
         conn.fetchrow.side_effect = [
-            {"status": "completed", "cycle_id": "cyc_001"},  # terminal status
+            {"status": "failed", "cycle_id": "cyc_001"},  # gate-rejected status
         ]
 
         with pytest.raises(RunTerminalError, match="terminal run"):
