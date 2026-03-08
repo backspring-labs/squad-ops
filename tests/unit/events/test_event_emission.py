@@ -217,12 +217,12 @@ class TestEmitCallSitePayloadFields:
                 total_calls += 1
                 if any(kw.arg == "payload" for kw in call.keywords):
                     with_payload += 1
-        # At least 35 of 40 calls have payload (a few lifecycle events omit it)
-        assert with_payload >= 35
+        # At least 38 of 48 calls have payload (a few lifecycle events omit it)
+        assert with_payload >= 38
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 38 executor + 7 route = 45 total emit calls."""
+        """Sanity check: 41 executor + 7 route = 48 total emit calls."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 45
+        assert total == 48

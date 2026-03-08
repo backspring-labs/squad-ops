@@ -951,21 +951,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 },
             )
 
-            # Prefect: create task run
-            task_run_id = None
-            if self._prefect and flow_run_id:
-                try:
-                    role = envelope.metadata.get("role", "unknown")
-                    task_run_id = await self._prefect.create_task_run(
-                        flow_run_id,
-                        task_key=envelope.task_type,
-                        task_name=f"{role}: {envelope.task_type}",
-                    )
-                    await self._prefect.set_task_run_state(task_run_id, "RUNNING", "Running")
-                except Exception:
-                    logger.warning("Prefect task run creation failed", exc_info=True)
-
-            # SIP-0077: task.dispatched
+            # SIP-0077: task.dispatched (PrefectBridge handles task run creation)
             self._cycle_event_bus.emit(
                 EventType.TASK_DISPATCHED,
                 entity_type="task",
@@ -987,17 +973,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 # Dispatch through RabbitMQ
                 result = await self._dispatch_task(enriched, run_id)
 
-                # Prefect: update task state
-                if self._prefect and task_run_id:
-                    try:
-                        state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
-                        await self._prefect.set_task_run_state(
-                            task_run_id, state, state.title()
-                        )
-                    except Exception:
-                        logger.warning("Prefect task state update failed", exc_info=True)
-
-                # SIP-0077: task.succeeded or task.failed
+                # SIP-0077: task.succeeded or task.failed (PrefectBridge handles state)
                 if result.status == "SUCCEEDED":
                     self._cycle_event_bus.emit(
                         EventType.TASK_SUCCEEDED,
@@ -1545,21 +1521,6 @@ class DistributedFlowExecutor(FlowExecutionPort):
         if await self._is_cancelled(run_id):
             raise _CancellationError(run_id)
 
-        # Prefect: pre-create task runs for all concurrent tasks
-        task_run_ids: list[str | None] = [None] * len(plan)
-        if self._prefect and flow_run_id:
-            for i, envelope in enumerate(plan):
-                try:
-                    role = envelope.metadata.get("role", "unknown")
-                    task_run_ids[i] = await self._prefect.create_task_run(
-                        flow_run_id,
-                        task_key=envelope.task_type,
-                        task_name=f"{role}: {envelope.task_type}",
-                    )
-                    await self._prefect.set_task_run_state(task_run_ids[i], "RUNNING", "Running")
-                except Exception:
-                    logger.warning("Prefect task run creation failed", exc_info=True)
-
         tasks = []
         for envelope in plan:
             # SIP-0077: task.dispatched (fan-out path)
@@ -1588,12 +1549,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         all_artifact_refs: list[str] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                if self._prefect and task_run_ids[i]:
-                    try:
-                        await self._prefect.set_task_run_state(task_run_ids[i], "FAILED", "Failed")
-                    except Exception:
-                        logger.warning("Prefect task state update failed", exc_info=True)
-                # SIP-0077: task.failed (fan-out exception)
+                # SIP-0077: task.failed (fan-out exception, PrefectBridge handles state)
                 self._cycle_event_bus.emit(
                     EventType.TASK_FAILED,
                     entity_type="task",
@@ -1602,14 +1558,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     payload={"task_type": plan[i].task_type, "error": str(result)},
                 )
                 raise _ExecutionError(f"Task {plan[i].task_id} raised exception: {result}")
-            # Prefect: update task state
-            if self._prefect and task_run_ids[i]:
-                try:
-                    state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
-                    await self._prefect.set_task_run_state(task_run_ids[i], state, state.title())
-                except Exception:
-                    logger.warning("Prefect task state update failed", exc_info=True)
-            # SIP-0077: task.succeeded or task.failed (fan-out result)
+            # SIP-0077: task.succeeded or task.failed (PrefectBridge handles state)
             if result.status == "SUCCEEDED":
                 self._cycle_event_bus.emit(
                     EventType.TASK_SUCCEEDED,
@@ -2041,43 +1990,53 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     },
                 )
 
-                # Prefect: create repair task run
-                task_run_id = None
-                if self._prefect and flow_run_id:
-                    try:
-                        role = repair_env.metadata.get("role", "unknown")
-                        task_run_id = await self._prefect.create_task_run(
-                            flow_run_id,
-                            task_key=repair_env.task_type,
-                            task_name=f"{role}: {repair_env.task_type} (repair #{repair_attempt})",
-                        )
-                        await self._prefect.set_task_run_state(
-                            task_run_id,
-                            "RUNNING",
-                            "Running",
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Prefect repair task run creation failed",
-                            exc_info=True,
-                        )
+                # SIP-0077: task.dispatched (PrefectBridge handles task run creation)
+                role = repair_env.metadata.get("role", "unknown")
+                self._cycle_event_bus.emit(
+                    EventType.TASK_DISPATCHED,
+                    entity_type="task",
+                    entity_id=repair_env.task_id,
+                    context={
+                        "cycle_id": cycle.cycle_id,
+                        "run_id": run_id,
+                        "flow_run_id": flow_run_id or "",
+                    },
+                    payload={
+                        "task_type": repair_env.task_type,
+                        "task_name": f"{role}: {repair_env.task_type} (repair #{repair_attempt})",
+                    },
+                )
 
                 result = await self._dispatch_task(enriched_repair, run_id)
 
-                # Prefect: update repair task state
-                if self._prefect and task_run_id:
-                    try:
-                        state = "COMPLETED" if result.status == "SUCCEEDED" else "FAILED"
-                        await self._prefect.set_task_run_state(
-                            task_run_id,
-                            state,
-                            state.title(),
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Prefect repair task state update failed",
-                            exc_info=True,
-                        )
+                # SIP-0077: task.succeeded or task.failed
+                if result.status == "SUCCEEDED":
+                    self._cycle_event_bus.emit(
+                        EventType.TASK_SUCCEEDED,
+                        entity_type="task",
+                        entity_id=repair_env.task_id,
+                        context={
+                            "cycle_id": cycle.cycle_id,
+                            "run_id": run_id,
+                            "flow_run_id": flow_run_id or "",
+                        },
+                        payload={"task_type": repair_env.task_type},
+                    )
+                else:
+                    self._cycle_event_bus.emit(
+                        EventType.TASK_FAILED,
+                        entity_type="task",
+                        entity_id=repair_env.task_id,
+                        context={
+                            "cycle_id": cycle.cycle_id,
+                            "run_id": run_id,
+                            "flow_run_id": flow_run_id or "",
+                        },
+                        payload={
+                            "task_type": repair_env.task_type,
+                            "error": result.error or "",
+                        },
+                    )
 
                 # Collect repair artifacts
                 for art in (result.outputs or {}).get("artifacts", []):
