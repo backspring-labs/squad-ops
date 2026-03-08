@@ -80,6 +80,10 @@
     return colors[status] || colors.queued;
   }
 
+  function capitalize(s) {
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
   function formatTimestamp(iso) {
     if (!iso) return '--';
     const d = new Date(iso);
@@ -130,7 +134,7 @@
               style="border-left: 3px solid {statusColor(run.status || 'queued')}"
             >
               <div class="run-header">
-                <span class="run-number">Run #{run.run_number ?? i + 1}</span>
+                <span class="run-number">{run.workload_type ? capitalize(run.workload_type) : `Run #${run.run_number ?? i + 1}`}</span>
                 <span
                   class="run-status"
                   style="background: {statusBgColor(run.status || 'queued')}; color: {statusColor(run.status || 'queued')}"

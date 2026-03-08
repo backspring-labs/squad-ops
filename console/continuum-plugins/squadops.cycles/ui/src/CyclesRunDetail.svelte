@@ -98,6 +98,10 @@
     return colors[status] || colors.queued;
   }
 
+  function capitalize(s) {
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
   function formatTimestamp(iso) {
     if (!iso) return '--';
     const d = new Date(iso);
@@ -120,7 +124,7 @@
     <div class="error">Error: {error}</div>
   {:else if runDetail}
     <h3 class="title">
-      Run #{runDetail.run_number ?? '--'}
+      {runDetail.workload_type ? capitalize(runDetail.workload_type) : `Run #${runDetail.run_number ?? '--'}`}
       <span
         class="title-status"
         style="color: {statusColor(runDetail.status || 'queued')}"
