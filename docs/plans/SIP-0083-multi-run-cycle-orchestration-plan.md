@@ -1,556 +1,381 @@
-# SIP-0083: Multi-Run Cycle Orchestration — Implementation Plan
+# SIP-0083: Multi-Run Cycle Orchestration — Implementation Plan (Rev 2)
 
-**SIP:** `sips/accepted/SIP-0083-Multi-Run-Cycle-Orchestration.md`
+**SIP:** `sips/accepted/SIP-0083-Multi-Run-Cycle-Orchestration.md` (Rev 4)
 **Branch:** `feature/sip-0083-multi-run-cycle-orchestration`
-
-## Phase 1: Prerequisite Fix + Port + Events
-
-### 1a. Fix `_handle_gate()` (standalone PR candidate)
-
-**File:** `adapters/cycles/distributed_flow_executor.py`
-
-Current `_handle_gate()` (line 1435) only matches `"approved"` and `"rejected"`. Fix:
-
-```python
-# In _handle_gate(), replace the decision matching block:
-if decision.decision in (
-    GateDecisionValue.APPROVED,
-    GateDecisionValue.APPROVED_WITH_REFINEMENTS,
-):
-    await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
-    self._cycle_event_bus.emit(
-        EventType.RUN_RESUMED,
-        entity_type="run",
-        entity_id=run_id,
-        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-        payload={"gate_name": gate_name},
-    )
-    logger.info("Gate %r %s, resuming run %s", gate_name, decision.decision, run_id)
-    return
-elif decision.decision == GateDecisionValue.REJECTED:
-    raise _ExecutionError(f"Gate {gate_name!r} rejected: {decision.notes}")
-elif decision.decision == GateDecisionValue.RETURNED_FOR_REVISION:
-    raise _ExecutionError(
-        f"Gate {gate_name!r} returned_for_revision: "
-        "returned_for_revision requires manual retry-run creation; "
-        "automatic retry-in-same-phase is not implemented in this version."
-    )
-```
-
-Import `GateDecisionValue` from `squadops.cycles.models` (already imported in the file via `from squadops.cycles.models import ...`; add `GateDecisionValue` to the existing import).
-
-**Tests:** `tests/unit/cycles/test_handle_gate_decisions.py`
-- `approved` resumes run (existing behavior, re-verify)
-- `approved_with_refinements` resumes run
-- `rejected` raises `_ExecutionError`
-- `returned_for_revision` raises `_ExecutionError` with descriptive message
-- No decision value causes indefinite polling
-
-### 1b. Add `execute_cycle()` to `FlowExecutionPort`
-
-**File:** `src/squadops/ports/cycles/flow_execution.py`
-
-Add non-abstract method after `cancel_run()`:
-
-```python
-async def execute_cycle(
-    self, cycle_id: str, first_run_id: str, profile_id: str | None = None
-) -> None:
-    """Execute a full cycle by iterating over workload_sequence.
-
-    Default implementation delegates to execute_run() for backward
-    compatibility with executors that do not support multi-workload
-    orchestration. execute_cycle() accepts the already-created first Run
-    so cycle creation semantics remain unchanged and the executor can
-    begin orchestration from the initial persisted Run.
-    """
-    await self.execute_run(cycle_id, first_run_id, profile_id)
-```
-
-**Tests:** `tests/unit/ports/test_flow_execution_default.py`
-- Default `execute_cycle()` calls `execute_run()` with same args
-- Subclass that overrides `execute_cycle()` does not call default
-
-### 1c. Add 3 workload event types
-
-**File:** `src/squadops/events/types.py`
-
-Add after the Correction section:
-
-```python
-    # --- Workload (3) — SIP-0083 ---
-    WORKLOAD_COMPLETED = "workload.completed"
-    WORKLOAD_GATE_AWAITING = "workload.gate_awaiting"
-    WORKLOAD_ADVANCED = "workload.advanced"
-```
-
-Update module docstring: `25 event types` → `28 event types across 9 entity types`.
-Update `all()` docstring: `25 event type constants` → `28 event type constants`.
-
-**File:** `tests/unit/events/test_event_emission.py`
-
-Update event type count assertion from `== 25` to `== 28`. Update total emit count assertion to reflect new workload emit calls after Phase 2 is complete (do not hardcode a guess — count actual `self._cycle_event_bus.emit(` calls in `distributed_flow_executor.py` after implementation).
-
-**Tests:** `tests/unit/events/test_workload_events.py`
-- All 3 constants exist on `EventType`
-- Values follow `workload.{transition}` format
-- Included in `EventType.all()`
+**PR:** #28
 
 ---
 
-## Phase 2: Executor Orchestration Loop
+## Completed Phases
 
-**File:** `adapters/cycles/distributed_flow_executor.py`
+Phases 1–5 and a Prefect dedup hotfix are committed on the feature branch.
 
-### Core assumption
-
-`execute_cycle()` assumes `execute_run()` returns only after the run has reached a terminal or gate-resolved state suitable for workload progression checks. This is true of the current `execute_run()` implementation, which runs to completion/failure/cancellation before returning. If `execute_run()` semantics ever change to return early (e.g., fire-and-forget), the orchestration loop would need a separate terminal-state poll.
-
-### Implementation
-
-Override `execute_cycle()` in `DistributedFlowExecutor`:
-
-```python
-async def execute_cycle(
-    self, cycle_id: str, first_run_id: str, profile_id: str | None = None
-) -> None:
-    """Execute a full cycle by iterating over workload_sequence.
-
-    Assumes execute_run() returns only after the run reaches a terminal
-    state (completed, failed, cancelled). Decision semantics for inter-
-    workload gates are interpreted here, not in the polling helper.
-    """
-    cycle = await self._cycle_registry.get_cycle(cycle_id)
-    workload_sequence = cycle.applied_defaults.get("workload_sequence", [])
-
-    # Single-workload fast path (D7)
-    if len(workload_sequence) <= 1:
-        await self.execute_run(cycle_id, first_run_id, profile_id)
-        return
-
-    current_run_id = first_run_id
-    for i, workload_entry in enumerate(workload_sequence):
-        await self.execute_run(cycle_id, current_run_id, profile_id)
-
-        # Check terminal status (compare persisted string values)
-        run = await self._cycle_registry.get_run(current_run_id)
-        if run.status in (RunStatus.FAILED.value, RunStatus.CANCELLED.value):
-            self._cycle_event_bus.emit(
-                EventType.WORKLOAD_COMPLETED,
-                entity_type="workload",
-                entity_id=current_run_id,
-                context={"cycle_id": cycle_id, "run_id": current_run_id},
-                payload={
-                    "workload_type": workload_entry.get("type"),
-                    "terminal_status": run.status,
-                },
-            )
-            break
-
-        self._cycle_event_bus.emit(
-            EventType.WORKLOAD_COMPLETED,
-            entity_type="workload",
-            entity_id=current_run_id,
-            context={"cycle_id": cycle_id, "run_id": current_run_id},
-            payload={
-                "workload_type": workload_entry.get("type"),
-                "terminal_status": RunStatus.COMPLETED.value,
-            },
-        )
-
-        # Last workload — done
-        if i >= len(workload_sequence) - 1:
-            break
-
-        # Inter-workload gate
-        gate_name = workload_entry.get("gate")
-        if gate_name:
-            self._cycle_event_bus.emit(
-                EventType.WORKLOAD_GATE_AWAITING,
-                entity_type="workload",
-                entity_id=current_run_id,
-                context={"cycle_id": cycle_id, "run_id": current_run_id},
-                payload={"gate_name": gate_name},
-            )
-            decision = await self._poll_inter_workload_gate(
-                current_run_id, cycle, gate_name,
-            )
-
-            if decision.decision == GateDecisionValue.REJECTED:
-                break  # Run stays COMPLETED; rejection in gate_decisions
-
-            # approved_with_refinements artifact writing (Phase 3)
-
-        # Positional duplicate guard (D14).
-        # Assumes runs are created in sequence order by this orchestration
-        # loop and no out-of-band run creation targets the same position.
-        next_workload = workload_sequence[i + 1]
-        all_runs = await self._cycle_registry.list_runs(cycle_id)
-        non_cancelled = sorted(
-            [r for r in all_runs if r.status != RunStatus.CANCELLED.value],
-            key=lambda r: r.run_number,
-        )
-
-        if len(non_cancelled) > i + 1:
-            current_run_id = non_cancelled[i + 1].run_id
-        else:
-            next_run = await self._create_next_workload_run(
-                cycle, run, next_workload,
-                config_hash=run.resolved_config_hash,
-            )
-            current_run_id = next_run.run_id
-
-        self._cycle_event_bus.emit(
-            EventType.WORKLOAD_ADVANCED,
-            entity_type="workload",
-            entity_id=current_run_id,
-            context={"cycle_id": cycle_id, "run_id": current_run_id},
-            payload={"workload_type": next_workload.get("type")},
-        )
-```
-
-### Helper: `_poll_inter_workload_gate()`
-
-Polls until it finds a decision for the named gate. Does not interpret the decision — `execute_cycle()` owns decision semantics. The run is already COMPLETED (not PAUSED), so run status is not changed.
-
-```python
-async def _poll_inter_workload_gate(
-    self, run_id: str, cycle: Cycle, gate_name: str
-) -> GateDecision:
-    """Poll for and return the inter-workload gate decision on a completed run.
-
-    Decision semantics (approved, rejected, etc.) are interpreted by
-    execute_cycle(), not here. This helper only waits for any decision
-    to appear on the named gate.
-    """
-    poll_interval = 2.0
-    while True:
-        if await self._is_cancelled(run_id):
-            raise _CancellationError(run_id)
-        run = await self._cycle_registry.get_run(run_id)
-        for decision in run.gate_decisions:
-            if decision.gate_name == gate_name:
-                return decision
-        await asyncio.sleep(poll_interval)
-```
-
-### Helper: `_create_next_workload_run()`
-
-The `Run` frozen dataclass requires these fields. All optional fields default to `None`/`()`:
-
-```python
-async def _create_next_workload_run(
-    self, cycle: Cycle, completed_run: Run, workload_entry: dict,
-    config_hash: str,
-) -> Run:
-    """Create the next workload Run with forwarded overrides."""
-    all_runs = await self._cycle_registry.list_runs(cycle.cycle_id)
-    next_number = max(r.run_number for r in all_runs) + 1
-
-    # Build forwarding overrides (Phase 3 adds artifact forwarding)
-    execution_overrides = dict(cycle.execution_overrides)
-
-    next_run = Run(
-        run_id=f"run_{uuid4().hex[:12]}",
-        cycle_id=cycle.cycle_id,
-        run_number=next_number,
-        status=RunStatus.QUEUED.value,
-        initiated_by="system",
-        resolved_config_hash=config_hash,
-        workload_type=workload_entry.get("type"),
-    )
-    return await self._cycle_registry.create_run(next_run)
-```
-
-**Tests:** `tests/unit/cycles/test_execute_cycle.py`
-
-Key test cases:
-- Single-workload fast path delegates to `execute_run()` directly
-- Multi-workload (2 entries) creates second Run after first completes
-- Multi-workload (3 entries) creates all Runs sequentially
-- Failed run stops orchestration (no next Run created)
-- Cancelled run stops orchestration
-- `approved` gate advances to next workload
-- `rejected` gate stops orchestration; run stays COMPLETED
-- Positional duplicate guard: existing next run is reused, not re-created
-- Event emission: `WORKLOAD_COMPLETED`, `WORKLOAD_GATE_AWAITING`, `WORKLOAD_ADVANCED` at correct points
-- `WORKLOAD_COMPLETED` payload includes `terminal_status` even for failed/cancelled outcomes
-- Missing `workload_sequence` key → delegates to `execute_run()`
-- Empty `workload_sequence` list → delegates to `execute_run()`
-
-Test strategy: mock `self._cycle_registry` and `self._cycle_event_bus`. Patch `execute_run` on the executor instance to track calls without actually dispatching tasks.
+| Phase | Commit(s) | Summary |
+|-------|-----------|---------|
+| 1a | `_handle_gate()` fix | All 4 `GateDecisionValue` values handled; `returned_for_revision` fails run with descriptive error |
+| 1b | Port method | `execute_cycle()` on `FlowExecutionPort` with default fallback to `execute_run()` |
+| 1c | Event types | 3 workload event types (`workload.completed`, `workload.gate_awaiting`, `workload.advanced`) |
+| 2 | Executor loop | `execute_cycle()` in `DistributedFlowExecutor`: workload loop, gate polling, duplicate guard |
+| 3 | Refinement + forwarding | `approved_with_refinements` artifact writing, `_build_forwarding_overrides()` |
+| 4 | API + DTO + profile | `execute_run` → `execute_cycle`, `WorkloadProgressEntry`, `_compute_workload_progress()`, multi-phase.yaml |
+| 5 | CLI + version bump | `--request-profile` flag, version 0.9.19 |
+| Hotfix | `9007830` | Removed direct Prefect task calls from repair dispatch path; PrefectBridge exclusively manages task runs via events |
 
 ---
 
-## Phase 3: Refinement Artifact + Forwarding
+## E2E Bug Discovery (SIP Rev 4 Motivation)
 
-### 3a. `approved_with_refinements` artifact writing
+E2E testing of the multi-phase profile revealed two inter-related bugs that prevent inter-workload gate decisions from working:
 
-In `execute_cycle()`, after the gate decision check for `rejected`, add:
+1. **`record_gate_decision()` rejects COMPLETED runs.** The guard uses `TERMINAL_STATES` (`{COMPLETED, FAILED, CANCELLED}`), but inter-workload gate decisions are by definition recorded against completed runs — the run whose artifacts are being reviewed (D2).
 
-```python
-if decision.decision == GateDecisionValue.APPROVED_WITH_REFINEMENTS:
-    if decision.notes:
-        artifact_content = f"# Refinement Notes\n\n{decision.notes}\n"
-        artifact_ref = ArtifactRef(
-            artifact_id=f"art_{uuid4().hex[:12]}",
-            project_id=cycle.project_id,
-            cycle_id=cycle.cycle_id,
-            run_id=current_run_id,
-            artifact_type="document",
-            filename="refinement_notes.md",
-            content_hash=sha256(artifact_content.encode()).hexdigest(),
-            size_bytes=len(artifact_content.encode()),
-            media_type="text/markdown",
-            created_at=datetime.now(UTC),
-            metadata={"producing_task_type": "gate.refinement_notes"},
-        )
-        await self._artifact_vault.store_artifact(
-            artifact_ref, artifact_content.encode()
-        )
-```
+2. **`derive_cycle_status()` shows COMPLETED during gate polling.** The latest non-cancelled run is completed, so `derive_cycle_status()` returns `COMPLETED`. But the cycle is actually waiting for human input at an inter-workload gate. Operators and automation treating `COMPLETED` as "done" is dangerous.
 
-**Artifact registration:** `store_artifact()` both persists the content and registers the `ArtifactRef` in the vault index. Verify this during implementation by checking the `ArtifactVaultPort.store_artifact()` contract and the filesystem adapter's implementation. If `store_artifact()` does not register the ref on the run's `artifact_refs` tuple in the registry, a separate `update_run` call would be needed to append the artifact_id — but based on the existing executor pattern (which calls `store_artifact` and expects artifacts to appear in `list_artifacts`), this should be sufficient.
-
-### 3b. Artifact forwarding in `_create_next_workload_run()`
-
-Build `execution_overrides` from the completed run's artifacts:
-
-```python
-async def _build_forwarding_overrides(
-    self, cycle: Cycle, completed_run: Run,
-) -> dict:
-    """Build execution_overrides with artifact refs from the completed run.
-
-    Forwarded artifact lists are sorted by creation time for deterministic
-    ordering. Operator-supplied overrides in cycle.execution_overrides
-    always take precedence.
-
-    Merge semantics:
-    - List keys (plan_artifact_refs, prior_workload_artifact_refs):
-      merge with existing values, deduplicate.
-    - Scalar keys (impl_run_id): only write when no explicit override exists.
-    """
-    overrides = dict(cycle.execution_overrides)  # Start from cycle-level overrides
-
-    # promoted artifacts only — empty list if nothing promoted (D9, §5.6 rule 6)
-    promoted = await self._artifact_vault.list_artifacts(
-        run_id=completed_run.run_id, promotion_status="promoted",
-    )
-    promoted_refs = [a.artifact_id for a in sorted(promoted, key=lambda a: a.created_at)]
-    if "prior_workload_artifact_refs" in overrides:
-        # Merge with existing, deduplicate
-        existing = overrides["prior_workload_artifact_refs"]
-        seen = set(existing)
-        merged = list(existing) + [r for r in promoted_refs if r not in seen]
-        overrides["prior_workload_artifact_refs"] = merged
-    else:
-        overrides["prior_workload_artifact_refs"] = promoted_refs
-
-    # workload-type-specific keys
-    wt = completed_run.workload_type
-    if wt == "planning":
-        # For v1, plan_artifact_refs forwards promoted planning documents
-        # from the immediately preceding planning run.
-        plan_docs = await self._artifact_vault.list_artifacts(
-            run_id=completed_run.run_id,
-            artifact_type="document",
-            promotion_status="promoted",
-        )
-        plan_refs = [a.artifact_id for a in sorted(plan_docs, key=lambda a: a.created_at)]
-        if "plan_artifact_refs" in overrides:
-            existing = overrides["plan_artifact_refs"]
-            seen = set(existing)
-            merged = list(existing) + [r for r in plan_refs if r not in seen]
-            overrides["plan_artifact_refs"] = merged
-        else:
-            overrides["plan_artifact_refs"] = plan_refs
-    elif wt == "implementation":
-        # Scalar key — only write when no explicit override exists
-        if "impl_run_id" not in overrides:
-            overrides["impl_run_id"] = completed_run.run_id
-
-    return overrides
-```
-
-Wire into `_create_next_workload_run()` — replace `execution_overrides = dict(cycle.execution_overrides)` with a call to `_build_forwarding_overrides()`.
-
-**Tests:** additions to `tests/unit/cycles/test_execute_cycle.py`
-- `approved_with_refinements` writes `refinement_notes.md` artifact via `store_artifact()`
-- `approved_with_refinements` with empty/None notes does not write artifact
-- `approved_with_refinements` does not alter `workload_progress` status — the workload still appears as `completed`
-- Planning → implementation forwards `plan_artifact_refs` (promoted documents only)
-- Implementation → wrapup forwards `impl_run_id`
-- Promoted artifacts forwarded as `prior_workload_artifact_refs`
-- No promoted artifacts → empty list (not all artifacts)
-- Explicit operator override for scalar key (`impl_run_id`) is not overwritten
-- Explicit operator override for list key (`plan_artifact_refs`) is merged with forwarded refs, deduplicated
-- Forwarded artifact lists are sorted by creation time
+These were addressed in SIP-0083 Rev 4 with design decisions D5 (revised), D15, D16. The following phase implements them.
 
 ---
 
-## Phase 4: API Integration + DTO + Profile
+## Phase 6: Cycle Status + Gate Guard Corrections
 
-### 4a. API route change
+### Runtime Contracts
 
-**File:** `src/squadops/api/routes/cycles/cycles.py` line 124-128
+**P6-RC1 (Run stays COMPLETED):** A run is `COMPLETED` when its tasks and gates finish. Inter-workload gate decisions do not change run status. The gate decision is recorded on the completed run; the cycle-level status reflects the suspension.
+
+**P6-RC2 (Cycle PAUSED is resolved, not stored):** `CycleStatus.PAUSED` is produced by `resolve_cycle_status()` at query time based on `workload_progress`. It is never written directly to the cycle model or database.
+
+**P6-RC3 (GATE_REJECTED_STATES scope):** Only `record_gate_decision()` switches from `TERMINAL_STATES` to `GATE_REJECTED_STATES`. Other `TERMINAL_STATES` uses (`update_run_status` finished_at logic, `record_pulse_verification` guard) remain unchanged — those correctly reject operations on completed runs.
+
+**P6-RC4 (derive_cycle_status backward compat):** `derive_cycle_status()` is preserved unchanged with its full test suite. Existing tests must not be modified or deleted. `resolve_cycle_status()` composes on top of it.
+
+### 6a. Add `CycleStatus.PAUSED`
+
+**File:** `src/squadops/cycles/models.py`
+
+Add `PAUSED` to `CycleStatus` enum:
 
 ```python
-# Change:
-background_tasks.add_task(
-    flow_executor.execute_run,
-    cycle.cycle_id,
-    run.run_id,
-    body.squad_profile_id,
-)
-# To:
-background_tasks.add_task(
-    flow_executor.execute_cycle,
-    cycle.cycle_id,
-    run.run_id,
-    body.squad_profile_id,
+class CycleStatus(StrEnum):
+    """Cycle lifecycle status (derived from latest Run). SIP-0064 §6.1."""
+
+    CREATED = "created"
+    ACTIVE = "active"
+    PAUSED = "paused"      # SIP-0083 D16: waiting for human input at inter-workload gate
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+```
+
+**No tests needed** — `CycleStatus` is a simple enum. Testing that enum members equal their hardcoded values is tautological (CLAUDE.md test standard).
+
+### 6b. Add `GATE_REJECTED_STATES` and `resolve_cycle_status()`
+
+**File:** `src/squadops/cycles/lifecycle.py`
+
+Add after `TERMINAL_STATES`:
+
+```python
+# States that reject gate decisions — COMPLETED is intentionally excluded
+# because inter-workload gates are decided on completed runs (SIP-0083 D15).
+GATE_REJECTED_STATES: frozenset[RunStatus] = frozenset(
+    {RunStatus.FAILED, RunStatus.CANCELLED}
 )
 ```
 
-### 4b. WorkloadProgressEntry DTO
-
-**File:** `src/squadops/api/routes/cycles/dtos.py`
-
-Add before `CycleResponse`:
+Add after `derive_cycle_status()`:
 
 ```python
-class WorkloadProgressEntry(BaseModel):
-    index: int
-    workload_type: str
-    run_id: str | None = None
-    status: str  # "pending" | "running" | "completed" | "failed" | "gate_awaiting" | "rejected"
-```
+def resolve_cycle_status(
+    runs: Sequence[Run],
+    cycle_cancelled: bool,
+    workload_progress: Sequence | None = None,
+) -> CycleStatus:
+    """Resolve cycle status with workload awareness (SIP-0083 D5).
 
-Add field to `CycleResponse`:
+    Composes on top of derive_cycle_status():
+    - If any workload_progress entry has status "gate_awaiting" → PAUSED
+    - If any workload_progress entry has status "rejected" → FAILED
+    - Otherwise → derive_cycle_status(runs, cycle_cancelled)
 
-```python
-class CycleResponse(BaseModel):
-    # ... existing fields ...
-    workload_progress: list[WorkloadProgressEntry] = Field(default_factory=list)
-```
-
-### 4c. Compute workload_progress
-
-**File:** `src/squadops/api/routes/cycles/cycles.py` — in the `get_cycle` route where `CycleResponse` is constructed.
-
-Add a helper function. This maps domain run statuses into the DTO vocabulary explicitly rather than passing through raw status strings:
-
-```python
-_RUN_STATUS_TO_PROGRESS: dict[str, str] = {
-    RunStatus.QUEUED.value: "pending",
-    RunStatus.RUNNING.value: "running",
-    RunStatus.PAUSED.value: "gate_awaiting",
-    RunStatus.COMPLETED.value: "completed",
-    RunStatus.FAILED.value: "failed",
-    # CANCELLED excluded from alignment, never reaches this map
-}
-
-
-def _compute_workload_progress(
-    workload_sequence: list[dict], runs: list[Run],
-) -> list[WorkloadProgressEntry]:
-    """Derive workload_progress by positional alignment (SIP-0083 §5.8).
-
-    Non-cancelled runs are sorted by run_number and aligned to
-    workload_sequence entries positionally. Domain run statuses are
-    mapped to the DTO vocabulary; raw status values are never passed
-    through.
+    When workload_progress is None or empty, this is equivalent to
+    derive_cycle_status() — preserving backward compatibility for
+    single-workload cycles.
     """
-    non_cancelled = sorted(
-        [r for r in runs if r.status != RunStatus.CANCELLED.value],
-        key=lambda r: r.run_number,
-    )
-    entries = []
-    for i, ws_entry in enumerate(workload_sequence):
-        if i < len(non_cancelled):
-            run = non_cancelled[i]
-            # Check for rejected gate decision on this workload's gate
-            gate_name = ws_entry.get("gate")
-            rejected = gate_name and any(
-                gd.decision == GateDecisionValue.REJECTED
-                for gd in run.gate_decisions
-                if gd.gate_name == gate_name
-            )
-            if rejected:
-                status = "rejected"
-            else:
-                status = _RUN_STATUS_TO_PROGRESS.get(run.status, run.status)
-            entries.append(WorkloadProgressEntry(
-                index=i,
-                workload_type=ws_entry.get("type", "unknown"),
-                run_id=run.run_id,
-                status=status,
-            ))
-        else:
-            entries.append(WorkloadProgressEntry(
-                index=i,
-                workload_type=ws_entry.get("type", "unknown"),
-                run_id=None,
-                status="pending",
-            ))
-    return entries
+    if workload_progress:
+        for entry in workload_progress:
+            status = entry.status if hasattr(entry, "status") else entry.get("status")
+            if status == "gate_awaiting":
+                return CycleStatus.PAUSED
+            if status == "rejected":
+                return CycleStatus.FAILED
+
+    return derive_cycle_status(runs, cycle_cancelled)
 ```
 
-### 4d. Update multi-phase.yaml
+**Design note on the `workload_progress` parameter type:** The function accepts `Sequence | None` rather than importing `WorkloadProgressEntry` from `dtos.py`. This avoids a circular dependency between the domain layer (`cycles/lifecycle.py`) and the API layer (`api/routes/cycles/dtos.py`). It uses duck typing — any object with a `.status` attribute or dict with a `"status"` key works. The `hasattr` check supports both DTO instances and plain dicts, which is useful for testing.
 
-**File:** `src/squadops/contracts/cycle_request_profiles/profiles/multi-phase.yaml`
+**File:** `src/squadops/cycles/__init__.py`
 
-Replace with functional 3-workload profile per SIP §5.11. Add `progress_impl_review` gate, update `workload_sequence` to include `wrapup`, add `after_task_types` to `progress_plan_review`.
+Add to imports and `__all__`:
 
-**Compatibility checkpoint:** before committing, verify no existing tests, CLI examples, or docs reference the prior `multi-phase.yaml` shape (2-workload, no `progress_impl_review`). Search for `multi-phase` across tests and docs.
+```python
+from squadops.cycles.lifecycle import (
+    GATE_REJECTED_STATES,
+    compute_config_hash,
+    compute_profile_snapshot_hash,
+    derive_cycle_status,
+    resolve_cycle_status,
+    validate_run_transition,
+)
 
-### 4e. Tests
+__all__ = [
+    # ...existing...
+    # Lifecycle
+    "validate_run_transition",
+    "derive_cycle_status",
+    "resolve_cycle_status",
+    "compute_config_hash",
+    "compute_profile_snapshot_hash",
+    # Constants
+    "GATE_REJECTED_STATES",
+]
+```
 
-**File:** `tests/unit/api/routes/cycles/test_workload_progress.py`
-- Empty `workload_sequence` → empty `workload_progress`
-- 3-entry sequence with 1 completed run → first entry has run_id/completed, others pending
-- All runs completed → all entries have run_ids and `completed` status
-- Cancelled run excluded from positional alignment
-- Rejected gate → status is `"rejected"` (not raw run status)
-- Paused run → status is `"gate_awaiting"` (not `"paused"`)
-- Queued run → status is `"pending"` (not `"queued"`)
-- Running run → status is `"running"`
-- `approved_with_refinements` gate does not change workload_progress status (still `completed`)
+**Tests:** `tests/unit/cycles/test_lifecycle.py`
 
-**File:** `tests/unit/contracts/test_multi_phase_profile.py`
-- Profile loads without validation errors
-- Has 3 workload_sequence entries (planning, implementation, wrapup)
-- Has 2 gates (progress_plan_review, progress_impl_review)
+New class `TestResolveCycleStatus`:
+
+| Test | What bug would this catch? |
+|------|---------------------------|
+| `test_no_workload_progress_delegates_to_derive` | `resolve_cycle_status` with `workload_progress=None` must match `derive_cycle_status` — ensures backward compat |
+| `test_empty_workload_progress_delegates_to_derive` | Same, with empty list |
+| `test_gate_awaiting_returns_paused` | Cycle at inter-workload gate must show PAUSED, not COMPLETED |
+| `test_rejected_returns_failed` | Rejected gate must show FAILED, not COMPLETED |
+| `test_gate_awaiting_takes_precedence_over_rejected` | If both exist (shouldn't happen, but defensive), PAUSED wins |
+| `test_completed_without_gate_awaiting_stays_completed` | Cycle with completed workloads and no pending gates stays COMPLETED |
+| `test_running_workload_stays_active` | Mid-workload execution shows ACTIVE via derive_cycle_status |
+| `test_accepts_dict_workload_progress` | Duck typing: plain dicts with `"status"` key work |
+
+New tests for `GATE_REJECTED_STATES`:
+
+| Test | What bug would this catch? |
+|------|---------------------------|
+| `test_gate_rejected_states_excludes_completed` | `COMPLETED` NOT in `GATE_REJECTED_STATES` — core invariant of D15 |
+| `test_gate_rejected_states_includes_failed_and_cancelled` | Both terminal-for-gates states included |
+
+### 6c. Narrow gate decision guard in registries
+
+**File:** `adapters/cycles/postgres_cycle_registry.py`
+
+Line 16 — update import:
+```python
+from squadops.cycles.lifecycle import GATE_REJECTED_STATES, TERMINAL_STATES, derive_cycle_status, validate_run_transition
+```
+
+Line 289 — change guard:
+```python
+# Before:
+if RunStatus(run_row["status"]) in TERMINAL_STATES:
+
+# After:
+if RunStatus(run_row["status"]) in GATE_REJECTED_STATES:
+```
+
+**File:** `adapters/cycles/memory_cycle_registry.py`
+
+Line 12 — update import:
+```python
+from squadops.cycles.lifecycle import GATE_REJECTED_STATES, TERMINAL_STATES, validate_run_transition
+```
+
+Line 153 — change guard:
+```python
+# Before:
+if current_status in TERMINAL_STATES:
+
+# After:
+if current_status in GATE_REJECTED_STATES:
+```
+
+**Important (P6-RC3):** Do NOT change the `TERMINAL_STATES` usage at:
+- `postgres_cycle_registry.py` line 235 (`update_run_status` finished_at logic)
+- `postgres_cycle_registry.py` line 355 (`record_pulse_verification` guard)
+- `memory_cycle_registry.py` line 192 (`record_pulse_verification` guard)
+
+These correctly use `TERMINAL_STATES` for their own purposes.
+
+**Tests:** updates to existing files
+
+`tests/unit/cycles/test_postgres_cycle_registry.py` — update `test_record_gate_decision_terminal_run_raises` (line 539):
+- Rename to `test_record_gate_decision_failed_run_raises`
+- Assert that `FAILED` runs still reject gate decisions
+- Add `test_record_gate_decision_cancelled_run_raises`
+- Add `test_record_gate_decision_completed_run_accepts` — COMPLETED runs now accept gate decisions (D15)
+
+`tests/unit/cycles/test_adapters.py` — update the memory registry gate decision terminal test (line 351):
+- Same pattern: FAILED/CANCELLED raise `RunTerminalError`, COMPLETED accepts
+
+`tests/unit/cycles/test_cycle_registry_contract.py` — update if it tests terminal-state gate rejection:
+- Add test that COMPLETED runs accept gate decisions
+
+`tests/unit/cycles/test_gate_boundary_status.py` — verify line 119 (which tests gate decision rejection on a completed run):
+- This test asserts `RunTerminalError` on a COMPLETED run — it must be updated to expect success
+
+### 6d. Switch callers from `derive_cycle_status` to `resolve_cycle_status`
+
+Four call sites need updating. Each needs `workload_progress` computed before resolving status.
+
+**File:** `src/squadops/api/routes/cycles/mapping.py`
+
+`cycle_to_response()` (line 135) — this is the central mapping function. Currently receives `status: str` as a parameter. Change to compute status internally:
+
+```python
+def cycle_to_response(cycle: Cycle, runs: list[Run]) -> CycleResponse:
+    ws = cycle.applied_defaults.get("workload_sequence", [])
+    progress = _compute_workload_progress(ws, runs)
+    status = resolve_cycle_status(runs, cycle_cancelled=False, workload_progress=progress)
+    return CycleResponse(
+        # ...existing fields...
+        status=status.value,
+        runs=[run_to_response(r) for r in runs],
+        workload_progress=progress,
+    )
+```
+
+This removes the `status` parameter from `cycle_to_response()` — the function now owns status resolution. Callers simplify.
+
+**File:** `src/squadops/api/routes/cycles/cycles.py`
+
+Three call sites:
+
+1. `list_cycles` (line 157–158):
+```python
+# Before:
+derived = derive_cycle_status(runs, cycle_cancelled=False)
+results.append(cycle_to_response(c, runs, derived.value))
+
+# After:
+results.append(cycle_to_response(c, runs))
+```
+
+2. `get_cycle` (line 172–173):
+```python
+# Before:
+derived = derive_cycle_status(runs, cycle_cancelled=False)
+return cycle_to_response(cycle, runs, derived.value)
+
+# After:
+return cycle_to_response(cycle, runs)
+```
+
+3. Import line 13 — remove `derive_cycle_status` (no longer needed here).
+
+**File:** `src/squadops/api/routes/cycles/runs.py`
+
+Line 195 — the resume route checks parent cycle status:
+```python
+# Before:
+cycle_status = derive_cycle_status(runs, False)
+
+# After:
+from squadops.api.routes.cycles.mapping import _compute_workload_progress
+cycle = await registry.get_cycle(cycle_id)
+ws = cycle.applied_defaults.get("workload_sequence", [])
+progress = _compute_workload_progress(ws, runs)
+cycle_status = resolve_cycle_status(runs, False, workload_progress=progress)
+```
+
+Update import line 17 — switch from `derive_cycle_status` to `resolve_cycle_status`.
+
+**Note on `CycleStatus.PAUSED` in the resume guard (line 196):** The current check rejects resume when cycle is `COMPLETED` or `CANCELLED`. A `PAUSED` cycle should allow run resume (the operator is making progress on the pipeline), so the existing guard `if cycle_status in (CycleStatus.COMPLETED, CycleStatus.CANCELLED)` remains correct without modification.
+
+**Tests:** updates to existing API test files
+
+`tests/unit/cycles/test_api_cycles.py` (or wherever `list_cycles`/`get_cycle` are tested):
+- Update `cycle_to_response()` call signatures to remove the `status` parameter
+- Verify that `workload_progress` with `gate_awaiting` produces `status: "paused"` on the response
+
+`tests/unit/api/routes/cycles/test_workload_progress.py`:
+- Add `test_gate_awaiting_produces_paused_cycle_status` — cycle response shows `status: "paused"` when a workload is `gate_awaiting`
+- Add `test_rejected_produces_failed_cycle_status` — cycle response shows `status: "failed"` when a workload is `rejected`
+
+### 6e. Commit and regression
+
+1. Run `ruff check . --fix && ruff format .`
+2. Run `./scripts/dev/run_regression_tests.sh -v`
+3. Verify all existing `derive_cycle_status` tests still pass unchanged (P6-RC4)
+4. Commit with message referencing D5, D15, D16
 
 ---
 
-## Phase 5: E2E Validation
+## Phase 7: E2E Revalidation
 
-- **Happy path:** create cycle with `multi-phase` profile, approve planning gate, verify implementation Run is auto-created
-- **Negative path:** create cycle with `multi-phase` profile, reject planning gate, verify no implementation Run is created and orchestration stops
-- Verify `cycles show` displays `workload_progress`
-- Verify `artifacts list` shows `refinement_notes.md` when `approved_with_refinements` is used
+After Phase 6, rebuild and retest the multi-phase cycle flow that failed in the previous E2E attempt.
 
----
+### Steps
 
-## Test Emission Count Update
+1. Rebuild runtime-api and all agents:
+   ```bash
+   ./scripts/dev/ops/rebuild_and_deploy.sh all
+   ```
 
-After all phases, update `tests/unit/events/test_event_emission.py`:
-- Event type count: `25` → `28`
-- Total emit count: update to reflect actual executor emit calls (count `self._cycle_event_bus.emit(` in `distributed_flow_executor.py` after implementation — do not guess the number in advance)
+2. Create multi-phase cycle:
+   ```bash
+   squadops cycles create play_game --squad-profile full-squad --request-profile multi-phase
+   ```
+
+3. Monitor planning workload in Prefect UI (`http://localhost:4200`)
+
+4. After planning completes, verify:
+   - `squadops cycles show <cycle-id>` shows `status: paused` (not `completed`)
+   - `workload_progress[0]` shows `status: gate_awaiting` (planning run is completed with gate pending)
+   - `workload_progress[1]` and `[2]` show `status: pending`
+
+5. Approve the planning gate:
+   ```bash
+   squadops runs gate <run-id> progress_plan_review --approve
+   ```
+
+6. Verify orchestration advances:
+   - New implementation run is auto-created
+   - `squadops cycles show <cycle-id>` shows `status: active`
+   - `workload_progress[0]` shows `status: completed`
+   - `workload_progress[1]` shows `status: running`
+
+7. After implementation completes, verify second gate:
+   - `status: paused` again
+   - Approve `progress_impl_review` gate
+   - Wrapup workload starts
+
+8. After wrapup completes:
+   - `status: completed`
+   - All 3 `workload_progress` entries show `status: completed`
+
+### Negative path
+
+- Create another multi-phase cycle
+- After planning completes, reject the gate:
+  ```bash
+  squadops runs gate <run-id> progress_plan_review --reject --notes "Planning insufficient"
+  ```
+- Verify `status: failed` and `workload_progress[0].status: rejected`
+- Verify no implementation run was created
 
 ---
 
 ## Key Implementation Notes
 
-1. **`list_runs()` has no `exclude_cancelled` param** — filter in Python: `[r for r in runs if r.status != RunStatus.CANCELLED.value]`
-2. **`create_run()` takes a `Run` domain object**, not keyword args — construct the full frozen dataclass. Required fields: `run_id`, `cycle_id`, `run_number`, `status`, `initiated_by`, `resolved_config_hash`. Optional: `resolved_config_ref`, `started_at`, `finished_at`, `gate_decisions`, `artifact_refs`, `workload_type`.
-3. **Run IDs**: use `f"run_{uuid4().hex[:12]}"` pattern (matches route)
-4. **`initiated_by`**: use `"system"` for orchestration-created runs (vs `"api"` for route-created)
-5. **Import `GateDecisionValue`** in the executor — add to existing `from squadops.cycles.models import ...` line
-6. **`_poll_inter_workload_gate()` does NOT change run status and does NOT interpret decisions** — the run is already COMPLETED (not PAUSED like intra-run gates); `execute_cycle()` owns decision semantics
-7. **Artifact forwarding merge semantics:** list-valued keys merge with existing values and deduplicate; scalar keys only write when no explicit override exists
-8. **Deterministic artifact ordering:** sort forwarded artifact lists by `created_at` before writing to `execution_overrides`. Verify `list_artifacts()` return order; if not stable, sort explicitly.
-9. **Status comparison:** executor logic compares persisted string values (e.g., `run.status == RunStatus.FAILED.value`). DTO mapping normalizes to the `workload_progress` vocabulary separately. Do not mix enum members and raw strings in the same comparison.
-10. **`workload_sequence` entry access:** use `.get("type")` defensively. Profile contract guarantees `type` key, but `.get()` is safer against malformed data.
-11. **Duplicate-next-run guard assumption:** runs are created in sequence order by this orchestration loop. No out-of-band run creation targets the same sequence position during normal operation.
+1. **`GATE_REJECTED_STATES` vs `TERMINAL_STATES` scope** — only `record_gate_decision()` switches guards. `update_run_status` (finished_at logic) and `record_pulse_verification` continue using `TERMINAL_STATES`. Do not conflate the two (P6-RC3).
+
+2. **`resolve_cycle_status()` parameter type** — uses `Sequence | None` with duck typing to avoid circular imports between domain and API layers. Both `WorkloadProgressEntry` DTOs and plain dicts work.
+
+3. **`cycle_to_response()` signature change** — the `status: str` parameter is removed. The function now internally calls `_compute_workload_progress()` then `resolve_cycle_status()`. All callers simplify.
+
+4. **`cycle_cancelled` parameter** — currently hardcoded to `False` at all call sites (cancel logic uses a different path). This is existing behavior; no change needed.
+
+5. **Test updates scope** — gate decision terminal-run tests in postgres registry, memory registry, contract, and boundary tests all need updating to expect COMPLETED runs to accept decisions. Search for `RunTerminalError` combined with `completed` status in test assertions.
+
+6. **No DDL migration** — `CycleStatus.PAUSED` is a domain enum. The DB stores cycle status as a derived string (not a constrained column), so no migration is needed.
+
+7. **`__init__.py` exports** — add `resolve_cycle_status` and `GATE_REJECTED_STATES` to both the import block and `__all__` in `src/squadops/cycles/__init__.py`.
+
+8. **Emission count update** — if Phase 6 adds or removes any `self._cycle_event_bus.emit()` calls (it shouldn't — no executor changes), update `tests/unit/events/test_event_emission.py` accordingly. Current count is 48 emit calls / 38 with payloads.
