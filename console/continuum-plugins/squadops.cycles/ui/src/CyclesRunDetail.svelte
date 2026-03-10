@@ -1,13 +1,10 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import GateDecisionCard from './GateDecisionCard.svelte';
-  import ArtifactTypeFilter from './ArtifactTypeFilter.svelte';
 
   let { projectId = null, cycleId = null, runId = null } = $props();
 
   let runDetail = $state(null);
-  let artifacts = $state([]);
-  let filteredArtifacts = $state([]);
   let loading = $state(false);
   let error = $state(null);
   let pollTimer = $state(null);
@@ -30,25 +27,6 @@
       );
       if (!runResp.ok) throw new Error(`Run detail: ${runResp.status}`);
       runDetail = await runResp.json();
-
-      // Fetch full artifacts via dedicated endpoint (Option B per plan §2.5)
-      try {
-        const artResp = await apiFetch(
-          `${apiBase}/api/v1/projects/${projectId}/artifacts?run_id=${runId}`
-        );
-        if (artResp.ok) {
-          artifacts = await artResp.json();
-          filteredArtifacts = artifacts;
-        } else {
-          // Fallback to artifact_refs from run detail
-          artifacts = runDetail.artifact_refs || [];
-          filteredArtifacts = artifacts;
-        }
-      } catch {
-        artifacts = runDetail.artifact_refs || [];
-        filteredArtifacts = artifacts;
-      }
-
       loading = false;
     } catch (err) {
       error = err.message;
@@ -62,8 +40,6 @@
       fetchRunDetail();
     } else {
       runDetail = null;
-      artifacts = [];
-      filteredArtifacts = [];
     }
   });
 
@@ -80,10 +56,6 @@
   function handleDecisionRecorded() {
     // Re-fetch run detail to get server-confirmed state (no optimistic update)
     fetchRunDetail();
-  }
-
-  function handleArtifactFilter(filtered) {
-    filteredArtifacts = filtered;
   }
 
   function statusColor(status) {
@@ -195,22 +167,6 @@
       </div>
     {/if}
 
-    <!-- Artifacts -->
-    {#if artifacts.length > 0}
-      <div class="detail-section">
-        <h4 class="section-title">Artifacts</h4>
-        <ArtifactTypeFilter {artifacts} onFilter={handleArtifactFilter} />
-        <div class="artifacts-list">
-          {#each filteredArtifacts as artifact}
-            <div class="artifact-row">
-              <span class="artifact-name">{artifact.filename || artifact.artifact_id}</span>
-              <span class="artifact-type">{artifact.artifact_type || artifact.content_type || '--'}</span>
-              <span class="artifact-agent">{artifact.agent_role || '--'}</span>
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/if}
   {/if}
 </div>
 
@@ -283,42 +239,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--continuum-space-sm, 8px);
-  }
-
-  /* Artifacts */
-  .artifacts-list {
-    background: var(--continuum-bg-secondary, #1e293b);
-    border: 1px solid var(--continuum-border, #334155);
-    border-radius: var(--continuum-radius-md, 8px);
-    overflow: hidden;
-  }
-
-  .artifact-row {
-    display: flex;
-    gap: var(--continuum-space-md, 16px);
-    padding: var(--continuum-space-sm, 8px) var(--continuum-space-md, 16px);
-    font-size: var(--continuum-font-size-sm, 0.875rem);
-    border-bottom: 1px solid var(--continuum-border, #334155);
-  }
-
-  .artifact-row:last-child {
-    border-bottom: none;
-  }
-
-  .artifact-name {
-    font-family: var(--continuum-font-mono, monospace);
-    font-size: var(--continuum-font-size-xs, 0.75rem);
-    flex: 1;
-  }
-
-  .artifact-type {
-    color: var(--continuum-text-muted, #94a3b8);
-    font-size: var(--continuum-font-size-xs, 0.75rem);
-  }
-
-  .artifact-agent {
-    color: var(--continuum-text-muted, #94a3b8);
-    font-size: var(--continuum-font-size-xs, 0.75rem);
   }
 
   .loading,
