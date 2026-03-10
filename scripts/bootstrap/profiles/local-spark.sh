@@ -41,6 +41,8 @@ run_bootstrap() {
     # ── Docker services ────────────────────────────────────────────
     info "=== Docker Services ==="
 
+    enable_docker_on_boot
+
     if ! start_docker_services; then
         DOCKER_OK=0
         warn "Docker startup failed — skipping model pulls"
