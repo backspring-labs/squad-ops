@@ -9,10 +9,10 @@
 
   const types = [
     { key: 'all', label: 'All' },
-    { key: 'documentation', label: 'Docs' },
-    { key: 'source_code', label: 'Code' },
-    { key: 'test_report', label: 'Tests' },
-    { key: 'configuration', label: 'Config' },
+    { key: 'source', label: 'Code' },
+    { key: 'document', label: 'Docs' },
+    { key: 'config', label: 'Config' },
+    { key: 'test', label: 'Tests' },
   ];
 
   function setFilter(type) {

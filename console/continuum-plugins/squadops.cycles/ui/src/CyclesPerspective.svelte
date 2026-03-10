@@ -7,8 +7,9 @@
   - Left pane (75%): CyclesList (filterable table)
   - Right pane (25%, stacked):
     1. Cycle Stats — 2x2 card grid matching dashboard card style
-    2. Active Cycle — placeholder table for running cycle
-    3. Hint to select a cycle, then run timeline + run detail
+    2. Selected Cycle — shows user-selected cycle detail (falls back to first active)
+    3. Run Detail — run timeline + run detail
+    4. Documents — progressive artifact filtering (cycle-level → run-level), clickable for preview
 
   Selection rules:
   1. Click cycle -> set project_id + cycle_id, auto-set active_run_id to latest run
@@ -23,6 +24,7 @@
   import CyclesRunTimeline from './CyclesRunTimeline.svelte';
   import CyclesRunDetail from './CyclesRunDetail.svelte';
   import CycleCreateModal from './CycleCreateModal.svelte';
+  import ArtifactTypeFilter from './ArtifactTypeFilter.svelte';
 
   let selection = $state({
     project_id: null,
@@ -36,6 +38,14 @@
   let stats = $state({ total: 0, completed_pct: 0, active_runs: 0, artifacts: 0 });
   let activeCycle = $state(null);
   let statsPollTimer = $state(null);
+
+  // Selected cycle detail — follows user selection
+  let selectedCycleDetail = $state(null);
+
+  // Documents — progressive filtering (cycle-level or run-level)
+  let docArtifacts = $state([]);
+  let filteredDocArtifacts = $state([]);
+  let docsLoading = $state(false);
 
   const config = window.__SQUADOPS_CONFIG__ || {};
   const apiBase = config.apiBaseUrl || '';
@@ -105,6 +115,19 @@
     selection.cycle_id = cycleId;
     selection.active_run_id = null;
 
+    // Fetch cycle detail for the Selected Cycle section
+    try {
+      const cycleResp = await apiFetch(
+        `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}`
+      );
+      if (cycleResp.ok) {
+        selectedCycleDetail = { project_id: projectId, ...(await cycleResp.json()) };
+      }
+    } catch {
+      selectedCycleDetail = null;
+    }
+
+    // Auto-select latest run
     try {
       const resp = await apiFetch(
         `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}/runs`
@@ -118,10 +141,51 @@
     } catch {
       // Non-critical
     }
+
+    // Fetch cycle-level artifacts
+    fetchArtifacts(projectId, cycleId, null);
   }
 
   function handleSelectRun(runId) {
     selection.active_run_id = runId;
+    if (runId && selection.project_id && selection.cycle_id) {
+      fetchArtifacts(selection.project_id, selection.cycle_id, runId);
+    } else {
+      // Deselected run — fall back to cycle-level artifacts
+      fetchArtifacts(selection.project_id, selection.cycle_id, null);
+    }
+  }
+
+  async function fetchArtifacts(projectId, cycleId, runId) {
+    if (!projectId || !cycleId) {
+      docArtifacts = [];
+      filteredDocArtifacts = [];
+      return;
+    }
+    docsLoading = true;
+    try {
+      const url = runId
+        ? `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}/runs/${runId}/artifacts`
+        : `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}/artifacts`;
+      const resp = await apiFetch(url);
+      if (resp.ok) {
+        docArtifacts = await resp.json();
+      } else {
+        docArtifacts = [];
+      }
+    } catch {
+      docArtifacts = [];
+    }
+    filteredDocArtifacts = docArtifacts;
+    docsLoading = false;
+  }
+
+  function handleDocFilter(filtered) {
+    filteredDocArtifacts = filtered;
+  }
+
+  function openArtifactPreview(artifact) {
+    window.dispatchEvent(new CustomEvent('squadops:view-artifact', { detail: artifact }));
   }
 
   function handleNewCycle() {
@@ -141,6 +205,7 @@
   }
 </script>
 
+<squadops-artifacts-viewer></squadops-artifacts-viewer>
 <div class="cycles-perspective">
   <div class="left-pane">
     <CyclesList
@@ -177,10 +242,11 @@
       </div>
     </div>
 
-    <!-- Active Cycle -->
+    <!-- Selected Cycle -->
     <div class="section">
-      <h3 class="section-title">Active Cycle</h3>
-      {#if activeCycle}
+      <h3 class="section-title">Selected Cycle</h3>
+      {#if selectedCycleDetail || activeCycle}
+        {@const displayCycle = selectedCycleDetail || activeCycle}
         <table class="active-table">
           <thead>
             <tr>
@@ -192,11 +258,14 @@
           <tbody>
             <tr
               class="active-row"
-              onclick={() => handleSelectCycle(activeCycle.project_id, activeCycle.cycle_id)}
+              onclick={() => handleSelectCycle(displayCycle.project_id, displayCycle.cycle_id)}
             >
-              <td>{activeCycle.project_id}</td>
-              <td class="mono">{activeCycle.cycle_id?.slice(0, 12)}</td>
-              <td><span class="status-dot active"></span> Active</td>
+              <td>{displayCycle.project_id}</td>
+              <td class="mono">{displayCycle.cycle_id?.slice(0, 12)}</td>
+              <td>
+                <span class="status-dot" class:active={displayCycle.status === 'active'}></span>
+                {displayCycle.status || 'unknown'}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -211,14 +280,14 @@
           </thead>
           <tbody>
             <tr class="placeholder-row">
-              <td colspan="3">No active cycles</td>
+              <td colspan="3">No cycle selected</td>
             </tr>
           </tbody>
         </table>
       {/if}
     </div>
 
-    <!-- Selected cycle detail -->
+    <!-- Run Detail -->
     <div class="section">
       <h3 class="section-title">Run Detail</h3>
       {#if selection.cycle_id}
@@ -236,6 +305,32 @@
         {/if}
       {:else}
         <div class="hint">Select a cycle from the list to view its runs.</div>
+      {/if}
+    </div>
+
+    <!-- Documents (progressive filtering) -->
+    <div class="section">
+      <h3 class="section-title">Documents</h3>
+      {#if !selection.cycle_id}
+        <div class="hint">Select a cycle to view documents.</div>
+      {:else if docsLoading}
+        <div class="hint">Loading artifacts...</div>
+      {:else if docArtifacts.length === 0}
+        <div class="hint">No artifacts found.</div>
+      {:else}
+        <ArtifactTypeFilter artifacts={docArtifacts} onFilter={handleDocFilter} />
+        <div class="artifacts-list">
+          {#each filteredDocArtifacts as artifact}
+            <div
+              class="artifact-row"
+              onclick={() => openArtifactPreview(artifact)}
+            >
+              <span class="artifact-name">{artifact.filename || artifact.artifact_id}</span>
+              <span class="artifact-type">{artifact.artifact_type || artifact.content_type || '--'}</span>
+              <span class="artifact-agent">{artifact.agent_role || '--'}</span>
+            </div>
+          {/each}
+        </div>
       {/if}
     </div>
   </div>
@@ -390,5 +485,47 @@
     color: var(--continuum-text-muted, #94a3b8);
     font-size: var(--continuum-font-size-sm, 0.875rem);
     padding: var(--continuum-space-sm, 8px) 0;
+  }
+
+  /* ── Documents / Artifacts ─────────────────── */
+  .artifacts-list {
+    background: var(--continuum-bg-secondary, #1e293b);
+    border: 1px solid var(--continuum-border, #334155);
+    border-radius: var(--continuum-radius-md, 8px);
+    overflow: hidden;
+  }
+
+  .artifact-row {
+    display: flex;
+    gap: var(--continuum-space-md, 16px);
+    padding: var(--continuum-space-sm, 8px) var(--continuum-space-md, 16px);
+    font-size: var(--continuum-font-size-sm, 0.875rem);
+    border-bottom: 1px solid var(--continuum-border, #334155);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .artifact-row:hover {
+    background: var(--continuum-bg-tertiary, #273549);
+  }
+
+  .artifact-row:last-child {
+    border-bottom: none;
+  }
+
+  .artifact-name {
+    font-family: var(--continuum-font-mono, monospace);
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+    flex: 1;
+  }
+
+  .artifact-type {
+    color: var(--continuum-text-muted, #94a3b8);
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+  }
+
+  .artifact-agent {
+    color: var(--continuum-text-muted, #94a3b8);
+    font-size: var(--continuum-font-size-xs, 0.75rem);
   }
 </style>
