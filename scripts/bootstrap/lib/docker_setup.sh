@@ -2,6 +2,26 @@
 # Docker setup functions for bootstrap (SIP-0081).
 # Sourced by bootstrap.sh — not executed directly.
 
+# Prompt to enable Docker daemon on boot (systemd only).
+enable_docker_on_boot() {
+    if [[ "${SKIP_DOCKER:-0}" == "1" ]]; then
+        return 0
+    fi
+    if ! check_command systemctl; then
+        return 0
+    fi
+    if systemctl is-enabled docker &>/dev/null; then
+        success "Docker already enabled on boot"
+        return 0
+    fi
+    if confirm_install "Docker auto-start on boot (systemctl enable docker)"; then
+        run_or_dry sudo systemctl enable docker
+        success "Docker enabled on boot"
+    else
+        warn "Skipping Docker on boot — services won't auto-start after reboot"
+    fi
+}
+
 # Start Docker Compose services.
 start_docker_services() {
     if [[ "${SKIP_DOCKER:-0}" == "1" ]]; then
