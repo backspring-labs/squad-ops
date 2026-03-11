@@ -200,6 +200,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-max
+    restart: unless-stopped
     secrets:
       - db_password
       - rabbitmq_password
@@ -239,6 +240,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-nat
+    restart: unless-stopped
     secrets:
       - db_password
       - rabbitmq_password
@@ -297,6 +299,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-neo
+    restart: unless-stopped
     secrets:
       - db_password
       - rabbitmq_password
@@ -338,6 +341,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-eve
+    restart: unless-stopped
     secrets:
       - db_password
       - rabbitmq_password
@@ -375,6 +379,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-data
+    restart: unless-stopped
     secrets:
       - db_password
       - rabbitmq_password
@@ -416,6 +421,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-bob
+    restart: unless-stopped
     secrets:
       - db_password
       - rabbitmq_password

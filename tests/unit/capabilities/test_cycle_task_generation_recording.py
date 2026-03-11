@@ -13,8 +13,7 @@ import pytest
 
 from squadops.capabilities.handlers.cycle_tasks import StrategyAnalyzeHandler
 from squadops.llm.models import ChatMessage
-from squadops.telemetry.models import MAX_OBSERVABILITY_TEXT_LENGTH
-from squadops.telemetry.models import CorrelationContext
+from squadops.telemetry.models import MAX_OBSERVABILITY_TEXT_LENGTH, CorrelationContext
 
 pytestmark = [pytest.mark.domain_capabilities]
 
