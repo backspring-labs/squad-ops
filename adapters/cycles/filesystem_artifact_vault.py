@@ -8,7 +8,7 @@ Layout:
   <base_dir>/
     <project_id>/<cycle_id>/<run_id>/<artifact_id>/metadata.json + <filename>
     <project_id>/.baselines.json
-    _unattached/<artifact_id>/metadata.json + <filename>
+    <project_id>/_unattached/<artifact_id>/metadata.json + <filename>
     _index.json   (artifact_id → relative path)
 """
 
@@ -80,7 +80,7 @@ class FilesystemArtifactVault(ArtifactVaultPort):
     def _artifact_dir_for_ref(self, ref: ArtifactRef) -> Path:
         if ref.cycle_id and ref.run_id:
             return self._base_dir / ref.project_id / ref.cycle_id / ref.run_id / ref.artifact_id
-        return self._base_dir / "_unattached" / ref.artifact_id
+        return self._base_dir / ref.project_id / "_unattached" / ref.artifact_id
 
     def _baselines_path_for_project(self, project_id: str) -> Path:
         return self._base_dir / project_id / ".baselines.json"
@@ -181,20 +181,6 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         self._collect_artifacts(
             scan_dir, results, project_id, cycle_id, run_id, artifact_type, promotion_status
         )
-
-        # Also scan _unattached when doing unscoped or project-scoped queries
-        if not (cycle_id or run_id):
-            unattached = self._base_dir / "_unattached"
-            if unattached.exists() and unattached != scan_dir:
-                self._collect_artifacts(
-                    unattached,
-                    results,
-                    project_id,
-                    cycle_id,
-                    run_id,
-                    artifact_type,
-                    promotion_status,
-                )
 
         return results
 
