@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.9.19) with hexagonal architecture, distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 3,030+ passing tests.
+**Current Status**: v1.0.0 — Production-ready framework with hexagonal architecture, distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 3,030+ passing tests.
 
 ---
 
@@ -173,12 +173,12 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructio
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v0.9.19 — Multi-Run Cycle Orchestration, profile-driven bootstrap
+**Current**: v1.0.0 — Architecture complete, ready for real-world cycle execution
 
 ---
 
 ## Current Status
-**Framework Version**: 0.9.19
+**Framework Version**: 1.0.0
 **Development Status**: Production-ready multi-agent orchestration with console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
 
 ### Project Statistics
