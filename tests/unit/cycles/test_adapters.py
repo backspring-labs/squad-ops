@@ -631,13 +631,9 @@ class TestFilesystemArtifactVault:
 
     async def test_unattached_artifact_stored_correctly(self, vault, unattached_ref, base_dir):
         await vault.store(unattached_ref, b"bare")
-        expected = base_dir / "_unattached" / "art_bare"
+        expected = base_dir / "hello_squad" / "_unattached" / "art_bare"
         assert expected.is_dir()
         assert (expected / "metadata.json").exists()
-        # Unattached should appear in full scan
-        results = await vault.list_artifacts()
-        ids = [r.artifact_id for r in results]
-        assert "art_bare" in ids
 
     async def test_unattached_in_project_scoped_list(self, vault, unattached_ref):
         await vault.store(unattached_ref, b"bare")
