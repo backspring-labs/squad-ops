@@ -35,6 +35,15 @@ from squadops.capabilities.handlers.governance import (
     TaskAnalysisHandler,
     TaskDelegationHandler,
 )
+from squadops.capabilities.handlers.impl.analyze_failure import (
+    DataAnalyzeFailureHandler,
+)
+from squadops.capabilities.handlers.impl.correction_decision import (
+    GovernanceCorrectionDecisionHandler,
+)
+from squadops.capabilities.handlers.impl.establish_contract import (
+    GovernanceEstablishContractHandler,
+)
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
@@ -53,15 +62,6 @@ from squadops.capabilities.handlers.repair_tasks import (
     DevelopmentRepairHandler,
     GovernanceRootCauseHandler,
     StrategyCorrectivePlanHandler,
-)
-from squadops.capabilities.handlers.impl.analyze_failure import (
-    DataAnalyzeFailureHandler,
-)
-from squadops.capabilities.handlers.impl.correction_decision import (
-    GovernanceCorrectionDecisionHandler,
-)
-from squadops.capabilities.handlers.impl.establish_contract import (
-    GovernanceEstablishContractHandler,
 )
 from squadops.capabilities.handlers.warmboot import (
     ContextSyncHandler,

@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: Production-ready framework (v0.9.18) with hexagonal architecture, distributed cycle execution pipeline, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 2,890+ passing tests.
+**Current Status**: Production-ready framework (v0.9.19) with hexagonal architecture, distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 3,030+ passing tests.
 
 ---
 
@@ -118,7 +118,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── accepted/         # Numbered, approved
 ├── implemented/      # Matched to code
 └── registry.yaml     # Canonical index
-/tests/               # Test suite (2,890+ tests)
+/tests/               # Test suite (3,030+ tests)
 ├── unit/             # Unit tests (mocked deps)
 ├── integration/      # Integration tests (real services)
 └── conftest.py       # Global fixtures
@@ -173,19 +173,19 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructio
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v0.9.18 — Wrap-Up Workload Protocol, test quality enforcement
+**Current**: v0.9.19 — Multi-Run Cycle Orchestration, profile-driven bootstrap
 
 ---
 
 ## Current Status
-**Framework Version**: 0.9.18
-**Development Status**: Production-ready multi-agent orchestration with console UI, distributed cycle execution, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, durable persistence, authentication, CLI tooling, test quality enforcement, and full observability stack.
+**Framework Version**: 0.9.19
+**Development Status**: Production-ready multi-agent orchestration with console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
 
 ### Project Statistics
 - **~39,000 lines** of Python source code
 - **~51,000 lines** of test code
 - **~84,000 lines** of documentation
-- **2,890+ tests** passing in regression suite
+- **3,030+ tests** passing in regression suite
 - **~80 SIPs** (54 implemented, 11 proposals, 15 deprecated)
 
 ### Functional Components
@@ -196,6 +196,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 - Workload protocols: planning, implementation, and wrapup lifecycle (SIP-0078/0079/0080)
 - Cycle event system with 25-event taxonomy and bridge subscribers (SIP-0077)
 - Correction protocol: detect → RCA → decide → repair with checkpoint/resume (SIP-0079)
+- Multi-run cycle orchestration with auto-gate and workload forwarding (SIP-0083)
 - Workload & gate canon with artifact promotion model (SIP-0076)
 - LangFuse LLM observability with cross-process trace linking (SIP-0061)
 - Keycloak OIDC authentication with JWT middleware and audit logging (SIP-0062)
@@ -212,6 +213,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 - LanceDB semantic memory (SIP-042)
 - OpenTelemetry with trace correlation
 - Console Control-Plane UI with Continuum plugin shell and auth BFF (SIP-0069)
+- Profile-driven bootstrap with doctor validation (SIP-0081)
 - Test quality enforcement: AST linter blocking in regression suite
 - Docker build system with deterministic multi-stage builds
 - 17-service Docker Compose development environment
