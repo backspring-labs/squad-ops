@@ -1,4 +1,4 @@
-last_assigned: 83
+last_assigned: 84
 sips:
 - sip_uid: null
   sip_number: null
@@ -754,3 +754,12 @@ sips:
   approver: jladd
   created_at: '2026-03-07'
   updated_at: '2026-03-08T19:10:29.150661Z'
+- sip_uid: null
+  sip_number: 84
+  title: Prompt Registry Integration Using Langfuse
+  path: sips/accepted/SIP-0084-Prompt-Registry-Integration-Using.md
+  status: accepted
+  author: Jason Ladd
+  approver: jladd
+  created_at: '2026-03-11'
+  updated_at: '2026-03-11T22:47:39.450672Z'

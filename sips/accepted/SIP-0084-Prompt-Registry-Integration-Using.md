@@ -1,13 +1,14 @@
 ---
 title: Prompt Registry Integration Using Langfuse
-status: proposed
+status: accepted
 author: Jason Ladd
 created_at: '2026-03-11'
 target_release: 1.0.1
 supersedes: null
 extends: SIP-0057
+sip_number: 84
+updated_at: '2026-03-11T22:47:39.427254Z'
 ---
-
 # SIP — Prompt Registry Integration Using Langfuse
 
 # 1. Summary
