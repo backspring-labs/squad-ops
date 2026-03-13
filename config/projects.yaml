@@ -21,3 +21,9 @@ projects:
     description: "Terminal Tic-Tac-Toe — canonical sample app and platform selftest"
     tags: [example, selftest]
     prd_path: examples/02_play_game/prd.md
+
+  - project_id: agent_chess
+    name: "Agent Chess"
+    description: "Squad consensus benchmark — squad plays chess against Stockfish"
+    tags: [example, benchmark, experiment]
+    prd_path: examples/05_agent_chess/prd.md
