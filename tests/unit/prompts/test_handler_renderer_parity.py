@@ -476,7 +476,7 @@ class TestProvenanceRecording:
         assert prov["system_prompt_bundle_hash"] == "sha256:test_assembly"
         assert prov["request_template_id"] == "test"
         assert prov["request_template_version"] == "1"
-        assert prov["request_render_hash"] is not None
+        assert prov["request_render_hash"] == RenderedRequest.compute_hash("rendered content")
         assert prov["prompt_environment"] == "production"
 
     async def test_planning_handler_records_provenance(self):

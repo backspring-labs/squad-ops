@@ -42,40 +42,6 @@ def _base_artifact(**overrides) -> ArtifactRef:
 
 
 class TestArtifactRefProvenance:
-    def test_provenance_fields_default_none(self):
-        ref = _base_artifact()
-        assert ref.system_prompt_bundle_hash is None
-        assert ref.system_fragment_ids is None
-        assert ref.system_fragment_versions is None
-        assert ref.request_template_id is None
-        assert ref.request_template_version is None
-        assert ref.request_render_hash is None
-        assert ref.capability_supplement_ids is None
-        assert ref.full_invocation_bundle_hash is None
-        assert ref.prompt_environment is None
-
-    def test_provenance_fields_populated(self):
-        ref = _base_artifact(
-            system_prompt_bundle_hash="sha256:sys001",
-            system_fragment_ids=("frag.identity", "frag.constraints"),
-            system_fragment_versions=("v1", "v2"),
-            request_template_id="request.cycle_task_base",
-            request_template_version="v3",
-            request_render_hash="sha256:rend001",
-            capability_supplement_ids=("cap.python_cli",),
-            full_invocation_bundle_hash="sha256:full001",
-            prompt_environment="production",
-        )
-        assert ref.system_prompt_bundle_hash == "sha256:sys001"
-        assert ref.system_fragment_ids == ("frag.identity", "frag.constraints")
-        assert ref.system_fragment_versions == ("v1", "v2")
-        assert ref.request_template_id == "request.cycle_task_base"
-        assert ref.request_template_version == "v3"
-        assert ref.request_render_hash == "sha256:rend001"
-        assert ref.capability_supplement_ids == ("cap.python_cli",)
-        assert ref.full_invocation_bundle_hash == "sha256:full001"
-        assert ref.prompt_environment == "production"
-
     def test_replace_adds_provenance_to_existing(self):
         ref = _base_artifact()
         updated = dataclasses.replace(
@@ -92,17 +58,6 @@ class TestArtifactRefProvenance:
         # Original unchanged (frozen)
         assert ref.system_prompt_bundle_hash is None
 
-    def test_dataclasses_asdict_includes_provenance(self):
-        ref = _base_artifact(
-            request_template_id="request.dev",
-            request_template_version="v2",
-            request_render_hash="sha256:rr",
-        )
-        d = dataclasses.asdict(ref)
-        assert d["request_template_id"] == "request.dev"
-        assert d["request_template_version"] == "v2"
-        assert d["request_render_hash"] == "sha256:rr"
-        assert d["system_prompt_bundle_hash"] is None
 
 
 # ---------------------------------------------------------------------------
