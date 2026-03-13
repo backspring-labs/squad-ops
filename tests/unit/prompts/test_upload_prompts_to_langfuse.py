@@ -8,7 +8,10 @@ from __future__ import annotations
 import hashlib
 import sys
 import textwrap
+import types
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -295,3 +298,140 @@ class TestDryRunLiveAssets:
         for entry in fragments + templates:
             assert entry.content, f"{entry.name} has empty content"
             assert len(entry.content_hash) == 64, f"{entry.name} hash is not sha256"
+
+
+# ---------------------------------------------------------------------------
+# Round-trip: upload script naming → adapter resolution
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _FakePrompt:
+    """Minimal Langfuse prompt object returned by get_prompt."""
+
+    prompt: str
+    version: int
+    label: str = "production"
+
+
+class _FakeLangfuseStore:
+    """In-memory Langfuse that supports both create_prompt and get_prompt."""
+
+    def __init__(self, **kwargs: Any):
+        self._store: dict[str, dict[str, _FakePrompt]] = {}
+
+    def create_prompt(
+        self,
+        name: str,
+        prompt: str,
+        labels: list[str] | None = None,
+        type: str = "text",
+    ) -> _FakePrompt:
+        env = labels[0] if labels else "production"
+        version = 1
+        if name in self._store and env in self._store[name]:
+            version = self._store[name][env].version + 1
+        fp = _FakePrompt(prompt=prompt, version=version, label=env)
+        self._store.setdefault(name, {})[env] = fp
+        return fp
+
+    def get_prompt(self, name: str, label: str = "production") -> _FakePrompt:
+        if name in self._store and label in self._store[name]:
+            return self._store[name][label]
+        raise Exception(f"Prompt not found: {name} (404)")
+
+    def flush(self) -> None:
+        pass
+
+
+class TestUploadResolveRoundTrip:
+    """Bug: naming mismatch between upload script and LangfuseAssetAdapter
+    means uploaded prompts can never be resolved at runtime.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _inject_shared_store(self):
+        """Inject a shared fake Langfuse that both upload and adapter use."""
+        self._shared_store = _FakeLangfuseStore()
+
+        fake_mod = types.ModuleType("langfuse")
+        # Return the SAME store instance for every Langfuse() call
+        fake_mod.Langfuse = lambda **kw: self._shared_store
+        sys.modules["langfuse"] = fake_mod
+
+        # Clear adapter module cache so it picks up the fake SDK
+        sys.modules.pop("adapters.prompts.langfuse_asset_adapter", None)
+
+        yield
+
+        sys.modules.pop("langfuse", None)
+        sys.modules.pop("adapters.prompts.langfuse_asset_adapter", None)
+
+    async def test_uploaded_fragment_resolvable_by_adapter(self):
+        """Upload a role-specific fragment via the upload script, then resolve
+        it via LangfuseAssetAdapter.resolve_system_fragment(). The content
+        hash must match — proving the naming convention is consistent.
+        """
+        mod = _import()
+        from adapters.prompts.langfuse_asset_adapter import LangfusePromptAssetAdapter
+        from squadops.prompts.asset_models import ResolvedAsset
+
+        # Upload a role-specific fragment
+        entries = [
+            mod.UploadEntry(
+                name="identity--dev",
+                content="You are Neo, the development agent.",
+                content_hash=mod._compute_hash("You are Neo, the development agent."),
+                asset_type="fragment",
+                source_path="fragments/roles/dev/identity.md",
+            ),
+        ]
+        success, errors = mod.upload_to_langfuse(
+            entries, "http://fake", "pk", "sk", "production"
+        )
+        assert success == 1
+
+        # Resolve via the adapter using the same naming convention
+        adapter = LangfusePromptAssetAdapter(
+            public_key="pk", secret_key="sk", host="http://fake"
+        )
+        resolved = await adapter.resolve_system_fragment("identity", role="dev")
+
+        assert resolved.content == "You are Neo, the development agent."
+        assert resolved.content_hash == ResolvedAsset.compute_hash(
+            "You are Neo, the development agent."
+        )
+
+    async def test_uploaded_template_resolvable_by_adapter(self):
+        """Upload a request template, then resolve it via the adapter.
+        Proves template naming is consistent between upload and resolution.
+        """
+        mod = _import()
+        from adapters.prompts.langfuse_asset_adapter import LangfusePromptAssetAdapter
+        from squadops.prompts.asset_models import ResolvedAsset
+
+        template_content = "---\ntemplate_id: request.cycle_task_base\n---\n## PRD\n\n{{prd}}"
+        entries = [
+            mod.UploadEntry(
+                name="request.cycle_task_base",
+                content=template_content,
+                content_hash=mod._compute_hash(template_content),
+                asset_type="template",
+                source_path="request_templates/request.cycle_task_base.md",
+            ),
+        ]
+        success, errors = mod.upload_to_langfuse(
+            entries, "http://fake", "pk", "sk", "staging"
+        )
+        assert success == 1
+
+        adapter = LangfusePromptAssetAdapter(
+            public_key="pk", secret_key="sk", host="http://fake"
+        )
+        resolved = await adapter.resolve_request_template(
+            "request.cycle_task_base", environment="staging"
+        )
+
+        assert resolved.content == template_content
+        assert resolved.content_hash == ResolvedAsset.compute_hash(template_content)
+        assert resolved.version == "1"

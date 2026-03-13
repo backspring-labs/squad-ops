@@ -163,14 +163,15 @@ def upload_to_langfuse(
 
     for entry in entries:
         try:
-            client.create_prompt(
+            result = client.create_prompt(
                 name=entry.name,
                 prompt=entry.content,
                 labels=[environment],
                 type="text",
             )
+            version = getattr(result, "version", "?")
             success += 1
-            print(f"  OK  {entry.name} ({entry.content_hash[:12]}...)")
+            print(f"  OK  {entry.name} v{version} ({entry.content_hash[:12]}...)")
         except Exception as exc:
             errors += 1
             print(f"  FAIL {entry.name}: {exc}", file=sys.stderr)
