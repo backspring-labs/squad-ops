@@ -83,6 +83,16 @@ class _CycleTaskHandler(CapabilityHandler):
         parts.append(f"\nPlease provide your {self._role} analysis and deliverables.")
         return "\n".join(parts)
 
+    @staticmethod
+    def _format_prior_outputs(prior_outputs: dict[str, Any] | None) -> str:
+        """Format prior outputs dict as a prompt section string for template injection."""
+        if not prior_outputs:
+            return ""
+        parts = ["\n\n## Prior Analysis from Upstream Roles\n"]
+        for role, summary in prior_outputs.items():
+            parts.append(f"### {role}\n{summary}\n")
+        return "\n".join(parts)
+
     def _build_chat_kwargs(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Build chat() kwargs from agent config overrides (SIP-0075 §3.2)."""
         overrides = inputs.get("agent_config_overrides", {})
@@ -108,7 +118,20 @@ class _CycleTaskHandler(CapabilityHandler):
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
 
-        user_prompt = self._build_user_prompt(prd, prior_outputs)
+        # SIP-0084: dual-path — use request renderer when available
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            rendered = await renderer.render(
+                "request.cycle_task_base",
+                {
+                    "prd": prd,
+                    "role": self._role,
+                    "prior_outputs": self._format_prior_outputs(prior_outputs),
+                },
+            )
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(prd, prior_outputs)
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
@@ -465,12 +488,31 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 error="Required plan artifacts not available",
             )
 
-        user_prompt = self._build_user_prompt(
-            prd,
-            prior_outputs,
-            impl_plan=impl_plan,
-            strategy=strategy,
-        )
+        # SIP-0084: dual-path — use request renderer when available
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {
+                "prd": prd,
+                "file_structure_guidance": capability.file_structure_guidance,
+                "example_structure": capability.example_structure,
+            }
+            if impl_plan:
+                variables["impl_plan"] = f"\n\n## Implementation Plan\n\n{impl_plan}"
+            if strategy:
+                variables["strategy"] = f"\n\n## Strategy Analysis\n\n{strategy}"
+            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            rendered = await renderer.render(
+                "request.development_develop.code_generate",
+                variables,
+            )
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(
+                prd,
+                prior_outputs,
+                impl_plan=impl_plan,
+                strategy=strategy,
+            )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement

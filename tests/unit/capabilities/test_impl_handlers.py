@@ -46,6 +46,7 @@ def mock_context():
     assembled = MagicMock()
     assembled.content = "System prompt"
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
+    ctx.ports.request_renderer = None
     ctx.correlation_context = None
     return ctx
 

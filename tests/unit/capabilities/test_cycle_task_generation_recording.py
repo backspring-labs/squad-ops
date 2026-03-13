@@ -34,6 +34,9 @@ def mock_context_with_obs():
     mock_obs = MagicMock()
     ctx.ports.llm_observability = mock_obs
 
+    # No request renderer by default (matches PortsBundle default)
+    ctx.ports.request_renderer = None
+
     # Correlation context
     ctx.correlation_context = CorrelationContext(
         cycle_id="cyc_001",
@@ -59,6 +62,7 @@ def mock_context_no_obs():
 
     # No llm_observability attribute
     ctx.ports.llm_observability = None
+    ctx.ports.request_renderer = None
     ctx.correlation_context = None
 
     return ctx
@@ -77,6 +81,7 @@ def mock_context_no_correlation():
 
     mock_obs = MagicMock()
     ctx.ports.llm_observability = mock_obs
+    ctx.ports.request_renderer = None
     ctx.correlation_context = None
 
     return ctx, mock_obs

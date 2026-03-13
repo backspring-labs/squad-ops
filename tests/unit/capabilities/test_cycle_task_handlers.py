@@ -79,6 +79,8 @@ def mock_context():
     assembled = MagicMock()
     assembled.content = "Assembled system prompt from PromptService"
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
+    # No request renderer by default (matches PortsBundle default)
+    ctx.ports.request_renderer = None
     return ctx
 
 
