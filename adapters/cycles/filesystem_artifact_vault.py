@@ -260,6 +260,14 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         # D19: Legacy artifacts without promotion_status default to "working" at read time
         if "promotion_status" not in data:
             data["promotion_status"] = "working"
+        # SIP-0084: JSON arrays → tuples for provenance tuple fields
+        for key in (
+            "system_fragment_ids",
+            "system_fragment_versions",
+            "capability_supplement_ids",
+        ):
+            if isinstance(data.get(key), list):
+                data[key] = tuple(data[key])
         return ArtifactRef(**data)
 
     def _load_baselines(self, project_id: str) -> dict:

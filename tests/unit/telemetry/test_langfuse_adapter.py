@@ -312,6 +312,21 @@ class TestGenerationRecordValidation:
         _, layers = entry.payload
         assert layers.prompt_layer_set_id == "PLS-test"
 
+    def test_redaction_preserves_prompt_name_and_version(self, adapter):
+        """Bug caught: redaction copy dropped prompt_name/prompt_version fields,
+        so the adapter never saw them and couldn't link prompts to generations.
+        """
+        ctx = _make_ctx()
+        record = _make_record(
+            prompt_name="request.cycle_task_base",
+            prompt_version=3,
+        )
+        adapter.record_generation(ctx, record, _make_layers())
+        entry = adapter._buffer.get_nowait()
+        redacted_record, _ = entry.payload
+        assert redacted_record.prompt_name == "request.cycle_task_base"
+        assert redacted_record.prompt_version == 3
+
 
 class TestHealthStatus:
     """health() returns correct status structure."""
@@ -351,3 +366,91 @@ class TestHealthStatus:
             else:
                 sys.modules["langfuse"] = old
             sys.modules.pop("adapters.telemetry.langfuse.adapter", None)
+
+
+class TestPromptToGenerationLinkage:
+    """SIP-0084: prompt_name/prompt_version on GenerationRecord triggers
+    Langfuse prompt resolution and passes it to generation(prompt=...).
+    """
+
+    def test_generation_with_prompt_name_resolves_and_links(self):
+        """Bug caught: generation() called without prompt kwarg — Langfuse UI
+        never shows prompts as 'used in a generation'.
+        """
+        a, mock_client, old = _create_adapter()
+        try:
+            fake_prompt_obj = MagicMock()
+            mock_client.get_prompt.return_value = fake_prompt_obj
+
+            ctx = _make_ctx()
+            # Process cycle + task start synchronously via _process_entry
+            from adapters.telemetry.langfuse.adapter import _BufferEntry, _EventType
+
+            a._process_entry(_BufferEntry(_EventType.START_CYCLE, ctx, None))
+            a._process_entry(_BufferEntry(_EventType.START_TASK, ctx, None))
+
+            record = _make_record(prompt_name="request.cycle_task_base", prompt_version=2)
+            a._process_entry(
+                _BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers()))
+            )
+
+            mock_client.get_prompt.assert_called_once_with(
+                name="request.cycle_task_base", version=2
+            )
+            # The generation call on the task span must include prompt=
+            tk = ctx.trace_id or ctx.cycle_id
+            task_span = a._span_state[f"task:{tk}:{ctx.task_id}"]
+            task_span.generation.assert_called_once()
+            assert task_span.generation.call_args[1]["prompt"] is fake_prompt_obj
+        finally:
+            _cleanup_adapter(a, old)
+
+    def test_generation_without_prompt_name_skips_resolution(self):
+        """When prompt_name is None, no get_prompt call and no prompt kwarg."""
+        a, mock_client, old = _create_adapter()
+        try:
+            ctx = _make_ctx()
+            from adapters.telemetry.langfuse.adapter import _BufferEntry, _EventType
+
+            a._process_entry(_BufferEntry(_EventType.START_CYCLE, ctx, None))
+            a._process_entry(_BufferEntry(_EventType.START_TASK, ctx, None))
+
+            record = _make_record()  # No prompt_name
+            a._process_entry(
+                _BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers()))
+            )
+
+            mock_client.get_prompt.assert_not_called()
+            tk = ctx.trace_id or ctx.cycle_id
+            task_span = a._span_state[f"task:{tk}:{ctx.task_id}"]
+            task_span.generation.assert_called_once()
+            assert "prompt" not in task_span.generation.call_args[1]
+        finally:
+            _cleanup_adapter(a, old)
+
+    def test_prompt_resolution_failure_still_records_generation(self):
+        """Bug caught: if get_prompt raises (e.g. prompt not in Langfuse),
+        the generation must still be recorded without the prompt link.
+        """
+        a, mock_client, old = _create_adapter()
+        try:
+            mock_client.get_prompt.side_effect = Exception("not found")
+
+            ctx = _make_ctx()
+            from adapters.telemetry.langfuse.adapter import _BufferEntry, _EventType
+
+            a._process_entry(_BufferEntry(_EventType.START_CYCLE, ctx, None))
+            a._process_entry(_BufferEntry(_EventType.START_TASK, ctx, None))
+
+            record = _make_record(prompt_name="nonexistent.template")
+            a._process_entry(
+                _BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers()))
+            )
+
+            mock_client.get_prompt.assert_called_once()
+            tk = ctx.trace_id or ctx.cycle_id
+            task_span = a._span_state[f"task:{tk}:{ctx.task_id}"]
+            task_span.generation.assert_called_once()
+            assert "prompt" not in task_span.generation.call_args[1]
+        finally:
+            _cleanup_adapter(a, old)

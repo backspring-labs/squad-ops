@@ -61,12 +61,26 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         failure_analysis = inputs.get("failure_analysis", {})
 
-        user_parts = [f"## PRD\n\n{prd}"]
-        if failure_analysis:
-            user_parts.append(
-                f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
+        # SIP-0084: dual-path — use request renderer when available
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {"prd": prd}
+            if failure_analysis:
+                variables["failure_analysis"] = (
+                    f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
+                )
+            rendered = await renderer.render(
+                "request.governance_correction_decision", variables,
             )
-        user_prompt = "\n".join(user_parts)
+            user_prompt = rendered.content
+        else:
+            user_parts = [f"## PRD\n\n{prd}"]
+            if failure_analysis:
+                user_parts.append(
+                    f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
+                )
+            user_prompt = "\n".join(user_parts)
 
         messages = [
             ChatMessage(role="system", content=_DECISION_SYSTEM_PROMPT),
@@ -116,6 +130,14 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
 
         duration_ms = (time.perf_counter() - start_time) * 1000
 
+        # SIP-0084 §10: prompt provenance (Stage 2 only — no assembled prompt)
+        provenance: dict[str, Any] = {}
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+
         outputs = {
             "summary": f"[lead] Correction decision: {path}",
             "role": self._role,
@@ -130,6 +152,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                     "type": "document",
                 },
             ],
+            "prompt_provenance": provenance,
         }
 
         evidence = HandlerEvidence.create(

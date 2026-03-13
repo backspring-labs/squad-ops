@@ -157,6 +157,7 @@ def mock_context():
     assembled.content = "You are a builder agent."
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
     ctx.ports.llm_observability = None
+    ctx.ports.request_renderer = None
     ctx.correlation_context = None
     return ctx
 

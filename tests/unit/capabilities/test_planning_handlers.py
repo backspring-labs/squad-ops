@@ -110,6 +110,7 @@ def _make_context(llm_response="LLM planning output"):
     ports.llm = llm
     ports.prompt_service = prompt_service
     ports.llm_observability = None
+    ports.request_renderer = None
 
     ctx = MagicMock()
     ctx.ports = ports

@@ -46,6 +46,7 @@ class _CycleTaskHandler(CapabilityHandler):
     _capability_id: str = ""
     _role: str = ""
     _artifact_name: str = ""
+    _request_template_id: str = "request.cycle_task_base"
 
     @property
     def name(self) -> str:
@@ -83,6 +84,29 @@ class _CycleTaskHandler(CapabilityHandler):
         parts.append(f"\nPlease provide your {self._role} analysis and deliverables.")
         return "\n".join(parts)
 
+    @staticmethod
+    def _format_prior_outputs(prior_outputs: dict[str, Any] | None) -> str:
+        """Format prior outputs dict as a prompt section string for template injection."""
+        if not prior_outputs:
+            return ""
+        parts = ["\n\n## Prior Analysis from Upstream Roles\n"]
+        for role, summary in prior_outputs.items():
+            parts.append(f"### {role}\n{summary}\n")
+        return "\n".join(parts)
+
+    def _build_render_variables(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any],
+    ) -> dict[str, str]:
+        """Build template variables for request rendering. Override for custom variables."""
+        return {
+            "prd": prd,
+            "role": self._role,
+            "prior_outputs": self._format_prior_outputs(prior_outputs),
+        }
+
     def _build_chat_kwargs(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Build chat() kwargs from agent config overrides (SIP-0075 §3.2)."""
         overrides = inputs.get("agent_config_overrides", {})
@@ -108,7 +132,15 @@ class _CycleTaskHandler(CapabilityHandler):
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
 
-        user_prompt = self._build_user_prompt(prd, prior_outputs)
+        # SIP-0084: dual-path — use request renderer when available
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables = self._build_render_variables(prd, prior_outputs, inputs)
+            rendered = await renderer.render(self._request_template_id, variables)
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(prd, prior_outputs)
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
@@ -164,6 +196,12 @@ class _CycleTaskHandler(CapabilityHandler):
                 prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=llm_duration_ms,
+                prompt_name=rendered.template_id if rendered else None,
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and rendered.template_version
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-cycle",
@@ -176,6 +214,16 @@ class _CycleTaskHandler(CapabilityHandler):
 
         prd_summary = str(prd)[:80] if prd else "(no PRD)"
 
+        # SIP-0084 §10: build prompt provenance for artifact traceability
+        provenance: dict[str, Any] = {
+            "system_prompt_bundle_hash": assembled.assembly_hash,
+        }
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+
         outputs = {
             "summary": f"[{self._role}] {prd_summary}",
             "role": self._role,
@@ -187,6 +235,7 @@ class _CycleTaskHandler(CapabilityHandler):
                     "type": "document",
                 },
             ],
+            "prompt_provenance": provenance,
         }
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -465,12 +514,32 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 error="Required plan artifacts not available",
             )
 
-        user_prompt = self._build_user_prompt(
-            prd,
-            prior_outputs,
-            impl_plan=impl_plan,
-            strategy=strategy,
-        )
+        # SIP-0084: dual-path — use request renderer when available
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {
+                "prd": prd,
+                "file_structure_guidance": capability.file_structure_guidance,
+                "example_structure": capability.example_structure,
+            }
+            if impl_plan:
+                variables["impl_plan"] = f"\n\n## Implementation Plan\n\n{impl_plan}"
+            if strategy:
+                variables["strategy"] = f"\n\n## Strategy Analysis\n\n{strategy}"
+            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            rendered = await renderer.render(
+                "request.development_develop.code_generate",
+                variables,
+            )
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(
+                prd,
+                prior_outputs,
+                impl_plan=impl_plan,
+                strategy=strategy,
+            )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
@@ -554,7 +623,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Record LLM generation for LangFuse tracing
-        self._record_generation(context, user_prompt, content, llm_duration_ms, model_name)
+        self._record_generation(
+            context, user_prompt, content, llm_duration_ms, model_name, rendered=rendered
+        )
 
         # Parse fenced code blocks
         extracted = extract_fenced_files(content)
@@ -597,10 +668,21 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 }
             )
 
+        # SIP-0084 §10: build prompt provenance for artifact traceability
+        provenance: dict[str, Any] = {
+            "system_prompt_bundle_hash": assembled.assembly_hash,
+        }
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+
         outputs = {
             "summary": f"[dev] Generated {len(artifacts)} source file(s)",
             "role": self._role,
             "artifacts": artifacts,
+            "prompt_provenance": provenance,
         }
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -621,6 +703,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         response: str,
         duration_ms: float,
         resolved_model: str | None = None,
+        rendered: object | None = None,
     ) -> None:
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
@@ -639,6 +722,12 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
+                prompt_name=getattr(rendered, "template_id", None),
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and getattr(rendered, "template_version", None)
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-build",
@@ -819,13 +908,35 @@ class QATestHandler(_CycleTaskHandler):
                 error="Required plan artifacts not available",
             )
 
-        user_prompt = self._build_user_prompt(
-            prd,
-            prior_outputs,
-            val_plan=val_plan,
-            sources=sources,
-            capability_name=capability_name,
-        )
+        # SIP-0084: dual-path — use request renderer when available
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {
+                "prd": prd,
+                "test_supplement": capability.test_prompt_supplement,
+            }
+            if val_plan:
+                variables["validation_plan"] = f"\n\n## Validation Plan\n\n{val_plan}"
+            if sources:
+                source_parts = ["\n\n## Source Files to Test\n"]
+                for path, code in sources.items():
+                    lang = self._fence_lang(path)
+                    source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
+                variables["source_files"] = "\n".join(source_parts)
+            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            rendered = await renderer.render(
+                "request.qa_test.test_validate", variables,
+            )
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(
+                prd,
+                prior_outputs,
+                val_plan=val_plan,
+                sources=sources,
+                capability_name=capability_name,
+            )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
@@ -908,7 +1019,9 @@ class QATestHandler(_CycleTaskHandler):
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Record LLM generation for LangFuse tracing
-        self._record_generation(context, user_prompt, content, llm_duration_ms, model_name)
+        self._record_generation(
+            context, user_prompt, content, llm_duration_ms, model_name, rendered=rendered
+        )
 
         # Parse fenced code blocks
         extracted = extract_fenced_files(content)
@@ -1019,6 +1132,16 @@ class QATestHandler(_CycleTaskHandler):
         else:
             test_suffix = f", tests not run: {test_result.error}" if test_result.error else ""
 
+        # SIP-0084 §10: build prompt provenance for artifact traceability
+        provenance: dict[str, Any] = {
+            "system_prompt_bundle_hash": assembled.assembly_hash,
+        }
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+
         outputs = {
             "summary": f"[qa] Generated {len(artifacts) - 1} test file(s){test_suffix}",
             "role": self._role,
@@ -1031,6 +1154,7 @@ class QATestHandler(_CycleTaskHandler):
                 "source_file_count": test_result.source_file_count,
                 "summary": test_result.summary,
             },
+            "prompt_provenance": provenance,
         }
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1051,6 +1175,7 @@ class QATestHandler(_CycleTaskHandler):
         response: str,
         duration_ms: float,
         resolved_model: str | None = None,
+        rendered: object | None = None,
     ) -> None:
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
@@ -1069,6 +1194,12 @@ class QATestHandler(_CycleTaskHandler):
                 prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
+                prompt_name=getattr(rendered, "template_id", None),
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and getattr(rendered, "template_version", None)
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-build",
@@ -1241,46 +1372,68 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             )
 
         # Step 3: Build assembly prompt with source files as context
-        parts = [f"## Product Requirements Document\n\n{prd}"]
+        # SIP-0084: dual-path — use request renderer when available
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            source_parts = []
+            for path, code in sorted(sources.items()):
+                source_parts.append(f"\n### {path}\n```\n{code}\n```\n")
+            variables: dict[str, str] = {
+                "prd": prd,
+                "source_files": "\n".join(source_parts),
+                "prior_outputs": self._format_prior_outputs(prior_outputs),
+            }
+            if task_tags:
+                tag_parts = ["\n\n## Builder Tags\n"]
+                for tag_key, tag_value in sorted(task_tags.items()):
+                    tag_parts.append(f"- **{tag_key}**: {tag_value}")
+                variables["task_tags"] = "\n".join(tag_parts)
+            rendered = await renderer.render(
+                "request.builder_assemble.build_assemble", variables,
+            )
+            user_prompt = rendered.content
+        else:
+            parts = [f"## Product Requirements Document\n\n{prd}"]
 
-        parts.append("\n\n## Source Files (from developer)\n")
-        for path, code in sorted(sources.items()):
-            parts.append(f"\n### {path}\n```\n{code}\n```\n")
+            parts.append("\n\n## Source Files (from developer)\n")
+            for path, code in sorted(sources.items()):
+                parts.append(f"\n### {path}\n```\n{code}\n```\n")
 
-        if prior_outputs:
-            parts.append("\n\n## Prior Analysis from Upstream Roles\n")
-            for role, summary in prior_outputs.items():
-                parts.append(f"### {role}\n{summary}\n")
+            if prior_outputs:
+                parts.append("\n\n## Prior Analysis from Upstream Roles\n")
+                for role, summary in prior_outputs.items():
+                    parts.append(f"### {role}\n{summary}\n")
 
-        if task_tags:
-            parts.append("\n\n## Builder Tags\n")
-            for tag_key, tag_value in sorted(task_tags.items()):
-                parts.append(f"- **{tag_key}**: {tag_value}")
+            if task_tags:
+                parts.append("\n\n## Builder Tags\n")
+                for tag_key, tag_value in sorted(task_tags.items()):
+                    parts.append(f"- **{tag_key}**: {tag_value}")
 
-        parts.append(
-            "\n\nYou are ASSEMBLING the source code above into a deployable package. "
-            "Do NOT rewrite or regenerate the source code — it is already written. "
-            "Your job is to add deployment and packaging artifacts.\n\n"
-            "Use tagged fenced code blocks with the language and path "
-            "separated by a colon, for example:\n"
-            "```dockerfile:Dockerfile\n<content>\n```\n"
-            "```markdown:qa_handoff.md\n<content>\n```\n\n"
-            "Produce the following deployment artifacts:\n"
-            "- __main__.py entrypoint (if not already present)\n"
-            "- Dockerfile for containerized deployment\n"
-            "- requirements.txt (if not already present)\n"
-            "- Any startup scripts or config files needed for deployment\n\n"
-            "IMPORTANT: You MUST also include a `qa_handoff.md` file with these "
-            "required sections:\n"
-            "- ## How to Run\n"
-            "- ## How to Test\n"
-            "- ## Expected Behavior\n\n"
-            "File path rules:\n"
-            "- File paths must use forward slashes, no colons, no spaces.\n"
-            "- Do NOT re-emit source files that the developer already wrote.\n"
-            "- Only emit NEW files needed for packaging and deployment."
-        )
-        user_prompt = "\n".join(parts)
+            parts.append(
+                "\n\nYou are ASSEMBLING the source code above into a deployable package. "
+                "Do NOT rewrite or regenerate the source code — it is already written. "
+                "Your job is to add deployment and packaging artifacts.\n\n"
+                "Use tagged fenced code blocks with the language and path "
+                "separated by a colon, for example:\n"
+                "```dockerfile:Dockerfile\n<content>\n```\n"
+                "```markdown:qa_handoff.md\n<content>\n```\n\n"
+                "Produce the following deployment artifacts:\n"
+                "- __main__.py entrypoint (if not already present)\n"
+                "- Dockerfile for containerized deployment\n"
+                "- requirements.txt (if not already present)\n"
+                "- Any startup scripts or config files needed for deployment\n\n"
+                "IMPORTANT: You MUST also include a `qa_handoff.md` file with these "
+                "required sections:\n"
+                "- ## How to Run\n"
+                "- ## How to Test\n"
+                "- ## Expected Behavior\n\n"
+                "File path rules:\n"
+                "- File paths must use forward slashes, no colons, no spaces.\n"
+                "- Do NOT re-emit source files that the developer already wrote.\n"
+                "- Only emit NEW files needed for packaging and deployment."
+            )
+            user_prompt = "\n".join(parts)
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + profile.system_prompt_template
@@ -1322,7 +1475,9 @@ class BuilderAssembleHandler(_CycleTaskHandler):
 
         # Record LLM generation for LangFuse tracing
         resolved_model = agent_model or context.ports.llm.default_model
-        self._record_generation(context, user_prompt, content, llm_duration_ms, resolved_model)
+        self._record_generation(
+            context, user_prompt, content, llm_duration_ms, resolved_model, rendered=rendered
+        )
 
         # Step 5: Parse fenced code blocks
         extracted = extract_fenced_files(content)
@@ -1475,6 +1630,16 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                     )
 
         # Step 9: Build outputs with diagnostics
+        # SIP-0084 §10: build prompt provenance for artifact traceability
+        provenance: dict[str, Any] = {
+            "system_prompt_bundle_hash": assembled.assembly_hash,
+        }
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+
         qa_validation_errors: list[str] = []
         outputs = {
             "summary": f"[builder] Assembled {len(artifacts)} deployment artifact(s)",
@@ -1489,6 +1654,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 "missing_required_files": missing_files,
                 "resolved_tags": task_tags,
             },
+            "prompt_provenance": provenance,
         }
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1509,6 +1675,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         response: str,
         duration_ms: float,
         resolved_model: str | None = None,
+        rendered: object | None = None,
     ) -> None:
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
@@ -1527,6 +1694,12 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
+                prompt_name=getattr(rendered, "template_id", None),
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and getattr(rendered, "template_version", None)
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-assemble",

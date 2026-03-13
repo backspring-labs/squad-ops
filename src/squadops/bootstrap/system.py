@@ -150,6 +150,7 @@ def create_system(
     events: EventPort,
     filesystem: FileSystemPort,
     llm_observability: LLMObservabilityPort | None = None,
+    request_renderer: object | None = None,
     config: SystemConfig | None = None,
 ) -> SquadOpsSystem:
     """Create a fully configured SquadOps system.
@@ -196,6 +197,7 @@ def create_system(
         events=events,
         filesystem=filesystem,
         llm_observability=llm_observability,
+        request_renderer=request_renderer,
     )
 
     # Create registries

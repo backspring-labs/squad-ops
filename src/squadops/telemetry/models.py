@@ -147,3 +147,6 @@ class GenerationRecord:
     completion_tokens: int | None = None
     total_tokens: int | None = None
     latency_ms: float | None = None
+    # SIP-0084: prompt-to-generation linkage for Langfuse
+    prompt_name: str | None = None
+    prompt_version: int | None = None

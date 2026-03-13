@@ -62,13 +62,26 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         failure_evidence = inputs.get("failure_evidence", {})
 
-        user_parts = [f"## PRD\n\n{prd}"]
-        if failure_evidence:
-            evidence_json = json.dumps(failure_evidence, indent=2)
-            user_parts.append(
-                f"\n\n## Failure Evidence\n\n{evidence_json}"
-            )
-        user_prompt = "\n".join(user_parts)
+        # SIP-0084: dual-path — use request renderer when available
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {"prd": prd}
+            if failure_evidence:
+                evidence_json = json.dumps(failure_evidence, indent=2)
+                variables["failure_evidence"] = (
+                    f"\n\n## Failure Evidence\n\n{evidence_json}"
+                )
+            rendered = await renderer.render("request.data_analyze_failure", variables)
+            user_prompt = rendered.content
+        else:
+            user_parts = [f"## PRD\n\n{prd}"]
+            if failure_evidence:
+                evidence_json = json.dumps(failure_evidence, indent=2)
+                user_parts.append(
+                    f"\n\n## Failure Evidence\n\n{evidence_json}"
+                )
+            user_prompt = "\n".join(user_parts)
 
         messages = [
             ChatMessage(role="system", content=_ANALYSIS_SYSTEM_PROMPT),
@@ -112,6 +125,14 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
 
         duration_ms = (time.perf_counter() - start_time) * 1000
 
+        # SIP-0084 §10: prompt provenance (Stage 2 only — no assembled prompt)
+        provenance: dict[str, Any] = {}
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+
         outputs = {
             "summary": f"[data] Failure classified as {analysis.get('classification', 'unknown')}",
             "role": self._role,
@@ -126,6 +147,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
                     "type": "document",
                 },
             ],
+            "prompt_provenance": provenance,
         }
 
         evidence = HandlerEvidence.create(

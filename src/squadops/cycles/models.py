@@ -320,6 +320,23 @@ class ArtifactRef:
     vault_uri: str | None = None
     promotion_status: str = "working"
 
+    # Prompt provenance — Stage 1: system prompt assembly (SIP-0084 §10)
+    system_prompt_bundle_hash: str | None = None
+    system_fragment_ids: tuple[str, ...] | None = None
+    system_fragment_versions: tuple[str, ...] | None = None
+
+    # Prompt provenance — Stage 2: request template rendering (SIP-0084 §10)
+    request_template_id: str | None = None
+    request_template_version: str | None = None
+    request_render_hash: str | None = None
+
+    # Prompt provenance — Stage 3: runtime invocation composition (SIP-0084 §10)
+    capability_supplement_ids: tuple[str, ...] | None = None
+    full_invocation_bundle_hash: str | None = None
+
+    # Prompt provenance — environment (SIP-0084 §10)
+    prompt_environment: str | None = None
+
 
 @dataclass(frozen=True)
 class AgentProfileEntry:

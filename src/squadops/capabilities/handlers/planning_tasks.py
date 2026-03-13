@@ -100,6 +100,28 @@ class _PlanningTaskHandler(_CycleTaskHandler):
     and ``_artifact_name``.
     """
 
+    _request_template_id = "request.planning_task_base"
+
+    def _build_render_variables(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any],
+    ) -> dict[str, str]:
+        """Build template variables with optional time budget section."""
+        raw_budget = inputs.get("resolved_config", {}).get("time_budget_seconds")
+        time_budget_seconds = int(raw_budget) if raw_budget is not None else None
+        budget_section = _build_time_budget_section(time_budget_seconds)
+
+        variables: dict[str, str] = {
+            "prd": prd,
+            "role": self._role,
+            "prior_outputs": self._format_prior_outputs(prior_outputs),
+        }
+        if budget_section:
+            variables["time_budget_section"] = budget_section
+        return variables
+
     def _build_user_prompt(
         self,
         prd: str,
@@ -130,7 +152,15 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         raw_budget = inputs.get("resolved_config", {}).get("time_budget_seconds")
         time_budget_seconds = int(raw_budget) if raw_budget is not None else None
 
-        user_prompt = self._build_user_prompt(prd, prior_outputs, time_budget_seconds)
+        # SIP-0084: dual-path — use request renderer when available
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables = self._build_render_variables(prd, prior_outputs, inputs)
+            rendered = await renderer.render(self._request_template_id, variables)
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(prd, prior_outputs, time_budget_seconds)
 
         # Key difference: assemble with task_type to activate task_type layer
         assembled = context.ports.prompt_service.assemble(
@@ -191,6 +221,12 @@ class _PlanningTaskHandler(_CycleTaskHandler):
                 prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=llm_duration_ms,
+                prompt_name=rendered.template_id if rendered else None,
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and rendered.template_version
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-planning",
@@ -209,6 +245,16 @@ class _PlanningTaskHandler(_CycleTaskHandler):
 
         prd_summary = str(prd)[:80] if prd else "(no PRD)"
 
+        # SIP-0084 §10: build prompt provenance for artifact traceability
+        provenance: dict[str, Any] = {
+            "system_prompt_bundle_hash": assembled.assembly_hash,
+        }
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+
         outputs = {
             "summary": f"[{self._role}] {prd_summary}",
             "role": self._role,
@@ -220,6 +266,7 @@ class _PlanningTaskHandler(_CycleTaskHandler):
                     "type": "document",
                 },
             ],
+            "prompt_provenance": provenance,
         }
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -389,6 +436,48 @@ class GovernanceIncorporateFeedbackHandler(_PlanningTaskHandler):
     _capability_id = "governance.incorporate_feedback"
     _role = "lead"
     _artifact_name = "planning_artifact_revised.md"
+    _request_template_id = "request.governance_incorporate_feedback"
+
+    def _build_render_variables(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any],
+    ) -> dict[str, str]:
+        """Build template variables with artifact contents and refinement instructions."""
+        raw_budget = inputs.get("resolved_config", {}).get("time_budget_seconds")
+        time_budget_seconds = int(raw_budget) if raw_budget is not None else None
+        budget_section = _build_refinement_time_budget_section(time_budget_seconds)
+
+        variables: dict[str, str] = {"prd": prd, "role": self._role}
+        if budget_section:
+            variables["time_budget_section"] = budget_section
+
+        # Include original planning artifact content if pre-resolved
+        if prior_outputs and "artifact_contents" in prior_outputs:
+            parts = []
+            for name, content in prior_outputs["artifact_contents"].items():
+                parts.append(f"\n\n## Original Planning Artifact: {name}\n\n{content}")
+            variables["artifact_contents"] = "\n".join(parts)
+
+        # Include refinement instructions
+        if prior_outputs and "refinement_instructions" in prior_outputs:
+            variables["refinement_instructions"] = (
+                f"\n\n## Refinement Instructions\n\n{prior_outputs['refinement_instructions']}"
+            )
+
+        # Upstream outputs (excluding special keys)
+        if prior_outputs:
+            upstream = {
+                k: v
+                for k, v in prior_outputs.items()
+                if k not in ("artifact_contents", "refinement_instructions")
+            }
+            variables["prior_outputs"] = self._format_prior_outputs(upstream or None)
+        else:
+            variables["prior_outputs"] = ""
+
+        return variables
 
     def validate_inputs(
         self,
