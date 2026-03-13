@@ -130,7 +130,21 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         raw_budget = inputs.get("resolved_config", {}).get("time_budget_seconds")
         time_budget_seconds = int(raw_budget) if raw_budget is not None else None
 
-        user_prompt = self._build_user_prompt(prd, prior_outputs, time_budget_seconds)
+        # SIP-0084: dual-path — use request renderer when available
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            budget_section = _build_time_budget_section(time_budget_seconds)
+            variables: dict[str, str] = {
+                "prd": prd,
+                "role": self._role,
+                "prior_outputs": self._format_prior_outputs(prior_outputs),
+            }
+            if budget_section:
+                variables["time_budget_section"] = budget_section
+            rendered = await renderer.render("request.planning_task_base", variables)
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(prd, prior_outputs, time_budget_seconds)
 
         # Key difference: assemble with task_type to activate task_type layer
         assembled = context.ports.prompt_service.assemble(

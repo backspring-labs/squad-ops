@@ -46,6 +46,7 @@ class _CycleTaskHandler(CapabilityHandler):
     _capability_id: str = ""
     _role: str = ""
     _artifact_name: str = ""
+    _request_template_id: str = "request.cycle_task_base"
 
     @property
     def name(self) -> str:
@@ -93,6 +94,19 @@ class _CycleTaskHandler(CapabilityHandler):
             parts.append(f"### {role}\n{summary}\n")
         return "\n".join(parts)
 
+    def _build_render_variables(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any],
+    ) -> dict[str, str]:
+        """Build template variables for request rendering. Override for custom variables."""
+        return {
+            "prd": prd,
+            "role": self._role,
+            "prior_outputs": self._format_prior_outputs(prior_outputs),
+        }
+
     def _build_chat_kwargs(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Build chat() kwargs from agent config overrides (SIP-0075 §3.2)."""
         overrides = inputs.get("agent_config_overrides", {})
@@ -121,14 +135,8 @@ class _CycleTaskHandler(CapabilityHandler):
         # SIP-0084: dual-path — use request renderer when available
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
-            rendered = await renderer.render(
-                "request.cycle_task_base",
-                {
-                    "prd": prd,
-                    "role": self._role,
-                    "prior_outputs": self._format_prior_outputs(prior_outputs),
-                },
-            )
+            variables = self._build_render_variables(prd, prior_outputs, inputs)
+            rendered = await renderer.render(self._request_template_id, variables)
             user_prompt = rendered.content
         else:
             user_prompt = self._build_user_prompt(prd, prior_outputs)

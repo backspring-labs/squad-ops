@@ -17,6 +17,12 @@ from squadops.capabilities.handlers.cycle_tasks import (
     StrategyAnalyzeHandler,
     _CycleTaskHandler,
 )
+from squadops.capabilities.handlers.planning_tasks import (
+    StrategyFrameObjectiveHandler,
+)
+from squadops.capabilities.handlers.repair_tasks import (
+    DataAnalyzeVerificationHandler,
+)
 from squadops.llm.models import ChatMessage
 from squadops.prompts.asset_models import RenderedRequest
 
@@ -254,6 +260,159 @@ class TestDevelopmentDevelopFallbackPath:
         user_msg = [m for m in messages if m.role == "user"][0]
         assert "## Product Requirements Document" in user_msg.content
         assert "Build a game" in user_msg.content
+
+
+# ---------------------------------------------------------------------------
+# Wave 2: _PlanningTaskHandler base class
+# ---------------------------------------------------------------------------
+
+
+def _mock_planning_context(*, renderer: AsyncMock | None = None) -> MagicMock:
+    """Create a mock ExecutionContext for planning handlers (uses assemble())."""
+    ctx = MagicMock()
+    ctx.ports.llm.chat = AsyncMock(
+        return_value=MagicMock(content="LLM output"),
+    )
+    ctx.ports.llm.default_model = "test-model"
+    assembled = MagicMock()
+    assembled.content = "System prompt"
+    ctx.ports.prompt_service.assemble = MagicMock(return_value=assembled)
+    ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
+    ctx.ports.llm_observability = None
+    ctx.correlation_context = None
+
+    if renderer is not None:
+        ctx.ports.request_renderer = renderer
+    else:
+        ctx.ports.request_renderer = None
+
+    return ctx
+
+
+class TestPlanningTaskHandlerRendererPath:
+    """Verify _PlanningTaskHandler.handle() uses renderer when available."""
+
+    async def test_calls_renderer_with_planning_template_id(self):
+        renderer = _mock_renderer()
+        ctx = _mock_planning_context(renderer=renderer)
+        handler = StrategyFrameObjectiveHandler()
+
+        await handler.handle(ctx, {"prd": "Plan a game"})
+
+        renderer.render.assert_called_once()
+        assert renderer.render.call_args[0][0] == "request.planning_task_base"
+
+    async def test_passes_time_budget_section_when_present(self):
+        renderer = _mock_renderer()
+        ctx = _mock_planning_context(renderer=renderer)
+        handler = StrategyFrameObjectiveHandler()
+
+        inputs = {
+            "prd": "Plan a game",
+            "resolved_config": {"time_budget_seconds": 3600},
+        }
+        await handler.handle(ctx, inputs)
+
+        variables = renderer.render.call_args[0][1]
+        assert "time_budget_section" in variables
+        assert "1 hour" in variables["time_budget_section"]
+
+    async def test_omits_time_budget_when_absent(self):
+        renderer = _mock_renderer()
+        ctx = _mock_planning_context(renderer=renderer)
+        handler = StrategyFrameObjectiveHandler()
+
+        await handler.handle(ctx, {"prd": "Plan a game"})
+
+        variables = renderer.render.call_args[0][1]
+        assert "time_budget_section" not in variables
+
+    async def test_passes_role_variable(self):
+        renderer = _mock_renderer()
+        ctx = _mock_planning_context(renderer=renderer)
+        handler = StrategyFrameObjectiveHandler()  # role = "strat"
+
+        await handler.handle(ctx, {"prd": "X"})
+
+        variables = renderer.render.call_args[0][1]
+        assert variables["role"] == "strat"
+
+
+class TestPlanningTaskHandlerFallbackPath:
+    async def test_no_renderer_uses_build_user_prompt(self):
+        ctx = _mock_planning_context(renderer=None)
+        handler = StrategyFrameObjectiveHandler()
+
+        await handler.handle(ctx, {"prd": "Plan a game"})
+
+        call_args = ctx.ports.llm.chat.call_args
+        messages = call_args[0][0]
+        user_msg = [m for m in messages if m.role == "user"][0]
+        assert "## Product Requirements Document" in user_msg.content
+        assert "Plan a game" in user_msg.content
+
+
+# ---------------------------------------------------------------------------
+# Wave 2: _RepairTaskHandler base class
+# ---------------------------------------------------------------------------
+
+
+class TestRepairTaskHandlerRendererPath:
+    """Verify _RepairTaskHandler uses repair template with verification context."""
+
+    async def test_calls_renderer_with_repair_template_id(self):
+        renderer = _mock_renderer()
+        ctx = _mock_context(renderer=renderer)
+        handler = DataAnalyzeVerificationHandler()
+
+        await handler.handle(ctx, {"prd": "Fix the bug"})
+
+        renderer.render.assert_called_once()
+        assert renderer.render.call_args[0][0] == "request.repair_task_base"
+
+    async def test_extracts_verification_context_from_prior_outputs(self):
+        renderer = _mock_renderer()
+        ctx = _mock_context(renderer=renderer)
+        handler = DataAnalyzeVerificationHandler()
+
+        inputs = {
+            "prd": "Fix it",
+            "prior_outputs": {
+                "verification_context": "Tests failed: 3 errors",
+                "data": "upstream analysis",
+            },
+        }
+        await handler.handle(ctx, inputs)
+
+        variables = renderer.render.call_args[0][1]
+        assert "Verification Failure Context" in variables["verification_context"]
+        assert "Tests failed: 3 errors" in variables["verification_context"]
+        # Upstream outputs should NOT include verification_context key
+        assert "### data" in variables["prior_outputs"]
+        assert "verification_context" not in variables["prior_outputs"]
+
+    async def test_empty_verification_context_gives_empty_string(self):
+        renderer = _mock_renderer()
+        ctx = _mock_context(renderer=renderer)
+        handler = DataAnalyzeVerificationHandler()
+
+        await handler.handle(ctx, {"prd": "Fix it"})
+
+        variables = renderer.render.call_args[0][1]
+        assert variables["verification_context"] == ""
+
+
+class TestRepairTaskHandlerFallbackPath:
+    async def test_no_renderer_uses_build_user_prompt(self):
+        ctx = _mock_context(renderer=None)
+        handler = DataAnalyzeVerificationHandler()
+
+        await handler.handle(ctx, {"prd": "Fix it"})
+
+        call_args = ctx.ports.llm.chat.call_args
+        messages = call_args[0][0]
+        user_msg = [m for m in messages if m.role == "user"][0]
+        assert "## Product Requirements Document" in user_msg.content
 
 
 # ---------------------------------------------------------------------------

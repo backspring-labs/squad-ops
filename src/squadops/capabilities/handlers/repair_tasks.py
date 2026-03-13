@@ -17,6 +17,32 @@ from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
 class _RepairTaskHandler(_CycleTaskHandler):
     """Base for repair handlers — injects verification failure context."""
 
+    _request_template_id = "request.repair_task_base"
+
+    def _build_render_variables(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any],
+    ) -> dict[str, str]:
+        """Build template variables with verification context extraction."""
+        verification_ctx = (prior_outputs or {}).get("verification_context", "")
+        verification_section = ""
+        if verification_ctx:
+            verification_section = (
+                f"\n\n## Verification Failure Context\n\n{verification_ctx}"
+            )
+
+        upstream = {
+            k: v for k, v in (prior_outputs or {}).items() if k != "verification_context"
+        }
+        return {
+            "prd": prd,
+            "role": self._role,
+            "verification_context": verification_section,
+            "prior_outputs": self._format_prior_outputs(upstream or None),
+        }
+
     def _build_user_prompt(
         self,
         prd: str,
