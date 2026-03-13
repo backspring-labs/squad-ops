@@ -167,6 +167,8 @@ class LangFuseAdapter(LLMObservabilityPort):
             completion_tokens=record.completion_tokens,
             total_tokens=record.total_tokens,
             latency_ms=record.latency_ms,
+            prompt_name=record.prompt_name,
+            prompt_version=record.prompt_version,
         )
         self._enqueue(
             _BufferEntry(
@@ -373,18 +375,25 @@ class LangFuseAdapter(LLMObservabilityPort):
                 if parent is None:
                     parent = self._span_state.get(f"cycle:{tk}")
             if parent is not None:
-                parent.generation(
-                    id=record.generation_id,
-                    name=f"generation-{record.generation_id[:8]}",
-                    model=record.model,
-                    input=record.prompt_text,
-                    output=record.response_text,
-                    usage={
+                # SIP-0084: resolve Langfuse prompt object for prompt-to-generation linkage
+                langfuse_prompt = None
+                if record.prompt_name:
+                    langfuse_prompt = self._resolve_langfuse_prompt(
+                        record.prompt_name, record.prompt_version
+                    )
+
+                gen_kwargs: dict[str, Any] = {
+                    "id": record.generation_id,
+                    "name": f"generation-{record.generation_id[:8]}",
+                    "model": record.model,
+                    "input": record.prompt_text,
+                    "output": record.response_text,
+                    "usage": {
                         "prompt_tokens": record.prompt_tokens,
                         "completion_tokens": record.completion_tokens,
                         "total_tokens": record.total_tokens,
                     },
-                    metadata={
+                    "metadata": {
                         "latency_ms": record.latency_ms,
                         "prompt_layer_set_id": prompt_layers.prompt_layer_set_id,
                         "prompt_layers": [
@@ -398,7 +407,10 @@ class LangFuseAdapter(LLMObservabilityPort):
                         ],
                         **self._ctx_metadata(ctx),
                     },
-                )
+                }
+                if langfuse_prompt is not None:
+                    gen_kwargs["prompt"] = langfuse_prompt
+                parent.generation(**gen_kwargs)
 
         elif entry.event_type == _EventType.EVENT:
             event: StructuredEvent = entry.payload
@@ -418,6 +430,27 @@ class LangFuseAdapter(LLMObservabilityPort):
     # -------------------------------------------------------------------
     # Internal: helpers
     # -------------------------------------------------------------------
+
+    def _resolve_langfuse_prompt(
+        self, prompt_name: str, prompt_version: int | None = None
+    ) -> Any:
+        """Resolve a Langfuse prompt object for prompt-to-generation linkage.
+
+        Returns the prompt object on success, None on any failure (best-effort).
+        Called from the background flush thread — must not raise.
+        """
+        try:
+            kwargs: dict[str, Any] = {"name": prompt_name}
+            if prompt_version is not None:
+                kwargs["version"] = prompt_version
+            return self._client.get_prompt(**kwargs)
+        except Exception:
+            logger.debug(
+                "langfuse_prompt_resolve_failed",
+                extra={"prompt_name": prompt_name, "prompt_version": prompt_version},
+                exc_info=True,
+            )
+            return None
 
     @staticmethod
     def _resolve_trace_key(ctx: CorrelationContext) -> str:

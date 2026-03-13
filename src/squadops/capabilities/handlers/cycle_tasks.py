@@ -196,6 +196,12 @@ class _CycleTaskHandler(CapabilityHandler):
                 prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=llm_duration_ms,
+                prompt_name=rendered.template_id if rendered else None,
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and rendered.template_version
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-cycle",
@@ -617,7 +623,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Record LLM generation for LangFuse tracing
-        self._record_generation(context, user_prompt, content, llm_duration_ms, model_name)
+        self._record_generation(
+            context, user_prompt, content, llm_duration_ms, model_name, rendered=rendered
+        )
 
         # Parse fenced code blocks
         extracted = extract_fenced_files(content)
@@ -695,6 +703,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         response: str,
         duration_ms: float,
         resolved_model: str | None = None,
+        rendered: object | None = None,
     ) -> None:
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
@@ -713,6 +722,12 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
+                prompt_name=getattr(rendered, "template_id", None),
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and getattr(rendered, "template_version", None)
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-build",
@@ -1004,7 +1019,9 @@ class QATestHandler(_CycleTaskHandler):
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Record LLM generation for LangFuse tracing
-        self._record_generation(context, user_prompt, content, llm_duration_ms, model_name)
+        self._record_generation(
+            context, user_prompt, content, llm_duration_ms, model_name, rendered=rendered
+        )
 
         # Parse fenced code blocks
         extracted = extract_fenced_files(content)
@@ -1158,6 +1175,7 @@ class QATestHandler(_CycleTaskHandler):
         response: str,
         duration_ms: float,
         resolved_model: str | None = None,
+        rendered: object | None = None,
     ) -> None:
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
@@ -1176,6 +1194,12 @@ class QATestHandler(_CycleTaskHandler):
                 prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
+                prompt_name=getattr(rendered, "template_id", None),
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and getattr(rendered, "template_version", None)
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-build",
@@ -1451,7 +1475,9 @@ class BuilderAssembleHandler(_CycleTaskHandler):
 
         # Record LLM generation for LangFuse tracing
         resolved_model = agent_model or context.ports.llm.default_model
-        self._record_generation(context, user_prompt, content, llm_duration_ms, resolved_model)
+        self._record_generation(
+            context, user_prompt, content, llm_duration_ms, resolved_model, rendered=rendered
+        )
 
         # Step 5: Parse fenced code blocks
         extracted = extract_fenced_files(content)
@@ -1649,6 +1675,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         response: str,
         duration_ms: float,
         resolved_model: str | None = None,
+        rendered: object | None = None,
     ) -> None:
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
@@ -1667,6 +1694,12 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
+                prompt_name=getattr(rendered, "template_id", None),
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and getattr(rendered, "template_version", None)
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-assemble",

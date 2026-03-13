@@ -4,6 +4,10 @@ Unit tests for prompt asset source factory (SIP-0084).
 Verifies provider selection, default paths, and the no-silent-fallback rule.
 """
 
+import builtins
+import sys
+import types
+
 import pytest
 
 from adapters.prompts.factory import create_prompt_asset_source
@@ -34,13 +38,26 @@ class TestCreatePromptAssetSource:
 
     def test_langfuse_provider_requires_sdk(self):
         """Langfuse provider raises if SDK not available."""
-        # Without the real langfuse SDK, this should raise
-        # PromptRegistryUnavailableError (which is a PromptDomainError)
         from squadops.prompts.exceptions import PromptDomainError
 
-        with pytest.raises((PromptDomainError, ImportError)):
-            create_prompt_asset_source(
-                provider="langfuse",
-                public_key="pk-test",
-                secret_key="sk-test",
-            )
+        # Block langfuse import to simulate missing SDK
+        _real_import = builtins.__import__
+
+        def _block_langfuse(name, *args, **kwargs):
+            if name == "langfuse" or name.startswith("langfuse."):
+                raise ImportError("Simulated: langfuse not installed")
+            return _real_import(name, *args, **kwargs)
+
+        sys.modules.pop("langfuse", None)
+        sys.modules.pop("adapters.prompts.langfuse_asset_adapter", None)
+        builtins.__import__ = _block_langfuse
+        try:
+            with pytest.raises((PromptDomainError, ImportError)):
+                create_prompt_asset_source(
+                    provider="langfuse",
+                    public_key="pk-test",
+                    secret_key="sk-test",
+                )
+        finally:
+            builtins.__import__ = _real_import
+            sys.modules.pop("adapters.prompts.langfuse_asset_adapter", None)

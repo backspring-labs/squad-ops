@@ -221,6 +221,12 @@ class _PlanningTaskHandler(_CycleTaskHandler):
                 prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=llm_duration_ms,
+                prompt_name=rendered.template_id if rendered else None,
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and rendered.template_version
+                    else None
+                ),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-planning",

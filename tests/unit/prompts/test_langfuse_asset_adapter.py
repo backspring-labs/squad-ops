@@ -86,16 +86,35 @@ class TestConstruction:
         assert adapter is not None
 
     def test_missing_sdk_raises_registry_unavailable(self):
+        # Block the real langfuse import by injecting a module that raises ImportError
+        fake_broken = types.ModuleType("langfuse")
+        fake_broken.Langfuse = None  # type: ignore[attr-defined]
+
+        # Simulate missing SDK: remove langfuse and adapter from cache,
+        # then inject a broken module that makes the adapter's import fail
         sys.modules.pop("langfuse", None)
         sys.modules.pop("adapters.prompts.langfuse_asset_adapter", None)
 
-        # Re-import will fail because langfuse is gone
-        with pytest.raises(PromptRegistryUnavailableError, match="not installed"):
-            from adapters.prompts.langfuse_asset_adapter import LangfusePromptAssetAdapter
+        import builtins
 
-            LangfusePromptAssetAdapter(
-                public_key="pk", secret_key="sk", host="http://localhost:3001"
-            )
+        _real_import = builtins.__import__
+
+        def _block_langfuse(name, *args, **kwargs):
+            if name == "langfuse" or name.startswith("langfuse."):
+                raise ImportError("Simulated: langfuse not installed")
+            return _real_import(name, *args, **kwargs)
+
+        builtins.__import__ = _block_langfuse
+        try:
+            with pytest.raises(PromptRegistryUnavailableError, match="not installed"):
+                from adapters.prompts.langfuse_asset_adapter import LangfusePromptAssetAdapter
+
+                LangfusePromptAssetAdapter(
+                    public_key="pk", secret_key="sk", host="http://localhost:3001"
+                )
+        finally:
+            builtins.__import__ = _real_import
+            sys.modules.pop("adapters.prompts.langfuse_asset_adapter", None)
 
 
 class TestResolveSystemFragment:
