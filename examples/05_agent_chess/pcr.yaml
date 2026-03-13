@@ -1,0 +1,59 @@
+name: agent_chess
+description: >
+  Cycle request profile for the Agent Chess consensus benchmark.
+  A squad plays chess against Stockfish over multiple rounds,
+  inventing its own consensus method for move selection.
+  Two full plan/play/wrapup cycles allow the squad to adapt
+  its approach between rounds.
+defaults:
+  squad_profile_id: full-squad
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_round_review
+        description: "Human review of round results before advancing"
+        after_task_types: []
+  workload_sequence:
+    - type: planning
+      gate: auto
+    - type: implementation
+      gate: auto
+    - type: wrapup
+      gate: auto
+    - type: planning
+      gate: auto
+    - type: implementation
+      gate: auto
+    - type: wrapup
+      gate: progress_round_review
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+    - metrics
+  build_tasks:
+    - development.develop
+    - qa.test
+  generation_timeout: 600
+  time_budget_seconds: 7200
+  experiment_context:
+    sample_app: agent_chess
+    benchmark: true
+    stockfish_skill_level: 5
+    candidate_moves: 5
+    rounds: 2
+  notes: >
+    Agent Chess consensus benchmark — squad plays chess against Stockfish,
+    inventing its own consensus method. Two rounds allow adaptation.
+prompts:
+  build_strategy:
+    label: Build Strategy
+    help_text: "fresh = build from scratch, incremental = iterate on baseline."
+    choices:
+      - fresh
+      - incremental
+  notes:
+    label: Cycle Notes
+    help_text: Optional notes for this cycle run.

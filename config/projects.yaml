@@ -8,16 +8,22 @@ projects:
     name: "Run Crysis"
     description: "Multi-agent coordinated build"
     tags: [example, benchmark]
-    prd_path: examples/run_crysis/prd.md
+    prd_path: examples/04_run_crysis/prd.md
 
   - project_id: group_run
     name: "Group Run"
     description: "Full squad parallel execution"
     tags: [example, benchmark]
-    prd_path: examples/group_run/prd.md
+    prd_path: examples/03_group_run/prd.md
 
   - project_id: play_game
     name: "Play Game"
     description: "Terminal Tic-Tac-Toe — canonical sample app and platform selftest"
     tags: [example, selftest]
-    prd_path: examples/play_game/prd.md
+    prd_path: examples/02_play_game/prd.md
+
+  - project_id: agent_chess
+    name: "Agent Chess"
+    description: "Squad consensus benchmark — squad plays chess against Stockfish"
+    tags: [example, benchmark, experiment]
+    prd_path: examples/05_agent_chess/prd.md
