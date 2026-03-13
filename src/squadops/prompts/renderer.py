@@ -14,12 +14,16 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import TYPE_CHECKING
 
 import yaml
 
 from squadops.ports.prompts.asset_source import PromptAssetSourcePort
 from squadops.prompts.asset_models import RenderedRequest, ResolvedAsset
 from squadops.prompts.exceptions import TemplateMissingVariableError
+
+if TYPE_CHECKING:
+    from squadops.prompts.cache import CyclePromptCache
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +69,14 @@ class RequestTemplateRenderer:
     which remains owned by the PromptAssembler.
     """
 
-    def __init__(self, asset_source: PromptAssetSourcePort) -> None:
+    def __init__(
+        self,
+        asset_source: PromptAssetSourcePort,
+        cycle_cache: CyclePromptCache | None = None,
+    ) -> None:
         self._source = asset_source
         self._cache: dict[str, ResolvedAsset] = {}
+        self._cycle_cache = cycle_cache
 
     async def render(
         self,
@@ -130,8 +139,26 @@ class RequestTemplateRenderer:
         )
 
     async def _resolve(self, template_id: str, environment: str) -> ResolvedAsset:
-        """Resolve and cache a template asset."""
+        """Resolve and cache a template asset.
+
+        When a CyclePromptCache is available, delegates to it for cycle-level
+        immutability (SIP-0084 §8). Otherwise falls back to the renderer's
+        own per-instance cache.
+        """
         cache_key = f"{template_id}:{environment}"
+
+        # Cycle cache takes precedence for immutability guarantees
+        if self._cycle_cache is not None:
+            if self._cycle_cache.contains(cache_key):
+                return self._cycle_cache.get(cache_key)
+            return await self._cycle_cache.resolve_and_store(
+                cache_key,
+                resolver=lambda: self._source.resolve_request_template(
+                    template_id, environment
+                ),
+            )
+
+        # Fallback: renderer's own cache (no cycle immutability)
         if cache_key in self._cache:
             return self._cache[cache_key]
 

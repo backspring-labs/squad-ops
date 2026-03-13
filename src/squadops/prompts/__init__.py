@@ -6,6 +6,7 @@ hexagonal architecture patterns (Ports and Adapters).
 """
 
 from squadops.prompts.asset_models import AssetVersionInfo, RenderedRequest, ResolvedAsset
+from squadops.prompts.cache import CyclePromptCache
 from squadops.prompts.exceptions import (
     FragmentNotFoundError,
     HashMismatchError,
@@ -21,6 +22,7 @@ from squadops.prompts.models import AssembledPrompt, PromptFragment, PromptManif
 __all__ = [
     "AssembledPrompt",
     "AssetVersionInfo",
+    "CyclePromptCache",
     "FragmentNotFoundError",
     "HashMismatchError",
     "MandatoryLayerMissingError",
