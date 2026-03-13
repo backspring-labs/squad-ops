@@ -57,7 +57,14 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
 
-        user_prompt = self._build_user_prompt(prd, prior_outputs)
+        # SIP-0084: dual-path — use request renderer when available
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables = self._build_render_variables(prd, prior_outputs, inputs)
+            rendered = await renderer.render(self._request_template_id, variables)
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(prd, prior_outputs)
 
         messages = [
             ChatMessage(role="system", content=_CONTRACT_SYSTEM_PROMPT),

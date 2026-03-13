@@ -61,12 +61,25 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         failure_analysis = inputs.get("failure_analysis", {})
 
-        user_parts = [f"## PRD\n\n{prd}"]
-        if failure_analysis:
-            user_parts.append(
-                f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
+        # SIP-0084: dual-path — use request renderer when available
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {"prd": prd}
+            if failure_analysis:
+                variables["failure_analysis"] = (
+                    f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
+                )
+            rendered = await renderer.render(
+                "request.governance_correction_decision", variables,
             )
-        user_prompt = "\n".join(user_parts)
+            user_prompt = rendered.content
+        else:
+            user_parts = [f"## PRD\n\n{prd}"]
+            if failure_analysis:
+                user_parts.append(
+                    f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
+                )
+            user_prompt = "\n".join(user_parts)
 
         messages = [
             ChatMessage(role="system", content=_DECISION_SYSTEM_PROMPT),

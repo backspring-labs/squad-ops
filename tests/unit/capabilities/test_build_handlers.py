@@ -533,6 +533,7 @@ class TestQABuildLangFuseRecording:
 
         llm_obs = MagicMock()
         ctx.ports.llm_observability = llm_obs
+        ctx.ports.request_renderer = None
         ctx.correlation_context = MagicMock()
 
         handler = QATestHandler()
@@ -1203,6 +1204,7 @@ class TestBuilderNoTokenBudget:
         assembled.content = "You are a builder agent."
         ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
         ctx.ports.llm_observability = None
+        ctx.ports.request_renderer = None
         ctx.correlation_context = None
 
         inputs = {

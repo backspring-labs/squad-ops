@@ -869,13 +869,34 @@ class QATestHandler(_CycleTaskHandler):
                 error="Required plan artifacts not available",
             )
 
-        user_prompt = self._build_user_prompt(
-            prd,
-            prior_outputs,
-            val_plan=val_plan,
-            sources=sources,
-            capability_name=capability_name,
-        )
+        # SIP-0084: dual-path — use request renderer when available
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {
+                "prd": prd,
+                "test_supplement": capability.test_prompt_supplement,
+            }
+            if val_plan:
+                variables["validation_plan"] = f"\n\n## Validation Plan\n\n{val_plan}"
+            if sources:
+                source_parts = ["\n\n## Source Files to Test\n"]
+                for path, code in sources.items():
+                    lang = self._fence_lang(path)
+                    source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
+                variables["source_files"] = "\n".join(source_parts)
+            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            rendered = await renderer.render(
+                "request.qa_test.test_validate", variables,
+            )
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(
+                prd,
+                prior_outputs,
+                val_plan=val_plan,
+                sources=sources,
+                capability_name=capability_name,
+            )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
@@ -1291,46 +1312,67 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             )
 
         # Step 3: Build assembly prompt with source files as context
-        parts = [f"## Product Requirements Document\n\n{prd}"]
+        # SIP-0084: dual-path — use request renderer when available
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            source_parts = []
+            for path, code in sorted(sources.items()):
+                source_parts.append(f"\n### {path}\n```\n{code}\n```\n")
+            variables: dict[str, str] = {
+                "prd": prd,
+                "source_files": "\n".join(source_parts),
+                "prior_outputs": self._format_prior_outputs(prior_outputs),
+            }
+            if task_tags:
+                tag_parts = ["\n\n## Builder Tags\n"]
+                for tag_key, tag_value in sorted(task_tags.items()):
+                    tag_parts.append(f"- **{tag_key}**: {tag_value}")
+                variables["task_tags"] = "\n".join(tag_parts)
+            rendered = await renderer.render(
+                "request.builder_assemble.build_assemble", variables,
+            )
+            user_prompt = rendered.content
+        else:
+            parts = [f"## Product Requirements Document\n\n{prd}"]
 
-        parts.append("\n\n## Source Files (from developer)\n")
-        for path, code in sorted(sources.items()):
-            parts.append(f"\n### {path}\n```\n{code}\n```\n")
+            parts.append("\n\n## Source Files (from developer)\n")
+            for path, code in sorted(sources.items()):
+                parts.append(f"\n### {path}\n```\n{code}\n```\n")
 
-        if prior_outputs:
-            parts.append("\n\n## Prior Analysis from Upstream Roles\n")
-            for role, summary in prior_outputs.items():
-                parts.append(f"### {role}\n{summary}\n")
+            if prior_outputs:
+                parts.append("\n\n## Prior Analysis from Upstream Roles\n")
+                for role, summary in prior_outputs.items():
+                    parts.append(f"### {role}\n{summary}\n")
 
-        if task_tags:
-            parts.append("\n\n## Builder Tags\n")
-            for tag_key, tag_value in sorted(task_tags.items()):
-                parts.append(f"- **{tag_key}**: {tag_value}")
+            if task_tags:
+                parts.append("\n\n## Builder Tags\n")
+                for tag_key, tag_value in sorted(task_tags.items()):
+                    parts.append(f"- **{tag_key}**: {tag_value}")
 
-        parts.append(
-            "\n\nYou are ASSEMBLING the source code above into a deployable package. "
-            "Do NOT rewrite or regenerate the source code — it is already written. "
-            "Your job is to add deployment and packaging artifacts.\n\n"
-            "Use tagged fenced code blocks with the language and path "
-            "separated by a colon, for example:\n"
-            "```dockerfile:Dockerfile\n<content>\n```\n"
-            "```markdown:qa_handoff.md\n<content>\n```\n\n"
-            "Produce the following deployment artifacts:\n"
-            "- __main__.py entrypoint (if not already present)\n"
-            "- Dockerfile for containerized deployment\n"
-            "- requirements.txt (if not already present)\n"
-            "- Any startup scripts or config files needed for deployment\n\n"
-            "IMPORTANT: You MUST also include a `qa_handoff.md` file with these "
-            "required sections:\n"
-            "- ## How to Run\n"
-            "- ## How to Test\n"
-            "- ## Expected Behavior\n\n"
-            "File path rules:\n"
-            "- File paths must use forward slashes, no colons, no spaces.\n"
-            "- Do NOT re-emit source files that the developer already wrote.\n"
-            "- Only emit NEW files needed for packaging and deployment."
-        )
-        user_prompt = "\n".join(parts)
+            parts.append(
+                "\n\nYou are ASSEMBLING the source code above into a deployable package. "
+                "Do NOT rewrite or regenerate the source code — it is already written. "
+                "Your job is to add deployment and packaging artifacts.\n\n"
+                "Use tagged fenced code blocks with the language and path "
+                "separated by a colon, for example:\n"
+                "```dockerfile:Dockerfile\n<content>\n```\n"
+                "```markdown:qa_handoff.md\n<content>\n```\n\n"
+                "Produce the following deployment artifacts:\n"
+                "- __main__.py entrypoint (if not already present)\n"
+                "- Dockerfile for containerized deployment\n"
+                "- requirements.txt (if not already present)\n"
+                "- Any startup scripts or config files needed for deployment\n\n"
+                "IMPORTANT: You MUST also include a `qa_handoff.md` file with these "
+                "required sections:\n"
+                "- ## How to Run\n"
+                "- ## How to Test\n"
+                "- ## Expected Behavior\n\n"
+                "File path rules:\n"
+                "- File paths must use forward slashes, no colons, no spaces.\n"
+                "- Do NOT re-emit source files that the developer already wrote.\n"
+                "- Only emit NEW files needed for packaging and deployment."
+            )
+            user_prompt = "\n".join(parts)
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + profile.system_prompt_template
