@@ -52,3 +52,38 @@ class ManifestValidationError(PromptDomainError):
     def __init__(self, message: str, details: dict | None = None):
         self.details = details or {}
         super().__init__(message)
+
+
+class PromptAssetNotFoundError(PromptDomainError):
+    """Raised when a governed prompt asset cannot be resolved from the registry."""
+
+    def __init__(self, asset_id: str, environment: str | None = None):
+        self.asset_id = asset_id
+        self.environment = environment
+        msg = f"Prompt asset not found: {asset_id}"
+        if environment:
+            msg += f" (environment: {environment})"
+        super().__init__(msg)
+
+
+class PromptRegistryUnavailableError(PromptDomainError):
+    """Raised when the configured prompt registry is unavailable at cycle start."""
+
+    def __init__(self, provider: str, reason: str | None = None):
+        self.provider = provider
+        self.reason = reason
+        msg = f"Prompt registry unavailable: {provider}"
+        if reason:
+            msg += f" — {reason}"
+        super().__init__(msg)
+
+
+class TemplateMissingVariableError(PromptDomainError):
+    """Raised when a required template variable is not provided at render time."""
+
+    def __init__(self, template_id: str, variable: str):
+        self.template_id = template_id
+        self.variable = variable
+        super().__init__(
+            f"Required variable '{variable}' missing for template '{template_id}'"
+        )
