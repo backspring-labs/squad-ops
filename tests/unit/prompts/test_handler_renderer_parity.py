@@ -57,6 +57,7 @@ def _mock_context(*, renderer: AsyncMock | None = None) -> MagicMock:
     ctx.ports.llm.default_model = "test-model"
     assembled = MagicMock()
     assembled.content = "System prompt"
+    assembled.assembly_hash = "sha256:test_assembly"
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
 
     if renderer is not None:
@@ -276,6 +277,7 @@ def _mock_planning_context(*, renderer: AsyncMock | None = None) -> MagicMock:
     ctx.ports.llm.default_model = "test-model"
     assembled = MagicMock()
     assembled.content = "System prompt"
+    assembled.assembly_hash = "sha256:test_planning_assembly"
     ctx.ports.prompt_service.assemble = MagicMock(return_value=assembled)
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
     ctx.ports.llm_observability = None
@@ -442,3 +444,58 @@ class TestFormatPriorOutputs:
         assert "### dev" in result
         assert "### qa" in result
         assert "### strat" in result
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Prompt provenance recording
+# ---------------------------------------------------------------------------
+
+
+class TestProvenanceRecording:
+    """Verify handlers include prompt_provenance in outputs."""
+
+    async def test_base_handler_records_stage1_provenance(self):
+        ctx = _mock_context(renderer=None)
+        handler = StrategyAnalyzeHandler()
+
+        result = await handler.handle(ctx, {"prd": "Build a game"})
+
+        prov = result.outputs.get("prompt_provenance", {})
+        assert prov["system_prompt_bundle_hash"] == "sha256:test_assembly"
+        # No renderer → no Stage 2 provenance
+        assert "request_template_id" not in prov
+
+    async def test_base_handler_records_stage2_when_renderer_used(self):
+        renderer = _mock_renderer("rendered content")
+        ctx = _mock_context(renderer=renderer)
+        handler = StrategyAnalyzeHandler()
+
+        result = await handler.handle(ctx, {"prd": "Build a game"})
+
+        prov = result.outputs["prompt_provenance"]
+        assert prov["system_prompt_bundle_hash"] == "sha256:test_assembly"
+        assert prov["request_template_id"] == "test"
+        assert prov["request_template_version"] == "1"
+        assert prov["request_render_hash"] is not None
+        assert prov["prompt_environment"] == "production"
+
+    async def test_planning_handler_records_provenance(self):
+        renderer = _mock_renderer("planning output")
+        ctx = _mock_planning_context(renderer=renderer)
+        handler = StrategyFrameObjectiveHandler()
+
+        result = await handler.handle(ctx, {"prd": "Plan it"})
+
+        prov = result.outputs["prompt_provenance"]
+        assert prov["system_prompt_bundle_hash"] == "sha256:test_planning_assembly"
+        assert prov["request_template_id"] == "test"
+
+    async def test_planning_handler_no_renderer_stage1_only(self):
+        ctx = _mock_planning_context(renderer=None)
+        handler = StrategyFrameObjectiveHandler()
+
+        result = await handler.handle(ctx, {"prd": "Plan it"})
+
+        prov = result.outputs["prompt_provenance"]
+        assert prov["system_prompt_bundle_hash"] == "sha256:test_planning_assembly"
+        assert "request_template_id" not in prov

@@ -63,6 +63,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
         failure_evidence = inputs.get("failure_evidence", {})
 
         # SIP-0084: dual-path — use request renderer when available
+        rendered = None
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
             variables: dict[str, str] = {"prd": prd}
@@ -124,6 +125,14 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
 
         duration_ms = (time.perf_counter() - start_time) * 1000
 
+        # SIP-0084 §10: prompt provenance (Stage 2 only — no assembled prompt)
+        provenance: dict[str, Any] = {}
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+
         outputs = {
             "summary": f"[data] Failure classified as {analysis.get('classification', 'unknown')}",
             "role": self._role,
@@ -138,6 +147,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
                     "type": "document",
                 },
             ],
+            "prompt_provenance": provenance,
         }
 
         evidence = HandlerEvidence.create(

@@ -58,6 +58,7 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
         prior_outputs = inputs.get("prior_outputs")
 
         # SIP-0084: dual-path — use request renderer when available
+        rendered = None
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
             variables = self._build_render_variables(prd, prior_outputs, inputs)
@@ -120,6 +121,14 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
 
         duration_ms = (time.perf_counter() - start_time) * 1000
 
+        # SIP-0084 §10: prompt provenance (Stage 2 only — no assembled prompt)
+        provenance: dict[str, Any] = {}
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+
         outputs = {
             "summary": (
                 f"[lead] Run contract established: "
@@ -135,6 +144,7 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
                     "type": "run_contract",
                 },
             ],
+            "prompt_provenance": provenance,
         }
 
         evidence = HandlerEvidence.create(
