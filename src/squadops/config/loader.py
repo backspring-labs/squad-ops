@@ -610,20 +610,9 @@ def load_config(
     # Store resolved profile as private attribute
     app_config._profile = resolved_profile
 
-    # Create DbRuntime instance using persistence factory
-    db_runtime = None
-    if secrets_config:
-        try:
-            from adapters.persistence.factory import get_db_runtime
-
-            db_runtime = get_db_runtime(merged, manager)
-            logger.info("Created DbRuntime instance via persistence factory")
-        except Exception as e:
-            logger.warning(
-                f"Failed to create DbRuntime instance: {e}. Database access may be limited."
-            )
-
-    app_config._db_runtime = db_runtime
+    # NOTE: DbRuntime is created lazily — only the runtime-api needs it.
+    # Agents communicate via RabbitMQ and never access the DB directly.
+    # See AppConfig.get_db_runtime() for on-demand creation.
 
     # Set global singleton
     global _config_instance

@@ -76,6 +76,7 @@ services:
       PREFECT_SERVER_API_HOST: 0.0.0.0
       PREFECT_SERVER_API_PORT: '4200'
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://squadops:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@postgres:5432/squadops
+      PREFECT_SERVER_ANALYTICS_ENABLED: 'false'
     depends_on:
       postgres:
         condition: service_healthy
