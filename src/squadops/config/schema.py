@@ -502,6 +502,19 @@ class TelemetryConfig(BaseModel):
     gcp: GCPTelemetryConfig | None = Field(default=None, description="GCP telemetry config")
 
 
+class PromptsConfig(BaseModel):
+    """Prompt asset source configuration (SIP-0084).
+
+    Controls whether handlers resolve request templates from the local
+    filesystem or from Langfuse's prompt management API.
+    """
+
+    asset_source_provider: str = Field(
+        default="filesystem",
+        description="Prompt asset source provider: 'filesystem' or 'langfuse'",
+    )
+
+
 class LangFuseConfig(BaseModel):
     """LangFuse LLM observability configuration (SIP-0061).
 
@@ -628,6 +641,11 @@ class AppConfig(BaseModel):
 
     # LLM
     llm: LLMConfig = Field(default_factory=LLMConfig, description="LLM configuration")
+
+    # Prompts (SIP-0084)
+    prompts: PromptsConfig = Field(
+        default_factory=PromptsConfig, description="Prompt asset source configuration"
+    )
 
     # Agent
     agent: AgentConfig = Field(default_factory=AgentConfig, description="Agent configuration")

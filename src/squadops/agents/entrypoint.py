@@ -262,6 +262,34 @@ class AgentRunner:
         prompt_service = PromptAssembler(prompt_repo)
         self._prompt_service = prompt_service  # Store for use in chat
 
+        # Create request template renderer (SIP-0084)
+        request_renderer = None
+        try:
+            from adapters.prompts.factory import create_prompt_asset_source
+            from squadops.prompts.renderer import RequestTemplateRenderer
+
+            provider = config.prompts.asset_source_provider
+            if provider == "langfuse":
+                asset_source = create_prompt_asset_source(
+                    provider="langfuse",
+                    public_key=config.langfuse.public_key,
+                    secret_key=config.langfuse.secret_key,
+                    host=config.langfuse.host,
+                )
+            else:
+                asset_source = create_prompt_asset_source(provider="filesystem")
+            request_renderer = RequestTemplateRenderer(asset_source)
+            logger.info(
+                "Request template renderer initialized",
+                extra={"provider": provider, "agent_id": self.agent_id},
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to create request renderer, using fallback prompts: %s",
+                exc,
+                extra={"agent_id": self.agent_id},
+            )
+
         # Create telemetry (metrics + events)
         telemetry_backend = config.telemetry.backend if config.telemetry.backend else "otel"
         metrics, events = create_telemetry_provider(telemetry_backend)
@@ -286,6 +314,7 @@ class AgentRunner:
             "events": events,
             "filesystem": filesystem,
             "llm_observability": llm_observability,
+            "request_renderer": request_renderer,
         }
 
     async def _consume_tasks(self) -> None:

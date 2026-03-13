@@ -218,6 +218,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
+      SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     volumes:
@@ -258,6 +260,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
+      SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     depends_on:
@@ -317,6 +321,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
+      SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     volumes:
@@ -359,6 +365,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
+      SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     depends_on:
@@ -397,6 +405,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
+      SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     volumes:
@@ -439,6 +449,8 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
+      SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
     volumes:
