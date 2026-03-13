@@ -208,4 +208,14 @@ def artifact_to_response(artifact: ArtifactRef) -> ArtifactRefResponse:
         metadata=artifact.metadata,
         vault_uri=artifact.vault_uri,
         promotion_status=artifact.promotion_status,
+        # Prompt provenance (SIP-0084 §10)
+        system_prompt_bundle_hash=artifact.system_prompt_bundle_hash,
+        system_fragment_ids=artifact.system_fragment_ids,
+        system_fragment_versions=artifact.system_fragment_versions,
+        request_template_id=artifact.request_template_id,
+        request_template_version=artifact.request_template_version,
+        request_render_hash=artifact.request_render_hash,
+        capability_supplement_ids=artifact.capability_supplement_ids,
+        full_invocation_bundle_hash=artifact.full_invocation_bundle_hash,
+        prompt_environment=artifact.prompt_environment,
     )

@@ -230,6 +230,17 @@ class ArtifactRefResponse(BaseModel):
     vault_uri: str | None = None
     promotion_status: str = "working"
 
+    # Prompt provenance (SIP-0084 §10)
+    system_prompt_bundle_hash: str | None = None
+    system_fragment_ids: tuple[str, ...] | None = None
+    system_fragment_versions: tuple[str, ...] | None = None
+    request_template_id: str | None = None
+    request_template_version: str | None = None
+    request_render_hash: str | None = None
+    capability_supplement_ids: tuple[str, ...] | None = None
+    full_invocation_bundle_hash: str | None = None
+    prompt_environment: str | None = None
+
 
 class PromptMetaResponse(BaseModel):
     """Prompt field metadata for cycle request profile (SIP-0074 §5.8)."""
