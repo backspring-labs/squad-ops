@@ -12,14 +12,14 @@ canonical sample application and platform selftest.
 squadops login -u squadops-admin
 
 # Submit the PRD as an artifact
-squadops artifacts ingest examples/play_game/prd.md \
+squadops artifacts ingest examples/02_play_game/prd.md \
   --project play_game \
   --type documentation \
   --media-type text/markdown
 
 # Create a cycle using the sample PCR profile
 squadops cycles create play_game \
-  --request-profile examples/play_game/pcr.yaml
+  --request-profile examples/02_play_game/pcr.yaml
 
 # Watch it run
 squadops runs status play_game <cycle_id> --follow
