@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.ports.telemetry.metrics import MetricsPort
     from squadops.ports.tools.filesystem import FileSystemPort
+    from squadops.prompts.renderer import RequestTemplateRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class PortsBundle:
     events: EventPort
     filesystem: FileSystemPort
     llm_observability: LLMObservabilityPort | None = None
+    request_renderer: RequestTemplateRenderer | None = None
 
 
 class BaseAgent:
