@@ -55,10 +55,12 @@ class CheckResult:
 
 
 def check_python_version(profile: BootstrapProfile) -> CheckResult:
-    """Check that the running Python major.minor matches the profile."""
+    """Check that the running Python major.minor >= the profile minimum."""
     expected = profile.python.version
     actual = f"{sys.version_info.major}.{sys.version_info.minor}"
-    if actual == expected:
+    expected_tuple = tuple(int(x) for x in expected.split("."))
+    actual_tuple = (sys.version_info.major, sys.version_info.minor)
+    if actual_tuple >= expected_tuple:
         manager = profile.python.manager
         return CheckResult(
             name="python_version",
@@ -69,13 +71,13 @@ def check_python_version(profile: BootstrapProfile) -> CheckResult:
     fix = (
         f"pyenv install {expected}"
         if profile.python.manager == "pyenv"
-        else f"Install Python {expected} via your system package manager"
+        else f"Install Python {expected}+ via your system package manager"
     )
     return CheckResult(
         name="python_version",
         category="python",
         passed=False,
-        message=f"Expected Python {expected}, found {actual}",
+        message=f"Expected Python >={expected}, found {actual}",
         detail=f"Running: {sys.executable}",
         fix_command=fix,
         auto_fixable=profile.python.manager == "pyenv",
