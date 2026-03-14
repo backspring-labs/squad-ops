@@ -62,8 +62,5 @@ run_bootstrap() {
     # ── Ollama models (large models for DGX Spark) ─────────────────
     info "=== Ollama Models ==="
 
-    pull_model "qwen2.5:72b"
-    pull_model "llama3:70b"
-    pull_model "qwen2.5:7b"
-    pull_model "llama3.1:8b"
+    pull_models_from_profile "config/profiles/bootstrap/local-spark.yaml"
 }

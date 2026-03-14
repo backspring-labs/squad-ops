@@ -106,6 +106,15 @@ run_bootstrap || {
 }
 
 # ---------------------------------------------------------------------------
+# Extensibility hook — source user-local customizations if present
+# ---------------------------------------------------------------------------
+if [[ -f "${HOME}/.squadops/bootstrap.local" ]]; then
+    info "Sourcing ~/.squadops/bootstrap.local..."
+    # shellcheck source=/dev/null
+    source "${HOME}/.squadops/bootstrap.local"
+fi
+
+# ---------------------------------------------------------------------------
 # Auto-run doctor if Python is available (R7)
 # ---------------------------------------------------------------------------
 echo ""
@@ -119,12 +128,6 @@ fi
 echo ""
 success "Bootstrap complete for profile: ${PROFILE}"
 
-if [[ "${SQUADOPS_NEEDS_DOCKER_GROUP:-0}" == "1" ]]; then
-    echo ""
-    warn "You were just added to the 'docker' group."
-    warn "Log out and back in (or run 'newgrp docker') for docker to work without sudo."
-fi
-
 echo ""
 info "Next step: authenticate with Keycloak"
-info "  squadops login -u squadops-admin -p admin123"
+info "  .venv/bin/squadops login -u squadops-admin -p admin123"

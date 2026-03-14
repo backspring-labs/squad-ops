@@ -31,6 +31,24 @@ pull_model() {
     run_or_dry ollama pull "$model"
 }
 
+# Pull all models listed in a bootstrap profile YAML.
+# Uses read_profile_models.py (requires PyYAML, available after install_python_deps).
+pull_models_from_profile() {
+    local profile_yaml="$1"
+    local reader
+    reader="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/read_profile_models.py"
+
+    if [[ ! -f ".venv/bin/python" ]]; then
+        error ".venv not found — cannot read profile YAML for model list"
+        return 1
+    fi
+
+    local model
+    while IFS= read -r model; do
+        [[ -n "$model" ]] && pull_model "$model"
+    done < <(.venv/bin/python "$reader" "$profile_yaml")
+}
+
 # Check if a model is already pulled.
 check_model_present() {
     local model="$1"

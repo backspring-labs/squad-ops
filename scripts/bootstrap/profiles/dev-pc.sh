@@ -34,6 +34,7 @@ run_bootstrap() {
     info "=== Docker Services ==="
 
     ensure_docker_group
+    enable_docker_on_boot
     ensure_env_file
 
     local docker_rc=0
@@ -50,7 +51,5 @@ run_bootstrap() {
     # ── Ollama models ──────────────────────────────────────────────
     info "=== Ollama Models ==="
 
-    pull_model "qwen2.5:7b"
-    pull_model "llama3.1:8b"
-    pull_model "qwen2.5:3b-instruct"
+    pull_models_from_profile "config/profiles/bootstrap/dev-pc.yaml"
 }

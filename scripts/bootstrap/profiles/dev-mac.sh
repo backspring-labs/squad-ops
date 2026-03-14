@@ -40,7 +40,5 @@ run_bootstrap() {
     # ── Ollama models ──────────────────────────────────────────────
     info "=== Ollama Models ==="
 
-    pull_model "qwen2.5:7b"
-    pull_model "llama3.1:8b"
-    pull_model "qwen2.5:3b-instruct"
+    pull_models_from_profile "config/profiles/bootstrap/dev-mac.yaml"
 }

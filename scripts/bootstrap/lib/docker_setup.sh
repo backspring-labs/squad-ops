@@ -2,17 +2,8 @@
 # Docker setup functions for bootstrap (SIP-0081).
 # Sourced by bootstrap.sh — not executed directly.
 
-# Run a docker command, using sg if the docker group was just added this session.
-_run_docker() {
-    if [[ "${SQUADOPS_NEEDS_DOCKER_GROUP:-0}" == "1" ]]; then
-        sg docker -c "$*"
-    else
-        "$@"
-    fi
-}
-
 # Ensure .env and .env.console exist for Docker Compose.
-# Generates .env from .env.example with dev passwords if missing.
+# Copies .env from .env.example (which contains static dev passwords).
 # Generates .env.console from console lock file if missing.
 ensure_env_file() {
     local env_file=".env"
@@ -24,20 +15,9 @@ ensure_env_file() {
         warn "No .env.example found — cannot generate .env"
         return 1
     else
-        info "Creating .env from .env.example with generated dev passwords..."
-        if [[ "${DRY_RUN:-0}" == "1" ]]; then
-            info "[dry-run] cp ${env_example} ${env_file} + generate passwords"
-        else
-            local pg_pass rabbit_pass
-            pg_pass="dev-$(openssl rand -hex 8)"
-            rabbit_pass="dev-$(openssl rand -hex 8)"
-
-            cp "$env_example" "$env_file"
-            sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${pg_pass}|" "$env_file"
-            sed -i "s|^RABBITMQ_PASSWORD=.*|RABBITMQ_PASSWORD=${rabbit_pass}|" "$env_file"
-
-            success ".env created with generated dev passwords"
-        fi
+        info "Creating .env from .env.example..."
+        run_or_dry cp "$env_example" "$env_file"
+        [[ "${DRY_RUN:-0}" != "1" ]] && success ".env created"
     fi
 
     # Create Docker secret files from .env passwords
@@ -108,7 +88,10 @@ ensure_docker_group() {
     run_or_dry sudo usermod -aG docker "$USER"
     if [[ "${DRY_RUN:-0}" != "1" ]]; then
         success "User $USER added to docker group"
-        SQUADOPS_NEEDS_DOCKER_GROUP=1
+        echo ""
+        warn "You were just added to the 'docker' group."
+        warn "Log out and back in (or run 'newgrp docker'), then re-run bootstrap."
+        exit 0
     fi
 }
 
@@ -137,7 +120,7 @@ start_docker_services() {
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
         info "[dry-run] docker compose up -d"
     else
-        _run_docker docker compose up -d
+        docker compose up -d
     fi
 }
 
@@ -155,12 +138,12 @@ wait_for_services() {
     local interval=5
     while [[ $elapsed -lt $timeout ]]; do
         # Check if all services are running
-        local not_running
-        not_running=$(_run_docker docker compose ps --services --filter "status=running" 2>/dev/null | wc -l)
+        local running
+        running=$(docker compose ps --services --filter "status=running" 2>/dev/null | wc -l)
         local total
-        total=$(_run_docker docker compose ps --services 2>/dev/null | wc -l)
+        total=$(docker compose ps --services 2>/dev/null | wc -l)
 
-        if [[ "$not_running" == "$total" ]] && [[ "$total" -gt 0 ]]; then
+        if [[ "$running" == "$total" ]] && [[ "$total" -gt 0 ]]; then
             success "All ${total} services running"
             return 0
         fi
