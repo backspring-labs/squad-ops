@@ -2,7 +2,72 @@
 # Docker setup functions for bootstrap (SIP-0081).
 # Sourced by bootstrap.sh — not executed directly.
 
-# Prompt to enable Docker daemon on boot (systemd only).
+# Run a docker command, using sg if the docker group was just added this session.
+_run_docker() {
+    if [[ "${SQUADOPS_NEEDS_DOCKER_GROUP:-0}" == "1" ]]; then
+        sg docker -c "$*"
+    else
+        "$@"
+    fi
+}
+
+# Ensure .env and .env.console exist for Docker Compose.
+# Generates .env from .env.example with dev passwords if missing.
+# Generates .env.console from console lock file if missing.
+ensure_env_file() {
+    local env_file=".env"
+    local env_example=".env.example"
+
+    if [[ -f "$env_file" ]]; then
+        success ".env file already exists"
+    elif [[ ! -f "$env_example" ]]; then
+        warn "No .env.example found — cannot generate .env"
+        return 1
+    else
+        info "Creating .env from .env.example with generated dev passwords..."
+        if [[ "${DRY_RUN:-0}" == "1" ]]; then
+            info "[dry-run] cp ${env_example} ${env_file} + generate passwords"
+        else
+            local pg_pass rabbit_pass
+            pg_pass="dev-$(openssl rand -hex 8)"
+            rabbit_pass="dev-$(openssl rand -hex 8)"
+
+            cp "$env_example" "$env_file"
+            sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${pg_pass}|" "$env_file"
+            sed -i "s|^RABBITMQ_PASSWORD=.*|RABBITMQ_PASSWORD=${rabbit_pass}|" "$env_file"
+
+            success ".env created with generated dev passwords"
+        fi
+    fi
+
+    # Create Docker secret files from .env passwords
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        info "[dry-run] create secrets/db_password.txt and secrets/rabbitmq_password.txt"
+    elif [[ -f "$env_file" ]]; then
+        mkdir -p secrets
+        if [[ ! -f "secrets/db_password.txt" ]]; then
+            grep '^POSTGRES_PASSWORD=' "$env_file" | cut -d= -f2- > secrets/db_password.txt
+            success "Created secrets/db_password.txt"
+        fi
+        if [[ ! -f "secrets/rabbitmq_password.txt" ]]; then
+            grep '^RABBITMQ_PASSWORD=' "$env_file" | cut -d= -f2- > secrets/rabbitmq_password.txt
+            success "Created secrets/rabbitmq_password.txt"
+        fi
+    fi
+
+    # Generate .env.console for squadops-console build args
+    local gen_console="scripts/dev/gen_console_env.sh"
+    if [[ -f "$gen_console" ]]; then
+        if [[ -f ".env.console" ]]; then
+            success ".env.console already exists"
+        else
+            info "Generating .env.console from console lock file..."
+            run_or_dry bash "$gen_console"
+        fi
+    fi
+}
+
+# Enable Docker daemon on boot and ensure it is running (systemd only).
 enable_docker_on_boot() {
     if [[ "${SKIP_DOCKER:-0}" == "1" ]]; then
         return 0
@@ -12,13 +77,38 @@ enable_docker_on_boot() {
     fi
     if systemctl is-enabled docker &>/dev/null; then
         success "Docker already enabled on boot"
-        return 0
-    fi
-    if confirm_install "Docker auto-start on boot (systemctl enable docker)"; then
+    elif confirm_install "Docker auto-start on boot (systemctl enable docker)"; then
         run_or_dry sudo systemctl enable docker
         success "Docker enabled on boot"
     else
         warn "Skipping Docker on boot — services won't auto-start after reboot"
+    fi
+
+    # Ensure the daemon is actually running
+    if ! systemctl is-active docker &>/dev/null; then
+        info "Starting Docker daemon..."
+        run_or_dry sudo systemctl start docker
+    fi
+}
+
+# Ensure current user is in the docker group (Linux only).
+ensure_docker_group() {
+    if [[ "${SKIP_DOCKER:-0}" == "1" ]]; then
+        return 0
+    fi
+    # macOS Docker Desktop doesn't use group permissions
+    if [[ "$(uname -s)" != "Linux" ]]; then
+        return 0
+    fi
+    if id -nG "$USER" | grep -qw docker; then
+        success "User $USER is in docker group"
+        return 0
+    fi
+    info "Adding $USER to docker group..."
+    run_or_dry sudo usermod -aG docker "$USER"
+    if [[ "${DRY_RUN:-0}" != "1" ]]; then
+        success "User $USER added to docker group"
+        SQUADOPS_NEEDS_DOCKER_GROUP=1
     fi
 }
 
@@ -35,12 +125,29 @@ start_docker_services() {
         return 1
     fi
 
+    # Export .env.console vars so Compose can interpolate build args
+    if [[ -f ".env.console" ]]; then
+        set -a
+        # shellcheck disable=SC1091
+        source .env.console
+        set +a
+    fi
+
     info "Starting Docker Compose services..."
-    run_or_dry docker-compose up -d
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        info "[dry-run] docker compose up -d"
+    else
+        _run_docker docker compose up -d
+    fi
 }
 
 # Wait for services to become healthy.
 wait_for_services() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        info "[dry-run] wait_for_services ${1:-60}"
+        return 0
+    fi
+
     local timeout="${1:-60}"
     info "Waiting up to ${timeout}s for services to become healthy..."
 
@@ -49,9 +156,9 @@ wait_for_services() {
     while [[ $elapsed -lt $timeout ]]; do
         # Check if all services are running
         local not_running
-        not_running=$(docker-compose ps --services --filter "status=running" 2>/dev/null | wc -l)
+        not_running=$(_run_docker docker compose ps --services --filter "status=running" 2>/dev/null | wc -l)
         local total
-        total=$(docker-compose ps --services 2>/dev/null | wc -l)
+        total=$(_run_docker docker compose ps --services 2>/dev/null | wc -l)
 
         if [[ "$not_running" == "$total" ]] && [[ "$total" -gt 0 ]]; then
             success "All ${total} services running"

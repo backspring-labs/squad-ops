@@ -44,7 +44,9 @@ run_bootstrap() {
     # ── Docker services ────────────────────────────────────────────
     info "=== Docker Services ==="
 
+    ensure_docker_group
     enable_docker_on_boot
+    ensure_env_file
 
     local docker_rc=0
     start_docker_services || docker_rc=$?

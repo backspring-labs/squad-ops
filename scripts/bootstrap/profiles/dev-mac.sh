@@ -24,6 +24,8 @@ run_bootstrap() {
     # ── Docker services ────────────────────────────────────────────
     info "=== Docker Services ==="
 
+    ensure_env_file
+
     local docker_rc=0
     start_docker_services || docker_rc=$?
     if [[ "$docker_rc" == "1" ]]; then

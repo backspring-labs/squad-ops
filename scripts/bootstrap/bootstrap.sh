@@ -118,3 +118,13 @@ fi
 
 echo ""
 success "Bootstrap complete for profile: ${PROFILE}"
+
+if [[ "${SQUADOPS_NEEDS_DOCKER_GROUP:-0}" == "1" ]]; then
+    echo ""
+    warn "You were just added to the 'docker' group."
+    warn "Log out and back in (or run 'newgrp docker') for docker to work without sudo."
+fi
+
+echo ""
+info "Next step: authenticate with Keycloak"
+info "  squadops login -u squadops-admin -p admin123"
