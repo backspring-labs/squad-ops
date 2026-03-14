@@ -37,7 +37,8 @@ services:
     - max_connections=200
     volumes:
     - postgres_data:/var/lib/postgresql/data
-    - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql
+    - ./infra/00-create-databases.sh:/docker-entrypoint-initdb.d/00-create-databases.sh
+    - ./infra/init.sql:/docker-entrypoint-initdb.d/01-init.sql
     networks:
     - squadnet
     healthcheck:
