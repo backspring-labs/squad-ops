@@ -4,6 +4,9 @@
 # This script hardcodes install steps matching config/profiles/bootstrap/local-spark.yaml (R1).
 
 run_bootstrap() {
+    # ── Sudo access (fail fast if not available) ───────────────────
+    ensure_sudo
+
     # ── GPU validation (hard checks only per R10) ──────────────────
     info "=== GPU Validation ==="
 
@@ -25,8 +28,8 @@ run_bootstrap() {
     # ── System deps (fail-fast per R7) ─────────────────────────────
     info "=== System Dependencies ==="
 
-    apt_install_package "docker.io"
-    apt_install_package "docker-compose-plugin"
+    apt_install_package "docker.io" "docker"
+    apt_install_package "docker-compose-plugin" "docker"
     apt_install_package "git"
     apt_install_package "curl"
     install_ollama
@@ -43,10 +46,14 @@ run_bootstrap() {
 
     enable_docker_on_boot
 
-    if ! start_docker_services; then
+    local docker_rc=0
+    start_docker_services || docker_rc=$?
+    if [[ "$docker_rc" == "1" ]]; then
         DOCKER_OK=0
         warn "Docker startup failed — skipping model pulls"
         return 0
+    elif [[ "$docker_rc" == "2" ]]; then
+        return 0  # --skip-docker
     fi
     wait_for_services 60 || warn "Some services may not be ready"
 

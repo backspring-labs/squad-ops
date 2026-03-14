@@ -23,10 +23,11 @@ enable_docker_on_boot() {
 }
 
 # Start Docker Compose services.
+# Returns 0 on success, 1 on failure, 2 when skipped via --skip-docker.
 start_docker_services() {
     if [[ "${SKIP_DOCKER:-0}" == "1" ]]; then
         warn "Skipping Docker services (--skip-docker)"
-        return 0
+        return 2
     fi
 
     if ! check_command docker; then

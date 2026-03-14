@@ -9,7 +9,11 @@ install_ollama() {
         return 0
     fi
     info "Installing Ollama..."
-    run_or_dry curl -fsSL https://ollama.com/install.sh | sh
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        info "[dry-run] curl -fsSL https://ollama.com/install.sh | sh"
+    else
+        curl -fsSL https://ollama.com/install.sh | sh
+    fi
 }
 
 # Pull a model if not already present.

@@ -14,8 +14,16 @@ apt_update_once() {
 }
 
 # Install an apt package if not present.
+# Usage: apt_install_package <package> [command_to_check]
+# If command_to_check is given, skip install when that command exists
+# (handles cases like docker-ce satisfying a docker.io request).
 apt_install_package() {
     local package="$1"
+    local check_cmd="${2:-}"
+    if [[ -n "$check_cmd" ]] && check_command "$check_cmd"; then
+        success "${package} already satisfied (${check_cmd} found)"
+        return 0
+    fi
     if dpkg -l "$package" 2>/dev/null | grep -q "^ii"; then
         success "${package} already installed (apt)"
         return 0

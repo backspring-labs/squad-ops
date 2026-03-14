@@ -24,10 +24,14 @@ run_bootstrap() {
     # ── Docker services ────────────────────────────────────────────
     info "=== Docker Services ==="
 
-    if ! start_docker_services; then
+    local docker_rc=0
+    start_docker_services || docker_rc=$?
+    if [[ "$docker_rc" == "1" ]]; then
         DOCKER_OK=0
         warn "Docker startup failed — skipping model pulls"
         return 0
+    elif [[ "$docker_rc" == "2" ]]; then
+        return 0  # --skip-docker
     fi
     wait_for_services 60 || warn "Some services may not be ready"
 
