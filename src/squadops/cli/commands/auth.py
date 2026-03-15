@@ -29,7 +29,8 @@ from squadops.cli.output import print_detail, print_error, print_json, print_suc
 auth_app = typer.Typer(name="auth", help="Authentication management")
 
 # Defaults for local dev
-_DEFAULT_KEYCLOAK_URL = "http://localhost:8180"
+_DEFAULT_KEYCLOAK_HOST = os.environ.get("SQUADOPS_HOST", "localhost")
+_DEFAULT_KEYCLOAK_URL = f"http://{_DEFAULT_KEYCLOAK_HOST}:8180"
 _DEFAULT_REALM = os.environ.get("SQUADOPS_REALM", "squadops-dev")
 _DEFAULT_CLIENT_ID = "squadops-cli"
 

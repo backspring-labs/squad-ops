@@ -22,6 +22,7 @@ run_bootstrap() {
     apt_install_package "git"
     apt_install_package "curl"
     install_ollama
+    configure_ollama_host_binding
 
     # ── Python (fail-fast per R7) ──────────────────────────────────
     info "=== Python Setup ==="
@@ -32,6 +33,11 @@ run_bootstrap() {
 
     # ── Docker services ────────────────────────────────────────────
     info "=== Docker Services ==="
+
+    ensure_docker_group
+    enable_docker_on_boot
+    DEPLOYMENT_PROFILE=dev
+    ensure_env_file
 
     local docker_rc=0
     start_docker_services || docker_rc=$?
@@ -47,7 +53,5 @@ run_bootstrap() {
     # ── Ollama models ──────────────────────────────────────────────
     info "=== Ollama Models ==="
 
-    pull_model "qwen2.5:7b"
-    pull_model "llama3.1:8b"
-    pull_model "qwen2.5:3b-instruct"
+    pull_models_from_profile "config/profiles/bootstrap/dev-pc.yaml"
 }

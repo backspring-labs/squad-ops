@@ -183,17 +183,17 @@ echo -e "${BLUE}📊 Step 2: Ensuring Docker Compose infrastructure is running..
 
 # Always start infrastructure services (they're dependencies)
 echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
-docker-compose up -d rabbitmq postgres redis prefect-server
+docker compose up -d rabbitmq postgres redis prefect-server
 
 # Conditionally start runtime-api and console if they're being rebuilt
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo "Starting runtime-api..."
-    docker-compose up -d runtime-api || true
+    docker compose up -d runtime-api || true
 fi
 
 if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo "Starting console..."
-    docker-compose up -d squadops-console || true
+    docker compose up -d squadops-console || true
 fi
 
 echo "⏳ Waiting for infrastructure to be healthy (30 seconds)..."
@@ -243,12 +243,12 @@ CONSOLE_FAILED=0
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "${YELLOW}📦 Rebuilding runtime-api...${NC}"
     if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-        BUILD_OK=true; docker-compose build --no-cache runtime-api || BUILD_OK=false
+        BUILD_OK=true; docker compose build --no-cache runtime-api || BUILD_OK=false
     else
-        BUILD_OK=true; docker-compose build runtime-api || BUILD_OK=false
+        BUILD_OK=true; docker compose build runtime-api || BUILD_OK=false
     fi
     if [ "$BUILD_OK" = true ]; then
-        docker-compose up -d runtime-api
+        docker compose up -d runtime-api
         echo -e "${GREEN}✅ Runtime API rebuilt and restarted${NC}"
     else
         RUNTIME_API_FAILED=1
@@ -267,7 +267,7 @@ if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
         echo -e "${RED}  ⚠️  gen_console_env.sh failed — skipping console build${NC}"
     fi
 
-    # Export .env.console vars so docker-compose can interpolate build args
+    # Export .env.console vars so docker compose can interpolate build args
     if [ "$CONSOLE_FAILED" != "1" ] && [ -f "$REPO_ROOT/.env.console" ]; then
         set -a
         source "$REPO_ROOT/.env.console"
@@ -277,12 +277,12 @@ if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
 
     if [ "$CONSOLE_FAILED" != "1" ]; then
         if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-            BUILD_OK=true; docker-compose build --no-cache squadops-console || BUILD_OK=false
+            BUILD_OK=true; docker compose build --no-cache squadops-console || BUILD_OK=false
         else
-            BUILD_OK=true; docker-compose build squadops-console || BUILD_OK=false
+            BUILD_OK=true; docker compose build squadops-console || BUILD_OK=false
         fi
         if [ "$BUILD_OK" = true ]; then
-            docker-compose up -d squadops-console
+            docker compose up -d squadops-console
             echo -e "${GREEN}✅ Console rebuilt and restarted${NC}"
         else
             CONSOLE_FAILED=1
@@ -294,7 +294,7 @@ fi
 # Function to get agent role from agent ID
 get_agent_role() {
     local agent_id=$1
-    # Map agent IDs to roles (from instances.yaml or docker-compose)
+    # Map agent IDs to roles (from instances.yaml or docker compose)
     case "$agent_id" in
         max) echo "lead" ;;
         neo) echo "dev" ;;
@@ -316,17 +316,17 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     # Determine which agents to build
     if [ ${#AGENT_LIST[@]} -eq 0 ]; then
         # No agents specified, use default 6 core agents
-        AGENTS=$(docker-compose config --services | grep -E "^(max|nat|neo|eve|bob|data)$" || echo "max nat neo eve bob data")
+        AGENTS=$(docker compose config --services | grep -E "^(max|nat|neo|eve|bob|data)$" || echo "max nat neo eve bob data")
         echo -e "${BLUE}   No agents specified, using default core agents: max, nat, neo, eve, bob, data${NC}"
     else
-        # Use specified agents, validate they exist in docker-compose
+        # Use specified agents, validate they exist in docker compose
         AGENTS=""
-        AVAILABLE_SERVICES=$(docker-compose config --services)
+        AVAILABLE_SERVICES=$(docker compose config --services)
         for agent in "${AGENT_LIST[@]}"; do
             if echo "$AVAILABLE_SERVICES" | grep -q "^${agent}$"; then
                 AGENTS="${AGENTS} ${agent}"
             else
-                echo -e "${YELLOW}  ⚠️  Agent '${agent}' not found in docker-compose, skipping${NC}"
+                echo -e "${YELLOW}  ⚠️  Agent '${agent}' not found in docker compose, skipping${NC}"
             fi
         done
         AGENTS=$(echo $AGENTS | xargs)  # Trim whitespace
@@ -349,7 +349,7 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     # Validate agent packages
     echo -e "${BLUE}   Validating agent packages...${NC}"
     for agent in $AGENTS; do
-        if docker-compose config --services | grep -q "^${agent}$"; then
+        if docker compose config --services | grep -q "^${agent}$"; then
             role=$(get_agent_role "$agent")
             if [ "$role" != "unknown" ]; then
                 echo -e "  📦 Validating ${agent} (role: ${role})..."
@@ -367,15 +367,15 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
 
     for agent in $AGENTS; do
         CURRENT_AGENT=$((CURRENT_AGENT + 1))
-        if docker-compose config --services | grep -q "^${agent}$"; then
+        if docker compose config --services | grep -q "^${agent}$"; then
             echo -e "  🔨 Rebuilding ${agent} [${CURRENT_AGENT}/${TOTAL_AGENTS}]..."
             if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-                docker-compose build --no-cache $agent || {
+                docker compose build --no-cache $agent || {
                     echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
                     exit 1
                 }
             else
-                docker-compose build $agent || {
+                docker compose build $agent || {
                     echo -e "${RED}  ⚠️  Build failed for ${agent}${NC}"
                     exit 1
                 }
@@ -388,9 +388,9 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo ""
     echo -e "${BLUE}🔄 Step 4: Restarting agent containers...${NC}"
     for agent in $AGENTS; do
-        if docker-compose config --services | grep -q "^${agent}$"; then
+        if docker compose config --services | grep -q "^${agent}$"; then
             echo -e "  🔄 Restarting ${agent}..."
-            docker-compose up -d $agent || echo -e "${RED}  ⚠️  Restart failed for ${agent}${NC}"
+            docker compose up -d $agent || echo -e "${RED}  ⚠️  Restart failed for ${agent}${NC}"
         fi
     done
 
@@ -406,14 +406,14 @@ fi
 # Step 6: Verify deployment
 echo ""
 echo -e "${BLUE}✅ Step 6: Verifying deployment...${NC}"
-docker-compose ps
+docker compose ps
 
 echo ""
 echo -e "${GREEN}🎉 Rebuild and deploy complete!${NC}"
 echo ""
 echo -e "${BLUE}Next steps:${NC}"
 if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
-    echo -e "  1. Verify agent logs: ${YELLOW}docker-compose logs --tail=50 max neo${NC}"
+    echo -e "  1. Verify agent logs: ${YELLOW}docker compose logs --tail=50 max neo${NC}"
 fi
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "  2. Check Runtime API health: ${YELLOW}curl http://localhost:8001/health${NC}"

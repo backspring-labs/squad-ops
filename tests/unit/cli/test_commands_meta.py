@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
+from importlib.metadata import version as pkg_version
+
 from squadops.cli import exit_codes
 from squadops.cli.client import CLIError
 from squadops.cli.main import app
@@ -79,7 +81,7 @@ class TestVersionFlag:
     def test_prints_version(self):
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert "0.9." in result.output
+        assert pkg_version("squadops") in result.output
 
     def test_short_flag(self):
         result = runner.invoke(app, ["-V"])

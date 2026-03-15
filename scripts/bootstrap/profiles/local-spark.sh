@@ -33,6 +33,7 @@ run_bootstrap() {
     apt_install_package "git"
     apt_install_package "curl"
     install_ollama
+    configure_ollama_host_binding
 
     # ── Python (R5: system Python, R4: still uses .venv) ───────────
     info "=== Python Setup ==="
@@ -44,7 +45,10 @@ run_bootstrap() {
     # ── Docker services ────────────────────────────────────────────
     info "=== Docker Services ==="
 
+    ensure_docker_group
     enable_docker_on_boot
+    DEPLOYMENT_PROFILE=local
+    ensure_env_file
 
     local docker_rc=0
     start_docker_services || docker_rc=$?
@@ -60,8 +64,5 @@ run_bootstrap() {
     # ── Ollama models (large models for DGX Spark) ─────────────────
     info "=== Ollama Models ==="
 
-    pull_model "qwen2.5:72b"
-    pull_model "llama3:70b"
-    pull_model "qwen2.5:7b"
-    pull_model "llama3.1:8b"
+    pull_models_from_profile "config/profiles/bootstrap/local-spark.yaml"
 }

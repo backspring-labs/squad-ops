@@ -81,23 +81,30 @@ class TestPythonVersion:
         assert result.category == "python"
         assert version in result.message
 
+    def test_pass_higher_version(self):
+        """Running a higher Python than the minimum still passes."""
+        # Use a version lower than current to verify >= semantics
+        profile = _profile(python_version="3.10")
+        result = check_python_version(profile)
+        assert result.passed is True
+
     def test_fail(self):
-        """Wrong version returns failure with fix command."""
-        profile = _profile(python_version="2.7")
+        """Version below minimum returns failure with fix command."""
+        profile = _profile(python_version="99.0")
         result = check_python_version(profile)
         assert result.passed is False
-        assert "2.7" in result.message
+        assert "99.0" in result.message
         assert result.fix_command is not None
 
     def test_fail_pyenv_fix(self):
         """pyenv manager provides specific fix command."""
-        profile = _profile(python_version="2.7", python_manager="pyenv")
+        profile = _profile(python_version="99.0", python_manager="pyenv")
         result = check_python_version(profile)
         assert "pyenv install" in result.fix_command
 
     def test_fail_system_fix(self):
         """system manager provides generic fix message."""
-        profile = _profile(python_version="2.7", python_manager="system")
+        profile = _profile(python_version="99.0", python_manager="system")
         result = check_python_version(profile)
         assert "system package manager" in result.fix_command
 

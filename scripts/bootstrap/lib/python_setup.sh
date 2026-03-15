@@ -17,7 +17,7 @@ setup_pyenv() {
         success "Python ${python_version} already installed via pyenv"
     else
         info "Installing Python ${python_version} via pyenv..."
-        run_or_dry pyenv install "${python_version}"
+        run_or_dry pyenv install "${python_version}" || { error "pyenv install failed — check build dependencies"; exit 1; }
     fi
 
     run_or_dry pyenv local "${python_version}"
@@ -58,8 +58,13 @@ create_venv() {
         success ".venv already exists"
     else
         local py_bin="python3"
-        if [[ -n "$python_version" ]] && check_command "python${python_version}"; then
-            py_bin="python${python_version}"
+        if [[ -n "$python_version" ]]; then
+            if check_command "python${python_version}"; then
+                py_bin="python${python_version}"
+            else
+                error "python${python_version} not found on PATH — cannot create venv"
+                exit 1
+            fi
         fi
         info "Creating .venv with ${py_bin}..."
         run_or_dry "$py_bin" -m venv .venv

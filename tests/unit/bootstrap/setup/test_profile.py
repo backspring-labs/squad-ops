@@ -37,7 +37,7 @@ class TestLoadValidProfile:
         assert profile.schema_version == 1
         assert profile.name == "test-profile"
         assert profile.description == "A test profile"
-        assert profile.deployment_profile == "local"
+        assert profile.deployment_profile == "dev"
         assert profile.squad_profile == "full-squad"
 
         # Platform
@@ -425,7 +425,7 @@ class TestRealProfiles:
         assert len(profile.system_deps) >= 4
         assert len(profile.docker_services) >= 6
         assert len(profile.ollama_models) >= 3
-        assert profile.deployment_profile == "local"
+        assert profile.deployment_profile == "dev"
 
     def test_load_dev_pc_profile(self):
         """dev-pc.yaml loads without error and has expected structure."""
@@ -434,7 +434,7 @@ class TestRealProfiles:
         assert profile.platform.os == "linux"
         assert profile.platform.distro == "ubuntu"
         assert profile.python.manager == "pyenv"
-        assert profile.deployment_profile == "local"
+        assert profile.deployment_profile == "dev"
 
     def test_load_local_spark_profile(self):
         """local-spark.yaml loads without error and has expected structure."""
@@ -443,7 +443,7 @@ class TestRealProfiles:
         assert profile.platform.os == "linux"
         assert profile.platform.distro_min_version == "24.04"
         assert profile.python.manager == "system"
-        assert profile.deployment_profile == "staging"
+        assert profile.deployment_profile == "local"
 
         # Spark has GPU deps
         gpu_deps = [d for d in profile.system_deps if "nvidia" in d.name]

@@ -294,14 +294,14 @@ def _select_profile(cli_profile: str | None = None) -> str:
     """
     Select deployment profile with explicit precedence.
 
-    Precedence: CLI --profile → env SQUADOPS_PROFILE → default "local"
+    Precedence: CLI --profile → env SQUADOPS_PROFILE → default "dev"
     """
     if cli_profile:
         return cli_profile
     env_profile = os.getenv("SQUADOPS_PROFILE")
     if env_profile:
         return env_profile
-    return "local"
+    return "dev"
 
 
 def _load_yaml_file(file_path: Path) -> dict[str, Any]:
@@ -653,7 +653,7 @@ def parse_cli_args() -> argparse.Namespace:
     parser.add_argument(
         "--profile",
         type=str,
-        help="Deployment profile (local, dev, stage, prod)",
+        help="Deployment profile (dev, local, lab, cloud)",
     )
     parser.add_argument(
         "--strict-config",

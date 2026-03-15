@@ -200,7 +200,7 @@ class BootstrapProfile:
 - `system_deps`: docker (apt), docker-compose (apt), ollama (script), git (apt), curl (apt), nvidia-smi (install: none, check: "nvidia-smi"), nvidia-container-toolkit (install: none, check: "nvidia-container-toolkit --version")
 - Same `docker_services` as dev-mac
 - `ollama_models`: qwen2.5:72b (exact), llama3:70b (exact), qwen2.5:7b (exact), llama3.1:8b (exact)
-- `deployment_profile: staging`, `squad_profile: full-squad`
+- `deployment_profile: local`, `squad_profile: full-squad`
 
 ### Commit 1c: Profile loading and validation tests
 

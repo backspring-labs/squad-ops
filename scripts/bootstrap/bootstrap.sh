@@ -5,10 +5,14 @@
 #
 # Profiles: dev-mac, dev-pc, local-spark
 # Options:
+#   --host <name>   Hostname for browser access (default: localhost)
 #   --skip-docker   Skip Docker service startup
 #   --skip-models   Skip Ollama model pulls
 #   --dry-run       Print commands without executing
 #   --yes / -y      Skip confirmation prompts
+#
+# Example (DGX Spark accessed via Tailscale):
+#   ./scripts/bootstrap/bootstrap.sh local-spark --host spark
 #
 # NOTE: This script dispatches by profile NAME (R1 — no YAML parsing in shell).
 
@@ -17,6 +21,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
+# Save full script path and args so ensure_docker_group can re-exec via sg.
+export SQUADOPS_BOOTSTRAP_SCRIPT
+SQUADOPS_BOOTSTRAP_SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+export SQUADOPS_BOOTSTRAP_ARGS="$*"
+
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
@@ -24,6 +33,7 @@ PROFILE=""
 export DRY_RUN=0
 export SKIP_DOCKER=0
 export SKIP_MODELS=0
+export SQUADOPS_HOST="localhost"
 export SQUADOPS_BOOTSTRAP_YES="${SQUADOPS_BOOTSTRAP_YES:-0}"
 
 while [[ $# -gt 0 ]]; do
@@ -32,6 +42,8 @@ while [[ $# -gt 0 ]]; do
         --skip-models) SKIP_MODELS=1; shift ;;
         --dry-run)     DRY_RUN=1; shift ;;
         --yes|-y)      SQUADOPS_BOOTSTRAP_YES=1; shift ;;
+        --host)        SQUADOPS_HOST="$2"; shift 2 ;;
+        --host=*)      SQUADOPS_HOST="${1#*=}"; shift ;;
         -*)            echo "Unknown option: $1" >&2; exit 1 ;;
         *)
             if [[ -z "$PROFILE" ]]; then
@@ -44,7 +56,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$PROFILE" ]]; then
-    echo "Usage: $0 <profile> [--skip-docker] [--skip-models] [--dry-run] [--yes]"
+    echo "Usage: $0 <profile> [--skip-docker] [--skip-models] [--dry-run] [--yes] [--host <hostname>]"
     echo "Profiles: dev-mac, dev-pc, local-spark"
     exit 1
 fi
@@ -106,6 +118,15 @@ run_bootstrap || {
 }
 
 # ---------------------------------------------------------------------------
+# Extensibility hook — source user-local customizations if present
+# ---------------------------------------------------------------------------
+if [[ -f "${HOME}/.squadops/bootstrap.local" ]]; then
+    info "Sourcing ~/.squadops/bootstrap.local..."
+    # shellcheck source=/dev/null
+    source "${HOME}/.squadops/bootstrap.local"
+fi
+
+# ---------------------------------------------------------------------------
 # Auto-run doctor if Python is available (R7)
 # ---------------------------------------------------------------------------
 echo ""
@@ -118,3 +139,8 @@ fi
 
 echo ""
 success "Bootstrap complete for profile: ${PROFILE}"
+
+echo ""
+info "Next step: authenticate with Keycloak"
+info "  source .venv/bin/activate && set -a && source .env && set +a"
+info "  squadops login -u squadops-admin -p admin123"

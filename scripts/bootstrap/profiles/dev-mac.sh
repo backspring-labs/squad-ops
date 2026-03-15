@@ -24,6 +24,9 @@ run_bootstrap() {
     # ── Docker services ────────────────────────────────────────────
     info "=== Docker Services ==="
 
+    DEPLOYMENT_PROFILE=dev
+    ensure_env_file
+
     local docker_rc=0
     start_docker_services || docker_rc=$?
     if [[ "$docker_rc" == "1" ]]; then
@@ -38,7 +41,5 @@ run_bootstrap() {
     # ── Ollama models ──────────────────────────────────────────────
     info "=== Ollama Models ==="
 
-    pull_model "qwen2.5:7b"
-    pull_model "llama3.1:8b"
-    pull_model "qwen2.5:3b-instruct"
+    pull_models_from_profile "config/profiles/bootstrap/dev-mac.yaml"
 }

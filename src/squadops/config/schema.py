@@ -429,7 +429,7 @@ class LLMConfig(BaseModel):
     )
     model: str | None = Field(default=None, description="Default LLM model name")
     use_local: bool = Field(default=True, description="Use local LLM provider")
-    timeout: int = Field(default=60, ge=1, description="LLM request timeout in seconds")
+    timeout: int = Field(default=180, ge=1, description="LLM request timeout in seconds")
 
 
 class AgentConfig(BaseModel):

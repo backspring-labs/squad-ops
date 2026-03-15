@@ -6,12 +6,12 @@ Operational procedures for the SquadOps Keycloak deployment.
 
 | Profile | Realm | Display Name | Environment | MFA | Token TTL | Proxy | TLS |
 |---------|-------|-------------|-------------|-----|-----------|-------|-----|
-| `local` | `squadops-dev` | SquadOps Dev | Laptop | Off | Defaults | none | none |
-| `staging` | `squadops-local` | SquadOps Local | DGX Spark | Admin only | 10 min | edge | external |
+| `dev` | `squadops-dev` | SquadOps Dev | Laptop | Off | Defaults | none | none |
+| `local` | `squadops-local` | SquadOps Local | DGX Spark | Admin only | 10 min | edge | external |
 | `lab` | `squadops-lab` | SquadOps Lab | Home lab | Admin only | 10 min | edge | external |
-| `prod` | `squadops-cloud` | SquadOps Cloud | AWS/GCP/Azure | Admin + operator | 5 min | edge | external |
+| `cloud` | `squadops-cloud` | SquadOps Cloud | AWS/GCP/Azure | Admin + operator | 5 min | edge | external |
 
-Config profiles: `config/profiles/{local,staging,lab,prod}.yaml`
+Config profiles: `config/profiles/{dev,local,lab,cloud}.yaml`
 Realm exports: `infra/auth/squadops-realm{,-staging,-lab,-prod}.json`
 
 ## Starting Keycloak (Local Dev)

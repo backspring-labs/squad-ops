@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 INSTANCES_FILE="$REPO_ROOT/agents/instances/instances.yaml"
-DOCKER_COMPOSE_FILE="$REPO_ROOT/docker-compose.yml"
+DOCKER_COMPOSE_FILE="$REPO_ROOT/docker compose.yml"
 
 echo -e "${BLUE}🚀 SquadOps Agent Deployment${NC}"
 echo "================================"
@@ -27,7 +27,7 @@ if [ ! -f "$INSTANCES_FILE" ]; then
     exit 1
 fi
 
-# Check if docker-compose file exists
+# Check if docker compose file exists
 if [ ! -f "$DOCKER_COMPOSE_FILE" ]; then
     echo -e "${RED}❌ Error: $DOCKER_COMPOSE_FILE not found${NC}"
     exit 1
@@ -51,14 +51,14 @@ deploy_agent() {
     
     echo -e "${YELLOW}📦 Deploying $display_name ($agent_id) - Role: $role${NC}"
     
-    # Set environment variables for docker-compose
+    # Set environment variables for docker compose
     export AGENT_ID="$agent_id"
     export ROLE="$role"
     export DISPLAY_NAME="$display_name"
     export MODEL="$model"
     
     # Deploy the agent
-    docker-compose up -d "$agent_id"
+    docker compose up -d "$agent_id"
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✅ $display_name deployed successfully${NC}"

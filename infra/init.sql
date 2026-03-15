@@ -1,51 +1,8 @@
 -- SquadOps Database Initialization Script
 -- Creates tables for task logging, metrics, and governance data
-
--- LangFuse database (SIP-0061) - shared Postgres instance
--- Note: CREATE DATABASE cannot run inside a transaction block,
--- so we use a DO block with exception handling.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'langfuse') THEN
-        PERFORM dblink_exec('dbname=' || current_database(), 'CREATE DATABASE langfuse');
-    END IF;
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'langfuse database may already exist or dblink not available - skipping';
-END
-$$;
-
--- Create langfuse role if it doesn't exist
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'langfuse') THEN
-        CREATE USER langfuse WITH PASSWORD 'langfuse';
-    END IF;
-END
-$$;
-
-GRANT ALL PRIVILEGES ON DATABASE langfuse TO langfuse;
-
--- Keycloak database (SIP-0062) - shared Postgres instance
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak') THEN
-        PERFORM dblink_exec('dbname=' || current_database(), 'CREATE DATABASE keycloak');
-    END IF;
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'keycloak database may already exist or dblink not available - skipping';
-END
-$$;
-
--- Create keycloak role if it doesn't exist
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'keycloak') THEN
-        CREATE USER keycloak WITH PASSWORD 'keycloak';
-    END IF;
-END
-$$;
-
-GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
+--
+-- Note: Database/role creation for keycloak and langfuse is handled by
+-- 00-create-databases.sh which runs before this script.
 
 -- Drop old table
 DROP TABLE IF EXISTS agent_task_logs CASCADE;
@@ -138,18 +95,15 @@ INSERT INTO projects (project_id, name, description) VALUES
 ON CONFLICT (project_id) DO NOTHING;
 
 -- Insert initial agent status entries
--- Canonical 5-agent squad: max (lead), neo (dev), nat (strategy), eve (qa), data (analytics)
--- SIP-Agent-Lifecycle: Use agent_id (lowercase identifier) and network_status
+-- 6-agent squad: max (lead), neo (dev), nat (strategy), eve (qa), data (analytics), bob (builder)
+-- Agents self-register via heartbeat; seeds here ensure rows exist before first heartbeat.
 INSERT INTO agent_status (agent_id, network_status, lifecycle_state, version) VALUES
 ('max', 'offline', 'UNKNOWN', '1.0.0'),
 ('neo', 'offline', 'UNKNOWN', '1.0.0'),
 ('nat', 'offline', 'UNKNOWN', '1.0.0'),
-('joi', 'offline', 'UNKNOWN', '1.0.0'),
-('data', 'offline', 'UNKNOWN', '1.0.0'),
 ('eve', 'offline', 'UNKNOWN', '1.0.0'),
-('quark', 'offline', 'UNKNOWN', '1.0.0'),
-('glyph', 'offline', 'UNKNOWN', '1.0.0'),
-('og', 'offline', 'UNKNOWN', '1.0.0')
+('data', 'offline', 'UNKNOWN', '1.0.0'),
+('bob', 'offline', 'UNKNOWN', '1.0.0')
 ON CONFLICT (agent_id) DO NOTHING;
 
 -- Squad Memory Pool (SIP-042)
