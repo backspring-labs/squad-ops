@@ -233,7 +233,7 @@ auth:
       mfa_required_for_operator: false
 ```
 
-**`config/profiles/staging.yaml`:**
+**`config/profiles/local.yaml`** (formerly staging.yaml):
 ```yaml
 auth:
   enabled: true
@@ -268,9 +268,9 @@ auth:
       login_events_enabled: true
 ```
 
-**`config/profiles/prod.yaml`:**
-Same as staging with:
-- `realm: squadops-prod`
+**`config/profiles/cloud.yaml`** (formerly prod.yaml):
+Same as local with:
+- `realm: squadops-cloud`
 - `public_url: "https://auth.squadops.example"`
 - `mfa_required_for_operator: true`
 - `access_token_minutes: 5` (tighter in prod)
@@ -384,9 +384,9 @@ Marker: `@pytest.mark.auth`, `@pytest.mark.integration`
 | `infra/auth/squadops-realm.json` | MODIFY — add client roles on squadops-runtime, enable events | 1 |
 | `infra/auth/squadops-realm-staging.json` | NEW — hardened staging realm | 1 |
 | `infra/auth/squadops-realm-prod.json` | NEW — hardened prod realm | 1 |
-| `config/profiles/local.yaml` | NEW — local dev auth profile | 1 |
-| `config/profiles/staging.yaml` | NEW — staging auth profile | 1 |
-| `config/profiles/prod.yaml` | NEW — prod auth profile | 1 |
+| `config/profiles/dev.yaml` | NEW — dev auth profile | 1 |
+| `config/profiles/local.yaml` | NEW — local (DGX Spark) auth profile | 1 |
+| `config/profiles/cloud.yaml` | NEW — cloud auth profile | 1 |
 | `tests/unit/auth/test_keycloak_operational_config.py` | NEW — config validation tests | 1 |
 | `docker-compose.yml` | MODIFY — add operational env var comments | 2 |
 | `docs/ops/keycloak-operations.md` | NEW — operational runbook | 2 |

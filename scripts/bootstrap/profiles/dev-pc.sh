@@ -22,6 +22,7 @@ run_bootstrap() {
     apt_install_package "git"
     apt_install_package "curl"
     install_ollama
+    configure_ollama_host_binding
 
     # ── Python (fail-fast per R7) ──────────────────────────────────
     info "=== Python Setup ==="
@@ -35,6 +36,7 @@ run_bootstrap() {
 
     ensure_docker_group
     enable_docker_on_boot
+    DEPLOYMENT_PROFILE=dev
     ensure_env_file
 
     local docker_rc=0

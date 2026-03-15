@@ -24,6 +24,7 @@ run_bootstrap() {
     # ── Docker services ────────────────────────────────────────────
     info "=== Docker Services ==="
 
+    DEPLOYMENT_PROFILE=dev
     ensure_env_file
 
     local docker_rc=0

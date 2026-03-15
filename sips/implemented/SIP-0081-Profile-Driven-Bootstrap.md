@@ -143,7 +143,7 @@ ollama_models:
   - name: "qwen2.5:3b-instruct"
     required: true
 
-deployment_profile: local       # Links to existing config/profiles/local.yaml
+deployment_profile: dev         # Links to existing config/profiles/dev.yaml
 squad_profile: full-squad       # Links to config/squad-profiles.yaml
 ```
 
@@ -174,7 +174,7 @@ Key differences for `local-spark`:
 - `nvidia-smi` and `nvidia-container-toolkit` as system deps with `install: none` (validate only — NVIDIA pre-installs drivers on DGX hardware)
 - Large models (`qwen2.5:72b`, `llama3:70b`) in addition to small ones
 - Ollama runs with `--gpus all` flag
-- `deployment_profile: staging` (links to the existing DGX Spark auth profile)
+- `deployment_profile: local` (links to the existing DGX Spark auth profile)
 
 #### Flexible Model Requirements
 
@@ -404,8 +404,8 @@ ollama pull llama3:70b
 ollama pull qwen2.5:7b
 ollama pull llama3.1:8b
 
-# Link to staging deployment profile (edge proxy, MFA for admin)
-export SQUADOPS_PROFILE=staging
+# Link to local deployment profile (edge proxy, MFA for admin)
+export SQUADOPS_PROFILE=local
 ```
 
 ### D6: DGX Spark GPU Validation
@@ -494,8 +494,8 @@ This SIP adds a new profile layer that **complements** the existing ones. No exi
 
 ```
 Existing (unchanged):
-  config/profiles/local.yaml          ← Auth config (Keycloak)
-  config/profiles/staging.yaml        ← Auth config (DGX Spark)
+  config/profiles/dev.yaml            ← Auth config (Keycloak, laptop dev)
+  config/profiles/local.yaml          ← Auth config (DGX Spark)
   config/squad-profiles.yaml          ← Agent roster + models
   src/squadops/contracts/cycle_request_profiles/  ← Workload behavior
 
@@ -505,7 +505,7 @@ New (this SIP):
   config/profiles/bootstrap/local-spark.yaml
 ```
 
-Each bootstrap profile references the deployment profile it pairs with (`deployment_profile: local` or `deployment_profile: staging`), creating a clear link without coupling.
+Each bootstrap profile references the deployment profile it pairs with (`deployment_profile: dev` or `deployment_profile: local`), creating a clear link without coupling.
 
 ### D10: Documentation
 
@@ -612,7 +612,7 @@ starts services, and validates everything.
 | D10 | GPU validation uses layered checks with heuristic results marked explicitly | Prevents false confidence. Makes Spark readiness easier to troubleshoot. |
 | D11 | Models support `required_one_of` alternative syntax alongside exact requirements | Makes profiles resilient to model tag changes without rewriting scripts. |
 | D12 | Models are pulled by the bootstrap script, not pre-baked into Docker images | Model files are large (4-40GB). Pulling on first run is standard Ollama practice and allows model updates without rebuilding images. |
-| D13 | Each bootstrap profile references a deployment profile by name | Creates a link (`dev-mac → local`, `local-spark → staging`) without coupling the schemas. |
+| D13 | Each bootstrap profile references a deployment profile by name | Creates a link (`dev-mac → dev`, `local-spark → local`) without coupling the schemas. |
 | D14 | `dev-mac` expects Docker Desktop (confirmation required); `dev-pc` expects Docker Engine + compose plugin | Makes licensing and operator intent explicit. Heavyweight installs always prompt unless `--yes`. |
 | D15 | Doctor failure output always includes: what failed, why, fix command, auto-fixable flag | Makes doctor valuable even for users who don't want bootstrap to mutate their machine. |
 | D16 | v1.0 bootstrap runs on the target machine only — no remote orchestration | Keeps the first version grounded. Remote deployment tooling is a future concern. |

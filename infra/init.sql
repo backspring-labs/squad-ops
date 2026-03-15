@@ -95,18 +95,15 @@ INSERT INTO projects (project_id, name, description) VALUES
 ON CONFLICT (project_id) DO NOTHING;
 
 -- Insert initial agent status entries
--- Canonical 5-agent squad: max (lead), neo (dev), nat (strategy), eve (qa), data (analytics)
--- SIP-Agent-Lifecycle: Use agent_id (lowercase identifier) and network_status
+-- 6-agent squad: max (lead), neo (dev), nat (strategy), eve (qa), data (analytics), bob (builder)
+-- Agents self-register via heartbeat; seeds here ensure rows exist before first heartbeat.
 INSERT INTO agent_status (agent_id, network_status, lifecycle_state, version) VALUES
 ('max', 'offline', 'UNKNOWN', '1.0.0'),
 ('neo', 'offline', 'UNKNOWN', '1.0.0'),
 ('nat', 'offline', 'UNKNOWN', '1.0.0'),
-('joi', 'offline', 'UNKNOWN', '1.0.0'),
-('data', 'offline', 'UNKNOWN', '1.0.0'),
 ('eve', 'offline', 'UNKNOWN', '1.0.0'),
-('quark', 'offline', 'UNKNOWN', '1.0.0'),
-('glyph', 'offline', 'UNKNOWN', '1.0.0'),
-('og', 'offline', 'UNKNOWN', '1.0.0')
+('data', 'offline', 'UNKNOWN', '1.0.0'),
+('bob', 'offline', 'UNKNOWN', '1.0.0')
 ON CONFLICT (agent_id) DO NOTHING;
 
 -- Squad Memory Pool (SIP-042)

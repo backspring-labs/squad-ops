@@ -33,6 +33,7 @@ run_bootstrap() {
     apt_install_package "git"
     apt_install_package "curl"
     install_ollama
+    configure_ollama_host_binding
 
     # ── Python (R5: system Python, R4: still uses .venv) ───────────
     info "=== Python Setup ==="
@@ -46,6 +47,7 @@ run_bootstrap() {
 
     ensure_docker_group
     enable_docker_on_boot
+    DEPLOYMENT_PROFILE=local
     ensure_env_file
 
     local docker_rc=0

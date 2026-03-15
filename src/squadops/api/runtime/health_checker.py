@@ -204,10 +204,11 @@ class HealthChecker:
             await conn.execute(
                 """
                 INSERT INTO agent_status
-                (agent_id, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (agent_id, network_status, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at)
+                VALUES ($1, 'online', $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (agent_id)
                 DO UPDATE SET
+                    network_status = 'online',
                     lifecycle_state = $2, last_heartbeat = $3, current_task_id = $4,
                     version = $5, tps = $6, memory_count = $7, updated_at = $8
                 """,

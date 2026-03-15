@@ -60,7 +60,7 @@ def valid_profile_data() -> dict:
         "ollama_models": [
             {"name": "qwen2.5:7b", "required": True},
         ],
-        "deployment_profile": "local",
+        "deployment_profile": "dev",
         "squad_profile": "full-squad",
     }
 

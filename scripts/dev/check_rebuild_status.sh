@@ -26,4 +26,4 @@ fi
 
 echo ""
 echo "Container status:"
-docker-compose ps --format "table {{.Name}}\t{{.Status}}" | head -15
+docker compose ps --format "table {{.Name}}\t{{.Status}}" | head -15

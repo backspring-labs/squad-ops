@@ -3,16 +3,16 @@
   "displayName": "squad_ops (local)",
   "loginTheme": "squadops",
   "enabled": true,
-  "sslRequired": "external",
+  "sslRequired": "none",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
-  "maxFailureWaitSeconds": 900,
-  "waitIncrementSeconds": 60,
-  "maxLoginFailures": 5,
+  "failureFactor": 5,
+  "maxDeltaTimeSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
   "accessTokenLifespan": 600,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 28800,
@@ -43,18 +43,6 @@
         "description": "Read-only access to dashboards and status",
         "composite": false,
         "clientRole": false
-      },
-      {
-        "name": "mfa-required",
-        "description": "Composite role that triggers MFA enforcement for admin and operator users",
-        "composite": true,
-        "clientRole": false,
-        "composites": {
-          "realm": [
-            "admin",
-            "operator"
-          ]
-        }
       }
     ],
     "client": {
@@ -91,19 +79,17 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
-      "rootUrl": "https://console.staging.squadops.example",
+      "rootUrl": "http://localhost:4040",
       "baseUrl": "/",
       "redirectUris": [
-        "https://console.staging.squadops.example/*",
-        "https://api.staging.squadops.example/*"
+        "*"
       ],
       "webOrigins": [
-        "https://console.staging.squadops.example",
-        "https://api.staging.squadops.example"
+        "+"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://console.staging.squadops.example/*"
+        "post.logout.redirect.uris": "+"
       },
       "protocolMappers": [
         {
@@ -123,10 +109,7 @@
         "profile",
         "email",
         "roles"
-      ],
-      "authenticationFlowBindingOverrides": {
-        "browser": "squadops-browser-with-mfa"
-      }
+      ]
     },
     {
       "clientId": "squadops-runtime",
@@ -135,7 +118,7 @@
       "enabled": true,
       "publicClient": false,
       "standardFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
       "protocol": "openid-connect",
       "secret": "squadops-runtime-secret",
@@ -162,11 +145,11 @@
     {
       "clientId": "squadops-cli",
       "name": "SquadOps CLI",
-      "description": "Public client for CLI authentication (device flow only)",
+      "description": "Public client for CLI authentication (password grant + device flow)",
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
       "attributes": {
@@ -193,87 +176,6 @@
       ]
     }
   ],
-  "authenticationFlows": [
-    {
-      "alias": "squadops-browser-with-mfa",
-      "description": "Browser flow with conditional MFA for privileged roles",
-      "providerId": "basic-flow",
-      "topLevel": true,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "auth-cookie",
-          "requirement": "ALTERNATIVE",
-          "priority": 10,
-          "userSetupAllowed": false,
-          "autheticatorFlow": false
-        },
-        {
-          "flowAlias": "squadops-username-password-mfa",
-          "requirement": "ALTERNATIVE",
-          "priority": 20,
-          "userSetupAllowed": false,
-          "autheticatorFlow": true
-        }
-      ]
-    },
-    {
-      "alias": "squadops-username-password-mfa",
-      "description": "Username/password with conditional MFA subflow",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "auth-username-password-form",
-          "requirement": "REQUIRED",
-          "priority": 10,
-          "userSetupAllowed": false,
-          "autheticatorFlow": false
-        },
-        {
-          "flowAlias": "squadops-conditional-otp",
-          "requirement": "CONDITIONAL",
-          "priority": 20,
-          "userSetupAllowed": false,
-          "autheticatorFlow": true
-        }
-      ]
-    },
-    {
-      "alias": "squadops-conditional-otp",
-      "description": "Conditional OTP based on user role",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "conditional-user-role",
-          "authenticatorConfig": "squadops-mfa-role-condition",
-          "requirement": "REQUIRED",
-          "priority": 10,
-          "userSetupAllowed": false,
-          "autheticatorFlow": false
-        },
-        {
-          "authenticator": "auth-otp-form",
-          "requirement": "REQUIRED",
-          "priority": 20,
-          "userSetupAllowed": false,
-          "autheticatorFlow": false
-        }
-      ]
-    }
-  ],
-  "authenticatorConfig": [
-    {
-      "alias": "squadops-mfa-role-condition",
-      "config": {
-        "condUserRole": "mfa-required",
-        "negate": "false"
-      }
-    }
-  ],
   "users": [
     {
       "username": "squadops-admin",
@@ -292,8 +194,7 @@
       "realmRoles": [
         "admin",
         "operator",
-        "viewer",
-        "mfa-required"
+        "viewer"
       ]
     }
   ],

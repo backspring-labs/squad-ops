@@ -100,6 +100,8 @@ ollama_models:
     required: true
   - name: "llama3.1:8b"
     required: true
+  - name: "qwen2.5:3b-instruct"
+    required: true
 
-deployment_profile: staging
+deployment_profile: local
 squad_profile: full-squad
