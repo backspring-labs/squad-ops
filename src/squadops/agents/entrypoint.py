@@ -158,6 +158,14 @@ class AgentRunner:
             # Start heartbeat task
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
+            # Start A2A messaging server if wired (SIP-0085 P2-RC3)
+            if self.system and self.system.ports.messaging is not None:
+                await self.system.ports.messaging.start()
+                logger.info(
+                    "A2A messaging server started",
+                    extra={"agent_id": self.agent_id},
+                )
+
             # Start consuming tasks
             await self._consume_tasks()
 
@@ -178,6 +186,11 @@ class AgentRunner:
                 await self._heartbeat_task
             except asyncio.CancelledError:
                 pass
+
+        # Stop A2A messaging server (SIP-0085)
+        if self.system and self.system.ports.messaging is not None:
+            await self.system.ports.messaging.stop()
+            logger.info("A2A messaging server stopped", extra={"agent_id": self.agent_id})
 
         # Shutdown system
         if self.system:
@@ -305,6 +318,69 @@ class AgentRunner:
         queue = RabbitMQAdapter(url=rabbitmq_url)
         self._queue = queue  # Store for use in _consume_tasks
 
+        # Conditionally wire A2A messaging (SIP-0085 P2-RC6)
+        messaging = None
+        if self._instance_config.get("a2a_messaging_enabled", False):
+            try:
+                from adapters.comms.a2a_server import (
+                    A2AServerAdapter,
+                    AgentCardConfig,
+                    build_agent_card,
+                )
+                from adapters.comms.chat_executor import ChatAgentExecutor
+                from squadops import __version__ as SQUADOPS_VERSION
+                from squadops.agents.base import PortsBundle
+
+                # 1. Build PortsBundle without messaging
+                ports_without_messaging = PortsBundle(
+                    llm=llm,
+                    memory=memory,
+                    prompt_service=prompt_service,
+                    queue=queue,
+                    metrics=metrics,
+                    events=events,
+                    filesystem=filesystem,
+                    llm_observability=llm_observability,
+                    request_renderer=request_renderer,
+                    messaging=None,
+                )
+
+                # 2. Create executor with the bundle
+                chat_executor = ChatAgentExecutor(
+                    ports=ports_without_messaging,
+                    role_id=self.role,
+                )
+
+                # 3. Build agent card and create server adapter
+                a2a_port = self._instance_config.get("a2a_port", 8080)
+                card_config = AgentCardConfig(
+                    agent_id=self.agent_id,
+                    display_name=self._display_name,
+                    description=self._description,
+                    version=SQUADOPS_VERSION,
+                    port=a2a_port,
+                )
+                agent_card = build_agent_card(card_config)
+                messaging = A2AServerAdapter(
+                    agent_card=agent_card,
+                    executor=chat_executor,
+                    port=a2a_port,
+                )
+
+                logger.info(
+                    "A2A messaging wired",
+                    extra={
+                        "agent_id": self.agent_id,
+                        "a2a_port": a2a_port,
+                    },
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to wire A2A messaging: %s",
+                    exc,
+                    extra={"agent_id": self.agent_id},
+                )
+
         return {
             "llm": llm,
             "memory": memory,
@@ -315,6 +391,7 @@ class AgentRunner:
             "filesystem": filesystem,
             "llm_observability": llm_observability,
             "request_renderer": request_renderer,
+            "messaging": messaging,
         }
 
     async def _consume_tasks(self) -> None:

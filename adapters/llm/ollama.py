@@ -6,6 +6,9 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 
 from __future__ import annotations
 
+import json
+import logging
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -17,6 +20,8 @@ from squadops.llm.exceptions import (
 )
 from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
 from squadops.ports.llm.provider import LLMPort
+
+logger = logging.getLogger(__name__)
 
 
 class OllamaAdapter(LLMPort):
@@ -114,6 +119,32 @@ class OllamaAdapter(LLMPort):
                 raise LLMModelNotFoundError(f"Model '{model}' not found") from e
             raise LLMConnectionError(f"Ollama request failed: {e}") from e
 
+    def _build_chat_payload(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        max_tokens: int | None,
+        temperature: float | None,
+        *,
+        stream: bool = False,
+    ) -> dict[str, Any]:
+        """Build the Ollama /api/chat request payload."""
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "stream": stream,
+        }
+
+        options: dict[str, Any] = {}
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
+        if temperature is not None:
+            options["temperature"] = temperature
+        if options:
+            payload["options"] = options
+
+        return payload
+
     async def chat(
         self,
         messages: list[ChatMessage],
@@ -135,22 +166,11 @@ class OllamaAdapter(LLMPort):
             Assistant's response message
         """
         client = await self._get_client()
-        model = model or self._default_model
+        resolved_model = model or self._default_model
         timeout = timeout_seconds or self._timeout
-
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
-            "stream": False,
-        }
-
-        options: dict[str, Any] = {}
-        if max_tokens is not None:
-            options["num_predict"] = max_tokens
-        if temperature is not None:
-            options["temperature"] = temperature
-        if options:
-            payload["options"] = options
+        payload = self._build_chat_payload(
+            messages, resolved_model, max_tokens, temperature, stream=False,
+        )
 
         try:
             response = await client.post(
@@ -170,6 +190,62 @@ class OllamaAdapter(LLMPort):
             raise LLMTimeoutError(f"Ollama chat timed out after {timeout}s") from e
         except httpx.ConnectError as e:
             raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise LLMModelNotFoundError(f"Model '{resolved_model}' not found") from e
+            raise LLMConnectionError(f"Ollama chat failed: {e}") from e
+
+    async def chat_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream chat response as plain text chunks.
+
+        Uses Ollama /api/chat with stream=true. Returns newline-delimited
+        JSON where each line has message.content with the next text chunk.
+        """
+        client = await self._get_client()
+        resolved_model = model or self._default_model
+        timeout = timeout_seconds or self._timeout
+        payload = self._build_chat_payload(
+            messages, resolved_model, max_tokens, temperature, stream=True,
+        )
+
+        try:
+            async with client.stream(
+                "POST",
+                "/api/chat",
+                json=payload,
+                timeout=timeout,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.debug("Skipping malformed Ollama stream line")
+                        continue
+                    content = chunk.get("message", {}).get("content", "")
+                    if content:
+                        yield content
+        except httpx.TimeoutException as e:
+            raise LLMTimeoutError(f"Ollama chat_stream timed out after {timeout}s") from e
+        except httpx.ConnectError as e:
+            raise LLMConnectionError(
+                f"Failed to connect to Ollama at {self._base_url}"
+            ) from e
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise LLMModelNotFoundError(
+                    f"Model '{resolved_model}' not found"
+                ) from e
+            raise LLMConnectionError(f"Ollama chat_stream failed: {e}") from e
 
     def list_models(self) -> list[str]:
         """List available models (sync, returns cached list).

@@ -7,5 +7,9 @@ aio-pika==9.3.1
 # Memory system (SIP-042)
 lancedb==0.8.2
 
+# A2A Messaging (SIP-0085)
+a2a-sdk[http-server]>=0.3.0
+uvicorn>=0.30.0
+
 # LLM Observability (SIP-0061)
 langfuse>=2.0,<3.0

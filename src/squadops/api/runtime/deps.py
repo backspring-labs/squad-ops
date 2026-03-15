@@ -205,3 +205,31 @@ def get_llm_port() -> LLMPort:
     if _llm_port is None:
         raise RuntimeError("LLMPort not configured")
     return _llm_port
+
+
+# =============================================================================
+# SIP-0085: Chat ports
+# =============================================================================
+
+
+def set_chat_ports(
+    *,
+    chat_repo: object | None = None,
+    chat_cache: object | None = None,
+    a2a_client: object | None = None,
+    all_agents: dict | None = None,
+    messaging_agents: dict | None = None,
+) -> None:
+    """Set SIP-0085 chat port instances for dependency injection."""
+    from squadops.api.routes.chat import routes as chat_routes
+
+    if chat_repo is not None:
+        chat_routes._chat_repo = chat_repo
+    if chat_cache is not None:
+        chat_routes._chat_cache = chat_cache
+    if a2a_client is not None:
+        chat_routes._a2a_client = a2a_client
+    if all_agents is not None:
+        chat_routes._all_agents = all_agents
+    if messaging_agents is not None:
+        chat_routes._messaging_agents = messaging_agents

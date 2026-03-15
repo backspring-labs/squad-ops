@@ -122,6 +122,13 @@ from squadops.api.routes.platform_health import router as platform_health_router
 
 app.include_router(platform_health_router)
 
+# SIP-0085: Chat routes for console messaging
+from squadops.api.routes.chat import agents_router as chat_agents_router  # noqa: E402
+from squadops.api.routes.chat import chat_router  # noqa: E402
+
+app.include_router(chat_router)
+app.include_router(chat_agents_router)
+
 # Global connection pool (for memory endpoints only)
 pool: asyncpg.Pool | None = None
 
@@ -356,6 +363,57 @@ async def startup_event():
         logger.info("Platform health checker initialized")
     except Exception as e:
         logger.error(f"Failed to initialize health checker: {e}")
+
+    # SIP-0085: Initialize chat ports for console messaging
+    try:
+        import yaml
+
+        from adapters.comms.a2a_client import A2AClientAdapter
+        from adapters.persistence.chat_repository import ChatRepository
+        from squadops.api.runtime.deps import set_chat_ports
+
+        chat_repo = ChatRepository(pool=pool)
+        a2a_client = A2AClientAdapter()
+
+        # Load agents from instances.yaml — all agents for lookup,
+        # messaging-enabled subset for the listing endpoint.
+        all_agents: dict = {}
+        messaging_agents: dict = {}
+        instances_path = config.agent.instances_file
+        if instances_path.exists():
+            with open(instances_path) as f:
+                instances_data = yaml.safe_load(f)
+            for inst in instances_data.get("instances", []):
+                agent_id = inst["id"]
+                # Ensure required fields for route consumption
+                inst.setdefault("a2a_host", inst.get("host", "localhost"))
+                inst.setdefault("a2a_port", config.agent.a2a_port)
+                inst.setdefault("display_name", agent_id)
+                inst.setdefault("description", "")
+                all_agents[agent_id] = inst
+                if inst.get("a2a_messaging_enabled", False):
+                    messaging_agents[agent_id] = inst
+
+        # Wire Redis cache if available
+        chat_cache = None
+        if _redis_client:
+            from adapters.persistence.chat_cache import ChatSessionCache
+
+            chat_cache = ChatSessionCache(redis=_redis_client)
+
+        set_chat_ports(
+            chat_repo=chat_repo,
+            chat_cache=chat_cache,
+            a2a_client=a2a_client,
+            all_agents=all_agents,
+            messaging_agents=messaging_agents,
+        )
+        logger.info(
+            "SIP-0085 chat ports initialized",
+            extra={"messaging_agents": list(messaging_agents.keys())},
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize chat ports: {e}")
 
 
 @app.on_event("shutdown")

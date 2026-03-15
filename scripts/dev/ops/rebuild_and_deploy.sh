@@ -301,10 +301,9 @@ get_agent_role() {
         nat) echo "strat" ;;
         eve) echo "qa" ;;
         bob) echo "builder" ;;
-        glyph) echo "comms" ;;
         data) echo "data" ;;
         quark) echo "finance" ;;
-        joi) echo "curator" ;;
+        joi) echo "comms" ;;
         og) echo "creative" ;;
         hal) echo "audit" ;;
         *) echo "unknown" ;;

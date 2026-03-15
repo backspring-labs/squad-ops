@@ -518,27 +518,51 @@ services:
   #   networks:
   #   - squadnet
 
-  # joi (comms) - Disabled: Role not yet ported to new architecture (SIP-0.8.8)
-  # joi:
-  #   build:
-  #     context: .
-  #     dockerfile: agents/Dockerfile
-  #     args:
-  #       AGENT_ROLE: comms
-  #       BUILD_HASH: ${BUILD_HASH:-unknown}
-  #   container_name: squadops-joi
-  #   environment:
-  #     SQUADOPS__AGENT__ID: joi
-  #     SQUADOPS_AGENT_ROLE: comms
-  #   depends_on:
-  #     rabbitmq:
-  #       condition: service_healthy
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   networks:
-  #   - squadnet
+  # joi (comms) - SIP-0085: A2A messaging enabled
+  joi:
+    build:
+      context: .
+      dockerfile: agents/Dockerfile
+      args:
+        AGENT_ROLE: comms
+        BUILD_HASH: ${BUILD_HASH:-unknown}
+        SOURCE_HASH: ${SOURCE_HASH:-unknown}
+    container_name: squadops-joi
+    restart: unless-stopped
+    secrets:
+      - db_password
+      - rabbitmq_password
+      - keycloak_admin_password
+      - keycloak_db_dsn
+    environment:
+      SQUADOPS__AGENT__ID: comms-agent
+      SQUADOPS_AGENT_ROLE: comms
+      SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
+      SQUADOPS__SECRETS__PROVIDER: docker_secret
+      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
+      SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
+      SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
+      SQUADOPS__TELEMETRY__BACKEND: otel
+      SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+      SQUADOPS__LANGFUSE__ENABLED: "true"
+      SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
+      SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
+      SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
+      SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
+      SQUADOPS__AUTH__ENABLED: "false"
+    volumes:
+      - joi_memory_data:/app/data/memory_db
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - squadnet
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # og (curator) - Disabled: Role not yet ported to new architecture (SIP-0.8.8)
   # og:
@@ -700,6 +724,7 @@ volumes:
   neo_memory_data: {}
   bob_memory_data: {}
   data_memory_data: {}
+  joi_memory_data: {}
 secrets:
   db_password:
     file: ./secrets/db_password.txt
