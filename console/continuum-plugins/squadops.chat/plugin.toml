@@ -1,0 +1,18 @@
+[plugin]
+id = "squadops.chat"
+name = "Chat"
+version = "0.1.0"
+description = "Console messaging — chat with agents via drawer overlay."
+required = false
+
+[plugin.ui]
+tag_prefix = "squadops-chat"
+bundle = "plugin.js"
+
+[[contributions.panel]]
+id = "agent_chat"
+slot = "ui.slot.drawer"
+component = "squadops-chat-drawer"
+title = "Chat with Joi"
+width = "400px"
+priority = 200

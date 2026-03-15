@@ -2,6 +2,12 @@ version: 0.9.18
 updated_at: '2026-03-13T14:40:23.887991Z'
 fragments:
 - fragment_id: identity
+  path: roles/comms/identity.md
+  layer: identity
+  roles:
+  - comms
+  sha256: 4f2490b4bd0deedf2d00dea843e519601ee5582a200e98bc61ee64bb9030e654
+- fragment_id: identity
   path: roles/data/identity.md
   layer: identity
   roles:
@@ -127,4 +133,4 @@ fragments:
   roles:
   - lead
   sha256: 91af4ac066ce276fb60d7a049321c9f2743e5e32da671de40c9c7476fab0d28a
-manifest_hash: 8f76a4385083ce3b6b21f8a229f134bfcdc2499d5de75fdb7ec17d978b2b6b21
+manifest_hash: 1468b9fca859dab1d46171f6e5e66236b785cfc4a43655c7e5f64c69506d3dde

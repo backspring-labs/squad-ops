@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from squadops.agents.skills.registry import SkillRegistry
+    from squadops.ports.comms.messaging import MessagingPort
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.llm.provider import LLMPort
     from squadops.ports.memory.store import MemoryPort
@@ -42,6 +43,7 @@ class PortsBundle:
     filesystem: FileSystemPort
     llm_observability: LLMObservabilityPort | None = None
     request_renderer: RequestTemplateRenderer | None = None
+    messaging: MessagingPort | None = None
 
 
 class BaseAgent:

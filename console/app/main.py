@@ -298,7 +298,10 @@ async def lifespan(app: FastAPI):
     global _runtime, _api_client
 
     # Create shared httpx client for runtime-api calls
-    _api_client = httpx.AsyncClient(base_url=SQUADOPS_API_URL)
+    _api_client = httpx.AsyncClient(
+        base_url=SQUADOPS_API_URL,
+        timeout=httpx.Timeout(connect=5.0, read=120.0, write=5.0, pool=5.0),
+    )
 
     # Create session stores — try Redis, fall back to memory
     session_store: MemorySessionStore | RedisSessionStore
@@ -424,6 +427,126 @@ async def proxy_health_agents():
 
         return JSONResponse({"error": "upstream unavailable"}, status_code=resp.status_code)
     return resp.json()
+
+
+# ── Chat proxy routes (SSE streaming — SIP-0085 Phase 4) ──────────────────
+
+
+@app.post("/api/chat/{path:path}")
+async def proxy_chat_stream(path: str, request: Request):
+    """Streaming proxy for chat POST — SSE via fetch+ReadableStream (P4-RC2).
+
+    Uses httpx streaming so the SSE connection stays open for the generator lifetime.
+    """
+    from fastapi.responses import StreamingResponse
+
+    token = await _get_service_token()
+    headers: dict[str, str] = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
+    content_type = request.headers.get("content-type")
+    if content_type:
+        headers["Content-Type"] = content_type
+
+    body = await request.body()
+
+    assert _api_client is not None
+
+    # Must keep the stream context open for the generator's lifetime —
+    # return StreamingResponse from inside the async-with block.
+    upstream = await _api_client.send(
+        _api_client.build_request(
+            "POST",
+            f"/api/chat/{path}",
+            content=body if body else None,
+            headers=headers,
+        ),
+        stream=True,
+    )
+
+    # Error responses are JSON, not SSE — drain and return buffered
+    if upstream.status_code >= 400:
+        from fastapi.responses import Response as FastAPIResponse
+
+        body_bytes = await upstream.aread()
+        await upstream.aclose()
+        return FastAPIResponse(
+            content=body_bytes,
+            status_code=upstream.status_code,
+            media_type=upstream.headers.get("content-type", "application/json"),
+        )
+
+    response_headers: dict[str, str] = {"Cache-Control": "no-cache"}
+    session_id = upstream.headers.get("x-session-id")
+    if session_id:
+        response_headers["X-Session-Id"] = session_id
+
+    async def relay():
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+
+    return StreamingResponse(
+        relay(),
+        status_code=upstream.status_code,
+        media_type="text/event-stream",
+        headers=response_headers,
+    )
+
+
+@app.get("/api/chat/{path:path}")
+async def proxy_chat_get(path: str, request: Request):
+    """Buffered proxy for chat GET — session history, message list."""
+    from fastapi.responses import Response as FastAPIResponse
+
+    token = await _get_service_token()
+    headers: dict[str, str] = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
+    assert _api_client is not None
+    resp = await _api_client.get(f"/api/chat/{path}", headers=headers)
+
+    return FastAPIResponse(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type"),
+    )
+
+
+@app.get("/api/agents/messaging")
+async def proxy_agents_messaging(request: Request):
+    """Passthrough for agent discovery — dedicated route to avoid wildcard conflicts."""
+    from fastapi.responses import Response as FastAPIResponse
+
+    token = await _get_service_token()
+    headers: dict[str, str] = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
+    assert _api_client is not None
+    resp = await _api_client.get("/api/agents/messaging", headers=headers)
+
+    return FastAPIResponse(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type"),
+    )
 
 
 # Runtime API proxy — same-origin passthrough so plugins avoid cross-origin issues

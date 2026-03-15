@@ -6,6 +6,7 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
@@ -71,6 +72,27 @@ class LLMRouter:
             temperature=temperature,
             timeout_seconds=timeout_seconds,
         )
+
+    async def chat_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream chat response as plain text chunks.
+
+        Pass-through to provider's chat_stream().
+        """
+        async for chunk in self._provider.chat_stream(
+            messages,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            timeout_seconds=timeout_seconds,
+        ):
+            yield chunk
 
     def list_models(self) -> list[str]:
         """List available models (sync, returns cached list).

@@ -66,13 +66,16 @@ instances:
     enabled: true
     description: "Finance & Ops - Rule-based reasoning"
 
-  # Communications Role
+  # Communications Role (SIP-0085: A2A messaging enabled)
   - id: comms-agent
-    display_name: CommsAgent
+    display_name: Joi
     role: comms
-    model: llama3-8b
+    model: llama3.1:8b
+    host: joi
     enabled: true
-    description: "Communications - Empathetic reasoning"
+    description: "Communications - Conversational interface"
+    a2a_messaging_enabled: true
+    a2a_port: 8080
 
   # Curation Role
   - id: curator-agent

@@ -1,5 +1,6 @@
 """Unit tests for LLM port interfaces."""
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -33,6 +34,23 @@ class _ConcreteLLM(LLMPort):
         }
         return ChatMessage(role="assistant", content="ok")
 
+    async def chat_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> AsyncIterator[str]:
+        self.last_chat_kwargs = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "timeout_seconds": timeout_seconds,
+        }
+        for chunk in ["hel", "lo ", "world"]:
+            yield chunk
+
     def list_models(self) -> list[str]:
         return []
 
@@ -51,25 +69,37 @@ class TestLLMPort:
         with pytest.raises(TypeError):
             LLMPort()  # type: ignore
 
-    def test_has_generate_method(self):
-        assert hasattr(LLMPort, "generate")
-
-    def test_has_chat_method(self):
-        assert hasattr(LLMPort, "chat")
-
-    def test_has_list_models_method(self):
-        assert hasattr(LLMPort, "list_models")
-
-    def test_has_refresh_models_method(self):
-        assert hasattr(LLMPort, "refresh_models")
-
-    def test_has_health_method(self):
-        assert hasattr(LLMPort, "health")
-
-    def test_default_model_property(self):
-        """default_model returns 'unknown' by default."""
+    def test_concrete_subclass_satisfies_contract(self):
+        """A concrete subclass implementing all methods is usable."""
         llm = _ConcreteLLM()
+        assert llm.list_models() == []
         assert llm.default_model == "unknown"
+
+    async def test_generate_returns_llm_response(self):
+        """generate() returns an LLMResponse with text and model."""
+        llm = _ConcreteLLM()
+        result = await llm.generate(LLMRequest(prompt="hi"))
+        assert isinstance(result, LLMResponse)
+        assert result.text == "ok"
+
+    async def test_chat_returns_chat_message(self):
+        """chat() returns a ChatMessage from the assistant role."""
+        llm = _ConcreteLLM()
+        result = await llm.chat([ChatMessage(role="user", content="hi")])
+        assert result.role == "assistant"
+        assert result.content == "ok"
+
+    async def test_chat_stream_yields_text_chunks(self):
+        """chat_stream() yields string chunks."""
+        llm = _ConcreteLLM()
+        chunks = [c async for c in llm.chat_stream([ChatMessage(role="user", content="hi")])]
+        assert chunks == ["hel", "lo ", "world"]
+
+    async def test_health_returns_dict(self):
+        """health() returns a dict with healthy key."""
+        llm = _ConcreteLLM()
+        result = await llm.health()
+        assert result == {"healthy": True}
 
 
 class TestLLMPortChatParams:

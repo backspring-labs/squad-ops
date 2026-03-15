@@ -9,6 +9,18 @@ Joi (comms role) is the first agent to enable messaging by default. The architec
 **Branch:** `feature/sip-0085-console-messaging` (off main)
 **SIP:** `sips/accepted/SIP-0085-Console-Messaging-Capability-for.md`
 
+### Phase Audit Gates
+
+Each phase pauses for audit before proceeding. Phase 3 is the critical audit gate — the full backend loop must be proven before designing the UI surface.
+
+| Phase | Audit | Gate |
+|-------|-------|------|
+| 1 | A2A foundation works: server starts, card discoverable, streaming loop proven | Proceed to Phase 2 |
+| 2 | Executor streams, dual-surface container runs, prompt fragment wired | Proceed to Phase 3 |
+| 3 | **Full backend audit**: API proxy works, persistence proven, curl-testable end-to-end | Plan Phase 4 UI in detail |
+| 4 | Chat overlay functional in console | Proceed to Phase 5 |
+| 5 | Observability verified, version bump | Ship |
+
 ---
 
 ## v1 Scope Rules
@@ -505,22 +517,27 @@ Mount chat router. Initialize `ChatRepository` and `A2AClientAdapter` in startup
 
 ## Phase 4: Console Chat UI
 
-Keep this phase ruthlessly thin. One panel, one agent, basic streaming display.
+**Deferred until after Phase 3 audit.** Phase 4 will be planned in detail after Phases 1-3 are implemented and audited. The notes below capture the known constraints.
 
-### Runtime Contracts
+### Approach: Modal Overlay, Not a Perspective
 
-**P4-RC1 (Joi-only UI, generic backend):** Console presents Joi as the chat target. The agent selector may exist but defaults to Joi. Backend is fully agent-generic — the UI constraint is purely a scope decision for initial release.
+The chat UI is a **modal overlay / drawer** triggered from the left sidebar rail — not a new console perspective. It overlays whatever perspective is currently active (cycles, runs, etc.), so the user can chat with Joi without navigating away from their work.
+
+### Known Constraints
+
+**P4-RC1 (Joi-only UI, generic backend):** Console presents Joi as the chat target. Backend is fully agent-generic — the UI constraint is purely a scope decision for initial release.
 
 **P4-RC2 (fetch streaming, not EventSource):** Console uses `fetch()` with streaming body reader against `POST /api/chat/{agent_id}`. Not `EventSource` (which is GET-only).
 
-### 4a. Chat panel component
+**P4-RC3 (Overlay, not perspective):** Chat is a sidebar-triggered modal/drawer, not a routed perspective. It floats over the active view and can be opened/closed without losing context.
 
-**New files in `continuum-plugins`** (Svelte):
+### Scope (to be detailed after Phase 3 audit)
 
-- Chat panel with message input, send button, streaming response display
-- Joi as default (and initially only presented) chat target
-- Session management: create new session, resume existing, clear
-- Basic agent status indicator (healthy/unreachable based on card fetch)
+- Chat icon in left sidebar rail triggers the overlay
+- Message input, streaming response display
+- Joi as default and initially only chat target
+- Session management: create new, resume existing, clear
+- Basic agent status indicator
 - `fetch()` streaming consumption:
 
 ```javascript

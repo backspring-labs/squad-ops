@@ -5,6 +5,7 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from typing import Any
 
 from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
@@ -64,6 +65,26 @@ class LLMPort(ABC):
             LLMTimeoutError: Request timed out
         """
         ...
+
+    @abstractmethod
+    async def chat_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream chat response as plain text chunks.
+
+        Text-only streaming contract (SIP-0085). Returns an async iterator
+        of string chunks. Richer event types (tool calls, usage metadata)
+        are not supported in this contract.
+
+        Same parameters as chat(). All default None for adapter fallback.
+        """
+        ...
+        yield  # pragma: no cover — makes this a proper async generator for ABC
 
     @abstractmethod
     def list_models(self) -> list[str]:

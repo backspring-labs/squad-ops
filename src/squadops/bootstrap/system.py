@@ -21,6 +21,7 @@ from squadops.orchestration.orchestrator import AgentOrchestrator
 if TYPE_CHECKING:
     from squadops.agents.skills.registry import SkillRegistry
     from squadops.orchestration.handler_registry import HandlerRegistry
+    from squadops.ports.comms.messaging import MessagingPort
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.llm.provider import LLMPort
     from squadops.ports.memory.store import MemoryPort
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.ports.telemetry.metrics import MetricsPort
     from squadops.ports.tools.filesystem import FileSystemPort
+    from squadops.prompts.renderer import RequestTemplateRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +152,8 @@ def create_system(
     events: EventPort,
     filesystem: FileSystemPort,
     llm_observability: LLMObservabilityPort | None = None,
-    request_renderer: object | None = None,
+    request_renderer: RequestTemplateRenderer | None = None,
+    messaging: MessagingPort | None = None,
     config: SystemConfig | None = None,
 ) -> SquadOpsSystem:
     """Create a fully configured SquadOps system.
@@ -198,6 +201,7 @@ def create_system(
         filesystem=filesystem,
         llm_observability=llm_observability,
         request_renderer=request_renderer,
+        messaging=messaging,
     )
 
     # Create registries

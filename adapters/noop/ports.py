@@ -13,6 +13,7 @@ Part of SIP-0066 Phase 2.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -51,6 +52,17 @@ class NoOpLLMPort(LLMPort):
         timeout_seconds: float | None = None,
     ) -> ChatMessage:
         raise NotImplementedError("NoOpLLMPort: no LLM provider configured")
+
+    async def chat_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> AsyncIterator[str]:
+        raise NotImplementedError("NoOpLLMPort: no LLM provider configured")
+        yield  # pragma: no cover — unreachable, makes this a proper async generator
 
     def list_models(self) -> list[str]:
         raise NotImplementedError("NoOpLLMPort: no LLM provider configured")
