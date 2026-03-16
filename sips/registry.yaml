@@ -766,9 +766,9 @@ sips:
 - sip_uid: null
   sip_number: 85
   title: Console Messaging Capability for Live Agents via A2A
-  path: sips/accepted/SIP-0085-Console-Messaging-Capability-for.md
-  status: accepted
+  path: sips/implemented/SIP-0085-Console-Messaging-Capability-for.md
+  status: implemented
   author: jladd
   approver: jladd
   created_at: '2026-03-15T00:00:00Z'
-  updated_at: '2026-03-15T09:50:29.027260Z'
+  updated_at: '2026-03-16T18:55:31.342982Z'

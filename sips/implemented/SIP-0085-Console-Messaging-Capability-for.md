@@ -1,10 +1,10 @@
 ---
 title: Console Messaging Capability for Live Agents via A2A
-status: accepted
+status: implemented
 author: jladd
 created_at: '2026-03-15T00:00:00Z'
 sip_number: 85
-updated_at: '2026-03-15T09:50:29.003860Z'
+updated_at: '2026-03-16T18:55:31.342348Z'
 ---
 # SIP: Console Messaging Capability for Live Agents via A2A
 
