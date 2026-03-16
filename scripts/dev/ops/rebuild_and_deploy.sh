@@ -7,7 +7,7 @@
 #   ./scripts/dev/ops/rebuild_and_deploy.sh                           # Rebuild everything (default)
 #   ./scripts/dev/ops/rebuild_and_deploy.sh all                       # Rebuild everything
 #   ./scripts/dev/ops/rebuild_and_deploy.sh console                   # Rebuild only console service
-#   ./scripts/dev/ops/rebuild_and_deploy.sh agents                    # Rebuild default 6 core agents (max, nat, neo, eve, data)
+#   ./scripts/dev/ops/rebuild_and_deploy.sh agents                    # Rebuild default 7 core agents (max, nat, neo, eve, bob, data, joi)
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents max neo            # Rebuild only specified agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh agents max nat neo eve data glyph  # Rebuild specified agents
 #   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api agents        # Rebuild runtime-api and default agents
@@ -81,7 +81,7 @@ if [ $# -gt 0 ]; then
                 echo "Usage: $0 [console] [agents [agent1 agent2 ...]] [runtime-api] [all]"
                 echo "  Examples:"
                 echo "    $0 console                   # Build only console"
-                echo "    $0 agents                    # Build default 6 core agents (max, nat, neo, eve, data)"
+                echo "    $0 agents                    # Build default 7 core agents (max, nat, neo, eve, bob, data, joi)"
                 echo "    $0 agents max neo            # Build only max and neo"
                 echo "    $0 runtime-api console       # Build runtime-api and console"
                 exit 1
@@ -315,8 +315,8 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     # Determine which agents to build
     if [ ${#AGENT_LIST[@]} -eq 0 ]; then
         # No agents specified, use default 6 core agents
-        AGENTS=$(docker compose config --services | grep -E "^(max|nat|neo|eve|bob|data)$" || echo "max nat neo eve bob data")
-        echo -e "${BLUE}   No agents specified, using default core agents: max, nat, neo, eve, bob, data${NC}"
+        AGENTS=$(docker compose config --services | grep -E "^(max|nat|neo|eve|bob|data|joi)$" || echo "max nat neo eve bob data joi")
+        echo -e "${BLUE}   No agents specified, using default core agents: max, nat, neo, eve, bob, data, joi${NC}"
     else
         # Use specified agents, validate they exist in docker compose
         AGENTS=""
