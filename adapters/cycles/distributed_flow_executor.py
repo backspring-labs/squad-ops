@@ -817,9 +817,12 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 profile=profile,
             )
 
-            if task_succeeded:
-                correction_attempts = correction_attempts  # unchanged
-            else:
+            if not task_succeeded:
+                # SIP-0079: correction completed with continue/patch outcome.
+                # Original flow: consecutive_failures was incremented before
+                # correction, then reset to 0 on continue/patch. The increment
+                # only survives on abort/rewind paths which raise inside
+                # _handle_task_outcome before reaching here. Net effect: reset.
                 consecutive_failures = 0
                 correction_attempts += 1
 

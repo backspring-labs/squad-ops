@@ -681,7 +681,7 @@ def _collect_auth_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return [check_auth_token()]
 
 
-_CHECK_REGISTRY: list[tuple[str, callable]] = [
+_CHECK_REGISTRY: list[tuple[str, object]] = [
     ("python", _collect_python_checks),
     ("platform", _collect_platform_checks),
     ("tools", _collect_tools_checks),

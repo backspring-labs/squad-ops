@@ -79,7 +79,7 @@ def _extract_field_type(annotation: Any) -> tuple[type, bool]:
     return (annotation, False)
 
 
-def _detect_enum(field_type: type, annotation: type) -> tuple[bool, type | None]:
+def _detect_enum(field_type: type) -> tuple[bool, type | None]:
     """Detect if a field type is or contains an Enum."""
     if isinstance(field_type, type) and issubclass(field_type, Enum):
         return True, field_type
@@ -90,7 +90,7 @@ def _detect_enum(field_type: type, annotation: type) -> tuple[bool, type | None]
     return False, None
 
 
-def _detect_nested_model(field_type: type, annotation: type) -> type | None:
+def _detect_nested_model(field_type: type, annotation) -> type | None:
     """Return the nested BaseModel class if the field contains one, else None."""
     if isinstance(field_type, type) and issubclass(field_type, BaseModel):
         return field_type
@@ -124,7 +124,7 @@ def _build_schema_path_map() -> dict[str, SchemaPathInfo]:
             annotation = field_info.annotation
             field_type, is_optional = _extract_field_type(annotation)
 
-            is_enum, enum_class = _detect_enum(field_type, annotation)
+            is_enum, enum_class = _detect_enum(field_type)
             nested_model_class = _detect_nested_model(field_type, annotation)
 
             path_map[dot_path] = SchemaPathInfo(
