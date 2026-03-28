@@ -107,6 +107,53 @@ class _CycleTaskHandler(CapabilityHandler):
             "prior_outputs": self._format_prior_outputs(prior_outputs),
         }
 
+    def _fail_result(
+        self,
+        start_time: float,
+        inputs: dict[str, Any],
+        error: str,
+        outputs: dict[str, Any] | None = None,
+    ) -> HandlerResult:
+        """Build a failure HandlerResult with evidence."""
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+        )
+        return HandlerResult(
+            success=False,
+            outputs=outputs or {},
+            _evidence=evidence,
+            error=error,
+        )
+
+    def _resolve_model_budget(
+        self,
+        inputs: dict[str, Any],
+        capability_max_tokens: int,
+        default_model: str,
+    ) -> tuple[str, int, int | None]:
+        """Resolve model name, token budget, and context window from inputs.
+
+        Returns (model_name, max_tokens, context_window).
+        """
+        agent_overrides = inputs.get("agent_config_overrides", {})
+        agent_model = inputs.get("agent_model") or None
+        model_name = agent_model or default_model
+        model_spec = get_model_spec(model_name)
+
+        max_tokens = capability_max_tokens
+        context_window = None
+        if model_spec is not None:
+            max_tokens = min(max_tokens, model_spec.default_max_completion)
+            context_window = model_spec.context_window
+        if "max_completion_tokens" in agent_overrides:
+            max_tokens = agent_overrides["max_completion_tokens"]
+
+        return model_name, max_tokens, context_window
+
     def _build_chat_kwargs(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Build chat() kwargs from agent config overrides (SIP-0075 §3.2)."""
         overrides = inputs.get("agent_config_overrides", {})
@@ -477,19 +524,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         try:
             capability = get_capability(self._resolved_config.get("dev_capability", "python_cli"))
         except ValueError as exc:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(exc),
-            )
+            return self._fail_result(start_time, inputs, str(exc))
 
         # Resolve plan artifacts with vault fallback (D3)
         impl_plan = await self._resolve_with_vault_fallback(
@@ -500,19 +535,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         # Check required artifacts (fail only when vault was available but empty)
         if impl_plan is None and inputs.get("artifact_vault") is not None:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error="Required plan artifacts not available",
-            )
+            return self._fail_result(start_time, inputs, "Required plan artifacts not available")
 
         # SIP-0084: dual-path — use request renderer when available
         rendered = None
@@ -544,21 +567,12 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
 
-        # SIP-0075 §3.3: resolve model from agent overrides, then adapter default
+        # Resolve model, token budget, and prompt guard
+        model_name, max_tokens, context_window = self._resolve_model_budget(
+            inputs, capability.max_completion_tokens, context.ports.llm.default_model
+        )
         agent_overrides = inputs.get("agent_config_overrides", {})
         agent_model = inputs.get("agent_model") or None
-        model_name = agent_model or context.ports.llm.default_model
-        model_spec = get_model_spec(model_name)
-
-        # SIP-0073 + SIP-0075: token budget precedence
-        # 1. model defaults, 2. capability, 3. config_overrides, 4. applied_defaults
-        max_tokens = capability.max_completion_tokens
-        context_window = None
-        if model_spec is not None:
-            max_tokens = min(max_tokens, model_spec.default_max_completion)
-            context_window = model_spec.context_window
-        if "max_completion_tokens" in agent_overrides:
-            max_tokens = agent_overrides["max_completion_tokens"]
 
         # SIP-0073: guard prompt size against context window
         try:
@@ -569,19 +583,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 context_window,
             )
         except ValueError as exc:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(exc),
-            )
+            return self._fail_result(start_time, inputs, str(exc))
 
         # SIP-0073: resolve effective timeout (D6)
         generation_timeout = self._resolved_config.get("generation_timeout", 300)
@@ -605,19 +607,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             response = await context.ports.llm.chat(messages, **chat_kwargs)
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(exc),
-            )
+            return self._fail_result(start_time, inputs, str(exc))
 
         content = response.content
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
@@ -631,16 +621,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         extracted = extract_fenced_files(content)
 
         if not extracted:
-            # Parse failure — return raw response as warning artifact
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
+            return self._fail_result(
+                start_time,
+                inputs,
+                "No valid fenced code blocks found",
                 outputs={
                     "artifacts": [
                         {
@@ -651,8 +635,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                         },
                     ],
                 },
-                _evidence=evidence,
-                error="No valid fenced code blocks found",
             )
 
         # Build artifact list from extracted files
@@ -856,214 +838,13 @@ class QATestHandler(_CycleTaskHandler):
 
         return "\n".join(parts)
 
-    async def handle(
-        self,
-        context: ExecutionContext,
-        inputs: dict[str, Any],
-    ) -> HandlerResult:
-        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-
-        start_time = time.perf_counter()
-
-        prd = inputs.get("prd", "")
-        prior_outputs = inputs.get("prior_outputs")
-        resolved_config = inputs.get("resolved_config", {})
-        capability_name = resolved_config.get("dev_capability", "python_cli")
-
-        # Resolve capability (fail fast on unknown dev_capability)
-        try:
-            capability = get_capability(capability_name)
-        except ValueError as exc:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(exc),
-            )
-
-        # Resolve plan artifacts with vault fallback (D3)
-        val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
-        sources = self._get_source_artifacts(inputs)
-
-        # Check required artifacts (fail only when vault was available but empty)
-        if val_plan is None and inputs.get("artifact_vault") is not None:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error="Required plan artifacts not available",
-            )
-
-        # SIP-0084: dual-path — use request renderer when available
-        rendered = None
-        renderer = getattr(context.ports, "request_renderer", None)
-        if renderer is not None:
-            variables: dict[str, str] = {
-                "prd": prd,
-                "test_supplement": capability.test_prompt_supplement,
-            }
-            if val_plan:
-                variables["validation_plan"] = f"\n\n## Validation Plan\n\n{val_plan}"
-            if sources:
-                source_parts = ["\n\n## Source Files to Test\n"]
-                for path, code in sources.items():
-                    lang = self._fence_lang(path)
-                    source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
-                variables["source_files"] = "\n".join(source_parts)
-            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
-            rendered = await renderer.render(
-                "request.qa_test.test_validate", variables,
-            )
-            user_prompt = rendered.content
-        else:
-            user_prompt = self._build_user_prompt(
-                prd,
-                prior_outputs,
-                val_plan=val_plan,
-                sources=sources,
-                capability_name=capability_name,
-            )
-
-        assembled = context.ports.prompt_service.get_system_prompt(self._role)
-        system_prompt = assembled.content
-
-        # SIP-0075 §3.3: resolve model from agent overrides, then adapter default
-        agent_overrides = inputs.get("agent_config_overrides", {})
-        agent_model = inputs.get("agent_model") or None
-        model_name = agent_model or context.ports.llm.default_model
-        model_spec = get_model_spec(model_name)
-
-        # SIP-0073 + SIP-0075: token budget precedence
-        max_tokens = capability.max_completion_tokens
-        context_window = None
-        if model_spec is not None:
-            max_tokens = min(max_tokens, model_spec.default_max_completion)
-            context_window = model_spec.context_window
-        if "max_completion_tokens" in agent_overrides:
-            max_tokens = agent_overrides["max_completion_tokens"]
-
-        # SIP-0073: guard prompt size against context window
-        try:
-            user_prompt = _guard_prompt_size(
-                system_prompt,
-                user_prompt,
-                max_tokens,
-                context_window,
-            )
-        except ValueError as exc:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(exc),
-            )
-
-        # SIP-0073: resolve effective timeout (D6)
-        generation_timeout = resolved_config.get("generation_timeout", 300)
-
-        # SIP-0075 §3.3: build chat kwargs from overrides
-        chat_kwargs: dict[str, Any] = {
-            "max_tokens": max_tokens,
-            "timeout_seconds": generation_timeout,
-        }
-        if agent_model:
-            chat_kwargs["model"] = agent_model
-        if "temperature" in agent_overrides:
-            chat_kwargs["temperature"] = agent_overrides["temperature"]
-
-        messages = [
-            ChatMessage(role="system", content=system_prompt),
-            ChatMessage(role="user", content=user_prompt),
-        ]
-
-        try:
-            response = await context.ports.llm.chat(messages, **chat_kwargs)
-        except LLMError as exc:
-            logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(exc),
-            )
-
-        content = response.content
-        llm_duration_ms = (time.perf_counter() - start_time) * 1000
-
-        # Record LLM generation for LangFuse tracing
-        self._record_generation(
-            context, user_prompt, content, llm_duration_ms, model_name, rendered=rendered
-        )
-
-        # Parse fenced code blocks
-        extracted = extract_fenced_files(content)
-
-        if not extracted:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={
-                    "artifacts": [
-                        {
-                            "name": "build_warnings.md",
-                            "content": content,
-                            "media_type": "text/markdown",
-                            "type": "document",
-                        },
-                    ],
-                },
-                _evidence=evidence,
-                error="No valid fenced code blocks found",
-            )
-
-        # Build artifact list — all test files get artifact_type "test"
-        artifacts = []
-        for file_rec in extracted:
-            _, media_type = _classify_file(file_rec["filename"])
-            artifacts.append(
-                {
-                    "name": file_rec["filename"],
-                    "content": file_rec["content"],
-                    "media_type": media_type,
-                    "type": "test",
-                }
-            )
-
-        # --- Run generated tests against source files ---
+    @staticmethod
+    async def _run_test_suite(
+        capability: Any,
+        sources: dict[str, str],
+        extracted: list[dict],
+    ) -> tuple[Any, dict]:
+        """Run test suite and return (test_result, report_artifact)."""
         from squadops.capabilities.dev_capabilities import (
             TEST_FRAMEWORK_BOTH,
             TEST_FRAMEWORK_VITEST,
@@ -1074,11 +855,10 @@ class QATestHandler(_CycleTaskHandler):
             run_node_tests,
         )
 
-        source_file_records = [{"path": path, "content": code} for path, code in sources.items()]
+        source_file_records = [{"path": p, "content": c} for p, c in sources.items()]
         test_file_records = [
             {"path": rec["filename"], "content": rec["content"]} for rec in extracted
         ]
-
         test_timeout = capability.test_timeout_seconds
 
         if capability.test_framework == TEST_FRAMEWORK_VITEST:
@@ -1100,7 +880,6 @@ class QATestHandler(_CycleTaskHandler):
                 timeout_seconds=test_timeout,
             )
 
-        # Build test report artifact
         report_lines = [
             "# Test Execution Report\n",
             f"**Result:** {test_result.summary}\n",
@@ -1115,16 +894,155 @@ class QATestHandler(_CycleTaskHandler):
         if test_result.error:
             report_lines.append(f"\n## Error\n\n{test_result.error}\n")
 
-        artifacts.append(
-            {
-                "name": "test_report.md",
-                "content": "\n".join(report_lines),
-                "media_type": "text/markdown",
-                "type": "test_report",
+        report_artifact = {
+            "name": "test_report.md",
+            "content": "\n".join(report_lines),
+            "media_type": "text/markdown",
+            "type": "test_report",
+        }
+        return test_result, report_artifact
+
+    async def handle(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+    ) -> HandlerResult:
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        start_time = time.perf_counter()
+
+        prd = inputs.get("prd", "")
+        prior_outputs = inputs.get("prior_outputs")
+        resolved_config = inputs.get("resolved_config", {})
+        capability_name = resolved_config.get("dev_capability", "python_cli")
+
+        # Resolve capability (fail fast on unknown dev_capability)
+        try:
+            capability = get_capability(capability_name)
+        except ValueError as exc:
+            return self._fail_result(start_time, inputs, str(exc))
+
+        # Resolve plan artifacts with vault fallback (D3)
+        val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
+        sources = self._get_source_artifacts(inputs)
+
+        # Check required artifacts (fail only when vault was available but empty)
+        if val_plan is None and inputs.get("artifact_vault") is not None:
+            return self._fail_result(start_time, inputs, "Required plan artifacts not available")
+
+        # SIP-0084: dual-path — use request renderer when available
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {
+                "prd": prd,
+                "test_supplement": capability.test_prompt_supplement,
             }
+            if val_plan:
+                variables["validation_plan"] = f"\n\n## Validation Plan\n\n{val_plan}"
+            if sources:
+                source_parts = ["\n\n## Source Files to Test\n"]
+                for path, code in sources.items():
+                    lang = self._fence_lang(path)
+                    source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
+                variables["source_files"] = "\n".join(source_parts)
+            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            rendered = await renderer.render(
+                "request.qa_test.test_validate",
+                variables,
+            )
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(
+                prd,
+                prior_outputs,
+                val_plan=val_plan,
+                sources=sources,
+                capability_name=capability_name,
+            )
+
+        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        system_prompt = assembled.content
+
+        # Resolve model, token budget, and prompt guard
+        model_name, max_tokens, context_window = self._resolve_model_budget(
+            inputs, capability.max_completion_tokens, context.ports.llm.default_model
         )
 
-        # Build summary with test outcome
+        try:
+            user_prompt = _guard_prompt_size(
+                system_prompt,
+                user_prompt,
+                max_tokens,
+                context_window,
+            )
+        except ValueError as exc:
+            return self._fail_result(start_time, inputs, str(exc))
+
+        generation_timeout = resolved_config.get("generation_timeout", 300)
+        agent_overrides = inputs.get("agent_config_overrides", {})
+        agent_model = inputs.get("agent_model") or None
+
+        chat_kwargs: dict[str, Any] = {
+            "max_tokens": max_tokens,
+            "timeout_seconds": generation_timeout,
+        }
+        if agent_model:
+            chat_kwargs["model"] = agent_model
+        if "temperature" in agent_overrides:
+            chat_kwargs["temperature"] = agent_overrides["temperature"]
+
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_prompt),
+        ]
+
+        try:
+            response = await context.ports.llm.chat(messages, **chat_kwargs)
+        except LLMError as exc:
+            logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
+            return self._fail_result(start_time, inputs, str(exc))
+
+        content = response.content
+        llm_duration_ms = (time.perf_counter() - start_time) * 1000
+        self._record_generation(
+            context, user_prompt, content, llm_duration_ms, model_name, rendered=rendered
+        )
+
+        extracted = extract_fenced_files(content)
+        if not extracted:
+            return self._fail_result(
+                start_time,
+                inputs,
+                "No valid fenced code blocks found",
+                outputs={
+                    "artifacts": [
+                        {
+                            "name": "build_warnings.md",
+                            "content": content,
+                            "media_type": "text/markdown",
+                            "type": "document",
+                        }
+                    ]
+                },
+            )
+
+        artifacts = [
+            {
+                "name": f["filename"],
+                "content": f["content"],
+                "media_type": _classify_file(f["filename"])[1],
+                "type": "test",
+            }
+            for f in extracted
+        ]
+
+        # Run generated tests and build report
+        test_result, test_report_artifact = await self._run_test_suite(
+            capability, sources, extracted
+        )
+        artifacts.append(test_report_artifact)
+
         if test_result.tests_passed:
             test_suffix = ", all tests passed"
         elif test_result.executed:
@@ -1273,6 +1191,165 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 )
         return None
 
+    @staticmethod
+    def _validate_builder_output(
+        extracted: list[dict],
+        profile: Any,
+        required_sections: tuple[str, ...],
+    ) -> str | None:
+        """Validate builder output: qa_handoff, sections, required files.
+
+        Returns an error message string if validation fails, None if OK.
+        """
+        import os
+
+        qa_handoff_content = None
+        for file_rec in extracted:
+            if os.path.basename(file_rec["filename"]) == "qa_handoff.md":
+                qa_handoff_content = file_rec["content"]
+                break
+
+        if qa_handoff_content is None:
+            return "qa_handoff.md not found in builder output"
+
+        qa_lower = qa_handoff_content.lower()
+        _SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
+            "## How to Run": ("how to run", "running", "## run"),
+            "## How to Test": ("how to test", "testing", "## test"),
+            "## Expected Behavior": ("expected behavior", "expected output", "## expected"),
+        }
+        missing_sections = []
+        for section in required_sections:
+            keywords = _SECTION_KEYWORDS.get(section, (section.lower(),))
+            if not any(kw in qa_lower for kw in keywords):
+                missing_sections.append(section)
+        if missing_sections:
+            return f"qa_handoff.md missing required sections: {missing_sections}"
+
+        extracted_basenames = {os.path.basename(f["filename"]) for f in extracted}
+        missing_files = [rf for rf in profile.required_files if rf not in extracted_basenames]
+        if missing_files:
+            return f"Required deployment files missing: {missing_files}"
+
+        return None
+
+    async def _build_assembly_prompt(
+        self,
+        context: ExecutionContext,
+        prd: str,
+        prior_outputs: dict | None,
+        sources: dict[str, str],
+        task_tags: dict[str, str],
+    ) -> tuple[Any, str]:
+        """Build the assembly prompt via renderer or fallback. Returns (rendered, user_prompt)."""
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            source_parts = []
+            for path, code in sorted(sources.items()):
+                source_parts.append(f"\n### {path}\n```\n{code}\n```\n")
+            variables: dict[str, str] = {
+                "prd": prd,
+                "source_files": "\n".join(source_parts),
+                "prior_outputs": self._format_prior_outputs(prior_outputs),
+            }
+            if task_tags:
+                tag_parts = ["\n\n## Builder Tags\n"]
+                for tag_key, tag_value in sorted(task_tags.items()):
+                    tag_parts.append(f"- **{tag_key}**: {tag_value}")
+                variables["task_tags"] = "\n".join(tag_parts)
+            rendered = await renderer.render(
+                "request.builder_assemble.build_assemble",
+                variables,
+            )
+            return rendered, rendered.content
+
+        parts = [f"## Product Requirements Document\n\n{prd}"]
+        parts.append("\n\n## Source Files (from developer)\n")
+        for path, code in sorted(sources.items()):
+            parts.append(f"\n### {path}\n```\n{code}\n```\n")
+        if prior_outputs:
+            parts.append("\n\n## Prior Analysis from Upstream Roles\n")
+            for role, summary in prior_outputs.items():
+                parts.append(f"### {role}\n{summary}\n")
+        if task_tags:
+            parts.append("\n\n## Builder Tags\n")
+            for tag_key, tag_value in sorted(task_tags.items()):
+                parts.append(f"- **{tag_key}**: {tag_value}")
+        parts.append(
+            "\n\nYou are ASSEMBLING the source code above into a deployable package. "
+            "Do NOT rewrite or regenerate the source code — it is already written. "
+            "Your job is to add deployment and packaging artifacts.\n\n"
+            "Use tagged fenced code blocks with the language and path "
+            "separated by a colon, for example:\n"
+            "```dockerfile:Dockerfile\n<content>\n```\n"
+            "```markdown:qa_handoff.md\n<content>\n```\n\n"
+            "Produce the following deployment artifacts:\n"
+            "- __main__.py entrypoint (if not already present)\n"
+            "- Dockerfile for containerized deployment\n"
+            "- requirements.txt (if not already present)\n"
+            "- Any startup scripts or config files needed for deployment\n\n"
+            "IMPORTANT: You MUST also include a `qa_handoff.md` file with these "
+            "required sections:\n"
+            "- ## How to Run\n"
+            "- ## How to Test\n"
+            "- ## Expected Behavior\n\n"
+            "File path rules:\n"
+            "- File paths must use forward slashes, no colons, no spaces.\n"
+            "- Do NOT re-emit source files that the developer already wrote.\n"
+            "- Only emit NEW files needed for packaging and deployment."
+        )
+        return None, "\n".join(parts)
+
+    @staticmethod
+    def _dedup_and_classify(
+        extracted: list[dict],
+    ) -> tuple[list[dict], list[dict], str | None]:
+        """Deduplicate by full path and classify files into artifacts.
+
+        Returns (deduped_extracted, artifacts, qa_handoff_content).
+        """
+        import os
+
+        seen_paths: dict[str, int] = {}
+        for idx, file_rec in enumerate(extracted):
+            seen_paths[file_rec["filename"]] = idx
+        if len(seen_paths) < len(extracted):
+            logger.info(
+                "Builder output contained duplicate paths; deduplicating %d → %d files",
+                len(extracted),
+                len(seen_paths),
+            )
+            deduped_indices = sorted(seen_paths.values())
+            extracted = [extracted[i] for i in deduped_indices]
+
+        artifacts = []
+        qa_handoff_content = None
+        for file_rec in extracted:
+            filename = file_rec["filename"]
+            basename = os.path.basename(filename)
+            if basename == "qa_handoff.md":
+                qa_handoff_content = file_rec["content"]
+                artifacts.append(
+                    {
+                        "name": filename,
+                        "content": file_rec["content"],
+                        "media_type": "text/markdown",
+                        "type": "qa_handoff",
+                    }
+                )
+            else:
+                artifact_type, media_type = _classify_file(filename)
+                artifacts.append(
+                    {
+                        "name": filename,
+                        "content": file_rec["content"],
+                        "media_type": media_type,
+                        "type": artifact_type,
+                    }
+                )
+        return extracted, artifacts, qa_handoff_content
+
     def _get_assembly_inputs(self, inputs: dict[str, Any]) -> dict[str, str]:
         """Get all source/config artifacts for assembly (D8 — static, not capability-driven).
 
@@ -1325,19 +1402,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         try:
             profile = get_profile(profile_name)
         except ValueError as exc:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(exc),
-            )
+            return self._fail_result(start_time, inputs, str(exc))
 
         # Step 1b: Resolve task tags (profile defaults + experiment_context overrides)
         task_tags = dict(profile.default_task_tags)
@@ -1357,83 +1422,12 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         sources = self._get_assembly_inputs(inputs)
 
         if not sources:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error="No source artifacts found for assembly",
-            )
+            return self._fail_result(start_time, inputs, "No source artifacts found for assembly")
 
-        # Step 3: Build assembly prompt with source files as context
-        # SIP-0084: dual-path — use request renderer when available
-        rendered = None
-        renderer = getattr(context.ports, "request_renderer", None)
-        if renderer is not None:
-            source_parts = []
-            for path, code in sorted(sources.items()):
-                source_parts.append(f"\n### {path}\n```\n{code}\n```\n")
-            variables: dict[str, str] = {
-                "prd": prd,
-                "source_files": "\n".join(source_parts),
-                "prior_outputs": self._format_prior_outputs(prior_outputs),
-            }
-            if task_tags:
-                tag_parts = ["\n\n## Builder Tags\n"]
-                for tag_key, tag_value in sorted(task_tags.items()):
-                    tag_parts.append(f"- **{tag_key}**: {tag_value}")
-                variables["task_tags"] = "\n".join(tag_parts)
-            rendered = await renderer.render(
-                "request.builder_assemble.build_assemble", variables,
-            )
-            user_prompt = rendered.content
-        else:
-            parts = [f"## Product Requirements Document\n\n{prd}"]
-
-            parts.append("\n\n## Source Files (from developer)\n")
-            for path, code in sorted(sources.items()):
-                parts.append(f"\n### {path}\n```\n{code}\n```\n")
-
-            if prior_outputs:
-                parts.append("\n\n## Prior Analysis from Upstream Roles\n")
-                for role, summary in prior_outputs.items():
-                    parts.append(f"### {role}\n{summary}\n")
-
-            if task_tags:
-                parts.append("\n\n## Builder Tags\n")
-                for tag_key, tag_value in sorted(task_tags.items()):
-                    parts.append(f"- **{tag_key}**: {tag_value}")
-
-            parts.append(
-                "\n\nYou are ASSEMBLING the source code above into a deployable package. "
-                "Do NOT rewrite or regenerate the source code — it is already written. "
-                "Your job is to add deployment and packaging artifacts.\n\n"
-                "Use tagged fenced code blocks with the language and path "
-                "separated by a colon, for example:\n"
-                "```dockerfile:Dockerfile\n<content>\n```\n"
-                "```markdown:qa_handoff.md\n<content>\n```\n\n"
-                "Produce the following deployment artifacts:\n"
-                "- __main__.py entrypoint (if not already present)\n"
-                "- Dockerfile for containerized deployment\n"
-                "- requirements.txt (if not already present)\n"
-                "- Any startup scripts or config files needed for deployment\n\n"
-                "IMPORTANT: You MUST also include a `qa_handoff.md` file with these "
-                "required sections:\n"
-                "- ## How to Run\n"
-                "- ## How to Test\n"
-                "- ## Expected Behavior\n\n"
-                "File path rules:\n"
-                "- File paths must use forward slashes, no colons, no spaces.\n"
-                "- Do NOT re-emit source files that the developer already wrote.\n"
-                "- Only emit NEW files needed for packaging and deployment."
-            )
-            user_prompt = "\n".join(parts)
+        # Step 3: Build assembly prompt
+        rendered, user_prompt = await self._build_assembly_prompt(
+            context, prd, prior_outputs, sources, task_tags
+        )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + profile.system_prompt_template
@@ -1456,19 +1450,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             response = await context.ports.llm.chat(messages, **builder_kwargs)
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(exc),
-            )
+            return self._fail_result(start_time, inputs, str(exc))
 
         content = response.content
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1483,158 +1465,24 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         extracted = extract_fenced_files(content)
 
         if not extracted:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error="No valid fenced code blocks found",
-            )
+            return self._fail_result(start_time, inputs, "No valid fenced code blocks found")
 
-        # Step 6: Classify files and separate qa_handoff
-        import os
+        # Step 6-8: Validate builder output
+        validation_error = self._validate_builder_output(
+            extracted, profile, QA_HANDOFF_REQUIRED_SECTIONS
+        )
+        if validation_error is not None:
+            return self._fail_result(start_time, inputs, validation_error)
 
-        artifacts = []
-        qa_handoff_content = None
-
-        for file_rec in extracted:
-            filename = file_rec["filename"]
-            basename = os.path.basename(filename)
-
-            if basename == "qa_handoff.md":
-                qa_handoff_content = file_rec["content"]
-                artifacts.append(
-                    {
-                        "name": filename,
-                        "content": file_rec["content"],
-                        "media_type": "text/markdown",
-                        "type": "qa_handoff",
-                    }
-                )
-            else:
-                artifact_type, media_type = _classify_file(filename)
-                artifacts.append(
-                    {
-                        "name": filename,
-                        "content": file_rec["content"],
-                        "media_type": media_type,
-                        "type": artifact_type,
-                    }
-                )
-
-        # Step 7: Validate QA handoff
-        if qa_handoff_content is None:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error="qa_handoff.md not found in builder output",
-            )
-
-        qa_lower = qa_handoff_content.lower()
-        # Flexible section check: accept exact heading or keyword variants
-        _SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
-            "## How to Run": ("how to run", "running", "## run"),
-            "## How to Test": ("how to test", "testing", "## test"),
-            "## Expected Behavior": ("expected behavior", "expected output", "## expected"),
-        }
-        missing_sections = []
-        for section in QA_HANDOFF_REQUIRED_SECTIONS:
-            keywords = _SECTION_KEYWORDS.get(section, (section.lower(),))
-            if not any(kw in qa_lower for kw in keywords):
-                missing_sections.append(section)
-        if missing_sections:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=f"qa_handoff.md missing required sections: {missing_sections}",
-            )
-
-        # Step 8: Required file validation (path-agnostic basename match)
-        extracted_basenames = {os.path.basename(f["filename"]) for f in extracted}
-        missing_files = [rf for rf in profile.required_files if rf not in extracted_basenames]
-        if missing_files:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                capability_id=self._capability_id,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=f"Required deployment files missing: {missing_files}",
-            )
-
-        # Step 8b: Deduplicate by full path (LLM may re-emit the same file;
-        # keep the last occurrence as a self-correction).
-        seen_paths: dict[str, int] = {}
-        for idx, file_rec in enumerate(extracted):
-            seen_paths[file_rec["filename"]] = idx
-        if len(seen_paths) < len(extracted):
-            logger.info(
-                "Builder output contained duplicate paths; deduplicating %d → %d files",
-                len(extracted),
-                len(seen_paths),
-            )
-            deduped_indices = sorted(seen_paths.values())
-            extracted = [extracted[i] for i in deduped_indices]
-            # Rebuild artifacts from deduped list
-            artifacts = []
-            qa_handoff_content = None
-            for file_rec in extracted:
-                filename = file_rec["filename"]
-                basename = os.path.basename(filename)
-                if basename == "qa_handoff.md":
-                    qa_handoff_content = file_rec["content"]
-                    artifacts.append(
-                        {
-                            "name": filename,
-                            "content": file_rec["content"],
-                            "media_type": "text/markdown",
-                            "type": "qa_handoff",
-                        }
-                    )
-                else:
-                    artifact_type, media_type = _classify_file(filename)
-                    artifacts.append(
-                        {
-                            "name": filename,
-                            "content": file_rec["content"],
-                            "media_type": media_type,
-                            "type": artifact_type,
-                        }
-                    )
+        # Step 8b: Deduplicate and classify
+        extracted, artifacts, qa_handoff_content = self._dedup_and_classify(extracted)
 
         # Step 9: Build outputs with diagnostics
         # SIP-0084 §10: build prompt provenance for artifact traceability
         provenance: dict[str, Any] = {
             "system_prompt_bundle_hash": assembled.assembly_hash,
         }
-        if renderer is not None and rendered is not None:
+        if rendered is not None:
             provenance["request_template_id"] = rendered.template_id
             provenance["request_template_version"] = rendered.template_version
             provenance["request_render_hash"] = rendered.render_hash
@@ -1651,7 +1499,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 "source_files_count": len(sources),
                 "qa_handoff_present": qa_handoff_content is not None,
                 "qa_validation_errors": qa_validation_errors,
-                "missing_required_files": missing_files,
+                "missing_required_files": [],
                 "resolved_tags": task_tags,
             },
             "prompt_provenance": provenance,

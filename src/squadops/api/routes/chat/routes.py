@@ -86,9 +86,7 @@ def _resolve_agent(agent_id: str) -> dict:
     if agent_id not in _all_agents:
         raise AgentNotFoundError(f"Agent not found: {agent_id}")
     if agent_id not in _messaging_agents:
-        raise AgentNotMessagingEnabledError(
-            f"Agent '{agent_id}' does not have messaging enabled"
-        )
+        raise AgentNotMessagingEnabledError(f"Agent '{agent_id}' does not have messaging enabled")
     return _messaging_agents[agent_id]
 
 

@@ -51,12 +51,15 @@ extend-exclude = [
 
 [tool.ruff.lint]
 # Rule sets: E,F = pycodestyle errors + pyflakes, I = import sorting, B = bugbear, UP = pyupgrade
-select = ["E", "F", "I", "B", "UP"]
+select = ["E", "F", "I", "B", "UP", "C90"]
 
 ignore = [
     "E501",  # line length (handled by Black)
     "B008",  # function call in argument defaults
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [

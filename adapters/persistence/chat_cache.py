@@ -45,12 +45,14 @@ class ChatSessionCache:
         """
         try:
             key = self._messages_key(message.session_id)
-            payload = json.dumps({
-                "message_id": message.message_id,
-                "role": message.role,
-                "content": message.content,
-                "created_at": message.created_at.isoformat(),
-            })
+            payload = json.dumps(
+                {
+                    "message_id": message.message_id,
+                    "role": message.role,
+                    "content": message.content,
+                    "created_at": message.created_at.isoformat(),
+                }
+            )
             await self._redis.rpush(key, payload)
             await self._redis.expire(key, self._ttl)
         except Exception:

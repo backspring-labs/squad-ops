@@ -145,25 +145,8 @@ _health_checker_instance = None
 _reconciliation_task = None
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database and message queue connections."""
-    global pool, rabbitmq_connection, rabbitmq_channel
-
-    # Initialize PostgreSQL pool
-    pool = await asyncpg.create_pool(POSTGRES_URL, min_size=1, max_size=10)
-
-    # Initialize RabbitMQ connection (persistent, like agents do)
-    try:
-        logger.info("Attempting to connect to RabbitMQ...")
-        rabbitmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
-        rabbitmq_channel = await rabbitmq_connection.channel()
-        logger.info("RabbitMQ connection established during startup")
-    except Exception as e:
-        # Log error but don't fail startup - connection will be retried on first use
-        logger.error(f"Failed to initialize RabbitMQ connection during startup: {e}", exc_info=True)
-
-    # Initialize auth adapters (SIP-0062)
+async def _init_auth_subsystem(config) -> None:
+    """Initialize auth, audit, and service token adapters (SIP-0062)."""
     try:
         auth_config = config.auth
         if auth_config.enabled and auth_config.provider != "disabled":
@@ -194,7 +177,6 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize auth adapters during startup: {e}")
 
-    # Initialize audit adapter (SIP-0062 Phase 3b)
     try:
         from adapters.audit.factory import create_audit_provider
 
@@ -204,15 +186,12 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize audit adapter during startup: {e}")
 
-    # Initialize service token clients (SIP-0062 Phase 3b)
     try:
         auth_config = config.auth
         if auth_config.service_clients and auth_config.oidc:
             from adapters.auth.factory import create_service_token_client
 
             for svc_name, svc_config in auth_config.service_clients.items():
-                # secret_manager=None is correct: config loader pre-resolves
-                # all secret:// references before AppConfig is created.
                 create_service_token_client(
                     svc_name,
                     svc_config,
@@ -223,7 +202,9 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize service token clients: {e}")
 
-    # Apply database migrations (idempotent, SIP-Postgres-Cycle-Registry §1.4)
+
+async def _init_migrations(config, pool) -> None:
+    """Apply database migrations (idempotent)."""
     try:
         from pathlib import Path
 
@@ -236,7 +217,10 @@ async def startup_event():
     except Exception as e:
         logger.error("Failed to apply migrations during startup: %s", e)
 
-    # Initialize SIP-0064 cycle ports + SIP-0066 orchestrator bootstrap
+
+async def _init_cycle_subsystem(config, pool) -> None:
+    """Initialize SIP-0064 cycle ports + SIP-0066 orchestrator."""
+    global _prefect_reporter
     try:
         from adapters.cycles.factory import (
             create_artifact_vault,
@@ -254,7 +238,6 @@ async def startup_event():
         squad_profile_provider = config.cycles.squad_profile_provider
         if squad_profile_provider == "postgres":
             squad_profile = create_squad_profile_port("postgres", pool=pool)
-            # Seed from YAML (one-shot via seed_log)
             try:
                 from adapters.cycles.config_squad_profile import ConfigSquadProfile
 
@@ -270,23 +253,17 @@ async def startup_event():
             squad_profile = create_squad_profile_port("config")
         artifact_vault = create_artifact_vault("filesystem")
 
-        # Distributed executor: dispatch tasks to agent containers via RabbitMQ.
-        # Each agent uses its own LLM model and PromptService — no orchestrator
-        # or handler registry needed in the runtime-api container.
         from adapters.comms.rabbitmq import RabbitMQAdapter
         from adapters.telemetry.factory import create_llm_observability_provider
 
         queue_adapter = RabbitMQAdapter(url=RABBITMQ_URL)
         llm_obs = create_llm_observability_provider(config=config.langfuse)
 
-        # Create PrefectReporter with module-level ref for shutdown cleanup
-        global _prefect_reporter
         if config.prefect.api_url:
             from adapters.cycles.prefect_reporter import PrefectReporter
 
             _prefect_reporter = PrefectReporter(api_url=config.prefect.api_url)
 
-        # SIP-0077: Create cycle event bus and register bridge subscribers
         from adapters.events.factory import create_cycle_event_bus
         from squadops.api.runtime.deps import set_cycle_event_bus
 
@@ -303,7 +280,6 @@ async def startup_event():
             from squadops.events.bridges.prefect import PrefectBridge
 
             event_bus.subscribe(PrefectBridge(_prefect_reporter))
-        # MetricsBridge deferred: no MetricsPort wired in runtime-api yet
         set_cycle_event_bus(event_bus)
 
         flow_executor = create_flow_executor(
@@ -329,7 +305,6 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize cycle ports: {e}")
 
-    # SIP-0075: Register LLM port for model management endpoints
     try:
         from adapters.llm.ollama import OllamaAdapter
         from squadops.api.runtime.deps import set_llm_port
@@ -343,7 +318,9 @@ async def startup_event():
     except Exception as e:
         logger.warning("LLM port not registered (non-fatal): %s", e)
 
-    # Initialize platform health checker (replaces legacy health-check service)
+
+async def _init_monitoring(config, pool) -> None:
+    """Initialize health checker and chat ports."""
     global _redis_client, _health_checker_instance, _reconciliation_task
     try:
         import redis.asyncio as aioredis
@@ -364,7 +341,6 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize health checker: {e}")
 
-    # SIP-0085: Initialize chat ports for console messaging
     try:
         import yaml
 
@@ -375,8 +351,6 @@ async def startup_event():
         chat_repo = ChatRepository(pool=pool)
         a2a_client = A2AClientAdapter()
 
-        # Load agents from instances.yaml — all agents for lookup,
-        # messaging-enabled subset for the listing endpoint.
         all_agents: dict = {}
         messaging_agents: dict = {}
         instances_path = config.agent.instances_file
@@ -385,7 +359,6 @@ async def startup_event():
                 instances_data = yaml.safe_load(f)
             for inst in instances_data.get("instances", []):
                 agent_id = inst["id"]
-                # Ensure required fields for route consumption
                 inst.setdefault("a2a_host", inst.get("host", "localhost"))
                 inst.setdefault("a2a_port", config.agent.a2a_port)
                 inst.setdefault("display_name", agent_id)
@@ -394,7 +367,6 @@ async def startup_event():
                 if inst.get("a2a_messaging_enabled", False):
                     messaging_agents[agent_id] = inst
 
-        # Wire Redis cache if available
         chat_cache = None
         if _redis_client:
             from adapters.persistence.chat_cache import ChatSessionCache
@@ -414,6 +386,31 @@ async def startup_event():
         )
     except Exception as e:
         logger.error(f"Failed to initialize chat ports: {e}")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database and message queue connections."""
+    global pool, rabbitmq_connection, rabbitmq_channel
+
+    # Initialize PostgreSQL pool
+    pool = await asyncpg.create_pool(POSTGRES_URL, min_size=1, max_size=10)
+
+    # Initialize RabbitMQ connection (persistent, like agents do)
+    try:
+        logger.info("Attempting to connect to RabbitMQ...")
+        rabbitmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
+        rabbitmq_channel = await rabbitmq_connection.channel()
+        logger.info("RabbitMQ connection established during startup")
+    except Exception as e:
+        # Log error but don't fail startup - connection will be retried on first use
+        logger.error(f"Failed to initialize RabbitMQ connection during startup: {e}", exc_info=True)
+
+    await _init_auth_subsystem(config)
+
+    await _init_migrations(config, pool)
+    await _init_cycle_subsystem(config, pool)
+    await _init_monitoring(config, pool)
 
 
 @app.on_event("shutdown")

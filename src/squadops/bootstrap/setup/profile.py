@@ -234,6 +234,56 @@ def _validate_ollama_model(model_data: dict, index: int) -> OllamaModel:
 # ---------------------------------------------------------------------------
 
 
+def _parse_platform_spec(name: str, raw: dict) -> PlatformSpec:
+    """Parse and validate the platform section of a bootstrap profile."""
+    platform_raw = raw.get("platform")
+    if not platform_raw or not isinstance(platform_raw, dict):
+        raise BootstrapProfileError(f"Profile '{name}': 'platform' mapping is required")
+
+    platform_os = platform_raw.get("os")
+    if not platform_os:
+        raise BootstrapProfileError(f"Profile '{name}': 'platform.os' is required")
+    if platform_os not in VALID_PLATFORMS:
+        raise BootstrapProfileError(
+            f"Profile '{name}': invalid platform.os '{platform_os}', "
+            f"must be one of {sorted(VALID_PLATFORMS)}"
+        )
+
+    return PlatformSpec(
+        os=platform_os,
+        min_version=platform_raw.get("min_version"),
+        distro=platform_raw.get("distro"),
+        distro_min_version=platform_raw.get("distro_min_version"),
+    )
+
+
+def _parse_python_spec(name: str, raw: dict) -> PythonSpec:
+    """Parse and validate the python section of a bootstrap profile."""
+    python_raw = raw.get("python")
+    if not python_raw or not isinstance(python_raw, dict):
+        raise BootstrapProfileError(f"Profile '{name}': 'python' mapping is required")
+
+    python_version = python_raw.get("version")
+    if not python_version:
+        raise BootstrapProfileError(f"Profile '{name}': 'python.version' is required")
+
+    python_manager = python_raw.get("manager")
+    if not python_manager:
+        raise BootstrapProfileError(f"Profile '{name}': 'python.manager' is required")
+    if python_manager not in VALID_PYTHON_MANAGERS:
+        raise BootstrapProfileError(
+            f"Profile '{name}': invalid python.manager '{python_manager}', "
+            f"must be one of {sorted(VALID_PYTHON_MANAGERS)}"
+        )
+
+    return PythonSpec(
+        version=python_version,
+        manager=python_manager,
+        extras=python_raw.get("extras", []),
+        test_deps=python_raw.get("test_deps"),
+    )
+
+
 def load_bootstrap_profile(name: str, *, profiles_dir: Path | None = None) -> BootstrapProfile:
     """Load and validate a bootstrap profile from YAML.
 
@@ -295,51 +345,8 @@ def load_bootstrap_profile(name: str, *, profiles_dir: Path | None = None) -> Bo
 
     description = raw.get("description", "")
 
-    # ── Platform ────────────────────────────────────────────────────────
-    platform_raw = raw.get("platform")
-    if not platform_raw or not isinstance(platform_raw, dict):
-        raise BootstrapProfileError(f"Profile '{name}': 'platform' mapping is required")
-
-    platform_os = platform_raw.get("os")
-    if not platform_os:
-        raise BootstrapProfileError(f"Profile '{name}': 'platform.os' is required")
-    if platform_os not in VALID_PLATFORMS:
-        raise BootstrapProfileError(
-            f"Profile '{name}': invalid platform.os '{platform_os}', "
-            f"must be one of {sorted(VALID_PLATFORMS)}"
-        )
-
-    platform = PlatformSpec(
-        os=platform_os,
-        min_version=platform_raw.get("min_version"),
-        distro=platform_raw.get("distro"),
-        distro_min_version=platform_raw.get("distro_min_version"),
-    )
-
-    # ── Python ──────────────────────────────────────────────────────────
-    python_raw = raw.get("python")
-    if not python_raw or not isinstance(python_raw, dict):
-        raise BootstrapProfileError(f"Profile '{name}': 'python' mapping is required")
-
-    python_version = python_raw.get("version")
-    if not python_version:
-        raise BootstrapProfileError(f"Profile '{name}': 'python.version' is required")
-
-    python_manager = python_raw.get("manager")
-    if not python_manager:
-        raise BootstrapProfileError(f"Profile '{name}': 'python.manager' is required")
-    if python_manager not in VALID_PYTHON_MANAGERS:
-        raise BootstrapProfileError(
-            f"Profile '{name}': invalid python.manager '{python_manager}', "
-            f"must be one of {sorted(VALID_PYTHON_MANAGERS)}"
-        )
-
-    python_spec = PythonSpec(
-        version=python_version,
-        manager=python_manager,
-        extras=python_raw.get("extras", []),
-        test_deps=python_raw.get("test_deps"),
-    )
+    platform = _parse_platform_spec(name, raw)
+    python_spec = _parse_python_spec(name, raw)
 
     # ── System deps ─────────────────────────────────────────────────────
     system_deps = [_validate_system_dep(dep, i) for i, dep in enumerate(raw.get("system_deps", []))]

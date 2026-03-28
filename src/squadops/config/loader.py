@@ -79,6 +79,29 @@ def _extract_field_type(annotation: Any) -> tuple[type, bool]:
     return (annotation, False)
 
 
+def _detect_enum(field_type: type, annotation: type) -> tuple[bool, type | None]:
+    """Detect if a field type is or contains an Enum."""
+    if isinstance(field_type, type) and issubclass(field_type, Enum):
+        return True, field_type
+    if hasattr(field_type, "__origin__"):
+        for arg in get_args(field_type):
+            if isinstance(arg, type) and issubclass(arg, Enum):
+                return True, arg
+    return False, None
+
+
+def _detect_nested_model(field_type: type, annotation: type) -> type | None:
+    """Return the nested BaseModel class if the field contains one, else None."""
+    if isinstance(field_type, type) and issubclass(field_type, BaseModel):
+        return field_type
+    origin = get_origin(annotation)
+    if origin is not None:
+        for arg in get_args(annotation):
+            if isinstance(arg, type) and issubclass(arg, BaseModel):
+                return arg
+    return None
+
+
 def _build_schema_path_map() -> dict[str, SchemaPathInfo]:
     """
     Build a complete map of all valid schema paths from AppConfig.
@@ -92,57 +115,18 @@ def _build_schema_path_map() -> dict[str, SchemaPathInfo]:
     path_map: dict[str, SchemaPathInfo] = {}
 
     def traverse_model(model_class: type[BaseModel], parent_path: tuple[str, ...] = ()) -> None:
-        """
-        Recursively traverse a Pydantic model to extract all field paths.
-
-        Args:
-            model_class: Pydantic model class to traverse
-            parent_path: Tuple of parent path segments (e.g., ("db",))
-        """
         if not issubclass(model_class, BaseModel):
             return
 
         for field_name, field_info in model_class.model_fields.items():
-            # Build current path
             current_tuple_path = parent_path + (field_name,)
             dot_path = ".".join(current_tuple_path)
-
-            # Get field annotation
             annotation = field_info.annotation
-
-            # Extract type and optional status
             field_type, is_optional = _extract_field_type(annotation)
 
-            # Check if it's an Enum
-            is_enum = False
-            enum_class = None
-            if isinstance(field_type, type) and issubclass(field_type, Enum):
-                is_enum = True
-                enum_class = field_type
-            elif hasattr(field_type, "__origin__"):
-                # Check if it's a generic type that might contain an enum
-                args = get_args(field_type)
-                for arg in args:
-                    if isinstance(arg, type) and issubclass(arg, Enum):
-                        is_enum = True
-                        enum_class = arg
-                        break
+            is_enum, enum_class = _detect_enum(field_type, annotation)
+            nested_model_class = _detect_nested_model(field_type, annotation)
 
-            # Check if this field is a nested BaseModel
-            is_nested_model = False
-            if isinstance(field_type, type) and issubclass(field_type, BaseModel):
-                is_nested_model = True
-            else:
-                # Check if it's Optional[BaseModel] or similar
-                origin = get_origin(annotation)
-                if origin is not None:
-                    args = get_args(annotation)
-                    for arg in args:
-                        if isinstance(arg, type) and issubclass(arg, BaseModel):
-                            is_nested_model = True
-                            break
-
-            # Store this path
             path_map[dot_path] = SchemaPathInfo(
                 dot_path=dot_path,
                 tuple_path=current_tuple_path,
@@ -152,27 +136,9 @@ def _build_schema_path_map() -> dict[str, SchemaPathInfo]:
                 enum_class=enum_class,
             )
 
-            # If it's a nested model, recurse into it
-            if is_nested_model:
-                nested_model_class = field_type
-                if not isinstance(nested_model_class, type) or not issubclass(
-                    nested_model_class, BaseModel
-                ):
-                    # Extract from Optional/Union
-                    origin = get_origin(annotation)
-                    if origin is not None:
-                        args = get_args(annotation)
-                        for arg in args:
-                            if isinstance(arg, type) and issubclass(arg, BaseModel):
-                                nested_model_class = arg
-                                break
+            if nested_model_class is not None:
+                traverse_model(nested_model_class, current_tuple_path)
 
-                if isinstance(nested_model_class, type) and issubclass(
-                    nested_model_class, BaseModel
-                ):
-                    traverse_model(nested_model_class, current_tuple_path)
-
-    # Start traversal from AppConfig
     traverse_model(AppConfig)
 
     return path_map

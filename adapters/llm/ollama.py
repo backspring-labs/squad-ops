@@ -169,7 +169,11 @@ class OllamaAdapter(LLMPort):
         resolved_model = model or self._default_model
         timeout = timeout_seconds or self._timeout
         payload = self._build_chat_payload(
-            messages, resolved_model, max_tokens, temperature, stream=False,
+            messages,
+            resolved_model,
+            max_tokens,
+            temperature,
+            stream=False,
         )
 
         try:
@@ -212,7 +216,11 @@ class OllamaAdapter(LLMPort):
         resolved_model = model or self._default_model
         timeout = timeout_seconds or self._timeout
         payload = self._build_chat_payload(
-            messages, resolved_model, max_tokens, temperature, stream=True,
+            messages,
+            resolved_model,
+            max_tokens,
+            temperature,
+            stream=True,
         )
 
         try:
@@ -237,14 +245,10 @@ class OllamaAdapter(LLMPort):
         except httpx.TimeoutException as e:
             raise LLMTimeoutError(f"Ollama chat_stream timed out after {timeout}s") from e
         except httpx.ConnectError as e:
-            raise LLMConnectionError(
-                f"Failed to connect to Ollama at {self._base_url}"
-            ) from e
+            raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                raise LLMModelNotFoundError(
-                    f"Model '{resolved_model}' not found"
-                ) from e
+                raise LLMModelNotFoundError(f"Model '{resolved_model}' not found") from e
             raise LLMConnectionError(f"Ollama chat_stream failed: {e}") from e
 
     def list_models(self) -> list[str]:

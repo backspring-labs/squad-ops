@@ -450,9 +450,7 @@ class AgentConfig(BaseModel):
     a2a_messaging_enabled: bool = Field(
         default=False, description="Enable A2A messaging for this agent (SIP-0085)"
     )
-    a2a_port: int = Field(
-        default=8080, ge=1024, le=65535, description="A2A messaging server port"
-    )
+    a2a_port: int = Field(default=8080, ge=1024, le=65535, description="A2A messaging server port")
 
     @field_validator("instances_file", mode="before")
     @classmethod

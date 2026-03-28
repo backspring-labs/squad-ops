@@ -163,7 +163,9 @@ def status(ctx: typer.Context):
     # Bootstrap state
     typer.echo()
     if bootstrap_info:
-        typer.echo(f"Bootstrap: {bootstrap_info['profile']} (last run: {bootstrap_info['last_run']})")
+        typer.echo(
+            f"Bootstrap: {bootstrap_info['profile']} (last run: {bootstrap_info['last_run']})"
+        )
         typer.echo("  (run `squadops doctor` for current status)")
     else:
         typer.echo("Bootstrap: No bootstrap state found — run `squadops bootstrap <profile>`")

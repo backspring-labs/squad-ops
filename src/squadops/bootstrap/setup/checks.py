@@ -27,9 +27,7 @@ from squadops.bootstrap.setup.profile import (
 # Result model
 # ---------------------------------------------------------------------------
 
-VALID_CATEGORIES = frozenset(
-    {"python", "platform", "tools", "docker", "models", "gpu", "auth"}
-)
+VALID_CATEGORIES = frozenset({"python", "platform", "tools", "docker", "models", "gpu", "auth"})
 
 
 @dataclass(frozen=True)
@@ -501,9 +499,7 @@ def check_nvidia_gpu() -> list[CheckResult]:
     nvidia_smi = shutil.which("nvidia-smi")
     if nvidia_smi:
         try:
-            proc = subprocess.run(
-                ["nvidia-smi"], capture_output=True, text=True, timeout=10
-            )
+            proc = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10)
             if proc.returncode == 0:
                 results.append(
                     CheckResult(
@@ -569,16 +565,16 @@ def check_nvidia_gpu() -> list[CheckResult]:
 
     # Heuristic: Ollama GPU access probe
     try:
-        proc = subprocess.run(
-            ["ollama", "ps"], capture_output=True, text=True, timeout=10
-        )
+        proc = subprocess.run(["ollama", "ps"], capture_output=True, text=True, timeout=10)
         gpu_detected = "gpu" in proc.stdout.lower() if proc.returncode == 0 else False
         results.append(
             CheckResult(
                 name="gpu:ollama-access",
                 category="gpu",
                 passed=gpu_detected,
-                message="Ollama GPU access detected" if gpu_detected else "Ollama GPU access not detected",
+                message="Ollama GPU access detected"
+                if gpu_detected
+                else "Ollama GPU access not detected",
                 heuristic=True,
             )
         )
@@ -649,6 +645,53 @@ def check_auth_token() -> CheckResult:
 # ---------------------------------------------------------------------------
 
 
+def _collect_python_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    return [check_python_version(profile), check_venv_exists(profile)]
+
+
+def _collect_platform_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    return [check_platform(profile)]
+
+
+def _collect_tools_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    return [check_system_dep(dep) for dep in profile.system_deps]
+
+
+def _collect_docker_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    return [check_docker_service(svc) for svc in profile.docker_services]
+
+
+def _collect_models_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    installed_models = _get_ollama_models()
+    results: list[CheckResult] = []
+    for model in profile.ollama_models:
+        if isinstance(model, OllamaModelExact):
+            results.append(check_ollama_model_exact(model, installed_models))
+        elif isinstance(model, OllamaModelAlternative):
+            results.append(check_ollama_model_alternative(model, installed_models))
+    return results
+
+
+def _collect_gpu_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    has_nvidia = any("nvidia" in dep.name for dep in profile.system_deps)
+    return list(check_nvidia_gpu()) if has_nvidia else []
+
+
+def _collect_auth_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    return [check_auth_token()]
+
+
+_CHECK_REGISTRY: list[tuple[str, callable]] = [
+    ("python", _collect_python_checks),
+    ("platform", _collect_platform_checks),
+    ("tools", _collect_tools_checks),
+    ("docker", _collect_docker_checks),
+    ("models", _collect_models_checks),
+    ("gpu", _collect_gpu_checks),
+    ("auth", _collect_auth_checks),
+]
+
+
 def run_checks(
     profile: BootstrapProfile,
     *,
@@ -664,46 +707,7 @@ def run_checks(
         List of CheckResult in execution order.
     """
     results: list[CheckResult] = []
-
-    def _should_run(cat: str) -> bool:
-        return category is None or category == cat
-
-    # Python checks
-    if _should_run("python"):
-        results.append(check_python_version(profile))
-        results.append(check_venv_exists(profile))
-
-    # Platform check
-    if _should_run("platform"):
-        results.append(check_platform(profile))
-
-    # System dependency checks
-    if _should_run("tools"):
-        for dep in profile.system_deps:
-            results.append(check_system_dep(dep))
-
-    # Docker service checks (R6: doctor validates fully operational state)
-    if _should_run("docker"):
-        for svc in profile.docker_services:
-            results.append(check_docker_service(svc))
-
-    # Ollama model checks
-    if _should_run("models"):
-        installed_models = _get_ollama_models()
-        for model in profile.ollama_models:
-            if isinstance(model, OllamaModelExact):
-                results.append(check_ollama_model_exact(model, installed_models))
-            elif isinstance(model, OllamaModelAlternative):
-                results.append(check_ollama_model_alternative(model, installed_models))
-
-    # GPU checks — only if profile has nvidia deps
-    if _should_run("gpu"):
-        has_nvidia = any("nvidia" in dep.name for dep in profile.system_deps)
-        if has_nvidia:
-            results.extend(check_nvidia_gpu())
-
-    # Auth token check
-    if _should_run("auth"):
-        results.append(check_auth_token())
-
+    for cat, collect_fn in _CHECK_REGISTRY:
+        if category is None or category == cat:
+            results.extend(collect_fn(profile))
     return results

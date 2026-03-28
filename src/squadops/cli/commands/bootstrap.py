@@ -21,6 +21,7 @@ from squadops.bootstrap.setup.state import BootstrapState, write_state
 
 _BOOTSTRAP_SCRIPT = Path(__file__).resolve().parents[4] / "scripts" / "bootstrap" / "bootstrap.sh"
 
+
 def bootstrap(
     profile_name: str = typer.Argument(
         ..., help="Bootstrap profile (dev-mac, dev-pc, local-spark)"
@@ -92,9 +93,7 @@ def bootstrap(
         typer.echo()
 
 
-def _detect_completed_steps(
-    profile_name: str, skip_docker: bool, skip_models: bool
-) -> list[str]:
+def _detect_completed_steps(profile_name: str, skip_docker: bool, skip_models: bool) -> list[str]:
     """Build list of steps that were run (best-effort)."""
     steps = ["system_deps", "python"]
     if not skip_docker:

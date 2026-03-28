@@ -29,13 +29,9 @@ class _RepairTaskHandler(_CycleTaskHandler):
         verification_ctx = (prior_outputs or {}).get("verification_context", "")
         verification_section = ""
         if verification_ctx:
-            verification_section = (
-                f"\n\n## Verification Failure Context\n\n{verification_ctx}"
-            )
+            verification_section = f"\n\n## Verification Failure Context\n\n{verification_ctx}"
 
-        upstream = {
-            k: v for k, v in (prior_outputs or {}).items() if k != "verification_context"
-        }
+        upstream = {k: v for k, v in (prior_outputs or {}).items() if k != "verification_context"}
         return {
             "prd": prd,
             "role": self._role,

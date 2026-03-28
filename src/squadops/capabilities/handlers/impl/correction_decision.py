@@ -71,7 +71,8 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                     f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
                 )
             rendered = await renderer.render(
-                "request.governance_correction_decision", variables,
+                "request.governance_correction_decision",
+                variables,
             )
             user_prompt = rendered.content
         else:
@@ -100,9 +101,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
-            return HandlerResult(
-                success=False, outputs={}, _evidence=evidence, error=str(exc)
-            )
+            return HandlerResult(success=False, outputs={}, _evidence=evidence, error=str(exc))
 
         content = response.content
 

@@ -137,97 +137,113 @@ def parse_pulse_checks(
     seen_suite_ids: set[str] = set()
 
     for idx, raw in enumerate(raw_list):
-        suite_id = raw.get("suite_id")
-        if not suite_id:
-            raise ValueError(f"pulse_checks[{idx}]: suite_id is required")
-
-        if suite_id in seen_suite_ids:
-            raise ValueError(f"pulse_checks[{idx}]: duplicate suite_id {suite_id!r}")
-        seen_suite_ids.add(suite_id)
-
-        suite_class = raw.get("suite_class", "guardrail")
-        if suite_class == "proof":
-            raise ValueError(
-                f"pulse_checks[{idx}] ({suite_id}): suite_class='proof' is not "
-                f"supported in Tier 1. Use 'guardrail' instead."
-            )
-
-        binding_mode = raw.get("binding_mode", "milestone")
-        if binding_mode not in ("milestone", "cadence"):
-            raise ValueError(
-                f"pulse_checks[{idx}] ({suite_id}): binding_mode must be "
-                f"'milestone' or 'cadence', got {binding_mode!r}"
-            )
-
-        boundary_id = raw.get("boundary_id", "")
-        if not boundary_id:
-            raise ValueError(f"pulse_checks[{idx}] ({suite_id}): boundary_id is required")
-
-        # D5a: cadence binding enforces boundary_id == CADENCE_BOUNDARY_ID
-        if binding_mode == "cadence" and boundary_id != CADENCE_BOUNDARY_ID:
-            raise ValueError(
-                f"pulse_checks[{idx}] ({suite_id}): cadence-bound suite must "
-                f"have boundary_id={CADENCE_BOUNDARY_ID!r}, got {boundary_id!r}"
-            )
-
-        # Parse individual checks
-        raw_checks = raw.get("checks", [])
-        checks: list[AcceptanceCheck] = []
-        for _cidx, raw_check in enumerate(raw_checks):
-            check_type = CheckType(raw_check["check_type"])
-            kwargs = dict(raw_check)
-            kwargs["check_type"] = check_type
-
-            # Convert command list to tuple
-            if "command" in kwargs and isinstance(kwargs["command"], list):
-                kwargs["command"] = tuple(kwargs["command"])
-
-            # Convert env list of dicts/lists to tuple of tuples
-            if "env" in kwargs and isinstance(kwargs["env"], list):
-                env_tuples = []
-                for e in kwargs["env"]:
-                    if isinstance(e, (list, tuple)) and len(e) == 2:
-                        env_tuples.append(tuple(e))
-                    elif isinstance(e, dict):
-                        for k, v in e.items():
-                            env_tuples.append((k, str(v)))
-                kwargs["env"] = tuple(env_tuples)
-
-            # Convert after_task_types to tuple
-            if "after_task_types" in kwargs and isinstance(kwargs["after_task_types"], list):
-                kwargs["after_task_types"] = tuple(kwargs["after_task_types"])
-
-            checks.append(AcceptanceCheck(**kwargs))
-
-        # Validate template variables in check targets (fail early, not at runtime)
-        for cidx, check in enumerate(checks):
-            if check.target:
-                bad_vars = validate_template_variables(check.target)
-                if bad_vars:
-                    valid = sorted(KNOWN_TEMPLATE_VARIABLES) + [
-                        f"{p}.*" for p in sorted(KNOWN_TEMPLATE_PREFIXES)
-                    ]
-                    raise ValueError(
-                        f"pulse_checks[{idx}] ({suite_id}): check[{cidx}] target "
-                        f"references unknown template variable(s): {bad_vars}. "
-                        f"Valid variables: {valid}"
-                    )
-
-        after_task_types = raw.get("after_task_types", [])
-        if isinstance(after_task_types, list):
-            after_task_types = tuple(after_task_types)
-
-        definitions.append(
-            PulseCheckDefinition(
-                suite_id=suite_id,
-                boundary_id=boundary_id,
-                checks=tuple(checks),
-                suite_class=suite_class,
-                after_task_types=after_task_types,
-                binding_mode=binding_mode,
-                max_suite_seconds=raw.get("max_suite_seconds", 30),
-                max_check_seconds=raw.get("max_check_seconds", 10),
-            )
-        )
+        defn = _parse_single_pulse_check(idx, raw, seen_suite_ids, profile_dir)
+        definitions.append(defn)
 
     return tuple(definitions)
+
+
+def _parse_single_pulse_check(
+    idx: int,
+    raw: dict,
+    seen_suite_ids: set[str],
+    profile_dir: str | None,
+) -> PulseCheckDefinition:
+    """Parse and validate a single pulse check entry."""
+    suite_id = raw.get("suite_id")
+    if not suite_id:
+        raise ValueError(f"pulse_checks[{idx}]: suite_id is required")
+
+    if suite_id in seen_suite_ids:
+        raise ValueError(f"pulse_checks[{idx}]: duplicate suite_id {suite_id!r}")
+    seen_suite_ids.add(suite_id)
+
+    suite_class = raw.get("suite_class", "guardrail")
+    if suite_class == "proof":
+        raise ValueError(
+            f"pulse_checks[{idx}] ({suite_id}): suite_class='proof' is not "
+            f"supported in Tier 1. Use 'guardrail' instead."
+        )
+
+    binding_mode = raw.get("binding_mode", "milestone")
+    if binding_mode not in ("milestone", "cadence"):
+        raise ValueError(
+            f"pulse_checks[{idx}] ({suite_id}): binding_mode must be "
+            f"'milestone' or 'cadence', got {binding_mode!r}"
+        )
+
+    boundary_id = raw.get("boundary_id", "")
+    if not boundary_id:
+        raise ValueError(f"pulse_checks[{idx}] ({suite_id}): boundary_id is required")
+
+    # D5a: cadence binding enforces boundary_id == CADENCE_BOUNDARY_ID
+    if binding_mode == "cadence" and boundary_id != CADENCE_BOUNDARY_ID:
+        raise ValueError(
+            f"pulse_checks[{idx}] ({suite_id}): cadence-bound suite must "
+            f"have boundary_id={CADENCE_BOUNDARY_ID!r}, got {boundary_id!r}"
+        )
+
+    checks = _parse_acceptance_checks(idx, suite_id, raw.get("checks", []))
+
+    after_task_types = raw.get("after_task_types", [])
+    if isinstance(after_task_types, list):
+        after_task_types = tuple(after_task_types)
+
+    return PulseCheckDefinition(
+        suite_id=suite_id,
+        boundary_id=boundary_id,
+        checks=tuple(checks),
+        suite_class=suite_class,
+        after_task_types=after_task_types,
+        binding_mode=binding_mode,
+        max_suite_seconds=raw.get("max_suite_seconds", 30),
+        max_check_seconds=raw.get("max_check_seconds", 10),
+    )
+
+
+def _parse_acceptance_checks(
+    suite_idx: int, suite_id: str, raw_checks: list[dict]
+) -> list[AcceptanceCheck]:
+    """Parse raw check dicts into AcceptanceCheck objects with validation."""
+    checks: list[AcceptanceCheck] = []
+    for _cidx, raw_check in enumerate(raw_checks):
+        check_type = CheckType(raw_check["check_type"])
+        kwargs = dict(raw_check)
+        kwargs["check_type"] = check_type
+
+        # Convert command list to tuple
+        if "command" in kwargs and isinstance(kwargs["command"], list):
+            kwargs["command"] = tuple(kwargs["command"])
+
+        # Convert env list of dicts/lists to tuple of tuples
+        if "env" in kwargs and isinstance(kwargs["env"], list):
+            env_tuples = []
+            for e in kwargs["env"]:
+                if isinstance(e, (list, tuple)) and len(e) == 2:
+                    env_tuples.append(tuple(e))
+                elif isinstance(e, dict):
+                    for k, v in e.items():
+                        env_tuples.append((k, str(v)))
+            kwargs["env"] = tuple(env_tuples)
+
+        # Convert after_task_types to tuple
+        if "after_task_types" in kwargs and isinstance(kwargs["after_task_types"], list):
+            kwargs["after_task_types"] = tuple(kwargs["after_task_types"])
+
+        checks.append(AcceptanceCheck(**kwargs))
+
+    # Validate template variables in check targets (fail early, not at runtime)
+    for cidx, check in enumerate(checks):
+        if check.target:
+            bad_vars = validate_template_variables(check.target)
+            if bad_vars:
+                valid = sorted(KNOWN_TEMPLATE_VARIABLES) + [
+                    f"{p}.*" for p in sorted(KNOWN_TEMPLATE_PREFIXES)
+                ]
+                raise ValueError(
+                    f"pulse_checks[{suite_idx}] ({suite_id}): check[{cidx}] target "
+                    f"references unknown template variable(s): {bad_vars}. "
+                    f"Valid variables: {valid}"
+                )
+
+    return checks
