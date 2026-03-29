@@ -76,6 +76,8 @@ source "${SCRIPT_DIR}/lib/apt_install.sh"
 source "${SCRIPT_DIR}/lib/docker_setup.sh"
 # shellcheck source=lib/ollama_setup.sh
 source "${SCRIPT_DIR}/lib/ollama_setup.sh"
+# shellcheck source=lib/langfuse_setup.sh
+source "${SCRIPT_DIR}/lib/langfuse_setup.sh"
 
 # ---------------------------------------------------------------------------
 # Validate and source profile script

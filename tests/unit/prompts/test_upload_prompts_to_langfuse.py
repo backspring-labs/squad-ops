@@ -6,9 +6,12 @@ Each test answers "what bug would this catch?" — see docstrings.
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 import textwrap
 import types
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -199,19 +202,26 @@ class TestCollectTemplates:
 
 
 class TestUploadToLangfuse:
-    """Bug: SDK called with wrong args → silent upload of garbage."""
+    """Bug: HTTP request sent with wrong payload → silent upload of garbage."""
 
-    def test_calls_create_prompt_with_correct_args(self, monkeypatch):
-        """Bug caught: wrong kwarg names, missing labels, wrong type parameter
+    def test_sends_correct_http_payload(self, monkeypatch):
+        """Bug caught: wrong JSON field names, missing labels, wrong type parameter
         would cause Langfuse to reject or misclassify the prompt.
         """
         mod = _import()
 
-        fake_client = MagicMock()
-        fake_langfuse_cls = MagicMock(return_value=fake_client)
-        fake_langfuse_mod = MagicMock()
-        fake_langfuse_mod.Langfuse = fake_langfuse_cls
-        monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse_mod)
+        # Capture the request sent to urlopen
+        captured_requests: list[urllib.request.Request] = []
+
+        def fake_urlopen(req):
+            captured_requests.append(req)
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({"version": 1}).encode()
+            resp.__enter__ = lambda s: resp
+            resp.__exit__ = lambda s, *a: None
+            return resp
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
         entries = [
             mod.UploadEntry(
@@ -229,26 +239,32 @@ class TestUploadToLangfuse:
 
         assert success == 1
         assert errors == 0
-        fake_client.create_prompt.assert_called_once_with(
-            name="constraints.global",
-            prompt="Global constraints.",
-            labels=["staging"],
-            type="text",
-        )
-        fake_client.flush.assert_called_once()
+        assert len(captured_requests) == 1
 
-    def test_counts_errors_on_sdk_exception(self, monkeypatch):
-        """Bug caught: if create_prompt raises, script must count the error
+        req = captured_requests[0]
+        assert req.full_url == "http://localhost:3001/api/public/v2/prompts"
+        assert req.get_header("Authorization").startswith("Basic ")
+
+        payload = json.loads(req.data.decode())
+        assert payload == {
+            "name": "constraints.global",
+            "prompt": "Global constraints.",
+            "labels": ["staging"],
+            "type": "text",
+        }
+
+    def test_counts_errors_on_http_failure(self, monkeypatch):
+        """Bug caught: if the API returns an error, script must count it
         and continue uploading remaining entries (not crash).
         """
         mod = _import()
 
-        fake_client = MagicMock()
-        fake_client.create_prompt.side_effect = RuntimeError("API 500")
-        fake_langfuse_cls = MagicMock(return_value=fake_client)
-        fake_langfuse_mod = MagicMock()
-        fake_langfuse_mod.Langfuse = fake_langfuse_cls
-        monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse_mod)
+        def fake_urlopen(req):
+            raise urllib.error.HTTPError(
+                req.full_url, 500, "Internal Server Error", {}, None
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
         entries = [
             mod.UploadEntry(
@@ -268,14 +284,11 @@ class TestUploadToLangfuse:
         ]
 
         success, errors = mod.upload_to_langfuse(
-            entries, "http://localhost:3001", "pk", "sk", "production"
+            entries, "http://localhost:3001", "pk", "sk", "local"
         )
 
         assert success == 0
         assert errors == 2
-        # Both entries were attempted despite first failure
-        assert fake_client.create_prompt.call_count == 2
-        fake_client.flush.assert_called_once()
 
 
 class TestDryRunLiveAssets:
@@ -350,17 +363,33 @@ class TestUploadResolveRoundTrip:
     """
 
     @pytest.fixture(autouse=True)
-    def _inject_shared_store(self):
-        """Inject a shared fake Langfuse that both upload and adapter use."""
+    def _inject_shared_store(self, monkeypatch):
+        """Inject a shared fake Langfuse for the adapter, and mock urlopen
+        for the upload script so both sides share the same store.
+        """
         self._shared_store = _FakeLangfuseStore()
 
         fake_mod = types.ModuleType("langfuse")
-        # Return the SAME store instance for every Langfuse() call
         fake_mod.Langfuse = lambda **kw: self._shared_store
         sys.modules["langfuse"] = fake_mod
-
-        # Clear adapter module cache so it picks up the fake SDK
         sys.modules.pop("adapters.prompts.langfuse_asset_adapter", None)
+
+        # Mock urlopen so upload_to_langfuse feeds into the shared store
+        def fake_urlopen(req):
+            payload = json.loads(req.data.decode())
+            result = self._shared_store.create_prompt(
+                name=payload["name"],
+                prompt=payload["prompt"],
+                labels=payload.get("labels"),
+                type=payload.get("type", "text"),
+            )
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({"version": result.version}).encode()
+            resp.__enter__ = lambda s: resp
+            resp.__exit__ = lambda s, *a: None
+            return resp
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
         yield
 
@@ -376,7 +405,6 @@ class TestUploadResolveRoundTrip:
         from adapters.prompts.langfuse_asset_adapter import LangfusePromptAssetAdapter
         from squadops.prompts.asset_models import ResolvedAsset
 
-        # Upload a role-specific fragment
         entries = [
             mod.UploadEntry(
                 name="identity--dev",
@@ -391,7 +419,6 @@ class TestUploadResolveRoundTrip:
         )
         assert success == 1
 
-        # Resolve via the adapter using the same naming convention
         adapter = LangfusePromptAssetAdapter(
             public_key="pk", secret_key="sk", host="http://fake"
         )
