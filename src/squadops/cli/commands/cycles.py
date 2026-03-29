@@ -34,6 +34,49 @@ def _get_client(ctx: typer.Context) -> APIClient:
     return APIClient(config)
 
 
+def _resolve_prd_ref(ctx: typer.Context, project_id: str, prd: str) -> str:
+    """Resolve a --prd argument to an artifact ID or pass-through reference.
+
+    If *prd* is a local file, upload it and return the server-assigned artifact_id.
+    Otherwise, treat it as an existing artifact reference.
+    """
+    prd_path = Path(prd)
+    if prd_path.is_file():
+        try:
+            client = _get_client(ctx)
+            media_type, _ = mimetypes.guess_type(str(prd_path))
+            fields = {
+                "artifact_type": "prd",
+                "filename": prd_path.name,
+                "media_type": media_type or "text/markdown",
+            }
+            art_data = client.upload(
+                f"/api/v1/projects/{project_id}/artifacts/ingest",
+                file_path=prd_path,
+                fields=fields,
+            )
+            return art_data["artifact_id"]
+        except CLIError as e:
+            print_error(str(e))
+            raise typer.Exit(code=e.exit_code) from e
+    return prd
+
+
+_CRP_BODY_FIELDS = (
+    "build_strategy",
+    "task_flow_policy",
+    "expected_artifact_types",
+    "experiment_context",
+)
+
+
+def _merge_crp_body_fields(body: dict, merged: dict) -> None:
+    """Copy known cycle request profile defaults into the request body."""
+    for key in _CRP_BODY_FIELDS:
+        if key in merged:
+            body[key] = merged[key]
+
+
 def _parse_set_flags(set_flags: list[str]) -> dict:
     """Parse --set key=value flags into a dict."""
     result = {}
@@ -82,29 +125,7 @@ def create_cycle(
     local_hash = compute_config_hash(crp.defaults, overrides)
 
     # 5b. Resolve --prd: file path → auto-ingest, artifact ID → pass through
-    prd_ref = None
-    if prd:
-        prd_path = Path(prd)
-        if prd_path.is_file():
-            try:
-                client = _get_client(ctx)
-                media_type, _ = mimetypes.guess_type(str(prd_path))
-                fields = {
-                    "artifact_type": "prd",
-                    "filename": prd_path.name,
-                    "media_type": media_type or "text/markdown",
-                }
-                art_data = client.upload(
-                    f"/api/v1/projects/{project_id}/artifacts/ingest",
-                    file_path=prd_path,
-                    fields=fields,
-                )
-                prd_ref = art_data["artifact_id"]
-            except CLIError as e:
-                print_error(str(e))
-                raise typer.Exit(code=e.exit_code) from e
-        else:
-            prd_ref = prd
+    prd_ref = _resolve_prd_ref(ctx, project_id, prd) if prd else None
 
     # 6. Build request body
     body = {
@@ -117,14 +138,7 @@ def create_cycle(
         body["prd_ref"] = prd_ref
 
     # Merge known CRP defaults into body where they map to top-level DTO fields
-    if "build_strategy" in merged:
-        body["build_strategy"] = merged["build_strategy"]
-    if "task_flow_policy" in merged:
-        body["task_flow_policy"] = merged["task_flow_policy"]
-    if "expected_artifact_types" in merged:
-        body["expected_artifact_types"] = merged["expected_artifact_types"]
-    if "experiment_context" in merged:
-        body["experiment_context"] = merged["experiment_context"]
+    _merge_crp_body_fields(body, merged)
 
     # 7. POST to API
     try:

@@ -537,32 +537,14 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         if impl_plan is None and inputs.get("artifact_vault") is not None:
             return self._fail_result(start_time, inputs, "Required plan artifacts not available")
 
-        # SIP-0084: dual-path — use request renderer when available
-        rendered = None
-        renderer = getattr(context.ports, "request_renderer", None)
-        if renderer is not None:
-            variables: dict[str, str] = {
-                "prd": prd,
-                "file_structure_guidance": capability.file_structure_guidance,
-                "example_structure": capability.example_structure,
-            }
-            if impl_plan:
-                variables["impl_plan"] = f"\n\n## Implementation Plan\n\n{impl_plan}"
-            if strategy:
-                variables["strategy"] = f"\n\n## Strategy Analysis\n\n{strategy}"
-            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
-            rendered = await renderer.render(
-                "request.development_develop.code_generate",
-                variables,
-            )
-            user_prompt = rendered.content
-        else:
-            user_prompt = self._build_user_prompt(
-                prd,
-                prior_outputs,
-                impl_plan=impl_plan,
-                strategy=strategy,
-            )
+        rendered, user_prompt = await self._build_dev_prompt(
+            context,
+            prd,
+            prior_outputs,
+            capability,
+            impl_plan,
+            strategy,
+        )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
@@ -654,7 +636,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         provenance: dict[str, Any] = {
             "system_prompt_bundle_hash": assembled.assembly_hash,
         }
-        if renderer is not None and rendered is not None:
+        if rendered is not None:
             provenance["request_template_id"] = rendered.template_id
             provenance["request_template_version"] = rendered.template_version
             provenance["request_render_hash"] = rendered.render_hash
@@ -677,6 +659,43 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         )
 
         return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+
+    async def _build_dev_prompt(
+        self,
+        context: ExecutionContext,
+        prd: str,
+        prior_outputs: dict | None,
+        capability: Any,
+        impl_plan: str | None,
+        strategy: str | None,
+    ) -> tuple[Any, str]:
+        """Build the dev prompt via renderer or fallback. Returns (rendered, user_prompt)."""
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {
+                "prd": prd,
+                "file_structure_guidance": capability.file_structure_guidance,
+                "example_structure": capability.example_structure,
+            }
+            if impl_plan:
+                variables["impl_plan"] = f"\n\n## Implementation Plan\n\n{impl_plan}"
+            if strategy:
+                variables["strategy"] = f"\n\n## Strategy Analysis\n\n{strategy}"
+            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            rendered = await renderer.render(
+                "request.development_develop.code_generate",
+                variables,
+            )
+            return rendered, rendered.content
+
+        user_prompt = self._build_user_prompt(
+            prd,
+            prior_outputs,
+            impl_plan=impl_plan,
+            strategy=strategy,
+        )
+        return None, user_prompt
 
     def _record_generation(
         self,
@@ -930,36 +949,15 @@ class QATestHandler(_CycleTaskHandler):
         if val_plan is None and inputs.get("artifact_vault") is not None:
             return self._fail_result(start_time, inputs, "Required plan artifacts not available")
 
-        # SIP-0084: dual-path — use request renderer when available
-        rendered = None
-        renderer = getattr(context.ports, "request_renderer", None)
-        if renderer is not None:
-            variables: dict[str, str] = {
-                "prd": prd,
-                "test_supplement": capability.test_prompt_supplement,
-            }
-            if val_plan:
-                variables["validation_plan"] = f"\n\n## Validation Plan\n\n{val_plan}"
-            if sources:
-                source_parts = ["\n\n## Source Files to Test\n"]
-                for path, code in sources.items():
-                    lang = self._fence_lang(path)
-                    source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
-                variables["source_files"] = "\n".join(source_parts)
-            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
-            rendered = await renderer.render(
-                "request.qa_test.test_validate",
-                variables,
-            )
-            user_prompt = rendered.content
-        else:
-            user_prompt = self._build_user_prompt(
-                prd,
-                prior_outputs,
-                val_plan=val_plan,
-                sources=sources,
-                capability_name=capability_name,
-            )
+        rendered, user_prompt = await self._build_qa_prompt(
+            context,
+            prd,
+            prior_outputs,
+            capability,
+            val_plan,
+            sources,
+            capability_name,
+        )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
@@ -1054,7 +1052,7 @@ class QATestHandler(_CycleTaskHandler):
         provenance: dict[str, Any] = {
             "system_prompt_bundle_hash": assembled.assembly_hash,
         }
-        if renderer is not None and rendered is not None:
+        if rendered is not None:
             provenance["request_template_id"] = rendered.template_id
             provenance["request_template_version"] = rendered.template_version
             provenance["request_render_hash"] = rendered.render_hash
@@ -1085,6 +1083,48 @@ class QATestHandler(_CycleTaskHandler):
         )
 
         return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+
+    async def _build_qa_prompt(
+        self,
+        context: ExecutionContext,
+        prd: str,
+        prior_outputs: dict | None,
+        capability: Any,
+        val_plan: str | None,
+        sources: dict[str, str],
+        capability_name: str,
+    ) -> tuple[Any, str]:
+        """Build the QA prompt via renderer or fallback. Returns (rendered, user_prompt)."""
+        rendered = None
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables: dict[str, str] = {
+                "prd": prd,
+                "test_supplement": capability.test_prompt_supplement,
+            }
+            if val_plan:
+                variables["validation_plan"] = f"\n\n## Validation Plan\n\n{val_plan}"
+            if sources:
+                source_parts = ["\n\n## Source Files to Test\n"]
+                for path, code in sources.items():
+                    lang = self._fence_lang(path)
+                    source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
+                variables["source_files"] = "\n".join(source_parts)
+            variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            rendered = await renderer.render(
+                "request.qa_test.test_validate",
+                variables,
+            )
+            return rendered, rendered.content
+
+        user_prompt = self._build_user_prompt(
+            prd,
+            prior_outputs,
+            val_plan=val_plan,
+            sources=sources,
+            capability_name=capability_name,
+        )
+        return None, user_prompt
 
     def _record_generation(
         self,
@@ -1232,6 +1272,23 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             return f"Required deployment files missing: {missing_files}"
 
         return None
+
+    @staticmethod
+    def _resolve_task_tags(profile: Any, resolved_config: dict) -> dict[str, str]:
+        """Merge profile default tags with experiment_context overrides."""
+        task_tags = dict(profile.default_task_tags)
+        experiment_ctx = resolved_config.get("experiment_context", {})
+        if isinstance(experiment_ctx, dict):
+            for key, value in experiment_ctx.items():
+                if isinstance(value, str):
+                    task_tags[key] = value
+                else:
+                    logger.warning(
+                        "Ignoring non-string tag %r=%r from experiment_context",
+                        key,
+                        value,
+                    )
+        return task_tags
 
     async def _build_assembly_prompt(
         self,
@@ -1405,18 +1462,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             return self._fail_result(start_time, inputs, str(exc))
 
         # Step 1b: Resolve task tags (profile defaults + experiment_context overrides)
-        task_tags = dict(profile.default_task_tags)
-        experiment_ctx = resolved_config.get("experiment_context", {})
-        if isinstance(experiment_ctx, dict):
-            for key, value in experiment_ctx.items():
-                if isinstance(value, str):
-                    task_tags[key] = value
-                else:
-                    logger.warning(
-                        "Ignoring non-string tag %r=%r from experiment_context",
-                        key,
-                        value,
-                    )
+        task_tags = self._resolve_task_tags(profile, resolved_config)
 
         # Step 2: Resolve source artifacts from dev role (assembly input)
         sources = self._get_assembly_inputs(inputs)

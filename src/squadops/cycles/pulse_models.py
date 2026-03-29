@@ -201,6 +201,25 @@ def _parse_single_pulse_check(
     )
 
 
+def _normalize_check_kwargs(kwargs: dict) -> None:
+    """Normalize mutable collection fields in a raw check dict to tuples."""
+    if "command" in kwargs and isinstance(kwargs["command"], list):
+        kwargs["command"] = tuple(kwargs["command"])
+
+    if "env" in kwargs and isinstance(kwargs["env"], list):
+        env_tuples = []
+        for e in kwargs["env"]:
+            if isinstance(e, (list, tuple)) and len(e) == 2:
+                env_tuples.append(tuple(e))
+            elif isinstance(e, dict):
+                for k, v in e.items():
+                    env_tuples.append((k, str(v)))
+        kwargs["env"] = tuple(env_tuples)
+
+    if "after_task_types" in kwargs and isinstance(kwargs["after_task_types"], list):
+        kwargs["after_task_types"] = tuple(kwargs["after_task_types"])
+
+
 def _parse_acceptance_checks(
     suite_idx: int, suite_id: str, raw_checks: list[dict]
 ) -> list[AcceptanceCheck]:
@@ -210,26 +229,7 @@ def _parse_acceptance_checks(
         check_type = CheckType(raw_check["check_type"])
         kwargs = dict(raw_check)
         kwargs["check_type"] = check_type
-
-        # Convert command list to tuple
-        if "command" in kwargs and isinstance(kwargs["command"], list):
-            kwargs["command"] = tuple(kwargs["command"])
-
-        # Convert env list of dicts/lists to tuple of tuples
-        if "env" in kwargs and isinstance(kwargs["env"], list):
-            env_tuples = []
-            for e in kwargs["env"]:
-                if isinstance(e, (list, tuple)) and len(e) == 2:
-                    env_tuples.append(tuple(e))
-                elif isinstance(e, dict):
-                    for k, v in e.items():
-                        env_tuples.append((k, str(v)))
-            kwargs["env"] = tuple(env_tuples)
-
-        # Convert after_task_types to tuple
-        if "after_task_types" in kwargs and isinstance(kwargs["after_task_types"], list):
-            kwargs["after_task_types"] = tuple(kwargs["after_task_types"])
-
+        _normalize_check_kwargs(kwargs)
         checks.append(AcceptanceCheck(**kwargs))
 
     # Validate template variables in check targets (fail early, not at runtime)

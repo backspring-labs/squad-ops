@@ -221,8 +221,8 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 38
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 41 executor + 7 route = 48 total emit calls."""
+        """Sanity check: 40 executor + 7 route = 47 total emit calls."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 48
+        assert total == 47
