@@ -80,9 +80,7 @@ class DataGatherEvidenceHandler(_PlanningTaskHandler):
         errors = super().validate_inputs(inputs, contract)
         resolved_config = inputs.get("resolved_config", {})
         if not resolved_config.get("impl_run_id"):
-            errors.append(
-                "'impl_run_id' is required in execution_overrides for wrap-up runs"
-            )
+            errors.append("'impl_run_id' is required in execution_overrides for wrap-up runs")
         return errors
 
 
@@ -121,8 +119,7 @@ class DataClassifyUnresolvedHandler(_PlanningTaskHandler):
         for owner in owners:
             if owner.lower() not in ALLOWED_SUGGESTED_OWNERS:
                 logger.warning(
-                    "Unrecognized suggested_owner '%s' in unresolved items "
-                    "(allowed: %s)",
+                    "Unrecognized suggested_owner '%s' in unresolved items (allowed: %s)",
                     owner,
                     ", ".join(sorted(ALLOWED_SUGGESTED_OWNERS)),
                 )
@@ -209,10 +206,7 @@ class GovernanceCloseoutDecisionHandler(_PlanningTaskHandler):
                 success=False,
                 outputs={},
                 _evidence=result._evidence,
-                error=(
-                    "Closeout artifact frontmatter missing "
-                    "'readiness_recommendation' field"
-                ),
+                error=("Closeout artifact frontmatter missing 'readiness_recommendation' field"),
             )
 
         if fm["readiness_recommendation"] not in _VALID_RECOMMENDATION:

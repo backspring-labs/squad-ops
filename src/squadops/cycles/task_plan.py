@@ -132,6 +132,80 @@ def _has_builder_role(profile: SquadProfile) -> bool:
     return any(a.role == "builder" and a.enabled for a in profile.agents)
 
 
+def _check_required_roles(
+    profile_id: str, required: set[str], available: set[str], label: str = ""
+) -> None:
+    """Raise CycleError if required roles are missing from profile."""
+    missing = required - available
+    if missing:
+        qualifier = f"{label} " if label else ""
+        raise CycleError(
+            f"Squad profile '{profile_id}' is missing required {qualifier}roles: "
+            f"{', '.join(sorted(missing))}"
+        )
+
+
+def _resolve_workload_steps(
+    workload_type: str, profile: SquadProfile, profile_roles: set[str]
+) -> tuple[list, bool]:
+    """Select task steps and builder flag based on workload type (SIP-0078)."""
+    if workload_type not in _KNOWN_WORKLOAD_TYPES:
+        raise CycleError(
+            f"Unknown workload_type '{workload_type}'. "
+            f"Known types: {', '.join(sorted(_KNOWN_WORKLOAD_TYPES))}"
+        )
+
+    builder_used = False
+
+    if workload_type == WorkloadType.PLANNING:
+        _check_required_roles(profile.profile_id, REQUIRED_PLAN_ROLES, profile_roles)
+        steps = list(PLANNING_TASK_STEPS)
+    elif workload_type == WorkloadType.REFINEMENT:
+        _check_required_roles(
+            profile.profile_id, REQUIRED_REFINEMENT_ROLES, profile_roles, "refinement"
+        )
+        steps = list(REFINEMENT_TASK_STEPS)
+    elif workload_type == WorkloadType.IMPLEMENTATION:
+        builder_used = _has_builder_role(profile)
+        if builder_used:
+            steps = list(IMPLEMENTATION_TASK_STEPS[:1]) + list(BUILDER_ASSEMBLY_TASK_STEPS)
+        else:
+            steps = list(IMPLEMENTATION_TASK_STEPS)
+    elif workload_type == WorkloadType.EVALUATION:
+        _check_required_roles(profile.profile_id, REQUIRED_PLAN_ROLES, profile_roles)
+        steps = list(CYCLE_TASK_STEPS)
+    elif workload_type == WorkloadType.WRAPUP:
+        _check_required_roles(profile.profile_id, REQUIRED_WRAPUP_ROLES, profile_roles, "wrap-up")
+        steps = list(WRAPUP_TASK_STEPS)
+    else:
+        steps = []
+
+    return steps, builder_used
+
+
+def _resolve_legacy_steps(
+    cycle: Cycle, profile: SquadProfile, profile_roles: set[str]
+) -> tuple[list, bool]:
+    """Select task steps from legacy plan_tasks/build_tasks flags."""
+    include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
+    include_build = bool(cycle.applied_defaults.get("build_tasks"))
+    builder_used = include_build and _has_builder_role(profile)
+
+    steps: list = []
+    if include_plan:
+        steps.extend(CYCLE_TASK_STEPS)
+    if include_build:
+        if builder_used:
+            steps.extend(BUILDER_ASSEMBLY_TASK_STEPS)
+        else:
+            steps.extend(BUILD_TASK_STEPS)
+
+    if include_plan:
+        _check_required_roles(profile.profile_id, REQUIRED_PLAN_ROLES, profile_roles)
+
+    return steps, builder_used
+
+
 def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
@@ -148,84 +222,11 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
         Ordered list of TaskEnvelopes, one per pipeline step.
     """
     profile_roles = {a.role for a in profile.agents if a.enabled}
-    builder_used = False
 
     if run.workload_type is not None:
-        # --- Workload-type branching (SIP-0078) ---
-        # Reject unknown workload types early (typos → CycleError, not silent fallback).
-        if run.workload_type not in _KNOWN_WORKLOAD_TYPES:
-            raise CycleError(
-                f"Unknown workload_type '{run.workload_type}'. "
-                f"Known types: {', '.join(sorted(_KNOWN_WORKLOAD_TYPES))}"
-            )
-
-        if run.workload_type == WorkloadType.PLANNING:
-            missing = REQUIRED_PLAN_ROLES - profile_roles
-            if missing:
-                raise CycleError(
-                    f"Squad profile '{profile.profile_id}' is missing required roles: "
-                    f"{', '.join(sorted(missing))}"
-                )
-            steps = list(PLANNING_TASK_STEPS)
-
-        elif run.workload_type == WorkloadType.REFINEMENT:
-            missing = REQUIRED_REFINEMENT_ROLES - profile_roles
-            if missing:
-                raise CycleError(
-                    f"Squad profile '{profile.profile_id}' is missing required "
-                    f"refinement roles: {', '.join(sorted(missing))}"
-                )
-            steps = list(REFINEMENT_TASK_STEPS)
-
-        elif run.workload_type == WorkloadType.IMPLEMENTATION:
-            builder_used = _has_builder_role(profile)
-            if builder_used:
-                steps = list(IMPLEMENTATION_TASK_STEPS[:1]) + list(BUILDER_ASSEMBLY_TASK_STEPS)
-            else:
-                steps = list(IMPLEMENTATION_TASK_STEPS)
-
-        elif run.workload_type == WorkloadType.EVALUATION:
-            # Evaluation reuses standard cycle task steps for V1.
-            missing = REQUIRED_PLAN_ROLES - profile_roles
-            if missing:
-                raise CycleError(
-                    f"Squad profile '{profile.profile_id}' is missing required roles: "
-                    f"{', '.join(sorted(missing))}"
-                )
-            steps = list(CYCLE_TASK_STEPS)
-
-        elif run.workload_type == WorkloadType.WRAPUP:
-            missing = REQUIRED_WRAPUP_ROLES - profile_roles
-            if missing:
-                raise CycleError(
-                    f"Squad profile '{profile.profile_id}' is missing required "
-                    f"wrap-up roles: {', '.join(sorted(missing))}"
-                )
-            steps = list(WRAPUP_TASK_STEPS)
-
+        steps, builder_used = _resolve_workload_steps(run.workload_type, profile, profile_roles)
     else:
-        # --- Legacy path: plan_tasks / build_tasks flags (no workload_type) ---
-        include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
-        include_build = bool(cycle.applied_defaults.get("build_tasks"))
-        builder_used = include_build and _has_builder_role(profile)
-
-        steps = []
-        if include_plan:
-            steps.extend(CYCLE_TASK_STEPS)
-        if include_build:
-            if builder_used:
-                steps.extend(BUILDER_ASSEMBLY_TASK_STEPS)
-            else:
-                steps.extend(BUILD_TASK_STEPS)
-
-        # Validate required roles (SIP-0075 §3.1)
-        if include_plan:
-            missing = REQUIRED_PLAN_ROLES - profile_roles
-            if missing:
-                raise CycleError(
-                    f"Squad profile '{profile.profile_id}' is missing required roles: "
-                    f"{', '.join(sorted(missing))}"
-                )
+        steps, builder_used = _resolve_legacy_steps(cycle, profile, profile_roles)
 
     # Shared lineage IDs for the entire plan
     correlation_id = uuid4().hex

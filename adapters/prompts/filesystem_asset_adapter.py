@@ -87,7 +87,7 @@ class FilesystemPromptAssetAdapter(PromptAssetSourcePort):
             except yaml.YAMLError:
                 header = {}
             version = str(header.get("version", "1"))
-            content = raw[match.end():].strip()
+            content = raw[match.end() :].strip()
         else:
             content = raw.strip()
 

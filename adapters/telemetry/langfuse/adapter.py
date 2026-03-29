@@ -311,129 +311,151 @@ class LangFuseAdapter(LLMObservabilityPort):
 
     def _process_entry(self, entry: _BufferEntry) -> None:
         """Dispatch a single buffer entry to the LangFuse SDK."""
+        handler = self._ENTRY_HANDLERS.get(entry.event_type)
+        if handler is not None:
+            handler(self, entry)
+
+    def _handle_start_cycle(self, entry: _BufferEntry) -> None:
         ctx = entry.ctx
         tk = self._resolve_trace_key(ctx)
+        trace = self._client.trace(
+            id=tk,
+            name=f"cycle-{ctx.cycle_id}",
+            metadata=self._ctx_metadata(ctx),
+        )
+        with self._lock:
+            self._span_state[f"cycle:{tk}"] = trace
 
-        if entry.event_type == _EventType.START_CYCLE:
-            trace = self._client.trace(
-                id=tk,
-                name=f"cycle-{ctx.cycle_id}",
+    def _handle_end_cycle(self, entry: _BufferEntry) -> None:
+        ctx = entry.ctx
+        tk = self._resolve_trace_key(ctx)
+        with self._lock:
+            trace = self._span_state.pop(f"cycle:{tk}", None)
+        if trace is not None:
+            trace.update(metadata={"ended": True})
+
+    def _handle_start_pulse(self, entry: _BufferEntry) -> None:
+        ctx = entry.ctx
+        tk = self._resolve_trace_key(ctx)
+        with self._lock:
+            trace = self._span_state.get(f"cycle:{tk}")
+        if trace is not None:
+            span = trace.span(
+                name=f"pulse-{ctx.pulse_id}",
                 metadata=self._ctx_metadata(ctx),
             )
             with self._lock:
-                self._span_state[f"cycle:{tk}"] = trace
+                self._span_state[f"pulse:{tk}:{ctx.pulse_id}"] = span
 
-        elif entry.event_type == _EventType.END_CYCLE:
-            with self._lock:
-                trace = self._span_state.pop(f"cycle:{tk}", None)
-            if trace is not None:
-                trace.update(metadata={"ended": True})
+    def _handle_end_pulse(self, entry: _BufferEntry) -> None:
+        ctx = entry.ctx
+        tk = self._resolve_trace_key(ctx)
+        with self._lock:
+            span = self._span_state.pop(f"pulse:{tk}:{ctx.pulse_id}", None)
+        if span is not None:
+            span.end()
 
-        elif entry.event_type == _EventType.START_PULSE:
+    def _handle_start_task(self, entry: _BufferEntry) -> None:
+        ctx = entry.ctx
+        tk = self._resolve_trace_key(ctx)
+        pulse_key = f"pulse:{tk}:{ctx.pulse_id}"
+        with self._lock:
+            parent = self._span_state.get(pulse_key)
+            if parent is None:
+                parent = self._span_state.get(f"cycle:{tk}")
+        if parent is not None:
+            span = parent.span(
+                name=f"task-{ctx.task_id}",
+                metadata=self._ctx_metadata(ctx),
+            )
             with self._lock:
-                trace = self._span_state.get(f"cycle:{tk}")
-            if trace is not None:
-                span = trace.span(
-                    name=f"pulse-{ctx.pulse_id}",
-                    metadata=self._ctx_metadata(ctx),
+                self._span_state[f"task:{tk}:{ctx.task_id}"] = span
+
+    def _handle_end_task(self, entry: _BufferEntry) -> None:
+        ctx = entry.ctx
+        tk = self._resolve_trace_key(ctx)
+        with self._lock:
+            span = self._span_state.pop(f"task:{tk}:{ctx.task_id}", None)
+        if span is not None:
+            span.end()
+
+    def _handle_generation(self, entry: _BufferEntry) -> None:
+        ctx = entry.ctx
+        tk = self._resolve_trace_key(ctx)
+        record, prompt_layers = entry.payload
+        task_key = f"task:{tk}:{ctx.task_id}"
+        with self._lock:
+            parent = self._span_state.get(task_key)
+            if parent is None:
+                parent = self._span_state.get(f"cycle:{tk}")
+        if parent is not None:
+            langfuse_prompt = None
+            if record.prompt_name:
+                langfuse_prompt = self._resolve_langfuse_prompt(
+                    record.prompt_name, record.prompt_version
                 )
-                with self._lock:
-                    self._span_state[f"pulse:{tk}:{ctx.pulse_id}"] = span
 
-        elif entry.event_type == _EventType.END_PULSE:
-            with self._lock:
-                span = self._span_state.pop(f"pulse:{tk}:{ctx.pulse_id}", None)
-            if span is not None:
-                span.end()
+            gen_kwargs: dict[str, Any] = {
+                "id": record.generation_id,
+                "name": f"generation-{record.generation_id[:8]}",
+                "model": record.model,
+                "input": record.prompt_text,
+                "output": record.response_text,
+                "usage": {
+                    "prompt_tokens": record.prompt_tokens,
+                    "completion_tokens": record.completion_tokens,
+                    "total_tokens": record.total_tokens,
+                },
+                "metadata": {
+                    "latency_ms": record.latency_ms,
+                    "prompt_layer_set_id": prompt_layers.prompt_layer_set_id,
+                    "prompt_layers": [
+                        {
+                            "type": layer.layer_type,
+                            "id": layer.layer_id,
+                            "version": layer.layer_version,
+                            "hash": layer.layer_hash,
+                        }
+                        for layer in prompt_layers.layers
+                    ],
+                    **self._ctx_metadata(ctx),
+                },
+            }
+            if langfuse_prompt is not None:
+                gen_kwargs["prompt"] = langfuse_prompt
+            parent.generation(**gen_kwargs)
 
-        elif entry.event_type == _EventType.START_TASK:
-            pulse_key = f"pulse:{tk}:{ctx.pulse_id}"
-            with self._lock:
-                parent = self._span_state.get(pulse_key)
-                if parent is None:
-                    # Fall back to cycle trace if no pulse span
-                    parent = self._span_state.get(f"cycle:{tk}")
-            if parent is not None:
-                span = parent.span(
-                    name=f"task-{ctx.task_id}",
-                    metadata=self._ctx_metadata(ctx),
-                )
-                with self._lock:
-                    self._span_state[f"task:{tk}:{ctx.task_id}"] = span
+    def _handle_event(self, entry: _BufferEntry) -> None:
+        ctx = entry.ctx
+        event: StructuredEvent = entry.payload
+        parent = self._find_active_span(ctx)
+        if parent is not None:
+            parent.event(
+                name=event.name,
+                metadata={
+                    "message": event.message,
+                    "level": event.level,
+                    "attributes": dict(event.attributes) if event.attributes else {},
+                    **self._ctx_metadata(ctx),
+                },
+            )
 
-        elif entry.event_type == _EventType.END_TASK:
-            with self._lock:
-                span = self._span_state.pop(f"task:{tk}:{ctx.task_id}", None)
-            if span is not None:
-                span.end()
-
-        elif entry.event_type == _EventType.GENERATION:
-            record, prompt_layers = entry.payload
-            task_key = f"task:{tk}:{ctx.task_id}"
-            with self._lock:
-                parent = self._span_state.get(task_key)
-                if parent is None:
-                    parent = self._span_state.get(f"cycle:{tk}")
-            if parent is not None:
-                # SIP-0084: resolve Langfuse prompt object for prompt-to-generation linkage
-                langfuse_prompt = None
-                if record.prompt_name:
-                    langfuse_prompt = self._resolve_langfuse_prompt(
-                        record.prompt_name, record.prompt_version
-                    )
-
-                gen_kwargs: dict[str, Any] = {
-                    "id": record.generation_id,
-                    "name": f"generation-{record.generation_id[:8]}",
-                    "model": record.model,
-                    "input": record.prompt_text,
-                    "output": record.response_text,
-                    "usage": {
-                        "prompt_tokens": record.prompt_tokens,
-                        "completion_tokens": record.completion_tokens,
-                        "total_tokens": record.total_tokens,
-                    },
-                    "metadata": {
-                        "latency_ms": record.latency_ms,
-                        "prompt_layer_set_id": prompt_layers.prompt_layer_set_id,
-                        "prompt_layers": [
-                            {
-                                "type": layer.layer_type,
-                                "id": layer.layer_id,
-                                "version": layer.layer_version,
-                                "hash": layer.layer_hash,
-                            }
-                            for layer in prompt_layers.layers
-                        ],
-                        **self._ctx_metadata(ctx),
-                    },
-                }
-                if langfuse_prompt is not None:
-                    gen_kwargs["prompt"] = langfuse_prompt
-                parent.generation(**gen_kwargs)
-
-        elif entry.event_type == _EventType.EVENT:
-            event: StructuredEvent = entry.payload
-            # Attach event to the most specific active span
-            parent = self._find_active_span(ctx)
-            if parent is not None:
-                parent.event(
-                    name=event.name,
-                    metadata={
-                        "message": event.message,
-                        "level": event.level,
-                        "attributes": dict(event.attributes) if event.attributes else {},
-                        **self._ctx_metadata(ctx),
-                    },
-                )
+    _ENTRY_HANDLERS = {
+        _EventType.START_CYCLE: _handle_start_cycle,
+        _EventType.END_CYCLE: _handle_end_cycle,
+        _EventType.START_PULSE: _handle_start_pulse,
+        _EventType.END_PULSE: _handle_end_pulse,
+        _EventType.START_TASK: _handle_start_task,
+        _EventType.END_TASK: _handle_end_task,
+        _EventType.GENERATION: _handle_generation,
+        _EventType.EVENT: _handle_event,
+    }
 
     # -------------------------------------------------------------------
     # Internal: helpers
     # -------------------------------------------------------------------
 
-    def _resolve_langfuse_prompt(
-        self, prompt_name: str, prompt_version: int | None = None
-    ) -> Any:
+    def _resolve_langfuse_prompt(self, prompt_name: str, prompt_version: int | None = None) -> Any:
         """Resolve a Langfuse prompt object for prompt-to-generation linkage.
 
         Returns the prompt object on success, None on any failure (best-effort).

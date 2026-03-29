@@ -83,7 +83,10 @@ class ChatAgentExecutor(AgentExecutor):
             # 4. Stream response and enqueue chunks
             t0 = time.monotonic()
             full_response = await self._stream_response(
-                messages, task_id, context_id, event_queue,
+                messages,
+                task_id,
+                context_id,
+                event_queue,
             )
             latency_ms = (time.monotonic() - t0) * 1000
 
@@ -214,7 +217,9 @@ class ChatAgentExecutor(AgentExecutor):
                     status=TaskStatus(
                         state=TaskState.working,
                         message=new_agent_text_message(
-                            chunk, context_id=context_id, task_id=task_id,
+                            chunk,
+                            context_id=context_id,
+                            task_id=task_id,
                         ),
                     ),
                     final=False,
@@ -232,7 +237,9 @@ class ChatAgentExecutor(AgentExecutor):
                 status=TaskStatus(
                     state=TaskState.completed,
                     message=new_agent_text_message(
-                        full_response, context_id=context_id, task_id=task_id,
+                        full_response,
+                        context_id=context_id,
+                        task_id=task_id,
                     ),
                 ),
                 final=True,

@@ -107,7 +107,10 @@ class A2AClientAdapter:
         """
         client = await self._get_client()
         payload = self._build_payload(
-            message, method="message/stream", context_id=context_id, task_id=task_id,
+            message,
+            method="message/stream",
+            context_id=context_id,
+            task_id=task_id,
         )
 
         async with client.stream(

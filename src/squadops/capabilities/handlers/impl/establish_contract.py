@@ -131,8 +131,7 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
 
         outputs = {
             "summary": (
-                f"[lead] Run contract established: "
-                f"{contract_data.get('objective', '')[:60]}"
+                f"[lead] Run contract established: {contract_data.get('objective', '')[:60]}"
             ),
             "role": self._role,
             "contract": contract_data,

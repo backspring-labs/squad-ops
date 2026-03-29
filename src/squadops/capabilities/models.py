@@ -202,45 +202,65 @@ class AcceptanceCheck:
 
     def __post_init__(self) -> None:
         """Validate acceptance check on creation."""
-        if self.check_type == CheckType.JSON_FIELD_EQUALS:
-            if not self.field_path:
-                raise ValueError("json_field_equals check requires field_path")
-            if self.expected_value is None:
-                raise ValueError("json_field_equals check requires expected_value")
-            # Validate expected_value is a primitive
-            if not isinstance(self.expected_value, (str, int, float, bool)):
-                raise ValueError(
-                    f"expected_value must be a primitive, got {type(self.expected_value).__name__}"
-                )
-        elif self.check_type == CheckType.HTTP_STATUS:
-            if not self.url:
-                raise ValueError("http_status check requires url")
-            if self.expected_status is None:
-                raise ValueError("http_status check requires expected_status")
-        elif self.check_type == CheckType.PROCESS_RUNNING:
-            if not self.container_name:
-                raise ValueError("process_running check requires container_name")
-        elif self.check_type == CheckType.JSON_SCHEMA:
-            if not self.target:
-                raise ValueError("json_schema check requires target (document path)")
-            if not self.schema:
-                raise ValueError("json_schema check requires schema (schema path)")
-            if os.path.isabs(self.schema):
-                raise ValueError(
-                    f"json_schema schema path must be relative, got absolute: {self.schema}"
-                )
-        elif self.check_type == CheckType.COMMAND_EXIT_CODE:
-            if not self.command or len(self.command) == 0:
-                raise ValueError("command_exit_code check requires non-empty command tuple")
-            if self.cwd is not None:
-                if os.path.isabs(self.cwd):
-                    raise ValueError(
-                        f"command_exit_code cwd must be relative, got absolute: {self.cwd}"
-                    )
-                if ".." in PurePosixPath(self.cwd).parts:
-                    raise ValueError(
-                        f"command_exit_code cwd must not contain '..' segments: {self.cwd}"
-                    )
+        _validate_acceptance_check(self)
+
+
+def _validate_acceptance_check(check: AcceptanceCheck) -> None:
+    """Validate an AcceptanceCheck based on its check_type."""
+    validator = _CHECK_VALIDATORS.get(check.check_type)
+    if validator is not None:
+        validator(check)
+
+
+def _validate_json_field_equals(check: AcceptanceCheck) -> None:
+    if not check.field_path:
+        raise ValueError("json_field_equals check requires field_path")
+    if check.expected_value is None:
+        raise ValueError("json_field_equals check requires expected_value")
+    if not isinstance(check.expected_value, (str, int, float, bool)):
+        raise ValueError(
+            f"expected_value must be a primitive, got {type(check.expected_value).__name__}"
+        )
+
+
+def _validate_http_status(check: AcceptanceCheck) -> None:
+    if not check.url:
+        raise ValueError("http_status check requires url")
+    if check.expected_status is None:
+        raise ValueError("http_status check requires expected_status")
+
+
+def _validate_process_running(check: AcceptanceCheck) -> None:
+    if not check.container_name:
+        raise ValueError("process_running check requires container_name")
+
+
+def _validate_json_schema(check: AcceptanceCheck) -> None:
+    if not check.target:
+        raise ValueError("json_schema check requires target (document path)")
+    if not check.schema:
+        raise ValueError("json_schema check requires schema (schema path)")
+    if os.path.isabs(check.schema):
+        raise ValueError(f"json_schema schema path must be relative, got absolute: {check.schema}")
+
+
+def _validate_command_exit_code(check: AcceptanceCheck) -> None:
+    if not check.command or len(check.command) == 0:
+        raise ValueError("command_exit_code check requires non-empty command tuple")
+    if check.cwd is not None:
+        if os.path.isabs(check.cwd):
+            raise ValueError(f"command_exit_code cwd must be relative, got absolute: {check.cwd}")
+        if ".." in PurePosixPath(check.cwd).parts:
+            raise ValueError(f"command_exit_code cwd must not contain '..' segments: {check.cwd}")
+
+
+_CHECK_VALIDATORS = {
+    CheckType.JSON_FIELD_EQUALS: _validate_json_field_equals,
+    CheckType.HTTP_STATUS: _validate_http_status,
+    CheckType.PROCESS_RUNNING: _validate_process_running,
+    CheckType.JSON_SCHEMA: _validate_json_schema,
+    CheckType.COMMAND_EXIT_CODE: _validate_command_exit_code,
+}
 
 
 @dataclass(frozen=True)

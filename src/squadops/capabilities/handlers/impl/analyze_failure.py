@@ -69,18 +69,14 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             variables: dict[str, str] = {"prd": prd}
             if failure_evidence:
                 evidence_json = json.dumps(failure_evidence, indent=2)
-                variables["failure_evidence"] = (
-                    f"\n\n## Failure Evidence\n\n{evidence_json}"
-                )
+                variables["failure_evidence"] = f"\n\n## Failure Evidence\n\n{evidence_json}"
             rendered = await renderer.render("request.data_analyze_failure", variables)
             user_prompt = rendered.content
         else:
             user_parts = [f"## PRD\n\n{prd}"]
             if failure_evidence:
                 evidence_json = json.dumps(failure_evidence, indent=2)
-                user_parts.append(
-                    f"\n\n## Failure Evidence\n\n{evidence_json}"
-                )
+                user_parts.append(f"\n\n## Failure Evidence\n\n{evidence_json}")
             user_prompt = "\n".join(user_parts)
 
         messages = [
@@ -101,9 +97,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
-            return HandlerResult(
-                success=False, outputs={}, _evidence=evidence, error=str(exc)
-            )
+            return HandlerResult(success=False, outputs={}, _evidence=evidence, error=str(exc))
 
         content = response.content
 

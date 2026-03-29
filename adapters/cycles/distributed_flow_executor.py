@@ -128,46 +128,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
         flow_run_id = None
         terminal_status = "COMPLETED"
         self._pulse_report_entries = []
+        cycle = None
+        plan = None
 
         try:
-            cycle = await self._cycle_registry.get_cycle(cycle_id)
-            # SIP-0083: merge forwarding overrides from multi-workload orchestration
-            if self._forwarding_overrides:
-                import dataclasses as _dc_fwd
-
-                cycle = _dc_fwd.replace(
-                    cycle,
-                    execution_overrides={
-                        **cycle.execution_overrides,
-                        **self._forwarding_overrides,
-                    },
-                )
-                self._forwarding_overrides = {}
+            cycle, run_root = await self._prepare_cycle_for_run(cycle_id, run_id)
             run = await self._cycle_registry.get_run(run_id)
             profile, _ = await self._squad_profile.resolve_snapshot(profile_id)
-
-            # Resolve PRD content — if prd_ref is an artifact ID, fetch the
-            # actual content so handlers receive the PRD text, not just the ID.
-            import dataclasses as _dc
-
-            prd_content = cycle.prd_ref
-            if prd_content and prd_content.startswith("art_") and self._artifact_vault:
-                try:
-                    _, raw = await self._artifact_vault.retrieve(prd_content)
-                    prd_content = raw.decode("utf-8", errors="replace")
-                except Exception:
-                    logger.warning(
-                        "Failed to resolve PRD artifact %s, falling back to ID",
-                        prd_content,
-                        exc_info=True,
-                    )
-            if not prd_content:
-                prd_content = await self._resolve_prd_from_project(cycle.project_id)
-            if prd_content and prd_content != cycle.prd_ref:
-                cycle = _dc.replace(cycle, prd_ref=prd_content)
-
-            # Materialize run_root directory with seed files (PRD)
-            run_root = await self._materialize_run_root(cycle, run_id)
 
             # queued/failed/paused -> running
             await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
@@ -211,37 +178,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 # Seed working set so pre-resolution can find plan artifacts
                 seed_artifact_refs = list(plan_refs)
 
-            # LangFuse: open cycle trace keyed by shared trace_id
-            trace_id = plan[0].trace_id if plan else None
-            if self._llm_observability:
-                from squadops.telemetry.models import CorrelationContext, StructuredEvent
-
-                obs_ctx = CorrelationContext(cycle_id=cycle_id, trace_id=trace_id)
-                self._llm_observability.start_cycle_trace(obs_ctx)
-                self._llm_observability.record_event(
-                    obs_ctx,
-                    StructuredEvent(
-                        name="cycle.started",
-                        message=f"Cycle {cycle_id} started ({len(plan)} tasks, distributed)",
-                    ),
-                )
-
-            # Prefect: create flow run
-            if self._prefect:
-                try:
-                    flow_id = await self._prefect.ensure_flow()
-                    flow_run_id = await self._prefect.create_flow_run(
-                        flow_id,
-                        run_name=f"{cycle.project_id}/{cycle_id[:12]}/{run_id[:12]}",
-                        parameters={
-                            "cycle_id": cycle_id,
-                            "run_id": run_id,
-                            "project_id": cycle.project_id,
-                        },
-                    )
-                    await self._prefect.set_flow_run_state(flow_run_id, "RUNNING", "Running")
-                except Exception:
-                    logger.warning("Prefect flow run creation failed", exc_info=True)
+            # LangFuse + Prefect observability setup
+            obs_ctx, flow_run_id = await self._init_run_observability(
+                cycle_id,
+                run_id,
+                cycle,
+                plan,
+            )
 
             logger.info(
                 "Executing run %s for cycle %s (%d tasks, mode=%s, dispatch=distributed)",
@@ -345,43 +288,15 @@ class DistributedFlowExecutor(FlowExecutionPort):
             logger.exception("Run %s failed with unexpected error: %s", run_id, exc)
 
         finally:
-            # LangFuse: close cycle trace
-            if self._llm_observability and obs_ctx:
-                from squadops.telemetry.models import StructuredEvent
-
-                self._llm_observability.record_event(
-                    obs_ctx,
-                    StructuredEvent(
-                        name="cycle.completed",
-                        message=f"Cycle {cycle_id} reached {terminal_status}",
-                    ),
-                )
-                self._llm_observability.end_cycle_trace(obs_ctx)
-                self._llm_observability.flush()
-
-            # Prefect: set terminal state
-            if self._prefect and flow_run_id:
-                try:
-                    await self._prefect.set_flow_run_state(
-                        flow_run_id, terminal_status, terminal_status.title()
-                    )
-                except Exception:
-                    logger.warning("Prefect terminal state update failed", exc_info=True)
-
-            # Run report: best-effort (D10)
-            try:
-                if cycle_id and run_id:
-                    cycle_obj = locals().get("cycle")
-                    plan_obj = locals().get("plan")
-                    await self._generate_run_report(
-                        cycle_id,
-                        run_id,
-                        terminal_status,
-                        cycle=cycle_obj,
-                        plan=plan_obj,
-                    )
-            except Exception:
-                logger.warning("Run report generation failed", exc_info=True)
+            await self._finalize_run(
+                cycle_id,
+                run_id,
+                terminal_status,
+                obs_ctx,
+                flow_run_id,
+                cycle=cycle,
+                plan=plan,
+            )
 
     async def cancel_run(self, run_id: str) -> None:
         """Cancel an in-progress run."""
@@ -782,8 +697,6 @@ class DistributedFlowExecutor(FlowExecutionPort):
         SIP-0070: evaluates pulse verification at cadence closes and
         milestone boundaries.  Phase 2: FAIL = run FAILED (no repair).
         """
-        import dataclasses
-
         prior_outputs: dict[str, Any] = {}
         all_artifact_refs: list[str] = []
         # Track stored artifacts with their refs for build pre-resolution
@@ -806,113 +719,43 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # SIP-0079: Resume from checkpoint — restore prior state
         checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
         if checkpoint:
-            skip_task_ids = set(checkpoint.completed_task_ids)
-            prior_outputs = dict(checkpoint.prior_outputs)
-            completed_task_ids = list(checkpoint.completed_task_ids)
-            plan_delta_refs = list(checkpoint.plan_delta_refs)
-            # Restore artifact refs from checkpoint
-            for art_id in checkpoint.artifact_refs:
-                if art_id not in all_artifact_refs:
-                    all_artifact_refs.append(art_id)
-                try:
-                    ref, _ = await self._artifact_vault.retrieve(art_id)
-                    stored_artifacts.append((art_id, ref))
-                except Exception:
-                    logger.warning(
-                        "Failed to restore artifact %s from checkpoint", art_id, exc_info=True
-                    )
-            self._cycle_event_bus.emit(
-                EventType.CHECKPOINT_RESTORED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-                payload={
-                    "checkpoint_index": checkpoint.checkpoint_index,
-                    "completed_task_count": len(skip_task_ids),
-                },
-            )
-            logger.info(
-                "Resumed run %s from checkpoint %d (%d tasks completed)",
+            await self._restore_checkpoint_state(
+                checkpoint,
                 run_id,
-                checkpoint.checkpoint_index,
-                len(skip_task_ids),
+                cycle,
+                skip_task_ids,
+                prior_outputs,
+                completed_task_ids,
+                plan_delta_refs,
+                all_artifact_refs,
+                stored_artifacts,
             )
 
         # Seed from prior plan artifacts for build-only runs (§2.3)
         if seed_artifact_refs:
-            for art_id in seed_artifact_refs:
-                try:
-                    ref, _ = await self._artifact_vault.retrieve(art_id)
-                    stored_artifacts.append((art_id, ref))
-                    all_artifact_refs.append(art_id)
-                except Exception:
-                    logger.warning(
-                        "Failed to seed artifact %s for build-only run",
-                        art_id,
-                        exc_info=True,
-                    )
+            await self._seed_prior_artifacts(
+                seed_artifact_refs,
+                stored_artifacts,
+                all_artifact_refs,
+            )
 
         # Build role → agent_id resolver for repair task dispatch
-        agent_resolver: dict[str, str] = {}
-        if profile:
-            for agent in profile.agents:
-                if agent.enabled:
-                    agent_resolver[agent.role] = agent.agent_id
+        agent_resolver = self._build_agent_resolver(profile)
 
         # ------------------------------------------------------------------
         # SIP-0070: Parse pulse checks + cadence policy from applied_defaults
         # ------------------------------------------------------------------
-        raw_pulse_checks = cycle.applied_defaults.get("pulse_checks", [])
-        raw_cadence = cycle.applied_defaults.get("cadence_policy", {})
-
-        pulse_checks = parse_pulse_checks(raw_pulse_checks) if raw_pulse_checks else ()
-        cadence = (
-            CadencePolicy(
-                max_pulse_seconds=raw_cadence.get("max_pulse_seconds", 600),
-                max_tasks_per_pulse=raw_cadence.get("max_tasks_per_pulse", 5),
-            )
-            if raw_cadence
-            else CadencePolicy()
-        )
-
-        # Resolve bindings (only when pulse_checks present)
-        milestone_bindings: dict[int, list[PulseCheckDefinition]] = {}
-        cadence_suites: list[PulseCheckDefinition] = []
-        has_pulse_checks = bool(pulse_checks)
-
-        if has_pulse_checks:
-            milestone_bindings, unmatched = resolve_milestone_bindings(pulse_checks, plan)
-            cadence_suites = collect_cadence_bound_suites(pulse_checks)
-
-            # Warn about unmatched milestone suites
-            for suite in unmatched:
-                logger.warning(
-                    "Pulse suite %r (boundary_id=%r) has no matching task_type in plan — skipping",
-                    suite.suite_id,
-                    suite.boundary_id,
-                )
-                self._emit_pulse_event(
-                    obs_ctx,
-                    "pulse_check.binding_skipped",
-                    f"Suite {suite.suite_id!r} unmatched: after_task_types "
-                    f"{suite.after_task_types!r} not in plan",
-                    suite_id=suite.suite_id,
-                    boundary_id=suite.boundary_id,
-                )
+        pulse_ctx = self._setup_pulse_context(cycle, plan, obs_ctx)
+        milestone_bindings = pulse_ctx["milestone_bindings"]
+        cadence_suites = pulse_ctx["cadence_suites"]
+        has_pulse_checks = pulse_ctx["has_pulse_checks"]
+        cadence = pulse_ctx["cadence"]
+        engine = pulse_ctx["engine"]
 
         # Cadence tracking state
         cadence_task_count = 0
         cadence_start_time = time.monotonic()
         cadence_interval_id = 1
-
-        # Build AcceptanceCheckEngine lazily (only when pulse checks exist)
-        engine: AcceptanceCheckEngine | None = None
-        if has_pulse_checks:
-            from pathlib import Path
-
-            from squadops.capabilities.acceptance import AcceptanceCheckEngine
-
-            engine = AcceptanceCheckEngine(chroot=Path.cwd())
 
         for task_idx, envelope in enumerate(plan):
             if await self._is_cancelled(run_id):
@@ -933,28 +776,12 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     f"Time budget exhausted ({time_budget}s) after {len(completed_task_ids)} tasks"
                 )
 
-            # Build extra inputs for chain context
-            extra_inputs: dict[str, Any] = {
-                "prior_outputs": prior_outputs,
-                "artifact_refs": list(all_artifact_refs),
-            }
-
-            # Pre-resolve artifact contents for build tasks (D3)
-            if envelope.task_type in self._BUILD_ARTIFACT_FILTER:
-                artifact_contents = await self._resolve_artifact_contents(
-                    envelope.task_type,
-                    stored_artifacts,
-                )
-                if artifact_contents:
-                    extra_inputs["artifact_contents"] = artifact_contents
-
-            # Inject chain context
-            enriched = dataclasses.replace(
+            # Enrich envelope with chain context and dispatch
+            enriched = await self._enrich_envelope(
                 envelope,
-                inputs={
-                    **envelope.inputs,
-                    **extra_inputs,
-                },
+                prior_outputs,
+                all_artifact_refs,
+                stored_artifacts,
             )
 
             # SIP-0077: task.dispatched (PrefectBridge handles task run creation)
@@ -974,115 +801,30 @@ class DistributedFlowExecutor(FlowExecutionPort):
             )
 
             # Dispatch + retry loop for retryable failures (SIP-0079)
-            task_succeeded = False
-            while True:
-                # Dispatch through RabbitMQ
-                result = await self._dispatch_task(enriched, run_id)
+            task_succeeded, result = await self._dispatch_with_retry(
+                enriched=enriched,
+                envelope=envelope,
+                cycle=cycle,
+                run_id=run_id,
+                task_attempt_counts=task_attempt_counts,
+                consecutive_failures=consecutive_failures,
+                correction_attempts=correction_attempts,
+                prior_outputs=prior_outputs,
+                all_artifact_refs=all_artifact_refs,
+                stored_artifacts=stored_artifacts,
+                completed_task_ids=completed_task_ids,
+                plan_delta_refs=plan_delta_refs,
+                profile=profile,
+            )
 
-                # SIP-0077: task.succeeded or task.failed (PrefectBridge handles state)
-                if result.status == "SUCCEEDED":
-                    self._cycle_event_bus.emit(
-                        EventType.TASK_SUCCEEDED,
-                        entity_type="task",
-                        entity_id=envelope.task_id,
-                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-                        payload={"task_type": envelope.task_type},
-                    )
-                else:
-                    self._cycle_event_bus.emit(
-                        EventType.TASK_FAILED,
-                        entity_type="task",
-                        entity_id=envelope.task_id,
-                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-                        payload={
-                            "task_type": envelope.task_type,
-                            "error": result.error or "",
-                        },
-                    )
-
-                # SIP-0079: Outcome routing (replaces fail-fast)
-                if result.status != "SUCCEEDED":
-                    outcome = (
-                        (result.outputs or {}).get("outcome_class") if result.outputs else None
-                    )
-
-                    # D5 fallback table: classify unclassified failures
-                    if outcome is None:
-                        task_attempt_counts[envelope.task_id] = (
-                            task_attempt_counts.get(envelope.task_id, 0) + 1
-                        )
-                        max_retries = cycle.applied_defaults.get("max_task_retries", 2)
-                        if task_attempt_counts[envelope.task_id] >= max_retries:
-                            outcome = TaskOutcome.SEMANTIC_FAILURE
-                        else:
-                            outcome = TaskOutcome.RETRYABLE_FAILURE
-
-                    if outcome == TaskOutcome.BLOCKED:
-                        raise _PausedError(
-                            f"Task {envelope.task_id} ({envelope.task_type}) blocked"
-                        )
-
-                    if outcome == TaskOutcome.RETRYABLE_FAILURE:
-                        logger.info(
-                            "Retryable failure for %s (attempt %d), retrying",
-                            envelope.task_id,
-                            task_attempt_counts.get(envelope.task_id, 1),
-                        )
-                        continue  # retry same task in while loop
-
-                    # SEMANTIC_FAILURE / NEEDS_REPAIR / NEEDS_REPLAN → correction
-                    consecutive_failures += 1
-
-                    # D9: contract task failure → immediate abort, no correction
-                    is_contract_task = envelope.task_type == "governance.establish_contract"
-                    if is_contract_task:
-                        raise _ExecutionError(
-                            f"Contract task {envelope.task_id} failed "
-                            f"(no correction): {result.error}"
-                        )
-
-                    # Trigger correction protocol
-                    max_corrections = cycle.applied_defaults.get("max_correction_attempts", 2)
-
-                    if correction_attempts >= max_corrections:
-                        raise _ExecutionError(
-                            f"Max correction attempts ({max_corrections}) exhausted"
-                        )
-
-                    correction_path = await self._run_correction_protocol(
-                        run_id=run_id,
-                        cycle=cycle,
-                        envelope=envelope,
-                        result=result,
-                        correction_attempts=correction_attempts,
-                        prior_outputs=prior_outputs,
-                        all_artifact_refs=all_artifact_refs,
-                        stored_artifacts=stored_artifacts,
-                        completed_task_ids=completed_task_ids,
-                        plan_delta_refs=plan_delta_refs,
-                        profile=profile,
-                    )
-                    correction_attempts += 1
-
-                    if correction_path == "abort":
-                        raise _ExecutionError(
-                            f"Correction protocol decided to abort after "
-                            f"{envelope.task_type} failure"
-                        )
-                    elif correction_path == "rewind":
-                        raise _ExecutionError(
-                            f"Rewinding to checkpoint after {envelope.task_type} failure"
-                        )
-                    elif correction_path in ("continue", "patch"):
-                        consecutive_failures = 0
-                        break  # break while loop; for loop advances
-                    else:
-                        raise _ExecutionError(f"Unknown correction path: {correction_path}")
-                    break  # safety break after correction handling
-
-                # Success
-                task_succeeded = True
-                break
+            if not task_succeeded:
+                # SIP-0079: correction completed with continue/patch outcome.
+                # Original flow: consecutive_failures was incremented before
+                # correction, then reset to 0 on continue/patch. The increment
+                # only survives on abort/rewind paths which raise inside
+                # _handle_task_outcome before reaching here. Net effect: reset.
+                consecutive_failures = 0
+                correction_attempts += 1
 
             if not task_succeeded:
                 # Correction "continue"/"patch" handled — skip to next task
@@ -1091,51 +833,17 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # Reset consecutive failures on success
             consecutive_failures = 0
 
-            # Collect artifacts (with producing_task_type metadata)
-            new_refs: list[str] = []
-            for art in (result.outputs or {}).get("artifacts", []):
-                ref = await self._store_artifact(
-                    art,
-                    cycle,
-                    run_id,
-                    envelope,
-                    producing_task_type=envelope.task_type,
-                )
-                new_refs.append(ref.artifact_id)
-                all_artifact_refs.append(ref.artifact_id)
-                stored_artifacts.append((ref.artifact_id, ref))
-
-            if new_refs:
-                await self._cycle_registry.append_artifact_refs(run_id, tuple(new_refs))
-
-            # Chain outputs by role
-            role = envelope.metadata.get("role", "unknown")
-            prior_outputs[role] = {
-                k: v for k, v in (result.outputs or {}).items() if k != "artifacts"
-            }
-
-            # SIP-0079: Checkpoint after successful task (RC-4)
-            completed_task_ids.append(envelope.task_id)
-            checkpoint_index = len(completed_task_ids)
-            new_checkpoint = RunCheckpoint(
+            # Collect artifacts + checkpoint after successful task
+            await self._collect_artifacts_and_checkpoint(
+                result=result,
+                envelope=envelope,
+                cycle=cycle,
                 run_id=run_id,
-                checkpoint_index=checkpoint_index,
-                completed_task_ids=tuple(completed_task_ids),
-                prior_outputs=dict(prior_outputs),
-                artifact_refs=tuple(all_artifact_refs),
-                plan_delta_refs=tuple(plan_delta_refs),
-                created_at=datetime.now(UTC),
-            )
-            await self._cycle_registry.save_checkpoint(new_checkpoint)
-            self._cycle_event_bus.emit(
-                EventType.CHECKPOINT_CREATED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-                payload={
-                    "checkpoint_index": checkpoint_index,
-                    "completed_task_id": envelope.task_id,
-                },
+                prior_outputs=prior_outputs,
+                all_artifact_refs=all_artifact_refs,
+                stored_artifacts=stored_artifacts,
+                completed_task_ids=completed_task_ids,
+                plan_delta_refs=plan_delta_refs,
             )
 
             # ----------------------------------------------------------
@@ -1143,71 +851,31 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # ----------------------------------------------------------
             if has_pulse_checks and engine is not None:
                 cadence_task_count += 1
-                elapsed = time.monotonic() - cadence_start_time
-                is_last_task = task_idx == len(plan) - 1
-
-                # Build AcceptanceContext for this boundary
-                from squadops.capabilities.models import AcceptanceContext
-
-                acc_ctx = AcceptanceContext(
-                    run_root=run_root,
-                    cycle_id=cycle.cycle_id,
-                    workload_id=cycle.cycle_id,
+                cadence_closed = self._evaluate_pulse_boundaries(
+                    task_idx=task_idx,
+                    plan=plan,
+                    cadence_task_count=cadence_task_count,
+                    cadence_start_time=cadence_start_time,
+                    cadence=cadence,
+                )
+                await self._run_pulse_evaluations(
+                    task_idx=task_idx,
+                    milestone_bindings=milestone_bindings,
+                    cadence_suites=cadence_suites,
+                    cadence_closed=cadence_closed,
+                    cadence_interval_id=cadence_interval_id,
                     run_id=run_id,
+                    cycle=cycle,
+                    obs_ctx=obs_ctx,
+                    engine=engine,
+                    envelope=envelope,
+                    prior_outputs=prior_outputs,
+                    stored_artifacts=stored_artifacts,
+                    all_artifact_refs=all_artifact_refs,
+                    flow_run_id=flow_run_id,
+                    agent_resolver=agent_resolver,
+                    run_root=run_root,
                 )
-
-                max_repair_attempts = cycle.applied_defaults.get(
-                    "max_repair_attempts",
-                    2,
-                )
-
-                # --- Milestone boundary check ---
-                if task_idx in milestone_bindings:
-                    bound_suites = milestone_bindings[task_idx]
-                    for suite in bound_suites:
-                        await self._verify_with_repair(
-                            suites=[suite],
-                            boundary_id=suite.boundary_id,
-                            cadence_interval_id=cadence_interval_id,
-                            run_id=run_id,
-                            cycle=cycle,
-                            obs_ctx=obs_ctx,
-                            engine=engine,
-                            context=acc_ctx,
-                            envelope=envelope,
-                            prior_outputs=prior_outputs,
-                            stored_artifacts=stored_artifacts,
-                            all_artifact_refs=all_artifact_refs,
-                            max_repair_attempts=max_repair_attempts,
-                            flow_run_id=flow_run_id,
-                            agent_resolver=agent_resolver,
-                        )
-
-                # --- Cadence close check ---
-                cadence_closed = (
-                    cadence_task_count >= cadence.max_tasks_per_pulse
-                    or elapsed >= cadence.max_pulse_seconds
-                    or is_last_task
-                )
-
-                if cadence_closed and cadence_suites:
-                    await self._verify_with_repair(
-                        suites=cadence_suites,
-                        boundary_id=CADENCE_BOUNDARY_ID,
-                        cadence_interval_id=cadence_interval_id,
-                        run_id=run_id,
-                        cycle=cycle,
-                        obs_ctx=obs_ctx,
-                        engine=engine,
-                        context=acc_ctx,
-                        envelope=envelope,
-                        prior_outputs=prior_outputs,
-                        stored_artifacts=stored_artifacts,
-                        all_artifact_refs=all_artifact_refs,
-                        max_repair_attempts=max_repair_attempts,
-                        flow_run_id=flow_run_id,
-                        agent_resolver=agent_resolver,
-                    )
 
                 if cadence_closed:
                     cadence_interval_id += 1
@@ -1217,6 +885,659 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # Post-task gate check (runs after verification)
             if self._is_gate_boundary(cycle, envelope.task_type):
                 await self._handle_gate(run_id, cycle, envelope.task_type)
+
+    # ------------------------------------------------------------------
+    # Extracted helpers for _execute_sequential
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_agent_resolver(profile: SquadProfile | None) -> dict[str, str]:
+        """Build a role → agent_id mapping from the squad profile."""
+        if not profile:
+            return {}
+        return {agent.role: agent.agent_id for agent in profile.agents if agent.enabled}
+
+    async def _enrich_envelope(
+        self,
+        envelope: TaskEnvelope,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+    ) -> TaskEnvelope:
+        """Build chain context inputs and return an enriched envelope."""
+        import dataclasses
+
+        extra_inputs: dict[str, Any] = {
+            "prior_outputs": prior_outputs,
+            "artifact_refs": list(all_artifact_refs),
+        }
+
+        # Pre-resolve artifact contents for build tasks (D3)
+        if envelope.task_type in self._BUILD_ARTIFACT_FILTER:
+            artifact_contents = await self._resolve_artifact_contents(
+                envelope.task_type,
+                stored_artifacts,
+            )
+            if artifact_contents:
+                extra_inputs["artifact_contents"] = artifact_contents
+
+        return dataclasses.replace(
+            envelope,
+            inputs={
+                **envelope.inputs,
+                **extra_inputs,
+            },
+        )
+
+    async def _dispatch_with_retry(
+        self,
+        enriched: TaskEnvelope,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        task_attempt_counts: dict[str, int],
+        consecutive_failures: int,
+        correction_attempts: int,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any = None,
+    ) -> tuple[bool, TaskResult]:
+        """Dispatch a task with retry loop for retryable failures.
+
+        Returns (task_succeeded, result). Raises on unrecoverable failures.
+        """
+        while True:
+            result = await self._dispatch_task(enriched, run_id)
+
+            # SIP-0077: task.succeeded or task.failed (PrefectBridge handles state)
+            if result.status == "SUCCEEDED":
+                self._cycle_event_bus.emit(
+                    EventType.TASK_SUCCEEDED,
+                    entity_type="task",
+                    entity_id=envelope.task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={"task_type": envelope.task_type},
+                )
+            else:
+                self._cycle_event_bus.emit(
+                    EventType.TASK_FAILED,
+                    entity_type="task",
+                    entity_id=envelope.task_id,
+                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    payload={
+                        "task_type": envelope.task_type,
+                        "error": result.error or "",
+                    },
+                )
+
+            if result.status != "SUCCEEDED":
+                action = await self._handle_task_outcome(
+                    result=result,
+                    envelope=envelope,
+                    cycle=cycle,
+                    run_id=run_id,
+                    task_attempt_counts=task_attempt_counts,
+                    consecutive_failures=consecutive_failures,
+                    correction_attempts=correction_attempts,
+                    prior_outputs=prior_outputs,
+                    all_artifact_refs=all_artifact_refs,
+                    stored_artifacts=stored_artifacts,
+                    completed_task_ids=completed_task_ids,
+                    plan_delta_refs=plan_delta_refs,
+                    profile=profile,
+                )
+
+                if action == "continue":
+                    continue  # retry same task
+                elif action == "break_correction":
+                    return False, result
+
+                # "raise" actions handled inside _handle_task_outcome
+
+            return True, result
+
+    async def _restore_checkpoint_state(
+        self,
+        checkpoint: RunCheckpoint,
+        run_id: str,
+        cycle: Cycle,
+        skip_task_ids: set[str],
+        prior_outputs: dict[str, Any],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+    ) -> None:
+        """Restore execution state from a checkpoint (SIP-0079 resume)."""
+        skip_task_ids.update(checkpoint.completed_task_ids)
+        prior_outputs.update(checkpoint.prior_outputs)
+        completed_task_ids.extend(checkpoint.completed_task_ids)
+        plan_delta_refs.extend(checkpoint.plan_delta_refs)
+        # Restore artifact refs from checkpoint
+        for art_id in checkpoint.artifact_refs:
+            if art_id not in all_artifact_refs:
+                all_artifact_refs.append(art_id)
+            try:
+                ref, _ = await self._artifact_vault.retrieve(art_id)
+                stored_artifacts.append((art_id, ref))
+            except Exception:
+                logger.warning(
+                    "Failed to restore artifact %s from checkpoint", art_id, exc_info=True
+                )
+        self._cycle_event_bus.emit(
+            EventType.CHECKPOINT_RESTORED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+            payload={
+                "checkpoint_index": checkpoint.checkpoint_index,
+                "completed_task_count": len(skip_task_ids),
+            },
+        )
+        logger.info(
+            "Resumed run %s from checkpoint %d (%d tasks completed)",
+            run_id,
+            checkpoint.checkpoint_index,
+            len(skip_task_ids),
+        )
+
+    async def _seed_prior_artifacts(
+        self,
+        seed_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        all_artifact_refs: list[str],
+    ) -> None:
+        """Load seed artifacts for build-only runs (section 2.3)."""
+        for art_id in seed_artifact_refs:
+            try:
+                ref, _ = await self._artifact_vault.retrieve(art_id)
+                stored_artifacts.append((art_id, ref))
+                all_artifact_refs.append(art_id)
+            except Exception:
+                logger.warning(
+                    "Failed to seed artifact %s for build-only run",
+                    art_id,
+                    exc_info=True,
+                )
+
+    def _setup_pulse_context(
+        self,
+        cycle: Cycle,
+        plan: list[TaskEnvelope],
+        obs_ctx: Any,
+    ) -> dict[str, Any]:
+        """Parse pulse checks and cadence policy from applied_defaults.
+
+        Returns a dict with keys: milestone_bindings, cadence_suites,
+        has_pulse_checks, cadence, engine.
+        """
+        raw_pulse_checks = cycle.applied_defaults.get("pulse_checks", [])
+        raw_cadence = cycle.applied_defaults.get("cadence_policy", {})
+
+        pulse_checks = parse_pulse_checks(raw_pulse_checks) if raw_pulse_checks else ()
+        cadence = (
+            CadencePolicy(
+                max_pulse_seconds=raw_cadence.get("max_pulse_seconds", 600),
+                max_tasks_per_pulse=raw_cadence.get("max_tasks_per_pulse", 5),
+            )
+            if raw_cadence
+            else CadencePolicy()
+        )
+
+        milestone_bindings: dict[int, list] = {}
+        cadence_suites: list = []
+        has_pulse_checks = bool(pulse_checks)
+
+        if has_pulse_checks:
+            milestone_bindings, unmatched = resolve_milestone_bindings(pulse_checks, plan)
+            cadence_suites = collect_cadence_bound_suites(pulse_checks)
+
+            for suite in unmatched:
+                logger.warning(
+                    "Pulse suite %r (boundary_id=%r) has no matching task_type in plan — skipping",
+                    suite.suite_id,
+                    suite.boundary_id,
+                )
+                self._emit_pulse_event(
+                    obs_ctx,
+                    "pulse_check.binding_skipped",
+                    f"Suite {suite.suite_id!r} unmatched: after_task_types "
+                    f"{suite.after_task_types!r} not in plan",
+                    suite_id=suite.suite_id,
+                    boundary_id=suite.boundary_id,
+                )
+
+        engine = None
+        if has_pulse_checks:
+            from pathlib import Path
+
+            from squadops.capabilities.acceptance import AcceptanceCheckEngine
+
+            engine = AcceptanceCheckEngine(chroot=Path.cwd())
+
+        return {
+            "milestone_bindings": milestone_bindings,
+            "cadence_suites": cadence_suites,
+            "has_pulse_checks": has_pulse_checks,
+            "cadence": cadence,
+            "engine": engine,
+        }
+
+    async def _handle_task_outcome(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        task_attempt_counts: dict[str, int],
+        consecutive_failures: int,
+        correction_attempts: int,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any = None,
+    ) -> str:
+        """Route a failed task outcome. Returns an action string.
+
+        Returns:
+            "continue" — retry the same task (caller continues while loop)
+            "break_correction" — correction handled, advance to next task
+
+        Raises:
+            _PausedError — task is blocked
+            _ExecutionError — unrecoverable failure
+        """
+        outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None
+
+        # D5 fallback table: classify unclassified failures
+        if outcome is None:
+            task_attempt_counts[envelope.task_id] = task_attempt_counts.get(envelope.task_id, 0) + 1
+            max_retries = cycle.applied_defaults.get("max_task_retries", 2)
+            if task_attempt_counts[envelope.task_id] >= max_retries:
+                outcome = TaskOutcome.SEMANTIC_FAILURE
+            else:
+                outcome = TaskOutcome.RETRYABLE_FAILURE
+
+        if outcome == TaskOutcome.BLOCKED:
+            raise _PausedError(f"Task {envelope.task_id} ({envelope.task_type}) blocked")
+
+        if outcome == TaskOutcome.RETRYABLE_FAILURE:
+            logger.info(
+                "Retryable failure for %s (attempt %d), retrying",
+                envelope.task_id,
+                task_attempt_counts.get(envelope.task_id, 1),
+            )
+            return "continue"
+
+        # SEMANTIC_FAILURE / NEEDS_REPAIR / NEEDS_REPLAN → correction
+
+        # D9: contract task failure → immediate abort, no correction
+        if envelope.task_type == "governance.establish_contract":
+            raise _ExecutionError(
+                f"Contract task {envelope.task_id} failed (no correction): {result.error}"
+            )
+
+        # Trigger correction protocol
+        max_corrections = cycle.applied_defaults.get("max_correction_attempts", 2)
+
+        if correction_attempts >= max_corrections:
+            raise _ExecutionError(f"Max correction attempts ({max_corrections}) exhausted")
+
+        correction_path = await self._run_correction_protocol(
+            run_id=run_id,
+            cycle=cycle,
+            envelope=envelope,
+            result=result,
+            correction_attempts=correction_attempts,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+        )
+
+        if correction_path == "abort":
+            raise _ExecutionError(
+                f"Correction protocol decided to abort after {envelope.task_type} failure"
+            )
+        elif correction_path == "rewind":
+            raise _ExecutionError(f"Rewinding to checkpoint after {envelope.task_type} failure")
+        elif correction_path in ("continue", "patch"):
+            return "break_correction"
+        else:
+            raise _ExecutionError(f"Unknown correction path: {correction_path}")
+
+    async def _collect_artifacts_and_checkpoint(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+    ) -> None:
+        """Collect artifacts from a successful task and save a checkpoint."""
+        # Collect artifacts (with producing_task_type metadata)
+        new_refs: list[str] = []
+        for art in (result.outputs or {}).get("artifacts", []):
+            ref = await self._store_artifact(
+                art,
+                cycle,
+                run_id,
+                envelope,
+                producing_task_type=envelope.task_type,
+            )
+            new_refs.append(ref.artifact_id)
+            all_artifact_refs.append(ref.artifact_id)
+            stored_artifacts.append((ref.artifact_id, ref))
+
+        if new_refs:
+            await self._cycle_registry.append_artifact_refs(run_id, tuple(new_refs))
+
+        # Chain outputs by role
+        role = envelope.metadata.get("role", "unknown")
+        prior_outputs[role] = {k: v for k, v in (result.outputs or {}).items() if k != "artifacts"}
+
+        # SIP-0079: Checkpoint after successful task (RC-4)
+        completed_task_ids.append(envelope.task_id)
+        checkpoint_index = len(completed_task_ids)
+        new_checkpoint = RunCheckpoint(
+            run_id=run_id,
+            checkpoint_index=checkpoint_index,
+            completed_task_ids=tuple(completed_task_ids),
+            prior_outputs=dict(prior_outputs),
+            artifact_refs=tuple(all_artifact_refs),
+            plan_delta_refs=tuple(plan_delta_refs),
+            created_at=datetime.now(UTC),
+        )
+        await self._cycle_registry.save_checkpoint(new_checkpoint)
+        self._cycle_event_bus.emit(
+            EventType.CHECKPOINT_CREATED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+            payload={
+                "checkpoint_index": checkpoint_index,
+                "completed_task_id": envelope.task_id,
+            },
+        )
+
+    def _evaluate_pulse_boundaries(
+        self,
+        task_idx: int,
+        plan: list[TaskEnvelope],
+        cadence_task_count: int,
+        cadence_start_time: float,
+        cadence: CadencePolicy,
+    ) -> bool:
+        """Determine whether the cadence boundary has closed."""
+        elapsed = time.monotonic() - cadence_start_time
+        is_last_task = task_idx == len(plan) - 1
+        return (
+            cadence_task_count >= cadence.max_tasks_per_pulse
+            or elapsed >= cadence.max_pulse_seconds
+            or is_last_task
+        )
+
+    async def _run_pulse_evaluations(
+        self,
+        task_idx: int,
+        milestone_bindings: dict,
+        cadence_suites: list,
+        cadence_closed: bool,
+        cadence_interval_id: int,
+        run_id: str,
+        cycle: Cycle,
+        obs_ctx: Any,
+        engine: Any,
+        envelope: TaskEnvelope,
+        prior_outputs: dict[str, Any],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        all_artifact_refs: list[str],
+        flow_run_id: str | None,
+        agent_resolver: dict[str, str],
+        run_root: str,
+    ) -> None:
+        """Run milestone and cadence pulse evaluations at the current boundary."""
+        from squadops.capabilities.models import AcceptanceContext
+
+        acc_ctx = AcceptanceContext(
+            run_root=run_root,
+            cycle_id=cycle.cycle_id,
+            workload_id=cycle.cycle_id,
+            run_id=run_id,
+        )
+
+        max_repair_attempts = cycle.applied_defaults.get(
+            "max_repair_attempts",
+            2,
+        )
+
+        # --- Milestone boundary check ---
+        if task_idx in milestone_bindings:
+            bound_suites = milestone_bindings[task_idx]
+            for suite in bound_suites:
+                await self._verify_with_repair(
+                    suites=[suite],
+                    boundary_id=suite.boundary_id,
+                    cadence_interval_id=cadence_interval_id,
+                    run_id=run_id,
+                    cycle=cycle,
+                    obs_ctx=obs_ctx,
+                    engine=engine,
+                    context=acc_ctx,
+                    envelope=envelope,
+                    prior_outputs=prior_outputs,
+                    stored_artifacts=stored_artifacts,
+                    all_artifact_refs=all_artifact_refs,
+                    max_repair_attempts=max_repair_attempts,
+                    flow_run_id=flow_run_id,
+                    agent_resolver=agent_resolver,
+                )
+
+        # --- Cadence close check ---
+        if cadence_closed and cadence_suites:
+            await self._verify_with_repair(
+                suites=cadence_suites,
+                boundary_id=CADENCE_BOUNDARY_ID,
+                cadence_interval_id=cadence_interval_id,
+                run_id=run_id,
+                cycle=cycle,
+                obs_ctx=obs_ctx,
+                engine=engine,
+                context=acc_ctx,
+                envelope=envelope,
+                prior_outputs=prior_outputs,
+                stored_artifacts=stored_artifacts,
+                all_artifact_refs=all_artifact_refs,
+                max_repair_attempts=max_repair_attempts,
+                flow_run_id=flow_run_id,
+                agent_resolver=agent_resolver,
+            )
+
+    # ------------------------------------------------------------------
+    # Extracted helpers for execute_run
+    # ------------------------------------------------------------------
+
+    async def _prepare_cycle_for_run(self, cycle_id: str, run_id: str) -> tuple[Cycle, str]:
+        """Load cycle, merge forwarding overrides, resolve PRD, materialize run root.
+
+        Returns (cycle, run_root).
+        """
+        import dataclasses as _dc
+
+        cycle = await self._cycle_registry.get_cycle(cycle_id)
+        # SIP-0083: merge forwarding overrides from multi-workload orchestration
+        if self._forwarding_overrides:
+            cycle = _dc.replace(
+                cycle,
+                execution_overrides={
+                    **cycle.execution_overrides,
+                    **self._forwarding_overrides,
+                },
+            )
+            self._forwarding_overrides = {}
+
+        # Resolve PRD content — if prd_ref is an artifact ID, fetch the
+        # actual content so handlers receive the PRD text, not just the ID.
+        prd_content = cycle.prd_ref
+        if prd_content and prd_content.startswith("art_") and self._artifact_vault:
+            try:
+                _, raw = await self._artifact_vault.retrieve(prd_content)
+                prd_content = raw.decode("utf-8", errors="replace")
+            except Exception:
+                logger.warning(
+                    "Failed to resolve PRD artifact %s, falling back to ID",
+                    prd_content,
+                    exc_info=True,
+                )
+        if not prd_content:
+            prd_content = await self._resolve_prd_from_project(cycle.project_id)
+        if prd_content and prd_content != cycle.prd_ref:
+            cycle = _dc.replace(cycle, prd_ref=prd_content)
+
+        # Materialize run_root directory with seed files (PRD)
+        run_root = await self._materialize_run_root(cycle, run_id)
+        return cycle, run_root
+
+    async def _init_run_observability(
+        self,
+        cycle_id: str,
+        run_id: str,
+        cycle: Cycle,
+        plan: list[TaskEnvelope],
+    ) -> tuple[Any, str | None]:
+        """Set up LangFuse trace and Prefect flow run.
+
+        Returns (obs_ctx, flow_run_id). Either may be None.
+        """
+        obs_ctx = None
+        flow_run_id = None
+
+        # LangFuse: open cycle trace keyed by shared trace_id
+        trace_id = plan[0].trace_id if plan else None
+        if self._llm_observability:
+            from squadops.telemetry.models import CorrelationContext, StructuredEvent
+
+            obs_ctx = CorrelationContext(cycle_id=cycle_id, trace_id=trace_id)
+            self._llm_observability.start_cycle_trace(obs_ctx)
+            self._llm_observability.record_event(
+                obs_ctx,
+                StructuredEvent(
+                    name="cycle.started",
+                    message=f"Cycle {cycle_id} started ({len(plan)} tasks, distributed)",
+                ),
+            )
+
+        # Prefect: create flow run
+        if self._prefect:
+            try:
+                flow_id = await self._prefect.ensure_flow()
+                flow_run_id = await self._prefect.create_flow_run(
+                    flow_id,
+                    run_name=f"{cycle.project_id}/{cycle_id[:12]}/{run_id[:12]}",
+                    parameters={
+                        "cycle_id": cycle_id,
+                        "run_id": run_id,
+                        "project_id": cycle.project_id,
+                    },
+                )
+                await self._prefect.set_flow_run_state(flow_run_id, "RUNNING", "Running")
+            except Exception:
+                logger.warning("Prefect flow run creation failed", exc_info=True)
+
+        return obs_ctx, flow_run_id
+
+    async def _finalize_run(
+        self,
+        cycle_id: str,
+        run_id: str,
+        terminal_status: str,
+        obs_ctx: Any,
+        flow_run_id: str | None,
+        cycle: Cycle | None = None,
+        plan: list[TaskEnvelope] | None = None,
+    ) -> None:
+        """Close observability traces and generate run report."""
+        # LangFuse: close cycle trace
+        if self._llm_observability and obs_ctx:
+            from squadops.telemetry.models import StructuredEvent
+
+            self._llm_observability.record_event(
+                obs_ctx,
+                StructuredEvent(
+                    name="cycle.completed",
+                    message=f"Cycle {cycle_id} reached {terminal_status}",
+                ),
+            )
+            self._llm_observability.end_cycle_trace(obs_ctx)
+            self._llm_observability.flush()
+
+        # Prefect: set terminal state
+        if self._prefect and flow_run_id:
+            try:
+                await self._prefect.set_flow_run_state(
+                    flow_run_id, terminal_status, terminal_status.title()
+                )
+            except Exception:
+                logger.warning("Prefect terminal state update failed", exc_info=True)
+
+        # Run report: best-effort (D10)
+        try:
+            if cycle_id and run_id:
+                await self._generate_run_report(
+                    cycle_id,
+                    run_id,
+                    terminal_status,
+                    cycle=cycle,
+                    plan=plan,
+                )
+        except Exception:
+            logger.warning("Run report generation failed", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Extracted helper for _generate_run_report
+    # ------------------------------------------------------------------
+
+    def _build_pulse_report_lines(self) -> list[str]:
+        """Build the pulse verification section for the run report."""
+        lines: list[str] = []
+        lines.append("")
+        lines.append("## Pulse Verification")
+        pass_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "pass")
+        fail_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "fail")
+        exhausted_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "exhausted")
+        total = len(self._pulse_report_entries)
+        lines.append(
+            f"Total boundary checks: {total} "
+            f"(PASS: {pass_count}, FAIL: {fail_count}, EXHAUSTED: {exhausted_count})"
+        )
+        repair_entries = [e for e in self._pulse_report_entries if e["repair_attempt"] > 0]
+        if repair_entries:
+            max_attempt = max(e["repair_attempt"] for e in repair_entries)
+            lines.append(f"Repair attempts: {len(repair_entries)} (max attempt: {max_attempt})")
+        lines.append("")
+        for entry in self._pulse_report_entries:
+            suites_str = ", ".join(f"{s['suite_id']}={s['outcome']}" for s in entry["suites"])
+            repair_tag = f" (repair #{entry['repair_attempt']})" if entry["repair_attempt"] else ""
+            lines.append(
+                f"- **{entry['boundary_id']}** [{entry['decision'].upper()}]{repair_tag}: "
+                f"{suites_str}"
+            )
+        return lines
+
+    # ------------------------------------------------------------------
+    # Correction protocol
+    # ------------------------------------------------------------------
 
     async def _run_correction_protocol(
         self,
@@ -2243,31 +2564,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         # Pulse verification summary
         if self._pulse_report_entries:
-            lines.append("")
-            lines.append("## Pulse Verification")
-            pass_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "pass")
-            fail_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "fail")
-            exhausted_count = sum(
-                1 for e in self._pulse_report_entries if e["decision"] == "exhausted"
-            )
-            total = len(self._pulse_report_entries)
-            lines.append(
-                f"Total boundary checks: {total} "
-                f"(PASS: {pass_count}, FAIL: {fail_count}, EXHAUSTED: {exhausted_count})"
-            )
-            repair_entries = [e for e in self._pulse_report_entries if e["repair_attempt"] > 0]
-            if repair_entries:
-                max_attempt = max(e["repair_attempt"] for e in repair_entries)
-                lines.append(f"Repair attempts: {len(repair_entries)} (max attempt: {max_attempt})")
-            lines.append("")
-            for entry in self._pulse_report_entries:
-                suites_str = ", ".join(f"{s['suite_id']}={s['outcome']}" for s in entry["suites"])
-                repair_tag = (
-                    f" (repair #{entry['repair_attempt']})" if entry["repair_attempt"] else ""
-                )
-                lines.append(
-                    f"- **{entry['boundary_id']}** [{entry['decision'].upper()}]{repair_tag}: {suites_str}"
-                )
+            lines.extend(self._build_pulse_report_lines())
 
         # Quality notes
         lines.append("")

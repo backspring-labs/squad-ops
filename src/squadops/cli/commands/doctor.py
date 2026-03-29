@@ -20,9 +20,7 @@ def doctor(
     profile_name: str = typer.Argument(
         ..., help="Bootstrap profile name (dev-mac, dev-pc, local-spark)"
     ),
-    check: str | None = typer.Option(
-        None, "--check", help="Run checks for a single category only"
-    ),
+    check: str | None = typer.Option(None, "--check", help="Run checks for a single category only"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
 ):
     """Validate that the current machine satisfies a bootstrap profile."""

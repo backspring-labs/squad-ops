@@ -260,6 +260,103 @@ class WorkloadRunner:
             metadata={"workload_task_id": task.task_id},
         )
 
+    async def _execute_single_task(
+        self,
+        task: Any,
+        contract: CapabilityContract,
+        cycle_id: str,
+        workload_id: str,
+        project_id: str,
+        pulse_id: str,
+        task_outputs: dict[str, dict[str, Any]],
+        vars_tuple: tuple,
+        engine: AcceptanceCheckEngine,
+    ) -> tuple[TaskRecord, bool]:
+        """Execute a single task and return (record, should_halt)."""
+        context = AcceptanceContext(
+            run_root=str(self.run_root),
+            cycle_id=cycle_id,
+            workload_id=workload_id,
+            task_outputs=tuple(task_outputs.items()),
+            vars=vars_tuple,
+        )
+
+        try:
+            resolved_inputs = self._resolve_task_inputs(task, context, engine)
+        except TemplateResolutionError as e:
+            logger.error(f"Failed to resolve inputs for task {task.task_id}: {e}")
+            return TaskRecord(
+                task_id=task.task_id,
+                capability_id=task.capability_id,
+                status=TaskStatus.FAILED,
+                failure=self._create_failure_record("template_resolution_error", str(e)),
+            ), True
+
+        executor = self._resolve_executor(task, contract)
+        envelope = self._build_envelope(
+            task, contract, resolved_inputs, cycle_id, project_id, pulse_id
+        )
+        task_started_at = datetime.now(UTC).isoformat()
+
+        try:
+            result = await executor.execute(envelope, timeout_seconds=contract.timeout_seconds)
+            task_completed_at = datetime.now(UTC).isoformat()
+
+            if result.status == "SUCCEEDED":
+                task_outputs[task.task_id] = result.outputs or {}
+                context = AcceptanceContext(
+                    run_root=str(self.run_root),
+                    cycle_id=cycle_id,
+                    workload_id=workload_id,
+                    task_outputs=tuple(task_outputs.items()),
+                    vars=vars_tuple,
+                )
+                validation = engine.evaluate_all(contract.acceptance_checks, context)
+                record = TaskRecord(
+                    task_id=task.task_id,
+                    capability_id=task.capability_id,
+                    status=TaskStatus.SUCCEEDED,
+                    started_at=task_started_at,
+                    completed_at=task_completed_at,
+                    acceptance_results=validation.results,
+                )
+                if not validation.all_passed:
+                    logger.warning(f"Task {task.task_id} acceptance checks failed")
+                return record, not validation.all_passed
+            else:
+                return TaskRecord(
+                    task_id=task.task_id,
+                    capability_id=task.capability_id,
+                    status=TaskStatus.FAILED,
+                    started_at=task_started_at,
+                    completed_at=task_completed_at,
+                    failure=self._create_failure_record(
+                        "execution_error", result.error or "Unknown error"
+                    ),
+                ), True
+
+        except TimeoutError as e:
+            task_completed_at = datetime.now(UTC).isoformat()
+            return TaskRecord(
+                task_id=task.task_id,
+                capability_id=task.capability_id,
+                status=TaskStatus.TIMED_OUT,
+                started_at=task_started_at,
+                completed_at=task_completed_at,
+                failure=self._create_failure_record("timeout", str(e)),
+            ), True
+
+        except Exception as e:
+            task_completed_at = datetime.now(UTC).isoformat()
+            return TaskRecord(
+                task_id=task.task_id,
+                capability_id=task.capability_id,
+                status=TaskStatus.FAILED,
+                started_at=task_started_at,
+                completed_at=task_completed_at,
+                failure=self._create_failure_record("execution_error", str(e)),
+            ), True
+
     def _create_failure_record(self, error_type: str, message: str) -> FailureRecord:
         """Create a failure record with current timestamp."""
         return FailureRecord(
@@ -442,7 +539,6 @@ class WorkloadRunner:
         # Execute tasks
         for task in sorted_tasks:
             if halt_execution:
-                # Mark remaining tasks as SKIPPED
                 task_records.append(
                     TaskRecord(
                         task_id=task.task_id,
@@ -452,117 +548,19 @@ class WorkloadRunner:
                 )
                 continue
 
-            contract = contracts[task.capability_id]
-            executor = self._resolve_executor(task, contract)
-
-            # Build context with current outputs
-            context = AcceptanceContext(
-                run_root=str(self.run_root),
-                cycle_id=cycle_id,
-                workload_id=workload_id,
-                task_outputs=tuple(task_outputs.items()),
-                vars=vars_tuple,
+            record, should_halt = await self._execute_single_task(
+                task,
+                contracts[task.capability_id],
+                cycle_id,
+                workload_id,
+                project_id,
+                pulse_id,
+                task_outputs,
+                vars_tuple,
+                engine,
             )
-
-            # Resolve task inputs
-            try:
-                resolved_inputs = self._resolve_task_inputs(task, context, engine)
-            except TemplateResolutionError as e:
-                logger.error(f"Failed to resolve inputs for task {task.task_id}: {e}")
-                task_records.append(
-                    TaskRecord(
-                        task_id=task.task_id,
-                        capability_id=task.capability_id,
-                        status=TaskStatus.FAILED,
-                        failure=self._create_failure_record("template_resolution_error", str(e)),
-                    )
-                )
-                halt_execution = True
-                continue
-
-            # Build envelope and execute
-            envelope = self._build_envelope(
-                task, contract, resolved_inputs, cycle_id, project_id, pulse_id
-            )
-
-            task_started_at = datetime.now(UTC).isoformat()
-
-            try:
-                result = await executor.execute(envelope, timeout_seconds=contract.timeout_seconds)
-                task_completed_at = datetime.now(UTC).isoformat()
-
-                if result.status == "SUCCEEDED":
-                    # Store outputs for downstream tasks
-                    task_outputs[task.task_id] = result.outputs or {}
-
-                    # Evaluate acceptance checks
-                    context = AcceptanceContext(
-                        run_root=str(self.run_root),
-                        cycle_id=cycle_id,
-                        workload_id=workload_id,
-                        task_outputs=tuple(task_outputs.items()),
-                        vars=vars_tuple,
-                    )
-                    validation = engine.evaluate_all(contract.acceptance_checks, context)
-
-                    task_records.append(
-                        TaskRecord(
-                            task_id=task.task_id,
-                            capability_id=task.capability_id,
-                            status=TaskStatus.SUCCEEDED,
-                            started_at=task_started_at,
-                            completed_at=task_completed_at,
-                            acceptance_results=validation.results,
-                        )
-                    )
-
-                    # If acceptance checks failed, halt
-                    if not validation.all_passed:
-                        logger.warning(f"Task {task.task_id} acceptance checks failed")
-                        halt_execution = True
-
-                else:
-                    # Task failed
-                    task_records.append(
-                        TaskRecord(
-                            task_id=task.task_id,
-                            capability_id=task.capability_id,
-                            status=TaskStatus.FAILED,
-                            started_at=task_started_at,
-                            completed_at=task_completed_at,
-                            failure=self._create_failure_record(
-                                "execution_error", result.error or "Unknown error"
-                            ),
-                        )
-                    )
-                    halt_execution = True
-
-            except TimeoutError as e:
-                task_completed_at = datetime.now(UTC).isoformat()
-                task_records.append(
-                    TaskRecord(
-                        task_id=task.task_id,
-                        capability_id=task.capability_id,
-                        status=TaskStatus.TIMED_OUT,
-                        started_at=task_started_at,
-                        completed_at=task_completed_at,
-                        failure=self._create_failure_record("timeout", str(e)),
-                    )
-                )
-                halt_execution = True
-
-            except Exception as e:
-                task_completed_at = datetime.now(UTC).isoformat()
-                task_records.append(
-                    TaskRecord(
-                        task_id=task.task_id,
-                        capability_id=task.capability_id,
-                        status=TaskStatus.FAILED,
-                        started_at=task_started_at,
-                        completed_at=task_completed_at,
-                        failure=self._create_failure_record("execution_error", str(e)),
-                    )
-                )
+            task_records.append(record)
+            if should_halt:
                 halt_execution = True
 
         # Evaluate workload-level acceptance checks

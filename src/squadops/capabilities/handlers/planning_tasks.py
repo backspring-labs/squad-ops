@@ -345,7 +345,9 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
     _role = "lead"
     _artifact_name = "planning_artifact.md"
 
-    _DEFAULT_FRONTMATTER = "---\nreadiness: revise\nsufficiency_score: 3\nblocker_unknowns: 0\n---\n\n"
+    _DEFAULT_FRONTMATTER = (
+        "---\nreadiness: revise\nsufficiency_score: 3\nblocker_unknowns: 0\n---\n\n"
+    )
 
     def _synthesize_frontmatter(self, content: str) -> str:
         """Prepend default frontmatter when LLM omits it."""

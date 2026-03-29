@@ -54,7 +54,7 @@ def _parse_template_contract(content: str) -> tuple[str, set[str], set[str]]:
     except yaml.YAMLError:
         header = {}
 
-    body = content[match.end():]
+    body = content[match.end() :]
     required = set(header.get("required_variables", []))
     optional = set(header.get("optional_variables", []))
 
@@ -153,9 +153,7 @@ class RequestTemplateRenderer:
                 return self._cycle_cache.get(cache_key)
             return await self._cycle_cache.resolve_and_store(
                 cache_key,
-                resolver=lambda: self._source.resolve_request_template(
-                    template_id, environment
-                ),
+                resolver=lambda: self._source.resolve_request_template(template_id, environment),
             )
 
         # Fallback: renderer's own cache (no cycle immutability)

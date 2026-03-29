@@ -84,6 +84,4 @@ class TemplateMissingVariableError(PromptDomainError):
     def __init__(self, template_id: str, variable: str):
         self.template_id = template_id
         self.variable = variable
-        super().__init__(
-            f"Required variable '{variable}' missing for template '{template_id}'"
-        )
+        super().__init__(f"Required variable '{variable}' missing for template '{template_id}'")
