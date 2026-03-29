@@ -7,7 +7,19 @@ Entry point: squadops.cli.main:app (via console_scripts).
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
+
 import typer
+
+# Load project .env before any command reads os.environ (e.g. SQUADOPS_REALM).
+# Skip during test runs to avoid polluting the test environment.
+if "pytest" not in sys.modules:
+    from dotenv import load_dotenv
+
+    _repo_root = Path(__file__).resolve().parents[3]
+    load_dotenv(_repo_root / ".env", override=False)
 
 from squadops.cli.commands.artifacts import artifacts_app, baseline_app
 from squadops.cli.commands.auth import auth_app, login, logout

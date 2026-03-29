@@ -2,8 +2,8 @@
 """Upload governed prompt assets to Langfuse (SIP-0084 Phase 6, maintainer-only).
 
 Reads all system fragments and request templates from the filesystem,
-uploads each to Langfuse via the prompt management API, and reports
-a summary with asset count, version, and content hash.
+uploads each to Langfuse via the public REST API (no SDK required),
+and reports a summary with asset count, version, and content hash.
 
 Naming convention (SIP-0084 §9):
   - System fragments: ``{fragment_id}`` for shared, ``{fragment_id}--{role}`` for role-specific
@@ -21,7 +21,7 @@ Usage:
 
     # Upload with environment label
     python scripts/maintainer/upload_prompts_to_langfuse.py \\
-        --environment staging \\
+        --environment local \\
         --host http://localhost:3001 \\
         --public-key pk-lf-... \\
         --secret-key sk-lf-...
@@ -30,9 +30,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -143,6 +147,12 @@ def collect_templates() -> list[UploadEntry]:
     return entries
 
 
+def _basic_auth_header(public_key: str, secret_key: str) -> str:
+    """Build HTTP Basic Auth header value."""
+    credentials = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
+    return f"Basic {credentials}"
+
+
 def upload_to_langfuse(
     entries: list[UploadEntry],
     host: str,
@@ -150,33 +160,38 @@ def upload_to_langfuse(
     secret_key: str,
     environment: str,
 ) -> tuple[int, int]:
-    """Upload entries to Langfuse. Returns (success_count, error_count)."""
-    try:
-        from langfuse import Langfuse
-    except ImportError:
-        print("ERROR: langfuse SDK not installed — run: pip install langfuse", file=sys.stderr)
-        sys.exit(1)
-
-    client = Langfuse(public_key=public_key, secret_key=secret_key, host=host)
+    """Upload entries to Langfuse via the public REST API. Returns (success_count, error_count)."""
+    auth = _basic_auth_header(public_key, secret_key)
+    url = f"{host.rstrip('/')}/api/public/v2/prompts"
     success = 0
     errors = 0
 
     for entry in entries:
+        payload = json.dumps({
+            "name": entry.name,
+            "prompt": entry.content,
+            "labels": [environment],
+            "type": "text",
+        }).encode()
+
+        req = urllib.request.Request(url, data=payload, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Authorization", auth)
+
         try:
-            result = client.create_prompt(
-                name=entry.name,
-                prompt=entry.content,
-                labels=[environment],
-                type="text",
-            )
-            version = getattr(result, "version", "?")
-            success += 1
-            print(f"  OK  {entry.name} v{version} ({entry.content_hash[:12]}...)")
+            with urllib.request.urlopen(req) as resp:
+                result = json.loads(resp.read().decode())
+                version = result.get("version", "?")
+                success += 1
+                print(f"  OK  {entry.name} v{version} ({entry.content_hash[:12]}...)")
+        except urllib.error.HTTPError as exc:
+            errors += 1
+            body = exc.read().decode() if exc.fp else ""
+            print(f"  FAIL {entry.name}: HTTP {exc.code} {body[:120]}", file=sys.stderr)
         except Exception as exc:
             errors += 1
             print(f"  FAIL {entry.name}: {exc}", file=sys.stderr)
 
-    client.flush()
     return success, errors
 
 
@@ -202,6 +217,14 @@ def print_dry_run(entries: list[UploadEntry], environment: str) -> None:
     print(f"\nTotal: {len(entries)} assets")
 
 
+def _default_environment() -> str:
+    """Derive environment from DEPLOYMENT_PROFILE or SQUADOPS_PROFILE."""
+    return os.environ.get(
+        "DEPLOYMENT_PROFILE",
+        os.environ.get("SQUADOPS_PROFILE", "dev"),
+    )
+
+
 def main() -> None:
     if not os.environ.get("SQUADOPS_MAINTAINER"):
         print("ERROR: This script is maintainer-only. Set SQUADOPS_MAINTAINER=1.", file=sys.stderr)
@@ -214,7 +237,11 @@ def main() -> None:
     parser.add_argument("--host", default="http://localhost:3001", help="Langfuse host URL")
     parser.add_argument("--public-key", default=os.environ.get("LANGFUSE_PUBLIC_KEY", ""))
     parser.add_argument("--secret-key", default=os.environ.get("LANGFUSE_SECRET_KEY", ""))
-    parser.add_argument("--environment", default="production", help="Environment label")
+    parser.add_argument(
+        "--environment",
+        default=_default_environment(),
+        help="Environment label (default: from DEPLOYMENT_PROFILE or SQUADOPS_PROFILE)",
+    )
     args = parser.parse_args()
 
     # Collect all assets

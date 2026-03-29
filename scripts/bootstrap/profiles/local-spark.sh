@@ -61,6 +61,11 @@ run_bootstrap() {
     fi
     wait_for_services 60 || warn "Some services may not be ready"
 
+    # ── LangFuse provisioning (user, project, keys, prompts) ────────
+    info "=== LangFuse Setup ==="
+
+    provision_langfuse || warn "LangFuse provisioning failed — agents will use filesystem prompts"
+
     # ── Ollama models (large models for DGX Spark) ─────────────────
     info "=== Ollama Models ==="
 
