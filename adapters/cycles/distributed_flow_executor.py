@@ -172,11 +172,16 @@ class DistributedFlowExecutor(FlowExecutionPort):
             include_build = bool(cycle.applied_defaults.get("build_tasks"))
             seed_artifact_refs: list[str] = []
             if include_build and not include_plan:
+                # Legacy build-only run: plan_artifact_refs are mandatory
                 plan_refs = cycle.execution_overrides.get("plan_artifact_refs")
                 if not plan_refs:
                     raise _ExecutionError("plan_artifact_refs required for build-only cycle")
-                # Seed working set so pre-resolution can find plan artifacts
                 seed_artifact_refs = list(plan_refs)
+            elif run.workload_type is not None:
+                # Multi-workload run: seed from forwarded planning artifacts
+                plan_refs = cycle.execution_overrides.get("plan_artifact_refs")
+                if plan_refs:
+                    seed_artifact_refs = list(plan_refs)
 
             # LangFuse + Prefect observability setup
             obs_ctx, flow_run_id = await self._init_run_observability(
