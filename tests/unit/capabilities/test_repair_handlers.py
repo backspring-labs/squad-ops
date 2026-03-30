@@ -123,6 +123,7 @@ def _make_context(llm_response="Repair analysis content"):
     """Build a minimal ExecutionContext mock for handler tests."""
     llm = AsyncMock()
     llm.chat.return_value = MagicMock(content=llm_response)
+    llm.chat_stream_with_usage.return_value = MagicMock(content=llm_response)
     llm.default_model = "test-model"
 
     prompt_service = MagicMock()
@@ -163,6 +164,7 @@ class TestRepairHandlerHandle:
         h = GovernanceRootCauseHandler()
         ctx = _make_context()
         ctx.ports.llm.chat.side_effect = LLMError("model overloaded")
+        ctx.ports.llm.chat_stream_with_usage.side_effect = LLMError("model overloaded")
         result = await h.handle(ctx, {"prd": "Build a widget"})
         assert result.success is False
         assert "model overloaded" in result.error

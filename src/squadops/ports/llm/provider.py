@@ -86,6 +86,34 @@ class LLMPort(ABC):
         ...
         yield  # pragma: no cover — makes this a proper async generator for ABC
 
+    async def chat_stream_with_usage(
+        self,
+        messages: list[ChatMessage],
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ChatMessage:
+        """Stream chat internally for connection liveness, return complete ChatMessage with usage.
+
+        Uses streaming transport to keep the connection alive during long-running
+        inference, but returns only the final assembled response — no partial chunks
+        are delivered to callers. Usage metadata (token counts, tokens_per_second)
+        is best-effort and defaults to None when absent.
+
+        Default implementation falls back to chat(). Providers may override to
+        implement true streaming with usage capture.
+
+        Same failure semantics as chat(): raises LLMTimeoutError / LLMConnectionError.
+        """
+        return await self.chat(
+            messages,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            timeout_seconds=timeout_seconds,
+        )
+
     @abstractmethod
     def list_models(self) -> list[str]:
         """List available models (sync, returns cached list).

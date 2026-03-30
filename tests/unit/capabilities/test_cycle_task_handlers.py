@@ -72,9 +72,11 @@ def handler_spec(request):
 def mock_context():
     """Return a MagicMock with llm.chat and prompt_service stubbed."""
     ctx = MagicMock()
-    ctx.ports.llm.chat = AsyncMock(
+    chat_mock = AsyncMock(
         return_value=ChatMessage(role="assistant", content="LLM generated output"),
     )
+    ctx.ports.llm.chat = chat_mock
+    ctx.ports.llm.chat_stream_with_usage = chat_mock
     # PromptService stub: get_system_prompt returns an object with .content
     assembled = MagicMock()
     assembled.content = "Assembled system prompt from PromptService"
@@ -252,7 +254,7 @@ class TestHandleLLMCall:
         handler = cls()
         await handler.handle(mock_context, {"prd": "Build a widget"})
 
-        mock_context.ports.llm.chat.assert_awaited_once()
+        mock_context.ports.llm.chat_stream_with_usage.assert_awaited_once()
 
     @pytest.mark.parametrize(
         "cls",
@@ -263,7 +265,7 @@ class TestHandleLLMCall:
         handler = cls()
         await handler.handle(mock_context, {"prd": "Build a widget"})
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         assert len(messages) == 2
         assert messages[0].role == "system"
@@ -278,7 +280,7 @@ class TestHandleLLMCall:
         handler = cls()
         await handler.handle(mock_context, {"prd": "Build a fancy widget"})
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         assert "Build a fancy widget" in messages[1].content
 
@@ -315,7 +317,7 @@ class TestHandlePriorOutputsInPrompt:
         }
         await handler.handle(mock_context, inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Prior Analysis from Upstream Roles" in user_msg
         assert "Strategy analysis summary here" in user_msg
@@ -330,7 +332,7 @@ class TestHandlePriorOutputsInPrompt:
         handler = cls()
         await handler.handle(mock_context, {"prd": "Build a widget"})
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Prior Analysis" not in user_msg
 
@@ -343,7 +345,7 @@ class TestHandlePriorOutputsInPrompt:
         handler = cls()
         await handler.handle(mock_context, {"prd": "Build a widget", "prior_outputs": None})
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Prior Analysis" not in user_msg
 
@@ -363,7 +365,9 @@ class TestHandleLLMError:
         ids=[c.__name__ for c in HANDLER_CLASSES],
     )
     async def test_llm_error_returns_failure(self, handler_cls, exc_cls, mock_context):
-        mock_context.ports.llm.chat = AsyncMock(side_effect=exc_cls("boom"))
+        error_mock = AsyncMock(side_effect=exc_cls("boom"))
+        mock_context.ports.llm.chat = error_mock
+        mock_context.ports.llm.chat_stream_with_usage = error_mock
         handler = handler_cls()
         result = await handler.handle(mock_context, {"prd": "Build a widget"})
 
@@ -424,7 +428,7 @@ class TestHandleUsesPromptService:
         handler = cls()
         await handler.handle(mock_context, {"prd": "Build a widget"})
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         assert messages[0].role == "system"
         assert messages[0].content == "Assembled system prompt from PromptService"
@@ -448,7 +452,7 @@ class TestConfigOverridesFlow:
         }
         await handler.handle(mock_context, inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
         assert call_kwargs["model"] == "qwen2.5:7b"
 
     @pytest.mark.parametrize(
@@ -465,7 +469,7 @@ class TestConfigOverridesFlow:
         }
         await handler.handle(mock_context, inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
         assert call_kwargs["temperature"] == 0.3
 
     @pytest.mark.parametrize(
@@ -482,7 +486,7 @@ class TestConfigOverridesFlow:
         }
         await handler.handle(mock_context, inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
         assert call_kwargs["max_tokens"] == 4096
 
     @pytest.mark.parametrize(
@@ -499,7 +503,7 @@ class TestConfigOverridesFlow:
         }
         await handler.handle(mock_context, inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
         assert call_kwargs["timeout_seconds"] == 600
 
     @pytest.mark.parametrize(
@@ -512,7 +516,7 @@ class TestConfigOverridesFlow:
         inputs = {"prd": "Build a widget"}
         await handler.handle(mock_context, inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
         assert "model" not in call_kwargs
         assert "temperature" not in call_kwargs
         assert "max_tokens" not in call_kwargs
@@ -532,7 +536,7 @@ class TestConfigOverridesFlow:
         }
         await handler.handle(mock_context, inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
         assert "model" not in call_kwargs
 
     @pytest.mark.parametrize(
@@ -553,7 +557,7 @@ class TestConfigOverridesFlow:
         }
         await handler.handle(mock_context, inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args[1]
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
         assert call_kwargs["model"] == "deepseek-coder:6.7b"
         assert call_kwargs["temperature"] == 0.1
         assert call_kwargs["max_tokens"] == 4096

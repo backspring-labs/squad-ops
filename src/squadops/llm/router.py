@@ -94,6 +94,26 @@ class LLMRouter:
         ):
             yield chunk
 
+    async def chat_stream_with_usage(
+        self,
+        messages: list[ChatMessage],
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ChatMessage:
+        """Stream chat internally, return complete ChatMessage with usage.
+
+        Pass-through to provider's chat_stream_with_usage().
+        """
+        return await self._provider.chat_stream_with_usage(
+            messages,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            timeout_seconds=timeout_seconds,
+        )
+
     def list_models(self) -> list[str]:
         """List available models (sync, returns cached list).
 

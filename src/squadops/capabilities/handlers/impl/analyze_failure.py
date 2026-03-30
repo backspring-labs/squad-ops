@@ -87,7 +87,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
         chat_kwargs = self._build_chat_kwargs(inputs)
 
         try:
-            response = await context.ports.llm.chat(messages, **chat_kwargs)
+            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             duration_ms = (time.perf_counter() - start_time) * 1000

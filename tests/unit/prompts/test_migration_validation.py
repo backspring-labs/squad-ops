@@ -92,9 +92,9 @@ def _mock_renderer() -> AsyncMock:
 def _mock_context(*, renderer: AsyncMock | None = None) -> MagicMock:
     """Mock ExecutionContext with optional renderer."""
     ctx = MagicMock()
-    ctx.ports.llm.chat = AsyncMock(
-        return_value=ChatMessage(role="assistant", content="{}"),
-    )
+    _llm_return = ChatMessage(role="assistant", content="{}")
+    ctx.ports.llm.chat = AsyncMock(return_value=_llm_return)
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(return_value=_llm_return)
     ctx.ports.llm.default_model = "test-model"
     assembled = MagicMock()
     assembled.content = "System prompt"
@@ -390,7 +390,7 @@ class TestCapabilitySupplementNotInTemplates:
         await handler.handle(ctx, inputs)
 
         # The system message must contain the supplement
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         system_msg = [m for m in messages if m.role == "system"][0]
         # System prompt should have the assembled content + supplement

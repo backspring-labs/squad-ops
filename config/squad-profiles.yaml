@@ -28,8 +28,8 @@ profiles:
     version: 1
     agents:
       - { agent_id: max, role: lead, model: "qwen2.5:7b", enabled: true }
-      - { agent_id: neo, role: dev, model: "qwen2.5:72b", enabled: true }
-      - { agent_id: nat, role: strat, model: "qwen2.5:72b", enabled: true }
+      - { agent_id: neo, role: dev, model: "qwen2.5:32b", enabled: true }
+      - { agent_id: nat, role: strat, model: "qwen2.5:32b", enabled: true }
       - { agent_id: bob, role: builder, model: "qwen2.5:72b", enabled: true }
       - { agent_id: eve, role: qa, model: "qwen2.5:7b", enabled: true }
       - { agent_id: data, role: data, model: "qwen2.5:7b", enabled: true }

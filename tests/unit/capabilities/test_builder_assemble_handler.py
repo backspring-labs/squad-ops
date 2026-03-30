@@ -152,6 +152,9 @@ def mock_context():
     ctx.ports.llm.chat = AsyncMock(
         return_value=ChatMessage(role="assistant", content=LLM_GOOD_RESPONSE),
     )
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+        return_value=ChatMessage(role="assistant", content=LLM_GOOD_RESPONSE),
+    )
     ctx.ports.llm.default_model = "test-model"
     assembled = MagicMock()
     assembled.content = "You are a builder agent."
@@ -228,7 +231,7 @@ class TestBuilderAssembleSuccess:
         handler = BuilderAssembleHandler()
         await handler.handle(mock_context, builder_inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = [m for m in messages if m.role == "user"][0]
         assert "my_app/main.py" in user_msg.content
@@ -239,7 +242,7 @@ class TestBuilderAssembleSuccess:
         handler = BuilderAssembleHandler()
         await handler.handle(mock_context, builder_inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = [m for m in messages if m.role == "user"][0]
         assert "ASSEMBLING" in user_msg.content
@@ -298,6 +301,9 @@ class TestQAHandoffValidation:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_MISSING_QA_HANDOFF),
         )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_MISSING_QA_HANDOFF),
+        )
         handler = BuilderAssembleHandler()
         result = await handler.handle(mock_context, builder_inputs)
 
@@ -306,6 +312,12 @@ class TestQAHandoffValidation:
 
     async def test_missing_section_reports_error(self, mock_context, builder_inputs):
         mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant",
+                content=LLM_QA_HANDOFF_MISSING_SECTION,
+            ),
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(
                 role="assistant",
                 content=LLM_QA_HANDOFF_MISSING_SECTION,
@@ -326,6 +338,9 @@ class TestQAHandoffValidation:
 class TestRequiredFileValidation:
     async def test_missing_required_file_reports_error(self, mock_context, builder_inputs):
         mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_MISSING_REQUIRED_FILE),
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_MISSING_REQUIRED_FILE),
         )
         handler = BuilderAssembleHandler()
@@ -350,6 +365,12 @@ class TestDuplicateFilenames:
                 content=LLM_DUPLICATE_BASENAMES_DIFFERENT_PATHS,
             ),
         )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant",
+                content=LLM_DUPLICATE_BASENAMES_DIFFERENT_PATHS,
+            ),
+        )
         handler = BuilderAssembleHandler()
         result = await handler.handle(mock_context, builder_inputs)
 
@@ -361,6 +382,12 @@ class TestDuplicateFilenames:
     async def test_exact_duplicate_paths_deduped(self, mock_context, builder_inputs):
         """LLM emits same file twice — last occurrence wins, no failure."""
         mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant",
+                content=LLM_DUPLICATE_EXACT_PATHS,
+            ),
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(
                 role="assistant",
                 content=LLM_DUPLICATE_EXACT_PATHS,
@@ -387,6 +414,9 @@ class TestNoFencedBlocks:
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_NO_FENCES),
         )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_NO_FENCES),
+        )
         handler = BuilderAssembleHandler()
         result = await handler.handle(mock_context, builder_inputs)
 
@@ -402,6 +432,9 @@ class TestNoFencedBlocks:
 class TestLLMFailure:
     async def test_llm_error_returns_failure(self, mock_context, builder_inputs):
         mock_context.ports.llm.chat = AsyncMock(
+            side_effect=LLMConnectionError("Connection refused"),
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             side_effect=LLMConnectionError("Connection refused"),
         )
         handler = BuilderAssembleHandler()
@@ -457,7 +490,7 @@ class TestTagInterpolation:
         handler = BuilderAssembleHandler()
         await handler.handle(mock_context, builder_inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = [m for m in messages if m.role == "user"][0]
         assert "framework" in user_msg.content
@@ -485,7 +518,7 @@ class TestTagInterpolation:
             handler = BuilderAssembleHandler()
             await handler.handle(mock_context, builder_inputs)
 
-            call_args = mock_context.ports.llm.chat.call_args
+            call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
             messages = call_args[0][0]
             user_msg = [m for m in messages if m.role == "user"][0]
             assert "target_python" in user_msg.content
@@ -516,7 +549,7 @@ class TestTagInterpolation:
             handler = BuilderAssembleHandler()
             await handler.handle(mock_context, builder_inputs)
 
-            call_args = mock_context.ports.llm.chat.call_args
+            call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
             messages = call_args[0][0]
             user_msg = [m for m in messages if m.role == "user"][0]
             assert "3.12" in user_msg.content
@@ -596,7 +629,7 @@ class TestAssemblyInputsExpandedExtensions:
         result = await handler.handle(mock_context, inputs)
         # Handler should succeed and include all files in the prompt
         assert result.success is True
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "backend/main.py" in user_msg
         assert "frontend/src/App.jsx" in user_msg
@@ -615,7 +648,7 @@ class TestAssemblyInputsExpandedExtensions:
         }
         result = await handler.handle(mock_context, inputs)
         assert result.success is True
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "src/app.ts" in user_msg
         assert "src/Component.tsx" in user_msg
@@ -637,6 +670,6 @@ class TestAssemblyInputsExpandedExtensions:
         handler = BuilderAssembleHandler()
         result = await handler.handle(mock_context, builder_inputs)
         assert result.success is True
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "my_app/main.py" in user_msg

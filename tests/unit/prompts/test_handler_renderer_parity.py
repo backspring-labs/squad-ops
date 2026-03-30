@@ -51,9 +51,9 @@ def _mock_renderer(rendered_content: str = "rendered template content") -> Async
 def _mock_context(*, renderer: AsyncMock | None = None) -> MagicMock:
     """Create a mock ExecutionContext with optional renderer."""
     ctx = MagicMock()
-    ctx.ports.llm.chat = AsyncMock(
-        return_value=ChatMessage(role="assistant", content="LLM output"),
-    )
+    llm_response = ChatMessage(role="assistant", content="LLM output")
+    ctx.ports.llm.chat = AsyncMock(return_value=llm_response)
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(return_value=llm_response)
     ctx.ports.llm.default_model = "test-model"
     assembled = MagicMock()
     assembled.content = "System prompt"
@@ -133,7 +133,7 @@ class TestCycleTaskHandlerRendererPath:
         await handler.handle(ctx, {"prd": "X"})
 
         # Verify the user message sent to LLM contains rendered content
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = [m for m in messages if m.role == "user"][0]
         assert user_msg.content == "Custom rendered prompt"
@@ -148,7 +148,7 @@ class TestCycleTaskHandlerFallbackPath:
 
         await handler.handle(ctx, {"prd": "Build a game"})
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = [m for m in messages if m.role == "user"][0]
         assert "## Product Requirements Document" in user_msg.content
@@ -256,7 +256,7 @@ class TestDevelopmentDevelopFallbackPath:
 
         await handler.handle(ctx, inputs)
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = [m for m in messages if m.role == "user"][0]
         assert "## Product Requirements Document" in user_msg.content
@@ -271,9 +271,9 @@ class TestDevelopmentDevelopFallbackPath:
 def _mock_planning_context(*, renderer: AsyncMock | None = None) -> MagicMock:
     """Create a mock ExecutionContext for planning handlers (uses assemble())."""
     ctx = MagicMock()
-    ctx.ports.llm.chat = AsyncMock(
-        return_value=MagicMock(content="LLM output"),
-    )
+    llm_response = MagicMock(content="LLM output")
+    ctx.ports.llm.chat = AsyncMock(return_value=llm_response)
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(return_value=llm_response)
     ctx.ports.llm.default_model = "test-model"
     assembled = MagicMock()
     assembled.content = "System prompt"
@@ -347,7 +347,7 @@ class TestPlanningTaskHandlerFallbackPath:
 
         await handler.handle(ctx, {"prd": "Plan a game"})
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = [m for m in messages if m.role == "user"][0]
         assert "## Product Requirements Document" in user_msg.content
@@ -411,7 +411,7 @@ class TestRepairTaskHandlerFallbackPath:
 
         await handler.handle(ctx, {"prd": "Fix it"})
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = [m for m in messages if m.role == "user"][0]
         assert "## Product Requirements Document" in user_msg.content
