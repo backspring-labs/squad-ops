@@ -92,11 +92,13 @@ LLM_TEST_FILE_RESPONSE = (
 
 @pytest.fixture()
 def mock_context():
-    """Return a MagicMock with llm.chat and prompt_service stubbed."""
+    """Return a MagicMock with llm.chat_stream_with_usage and prompt_service stubbed."""
     ctx = MagicMock()
-    ctx.ports.llm.chat = AsyncMock(
+    _llm_mock = AsyncMock(
         return_value=ChatMessage(role="assistant", content=LLM_MULTI_FILE_RESPONSE),
     )
+    ctx.ports.llm.chat = _llm_mock
+    ctx.ports.llm.chat_stream_with_usage = _llm_mock
     ctx.ports.llm.default_model = "test-model"
     assembled = MagicMock()
     assembled.content = "You are a dev agent."
@@ -152,7 +154,7 @@ class TestDevBuildMultiFile:
         assert artifacts[1]["name"] == "src/utils.py"
 
     async def test_dev_build_single_file(self, mock_context, build_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_SINGLE_FILE_RESPONSE),
         )
         handler = DevelopmentDevelopHandler()
@@ -172,7 +174,7 @@ class TestDevBuildMultiFile:
 
 class TestDevBuildParseFailure:
     async def test_dev_build_parse_failure_returns_failed(self, mock_context, build_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_NO_FENCES_RESPONSE),
         )
         handler = DevelopmentDevelopHandler()
@@ -188,7 +190,7 @@ class TestDevBuildParseFailure:
 
 class TestDevBuildLLMError:
     async def test_dev_build_llm_error(self, mock_context, build_inputs):
-        mock_context.ports.llm.chat = AsyncMock(side_effect=LLMConnectionError("timeout"))
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(side_effect=LLMConnectionError("timeout"))
         handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
@@ -234,7 +236,7 @@ class TestDevBuildPromptContent:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = messages[1].content
         assert "Implementation Plan" in user_msg
@@ -245,7 +247,7 @@ class TestDevBuildPromptContent:
 class TestDevBuildFileClassification:
     async def test_yaml_classified_as_config(self, mock_context, build_inputs):
         yaml_response = "```yaml:config.yaml\nkey: value\n```\n"
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=yaml_response),
         )
         handler = DevelopmentDevelopHandler()
@@ -264,7 +266,7 @@ class TestDevBuildFileClassification:
 class TestQABuildProducesTestArtifacts:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_qa_build_produces_test_artifacts(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
@@ -285,7 +287,7 @@ class TestQABuildProducesTestArtifacts:
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_qa_build_summary(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
@@ -297,7 +299,7 @@ class TestQABuildProducesTestArtifacts:
 
 class TestQABuildParseFailure:
     async def test_qa_build_parse_failure(self, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_NO_FENCES_RESPONSE),
         )
         handler = QATestHandler()
@@ -310,13 +312,13 @@ class TestQABuildParseFailure:
 class TestQABuildPromptContent:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_prompt_includes_source_and_plan(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
         await handler.handle(mock_context, qa_inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = messages[1].content
         assert "Validation Plan" in user_msg
@@ -400,7 +402,7 @@ class TestDevBuildVaultFallback:
         assert vault.retrieve.call_count == 2
         vault.retrieve.assert_any_call("art_001")
         # Plan content should appear in the LLM prompt
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Plan" in user_msg
 
@@ -445,7 +447,7 @@ class TestQABuildVaultFallback:
 
         from squadops.cycles.models import ArtifactRef
 
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
 
@@ -487,12 +489,14 @@ class TestDevBuildLangFuseRecording:
     async def test_langfuse_generation_recorded(self, build_inputs):
         """When correlation_context and llm_obs are present, generation is recorded."""
         ctx = MagicMock()
-        ctx.ports.llm.chat = AsyncMock(
+        _llm_mock = AsyncMock(
             return_value=ChatMessage(
                 role="assistant",
                 content=LLM_MULTI_FILE_RESPONSE,
             ),
         )
+        ctx.ports.llm.chat = _llm_mock
+        ctx.ports.llm.chat_stream_with_usage = _llm_mock
         ctx.ports.llm.default_model = "ollama/llama3"
         assembled = MagicMock()
         assembled.content = "You are a dev agent."
@@ -520,12 +524,14 @@ class TestQABuildLangFuseRecording:
     async def test_langfuse_generation_recorded(self, _mock_run, qa_inputs):
         """QA handler records generation when LangFuse is enabled."""
         ctx = MagicMock()
-        ctx.ports.llm.chat = AsyncMock(
+        _llm_mock = AsyncMock(
             return_value=ChatMessage(
                 role="assistant",
                 content=LLM_TEST_FILE_RESPONSE,
             ),
         )
+        ctx.ports.llm.chat = _llm_mock
+        ctx.ports.llm.chat_stream_with_usage = _llm_mock
         ctx.ports.llm.default_model = "ollama/llama3"
         assembled = MagicMock()
         assembled.content = "You are a QA agent."
@@ -552,7 +558,7 @@ class TestQATestReportArtifact:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_test_report_artifact_present(self, _mock_run, mock_context, qa_inputs):
         """test_report.md artifact is always present when tests are extracted."""
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
@@ -569,7 +575,7 @@ class TestQAHandlerSucceedsWhenTestsFail:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_FAILED)
     async def test_handler_succeeds_when_tests_fail(self, _mock_run, mock_context, qa_inputs):
         """Handler returns success=True even when tests fail — failures are evidence."""
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
@@ -586,7 +592,7 @@ class TestQAHandlerSucceedsWhenTestsNotExecuted:
         self, _mock_run, mock_context, qa_inputs
     ):
         """Handler returns success=True even when tests couldn't run."""
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
@@ -599,7 +605,7 @@ class TestQAHandlerSucceedsWhenTestsNotExecuted:
 class TestQASummaryIncludesTestOutcome:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_summary_includes_passed(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
@@ -608,7 +614,7 @@ class TestQASummaryIncludesTestOutcome:
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_FAILED)
     async def test_summary_includes_failed(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
@@ -617,7 +623,7 @@ class TestQASummaryIncludesTestOutcome:
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_NOT_RUN)
     async def test_summary_includes_not_run(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
@@ -755,7 +761,7 @@ class TestDevHandlerCapabilityDefault:
         result = await handler.handle(mock_context, build_inputs)
 
         assert result.success is True
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         system_msg = messages[0].content
         assert "Python package" in system_msg
@@ -769,7 +775,7 @@ class TestDevHandlerCapabilityDefault:
         result = await handler.handle(mock_context, build_inputs)
 
         assert result.success is True
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "RELATIVE imports" in user_msg
         assert "python -m" in user_msg
@@ -782,7 +788,7 @@ class TestDevHandlerFullstackCapability:
         result = await handler.handle(mock_context, build_inputs)
 
         assert result.success is True
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         messages = call_args[0][0]
         user_msg = messages[1].content
         assert "backend/" in user_msg
@@ -797,7 +803,7 @@ class TestDevHandlerFullstackCapability:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "__init__.py" not in user_msg
         assert "python -m" not in user_msg
@@ -807,7 +813,7 @@ class TestDevHandlerFullstackCapability:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         system_msg = call_args[0][0][0].content
         assert "fullstack" in system_msg.lower() or "backend" in system_msg.lower()
 
@@ -827,7 +833,7 @@ class TestDevHandlerUnknownCapability:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        mock_context.ports.llm.chat.assert_not_called()
+        mock_context.ports.llm.chat_stream_with_usage.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -839,13 +845,13 @@ class TestQASourceFilterPythonCli:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_python_cli_picks_py_files(self, _mock_run, mock_context, qa_inputs):
         """Default capability filters to .py files only."""
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
         await handler.handle(mock_context, qa_inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "src/main.py" in user_msg
         assert "src/utils.py" in user_msg
@@ -853,7 +859,7 @@ class TestQASourceFilterPythonCli:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_python_cli_excludes_test_files(self, _mock_run, mock_context):
         """Source filter excludes test_*.py files."""
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         inputs = {
@@ -867,7 +873,7 @@ class TestQASourceFilterPythonCli:
         handler = QATestHandler()
         await handler.handle(mock_context, inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "src/main.py" in user_msg
         assert "test_main.py" not in user_msg
@@ -877,7 +883,7 @@ class TestQASourceFilterFullstack:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_fullstack_picks_py_and_jsx(self, _mock_run, mock_context):
         """Fullstack capability includes both .py and .jsx source files."""
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         inputs = {
@@ -894,7 +900,7 @@ class TestQASourceFilterFullstack:
         handler = QATestHandler()
         await handler.handle(mock_context, inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         # Source files included in ### headings
         assert "### backend/main.py" in user_msg
@@ -909,19 +915,19 @@ class TestQAPromptCapability:
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_python_cli_user_prompt_mentions_pytest(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
         await handler.handle(mock_context, qa_inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "pytest" in user_msg
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_react_app_user_prompt_mentions_vitest(self, _mock_run, mock_context):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         inputs = {
@@ -935,13 +941,13 @@ class TestQAPromptCapability:
         handler = QATestHandler()
         await handler.handle(mock_context, inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "vitest" in user_msg.lower()
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_fullstack_user_prompt_mentions_both(self, _mock_run, mock_context):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         inputs = {
@@ -955,7 +961,7 @@ class TestQAPromptCapability:
         handler = QATestHandler()
         await handler.handle(mock_context, inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "pytest" in user_msg
         assert "vitest" in user_msg.lower()
@@ -998,7 +1004,7 @@ class TestQAUserPromptFenceLang:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_jsx_files_fenced_as_javascript(self, _mock_run, mock_context):
         """JSX source files use ```javascript fences, not ```python."""
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         inputs = {
@@ -1012,7 +1018,7 @@ class TestQAUserPromptFenceLang:
         handler = QATestHandler()
         await handler.handle(mock_context, inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "```javascript" in user_msg
         assert "```python" not in user_msg
@@ -1031,7 +1037,7 @@ class TestDevHandlerTokenBudget:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert call_kwargs["max_tokens"] == 4000
 
     async def test_fullstack_max_tokens(self, mock_context, build_inputs):
@@ -1040,7 +1046,7 @@ class TestDevHandlerTokenBudget:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert call_kwargs["max_tokens"] == 12000
 
     async def test_model_spec_caps_tokens(self, mock_context, build_inputs):
@@ -1051,7 +1057,7 @@ class TestDevHandlerTokenBudget:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args.kwargs
         # min(12000, 4096) = 4096
         assert call_kwargs["max_tokens"] == 4096
 
@@ -1061,7 +1067,7 @@ class TestDevHandlerTokenBudget:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert call_kwargs["max_tokens"] == 4000
 
     async def test_default_timeout(self, mock_context, build_inputs):
@@ -1069,7 +1075,7 @@ class TestDevHandlerTokenBudget:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert call_kwargs["timeout_seconds"] == 300
 
     async def test_config_timeout(self, mock_context, build_inputs):
@@ -1078,7 +1084,7 @@ class TestDevHandlerTokenBudget:
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert call_kwargs["timeout_seconds"] == 600
 
 
@@ -1098,7 +1104,7 @@ class TestDevHandlerPromptGuard:
         assert result.success is False
         payload = json.loads(result.error)
         assert payload["error_code"] == "PROMPT_EXCEEDS_CONTEXT_WINDOW"
-        mock_context.ports.llm.chat.assert_not_called()
+        mock_context.ports.llm.chat_stream_with_usage.assert_not_called()
 
 
 class TestQAHandlerTokenBudget:
@@ -1106,36 +1112,36 @@ class TestQAHandlerTokenBudget:
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_python_cli_max_tokens(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
         await handler.handle(mock_context, qa_inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert call_kwargs["max_tokens"] == 4000
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_fullstack_max_tokens(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         qa_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
         handler = QATestHandler()
         await handler.handle(mock_context, qa_inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert call_kwargs["max_tokens"] == 12000
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_default_timeout(self, _mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
         await handler.handle(mock_context, qa_inputs)
 
-        call_kwargs = mock_context.ports.llm.chat.call_args.kwargs
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert call_kwargs["timeout_seconds"] == 300
 
 
@@ -1144,7 +1150,7 @@ class TestQAHandlerTestTimeout:
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_python_cli_test_timeout(self, mock_run, mock_context, qa_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         handler = QATestHandler()
@@ -1156,7 +1162,7 @@ class TestQAHandlerTestTimeout:
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_fullstack_test_timeout(self, _mock_run, mock_context, qa_inputs):
         """fullstack_fastapi_react → test runner gets timeout_seconds=180."""
-        mock_context.ports.llm.chat = AsyncMock(
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
         qa_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
@@ -1174,13 +1180,13 @@ class TestQAHandlerTestTimeout:
 
 
 class TestBuilderNoTokenBudget:
-    """Builder handler calls chat() without max_tokens (D2)."""
+    """Builder handler calls chat_stream_with_usage() without max_tokens (D2)."""
 
     async def test_builder_no_max_tokens(self):
         from squadops.capabilities.handlers.cycle_tasks import BuilderAssembleHandler
 
         ctx = MagicMock()
-        ctx.ports.llm.chat = AsyncMock(
+        _llm_mock = AsyncMock(
             return_value=ChatMessage(
                 role="assistant",
                 content=(
@@ -1199,6 +1205,8 @@ class TestBuilderNoTokenBudget:
                 ),
             ),
         )
+        ctx.ports.llm.chat = _llm_mock
+        ctx.ports.llm.chat_stream_with_usage = _llm_mock
         ctx.ports.llm.default_model = "test-model"
         assembled = MagicMock()
         assembled.content = "You are a builder agent."
@@ -1218,6 +1226,6 @@ class TestBuilderNoTokenBudget:
         result = await handler.handle(ctx, inputs)
 
         assert result.success is True
-        call_kwargs = ctx.ports.llm.chat.call_args.kwargs
+        call_kwargs = ctx.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert "max_tokens" not in call_kwargs
         assert "timeout_seconds" not in call_kwargs

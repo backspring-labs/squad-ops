@@ -25,6 +25,9 @@ def mock_context_with_obs():
     ctx.ports.llm.chat = AsyncMock(
         return_value=ChatMessage(role="assistant", content="LLM output"),
     )
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+        return_value=ChatMessage(role="assistant", content="LLM output"),
+    )
     ctx.ports.llm.default_model = "llama3.2"
     assembled = MagicMock()
     assembled.content = "System prompt"
@@ -56,6 +59,9 @@ def mock_context_no_obs():
     ctx.ports.llm.chat = AsyncMock(
         return_value=ChatMessage(role="assistant", content="LLM output"),
     )
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+        return_value=ChatMessage(role="assistant", content="LLM output"),
+    )
     assembled = MagicMock()
     assembled.content = "System prompt"
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
@@ -73,6 +79,9 @@ def mock_context_no_correlation():
     """Context with llm_observability but no correlation_context."""
     ctx = MagicMock()
     ctx.ports.llm.chat = AsyncMock(
+        return_value=ChatMessage(role="assistant", content="LLM output"),
+    )
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(
         return_value=ChatMessage(role="assistant", content="LLM output"),
     )
     assembled = MagicMock()

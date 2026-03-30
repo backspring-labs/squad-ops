@@ -32,6 +32,13 @@ from squadops.llm.models import ChatMessage
 pytestmark = [pytest.mark.domain_capabilities]
 
 
+def _set_llm_mock(ctx, **kwargs):
+    """Set both chat and chat_stream_with_usage to the same AsyncMock."""
+    mock = AsyncMock(**kwargs)
+    ctx.ports.llm.chat = mock
+    ctx.ports.llm.chat_stream_with_usage = mock
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -40,9 +47,11 @@ pytestmark = [pytest.mark.domain_capabilities]
 @pytest.fixture()
 def mock_context():
     ctx = MagicMock()
-    ctx.ports.llm.chat = AsyncMock(
+    chat_mock = AsyncMock(
         return_value=ChatMessage(role="assistant", content="stub"),
     )
+    ctx.ports.llm.chat = chat_mock
+    ctx.ports.llm.chat_stream_with_usage = chat_mock
     assembled = MagicMock()
     assembled.content = "System prompt"
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
@@ -66,7 +75,8 @@ class TestEstablishContract:
             "stop_conditions": ["3 consecutive failures"],
             "required_artifacts": ["main.py"],
         }
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content=json.dumps(contract)),
         )
 
@@ -81,7 +91,8 @@ class TestEstablishContract:
         assert result.outputs["artifacts"][0]["name"] == "run_contract.json"
 
     async def test_parse_failure_returns_needs_replan(self, mock_context):
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content="not valid json"),
         )
 
@@ -92,7 +103,8 @@ class TestEstablishContract:
         assert result.outputs["outcome_class"] == TaskOutcome.NEEDS_REPLAN
 
     async def test_llm_error_returns_needs_replan(self, mock_context):
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             side_effect=LLMConnectionError("timeout"),
         )
 
@@ -105,7 +117,8 @@ class TestEstablishContract:
     async def test_strips_markdown_fences(self, mock_context):
         contract = {"objective": "Test", "acceptance_criteria": []}
         fenced = f"```json\n{json.dumps(contract)}\n```"
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content=fenced),
         )
 
@@ -128,7 +141,8 @@ class TestAnalyzeFailure:
             "analysis_summary": "Output quality below bar",
             "contributing_factors": ["insufficient context"],
         }
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content=json.dumps(analysis)),
         )
 
@@ -143,7 +157,8 @@ class TestAnalyzeFailure:
         assert "quality" in result.outputs["analysis_summary"]
 
     async def test_unparseable_falls_back_to_execution(self, mock_context):
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content="unstructured analysis text"),
         )
 
@@ -167,7 +182,8 @@ class TestCorrectionDecision:
             "decision_rationale": f"Choosing {path} because...",
             "affected_task_types": ["development.develop"],
         }
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
         )
 
@@ -186,7 +202,8 @@ class TestCorrectionDecision:
             "decision_rationale": "The fix is localized",
             "affected_task_types": ["development.develop"],
         }
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
         )
 
@@ -202,7 +219,8 @@ class TestCorrectionDecision:
             "decision_rationale": "test",
             "affected_task_types": [],
         }
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
         )
 
@@ -212,7 +230,8 @@ class TestCorrectionDecision:
         assert result.outputs["correction_path"] == "abort"
 
     async def test_unparseable_falls_back_to_abort(self, mock_context):
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content="I think we should..."),
         )
 
@@ -229,7 +248,8 @@ class TestCorrectionDecision:
 
 class TestRepairHandlers:
     async def test_repair_produces_output(self, mock_context):
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content="Repair applied"),
         )
 
@@ -240,7 +260,8 @@ class TestRepairHandlers:
         assert result.outputs["role"] == "dev"
 
     async def test_validate_repair_produces_output(self, mock_context):
-        mock_context.ports.llm.chat = AsyncMock(
+        _set_llm_mock(
+            mock_context,
             return_value=ChatMessage(role="assistant", content="Repair validated"),
         )
 

@@ -243,6 +243,98 @@ class OllamaAdapter(LLMPort):
                 raise LLMModelNotFoundError(f"Model '{resolved_model}' not found") from e
             raise LLMConnectionError(f"Ollama chat failed: {e}") from e
 
+    async def chat_stream_with_usage(
+        self,
+        messages: list[ChatMessage],
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ChatMessage:
+        """Stream chat internally for connection liveness, return complete ChatMessage with usage.
+
+        Uses streaming transport to keep the connection alive during long-running
+        inference, but returns only the final assembled response. Captures token
+        usage metadata from Ollama's final `done: true` chunk.
+        """
+        client = await self._get_client()
+        resolved_model = model or self._default_model
+        timeout = timeout_seconds or self._timeout
+        payload = self._build_chat_payload(
+            messages,
+            resolved_model,
+            max_tokens,
+            temperature,
+            stream=True,
+        )
+
+        try:
+            chunks: list[str] = []
+            usage_data: dict[str, Any] = {}
+
+            async with client.stream(
+                "POST",
+                "/api/chat",
+                json=payload,
+                timeout=timeout,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.debug("Skipping malformed Ollama stream line")
+                        continue
+
+                    # Capture the final done chunk for usage metadata
+                    if chunk.get("done"):
+                        usage_data = chunk
+                        # Final chunk may also contain content
+                        content = chunk.get("message", {}).get("content", "")
+                        if content:
+                            chunks.append(content)
+                    else:
+                        content = chunk.get("message", {}).get("content", "")
+                        if content:
+                            chunks.append(content)
+
+            tps = _compute_tokens_per_second(usage_data)
+            prompt_tok = usage_data.get("prompt_eval_count")
+            completion_tok = usage_data.get("eval_count")
+            total_tok = (
+                (prompt_tok or 0) + (completion_tok or 0) if prompt_tok or completion_tok else None
+            )
+
+            logger.info(
+                "LLM chat_stream_with_usage completed: model=%s, prompt_tokens=%s, "
+                "completion_tokens=%s, t/s=%.1f",
+                resolved_model,
+                prompt_tok,
+                completion_tok,
+                tps or 0.0,
+            )
+
+            return ChatMessage(
+                role="assistant",
+                content="".join(chunks),
+                prompt_tokens=prompt_tok,
+                completion_tokens=completion_tok,
+                total_tokens=total_tok,
+                tokens_per_second=tps,
+            )
+        except httpx.TimeoutException as e:
+            raise LLMTimeoutError(
+                f"Ollama chat_stream_with_usage timed out after {timeout}s"
+            ) from e
+        except httpx.ConnectError as e:
+            raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise LLMModelNotFoundError(f"Model '{resolved_model}' not found") from e
+            raise LLMConnectionError(f"Ollama chat_stream_with_usage failed: {e}") from e
+
     async def chat_stream(
         self,
         messages: list[ChatMessage],

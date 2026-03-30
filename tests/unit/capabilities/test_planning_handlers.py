@@ -97,6 +97,7 @@ def _make_context(llm_response="LLM planning output"):
     """Build a minimal ExecutionContext mock for planning handler tests."""
     llm = AsyncMock()
     llm.chat.return_value = MagicMock(content=llm_response)
+    llm.chat_stream_with_usage.return_value = MagicMock(content=llm_response)
     llm.default_model = "test-model"
 
     # prompt_service must have assemble() (not just get_system_prompt)
@@ -346,6 +347,7 @@ class TestHandleLLMError:
     async def test_llm_error_returns_failure(self, cls):
         ctx = _make_context()
         ctx.ports.llm.chat.side_effect = LLMError("model overloaded")
+        ctx.ports.llm.chat_stream_with_usage.side_effect = LLMError("model overloaded")
         h = cls()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
@@ -375,7 +377,7 @@ class TestHandlePriorOutputs:
         }
         await h.handle(mock_context, inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Prior Analysis from Upstream Roles" in user_msg
         assert "Research context summary" in user_msg
@@ -389,7 +391,7 @@ class TestHandlePriorOutputs:
         h = cls()
         await h.handle(mock_context, {"prd": "Build a widget"})
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Prior Analysis" not in user_msg
 
@@ -408,7 +410,7 @@ class TestLLMCallVerification:
     async def test_llm_chat_called_once(self, cls, mock_context):
         h = cls()
         await h.handle(mock_context, {"prd": "Build a widget"})
-        mock_context.ports.llm.chat.assert_awaited_once()
+        mock_context.ports.llm.chat_stream_with_usage.assert_awaited_once()
 
     @pytest.mark.parametrize(
         "cls",
@@ -419,7 +421,7 @@ class TestLLMCallVerification:
         h = cls()
         await h.handle(mock_context, {"prd": "Build a fancy widget"})
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Build a fancy widget" in user_msg
 
@@ -493,7 +495,7 @@ class TestGovernanceIncorporateFeedback:
         inputs = self._inputs_with_artifact(refinement_instructions="Clarify the auth boundary")
         await h.handle(mock_context, inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Refinement Instructions" in user_msg
         assert "Clarify the auth boundary" in user_msg
@@ -510,7 +512,7 @@ class TestGovernanceIncorporateFeedback:
         }
         await h.handle(mock_context, inputs)
 
-        call_args = mock_context.ports.llm.chat.call_args
+        call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Original Planning Artifact" in user_msg
         assert "Original planning content here" in user_msg
@@ -712,7 +714,7 @@ class TestD17ArtifactContentValidation:
         h = GovernanceIncorporateFeedbackHandler()
         await h.handle(ctx, {"prd": "Build a widget"})
 
-        ctx.ports.llm.chat.assert_not_awaited()
+        ctx.ports.llm.chat_stream_with_usage.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -785,7 +787,7 @@ class TestTimeBudgetAwareness:
         }
         await h.handle(ctx, inputs)
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Time Budget" in user_msg
         assert "2 hours" in user_msg
@@ -804,7 +806,7 @@ class TestTimeBudgetAwareness:
         }
         await h.handle(ctx, inputs)
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Time Budget" in user_msg
         assert "30 minutes" in user_msg
@@ -820,7 +822,7 @@ class TestTimeBudgetAwareness:
         h = cls()
         await h.handle(ctx, {"prd": "Build a widget"})
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Time Budget" not in user_msg
 
@@ -833,7 +835,7 @@ class TestTimeBudgetAwareness:
         }
         await h.handle(ctx, inputs)
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Time Budget" not in user_msg
 
@@ -846,7 +848,7 @@ class TestTimeBudgetAwareness:
         }
         await h.handle(ctx, inputs)
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Time Budget" not in user_msg
 
@@ -860,7 +862,7 @@ class TestTimeBudgetAwareness:
         }
         await h.handle(ctx, inputs)
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "Time Budget" in user_msg
         assert "30 minutes" in user_msg

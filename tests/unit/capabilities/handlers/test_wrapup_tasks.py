@@ -45,6 +45,7 @@ def _make_context(llm_response="LLM wrap-up output"):
     """Build a minimal ExecutionContext mock for wrap-up handler tests."""
     llm = AsyncMock()
     llm.chat.return_value = MagicMock(content=llm_response)
+    llm.chat_stream_with_usage.return_value = MagicMock(content=llm_response)
     llm.default_model = "test-model"
 
     prompt_service = MagicMock()
@@ -177,6 +178,7 @@ class TestHandleLLMError:
     async def test_llm_error_returns_failure(self, cls, _cap_id, _role, _artifact):
         ctx = _make_context()
         ctx.ports.llm.chat.side_effect = LLMError("model timeout")
+        ctx.ports.llm.chat_stream_with_usage.side_effect = LLMError("model timeout")
 
         h = cls()
         result = await h.handle(ctx, VALID_INPUTS)
@@ -404,7 +406,9 @@ class TestPriorOutputsChaining:
         h = GovernanceCloseoutDecisionHandler()
         await h.handle(ctx, inputs)
 
-        call_args = ctx.ports.llm.chat.call_args
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
+        if call_args is None:
+            call_args = ctx.ports.llm.chat.call_args
         user_msg = call_args[0][0][1].content
         assert "Evidence inventory summary" in user_msg
 
