@@ -243,6 +243,10 @@ class _CycleTaskHandler(CapabilityHandler):
                 prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=llm_duration_ms,
+                tokens_per_second=response.tokens_per_second,
+                prompt_tokens=response.prompt_tokens,
+                completion_tokens=response.completion_tokens,
+                total_tokens=response.total_tokens,
                 prompt_name=rendered.template_id if rendered else None,
                 prompt_version=(
                     int(rendered.template_version)
@@ -250,6 +254,13 @@ class _CycleTaskHandler(CapabilityHandler):
                     else None
                 ),
             )
+            if response.tokens_per_second:
+                logger.info(
+                    "%s LLM throughput: %.1f t/s (%s tokens)",
+                    self._handler_name,
+                    response.tokens_per_second,
+                    response.completion_tokens,
+                )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-cycle",
                 layers=(
@@ -596,7 +607,13 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         # Record LLM generation for LangFuse tracing
         self._record_generation(
-            context, user_prompt, content, llm_duration_ms, model_name, rendered=rendered
+            context,
+            user_prompt,
+            content,
+            llm_duration_ms,
+            model_name,
+            rendered=rendered,
+            chat_response=response,
         )
 
         # Parse fenced code blocks
@@ -705,7 +722,15 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         duration_ms: float,
         resolved_model: str | None = None,
         rendered: object | None = None,
+        chat_response: ChatMessage | None = None,
     ) -> None:
+        if chat_response and chat_response.tokens_per_second:
+            logger.info(
+                "%s LLM throughput: %.1f t/s (%s tokens)",
+                self._handler_name,
+                chat_response.tokens_per_second,
+                chat_response.completion_tokens,
+            )
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
             import uuid
@@ -723,6 +748,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
+                tokens_per_second=(chat_response.tokens_per_second if chat_response else None),
+                prompt_tokens=chat_response.prompt_tokens if chat_response else None,
+                completion_tokens=(chat_response.completion_tokens if chat_response else None),
+                total_tokens=chat_response.total_tokens if chat_response else None,
                 prompt_name=getattr(rendered, "template_id", None),
                 prompt_version=(
                     int(rendered.template_version)
@@ -1004,7 +1033,13 @@ class QATestHandler(_CycleTaskHandler):
         content = response.content
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
         self._record_generation(
-            context, user_prompt, content, llm_duration_ms, model_name, rendered=rendered
+            context,
+            user_prompt,
+            content,
+            llm_duration_ms,
+            model_name,
+            rendered=rendered,
+            chat_response=response,
         )
 
         extracted = extract_fenced_files(content)
@@ -1134,7 +1169,15 @@ class QATestHandler(_CycleTaskHandler):
         duration_ms: float,
         resolved_model: str | None = None,
         rendered: object | None = None,
+        chat_response: ChatMessage | None = None,
     ) -> None:
+        if chat_response and chat_response.tokens_per_second:
+            logger.info(
+                "%s LLM throughput: %.1f t/s (%s tokens)",
+                self._handler_name,
+                chat_response.tokens_per_second,
+                chat_response.completion_tokens,
+            )
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
             import uuid
@@ -1152,6 +1195,10 @@ class QATestHandler(_CycleTaskHandler):
                 prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
+                tokens_per_second=(chat_response.tokens_per_second if chat_response else None),
+                prompt_tokens=chat_response.prompt_tokens if chat_response else None,
+                completion_tokens=(chat_response.completion_tokens if chat_response else None),
+                total_tokens=chat_response.total_tokens if chat_response else None,
                 prompt_name=getattr(rendered, "template_id", None),
                 prompt_version=(
                     int(rendered.template_version)
@@ -1504,7 +1551,13 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         # Record LLM generation for LangFuse tracing
         resolved_model = agent_model or context.ports.llm.default_model
         self._record_generation(
-            context, user_prompt, content, llm_duration_ms, resolved_model, rendered=rendered
+            context,
+            user_prompt,
+            content,
+            llm_duration_ms,
+            resolved_model,
+            rendered=rendered,
+            chat_response=response,
         )
 
         # Step 5: Parse fenced code blocks
@@ -1570,7 +1623,15 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         duration_ms: float,
         resolved_model: str | None = None,
         rendered: object | None = None,
+        chat_response: ChatMessage | None = None,
     ) -> None:
+        if chat_response and chat_response.tokens_per_second:
+            logger.info(
+                "%s LLM throughput: %.1f t/s (%s tokens)",
+                self._handler_name,
+                chat_response.tokens_per_second,
+                chat_response.completion_tokens,
+            )
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
             import uuid
@@ -1588,6 +1649,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
                 latency_ms=duration_ms,
+                tokens_per_second=(chat_response.tokens_per_second if chat_response else None),
+                prompt_tokens=chat_response.prompt_tokens if chat_response else None,
+                completion_tokens=(chat_response.completion_tokens if chat_response else None),
+                total_tokens=chat_response.total_tokens if chat_response else None,
                 prompt_name=getattr(rendered, "template_id", None),
                 prompt_version=(
                     int(rendered.template_version)

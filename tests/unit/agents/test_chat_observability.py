@@ -67,7 +67,11 @@ def _make_context(user_text="hi", task_id="t1", context_id="ctx1"):
 def _make_event_queue():
     eq = MagicMock()
     eq.events = []
-    eq.enqueue_event = lambda event: eq.events.append(event)
+
+    async def capture(event):
+        eq.events.append(event)
+
+    eq.enqueue_event = capture
     return eq
 
 

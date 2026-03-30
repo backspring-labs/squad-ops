@@ -7,7 +7,6 @@ Entry point: squadops.cli.main:app (via console_scripts).
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 

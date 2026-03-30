@@ -69,6 +69,8 @@ class TestHandleTaskEnvelope:
             r.agent_id = "neo"
             r.role = "dev"
             r._queue = AsyncMock()
+            r._config = MagicMock()
+            r._config.llm.timeout = 180.0
 
             # Mock orchestrator inside system
             mock_orchestrator = AsyncMock()

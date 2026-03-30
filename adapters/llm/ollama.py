@@ -24,6 +24,18 @@ from squadops.ports.llm.provider import LLMPort
 logger = logging.getLogger(__name__)
 
 
+def _compute_tokens_per_second(data: dict[str, Any]) -> float | None:
+    """Compute tokens/second from Ollama response timing fields.
+
+    Ollama returns eval_count (completion tokens) and eval_duration (nanoseconds).
+    """
+    eval_count = data.get("eval_count")
+    eval_duration = data.get("eval_duration")
+    if eval_count and eval_duration and eval_duration > 0:
+        return round(eval_count / (eval_duration / 1e9), 2)
+    return None
+
+
 class OllamaAdapter(LLMPort):
     """Ollama LLM adapter for local inference.
 
@@ -99,16 +111,29 @@ class OllamaAdapter(LLMPort):
             response.raise_for_status()
             data = response.json()
 
+            tps = _compute_tokens_per_second(data)
+            prompt_tok = data.get("prompt_eval_count")
+            completion_tok = data.get("eval_count")
+            total_tok = (
+                (prompt_tok or 0) + (completion_tok or 0) if prompt_tok or completion_tok else None
+            )
+
+            logger.info(
+                "LLM generate completed: model=%s, prompt_tokens=%s, "
+                "completion_tokens=%s, t/s=%.1f",
+                model,
+                prompt_tok,
+                completion_tok,
+                tps or 0.0,
+            )
+
             return LLMResponse(
                 text=data.get("response", ""),
                 model=data.get("model", model),
-                prompt_tokens=data.get("prompt_eval_count"),
-                completion_tokens=data.get("eval_count"),
-                total_tokens=(
-                    (data.get("prompt_eval_count") or 0) + (data.get("eval_count") or 0)
-                    if data.get("prompt_eval_count") or data.get("eval_count")
-                    else None
-                ),
+                prompt_tokens=prompt_tok,
+                completion_tokens=completion_tok,
+                total_tokens=total_tok,
+                tokens_per_second=tps,
             )
         except httpx.TimeoutException as e:
             raise LLMTimeoutError(f"Ollama request timed out after {timeout}s") from e
@@ -186,9 +211,28 @@ class OllamaAdapter(LLMPort):
             data = response.json()
 
             message_data = data.get("message", {})
+            tps = _compute_tokens_per_second(data)
+            prompt_tok = data.get("prompt_eval_count")
+            completion_tok = data.get("eval_count")
+            total_tok = (
+                (prompt_tok or 0) + (completion_tok or 0) if prompt_tok or completion_tok else None
+            )
+
+            logger.info(
+                "LLM chat completed: model=%s, prompt_tokens=%s, completion_tokens=%s, t/s=%.1f",
+                resolved_model,
+                prompt_tok,
+                completion_tok,
+                tps or 0.0,
+            )
+
             return ChatMessage(
                 role=message_data.get("role", "assistant"),
                 content=message_data.get("content", ""),
+                prompt_tokens=prompt_tok,
+                completion_tokens=completion_tok,
+                total_tokens=total_tok,
+                tokens_per_second=tps,
             )
         except httpx.TimeoutException as e:
             raise LLMTimeoutError(f"Ollama chat timed out after {timeout}s") from e

@@ -65,7 +65,7 @@ def _make_event_queue():
     eq = MagicMock()
     eq.events = []
 
-    def capture(event):
+    async def capture(event):
         eq.events.append(event)
 
     eq.enqueue_event = capture

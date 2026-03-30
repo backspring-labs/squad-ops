@@ -50,6 +50,8 @@ def _make_runner():
 
     runner.role = "dev"
     runner.agent_id = "neo"
+    runner._config = MagicMock()
+    runner._config.llm.timeout = 180.0
 
     # Mock system with ports
     runner.system = MagicMock()
