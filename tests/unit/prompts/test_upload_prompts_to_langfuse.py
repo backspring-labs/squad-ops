@@ -15,11 +15,10 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # Import helpers — the script lives outside the package tree, so we add it
@@ -164,7 +163,7 @@ class TestCollectFragments:
         entries = mod.collect_fragments()
         shared = next(e for e in entries if e.name == "constraints.global")
 
-        expected = hashlib.sha256("Global constraints.".encode()).hexdigest()
+        expected = hashlib.sha256(b"Global constraints.").hexdigest()
         assert shared.content_hash == expected
 
 

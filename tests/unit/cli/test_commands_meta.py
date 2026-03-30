@@ -3,11 +3,10 @@ Unit tests for meta commands: version, status (SIP-0065 §6.3).
 """
 
 import json
+from importlib.metadata import version as pkg_version
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
-
-from importlib.metadata import version as pkg_version
 
 from squadops.cli import exit_codes
 from squadops.cli.client import CLIError

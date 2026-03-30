@@ -33,24 +33,21 @@ from squadops.capabilities.handlers.impl.correction_decision import (
 from squadops.capabilities.handlers.impl.establish_contract import (
     GovernanceEstablishContractHandler,
 )
-from squadops.capabilities.handlers.impl.repair_handlers import (
-    DevelopmentRepairHandler,
-    QAValidateRepairHandler,
-)
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
     GovernanceAssessReadinessHandler,
     GovernanceIncorporateFeedbackHandler,
     QADefineTestStrategyHandler,
-    QAValidateRefinementHandler,
     StrategyFrameObjectiveHandler,
 )
 from squadops.capabilities.handlers.repair_tasks import (
     DataAnalyzeVerificationHandler,
-    DevelopmentRepairHandler as DevelopmentRepairTaskHandler,
     GovernanceRootCauseHandler,
     StrategyCorrectivePlanHandler,
+)
+from squadops.capabilities.handlers.repair_tasks import (
+    DevelopmentRepairHandler as DevelopmentRepairTaskHandler,
 )
 from squadops.capabilities.handlers.wrapup_tasks import (
     DataClassifyUnresolvedHandler,
@@ -299,12 +296,11 @@ class TestPromptGuardPreservation:
         exact '## Prior Analysis from Upstream Roles' heading that prompt_guard
         searches for.
         """
-        from squadops.prompts.renderer import RequestTemplateRenderer
-
         # Build a real renderer with filesystem source
         from adapters.prompts.filesystem_asset_adapter import (
             FilesystemPromptAssetAdapter,
         )
+        from squadops.prompts.renderer import RequestTemplateRenderer
 
         source = FilesystemPromptAssetAdapter(
             fragments_path=TEMPLATES_DIR.parent / "fragments",

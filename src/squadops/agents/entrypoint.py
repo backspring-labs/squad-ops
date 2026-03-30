@@ -97,6 +97,7 @@ class AgentRunner:
         self._heartbeat_reporter = None
         self._lifecycle_state = "STARTING"
         self._queue = None
+        self._config = None
 
         # Load instance-specific configuration (required)
         self._instance_config = load_instance_config(self.agent_id)

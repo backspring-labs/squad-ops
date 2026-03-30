@@ -34,6 +34,7 @@ class LLMResponse:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    tokens_per_second: float | None = None
 
 
 @dataclass(frozen=True)
@@ -45,3 +46,7 @@ class ChatMessage:
 
     role: str  # "system", "user", "assistant"
     content: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    tokens_per_second: float | None = None

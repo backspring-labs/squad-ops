@@ -11,7 +11,6 @@ import sys
 import types
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 

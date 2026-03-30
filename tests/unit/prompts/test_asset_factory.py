@@ -6,7 +6,6 @@ Verifies provider selection, default paths, and the no-silent-fallback rule.
 
 import builtins
 import sys
-import types
 
 import pytest
 
