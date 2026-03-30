@@ -346,6 +346,37 @@ class PrefectTaskAdapter(TaskRegistryPort):
         except Exception as e:
             raise TaskError(f"Unexpected error retrieving task {task_id}: {e}") from e
 
+    @staticmethod
+    def _build_update_query(
+        status: TaskState, result: dict[str, Any] | None, existing: Any
+    ) -> tuple[list[str], list[Any]]:
+        """Build the SET clauses and params for a status update query."""
+        updates = ["status = $1", "updated_at = NOW()"]
+        params: list[Any] = [status.value]
+        param_idx = 2
+
+        if status in (TaskState.COMPLETED, TaskState.FAILED):
+            updates.append(f"end_time = ${param_idx}")
+            params.append(datetime.utcnow())
+            param_idx += 1
+            updates.append("duration = end_time - start_time")
+
+        if result:
+            if status == TaskState.FAILED and "error" in result:
+                updates.append(f"error_log = ${param_idx}")
+                params.append(result.get("error", ""))
+                param_idx += 1
+            else:
+                metrics = existing.get("metrics") or {}
+                if isinstance(metrics, str):
+                    metrics = json.loads(metrics)
+                metrics["result"] = result
+                updates.append(f"metrics = ${param_idx}")
+                params.append(json.dumps(metrics))
+                param_idx += 1
+
+        return updates, params
+
     async def update_status(
         self,
         task_id: str,
@@ -395,35 +426,13 @@ class PrefectTaskAdapter(TaskRegistryPort):
                     )
 
                 # Build update query
-                updates = ["status = $1", "updated_at = NOW()"]
-                params: list[Any] = [status.value]
-                param_idx = 2
-
-                # Set end_time for terminal states
-                if status in (TaskState.COMPLETED, TaskState.FAILED):
-                    updates.append(f"end_time = ${param_idx}")
-                    params.append(datetime.utcnow())
-                    param_idx += 1
-                    updates.append("duration = end_time - start_time")
-
-                # Store result in error_log or metrics
-                if result:
-                    if status == TaskState.FAILED and "error" in result:
-                        updates.append(f"error_log = ${param_idx}")
-                        params.append(result.get("error", ""))
-                        param_idx += 1
-                    else:
-                        # Merge result into metrics
-                        metrics = existing.get("metrics") or {}
-                        if isinstance(metrics, str):
-                            metrics = json.loads(metrics)
-                        metrics["result"] = result
-                        updates.append(f"metrics = ${param_idx}")
-                        params.append(json.dumps(metrics))
-                        param_idx += 1
-
+                updates, params = self._build_update_query(status, result, existing)
+                param_idx = len(params) + 1
                 params.append(task_id)
-                query = f"UPDATE {self._table_name} SET {', '.join(updates)} WHERE task_id = ${param_idx}"
+                query = (
+                    f"UPDATE {self._table_name} SET {', '.join(updates)} "
+                    f"WHERE task_id = ${param_idx}"
+                )
 
                 update_result = await conn.execute(query, *params)
                 if update_result == "UPDATE 0":

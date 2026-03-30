@@ -39,6 +39,22 @@ class InvalidSecretReferenceError(SecretResolutionError):
         super().__init__(msg)
 
 
+def _scan_for_secrets(value: Any, exclude_keys: list[str], pattern: re.Pattern) -> bool:
+    """Recursively scan a value for secret:// references."""
+    if isinstance(value, dict):
+        for key, val in value.items():
+            if key not in exclude_keys and _scan_for_secrets(val, exclude_keys, pattern):
+                return True
+    elif isinstance(value, list):
+        for item in value:
+            if _scan_for_secrets(item, exclude_keys, pattern):
+                return True
+    elif isinstance(value, str):
+        if pattern.search(value):
+            return True
+    return False
+
+
 class SecretManager:
     """Manages secret resolution with name mapping and provider delegation."""
 
@@ -227,23 +243,4 @@ class SecretManager:
         Returns:
             True if any secret:// references are found
         """
-        if exclude_keys is None:
-            exclude_keys = []
-
-        def scan_value(value: Any) -> bool:
-            """Recursively scan a value for secret:// references."""
-            if isinstance(value, dict):
-                for key, val in value.items():
-                    if key not in exclude_keys:
-                        if scan_value(val):
-                            return True
-            elif isinstance(value, list):
-                for item in value:
-                    if scan_value(item):
-                        return True
-            elif isinstance(value, str):
-                if SecretManager.SECRET_REF_PATTERN.search(value):
-                    return True
-            return False
-
-        return scan_value(config_dict)
+        return _scan_for_secrets(config_dict, exclude_keys or [], SecretManager.SECRET_REF_PATTERN)

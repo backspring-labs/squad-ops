@@ -47,6 +47,73 @@ def version(ctx: typer.Context):
         typer.echo(f"squadops {__version__}")
 
 
+def _render_status_table(
+    runtime_result: dict,
+    infra_data: list[dict] | None,
+    agents_data: list[dict] | None,
+    bootstrap_info: dict | None,
+    quiet: bool,
+    config,
+) -> None:
+    """Render the human-readable status tables to stdout."""
+    print_detail(runtime_result, quiet=quiet)
+
+    if infra_data is not None:
+        typer.echo()
+        rows = [
+            [
+                c.get("component", ""),
+                c.get("type", ""),
+                c.get("status", ""),
+                c.get("version", ""),
+                c.get("notes", ""),
+            ]
+            for c in infra_data
+        ]
+        print_table(
+            ["COMPONENT", "TYPE", "STATUS", "VERSION", "NOTES"],
+            rows,
+            quiet=quiet,
+            title="Infrastructure",
+        )
+    else:
+        typer.echo()
+        print_error(f"Infrastructure status unavailable (runtime-api at {config.base_url})")
+
+    if agents_data is not None:
+        typer.echo()
+        rows = [
+            [
+                a.get("agent_id", ""),
+                a.get("agent_name", ""),
+                a.get("role", ""),
+                a.get("network_status", ""),
+                a.get("lifecycle_state", ""),
+                a.get("version", ""),
+                a.get("last_seen", "") or "",
+            ]
+            for a in agents_data
+        ]
+        print_table(
+            ["ID", "NAME", "ROLE", "STATUS", "STATE", "VERSION", "LAST SEEN"],
+            rows,
+            quiet=quiet,
+            title="Agents",
+        )
+    else:
+        typer.echo()
+        print_error(f"Agent status unavailable (runtime-api at {config.base_url})")
+
+    typer.echo()
+    if bootstrap_info:
+        typer.echo(
+            f"Bootstrap: {bootstrap_info['profile']} (last run: {bootstrap_info['last_run']})"
+        )
+        typer.echo("  (run `squadops doctor` for current status)")
+    else:
+        typer.echo("Bootstrap: No bootstrap state found — run `squadops bootstrap <profile>`")
+
+
 @app.command()
 def status(ctx: typer.Context):
     """Check API and infrastructure status."""
@@ -112,63 +179,7 @@ def status(ctx: typer.Context):
         return
 
     # Table output
-    print_detail(runtime_result, quiet=quiet)
-
-    if infra_data is not None:
-        typer.echo()
-        rows = [
-            [
-                c.get("component", ""),
-                c.get("type", ""),
-                c.get("status", ""),
-                c.get("version", ""),
-                c.get("notes", ""),
-            ]
-            for c in infra_data
-        ]
-        print_table(
-            ["COMPONENT", "TYPE", "STATUS", "VERSION", "NOTES"],
-            rows,
-            quiet=quiet,
-            title="Infrastructure",
-        )
-    else:
-        typer.echo()
-        print_error(f"Infrastructure status unavailable (runtime-api at {config.base_url})")
-
-    if agents_data is not None:
-        typer.echo()
-        rows = [
-            [
-                a.get("agent_id", ""),
-                a.get("agent_name", ""),
-                a.get("role", ""),
-                a.get("network_status", ""),
-                a.get("lifecycle_state", ""),
-                a.get("version", ""),
-                a.get("last_seen", "") or "",
-            ]
-            for a in agents_data
-        ]
-        print_table(
-            ["ID", "NAME", "ROLE", "STATUS", "STATE", "VERSION", "LAST SEEN"],
-            rows,
-            quiet=quiet,
-            title="Agents",
-        )
-    else:
-        typer.echo()
-        print_error(f"Agent status unavailable (runtime-api at {config.base_url})")
-
-    # Bootstrap state
-    typer.echo()
-    if bootstrap_info:
-        typer.echo(
-            f"Bootstrap: {bootstrap_info['profile']} (last run: {bootstrap_info['last_run']})"
-        )
-        typer.echo("  (run `squadops doctor` for current status)")
-    else:
-        typer.echo("Bootstrap: No bootstrap state found — run `squadops bootstrap <profile>`")
+    _render_status_table(runtime_result, infra_data, agents_data, bootstrap_info, quiet, config)
 
     if runtime_result.get("status") != "connected":
         raise typer.Exit(code=exit_codes.NETWORK_ERROR)

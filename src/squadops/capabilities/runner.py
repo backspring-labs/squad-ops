@@ -125,20 +125,26 @@ class WorkloadRunner:
                     )
 
         # Check for cycles using Kahn's algorithm
+        self._check_dag_cycles(workload, task_ids)
+
+    @staticmethod
+    def _check_dag_cycles(workload: Workload, task_ids: set[str]) -> None:
+        """Run Kahn's algorithm to detect cycles in the workload DAG.
+
+        Raises:
+            DAGValidationError: If a cycle is detected
+        """
         in_degree: dict[str, int] = {tid: 0 for tid in task_ids}
         for task in workload.tasks:
             for _dep in task.depends_on:
                 in_degree[task.task_id] = in_degree.get(task.task_id, 0) + 1
 
-        # Start with tasks that have no dependencies
         queue = deque([tid for tid, deg in in_degree.items() if deg == 0])
         visited = 0
 
         while queue:
             current = queue.popleft()
             visited += 1
-
-            # Find tasks that depend on current
             for task in workload.tasks:
                 if current in task.depends_on:
                     in_degree[task.task_id] -= 1
@@ -462,6 +468,48 @@ class WorkloadRunner:
         logger.info(f"Wrote workload run report to {report_path}")
         return report_path
 
+    def _load_and_validate(
+        self, workload_id: str, cycle_id: str, started_at: str
+    ) -> tuple[Workload, dict[str, CapabilityContract]] | None:
+        """Load workload, validate DAG, and load contracts.
+
+        Returns (workload, contracts) on success, or None on failure.
+        On failure, stores the early-failure report in ``self._early_failure_report``.
+        """
+        try:
+            workload = self.repository.get_workload(workload_id)
+        except Exception as e:
+            logger.error(f"Failed to load workload {workload_id}: {e}")
+            failure = self._create_failure_record("workload_load_error", str(e))
+            self._early_failure_report = self._emit_early_failure_report(
+                workload_id, cycle_id, started_at, failure
+            )
+            return None
+
+        try:
+            self._validate_dag(workload)
+        except DAGValidationError as e:
+            logger.error(f"DAG validation failed: {e}")
+            failure = self._create_failure_record("dag_validation_error", str(e))
+            self._early_failure_report = self._emit_early_failure_report(
+                workload_id, cycle_id, started_at, failure
+            )
+            return None
+
+        contracts: dict[str, CapabilityContract] = {}
+        for task in workload.tasks:
+            try:
+                contracts[task.capability_id] = self.repository.get_contract(task.capability_id)
+            except ContractNotFoundError as e:
+                logger.error(f"Contract not found: {e}")
+                failure = self._create_failure_record("contract_not_found", str(e))
+                self._early_failure_report = self._emit_early_failure_report(
+                    workload_id, cycle_id, started_at, failure
+                )
+                return None
+
+        return workload, contracts
+
     async def run(
         self,
         workload_id: str,
@@ -492,37 +540,11 @@ class WorkloadRunner:
         workload_failure: FailureRecord | None = None
         halt_execution = False
 
-        # Load workload
-        try:
-            workload = self.repository.get_workload(workload_id)
-        except Exception as e:
-            logger.error(f"Failed to load workload {workload_id}: {e}")
-            workload_failure = self._create_failure_record("workload_load_error", str(e))
-            return self._emit_early_failure_report(
-                workload_id, cycle_id, started_at, workload_failure
-            )
-
-        # Validate DAG
-        try:
-            self._validate_dag(workload)
-        except DAGValidationError as e:
-            logger.error(f"DAG validation failed: {e}")
-            workload_failure = self._create_failure_record("dag_validation_error", str(e))
-            return self._emit_early_failure_report(
-                workload_id, cycle_id, started_at, workload_failure
-            )
-
-        # Load contracts
-        contracts: dict[str, CapabilityContract] = {}
-        for task in workload.tasks:
-            try:
-                contracts[task.capability_id] = self.repository.get_contract(task.capability_id)
-            except ContractNotFoundError as e:
-                logger.error(f"Contract not found: {e}")
-                workload_failure = self._create_failure_record("contract_not_found", str(e))
-                return self._emit_early_failure_report(
-                    workload_id, cycle_id, started_at, workload_failure
-                )
+        # Load workload, validate DAG, load contracts
+        loaded = self._load_and_validate(workload_id, cycle_id, started_at)
+        if loaded is None:
+            return self._early_failure_report
+        workload, contracts = loaded
 
         # Build acceptance engine and context
         engine = AcceptanceCheckEngine(self.run_root)

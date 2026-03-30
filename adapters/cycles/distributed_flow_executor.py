@@ -763,23 +763,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
         cadence_interval_id = 1
 
         for task_idx, envelope in enumerate(plan):
-            if await self._is_cancelled(run_id):
-                raise _CancellationError(run_id)
-
-            # SIP-0079: Skip tasks already completed in a prior checkpoint
-            if envelope.task_id in skip_task_ids:
-                logger.info(
-                    "Skipping completed task %s (%s) from checkpoint",
-                    envelope.task_id,
-                    envelope.task_type,
-                )
+            if await self._check_task_preconditions(
+                run_id, envelope, skip_task_ids, time_budget, run_start_time, completed_task_ids
+            ):
                 continue
-
-            # SIP-0079: Time budget enforcement (RC-8)
-            if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
-                raise _ExecutionError(
-                    f"Time budget exhausted ({time_budget}s) after {len(completed_task_ids)} tasks"
-                )
 
             # Enrich envelope with chain context and dispatch
             enriched = await self._enrich_envelope(
@@ -901,6 +888,38 @@ class DistributedFlowExecutor(FlowExecutionPort):
         if not profile:
             return {}
         return {agent.role: agent.agent_id for agent in profile.agents if agent.enabled}
+
+    async def _check_task_preconditions(
+        self,
+        run_id: str,
+        envelope: TaskEnvelope,
+        skip_task_ids: set[str],
+        time_budget: float | None,
+        run_start_time: float,
+        completed_task_ids: list[str],
+    ) -> bool:
+        """Check whether a task should proceed, be skipped, or abort the run.
+
+        Returns True if the task should be skipped (caller should ``continue``).
+        Raises _CancellationError or _ExecutionError for terminal conditions.
+        """
+        if await self._is_cancelled(run_id):
+            raise _CancellationError(run_id)
+
+        if envelope.task_id in skip_task_ids:
+            logger.info(
+                "Skipping completed task %s (%s) from checkpoint",
+                envelope.task_id,
+                envelope.task_type,
+            )
+            return True
+
+        if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
+            raise _ExecutionError(
+                f"Time budget exhausted ({time_budget}s) after {len(completed_task_ids)} tasks"
+            )
+
+        return False
 
     async def _enrich_envelope(
         self,
@@ -1510,8 +1529,51 @@ class DistributedFlowExecutor(FlowExecutionPort):
             logger.warning("Run report generation failed", exc_info=True)
 
     # ------------------------------------------------------------------
-    # Extracted helper for _generate_run_report
+    # Extracted helpers for _generate_run_report
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_report_metadata_lines(
+        cycle_id: str,
+        run_id: str,
+        run: Any,
+        terminal_status: str,
+        cycle: Any,
+    ) -> list[str]:
+        """Build the metadata section lines for the run report."""
+        lines = [
+            "# Run Report",
+            "",
+            "## Metadata",
+            f"- **Cycle ID:** {cycle_id}",
+            f"- **Run ID:** {run_id}",
+            f"- **Run Number:** {run.run_number}",
+            f"- **Status:** {terminal_status}",
+        ]
+        if cycle:
+            lines.append(f"- **Project ID:** {cycle.project_id}")
+            lines.append(f"- **Build Strategy:** {cycle.build_strategy}")
+            lines.append(f"- **Squad Profile:** {cycle.squad_profile_id}")
+        if run.started_at:
+            lines.append(f"- **Started:** {run.started_at.isoformat()}")
+        if run.finished_at:
+            lines.append(f"- **Finished:** {run.finished_at.isoformat()}")
+        return lines
+
+    @staticmethod
+    def _build_report_quality_lines(terminal_status: str) -> list[str]:
+        """Build the quality notes section for the run report."""
+        lines = ["", "## Quality Notes"]
+        if terminal_status == "COMPLETED":
+            lines.append("All tasks completed successfully.")
+        elif terminal_status == "FAILED":
+            lines.append("One or more tasks failed. Check task artifacts for details.")
+        elif terminal_status == "CANCELLED":
+            lines.append("Run was cancelled before completion.")
+        else:
+            lines.append(f"Terminal status: {terminal_status}")
+        lines.append("")
+        return lines
 
     def _build_pulse_report_lines(self) -> list[str]:
         """Build the pulse verification section for the run report."""
@@ -1539,6 +1601,53 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 f"{suites_str}"
             )
         return lines
+
+    # ------------------------------------------------------------------
+    # Extracted helpers for _run_correction_protocol
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_agent_id(role: str, profile: Any) -> str:
+        """Resolve a role to an agent_id using the squad profile, or fall back to role."""
+        if profile:
+            for agent in profile.agents:
+                if agent.role == role and agent.enabled:
+                    return agent.agent_id
+        return role
+
+    async def _checkpoint_correction_task(
+        self,
+        task_id: str,
+        run_id: str,
+        cycle: Cycle,
+        completed_task_ids: list[str],
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        plan_delta_refs: list[str],
+    ) -> None:
+        """Checkpoint a correction or repair task after successful dispatch."""
+        completed_task_ids.append(task_id)
+        checkpoint_index = len(completed_task_ids)
+        new_checkpoint = RunCheckpoint(
+            run_id=run_id,
+            checkpoint_index=checkpoint_index,
+            completed_task_ids=tuple(completed_task_ids),
+            prior_outputs=dict(prior_outputs),
+            artifact_refs=tuple(all_artifact_refs),
+            plan_delta_refs=tuple(plan_delta_refs),
+            created_at=datetime.now(UTC),
+        )
+        await self._cycle_registry.save_checkpoint(new_checkpoint)
+        self._cycle_event_bus.emit(
+            EventType.CHECKPOINT_CREATED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+            payload={
+                "checkpoint_index": checkpoint_index,
+                "completed_task_id": task_id,
+            },
+        )
 
     # ------------------------------------------------------------------
     # Correction protocol
@@ -1594,12 +1703,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         for step_idx, (task_type, role) in enumerate(CORRECTION_TASK_STEPS):
             corr_task_id = f"corr-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-            agent_id = role
-            if profile:
-                for agent in profile.agents:
-                    if agent.role == role and agent.enabled:
-                        agent_id = agent.agent_id
-                        break
+            agent_id = self._resolve_agent_id(role, profile)
 
             corr_inputs: dict[str, Any] = {
                 "prd": cycle.prd_ref,
@@ -1644,28 +1748,14 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     context={"cycle_id": cycle.cycle_id, "run_id": run_id},
                     payload={"task_type": task_type},
                 )
-                # Checkpoint correction tasks on success
-                completed_task_ids.append(corr_task_id)
-                checkpoint_index = len(completed_task_ids)
-                new_checkpoint = RunCheckpoint(
-                    run_id=run_id,
-                    checkpoint_index=checkpoint_index,
-                    completed_task_ids=tuple(completed_task_ids),
-                    prior_outputs=dict(prior_outputs),
-                    artifact_refs=tuple(all_artifact_refs),
-                    plan_delta_refs=tuple(plan_delta_refs),
-                    created_at=datetime.now(UTC),
-                )
-                await self._cycle_registry.save_checkpoint(new_checkpoint)
-                self._cycle_event_bus.emit(
-                    EventType.CHECKPOINT_CREATED,
-                    entity_type="run",
-                    entity_id=run_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-                    payload={
-                        "checkpoint_index": checkpoint_index,
-                        "completed_task_id": corr_task_id,
-                    },
+                await self._checkpoint_correction_task(
+                    corr_task_id,
+                    run_id,
+                    cycle,
+                    completed_task_ids,
+                    prior_outputs,
+                    all_artifact_refs,
+                    plan_delta_refs,
                 )
             else:
                 self._cycle_event_bus.emit(
@@ -1730,12 +1820,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         if correction_path == "patch":
             for step_idx, (task_type, role) in enumerate(REPAIR_TASK_STEPS):
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-                agent_id = role
-                if profile:
-                    for agent in profile.agents:
-                        if agent.role == role and agent.enabled:
-                            agent_id = agent.agent_id
-                            break
+                agent_id = self._resolve_agent_id(role, profile)
 
                 repair_inputs: dict[str, Any] = {
                     "prd": cycle.prd_ref,
@@ -1778,28 +1863,14 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         context={"cycle_id": cycle.cycle_id, "run_id": run_id},
                         payload={"task_type": task_type},
                     )
-                    # Checkpoint repair tasks
-                    completed_task_ids.append(repair_task_id)
-                    checkpoint_index = len(completed_task_ids)
-                    new_checkpoint = RunCheckpoint(
-                        run_id=run_id,
-                        checkpoint_index=checkpoint_index,
-                        completed_task_ids=tuple(completed_task_ids),
-                        prior_outputs=dict(prior_outputs),
-                        artifact_refs=tuple(all_artifact_refs),
-                        plan_delta_refs=tuple(plan_delta_refs),
-                        created_at=datetime.now(UTC),
-                    )
-                    await self._cycle_registry.save_checkpoint(new_checkpoint)
-                    self._cycle_event_bus.emit(
-                        EventType.CHECKPOINT_CREATED,
-                        entity_type="run",
-                        entity_id=run_id,
-                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-                        payload={
-                            "checkpoint_index": checkpoint_index,
-                            "completed_task_id": repair_task_id,
-                        },
+                    await self._checkpoint_correction_task(
+                        repair_task_id,
+                        run_id,
+                        cycle,
+                        completed_task_ids,
+                        prior_outputs,
+                        all_artifact_refs,
+                        plan_delta_refs,
                     )
                 else:
                     self._cycle_event_bus.emit(
@@ -2520,25 +2591,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # Fetch latest run state for gate decisions and artifact refs
         run = await self._cycle_registry.get_run(run_id)
 
-        lines = [
-            "# Run Report",
-            "",
-            "## Metadata",
-            f"- **Cycle ID:** {cycle_id}",
-            f"- **Run ID:** {run_id}",
-            f"- **Run Number:** {run.run_number}",
-            f"- **Status:** {terminal_status}",
-        ]
-
-        if cycle:
-            lines.append(f"- **Project ID:** {cycle.project_id}")
-            lines.append(f"- **Build Strategy:** {cycle.build_strategy}")
-            lines.append(f"- **Squad Profile:** {cycle.squad_profile_id}")
-
-        if run.started_at:
-            lines.append(f"- **Started:** {run.started_at.isoformat()}")
-        if run.finished_at:
-            lines.append(f"- **Finished:** {run.finished_at.isoformat()}")
+        lines = self._build_report_metadata_lines(cycle_id, run_id, run, terminal_status, cycle)
 
         # Task breakdown
         if plan:
@@ -2572,18 +2625,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
             lines.extend(self._build_pulse_report_lines())
 
         # Quality notes
-        lines.append("")
-        lines.append("## Quality Notes")
-        if terminal_status == "COMPLETED":
-            lines.append("All tasks completed successfully.")
-        elif terminal_status == "FAILED":
-            lines.append("One or more tasks failed. Check task artifacts for details.")
-        elif terminal_status == "CANCELLED":
-            lines.append("Run was cancelled before completion.")
-        else:
-            lines.append(f"Terminal status: {terminal_status}")
-
-        lines.append("")
+        lines.extend(self._build_report_quality_lines(terminal_status))
 
         content = "\n".join(lines)
         content_bytes = content.encode("utf-8")

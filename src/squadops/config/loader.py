@@ -297,6 +297,34 @@ def _merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, An
     return result
 
 
+def _coerce_bool(value: str) -> bool:
+    if value.lower() in ("true", "false", "1", "0", "yes", "no"):
+        return value.lower() in ("true", "1", "yes")
+    raise ValueError(f"Cannot convert '{value}' to bool")
+
+
+def _coerce_int(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError as err:
+        raise ValueError(f"Cannot convert '{value}' to int") from err
+
+
+def _coerce_float(value: str) -> float:
+    try:
+        return float(value)
+    except ValueError as err:
+        raise ValueError(f"Cannot convert '{value}' to float") from err
+
+
+_TYPE_COERCERS: dict[type, Any] = {
+    bool: _coerce_bool,
+    int: _coerce_int,
+    float: _coerce_float,
+    Path: Path,
+}
+
+
 def _coerce_value(value: str, field_type: type, enum_class: type | None = None) -> Any:
     """Coerce a string value to the appropriate type based on field type."""
     # Handle enum types
@@ -310,29 +338,9 @@ def _coerce_value(value: str, field_type: type, enum_class: type | None = None) 
         except (ValueError, KeyError) as err:
             raise ValueError(f"Invalid enum value '{value}' for {enum_class.__name__}") from err
 
-    # Handle bool
-    if field_type is bool:
-        if value.lower() in ("true", "false", "1", "0", "yes", "no"):
-            return value.lower() in ("true", "1", "yes")
-        raise ValueError(f"Cannot convert '{value}' to bool")
-
-    # Handle int
-    if field_type is int:
-        try:
-            return int(value)
-        except ValueError as err:
-            raise ValueError(f"Cannot convert '{value}' to int") from err
-
-    # Handle float
-    if field_type is float:
-        try:
-            return float(value)
-        except ValueError as err:
-            raise ValueError(f"Cannot convert '{value}' to float") from err
-
-    # Handle Path
-    if field_type is Path:
-        return Path(value)
+    coercer = _TYPE_COERCERS.get(field_type)
+    if coercer is not None:
+        return coercer(value)
 
     # Handle str (default)
     return value
