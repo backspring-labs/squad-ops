@@ -289,6 +289,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             squad_profile=squad_profile,
             project_registry=project_registry,
             queue=queue_adapter,
+            task_timeout=float(config.llm.timeout),
             llm_observability=llm_obs,
             prefect_reporter=_prefect_reporter,
             event_bus=event_bus,

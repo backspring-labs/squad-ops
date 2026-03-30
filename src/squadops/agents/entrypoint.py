@@ -208,6 +208,7 @@ class AgentRunner:
 
         # Load configuration
         config = load_config()
+        self._config = config
 
         # Create adapters based on configuration
         ports = await self._create_ports(config)
@@ -655,7 +656,9 @@ class AgentRunner:
         try:
             if not self.system:
                 raise RuntimeError("AgentRunner.system not initialized")
-            result = await self.system.orchestrator.submit_task(envelope)
+            result = await self.system.orchestrator.submit_task(
+                envelope, timeout_seconds=self._config.llm.timeout
+            )
         except Exception as e:
             logger.error(f"Task execution failed: {e}", extra={"task_id": envelope.task_id})
             result = TaskResult(

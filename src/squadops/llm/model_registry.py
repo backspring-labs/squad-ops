@@ -25,7 +25,7 @@ class ModelSpec:
 MODEL_SPECS: dict[str, ModelSpec] = {
     "qwen2.5:7b": ModelSpec(
         name="qwen2.5:7b",
-        context_window=8_192,
+        context_window=32_768,
         default_max_completion=4_096,
     ),
     "qwen2.5:32b": ModelSpec(

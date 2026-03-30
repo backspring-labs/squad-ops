@@ -188,6 +188,7 @@ services:
       SQUADOPS__LANGFUSE__HOST: http://squadops-langfuse:3000
       # LLM (SIP-0066: cycle task handlers)
       SQUADOPS__LLM__MODEL: "llama3.1:8b"
+      SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     volumes:
       - ./data/artifacts:/app/data/artifacts
     networks:
@@ -232,6 +233,7 @@ services:
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     volumes:
       - max_memory_data:/app/data/memory_db
     depends_on:
@@ -278,6 +280,7 @@ services:
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -343,6 +346,7 @@ services:
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     volumes:
       - ./docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
@@ -391,6 +395,7 @@ services:
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -435,6 +440,7 @@ services:
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     volumes:
       - data_memory_data:/app/data/memory_db
     depends_on:
@@ -483,6 +489,7 @@ services:
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
       # Auth not needed for agents (no HTTP server)
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     volumes:
       - bob_memory_data:/app/data/memory_db
     depends_on:

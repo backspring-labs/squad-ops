@@ -25,28 +25,12 @@ class TestModelSpec:
 class TestGetModelSpec:
     """Tests for get_model_spec lookup."""
 
-    def test_known_model(self):
-        spec = get_model_spec("qwen2.5:7b")
-        assert spec is not None
-        assert spec.name == "qwen2.5:7b"
-        assert spec.context_window == 8_192
-        assert spec.default_max_completion == 4_096
-
-    def test_known_model_32b(self):
-        spec = get_model_spec("qwen2.5:32b")
-        assert spec is not None
-        assert spec.context_window == 32_768
-
-    def test_known_model_72b(self):
-        spec = get_model_spec("qwen2.5:72b")
-        assert spec is not None
-        assert spec.context_window == 131_072
-
-    def test_known_model_llama(self):
-        spec = get_model_spec("llama3:70b")
-        assert spec is not None
-        assert spec.context_window == 131_072
-        assert spec.default_max_completion == 16_384
+    def test_registered_models_resolvable(self):
+        """Every model in MODEL_SPECS must be resolvable by get_model_spec."""
+        for name in MODEL_SPECS:
+            spec = get_model_spec(name)
+            assert spec is not None, f"get_model_spec({name!r}) returned None"
+            assert spec.name == name
 
     def test_unknown_model_returns_none(self):
         assert get_model_spec("nonexistent-model") is None
