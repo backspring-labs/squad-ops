@@ -9,7 +9,7 @@ created_at: '2026-03-31T00:00:00Z'
 **Status:** Proposed
 **Authors:** SquadOps Architecture
 **Created:** 2026-03-31
-**Revision:** 2
+**Revision:** 3
 
 ---
 
@@ -25,7 +25,13 @@ This SIP addresses three compounding gaps:
 
 3. **Inert correction protocol** — SIP-0079's correction infrastructure (outcome classification, correction protocol, repair tasks, plan deltas) is fully implemented but never activates because handlers never emit failure signals.
 
-The SIP introduces **dynamic build task decomposition** (Max decomposes the build into focused subtasks during planning), **output validation** (handlers check completeness before declaring success), and **outcome classification wiring** (semantic failures activate the existing correction protocol). Together, these turn a 22-second single-pass build into a multi-task convergence loop that fills the cycle timebox with productive, incremental work.
+The SIP introduces two separable capabilities that together turn a 22-second single-pass build into a multi-task convergence loop:
+
+**Capability A — Build Decomposition:** Max produces a build task manifest during planning that decomposes the build into focused subtasks. The executor materializes approved build envelopes from the manifest. This fills the cycle timebox with incremental, focused work.
+
+**Capability B — Build Convergence & Correction Activation:** Build handlers validate output completeness before declaring success, emit `outcome_class: SEMANTIC_FAILURE` when validation fails, and support a bounded self-evaluation pass before escalating to the SIP-0079 correction protocol.
+
+These capabilities are architecturally independent. Decomposition without validation still improves throughput (more focused tasks, better prompts). Validation without decomposition still activates correction on monolithic tasks. Together, they are materially stronger than either alone.
 
 ---
 
@@ -190,6 +196,10 @@ tasks:
       - "backend/models.py"
       - "backend/repository.py"
       - "backend/__init__.py"
+    acceptance_criteria:
+      - "RunEvent model has fields: id, title, datetime, location, distance, pace_target, route_notes, participants"
+      - "Participant model has fields: id, name"
+      - "Repository supports create, get, list operations"
     depends_on: []  # No prior build artifacts needed
 
   - task_index: 1
@@ -203,6 +213,11 @@ tasks:
     expected_artifacts:
       - "backend/main.py"
       - "backend/routes.py"
+    acceptance_criteria:
+      - "All 5 required endpoints are defined"
+      - "Endpoints import and use repository from task 0"
+      - "Duplicate participant join returns 409"
+      - "Run not found returns 404"
     depends_on: [0]  # Needs models and repository
 
   - task_index: 2
@@ -218,6 +233,9 @@ tasks:
       - "frontend/index.html"
       - "frontend/src/App.jsx"
       - "frontend/src/main.jsx"
+    acceptance_criteria:
+      - "Vite project structure is complete and would start with npm run dev"
+      - "React Router configured with routes for /, /create, /runs/:id"
     depends_on: []  # Independent of backend artifacts
 
   - task_index: 3
@@ -292,9 +310,11 @@ summary:
 
 #### 6.1.3 Manifest Production — GovernanceReviewHandler Extension
 
-The `governance.review` handler (Max) currently produces a governance review document. This SIP extends it to also produce the build task manifest when `build_tasks` is enabled in the cycle config.
+The `governance.review` handler (Max) currently produces a governance review document. This SIP extends it to also produce the build task manifest when `build_manifest: true` in the cycle config.
 
 Max receives the full planning context: the PRD, strategy analysis, design plan, validation plan, and data report. He uses this to decompose the build into focused subtasks.
+
+**Architectural tradeoff — colocation in governance.review:** For Revision 1, manifest generation is colocated in `governance.review` for simplicity and gate alignment. This means Max is both decomposer and reviewer of the build plan. Long-term, a dedicated manifest producer (e.g., `governance.plan_build`) before `governance.review` may provide cleaner separation — Max would review the manifest instead of authoring it. This SIP intentionally accepts the colocation tradeoff for initial delivery; separation is a future refinement.
 
 **Prompt extension for governance.review:**
 
@@ -305,7 +325,8 @@ the upcoming build into focused subtasks. Each subtask should:
 1. Have a clear, narrow focus (e.g., "Backend data models" not "Build the app")
 2. List the specific files it should produce
 3. Declare dependencies on prior subtasks
-4. Be completable in a single focused LLM generation (~2-10 minutes)
+4. Define acceptance criteria (what must be true for this subtask to be considered complete)
+5. Be completable in a single focused LLM generation (~2-10 minutes)
 
 Decomposition guidelines:
 - Separate backend and frontend into distinct tasks
@@ -318,19 +339,25 @@ Decomposition guidelines:
 Output the manifest as a YAML code block with filename: build_task_manifest.yaml
 ```
 
-The manifest is extracted via `extract_fenced_files()` (same mechanism as code artifacts), validated against the schema, and stored as a `document` type artifact.
+**Manifest as control-plane artifact:** The manifest is extracted via `extract_fenced_files()` as a transport mechanism, but it is not an ordinary work-product artifact like `qa_handoff.md` or `models.py`. It is a **control-plane artifact** — it changes execution by determining which tasks the executor materializes. Once validated, it is stored with `artifact_type: "control_manifest"` (distinct from `document`, `source`, `test`). This distinction matters because control-plane artifacts:
+- Have execution significance (they shape the task plan)
+- Require schema validation before storage
+- Become immutable after gate approval (the approved manifest is the source of truth for the build phase)
+- May eventually support versioning, diffing, and audit trails independent of code artifacts
 
-#### 6.1.4 Manifest Consumption — generate_task_plan() Extension
+#### 6.1.4 Manifest Consumption — Materializing Approved Build Envelopes
 
-`generate_task_plan()` is extended to check for a build task manifest in the cycle's artifacts before falling back to static step lists:
+After gate approval, the executor does not "regenerate" the task plan. It **materializes approved build envelopes from the manifest**. The approved manifest is the source of truth for the build phase. The executor expands it deterministically into `TaskEnvelope` objects.
+
+`generate_task_plan()` is extended with an optional `manifest` parameter:
 
 ```python
 def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile,
                        manifest: BuildTaskManifest | None = None) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
     
-    When a build task manifest is provided (from governance.review),
-    expands manifest tasks into envelopes instead of using static
+    When a build task manifest is provided (approved at gate),
+    materializes manifest tasks into envelopes instead of using static
     BUILD_TASK_STEPS. Falls back to static steps when no manifest exists.
     """
     # ... existing workload type / legacy resolution ...
@@ -346,12 +373,23 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile,
         steps.extend(build_steps)
 ```
 
+**Deterministic task IDs:** Task IDs are derived deterministically from cycle, run, and manifest index so they are stable across checkpoint/resume and auditable:
+
+```python
+# For manifest-derived envelopes:
+task_id = f"task-{run.run_id[:12]}-m{task.task_index:03d}-{task.task_type}"
+# e.g., "task-7baca3f4d427-m003-development.develop"
+```
+
+This follows the same pattern as SIP-0079 implementation runs (`task-{run_id}-{index}-{type}`), ensuring the materialized plan is reproducible and that "already completed" checks during checkpoint restore match by stable ID.
+
 Each manifest task becomes a `TaskEnvelope` with:
 - `task_type`: from manifest (e.g., `development.develop`)
 - `inputs.subtask_focus`: the `focus` field from the manifest
 - `inputs.subtask_description`: the `description` field
 - `inputs.expected_artifacts`: the expected file list
 - `inputs.subtask_index`: position in the manifest
+- `inputs.acceptance_criteria`: the acceptance criteria list
 - Standard lineage fields (correlation_id, causation_id chained to previous task)
 
 #### 6.1.5 Handler Prompt Adaptation
@@ -394,14 +432,14 @@ else:
 
 This is critical: focused prompts produce better output than monolithic "build everything" prompts because the LLM can concentrate its context window on one component at a time.
 
-#### 6.1.6 Executor: Manifest Loading After Gate Approval
+#### 6.1.6 Executor: Materializing Build Envelopes After Gate Approval
 
-After a gate is approved and the executor resumes, it loads the manifest from the run's artifacts:
+After a gate is approved and the executor resumes, it loads the approved manifest from the run's artifacts and materializes build envelopes:
 
 ```python
 # In _execute_sequential(), after gate approval resumes execution
 
-# Check for build task manifest in collected artifacts
+# Load approved manifest from artifact vault
 manifest = None
 for art_id, art_ref in stored_artifacts:
     if art_ref.filename == "build_task_manifest.yaml":
@@ -410,14 +448,16 @@ for art_id, art_ref in stored_artifacts:
         break
 
 if manifest:
-    # Regenerate task plan with manifest
+    # Materialize approved build envelopes from the manifest
     remaining_envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
-    # Filter out already-completed tasks
+    # Skip already-completed tasks (stable IDs enable exact match)
     remaining_envelopes = [
         e for e in remaining_envelopes
         if e.task_id not in completed_task_ids
     ]
 ```
+
+**Plan identity:** The materialized envelopes are not a new plan — they are a deterministic expansion of the already-approved manifest. The manifest becomes immutable after gate approval. The executor does not modify, reorder, or add to the manifest's task list. If a subtask fails and correction produces a plan delta, the delta layers on top of the manifest (per SIP-0079); it does not mutate the original.
 
 #### 6.1.7 Manifest Validation
 
@@ -428,6 +468,17 @@ The manifest is validated at two points:
 2. **At consumption time** (in `generate_task_plan()`): Cross-validation ensures task_types map to registered handlers and agent_ids resolve in the profile.
 
 ```python
+@dataclass
+class ManifestTask:
+    task_index: int
+    task_type: str
+    role: str
+    focus: str
+    description: str
+    expected_artifacts: list[str]
+    acceptance_criteria: list[str]   # What must be true for this subtask to pass
+    depends_on: list[int]
+
 @dataclass
 class BuildTaskManifest:
     version: int
@@ -527,37 +578,79 @@ async def _validate_output(
 
 ### 6.3 DevelopmentDevelopHandler Validation
 
-The `development.develop` handler validates output against three criteria:
+The `development.develop` handler operates in two distinct validation modes depending on whether it received a manifest subtask or a legacy monolithic task. These are not equivalent problems and use different validation strategies.
 
-#### Check 1: Required Component Coverage
+#### 6.3.1 Focused-Task Validation (manifest-driven subtasks)
 
-Parse the PRD and implementation plan to identify required components. Compare against generated artifacts.
+When `subtask_focus` is present in inputs, the handler validates against the **subtask contract** from the manifest. This is strict, artifact-specific validation.
 
 ```python
-async def _validate_output(self, context, inputs, artifacts, raw_response):
+async def _validate_output_focused(self, inputs, artifacts):
     checks = []
     missing = []
-    
-    prd = inputs.get("prd", "")
-    impl_plan = await self._resolve_with_vault_fallback(inputs, "implementation_plan")
     artifact_names = [a["name"] for a in artifacts]
     
-    # C1: Stack coverage — does the output contain artifacts for each required stack layer?
-    expected_layers = self._detect_expected_layers(prd, impl_plan)
-    # e.g., {"backend": ["*.py", "main.py"], "frontend": ["*.jsx", "*.tsx", "*.html"], "config": ["requirements.txt", "package.json"]}
+    expected = inputs.get("expected_artifacts", [])
+    acceptance = inputs.get("acceptance_criteria", [])
     
-    present_layers = set()
-    for name in artifact_names:
-        for layer, patterns in expected_layers.items():
-            if any(fnmatch(name, p) or name.endswith(tuple(exts)) for p, exts in patterns):
-                present_layers.add(layer)
+    # FC1: Expected artifacts present
+    missing_files = [f for f in expected if f not in artifact_names]
+    checks.append({
+        "check": "expected_artifacts",
+        "expected": expected,
+        "present": [f for f in expected if f in artifact_names],
+        "missing": missing_files,
+        "passed": len(missing_files) == 0,
+    })
+    if missing_files:
+        missing.extend(f"file:{f}" for f in missing_files)
     
+    # FC2: Non-stub files
+    stubs = self._detect_stubs(artifacts)
+    checks.append({
+        "check": "non_stub_files",
+        "stubs_found": stubs,
+        "passed": len(stubs) == 0,
+    })
+    
+    # FC3: Acceptance criteria (structural checks where possible)
+    # Acceptance criteria from the manifest give validation and self-eval
+    # something sharper to work with than filename matching alone.
+    # For Revision 1, criteria are included in evidence and self-eval prompts
+    # but not mechanically evaluated (future: AST-level checks).
+    checks.append({
+        "check": "acceptance_criteria",
+        "criteria": acceptance,
+        "evaluation": "included_in_evidence",
+        "passed": True,  # Informational for Revision 1
+    })
+    
+    passed = all(c["passed"] for c in checks)
+    coverage = sum(1 for c in checks if c["passed"]) / len(checks) if checks else 1.0
+    
+    return ValidationResult(
+        passed=passed, checks=checks, missing_components=missing,
+        coverage_ratio=coverage,
+        summary=self._summarize_checks(checks) or "All checks passed",
+    )
+```
+
+#### 6.3.2 Legacy Monolithic Validation (no manifest, backward-compatible)
+
+When no `subtask_focus` is present (legacy `BUILD_TASK_STEPS` path), the handler falls back to **coarse heuristic validation**. These checks are bounded safety rails for catching obvious incompleteness — they are not semantic truth and do not have the precision of focused-task validation.
+
+**Check 1: Stack coverage (heuristic)**
+
+Infers expected stack layers from PRD keyword matching. This is a bounded heuristic — it only fires on explicit technology mentions (e.g., "React", "FastAPI") and may miss implicit requirements. It is primarily useful for catching cases where an entire layer is absent (e.g., no frontend files for a PRD that says "React").
+
+```python
+    # C1: Stack coverage — heuristic keyword-based layer detection
+    expected_layers = self._detect_expected_layers(prd, impl_plan)  # Heuristic
+    present_layers = self._match_layers(artifact_names, expected_layers)
     missing_layers = set(expected_layers.keys()) - present_layers
-    if missing_layers:
-        missing.extend(f"stack_layer:{layer}" for layer in missing_layers)
     
     checks.append({
-        "check": "stack_coverage",
+        "check": "stack_coverage_heuristic",  # Named to indicate heuristic nature
         "expected": list(expected_layers.keys()),
         "present": list(present_layers),
         "missing": list(missing_layers),
@@ -565,38 +658,26 @@ async def _validate_output(self, context, inputs, artifacts, raw_response):
     })
 ```
 
-#### Check 2: Artifact Count Threshold
+**Check 2: Artifact count threshold (heuristic)**
 
-A full-stack app requires a minimum number of files. A 3-file output for a PRD requesting 5 endpoints + 3 views + tests is obviously incomplete.
+Estimates minimum file count from PRD complexity. This is a rough heuristic — it catches extreme cases (3 files for a full-stack app) but should not be treated as a precise requirement.
 
 ```python
-    # C2: Minimum artifact count — heuristic based on PRD complexity
-    min_artifacts = self._estimate_min_artifacts(prd, impl_plan)
+    # C2: Minimum artifact count — rough heuristic, catches extreme shortfalls
+    min_artifacts = self._estimate_min_artifacts(prd, impl_plan)  # Heuristic
     checks.append({
-        "check": "artifact_count",
+        "check": "artifact_count_heuristic",
         "expected_min": min_artifacts,
         "actual": len(artifacts),
         "passed": len(artifacts) >= min_artifacts,
     })
 ```
 
-#### Check 3: Structural Completeness
-
-For each generated file, check that it's not a stub (e.g., empty `__init__.py` files are fine, but a 74-byte `board.py` with only a comment is not).
+**Check 3: Stub detection**
 
 ```python
-    # C3: Non-stub files — files beyond boilerplate must have meaningful content
-    stub_threshold_bytes = 100  # Files below this are checked for stub patterns
-    stub_patterns = ["# This file is kept empty", "# TODO", "pass\n", "# placeholder"]
-    
-    stubs = []
-    for art in artifacts:
-        content = art.get("content", "")
-        name = art["name"]
-        if len(content) < stub_threshold_bytes and not name.endswith("__init__.py"):
-            if any(pat in content for pat in stub_patterns) or not content.strip():
-                stubs.append(name)
-    
+    # C3: Non-stub files
+    stubs = self._detect_stubs(artifacts)
     checks.append({
         "check": "non_stub_files",
         "stubs_found": stubs,
@@ -604,32 +685,7 @@ For each generated file, check that it's not a stub (e.g., empty `__init__.py` f
     })
 ```
 
-#### Validation Decision
-
-```python
-    # Compute coverage ratio
-    passed_count = sum(1 for c in checks if c["passed"])
-    coverage_ratio = passed_count / len(checks) if checks else 1.0
-    
-    # Validation passes only if all checks pass
-    passed = all(c["passed"] for c in checks)
-    
-    summary_parts = []
-    if missing_layers:
-        summary_parts.append(f"Missing stack layers: {', '.join(missing_layers)}")
-    if stubs:
-        summary_parts.append(f"Stub files: {', '.join(stubs)}")
-    if len(artifacts) < min_artifacts:
-        summary_parts.append(f"Only {len(artifacts)} artifacts, expected >= {min_artifacts}")
-    
-    return ValidationResult(
-        passed=passed,
-        checks=checks,
-        missing_components=missing,
-        coverage_ratio=coverage_ratio,
-        summary="; ".join(summary_parts) or "All checks passed",
-    )
-```
+**Key distinction:** Manifest-driven focused validation is preferred and more reliable than PRD keyword inference. When decomposition is active, each subtask has explicit expected artifacts and acceptance criteria — the validation is precise. Legacy monolithic validation is a coarse safety net for profiles that do not use manifests.
 
 ### 6.4 QATestHandler Validation
 
@@ -741,14 +797,36 @@ This causes `_handle_task_outcome()` in the executor to:
 
 ### 6.7 Artifact Merge Strategy
 
-When self-evaluation produces additional files, they must be merged with the original output:
+When self-evaluation produces additional files, they must be merged with the original output. All replacements are recorded in evidence for observability.
 
 ```python
-def _merge_artifacts(self, existing: list[dict], new: list[dict]) -> list[dict]:
-    """Merge new artifacts into existing, replacing files with same name."""
+def _merge_artifacts(self, existing: list[dict], new: list[dict],
+                     evidence: dict) -> list[dict]:
+    """Merge new artifacts into existing, replacing files with same name.
+    
+    Records all additions and replacements in evidence for audit trail.
+    """
     by_name = {a["name"]: a for a in existing}
+    merge_log = []
+    
     for art in new:
-        by_name[art["name"]] = art  # New version replaces old
+        name = art["name"]
+        if name in by_name:
+            merge_log.append({
+                "action": "replaced",
+                "name": name,
+                "old_size": len(by_name[name].get("content", "")),
+                "new_size": len(art.get("content", "")),
+            })
+        else:
+            merge_log.append({
+                "action": "added",
+                "name": name,
+                "size": len(art.get("content", "")),
+            })
+        by_name[name] = art
+    
+    evidence.setdefault("self_eval_merge_log", []).extend(merge_log)
     return list(by_name.values())
 ```
 
@@ -790,11 +868,26 @@ def _detect_expected_layers(self, prd: str, impl_plan: str | None) -> dict[str, 
     return expected
 ```
 
-### 6.9 Configuration Keys
+### 6.9 Subtask-Level Correction Blast Radius
+
+One of the most important architectural benefits of decomposition is that **correction applies to a focused failed unit, not the whole build.**
+
+Without decomposition, a `SEMANTIC_FAILURE` on the monolithic `development.develop` task triggers correction for the entire build — the repair handler must reason about all components simultaneously, the same problem that caused the failure in the first place.
+
+With decomposition, a `SEMANTIC_FAILURE` on subtask #4 ("Frontend detail view") triggers correction for subtask #4 only. The correction protocol receives:
+- The specific subtask focus and acceptance criteria
+- The specific validation failures (e.g., "missing `RunDetail.jsx`")
+- All prior artifacts (tasks #0–#3 are already checkpointed and stable)
+
+The repair handler (`development.repair`) receives a narrow, well-scoped problem. Checkpoint/resume becomes more valuable because convergence happens at subtask granularity — a failed subtask #4 does not invalidate the successful checkpoint from subtask #3.
+
+This is a major architectural win over monolithic correction and should be considered one of the primary motivations for decomposition beyond throughput.
+
+### 6.10 Configuration Keys
 
 Add to `_APPLIED_DEFAULTS_EXTRA_KEYS` in `schema.py`:
 
-**Decomposition keys (§6.1):**
+**Decomposition keys (Capability A, §6.1):**
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -802,7 +895,7 @@ Add to `_APPLIED_DEFAULTS_EXTRA_KEYS` in `schema.py`:
 | `max_build_subtasks` | `int` | `15` | Maximum subtasks in manifest |
 | `min_build_subtasks` | `int` | `3` | Minimum subtasks; manifest below this is rejected |
 
-**Validation keys (§6.2–6.5):**
+**Validation keys (Capability B, §6.2–6.6):**
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -877,6 +970,20 @@ Operator reviews the manifest. Sees the decomposition: 6 dev tasks (backend mode
 ---
 
 ## 8. Implementation Plan
+
+### Delivery Staging (Cut Line)
+
+The implementation is organized into three independently shippable stages. Each stage is valuable on its own and does not require subsequent stages to deliver value:
+
+**Stage A — Build Decomposition (Phases 1–4):** Manifest model, production, materialization, focused prompts. Delivers: multi-task builds that fill the timebox, focused prompts, incremental artifact accumulation. The system still uses success-by-default for individual subtasks, but each subtask is scoped narrowly enough that shallow output is less likely.
+
+**Stage B — Build Convergence & Correction Activation (Phases 5–7):** Validation framework, outcome classification, self-evaluation. Delivers: honest success/failure signals, correction protocol activation, self-repair before escalation. Works on both manifest-driven subtasks and legacy monolithic tasks.
+
+**Stage C — Profile Tuning & Hardening (Phases 8–9):** Profile updates, full test suite. Delivers: production-ready configuration, end-to-end validation.
+
+If staging is necessary, the cleanest delivery path is A → B → C. Stage A alone improves throughput. Stage B alone activates correction. Together they are materially stronger.
+
+---
 
 ### Phase 1: Build Task Manifest Model & Schema
 
@@ -982,7 +1089,11 @@ Operator reviews the manifest. Sees the decomposition: 6 dev tasks (backend mode
 
 ## 10. Future Work
 
+- **Separate manifest authoring from governance review** — Introduce a dedicated `governance.plan_build` task before `governance.review`. Max reviews the manifest instead of producing it. Cleaner separation of authoring and approval.
+- **Control-plane artifact type system** — Distinguish control-plane artifacts (manifest, run contract, plan deltas) from work-product artifacts (source, test, document) at the platform level. Support versioning, diffing, and audit trails for control-plane artifacts.
+- **Mechanical acceptance criteria evaluation** — Parse acceptance criteria from the manifest and evaluate them structurally (e.g., AST analysis for "all 5 endpoints are defined"). Revision 1 includes criteria in evidence and self-eval prompts but does not mechanically evaluate them.
 - **Sandbox execution validation** — Run generated code in a container to verify it starts and passes tests. This would replace heuristic checks with empirical validation.
+- **Builder/role-aware decomposition** — Manifest tasks currently target dev and qa roles. Future manifests could decompose by role specialty: builder assembly tasks, infra/config tasks, documentation tasks. The manifest mechanism is role-general and supports this without structural changes.
 - **Agentic iteration loops** — Multi-turn handler conversations where the agent reasons about its own output across multiple exchanges. This SIP's self-evaluation is a stepping stone.
 - **Cross-handler validation** — QA handler validates that its tests actually exercise the code from the dev handler, not just that test files exist.
 - **Adaptive thresholds** — Learn minimum artifact counts and expected layers from successful past cycles instead of heuristic estimation.
