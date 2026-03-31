@@ -1,4 +1,4 @@
-last_assigned: 85
+last_assigned: 86
 sips:
 - sip_uid: null
   sip_number: null
@@ -772,3 +772,13 @@ sips:
   approver: jladd
   created_at: '2026-03-15T00:00:00Z'
   updated_at: '2026-03-16T18:55:31.342982Z'
+- sip_uid: null
+  sip_number: 86
+  title: Build Convergence Loop — Dynamic Task Decomposition, Output Validation &
+    Correction Activation
+  path: sips/accepted/SIP-0086-Build-Convergence-Loop-Dynamic.md
+  status: accepted
+  author: SquadOps Architecture
+  approver: jladd
+  created_at: '2026-03-31T00:00:00Z'
+  updated_at: '2026-03-31T18:05:54.718507Z'

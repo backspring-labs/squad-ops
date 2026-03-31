@@ -1,8 +1,11 @@
 ---
-title: Build Convergence Loop — Dynamic Task Decomposition, Output Validation & Correction Activation
-status: proposed
+title: Build Convergence Loop — Dynamic Task Decomposition, Output Validation & Correction
+  Activation
+status: accepted
 author: SquadOps Architecture
 created_at: '2026-03-31T00:00:00Z'
+sip_number: 86
+updated_at: '2026-03-31T18:05:54.695240Z'
 ---
 # SIP-XXXX: Build Convergence Loop — Dynamic Task Decomposition, Output Validation & Correction Activation
 
