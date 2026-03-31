@@ -87,15 +87,18 @@ Delivers manifest model, production, materialization, and focused prompts. Indep
 - Malformed YAML raises `ValueError`
 - Acceptance criteria field optional (empty list default)
 
-#### Commit 1b: Schema keys for decomposition
+#### Commit 1b: ArtifactType.CONTROL_MANIFEST + schema keys
 
-**Modified file:**
+**Modified files:**
 
 | File | Change |
 |------|--------|
+| `src/squadops/cycles/models.py` | Add `CONTROL_MANIFEST = "control_manifest"` to `ArtifactType` class |
 | `src/squadops/contracts/cycle_request_profiles/schema.py` | Add `build_manifest`, `max_build_subtasks`, `min_build_subtasks` to `_APPLIED_DEFAULTS_EXTRA_KEYS` |
 
-**Tests:** Existing schema tests should continue to pass. Add 1 test that the new keys are accepted in a profile defaults dict.
+`CONTROL_MANIFEST` is introduced here (not deferred to Stage C) because RC-5 and Stage A manifest storage depend on it. The runtime contract must match the implementation order.
+
+**Tests:** Existing schema tests should continue to pass. Add 1 test that the new keys are accepted in a profile defaults dict. Add 1 test that `ArtifactType.CONTROL_MANIFEST` exists.
 
 ---
 
@@ -111,18 +114,23 @@ Delivers manifest model, production, materialization, and focused prompts. Indep
 
 **Implementation:**
 
-`GovernanceReviewHandler` currently has no `handle()` override — it inherits the base class `handle()` which produces a single `{_artifact_name}` document artifact. The override must:
+`GovernanceReviewHandler` currently has no `handle()` override — it inherits the base class `handle()` which produces a single `{_artifact_name}` document artifact.
 
-1. Call the base `handle()` to get the governance review artifact (or replicate its logic)
-2. Check `resolved_config.get("build_manifest", True)` — if disabled, return base result as-is
-3. Append manifest generation instructions to the prompt (the prompt extension from SIP §6.1.3)
-4. Extract `build_task_manifest.yaml` from the LLM response via `extract_fenced_files()`
-5. Validate via `BuildTaskManifest.from_yaml()` — if validation fails, log warning, return base result without manifest (RC-4 fallback)
-6. Check subtask count against `min_build_subtasks` / `max_build_subtasks` from resolved_config
-7. Store manifest as additional artifact with `type: "control_manifest"` (RC-5)
-8. Return `HandlerResult` with both governance review and manifest artifacts
+**Design decision:** Override `GovernanceReviewHandler.handle()` as an intentional multi-artifact path that produces both the governance review and, when enabled, the manifest from a single LLM response. Do not call the base `handle()` and retrofit the manifest afterward — build one response path that explicitly owns both artifacts. This avoids shape drift from trying to layer manifest extraction on top of the generic inherited handler.
 
-**Design decision:** The simplest approach is to override `handle()` and add manifest-specific logic after the base LLM call. The prompt should request both the governance review AND the manifest in a single LLM call, with the manifest as a fenced YAML block.
+The override must:
+
+1. Check `resolved_config.get("build_manifest", True)` — if disabled, delegate to base `handle()` (existing behavior)
+2. When enabled, build a prompt that requests both the governance review AND the manifest as a fenced YAML block
+3. Call LLM via `chat_stream_with_usage()` (same as base handler)
+4. Extract governance review content (markdown prose) as the primary artifact
+5. Extract `build_task_manifest.yaml` from fenced YAML blocks via `extract_fenced_files()`
+6. Validate manifest structurally via `BuildTaskManifest.from_yaml()` — if validation fails, log warning, return governance review without manifest (RC-4 fallback)
+7. Validate manifest against policy (subtask count vs `min_build_subtasks` / `max_build_subtasks` from resolved_config) — this is runtime policy, not schema validation (see note below)
+8. Store manifest as additional artifact with `type: "control_manifest"` (RC-5)
+9. Return `HandlerResult` with both governance review and manifest artifacts
+
+**Validation separation:** Keep `BuildTaskManifest.from_yaml()` structural (schema, types, DAG correctness). Keep subtask min/max policy checks in the handler using resolved config. The dataclass parser should not be overloaded with cycle-specific runtime policy.
 
 **Tests:** `tests/unit/capabilities/handlers/test_governance_review_manifest.py` (~8)
 - Handler produces governance review + manifest when `build_manifest: true`
@@ -155,6 +163,7 @@ In `generate_task_plan()` (line 209), after step resolution:
    - For each `ManifestTask`, create `(task.task_type, task.role)` tuple
 2. When creating envelopes for manifest-derived steps:
    - Use deterministic task IDs: `task-{run_id[:12]}-m{task_index:03d}-{task_type}` (RC-2)
+   - The `-m{index}-` namespace must not collide with planning-phase IDs (UUID-based) or correction-phase IDs (`corr-{run_id}-{index}-{type}`)
    - Populate `inputs.subtask_focus`, `inputs.subtask_description`, `inputs.expected_artifacts`, `inputs.subtask_index`, `inputs.acceptance_criteria` from manifest task
 3. Preserve existing lineage chaining (correlation_id, causation_id)
 
@@ -169,6 +178,7 @@ In `generate_task_plan()` (line 209), after step resolution:
 - Builder-aware routing still works when manifest includes builder role tasks
 - Profile with missing role for manifest task raises CycleError
 - Empty manifest (0 tasks) falls back to static steps
+- Task ID namespaces do not collide: planning (UUID), manifest (`-m{idx}-`), correction (`corr-`) IDs are distinct
 
 #### Commit 3b: Executor loads manifest after gate approval
 
@@ -188,7 +198,7 @@ In `_execute_sequential()`, after `_handle_gate()` returns (gate approved, run r
 4. Merge with remaining plan: replace not-yet-executed build steps with manifest-derived envelopes
 5. If not found or parse fails: log warning, continue with existing static plan (RC-4)
 
-**Key concern:** The current `_execute_sequential()` iterates over a pre-generated envelope list. After gate approval, the remaining envelopes need to be replaced with manifest-derived ones. The cleanest approach is to regenerate the full plan with the manifest and skip `completed_task_ids` (which have stable IDs from RC-2).
+**Replacement semantics:** After gate approval, the executor rematerializes only the build-phase segment of the plan from the approved manifest and excludes already-completed planning envelopes by stable task ID. The already-approved planning-phase results remain untouched — the manifest does not alter completed planning task identity. Only the build-phase portion (previously static `BUILD_TASK_STEPS`) is replaced with manifest-derived envelopes.
 
 **Tests:** `tests/unit/adapters/cycles/test_executor_manifest_loading.py` (~6)
 - Executor loads manifest from artifact vault after gate approval
@@ -197,16 +207,30 @@ In `_execute_sequential()`, after `_handle_gate()` returns (gate approved, run r
 - Executor falls back to static steps when manifest parse fails
 - Completed planning tasks are skipped (not re-executed)
 - Manifest-derived task IDs match checkpoint completed_task_ids on resume
+- RC-1 immutability: after gate approval, correction/resume logic does not mutate the original manifest artifact; any repair data is stored as separate delta artifacts
 
-#### Commit 3c: Verify _enrich_envelope() works with N subtasks
+#### Commit 3c: Update _enrich_envelope() artifact chaining for manifest-driven subtasks
 
-**Modified file:** None (verification only) or minor fix in `distributed_flow_executor.py`
+**Modified file:**
 
-The existing `_enrich_envelope()` populates `artifact_contents` for build tasks by filtering prior artifacts. Verify it works correctly when there are 8+ prior subtasks producing artifacts instead of the usual 1. The `_BUILD_ARTIFACT_FILTER` dict may need updating to handle `development.develop` consuming artifacts from prior `development.develop` tasks (currently it filters by `by_producing_task: ["strategy.analyze_prd", "development.design"]`).
+| File | Change |
+|------|--------|
+| `adapters/cycles/distributed_flow_executor.py` | Update `_BUILD_ARTIFACT_FILTER` and/or `_enrich_envelope()` for dev→dev artifact chaining |
 
-**Likely change:** Add `"development.develop"` to the `by_producing_task` list for `development.develop` tasks, or switch to `by_type: ["source", "config", "document"]` for manifest-driven tasks.
+The existing `_enrich_envelope()` populates `artifact_contents` for build tasks by filtering prior artifacts via `_BUILD_ARTIFACT_FILTER`. Currently `development.develop` only consumes artifacts from `["strategy.analyze_prd", "development.design"]` — planning artifacts. It does not consume artifacts from prior `development.develop` tasks.
 
-**Tests:** 1 test verifying subtask #4 receives artifacts from subtasks #0–#3.
+This must change for manifest-driven subtasks. Manifest-driven `development.develop` tasks must see prior source/config/document artifacts from earlier build subtasks, not only planning artifacts. Without this, Stage A may look successful while still starving later subtasks of accumulated build context.
+
+**Implementation:** When manifest-driven subtasks are active (detectable via `subtask_focus` in envelope inputs), use a broader filter:
+- `by_type: ["source", "config", "document"]` — include all prior build artifacts
+- Or add `"development.develop"` to `by_producing_task` for `development.develop`
+
+The broader `by_type` filter is preferred because it is manifest-agnostic and handles mixed dev/qa/builder task sequences.
+
+**Tests:** `tests/unit/adapters/cycles/test_enrich_envelope_chaining.py` (~3)
+- Subtask #4 receives source artifacts from subtasks #0–#3
+- Subtask #4 receives planning artifacts (strategy, design) as well as prior build artifacts
+- Legacy (non-manifest) enrichment unchanged
 
 ---
 
@@ -242,6 +266,7 @@ The focused prompt includes:
 - Focused prompt includes expected output files
 - Focused prompt includes prior artifacts
 - Legacy prompt used when no subtask_focus (unchanged behavior)
+- RC-6 exclusivity: `subtask_focus` present → focused path only; absent → legacy path only; no hybrid
 
 #### Commit 4b: QATestHandler focused prompt
 
@@ -267,7 +292,13 @@ At this point, a cycle with `build_manifest: true` will:
 - Execute each with a focused prompt receiving prior artifacts
 - Still use success-by-default (no validation yet)
 
-**Validation cycle:** Run `group_run` cycle with `build` profile. Verify manifest is produced, gate shows manifest, build phase has N tasks instead of 2.
+**Validation cycle:** Run `group_run` cycle with `build` profile. Verify:
+- Manifest is produced during governance.review
+- Gate shows manifest alongside governance review
+- Build phase has N tasks instead of 2
+- Later subtasks actually receive prior build artifacts and reference them in output (artifact chain continuity)
+
+The last point is critical — decomposition without artifact accumulation is just more tasks, not cumulative convergence.
 
 ---
 
@@ -303,11 +334,16 @@ Delivers output validation, outcome classification, and self-evaluation. Works o
 | `cycle_tasks.py` | Override `_validate_output()` in `DevelopmentDevelopHandler` with focused-task and legacy-monolithic modes per SIP §6.3.1/§6.3.2 |
 
 **Focused-task checks (when `subtask_focus` present):**
-- FC1: Expected artifacts present (from `inputs.expected_artifacts`)
-- FC2: Non-stub files (shared `_detect_stubs()` helper)
-- FC3: Acceptance criteria (informational, included in evidence — RC-8)
+- FC1: Expected artifacts present (from `inputs.expected_artifacts`) — **required gate**
+- FC2: Non-stub files (shared `_detect_stubs()` helper) — **required gate**
+- FC3: Acceptance criteria (informational, included in evidence — RC-8) — **not a gate in Rev 1**
+
+**Focused-task pass/fail rule:** Focused-task validation passes only if all expected artifacts are present AND no required artifact is a stub. Acceptance criteria are recorded in evidence and included in self-eval prompts but do not fail the task in Revision 1.
 
 **Legacy monolithic checks (when no `subtask_focus`):**
+
+Legacy monolithic validation exists for backward compatibility and obvious incompleteness detection; manifest-driven focused validation is the intended operating mode for non-trivial builds. Heuristic monolithic validation is designed to catch obvious incompleteness, not to certify completeness.
+
 - C1: Stack coverage heuristic (`_detect_expected_layers()` from PRD keywords)
 - C2: Artifact count heuristic (`_estimate_min_artifacts()`)
 - C3: Non-stub files
@@ -395,7 +431,7 @@ Check `resolved_config.get("output_validation", True)` — if disabled, skip val
 
 **`_build_self_eval_prompt()`:** Constructs follow-up prompt with validation summary, missing components, and already-produced file list. Per SIP §6.5.
 
-**`_merge_artifacts()`:** Merges new artifacts into existing by filename. Records all additions and replacements in evidence with before/after sizes. Per SIP §6.7.
+**`_merge_artifacts()`:** Merges new artifacts into existing by filename. Self-eval may add missing artifacts or replace same-name artifacts, but the merged set is always the authoritative candidate set for revalidation (RC-7). Records all additions and replacements in evidence with before/after sizes. Per SIP §6.7.
 
 **Tests:** `tests/unit/capabilities/handlers/test_self_eval.py` (~6)
 - Self-eval prompt includes validation summary
@@ -461,14 +497,6 @@ At this point, build handlers:
 | `profiles/implementation.yaml` | Add `build_manifest: true`, `output_validation: true`, `max_self_eval_passes: 2`, `max_build_subtasks: 15` |
 | `profiles/selftest.yaml` | Add `build_manifest: false`, `output_validation: false` |
 
-#### Commit 8b: Add control_manifest to ArtifactType
-
-**Modified file:**
-
-| File | Change |
-|------|--------|
-| `src/squadops/cycles/models.py` | Add `CONTROL_MANIFEST = "control_manifest"` to `ArtifactType` class (line ~79) |
-
 ---
 
 ### Phase 9: Full Test Suite
@@ -489,7 +517,7 @@ At this point, build handlers:
 | File | Stage | Type |
 |------|-------|------|
 | `src/squadops/cycles/build_manifest.py` | A | New |
-| `src/squadops/cycles/models.py` | C | Modified (ArtifactType) |
+| `src/squadops/cycles/models.py` | A | Modified (ArtifactType.CONTROL_MANIFEST) |
 | `src/squadops/cycles/task_plan.py` | A | Modified (manifest param) |
 | `src/squadops/capabilities/handlers/cycle_tasks.py` | A+B | Modified (handlers, validation, self-eval) |
 | `src/squadops/contracts/cycle_request_profiles/schema.py` | A+C | Modified (new keys) |
