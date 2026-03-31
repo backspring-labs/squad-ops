@@ -76,6 +76,7 @@ class ArtifactType:
     BUILD_PLAN = "build_plan"
     CONFIG_SNAPSHOT = "config_snapshot"
     QA_HANDOFF = "qa_handoff"
+    CONTROL_MANIFEST = "control_manifest"
 
 
 class RunInitiator:
