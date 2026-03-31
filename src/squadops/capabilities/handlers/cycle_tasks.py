@@ -350,12 +350,279 @@ class DataReportHandler(_CycleTaskHandler):
 
 
 class GovernanceReviewHandler(_CycleTaskHandler):
-    """Cycle task handler for governance review (lead role)."""
+    """Cycle task handler for governance review (lead role).
+
+    When ``build_manifest`` is enabled in resolved config, this handler
+    produces both a governance review document AND a build task manifest
+    (SIP-0086 §6.1.3). The manifest is a control-plane artifact that
+    decomposes the build into focused subtasks.
+    """
 
     _handler_name = "governance_review_handler"
     _capability_id = "governance.review"
     _role = "lead"
     _artifact_name = "governance_review.md"
+
+    _MANIFEST_PROMPT_EXTENSION = (
+        "\n\n---\n\n"
+        "## Build Task Manifest\n\n"
+        "In addition to your governance review above, produce a build task manifest "
+        "that decomposes the upcoming build into focused subtasks.\n\n"
+        "Each subtask should:\n"
+        "1. Have a clear, narrow focus (e.g., 'Backend data models' not 'Build the app')\n"
+        "2. List the specific files it should produce\n"
+        "3. Declare dependencies on prior subtasks by task_index\n"
+        "4. Define acceptance criteria (what must be true for this subtask to pass)\n"
+        "5. Be completable in a single focused LLM generation (~2-10 minutes)\n\n"
+        "Decomposition guidelines:\n"
+        "- Separate backend and frontend into distinct tasks\n"
+        "- Separate models/data from API endpoints/routes\n"
+        "- Separate UI shell/routing from individual view components\n"
+        "- Put integration config (CORS, proxy, requirements) in its own task\n"
+        "- Put tests after the code they test\n"
+        "- Put QA handoff last\n\n"
+        "Output the manifest as a YAML code block with filename: "
+        "build_task_manifest.yaml\n\n"
+        "Use this exact schema:\n"
+        "```yaml:build_task_manifest.yaml\n"
+        "version: 1\n"
+        "project_id: <project_id>\n"
+        "cycle_id: <cycle_id>\n"
+        "prd_hash: <sha256 of PRD>\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: development.develop  # or qa.test\n"
+        "    role: dev  # or qa\n"
+        "    focus: \"Short description of this subtask\"\n"
+        "    description: |\n"
+        "      Detailed description of what to build.\n"
+        "    expected_artifacts:\n"
+        "      - \"path/to/file.py\"\n"
+        "    acceptance_criteria:\n"
+        "      - \"Criterion 1\"\n"
+        "    depends_on: []  # list of task_index values\n"
+        "summary:\n"
+        "  total_dev_tasks: N\n"
+        "  total_qa_tasks: M\n"
+        "  total_tasks: N+M\n"
+        "  estimated_layers: [backend, frontend, test, config]\n"
+        "```\n"
+    )
+
+    async def handle(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+    ) -> HandlerResult:
+        resolved_config = inputs.get("resolved_config", {})
+        build_manifest_enabled = resolved_config.get("build_manifest", True)
+
+        if not build_manifest_enabled:
+            return await super().handle(context, inputs)
+
+        # Multi-artifact path: governance review + build task manifest
+        start_time = time.perf_counter()
+        prd = inputs.get("prd", "")
+        prior_outputs = inputs.get("prior_outputs")
+
+        # Build prompt with manifest extension
+        renderer = getattr(context.ports, "request_renderer", None)
+        rendered = None
+        if renderer is not None:
+            variables = self._build_render_variables(prd, prior_outputs, inputs)
+            rendered = await renderer.render(self._request_template_id, variables)
+            user_prompt = rendered.content + self._MANIFEST_PROMPT_EXTENSION
+        else:
+            user_prompt = (
+                self._build_user_prompt(prd, prior_outputs)
+                + self._MANIFEST_PROMPT_EXTENSION
+            )
+
+        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        system_prompt = assembled.content
+
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_prompt),
+        ]
+
+        chat_kwargs = self._build_chat_kwargs(inputs)
+
+        try:
+            response = await context.ports.llm.chat_stream_with_usage(
+                messages, **chat_kwargs
+            )
+        except LLMError as exc:
+            logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
+            return self._fail_result(start_time, inputs, str(exc))
+
+        content = response.content
+        llm_duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # Record LLM generation for tracing
+        self._record_generation(
+            context, user_prompt, content, llm_duration_ms, chat_kwargs, rendered
+        )
+
+        prd_summary = str(prd)[:80] if prd else "(no PRD)"
+
+        # Build prompt provenance
+        provenance = self._build_provenance(assembled, renderer, rendered)
+
+        # Primary artifact: governance review (full response content)
+        artifacts: list[dict[str, Any]] = [
+            {
+                "name": self._artifact_name,
+                "content": content,
+                "media_type": "text/markdown",
+                "type": "document",
+            },
+        ]
+
+        # Extract and validate build task manifest
+        manifest_artifact = self._extract_manifest(content, resolved_config)
+        if manifest_artifact is not None:
+            artifacts.append(manifest_artifact)
+
+        outputs = {
+            "summary": f"[{self._role}] {prd_summary}",
+            "role": self._role,
+            "artifacts": artifacts,
+            "prompt_provenance": provenance,
+        }
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+        )
+
+        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+
+    def _extract_manifest(
+        self, content: str, resolved_config: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Extract and validate build task manifest from LLM response.
+
+        Returns manifest artifact dict, or None on graceful fallback (RC-4).
+        """
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+        from squadops.cycles.build_manifest import BuildTaskManifest
+
+        extracted = extract_fenced_files(content)
+        manifest_files = [
+            f for f in extracted if f["filename"] == "build_task_manifest.yaml"
+        ]
+
+        if not manifest_files:
+            logger.warning(
+                "%s: no build_task_manifest.yaml found in response, "
+                "falling back to static task steps",
+                self._handler_name,
+            )
+            return None
+
+        yaml_content = manifest_files[0]["content"]
+
+        # Structural validation
+        try:
+            manifest = BuildTaskManifest.from_yaml(yaml_content)
+        except ValueError as exc:
+            logger.warning(
+                "%s: manifest validation failed (%s), "
+                "falling back to static task steps",
+                self._handler_name,
+                exc,
+            )
+            return None
+
+        # Policy validation — subtask count bounds from resolved config
+        min_subtasks = resolved_config.get("min_build_subtasks", 3)
+        max_subtasks = resolved_config.get("max_build_subtasks", 15)
+
+        if len(manifest.tasks) < min_subtasks:
+            logger.warning(
+                "%s: manifest has %d subtasks (min %d), "
+                "falling back to static task steps",
+                self._handler_name,
+                len(manifest.tasks),
+                min_subtasks,
+            )
+            return None
+
+        if len(manifest.tasks) > max_subtasks:
+            logger.warning(
+                "%s: manifest has %d subtasks (max %d), "
+                "falling back to static task steps",
+                self._handler_name,
+                len(manifest.tasks),
+                max_subtasks,
+            )
+            return None
+
+        return {
+            "name": "build_task_manifest.yaml",
+            "content": yaml_content,
+            "media_type": "text/yaml",
+            "type": "control_manifest",
+        }
+
+    def _record_generation(
+        self,
+        context: ExecutionContext,
+        user_prompt: str,
+        content: str,
+        llm_duration_ms: float,
+        chat_kwargs: dict[str, Any],
+        rendered: Any,
+    ) -> None:
+        """Record LLM generation for LangFuse tracing (SIP-0061)."""
+        llm_obs = getattr(context.ports, "llm_observability", None)
+        if llm_obs and context.correlation_context:
+            import uuid
+
+            from squadops.telemetry.models import (
+                MAX_OBSERVABILITY_TEXT_LENGTH,
+                GenerationRecord,
+                PromptLayer,
+                PromptLayerMetadata,
+            )
+
+            resolved_model = chat_kwargs.get("model", context.ports.llm.default_model)
+            gen_record = GenerationRecord(
+                generation_id=str(uuid.uuid4()),
+                model=resolved_model,
+                prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                latency_ms=llm_duration_ms,
+            )
+            layers = PromptLayerMetadata(
+                prompt_layer_set_id=f"{self._role}-cycle",
+                layers=(
+                    PromptLayer(layer_type="system", layer_id=f"{self._role}-system"),
+                    PromptLayer(
+                        layer_type="user", layer_id=f"cycle-{self._capability_id}"
+                    ),
+                ),
+            )
+            llm_obs.record_generation(context.correlation_context, gen_record, layers)
+
+    def _build_provenance(
+        self, assembled: Any, renderer: Any, rendered: Any
+    ) -> dict[str, Any]:
+        """Build prompt provenance dict for artifact traceability (SIP-0084)."""
+        provenance: dict[str, Any] = {
+            "system_prompt_bundle_hash": assembled.assembly_hash,
+        }
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+        return provenance
 
 
 # ---------------------------------------------------------------------------
