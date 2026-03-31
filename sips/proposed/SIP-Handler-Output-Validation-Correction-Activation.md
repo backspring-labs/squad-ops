@@ -9,7 +9,7 @@ created_at: '2026-03-31T00:00:00Z'
 **Status:** Proposed
 **Authors:** SquadOps Architecture
 **Created:** 2026-03-31
-**Revision:** 3
+**Revision:** 4
 
 ---
 
@@ -314,7 +314,7 @@ The `governance.review` handler (Max) currently produces a governance review doc
 
 Max receives the full planning context: the PRD, strategy analysis, design plan, validation plan, and data report. He uses this to decompose the build into focused subtasks.
 
-**Architectural tradeoff — colocation in governance.review:** For Revision 1, manifest generation is colocated in `governance.review` for simplicity and gate alignment. This means Max is both decomposer and reviewer of the build plan. Long-term, a dedicated manifest producer (e.g., `governance.plan_build`) before `governance.review` may provide cleaner separation — Max would review the manifest instead of authoring it. This SIP intentionally accepts the colocation tradeoff for initial delivery; separation is a future refinement.
+**Architectural tradeoff — colocation in governance.review:** For Revision 1, manifest generation is colocated in `governance.review` for simplicity and gate alignment. This introduces proposal-review colocation: the same component that proposes the build plan is judging its adequacy. The gate remains the human/operator checkpoint that mitigates this — the operator reviews the manifest before approving, providing an external check on decomposition quality. Long-term, a dedicated manifest producer (e.g., `governance.plan_build`) before `governance.review` may provide cleaner separation — Max would review the manifest instead of authoring it. This SIP intentionally accepts the colocation tradeoff for initial delivery; separation is a future refinement.
 
 **Prompt extension for governance.review:**
 
@@ -373,6 +373,8 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile,
         steps.extend(build_steps)
 ```
 
+The approved manifest is the build-phase plan; `TaskEnvelope` objects are its deterministic execution materialization.
+
 **Deterministic task IDs:** Task IDs are derived deterministically from cycle, run, and manifest index so they are stable across checkpoint/resume and auditable:
 
 ```python
@@ -401,6 +403,7 @@ When `DevelopmentDevelopHandler` receives a task with `subtask_focus` in its inp
 subtask_focus = inputs.get("subtask_focus")
 subtask_desc = inputs.get("subtask_description")
 expected_files = inputs.get("expected_artifacts", [])
+acceptance_criteria = inputs.get("acceptance_criteria", [])
 
 if subtask_focus:
     # Focused prompt — build only this component
@@ -409,12 +412,16 @@ if subtask_focus:
         f"{subtask_desc}\n\n"
         f"### Expected Output Files\n"
         + "\n".join(f"- `{f}`" for f in expected_files) + "\n\n"
-        f"### Context\n"
-        f"PRD:\n{prd}\n\n"
     )
+    if acceptance_criteria:
+        prompt += (
+            "### Acceptance Criteria\n"
+            + "\n".join(f"- {c}" for c in acceptance_criteria) + "\n\n"
+        )
+    prompt += f"### Context\nPRD:\n{prd}\n\n"
     if prior_artifacts:
         prompt += (
-            f"### Prior Artifacts (already built — do not reproduce)\n"
+            "### Prior Artifacts (already built — do not reproduce)\n"
             + "\n".join(
                 f"**{name}:**\n```\n{content}\n```"
                 for name, content in prior_artifacts.items()
@@ -457,7 +464,9 @@ if manifest:
     ]
 ```
 
-**Plan identity:** The materialized envelopes are not a new plan — they are a deterministic expansion of the already-approved manifest. The manifest becomes immutable after gate approval. The executor does not modify, reorder, or add to the manifest's task list. If a subtask fails and correction produces a plan delta, the delta layers on top of the manifest (per SIP-0079); it does not mutate the original.
+**Plan identity:** The materialized envelopes are not a new plan — they are a deterministic expansion of the already-approved manifest. The manifest becomes immutable after gate approval. The executor does not modify, reorder, or add to the manifest's task list. Correction-driven additions or substitutions are represented as delta artifacts applied as overlays; they do not mutate the original approved manifest.
+
+**Scheduling semantics:** Revision 1 executes manifest tasks in listed order; `depends_on` is validated for correctness (no cycles, indices in range) and future scheduling evolution, but does not yet drive dynamic reordering or parallelization.
 
 #### 6.1.7 Manifest Validation
 
@@ -613,11 +622,13 @@ async def _validate_output_focused(self, inputs, artifacts):
         "passed": len(stubs) == 0,
     })
     
-    # FC3: Acceptance criteria (structural checks where possible)
+    # FC3: Acceptance criteria (informational in Revision 1)
     # Acceptance criteria from the manifest give validation and self-eval
     # something sharper to work with than filename matching alone.
-    # For Revision 1, criteria are included in evidence and self-eval prompts
-    # but not mechanically evaluated (future: AST-level checks).
+    # In Revision 1, acceptance criteria are operator-facing and model-facing
+    # guidance, not pass/fail gates unless translated into explicit structural
+    # checks. Future revisions may evaluate them mechanically (AST analysis,
+    # import checking, etc.).
     checks.append({
         "check": "acceptance_criteria",
         "criteria": acceptance,
@@ -685,7 +696,9 @@ Estimates minimum file count from PRD complexity. This is a rough heuristic — 
     })
 ```
 
-**Key distinction:** Manifest-driven focused validation is preferred and more reliable than PRD keyword inference. When decomposition is active, each subtask has explicit expected artifacts and acceptance criteria — the validation is precise. Legacy monolithic validation is a coarse safety net for profiles that do not use manifests.
+**Key distinction:** Manifest-driven focused validation is preferred and more reliable than PRD keyword inference. When decomposition is active, each subtask has explicit expected artifacts and acceptance criteria — the validation is precise. Legacy monolithic validation is a coarse safety net for profiles that do not use manifests. Heuristic monolithic validation is intended to catch obvious incompleteness, not to certify completeness.
+
+**Future:** Revisions may distinguish required vs advisory checks in `ValidationResult` (e.g., missing expected artifacts = required failure; stub detection = advisory finding; acceptance criteria = informational).
 
 ### 6.4 QATestHandler Validation
 
@@ -742,6 +755,10 @@ if not validation.passed:
     # Record self-evaluation evidence
     evidence["self_eval_passes"] = self_eval_count
     evidence["self_eval_final_validation"] = asdict(validation)
+
+# Note: validation is always performed against the merged artifact set
+# (original + all self-eval additions), not only the latest response.
+# This ensures cumulative progress is captured across self-eval passes.
 ```
 
 #### Self-Evaluation Prompt Structure
