@@ -421,7 +421,7 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
         # The manifest decomposes the upcoming build into focused subtasks.
         resolved_config = inputs.get("resolved_config", {})
         if resolved_config.get("build_manifest", False):
-            manifest_artifact = self._produce_manifest(
+            manifest_artifact = await self._produce_manifest(
                 context, inputs, content, resolved_config
             )
             if manifest_artifact is not None:
