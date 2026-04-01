@@ -1,0 +1,572 @@
+"""Tests for output validation, outcome classification, and self-eval (SIP-0086 Stage B)."""
+
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from squadops.capabilities.handlers.cycle_tasks import (
+    DevelopmentDevelopHandler,
+    QATestHandler,
+    ValidationResult,
+    _CycleTaskHandler,
+    _detect_expected_layers,
+    _detect_stubs,
+    _estimate_min_artifacts,
+)
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+
+def _art(name: str, content: str = "substantial content here" * 10, **kw) -> dict:
+    return {"name": name, "content": content, "type": kw.get("type", "source"), **kw}
+
+
+def _stub_art(name: str) -> dict:
+    return {"name": name, "content": "# TODO", "type": "source"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 5a: ValidationResult + base _validate_output
+# ---------------------------------------------------------------------------
+
+
+class TestValidationResultDefaults:
+    def test_default_passes(self):
+        v = ValidationResult(passed=True)
+        assert v.passed is True
+        assert v.checks == []
+        assert v.coverage_ratio == 1.0
+
+    def test_base_handler_returns_pass(self):
+        handler = _CycleTaskHandler()
+        result = handler._validate_output({}, [])
+        assert result.passed is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 5b: DevelopmentDevelopHandler focused validation
+# ---------------------------------------------------------------------------
+
+
+class TestDevFocusedValidation:
+    def _handler(self) -> DevelopmentDevelopHandler:
+        return DevelopmentDevelopHandler()
+
+    def test_all_expected_artifacts_present_passes(self):
+        h = self._handler()
+        inputs = {
+            "subtask_focus": "Backend models",
+            "expected_artifacts": ["models.py", "repo.py"],
+            "acceptance_criteria": ["Models exist"],
+        }
+        artifacts = [_art("models.py"), _art("repo.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is True
+        assert result.summary == "All checks passed"
+
+    def test_missing_expected_artifact_fails(self):
+        h = self._handler()
+        inputs = {
+            "subtask_focus": "Backend models",
+            "expected_artifacts": ["models.py", "repo.py"],
+        }
+        artifacts = [_art("models.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is False
+        assert "repo.py" in result.summary
+        assert "file:repo.py" in result.missing_components
+
+    def test_stub_file_detected_fails(self):
+        h = self._handler()
+        inputs = {
+            "subtask_focus": "Backend models",
+            "expected_artifacts": ["models.py"],
+        }
+        artifacts = [_stub_art("models.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is False
+        assert "Stub" in result.summary
+
+    def test_acceptance_criteria_in_evidence_not_gate(self):
+        """RC-8: Acceptance criteria are informational, not pass/fail gates."""
+        h = self._handler()
+        inputs = {
+            "subtask_focus": "Backend models",
+            "expected_artifacts": ["models.py"],
+            "acceptance_criteria": ["Models have id field"],
+        }
+        artifacts = [_art("models.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        # Should pass even though we can't verify acceptance criteria
+        assert result.passed is True
+        # Criteria captured in checks
+        ac_check = next(c for c in result.checks if c["check"] == "acceptance_criteria")
+        assert ac_check["criteria"] == ["Models have id field"]
+        assert ac_check["passed"] is True  # Informational
+
+    def test_coverage_ratio_computed(self):
+        h = self._handler()
+        inputs = {
+            "subtask_focus": "test",
+            "expected_artifacts": ["a.py", "b.py"],
+        }
+        artifacts = [_art("a.py")]  # Missing b.py
+        result = h._validate_output(inputs, artifacts)
+
+        # 2 of 3 checks pass (non_stub + acceptance pass, expected_artifacts fails)
+        assert 0.0 < result.coverage_ratio < 1.0
+
+
+# ---------------------------------------------------------------------------
+# Phase 5b: DevelopmentDevelopHandler legacy monolithic validation
+# ---------------------------------------------------------------------------
+
+
+class TestDevMonolithicValidation:
+    def _handler(self) -> DevelopmentDevelopHandler:
+        return DevelopmentDevelopHandler()
+
+    def test_fastapi_react_prd_expects_backend_and_frontend(self):
+        h = self._handler()
+        inputs = {"prd": "Build a FastAPI backend and React frontend app."}
+        artifacts = [_art("main.py"), _art("App.jsx"), _art("repo.py"),
+                     _art("index.html"), _art("package.json"), _art("routes.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is True
+
+    def test_backend_only_for_fullstack_prd_fails(self):
+        h = self._handler()
+        inputs = {"prd": "Build a FastAPI backend and React frontend app."}
+        artifacts = [_art("main.py"), _art("utils.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is False
+        assert "frontend" in result.summary.lower()
+
+    def test_few_artifacts_for_complex_prd_fails(self):
+        h = self._handler()
+        inputs = {"prd": "Build a FastAPI backend with pytest tests and React frontend."}
+        artifacts = [_art("main.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is False
+        assert "artifacts" in result.summary.lower() or "stack" in result.summary.lower()
+
+    def test_stub_file_in_monolithic_fails(self):
+        h = self._handler()
+        inputs = {"prd": "Build a CLI tool."}
+        artifacts = [_art("main.py"), _art("utils.py"), _stub_art("board.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is False
+        assert "Stub" in result.summary
+
+    def test_backend_only_prd_no_false_frontend(self):
+        h = self._handler()
+        inputs = {"prd": "Build a FastAPI backend API service."}
+        artifacts = [_art("main.py"), _art("routes.py"), _art("models.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is True
+
+    def test_no_prd_passes(self):
+        h = self._handler()
+        result = h._validate_output({"prd": ""}, [_art("main.py")])
+
+        assert result.passed is True
+
+    def test_summary_is_human_readable(self):
+        h = self._handler()
+        inputs = {"prd": "Build a React app."}
+        artifacts = [_art("main.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert isinstance(result.summary, str)
+        assert len(result.summary) > 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 5c: QATestHandler validation
+# ---------------------------------------------------------------------------
+
+
+class TestQAValidation:
+    def _handler(self) -> QATestHandler:
+        return QATestHandler()
+
+    def test_focused_expected_artifacts_present_passes(self):
+        h = self._handler()
+        inputs = {
+            "subtask_focus": "Backend tests",
+            "expected_artifacts": ["tests/test_api.py"],
+        }
+        artifacts = [_art("tests/test_api.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is True
+
+    def test_focused_missing_artifact_fails(self):
+        h = self._handler()
+        inputs = {
+            "subtask_focus": "Backend tests",
+            "expected_artifacts": ["tests/test_api.py"],
+        }
+        artifacts = []
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is False
+
+    def test_legacy_test_file_present_passes(self):
+        h = self._handler()
+        inputs = {"prd": "Build a CLI tool."}
+        artifacts = [_art("test_main.py")]
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is True
+
+    def test_legacy_no_test_files_fails(self):
+        h = self._handler()
+        inputs = {"prd": "Build a CLI tool."}
+        artifacts = [_art("qa_handoff.md")]  # Not a test file
+        result = h._validate_output(inputs, artifacts)
+
+        assert result.passed is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 shared helpers
+# ---------------------------------------------------------------------------
+
+
+class TestDetectStubs:
+    def test_stub_detected(self):
+        assert _detect_stubs([{"name": "x.py", "content": "# TODO"}]) == ["x.py"]
+
+    def test_init_py_skipped(self):
+        assert _detect_stubs([{"name": "__init__.py", "content": ""}]) == []
+
+    def test_substantial_content_passes(self):
+        assert _detect_stubs([{"name": "x.py", "content": "x = 1\n" * 50}]) == []
+
+
+class TestDetectExpectedLayers:
+    def test_fastapi_react_detects_both(self):
+        layers = _detect_expected_layers("Build with FastAPI backend and React frontend")
+        assert "backend" in layers
+        assert "frontend" in layers
+
+    def test_backend_only(self):
+        layers = _detect_expected_layers("Build a FastAPI REST API")
+        assert "backend" in layers
+        assert "frontend" not in layers
+
+
+class TestEstimateMinArtifacts:
+    def test_returns_at_least_3(self):
+        assert _estimate_min_artifacts("Simple script") >= 3
+
+    def test_fullstack_higher_than_simple(self):
+        simple = _estimate_min_artifacts("Build a CLI script")
+        fullstack = _estimate_min_artifacts("Build a FastAPI backend with React frontend and pytest tests")
+        assert fullstack > simple
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: Outcome classification
+# ---------------------------------------------------------------------------
+
+
+class TestOutcomeClassification:
+    def _make_context(self) -> MagicMock:
+        ctx = MagicMock()
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeAssembled:
+            content: str = "system prompt"
+            assembly_hash: str = "hash"
+
+        ctx.ports.prompt_service.get_system_prompt.return_value = FakeAssembled()
+        ctx.ports.llm.chat_stream_with_usage = AsyncMock()
+        ctx.ports.llm.default_model = "test"
+        ctx.ports.request_renderer = None
+        ctx.correlation_context = None
+        return ctx
+
+    async def test_passed_validation_outcome_success(self):
+        from squadops.cycles.task_outcome import TaskOutcome
+        from squadops.llm.models import ChatMessage
+
+        handler = DevelopmentDevelopHandler()
+        ctx = self._make_context()
+
+        # LLM returns good artifacts matching expected
+        content = '```python:models.py\nclass RunEvent:\n    pass\n```'
+        resp = MagicMock()
+        resp.content = content
+        resp.tokens_per_second = None
+        resp.prompt_tokens = 10
+        resp.completion_tokens = 20
+        resp.total_tokens = 30
+        ctx.ports.llm.chat_stream_with_usage.return_value = resp
+
+        inputs = {
+            "prd": "Build models",
+            "subtask_focus": "Backend models",
+            "expected_artifacts": ["models.py"],
+            "acceptance_criteria": [],
+            "artifact_contents": {},
+            "resolved_config": {"output_validation": True},
+        }
+
+        result = await handler.handle(ctx, inputs)
+
+        assert result.success is True
+        assert result.outputs["outcome_class"] == TaskOutcome.SUCCESS
+
+    async def test_failed_validation_outcome_semantic_failure(self):
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+        from squadops.llm.models import ChatMessage
+
+        handler = DevelopmentDevelopHandler()
+        ctx = self._make_context()
+
+        # LLM returns wrong file (not matching expected)
+        content = '```python:wrong.py\nx = 1\n```'
+        resp = MagicMock()
+        resp.content = content
+        resp.tokens_per_second = None
+        resp.prompt_tokens = 10
+        resp.completion_tokens = 20
+        resp.total_tokens = 30
+        ctx.ports.llm.chat_stream_with_usage.return_value = resp
+
+        inputs = {
+            "prd": "Build models",
+            "subtask_focus": "Backend models",
+            "expected_artifacts": ["models.py"],
+            "acceptance_criteria": [],
+            "artifact_contents": {},
+            "resolved_config": {
+                "output_validation": True,
+                "max_self_eval_passes": 0,
+            },
+        }
+
+        result = await handler.handle(ctx, inputs)
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
+        assert "validation_result" in result.outputs
+
+
+# ---------------------------------------------------------------------------
+# Phase 7: Self-eval helpers
+# ---------------------------------------------------------------------------
+
+
+class TestBuildSelfEvalPrompt:
+    def test_includes_validation_summary(self):
+        v = ValidationResult(
+            passed=False, summary="Missing files: models.py",
+            missing_components=["file:models.py"],
+        )
+        prompt = _CycleTaskHandler._build_self_eval_prompt(v, [_art("utils.py")])
+
+        assert "Missing files: models.py" in prompt
+
+    def test_includes_missing_components(self):
+        v = ValidationResult(
+            passed=False, summary="test",
+            missing_components=["file:models.py", "file:routes.py"],
+        )
+        prompt = _CycleTaskHandler._build_self_eval_prompt(v, [])
+
+        assert "file:models.py" in prompt
+        assert "file:routes.py" in prompt
+
+    def test_includes_already_produced_files(self):
+        v = ValidationResult(passed=False, summary="test")
+        prompt = _CycleTaskHandler._build_self_eval_prompt(v, [_art("utils.py")])
+
+        assert "utils.py" in prompt
+
+
+class TestMergeArtifacts:
+    def test_adds_new_files(self):
+        evidence: dict = {}
+        result = _CycleTaskHandler._merge_artifacts(
+            [_art("a.py")], [_art("b.py")], evidence
+        )
+
+        assert len(result) == 2
+        names = [a["name"] for a in result]
+        assert "a.py" in names
+        assert "b.py" in names
+
+    def test_replaces_same_name(self):
+        evidence: dict = {}
+        result = _CycleTaskHandler._merge_artifacts(
+            [_art("a.py", content="old")],
+            [_art("a.py", content="new")],
+            evidence,
+        )
+
+        assert len(result) == 1
+        assert result[0]["content"] == "new"
+
+    def test_records_in_evidence(self):
+        evidence: dict = {}
+        _CycleTaskHandler._merge_artifacts(
+            [_art("a.py", content="old")],
+            [_art("a.py", content="new"), _art("b.py")],
+            evidence,
+        )
+
+        log = evidence["self_eval_merge_log"]
+        assert len(log) == 2
+        replaced = next(e for e in log if e["action"] == "replaced")
+        assert replaced["name"] == "a.py"
+        added = next(e for e in log if e["action"] == "added")
+        assert added["name"] == "b.py"
+
+
+# ---------------------------------------------------------------------------
+# Phase 7b: Self-eval loop integration
+# ---------------------------------------------------------------------------
+
+
+class TestSelfEvalLoop:
+    def _make_context(self) -> MagicMock:
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeAssembled:
+            content: str = "system prompt"
+            assembly_hash: str = "hash"
+
+        ctx = MagicMock()
+        ctx.ports.prompt_service.get_system_prompt.return_value = FakeAssembled()
+        ctx.ports.llm.chat_stream_with_usage = AsyncMock()
+        ctx.ports.llm.default_model = "test"
+        ctx.ports.request_renderer = None
+        ctx.correlation_context = None
+        return ctx
+
+    async def test_self_eval_fires_and_fixes(self):
+        """Self-eval produces the missing file, validation passes on retry."""
+        handler = DevelopmentDevelopHandler()
+        ctx = self._make_context()
+
+        # First call: missing models.py, produces wrong.py
+        resp1 = MagicMock()
+        resp1.content = '```python:wrong.py\nx = 1\n```'
+        resp1.tokens_per_second = None
+        resp1.prompt_tokens = 10
+        resp1.completion_tokens = 20
+        resp1.total_tokens = 30
+
+        # Self-eval call: produces models.py
+        resp2 = MagicMock()
+        resp2.content = '```python:models.py\nclass RunEvent: pass\n```'
+        resp2.tokens_per_second = None
+        resp2.prompt_tokens = 10
+        resp2.completion_tokens = 20
+        resp2.total_tokens = 30
+
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [resp1, resp2]
+
+        inputs = {
+            "prd": "Build models",
+            "subtask_focus": "Backend models",
+            "expected_artifacts": ["models.py"],
+            "acceptance_criteria": [],
+            "artifact_contents": {},
+            "resolved_config": {
+                "output_validation": True,
+                "max_self_eval_passes": 1,
+            },
+        }
+
+        result = await handler.handle(ctx, inputs)
+
+        # Should succeed after self-eval
+        assert result.success is True
+        artifact_names = [a["name"] for a in result.outputs["artifacts"]]
+        assert "models.py" in artifact_names
+        assert "wrong.py" in artifact_names  # Kept from first pass
+
+    async def test_self_eval_skipped_when_zero(self):
+        """max_self_eval_passes=0 skips self-eval, fails immediately."""
+        handler = DevelopmentDevelopHandler()
+        ctx = self._make_context()
+
+        resp = MagicMock()
+        resp.content = '```python:wrong.py\nx = 1\n```'
+        resp.tokens_per_second = None
+        resp.prompt_tokens = 10
+        resp.completion_tokens = 20
+        resp.total_tokens = 30
+        ctx.ports.llm.chat_stream_with_usage.return_value = resp
+
+        inputs = {
+            "prd": "Build models",
+            "subtask_focus": "Backend models",
+            "expected_artifacts": ["models.py"],
+            "acceptance_criteria": [],
+            "artifact_contents": {},
+            "resolved_config": {
+                "output_validation": True,
+                "max_self_eval_passes": 0,
+            },
+        }
+
+        result = await handler.handle(ctx, inputs)
+
+        assert result.success is False
+        # Only 1 LLM call (no self-eval)
+        assert ctx.ports.llm.chat_stream_with_usage.call_count == 1
+
+    async def test_self_eval_bounded(self):
+        """Self-eval stops after max_self_eval_passes even if still failing."""
+        handler = DevelopmentDevelopHandler()
+        ctx = self._make_context()
+
+        # All responses produce wrong file
+        bad_resp = MagicMock()
+        bad_resp.content = '```python:wrong.py\nx = 1\n```'
+        bad_resp.tokens_per_second = None
+        bad_resp.prompt_tokens = 10
+        bad_resp.completion_tokens = 20
+        bad_resp.total_tokens = 30
+        ctx.ports.llm.chat_stream_with_usage.return_value = bad_resp
+
+        inputs = {
+            "prd": "Build models",
+            "subtask_focus": "Backend models",
+            "expected_artifacts": ["models.py"],
+            "acceptance_criteria": [],
+            "artifact_contents": {},
+            "resolved_config": {
+                "output_validation": True,
+                "max_self_eval_passes": 2,
+            },
+        }
+
+        result = await handler.handle(ctx, inputs)
+
+        assert result.success is False
+        # 1 initial + 2 self-eval = 3 total calls
+        assert ctx.ports.llm.chat_stream_with_usage.call_count == 3

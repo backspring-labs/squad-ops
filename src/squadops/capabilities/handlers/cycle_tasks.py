@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.dev_capabilities import get_capability
@@ -31,6 +32,87 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# SIP-0086: Output validation framework
+# ---------------------------------------------------------------------------
+
+_STUB_THRESHOLD_BYTES = 100
+_STUB_PATTERNS = ("# This file is kept empty", "# TODO", "pass\n", "# placeholder")
+
+# Heuristic keyword mapping for legacy monolithic stack layer detection.
+# These are bounded heuristics — not semantic truth. They catch obvious
+# incompleteness (e.g., missing frontend for a PRD that says "React").
+_STACK_INDICATORS: dict[str, dict[str, Any]] = {
+    "backend": {
+        "keywords": ["fastapi", "flask", "django", "uvicorn", "backend", "api endpoint"],
+        "extensions": (".py",),
+    },
+    "frontend": {
+        "keywords": ["react", "vue", "vite", "frontend", "jsx", "tsx", "component"],
+        "extensions": (".jsx", ".tsx", ".js", ".ts", ".html", ".css"),
+    },
+    "test": {
+        "keywords": ["pytest", "test", "jest", "vitest"],
+        "extensions": (".py", ".js", ".ts"),
+    },
+    "config": {
+        "keywords": ["requirements.txt", "package.json", "dockerfile"],
+        "extensions": (".txt", ".json", ".yaml", ".yml", ".toml"),
+    },
+}
+
+
+@dataclass
+class ValidationResult:
+    """Outcome of handler output validation (SIP-0086 §6.2)."""
+
+    passed: bool
+    checks: list[dict] = field(default_factory=list)
+    missing_components: list[str] = field(default_factory=list)
+    coverage_ratio: float = 1.0
+    summary: str = ""
+
+
+def _detect_stubs(artifacts: list[dict], threshold: int = _STUB_THRESHOLD_BYTES) -> list[str]:
+    """Return filenames of stub artifacts (non-boilerplate files with trivial content)."""
+    stubs = []
+    for art in artifacts:
+        content = art.get("content", "")
+        name = art.get("name", "")
+        if name.endswith("__init__.py"):
+            continue
+        if len(content) < threshold:
+            if any(pat in content for pat in _STUB_PATTERNS) or not content.strip():
+                stubs.append(name)
+    return stubs
+
+
+def _detect_expected_layers(prd: str, impl_plan: str | None = None) -> dict[str, tuple[str, ...]]:
+    """Heuristic: detect required stack layers from PRD keywords.
+
+    Returns dict of layer_name → file extensions for that layer.
+    This is a bounded heuristic for catching obvious incompleteness,
+    not a semantic truth engine.
+    """
+    combined = (prd + "\n" + (impl_plan or "")).lower()
+    expected: dict[str, tuple[str, ...]] = {}
+    for layer, indicators in _STACK_INDICATORS.items():
+        if any(kw in combined for kw in indicators["keywords"]):
+            expected[layer] = indicators["extensions"]
+    return expected
+
+
+def _estimate_min_artifacts(prd: str, impl_plan: str | None = None) -> int:
+    """Heuristic: estimate minimum artifact count from PRD complexity.
+
+    Rough estimate — catches extreme shortfalls (3 files for a full-stack app)
+    but should not be treated as a precise requirement.
+    """
+    layers = _detect_expected_layers(prd, impl_plan)
+    # At least 2 files per detected layer, minimum 3 total
+    return max(3, len(layers) * 2)
 
 
 class _CycleTaskHandler(CapabilityHandler):
@@ -168,6 +250,72 @@ class _CycleTaskHandler(CapabilityHandler):
         if "timeout_seconds" in overrides:
             kwargs["timeout_seconds"] = overrides["timeout_seconds"]
         return kwargs
+
+    # SIP-0086: Output validation and self-evaluation (Stage B)
+
+    def _validate_output(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Validate handler output. Override in build handler subclasses."""
+        return ValidationResult(passed=True, summary="No validation configured")
+
+    @staticmethod
+    def _build_self_eval_prompt(
+        validation: ValidationResult,
+        artifacts: list[dict],
+    ) -> str:
+        """Build follow-up prompt for self-evaluation after validation failure."""
+        artifact_names = [a.get("name", "") for a in artifacts]
+        parts = [
+            "Your previous response was incomplete. Here is what's missing:\n\n",
+            f"**Validation Summary:** {validation.summary}\n\n",
+        ]
+        if validation.missing_components:
+            parts.append(
+                f"**Missing Components:** {', '.join(validation.missing_components)}\n\n"
+            )
+        parts.append(f"**Files You Already Produced:** {', '.join(artifact_names)}\n\n")
+        parts.append(
+            "Please produce ONLY the missing files. Use the same fenced code block format "
+            "(```language:path/to/file```). Do not reproduce files you already generated."
+        )
+        return "".join(parts)
+
+    @staticmethod
+    def _merge_artifacts(
+        existing: list[dict],
+        new: list[dict],
+        evidence: dict,
+    ) -> list[dict]:
+        """Merge new artifacts into existing, replacing files with same name.
+
+        RC-7: The merged set is the authoritative candidate for revalidation.
+        All additions and replacements are recorded in evidence.
+        """
+        by_name = {a["name"]: a for a in existing}
+        merge_log: list[dict] = []
+
+        for art in new:
+            name = art["name"]
+            if name in by_name:
+                merge_log.append({
+                    "action": "replaced",
+                    "name": name,
+                    "old_size": len(by_name[name].get("content", "")),
+                    "new_size": len(art.get("content", "")),
+                })
+            else:
+                merge_log.append({
+                    "action": "added",
+                    "name": name,
+                    "size": len(art.get("content", "")),
+                })
+            by_name[name] = art
+
+        evidence.setdefault("self_eval_merge_log", []).extend(merge_log)
+        return list(by_name.values())
 
     async def handle(
         self,
@@ -726,6 +874,152 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
         return errors
 
+    def _validate_output(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Validate dev handler output (SIP-0086 §6.3).
+
+        Two modes: focused (manifest-driven) and legacy (monolithic).
+        See SIP §6.3.1 and §6.3.2 for the distinction.
+        """
+        if inputs.get("subtask_focus") is not None:
+            return self._validate_focused(inputs, artifacts)
+        return self._validate_monolithic(inputs, artifacts)
+
+    def _validate_focused(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Focused-task validation: strict, artifact-specific (SIP §6.3.1)."""
+        checks: list[dict] = []
+        missing: list[str] = []
+        artifact_names = [a.get("name", "") for a in artifacts]
+
+        # FC1: Expected artifacts present (required gate)
+        expected = inputs.get("expected_artifacts", [])
+        missing_files = [f for f in expected if f not in artifact_names]
+        checks.append({
+            "check": "expected_artifacts",
+            "expected": expected,
+            "present": [f for f in expected if f in artifact_names],
+            "missing": missing_files,
+            "passed": len(missing_files) == 0,
+        })
+        if missing_files:
+            missing.extend(f"file:{f}" for f in missing_files)
+
+        # FC2: Non-stub files (required gate)
+        stubs = _detect_stubs(artifacts)
+        checks.append({
+            "check": "non_stub_files",
+            "stubs_found": stubs,
+            "passed": len(stubs) == 0,
+        })
+
+        # FC3: Acceptance criteria (informational in Rev 1 — RC-8)
+        acceptance = inputs.get("acceptance_criteria", [])
+        checks.append({
+            "check": "acceptance_criteria",
+            "criteria": acceptance,
+            "evaluation": "included_in_evidence",
+            "passed": True,
+        })
+
+        passed = all(c["passed"] for c in checks)
+        passed_count = sum(1 for c in checks if c["passed"])
+        coverage = passed_count / len(checks) if checks else 1.0
+
+        summary_parts = []
+        if missing_files:
+            summary_parts.append(f"Missing files: {', '.join(missing_files)}")
+        if stubs:
+            summary_parts.append(f"Stub files: {', '.join(stubs)}")
+
+        return ValidationResult(
+            passed=passed,
+            checks=checks,
+            missing_components=missing,
+            coverage_ratio=coverage,
+            summary="; ".join(summary_parts) or "All checks passed",
+        )
+
+    def _validate_monolithic(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Legacy monolithic validation: coarse heuristic (SIP §6.3.2).
+
+        Designed to catch obvious incompleteness, not certify completeness.
+        """
+        prd = inputs.get("prd", "")
+        if not prd:
+            return ValidationResult(passed=True, summary="No PRD, skipping validation")
+
+        checks: list[dict] = []
+        missing: list[str] = []
+        artifact_names = [a.get("name", "") for a in artifacts]
+
+        # C1: Stack coverage heuristic
+        expected_layers = _detect_expected_layers(prd)
+        present_layers: set[str] = set()
+        for name in artifact_names:
+            for layer, exts in expected_layers.items():
+                if any(name.endswith(ext) for ext in exts):
+                    present_layers.add(layer)
+        missing_layers = set(expected_layers.keys()) - present_layers
+        if missing_layers:
+            missing.extend(f"stack_layer:{layer}" for layer in missing_layers)
+        checks.append({
+            "check": "stack_coverage_heuristic",
+            "expected": list(expected_layers.keys()),
+            "present": list(present_layers),
+            "missing": list(missing_layers),
+            "passed": len(missing_layers) == 0,
+        })
+
+        # C2: Artifact count heuristic
+        min_artifacts = _estimate_min_artifacts(prd)
+        checks.append({
+            "check": "artifact_count_heuristic",
+            "expected_min": min_artifacts,
+            "actual": len(artifacts),
+            "passed": len(artifacts) >= min_artifacts,
+        })
+
+        # C3: Non-stub files
+        stubs = _detect_stubs(artifacts)
+        checks.append({
+            "check": "non_stub_files",
+            "stubs_found": stubs,
+            "passed": len(stubs) == 0,
+        })
+
+        passed = all(c["passed"] for c in checks)
+        passed_count = sum(1 for c in checks if c["passed"])
+        coverage = passed_count / len(checks) if checks else 1.0
+
+        summary_parts = []
+        if missing_layers:
+            summary_parts.append(f"Missing stack layers: {', '.join(missing_layers)}")
+        if len(artifacts) < min_artifacts:
+            summary_parts.append(
+                f"Only {len(artifacts)} artifacts, expected >= {min_artifacts}"
+            )
+        if stubs:
+            summary_parts.append(f"Stub files: {', '.join(stubs)}")
+
+        return ValidationResult(
+            passed=passed,
+            checks=checks,
+            missing_components=missing,
+            coverage_ratio=coverage,
+            summary="; ".join(summary_parts) or "All checks passed",
+        )
+
     def _resolve_artifact_content(
         self,
         inputs: dict[str, Any],
@@ -986,6 +1280,69 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 }
             )
 
+        # SIP-0086: Output validation + self-evaluation + outcome classification
+        resolved_config = inputs.get("resolved_config", {})
+        evidence_extra: dict[str, Any] = {}
+
+        if resolved_config.get("output_validation", False):
+            validation = self._validate_output(inputs, artifacts)
+
+            # Self-evaluation loop (Phase 7)
+            if not validation.passed:
+                max_self_eval = resolved_config.get("max_self_eval_passes", 1)
+                self_eval_count = 0
+
+                while not validation.passed and self_eval_count < max_self_eval:
+                    self_eval_count += 1
+                    followup_prompt = self._build_self_eval_prompt(validation, artifacts)
+
+                    try:
+                        followup_response = await context.ports.llm.chat_stream_with_usage(
+                            [
+                                ChatMessage(role="system", content=system_prompt),
+                                ChatMessage(role="user", content=user_prompt),
+                                ChatMessage(role="assistant", content=content),
+                                ChatMessage(role="user", content=followup_prompt),
+                            ],
+                            **chat_kwargs,
+                        )
+                    except LLMError as exc:
+                        logger.warning(
+                            "Self-eval LLM call failed for %s: %s",
+                            self._handler_name,
+                            exc,
+                        )
+                        break
+
+                    new_extracted = extract_fenced_files(followup_response.content)
+                    new_artifacts = [
+                        {
+                            "name": f["filename"],
+                            "content": f["content"],
+                            "media_type": _classify_file(f["filename"])[1],
+                            "type": _classify_file(f["filename"])[0],
+                        }
+                        for f in new_extracted
+                    ]
+                    artifacts = self._merge_artifacts(
+                        artifacts, new_artifacts, evidence_extra
+                    )
+
+                    # RC-7: validate merged artifact set
+                    validation = self._validate_output(inputs, artifacts)
+
+                evidence_extra["self_eval_passes"] = self_eval_count
+
+            evidence_extra["validation_result"] = {
+                "passed": validation.passed,
+                "checks": validation.checks,
+                "missing_components": validation.missing_components,
+                "coverage_ratio": validation.coverage_ratio,
+                "summary": validation.summary,
+            }
+        else:
+            validation = ValidationResult(passed=True, summary="Validation disabled")
+
         # SIP-0084 §10: build prompt provenance for artifact traceability
         provenance: dict[str, Any] = {
             "system_prompt_bundle_hash": assembled.assembly_hash,
@@ -996,12 +1353,27 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             provenance["request_render_hash"] = rendered.render_hash
             provenance["prompt_environment"] = "production"
 
-        outputs = {
+        outputs: dict[str, Any] = {
             "summary": f"[dev] Generated {len(artifacts)} source file(s)",
             "role": self._role,
             "artifacts": artifacts,
             "prompt_provenance": provenance,
         }
+
+        # Phase 6: Outcome classification
+        if validation.passed:
+            from squadops.cycles.task_outcome import TaskOutcome
+
+            outputs["outcome_class"] = TaskOutcome.SUCCESS
+        else:
+            from squadops.cycles.task_outcome import (
+                FailureClassification,
+                TaskOutcome,
+            )
+
+            outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
+            outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
+            outputs["validation_result"] = evidence_extra.get("validation_result", {})
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
@@ -1010,9 +1382,15 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
+            metadata=evidence_extra if evidence_extra else None,
         )
 
-        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+        return HandlerResult(
+            success=validation.passed,
+            outputs=outputs,
+            _evidence=evidence,
+            error=validation.summary if not validation.passed else None,
+        )
 
     async def _build_dev_prompt(
         self,
@@ -1124,6 +1502,70 @@ class QATestHandler(_CycleTaskHandler):
         if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
             errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
         return errors
+
+    def _validate_output(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Validate QA handler output (SIP-0086 §6.4)."""
+        checks: list[dict] = []
+        missing: list[str] = []
+
+        if inputs.get("subtask_focus") is not None:
+            # Focused mode: check expected artifacts
+            expected = inputs.get("expected_artifacts", [])
+            artifact_names = [a.get("name", "") for a in artifacts]
+            missing_files = [f for f in expected if f not in artifact_names]
+            checks.append({
+                "check": "expected_artifacts",
+                "expected": expected,
+                "present": [f for f in expected if f in artifact_names],
+                "missing": missing_files,
+                "passed": len(missing_files) == 0,
+            })
+            if missing_files:
+                missing.extend(f"file:{f}" for f in missing_files)
+        else:
+            # Legacy mode: at least one test file with content
+            test_files = [
+                a for a in artifacts
+                if "test" in a.get("name", "").lower()
+                and len(a.get("content", "")) > _STUB_THRESHOLD_BYTES
+            ]
+            checks.append({
+                "check": "test_file_presence",
+                "test_files_found": len(test_files),
+                "passed": len(test_files) > 0,
+            })
+            if not test_files:
+                missing.append("test_files")
+
+        # Non-stub check (both modes)
+        stubs = _detect_stubs(artifacts)
+        checks.append({
+            "check": "non_stub_files",
+            "stubs_found": stubs,
+            "passed": len(stubs) == 0,
+        })
+
+        passed = all(c["passed"] for c in checks)
+        passed_count = sum(1 for c in checks if c["passed"])
+        coverage = passed_count / len(checks) if checks else 1.0
+
+        summary_parts = []
+        if missing:
+            summary_parts.append(f"Missing: {', '.join(missing)}")
+        if stubs:
+            summary_parts.append(f"Stub files: {', '.join(stubs)}")
+
+        return ValidationResult(
+            passed=passed,
+            checks=checks,
+            missing_components=missing,
+            coverage_ratio=coverage,
+            summary="; ".join(summary_parts) or "All checks passed",
+        )
 
     def _resolve_artifact_content(
         self,
@@ -1453,6 +1895,66 @@ class QATestHandler(_CycleTaskHandler):
             for f in extracted
         ]
 
+        # SIP-0086: Output validation + self-evaluation
+        evidence_extra: dict[str, Any] = {}
+
+        if resolved_config.get("output_validation", False):
+            validation = self._validate_output(inputs, artifacts)
+
+            # Self-evaluation loop
+            if not validation.passed:
+                max_self_eval = resolved_config.get("max_self_eval_passes", 1)
+                self_eval_count = 0
+
+                while not validation.passed and self_eval_count < max_self_eval:
+                    self_eval_count += 1
+                    followup_prompt = self._build_self_eval_prompt(validation, artifacts)
+
+                    try:
+                        followup_response = await context.ports.llm.chat_stream_with_usage(
+                            [
+                                ChatMessage(role="system", content=system_prompt),
+                                ChatMessage(role="user", content=user_prompt),
+                                ChatMessage(role="assistant", content=content),
+                                ChatMessage(role="user", content=followup_prompt),
+                            ],
+                            **chat_kwargs,
+                        )
+                    except LLMError as exc:
+                        logger.warning(
+                            "Self-eval LLM call failed for %s: %s",
+                            self._handler_name,
+                            exc,
+                        )
+                        break
+
+                    new_extracted = extract_fenced_files(followup_response.content)
+                    new_artifacts = [
+                        {
+                            "name": f["filename"],
+                            "content": f["content"],
+                            "media_type": _classify_file(f["filename"])[1],
+                            "type": "test",
+                        }
+                        for f in new_extracted
+                    ]
+                    artifacts = self._merge_artifacts(
+                        artifacts, new_artifacts, evidence_extra
+                    )
+                    validation = self._validate_output(inputs, artifacts)
+
+                evidence_extra["self_eval_passes"] = self_eval_count
+
+            evidence_extra["validation_result"] = {
+                "passed": validation.passed,
+                "checks": validation.checks,
+                "missing_components": validation.missing_components,
+                "coverage_ratio": validation.coverage_ratio,
+                "summary": validation.summary,
+            }
+        else:
+            validation = ValidationResult(passed=True, summary="Validation disabled")
+
         # Run generated tests and build report
         test_result, test_report_artifact = await self._run_test_suite(
             capability, sources, extracted
@@ -1476,7 +1978,7 @@ class QATestHandler(_CycleTaskHandler):
             provenance["request_render_hash"] = rendered.render_hash
             provenance["prompt_environment"] = "production"
 
-        outputs = {
+        outputs: dict[str, Any] = {
             "summary": f"[qa] Generated {len(artifacts) - 1} test file(s){test_suffix}",
             "role": self._role,
             "artifacts": artifacts,
@@ -1491,6 +1993,21 @@ class QATestHandler(_CycleTaskHandler):
             "prompt_provenance": provenance,
         }
 
+        # Phase 6: Outcome classification
+        if validation.passed:
+            from squadops.cycles.task_outcome import TaskOutcome
+
+            outputs["outcome_class"] = TaskOutcome.SUCCESS
+        else:
+            from squadops.cycles.task_outcome import (
+                FailureClassification,
+                TaskOutcome,
+            )
+
+            outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
+            outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
+            outputs["validation_result"] = evidence_extra.get("validation_result", {})
+
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
@@ -1498,9 +2015,15 @@ class QATestHandler(_CycleTaskHandler):
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
+            metadata=evidence_extra if evidence_extra else None,
         )
 
-        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+        return HandlerResult(
+            success=validation.passed,
+            outputs=outputs,
+            _evidence=evidence,
+            error=validation.summary if not validation.passed else None,
+        )
 
     async def _build_qa_prompt(
         self,
