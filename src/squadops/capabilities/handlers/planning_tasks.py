@@ -417,7 +417,165 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             )
             score = 3
 
+        # SIP-0086: Produce build task manifest when enabled.
+        # The manifest decomposes the upcoming build into focused subtasks.
+        resolved_config = inputs.get("resolved_config", {})
+        if resolved_config.get("build_manifest", False):
+            manifest_artifact = self._produce_manifest(
+                context, inputs, content, resolved_config
+            )
+            if manifest_artifact is not None:
+                result.outputs["artifacts"].append(manifest_artifact)
+
         return result
+
+    async def _produce_manifest(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        planning_content: str,
+        resolved_config: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Generate build task manifest via a dedicated LLM call.
+
+        Separate from the planning artifact generation to keep prompts focused.
+        Returns manifest artifact dict or None on graceful fallback (RC-4).
+        """
+        import hashlib
+
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+        from squadops.cycles.build_manifest import BuildTaskManifest
+        from squadops.llm.models import ChatMessage
+
+        prd = inputs.get("prd", "")
+
+        manifest_prompt = (
+            "Based on the following PRD and planning artifact, produce a build task "
+            "manifest that decomposes the upcoming build into focused subtasks.\n\n"
+            f"## PRD\n{prd}\n\n"
+            f"## Planning Artifact\n{planning_content}\n\n"
+            "Each subtask should:\n"
+            "1. Have a clear, narrow focus (e.g., 'Backend data models' not 'Build the app')\n"
+            "2. List the specific files it should produce\n"
+            "3. Declare dependencies on prior subtasks by task_index\n"
+            "4. Define acceptance criteria\n"
+            "5. Be completable in a single focused LLM generation (~2-10 minutes)\n\n"
+            "Decomposition guidelines:\n"
+            "- Separate backend and frontend into distinct tasks\n"
+            "- Separate models/data from API endpoints/routes\n"
+            "- Separate UI shell/routing from individual view components\n"
+            "- Put integration config (CORS, proxy, requirements) in its own task\n"
+            "- Put tests after the code they test\n"
+            "- Put QA handoff last\n\n"
+            "Output ONLY the manifest as a YAML code block with filename tag:\n"
+            "```yaml:build_task_manifest.yaml\n"
+            "version: 1\n"
+            "project_id: <project_id>\n"
+            "cycle_id: <cycle_id>\n"
+            "prd_hash: <hash>\n"
+            "tasks:\n"
+            "  - task_index: 0\n"
+            "    task_type: development.develop\n"
+            "    role: dev\n"
+            "    focus: \"...\"\n"
+            "    description: |\n"
+            "      ...\n"
+            "    expected_artifacts:\n"
+            "      - \"path/to/file\"\n"
+            "    acceptance_criteria:\n"
+            "      - \"...\"\n"
+            "    depends_on: []\n"
+            "summary:\n"
+            "  total_dev_tasks: N\n"
+            "  total_qa_tasks: M\n"
+            "  total_tasks: N+M\n"
+            "  estimated_layers: [backend, frontend, test, config]\n"
+            "```\n"
+        )
+
+        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        chat_kwargs = self._build_chat_kwargs(inputs)
+
+        try:
+            response = await context.ports.llm.chat_stream_with_usage(
+                [
+                    ChatMessage(role="system", content=assembled.content),
+                    ChatMessage(role="user", content=manifest_prompt),
+                ],
+                **chat_kwargs,
+            )
+        except Exception as exc:
+            logger.warning(
+                "assess_readiness: manifest LLM call failed (%s), "
+                "falling back to static task steps",
+                exc,
+            )
+            return None
+
+        # Extract manifest from fenced YAML
+        extracted = extract_fenced_files(response.content)
+        manifest_files = [
+            f for f in extracted if f["filename"] == "build_task_manifest.yaml"
+        ]
+
+        if manifest_files:
+            yaml_content = manifest_files[0]["content"]
+        else:
+            # Fallback: search untagged ```yaml blocks
+            yaml_content = self._find_manifest_yaml(response.content)
+            if yaml_content is None:
+                logger.warning(
+                    "assess_readiness: no manifest YAML found, "
+                    "falling back to static task steps",
+                )
+                return None
+
+        # Structural validation
+        try:
+            manifest = BuildTaskManifest.from_yaml(yaml_content)
+        except ValueError as exc:
+            logger.warning(
+                "assess_readiness: manifest validation failed (%s), "
+                "falling back to static task steps",
+                exc,
+            )
+            return None
+
+        # Policy validation
+        min_subtasks = resolved_config.get("min_build_subtasks", 3)
+        max_subtasks = resolved_config.get("max_build_subtasks", 15)
+        if len(manifest.tasks) < min_subtasks or len(manifest.tasks) > max_subtasks:
+            logger.warning(
+                "assess_readiness: manifest has %d subtasks "
+                "(bounds: %d-%d), falling back to static task steps",
+                len(manifest.tasks),
+                min_subtasks,
+                max_subtasks,
+            )
+            return None
+
+        logger.info(
+            "assess_readiness: produced build task manifest with %d subtasks",
+            len(manifest.tasks),
+        )
+
+        return {
+            "name": "build_task_manifest.yaml",
+            "content": yaml_content,
+            "media_type": "text/yaml",
+            "type": "control_manifest",
+        }
+
+    @staticmethod
+    def _find_manifest_yaml(content: str) -> str | None:
+        """Search for untagged ```yaml block with manifest content."""
+        import re
+
+        for match in re.finditer(r"```yaml\s*\n(.*?)```", content, re.DOTALL):
+            block = match.group(1).strip()
+            if "task_index" in block and "task_type" in block and "focus" in block:
+                return block
+        return None
 
 
 # ---------------------------------------------------------------------------
