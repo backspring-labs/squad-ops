@@ -208,6 +208,21 @@ class TestGovernanceReviewManifest:
         assert manifest["media_type"] == "text/yaml"
         assert manifest["type"] == "control_manifest"
 
+    async def test_prd_hash_mismatch_logs_warning_but_accepts(self):
+        """PRD hash is informational — mismatch logs warning but doesn't reject."""
+        handler = GovernanceReviewHandler()
+        ctx = _make_context()
+        # VALID_MANIFEST_BLOCK has prd_hash: abc123, which won't match SHA-256 of PRD
+        ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
+            "Review.\n\n" + VALID_MANIFEST_BLOCK
+        )
+
+        result = await handler.handle(ctx, _make_inputs())
+
+        # Manifest is accepted despite hash mismatch (warning logged)
+        assert result.success
+        assert len(result.outputs["artifacts"]) == 2
+
     async def test_llm_failure_returns_error(self):
         from squadops.llm.exceptions import LLMError
 

@@ -480,7 +480,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         ]
 
         # Extract and validate build task manifest
-        manifest_artifact = self._extract_manifest(content, resolved_config)
+        manifest_artifact = self._extract_manifest(content, resolved_config, prd)
         if manifest_artifact is not None:
             artifacts.append(manifest_artifact)
 
@@ -503,12 +503,14 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
 
     def _extract_manifest(
-        self, content: str, resolved_config: dict[str, Any]
+        self, content: str, resolved_config: dict[str, Any], prd: str = ""
     ) -> dict[str, Any] | None:
         """Extract and validate build task manifest from LLM response.
 
         Returns manifest artifact dict, or None on graceful fallback (RC-4).
         """
+        import hashlib
+
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
         from squadops.cycles.build_manifest import BuildTaskManifest
 
@@ -538,6 +540,21 @@ class GovernanceReviewHandler(_CycleTaskHandler):
                 exc,
             )
             return None
+
+        # PRD hash integrity check
+        if prd and manifest.prd_hash:
+            expected_hash = hashlib.sha256(prd.encode()).hexdigest()
+            if manifest.prd_hash != expected_hash:
+                logger.warning(
+                    "%s: manifest prd_hash mismatch (got %s, expected %s), "
+                    "continuing with manifest (LLM-generated hash is best-effort)",
+                    self._handler_name,
+                    manifest.prd_hash[:12],
+                    expected_hash[:12],
+                )
+                # Note: this is a warning, not a fallback. The LLM generates
+                # the hash and may not produce an exact SHA-256. The hash is
+                # informational for audit, not a security gate.
 
         # Policy validation — subtask count bounds from resolved config
         min_subtasks = resolved_config.get("min_build_subtasks", 3)

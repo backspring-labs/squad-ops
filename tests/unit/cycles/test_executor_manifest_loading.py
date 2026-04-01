@@ -251,6 +251,185 @@ class TestMaybeRematerializeFromManifest:
 
         assert result is plan
 
+    async def test_planning_tasks_preserved_not_recreated(self):
+        """After rematerialization, planning entries are the exact same objects."""
+        executor = self._make_executor()
+        plan = self._make_plan_stub(7)
+
+        manifest_ref = _FakeArtifactRef()
+        stored = [("art_manifest", manifest_ref)]
+        executor._artifact_vault.retrieve.return_value = (
+            manifest_ref,
+            MANIFEST_YAML.encode(),
+        )
+
+        from datetime import datetime, timezone
+
+        from squadops.cycles.models import (
+            AgentProfileEntry,
+            Cycle,
+            Run,
+            SquadProfile,
+            TaskFlowPolicy,
+        )
+
+        cycle = Cycle(
+            cycle_id="cyc_test",
+            project_id="group_run",
+            created_at=datetime.now(timezone.utc),
+            created_by="system",
+            prd_ref="Build a group run app",
+            squad_profile_id="full-squad",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            applied_defaults={"plan_tasks": True, "build_tasks": True},
+            execution_overrides={},
+        )
+        run = Run(
+            run_id="run_abcdef123456",
+            cycle_id="cyc_test",
+            run_number=1,
+            status="running",
+            initiated_by="api",
+            resolved_config_hash="hash123",
+        )
+        profile = SquadProfile(
+            profile_id="full-squad",
+            name="Full Squad",
+            description="Test",
+            version=1,
+            agents=[
+                AgentProfileEntry(
+                    agent_id="neo", role="dev", model="test", enabled=True
+                ),
+                AgentProfileEntry(
+                    agent_id="eve", role="qa", model="test", enabled=True
+                ),
+                AgentProfileEntry(
+                    agent_id="max", role="lead", model="test", enabled=True
+                ),
+                AgentProfileEntry(
+                    agent_id="nat", role="strat", model="test", enabled=True
+                ),
+                AgentProfileEntry(
+                    agent_id="data", role="data", model="test", enabled=True
+                ),
+            ],
+            created_at=datetime.now(timezone.utc),
+        )
+
+        result = await executor._maybe_rematerialize_from_manifest(
+            plan=plan, task_idx=4, stored_artifacts=stored,
+            cycle=cycle, run=run, profile=profile,
+        )
+
+        # First 5 entries are the exact same stub objects (not recreated)
+        for i in range(5):
+            assert result[i] is plan[i]
+
+    async def test_manifest_task_ids_are_deterministic_across_calls(self):
+        """RC-2: Manifest-derived IDs are stable across rematerialization calls."""
+        executor = self._make_executor()
+
+        manifest_ref = _FakeArtifactRef()
+        stored = [("art_manifest", manifest_ref)]
+        executor._artifact_vault.retrieve.return_value = (
+            manifest_ref,
+            MANIFEST_YAML.encode(),
+        )
+
+        from datetime import datetime, timezone
+
+        from squadops.cycles.models import (
+            AgentProfileEntry,
+            Cycle,
+            Run,
+            SquadProfile,
+            TaskFlowPolicy,
+        )
+
+        cycle = Cycle(
+            cycle_id="cyc_test",
+            project_id="group_run",
+            created_at=datetime.now(timezone.utc),
+            created_by="system",
+            prd_ref="Build a group run app",
+            squad_profile_id="full-squad",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            applied_defaults={"plan_tasks": True, "build_tasks": True},
+            execution_overrides={},
+        )
+        run = Run(
+            run_id="run_abcdef123456",
+            cycle_id="cyc_test",
+            run_number=1,
+            status="running",
+            initiated_by="api",
+            resolved_config_hash="hash123",
+        )
+        profile = SquadProfile(
+            profile_id="full-squad",
+            name="Full Squad",
+            description="Test",
+            version=1,
+            agents=[
+                AgentProfileEntry(
+                    agent_id="neo", role="dev", model="test", enabled=True
+                ),
+                AgentProfileEntry(
+                    agent_id="eve", role="qa", model="test", enabled=True
+                ),
+                AgentProfileEntry(
+                    agent_id="max", role="lead", model="test", enabled=True
+                ),
+                AgentProfileEntry(
+                    agent_id="nat", role="strat", model="test", enabled=True
+                ),
+                AgentProfileEntry(
+                    agent_id="data", role="data", model="test", enabled=True
+                ),
+            ],
+            created_at=datetime.now(timezone.utc),
+        )
+
+        plan1 = self._make_plan_stub(7)
+        result1 = await executor._maybe_rematerialize_from_manifest(
+            plan=plan1, task_idx=4, stored_artifacts=stored,
+            cycle=cycle, run=run, profile=profile,
+        )
+
+        plan2 = self._make_plan_stub(7)
+        result2 = await executor._maybe_rematerialize_from_manifest(
+            plan=plan2, task_idx=4, stored_artifacts=stored,
+            cycle=cycle, run=run, profile=profile,
+        )
+
+        # Manifest-derived task IDs must be identical across both calls
+        ids1 = [e.task_id for e in result1[5:]]
+        ids2 = [e.task_id for e in result2[5:]]
+        assert ids1 == ids2
+
+    def test_rc1_manifest_is_frozen_dataclass(self):
+        """RC-1: BuildTaskManifest is a frozen dataclass — field reassignment blocked."""
+        from squadops.cycles.build_manifest import BuildTaskManifest, ManifestTask
+
+        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+
+        # Cannot reassign top-level fields
+        with pytest.raises(AttributeError):
+            manifest.version = 99  # type: ignore[misc]
+
+        with pytest.raises(AttributeError):
+            manifest.tasks = []  # type: ignore[misc]
+
+        # ManifestTask is also frozen
+        task = manifest.tasks[0]
+        with pytest.raises(AttributeError):
+            task.focus = "changed"  # type: ignore[misc]
+
 
 # ---------------------------------------------------------------------------
 # Phase 3c: Artifact chaining — dev→dev via _BUILD_ARTIFACT_FILTER
