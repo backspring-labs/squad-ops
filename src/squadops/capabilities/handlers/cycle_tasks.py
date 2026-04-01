@@ -667,15 +667,23 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             f for f in extracted if f["filename"] == "build_task_manifest.yaml"
         ]
 
-        if not manifest_files:
-            logger.warning(
-                "%s: no build_task_manifest.yaml found in response, "
-                "falling back to static task steps",
+        if manifest_files:
+            yaml_content = manifest_files[0]["content"]
+        else:
+            # Fallback: LLM may have used ```yaml without the filename tag.
+            # Search for untagged YAML blocks that contain manifest-like content.
+            yaml_content = self._find_manifest_in_raw_yaml(content)
+            if yaml_content is None:
+                logger.warning(
+                    "%s: no build_task_manifest.yaml found in response, "
+                    "falling back to static task steps",
+                    self._handler_name,
+                )
+                return None
+            logger.info(
+                "%s: manifest found via untagged YAML fallback",
                 self._handler_name,
             )
-            return None
-
-        yaml_content = manifest_files[0]["content"]
 
         # Structural validation
         try:
@@ -734,6 +742,24 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             "media_type": "text/yaml",
             "type": "control_manifest",
         }
+
+    @staticmethod
+    def _find_manifest_in_raw_yaml(content: str) -> str | None:
+        """Search for an untagged ```yaml block containing manifest-like content.
+
+        Fallback for when the LLM uses ```yaml instead of ```yaml:build_task_manifest.yaml.
+        Returns the YAML string if found, or None.
+        """
+        import re
+
+        # Match ```yaml ... ``` blocks (without filename tag)
+        pattern = r"```yaml\s*\n(.*?)```"
+        for match in re.finditer(pattern, content, re.DOTALL):
+            block = match.group(1).strip()
+            # Check for manifest-like content markers
+            if "task_index" in block and "task_type" in block and "focus" in block:
+                return block
+        return None
 
     def _record_generation(
         self,
