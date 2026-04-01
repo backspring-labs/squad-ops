@@ -783,6 +783,42 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         return "\n".join(parts)
 
+    def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
+        """Build a focused prompt for manifest-driven subtasks (SIP-0086 §6.1.5).
+
+        RC-6: When subtask_focus is present, this path is used exclusively.
+        The legacy monolithic prompt path is NOT used.
+        """
+        prd = inputs.get("prd", "")
+        focus = inputs["subtask_focus"]
+        description = inputs.get("subtask_description", "")
+        expected_files = inputs.get("expected_artifacts", [])
+        acceptance_criteria = inputs.get("acceptance_criteria", [])
+        artifact_contents = inputs.get("artifact_contents", {})
+
+        parts = [f"## Build Task: {focus}\n\n{description}\n"]
+
+        parts.append("### Expected Output Files\n")
+        parts.extend(f"- `{f}`\n" for f in expected_files)
+
+        if acceptance_criteria:
+            parts.append("\n### Acceptance Criteria\n")
+            parts.extend(f"- {c}\n" for c in acceptance_criteria)
+
+        parts.append(f"\n### Context\nPRD:\n{prd}\n")
+
+        if artifact_contents:
+            parts.append("\n### Prior Artifacts (already built — do not reproduce)\n")
+            for name, content in artifact_contents.items():
+                parts.append(f"**{name}:**\n```\n{content}\n```\n")
+
+        parts.append(
+            "\nProduce ONLY the files listed in Expected Output Files. "
+            "Use fenced code blocks with ```language:path/to/file``` format. "
+            "Do not reproduce files from prior artifacts."
+        )
+        return "".join(parts)
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -798,31 +834,48 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
 
-        # Resolve capability (fail fast on unknown dev_capability)
-        try:
-            capability = get_capability(self._resolved_config.get("dev_capability", "python_cli"))
-        except ValueError as exc:
-            return self._fail_result(start_time, inputs, str(exc))
+        # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
+        if inputs.get("subtask_focus") is not None:
+            user_prompt = self._build_focused_prompt(inputs)
+            rendered = None
+            try:
+                capability = get_capability(
+                    self._resolved_config.get("dev_capability", "python_cli")
+                )
+            except ValueError as exc:
+                return self._fail_result(start_time, inputs, str(exc))
+        else:
+            # Legacy monolithic prompt path (unchanged)
 
-        # Resolve plan artifacts with vault fallback (D3)
-        impl_plan = await self._resolve_with_vault_fallback(
-            inputs,
-            "implementation_plan",
-        )
-        strategy = await self._resolve_with_vault_fallback(inputs, "strategy_analysis")
+            # Resolve capability (fail fast on unknown dev_capability)
+            try:
+                capability = get_capability(
+                    self._resolved_config.get("dev_capability", "python_cli")
+                )
+            except ValueError as exc:
+                return self._fail_result(start_time, inputs, str(exc))
 
-        # Check required artifacts (fail only when vault was available but empty)
-        if impl_plan is None and inputs.get("artifact_vault") is not None:
-            return self._fail_result(start_time, inputs, "Required plan artifacts not available")
+            # Resolve plan artifacts with vault fallback (D3)
+            impl_plan = await self._resolve_with_vault_fallback(
+                inputs,
+                "implementation_plan",
+            )
+            strategy = await self._resolve_with_vault_fallback(inputs, "strategy_analysis")
 
-        rendered, user_prompt = await self._build_dev_prompt(
-            context,
-            prd,
-            prior_outputs,
-            capability,
-            impl_plan,
-            strategy,
-        )
+            # Check required artifacts (fail only when vault was available but empty)
+            if impl_plan is None and inputs.get("artifact_vault") is not None:
+                return self._fail_result(
+                    start_time, inputs, "Required plan artifacts not available"
+                )
+
+            rendered, user_prompt = await self._build_dev_prompt(
+                context,
+                prd,
+                prior_outputs,
+                capability,
+                impl_plan,
+                strategy,
+            )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
@@ -1217,6 +1270,42 @@ class QATestHandler(_CycleTaskHandler):
         }
         return test_result, report_artifact
 
+    def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
+        """Build a focused prompt for manifest-driven QA subtasks (SIP-0086).
+
+        RC-6: When subtask_focus is present, this path is used exclusively.
+        """
+        prd = inputs.get("prd", "")
+        focus = inputs["subtask_focus"]
+        description = inputs.get("subtask_description", "")
+        expected_files = inputs.get("expected_artifacts", [])
+        acceptance_criteria = inputs.get("acceptance_criteria", [])
+        artifact_contents = inputs.get("artifact_contents", {})
+
+        parts = [f"## QA Task: {focus}\n\n{description}\n"]
+
+        parts.append("### Expected Output Files\n")
+        parts.extend(f"- `{f}`\n" for f in expected_files)
+
+        if acceptance_criteria:
+            parts.append("\n### Acceptance Criteria\n")
+            parts.extend(f"- {c}\n" for c in acceptance_criteria)
+
+        parts.append(f"\n### Context\nPRD:\n{prd}\n")
+
+        if artifact_contents:
+            parts.append("\n### Source Artifacts to Test\n")
+            for name, content in artifact_contents.items():
+                lang = self._fence_lang(name)
+                parts.append(f"**{name}:**\n```{lang}\n{content}\n```\n")
+
+        parts.append(
+            "\nProduce ONLY the files listed in Expected Output Files. "
+            "Use fenced code blocks with ```language:path/to/file``` format. "
+            "Do not reproduce source artifacts."
+        )
+        return "".join(parts)
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -1237,23 +1326,33 @@ class QATestHandler(_CycleTaskHandler):
         except ValueError as exc:
             return self._fail_result(start_time, inputs, str(exc))
 
-        # Resolve plan artifacts with vault fallback (D3)
-        val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
-        sources = self._get_source_artifacts(inputs)
+        # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
+        if inputs.get("subtask_focus") is not None:
+            user_prompt = self._build_focused_prompt(inputs)
+            rendered = None
+            sources = self._get_source_artifacts(inputs)
+        else:
+            # Legacy monolithic prompt path (unchanged)
 
-        # Check required artifacts (fail only when vault was available but empty)
-        if val_plan is None and inputs.get("artifact_vault") is not None:
-            return self._fail_result(start_time, inputs, "Required plan artifacts not available")
+            # Resolve plan artifacts with vault fallback (D3)
+            val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
+            sources = self._get_source_artifacts(inputs)
 
-        rendered, user_prompt = await self._build_qa_prompt(
-            context,
-            prd,
-            prior_outputs,
-            capability,
-            val_plan,
-            sources,
-            capability_name,
-        )
+            # Check required artifacts (fail only when vault was available but empty)
+            if val_plan is None and inputs.get("artifact_vault") is not None:
+                return self._fail_result(
+                    start_time, inputs, "Required plan artifacts not available"
+                )
+
+            rendered, user_prompt = await self._build_qa_prompt(
+                context,
+                prd,
+                prior_outputs,
+                capability,
+                val_plan,
+                sources,
+                capability_name,
+            )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
