@@ -7,6 +7,8 @@ defaults:
     gates: []
   expected_artifact_types:
     - test_report
+  build_manifest: false
+  output_validation: false
   execution_overrides: {}
   experiment_context:
     selftest: true

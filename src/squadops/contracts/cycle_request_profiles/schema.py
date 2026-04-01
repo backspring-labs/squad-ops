@@ -35,6 +35,10 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "build_manifest",
     "max_build_subtasks",
     "min_build_subtasks",
+    "output_validation",
+    "max_self_eval_passes",
+    "min_artifact_count",
+    "stub_threshold_bytes",
 }
 
 _ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS

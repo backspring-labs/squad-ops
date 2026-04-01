@@ -17,5 +17,9 @@ defaults:
   build_tasks:
     - development.develop
     - qa.test
+  build_manifest: true
+  output_validation: true
+  max_self_eval_passes: 1
+  max_build_subtasks: 12
   experiment_context: {}
   notes: "Plan-then-build cycle"
