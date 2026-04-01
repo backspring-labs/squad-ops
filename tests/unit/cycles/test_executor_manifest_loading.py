@@ -63,7 +63,9 @@ class _FakeSourceArtifactRef:
     artifact_id: str = "art_src"
     filename: str = "backend/models.py"
     artifact_type: str = "source"
-    metadata: dict = field(default_factory=lambda: {"producing_task_type": "development.develop"})
+    metadata: dict = field(
+        default_factory=lambda: {"producing_task_type": "development.develop"}
+    )
 
 
 @dataclass
@@ -71,361 +73,125 @@ class _FakeDocArtifactRef:
     artifact_id: str = "art_doc"
     filename: str = "strategy_analysis.md"
     artifact_type: str = "document"
-    metadata: dict = field(default_factory=lambda: {"producing_task_type": "strategy.analyze_prd"})
+    metadata: dict = field(
+        default_factory=lambda: {"producing_task_type": "strategy.analyze_prd"}
+    )
 
 
 # ---------------------------------------------------------------------------
-# Phase 3b: _maybe_rematerialize_from_manifest
+# Phase 3b: _load_manifest_for_run
 # ---------------------------------------------------------------------------
 
 
-class TestMaybeRematerializeFromManifest:
+class TestLoadManifestForRun:
     def _make_executor(self) -> DistributedFlowExecutor:
         executor = DistributedFlowExecutor.__new__(DistributedFlowExecutor)
         executor._artifact_vault = MagicMock()
         executor._artifact_vault.retrieve = AsyncMock()
-        executor._cycle_registry = MagicMock()
         return executor
 
-    def _make_plan_stub(self, n: int = 7) -> list:
-        """Create a stub plan list with n items."""
-        return [MagicMock(task_id=f"task_{i}") for i in range(n)]
+    def _make_cycle(self, **overrides) -> MagicMock:
+        cycle = MagicMock()
+        cycle.applied_defaults = {"build_manifest": True}
+        cycle.execution_overrides = {}
+        for k, v in overrides.items():
+            setattr(cycle, k, v)
+        return cycle
 
-    def _make_profile(self) -> MagicMock:
-        from squadops.cycles.models import AgentProfileEntry
+    def _make_run(self) -> MagicMock:
+        run = MagicMock()
+        run.run_id = "run_abcdef123456"
+        return run
 
-        profile = MagicMock()
-        profile.profile_id = "full-squad"
-        profile.agents = [
-            AgentProfileEntry(agent_id="neo", role="dev", model="test", enabled=True),
-            AgentProfileEntry(agent_id="eve", role="qa", model="test", enabled=True),
-            AgentProfileEntry(agent_id="max", role="lead", model="test", enabled=True),
-            AgentProfileEntry(agent_id="nat", role="strat", model="test", enabled=True),
-            AgentProfileEntry(agent_id="data", role="data", model="test", enabled=True),
-        ]
-        return profile
-
-    async def test_no_manifest_returns_original_plan(self):
+    async def test_no_plan_refs_returns_none(self):
         executor = self._make_executor()
-        plan = self._make_plan_stub()
+        cycle = self._make_cycle(execution_overrides={})
 
-        # No manifest in stored artifacts
-        result = await executor._maybe_rematerialize_from_manifest(
-            plan=plan,
-            task_idx=4,
-            stored_artifacts=[],
-            cycle=MagicMock(),
-            run=MagicMock(),
-            profile=self._make_profile(),
+        result = await executor._load_manifest_for_run(cycle, self._make_run())
+
+        assert result is None
+
+    async def test_build_manifest_disabled_returns_none(self):
+        executor = self._make_executor()
+        cycle = self._make_cycle(
+            applied_defaults={"build_manifest": False},
+            execution_overrides={"plan_artifact_refs": ["art_manifest"]},
         )
 
-        assert result is plan  # Same object, unchanged
+        result = await executor._load_manifest_for_run(cycle, self._make_run())
 
-    async def test_manifest_found_replaces_build_steps(self):
+        assert result is None
+
+    async def test_manifest_found_in_plan_refs(self):
         executor = self._make_executor()
-        plan = self._make_plan_stub(7)  # 5 planning + 2 static build
-
-        # Manifest in stored artifacts
         manifest_ref = _FakeArtifactRef()
-        stored = [("art_manifest", manifest_ref)]
         executor._artifact_vault.retrieve.return_value = (
             manifest_ref,
             MANIFEST_YAML.encode(),
         )
-
-        from datetime import datetime, timezone
-
-        from squadops.cycles.models import (
-            AgentProfileEntry,
-            Cycle,
-            Run,
-            SquadProfile,
-            TaskFlowPolicy,
+        cycle = self._make_cycle(
+            execution_overrides={"plan_artifact_refs": ["art_manifest"]},
         )
 
-        cycle = Cycle(
-            cycle_id="cyc_test",
-            project_id="group_run",
-            created_at=datetime.now(timezone.utc),
-            created_by="system",
-            prd_ref="Build a group run app",
-            squad_profile_id="full-squad",
-            squad_profile_snapshot_ref="sha256:abc",
-            task_flow_policy=TaskFlowPolicy(mode="sequential"),
-            build_strategy="fresh",
-            applied_defaults={"plan_tasks": True, "build_tasks": True},
-            execution_overrides={},
-        )
-        run = Run(
-            run_id="run_abcdef123456",
-            cycle_id="cyc_test",
-            run_number=1,
-            status="running",
-            initiated_by="api",
-            resolved_config_hash="hash123",
-        )
-        profile = SquadProfile(
-            profile_id="full-squad",
-            name="Full Squad",
-            description="Test",
-            version=1,
-            agents=[
-                AgentProfileEntry(
-                    agent_id="neo", role="dev", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="eve", role="qa", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="max", role="lead", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="nat", role="strat", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="data", role="data", model="test", enabled=True
-                ),
-            ],
-            created_at=datetime.now(timezone.utc),
-        )
+        result = await executor._load_manifest_for_run(cycle, self._make_run())
 
-        # Gate fires after task_idx=4 (governance.review, the 5th planning task)
-        result = await executor._maybe_rematerialize_from_manifest(
-            plan=plan,
-            task_idx=4,
-            stored_artifacts=stored,
-            cycle=cycle,
-            run=run,
-            profile=profile,
-        )
+        assert result is not None
+        assert len(result.tasks) == 3
+        assert result.tasks[0].focus == "Backend models"
 
-        # Should have 5 original planning stubs + 3 manifest-derived envelopes
-        assert len(result) == 8
-        # First 5 are the original plan stubs
-        assert result[:5] == plan[:5]
-        # Last 3 are manifest-derived envelopes with deterministic IDs
-        assert result[5].task_id == "task-run_abcdef12-m000-development.develop"
-        assert result[6].task_id == "task-run_abcdef12-m001-development.develop"
-        assert result[7].task_id == "task-run_abcdef12-m002-qa.test"
-        # Verify subtask_focus present on manifest envelopes
-        assert result[5].inputs["subtask_focus"] == "Backend models"
-
-    async def test_manifest_parse_failure_returns_original(self):
+    async def test_non_manifest_refs_skipped(self):
         executor = self._make_executor()
-        plan = self._make_plan_stub()
+        doc_ref = _FakeDocArtifactRef()
+        executor._artifact_vault.retrieve.return_value = (
+            doc_ref,
+            b"# Strategy\nSome content",
+        )
+        cycle = self._make_cycle(
+            execution_overrides={"plan_artifact_refs": ["art_doc"]},
+        )
 
+        result = await executor._load_manifest_for_run(cycle, self._make_run())
+
+        assert result is None
+
+    async def test_vault_failure_returns_none(self):
+        executor = self._make_executor()
+        executor._artifact_vault.retrieve.side_effect = Exception("vault down")
+        cycle = self._make_cycle(
+            execution_overrides={"plan_artifact_refs": ["art_manifest"]},
+        )
+
+        result = await executor._load_manifest_for_run(cycle, self._make_run())
+
+        assert result is None
+
+    async def test_malformed_yaml_returns_none(self):
+        executor = self._make_executor()
         manifest_ref = _FakeArtifactRef()
-        stored = [("art_manifest", manifest_ref)]
         executor._artifact_vault.retrieve.return_value = (
             manifest_ref,
             b"{{invalid yaml",
         )
-
-        result = await executor._maybe_rematerialize_from_manifest(
-            plan=plan,
-            task_idx=4,
-            stored_artifacts=stored,
-            cycle=MagicMock(),
-            run=MagicMock(),
-            profile=MagicMock(),
+        cycle = self._make_cycle(
+            execution_overrides={"plan_artifact_refs": ["art_manifest"]},
         )
 
-        assert result is plan
+        result = await executor._load_manifest_for_run(cycle, self._make_run())
 
-    async def test_vault_failure_returns_original(self):
-        executor = self._make_executor()
-        plan = self._make_plan_stub()
-
-        manifest_ref = _FakeArtifactRef()
-        stored = [("art_manifest", manifest_ref)]
-        executor._artifact_vault.retrieve.side_effect = Exception("vault down")
-
-        result = await executor._maybe_rematerialize_from_manifest(
-            plan=plan,
-            task_idx=4,
-            stored_artifacts=stored,
-            cycle=MagicMock(),
-            run=MagicMock(),
-            profile=MagicMock(),
-        )
-
-        assert result is plan
-
-    async def test_planning_tasks_preserved_not_recreated(self):
-        """After rematerialization, planning entries are the exact same objects."""
-        executor = self._make_executor()
-        plan = self._make_plan_stub(7)
-
-        manifest_ref = _FakeArtifactRef()
-        stored = [("art_manifest", manifest_ref)]
-        executor._artifact_vault.retrieve.return_value = (
-            manifest_ref,
-            MANIFEST_YAML.encode(),
-        )
-
-        from datetime import datetime, timezone
-
-        from squadops.cycles.models import (
-            AgentProfileEntry,
-            Cycle,
-            Run,
-            SquadProfile,
-            TaskFlowPolicy,
-        )
-
-        cycle = Cycle(
-            cycle_id="cyc_test",
-            project_id="group_run",
-            created_at=datetime.now(timezone.utc),
-            created_by="system",
-            prd_ref="Build a group run app",
-            squad_profile_id="full-squad",
-            squad_profile_snapshot_ref="sha256:abc",
-            task_flow_policy=TaskFlowPolicy(mode="sequential"),
-            build_strategy="fresh",
-            applied_defaults={"plan_tasks": True, "build_tasks": True},
-            execution_overrides={},
-        )
-        run = Run(
-            run_id="run_abcdef123456",
-            cycle_id="cyc_test",
-            run_number=1,
-            status="running",
-            initiated_by="api",
-            resolved_config_hash="hash123",
-        )
-        profile = SquadProfile(
-            profile_id="full-squad",
-            name="Full Squad",
-            description="Test",
-            version=1,
-            agents=[
-                AgentProfileEntry(
-                    agent_id="neo", role="dev", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="eve", role="qa", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="max", role="lead", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="nat", role="strat", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="data", role="data", model="test", enabled=True
-                ),
-            ],
-            created_at=datetime.now(timezone.utc),
-        )
-
-        result = await executor._maybe_rematerialize_from_manifest(
-            plan=plan, task_idx=4, stored_artifacts=stored,
-            cycle=cycle, run=run, profile=profile,
-        )
-
-        # First 5 entries are the exact same stub objects (not recreated)
-        for i in range(5):
-            assert result[i] is plan[i]
-
-    async def test_manifest_task_ids_are_deterministic_across_calls(self):
-        """RC-2: Manifest-derived IDs are stable across rematerialization calls."""
-        executor = self._make_executor()
-
-        manifest_ref = _FakeArtifactRef()
-        stored = [("art_manifest", manifest_ref)]
-        executor._artifact_vault.retrieve.return_value = (
-            manifest_ref,
-            MANIFEST_YAML.encode(),
-        )
-
-        from datetime import datetime, timezone
-
-        from squadops.cycles.models import (
-            AgentProfileEntry,
-            Cycle,
-            Run,
-            SquadProfile,
-            TaskFlowPolicy,
-        )
-
-        cycle = Cycle(
-            cycle_id="cyc_test",
-            project_id="group_run",
-            created_at=datetime.now(timezone.utc),
-            created_by="system",
-            prd_ref="Build a group run app",
-            squad_profile_id="full-squad",
-            squad_profile_snapshot_ref="sha256:abc",
-            task_flow_policy=TaskFlowPolicy(mode="sequential"),
-            build_strategy="fresh",
-            applied_defaults={"plan_tasks": True, "build_tasks": True},
-            execution_overrides={},
-        )
-        run = Run(
-            run_id="run_abcdef123456",
-            cycle_id="cyc_test",
-            run_number=1,
-            status="running",
-            initiated_by="api",
-            resolved_config_hash="hash123",
-        )
-        profile = SquadProfile(
-            profile_id="full-squad",
-            name="Full Squad",
-            description="Test",
-            version=1,
-            agents=[
-                AgentProfileEntry(
-                    agent_id="neo", role="dev", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="eve", role="qa", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="max", role="lead", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="nat", role="strat", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="data", role="data", model="test", enabled=True
-                ),
-            ],
-            created_at=datetime.now(timezone.utc),
-        )
-
-        plan1 = self._make_plan_stub(7)
-        result1 = await executor._maybe_rematerialize_from_manifest(
-            plan=plan1, task_idx=4, stored_artifacts=stored,
-            cycle=cycle, run=run, profile=profile,
-        )
-
-        plan2 = self._make_plan_stub(7)
-        result2 = await executor._maybe_rematerialize_from_manifest(
-            plan=plan2, task_idx=4, stored_artifacts=stored,
-            cycle=cycle, run=run, profile=profile,
-        )
-
-        # Manifest-derived task IDs must be identical across both calls
-        ids1 = [e.task_id for e in result1[5:]]
-        ids2 = [e.task_id for e in result2[5:]]
-        assert ids1 == ids2
+        assert result is None
 
     def test_rc1_manifest_is_frozen_dataclass(self):
         """RC-1: BuildTaskManifest is a frozen dataclass — field reassignment blocked."""
-        from squadops.cycles.build_manifest import BuildTaskManifest, ManifestTask
+        from squadops.cycles.build_manifest import BuildTaskManifest
 
         manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
 
-        # Cannot reassign top-level fields
         with pytest.raises(AttributeError):
             manifest.version = 99  # type: ignore[misc]
 
         with pytest.raises(AttributeError):
             manifest.tasks = []  # type: ignore[misc]
 
-        # ManifestTask is also frozen
         task = manifest.tasks[0]
         with pytest.raises(AttributeError):
             task.focus = "changed"  # type: ignore[misc]
@@ -471,7 +237,6 @@ class TestResolveArtifactContentsChaining:
     async def test_dev_task_receives_prior_dev_artifacts(self):
         executor = self._make_executor()
 
-        # Prior artifacts: one from strategy, one from earlier dev.develop
         strategy_ref = _FakeDocArtifactRef()
         dev_ref = _FakeSourceArtifactRef()
         stored = [

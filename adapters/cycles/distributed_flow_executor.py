@@ -165,7 +165,14 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     },
                 )
 
-            plan = generate_task_plan(cycle, run, profile)
+            # SIP-0086: Load manifest for implementation workloads.
+            # The manifest is produced by the planning workload and forwarded
+            # via plan_artifact_refs. Loading it here (not mid-loop) keeps the
+            # executor deterministic — the plan is fully materialized before
+            # task dispatch begins.
+            manifest = await self._load_manifest_for_run(cycle, run)
+
+            plan = generate_task_plan(cycle, run, profile, manifest=manifest)
 
             # Build-only validation (D6): require plan_artifact_refs
             include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
@@ -886,95 +893,60 @@ class DistributedFlowExecutor(FlowExecutionPort):
             if self._is_gate_boundary(cycle, envelope.task_type):
                 await self._handle_gate(run_id, cycle, envelope.task_type)
 
-                # SIP-0086: After gate approval, load manifest and rematerialize
-                # the build-phase segment. Only the build portion is replaced;
-                # completed planning tasks are preserved via skip_task_ids.
-                plan = await self._maybe_rematerialize_from_manifest(
-                    plan=plan,
-                    task_idx=task_idx,
-                    stored_artifacts=stored_artifacts,
-                    cycle=cycle,
-                    run=await self._cycle_registry.get_run(run_id),
-                    profile=profile,
-                )
-
     # ------------------------------------------------------------------
-    # SIP-0086: Manifest rematerialization after gate approval
+    # SIP-0086: Manifest loading for implementation workloads
     # ------------------------------------------------------------------
 
-    async def _maybe_rematerialize_from_manifest(
+    async def _load_manifest_for_run(
         self,
-        plan: list,
-        task_idx: int,
-        stored_artifacts: list[tuple[str, Any]],
         cycle: Any,
         run: Any,
-        profile: Any,
-    ) -> list:
-        """Load build task manifest from artifacts and rematerialize the plan.
+    ) -> Any:
+        """Load build task manifest for an implementation workload run.
 
-        After gate approval, checks stored artifacts for a control_manifest.
-        If found, replaces the remaining (not-yet-executed) static build steps
-        with manifest-derived envelopes. Planning tasks already executed are
-        preserved. Returns the updated plan list.
+        Searches forwarded plan_artifact_refs for a control_manifest artifact.
+        Called before generate_task_plan() so the plan is fully materialized
+        before task dispatch begins — no mid-loop mutation.
 
-        If no manifest is found or parsing fails, returns the original plan
-        unchanged (RC-4 graceful fallback).
+        Returns BuildTaskManifest or None (RC-4 graceful fallback).
         """
         from squadops.cycles.build_manifest import BuildTaskManifest
-        from squadops.cycles.task_plan import generate_task_plan
 
-        # Search for manifest in stored artifacts
-        manifest = None
-        for _art_id, ref in stored_artifacts:
-            if ref.filename == "build_task_manifest.yaml" or (
-                hasattr(ref, "artifact_type")
-                and ref.artifact_type == "control_manifest"
-            ):
-                try:
-                    _ref, content_bytes = await self._artifact_vault.retrieve(_art_id)
+        # Only load manifest when build_manifest is enabled
+        if not cycle.applied_defaults.get("build_manifest", False):
+            return None
+
+        # Search forwarded planning artifacts for manifest
+        plan_refs = cycle.execution_overrides.get("plan_artifact_refs", [])
+        if not plan_refs:
+            return None
+
+        for ref_id in plan_refs:
+            try:
+                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
+                if ref.filename == "build_task_manifest.yaml" or (
+                    hasattr(ref, "artifact_type")
+                    and ref.artifact_type == "control_manifest"
+                ):
                     yaml_content = content_bytes.decode(errors="replace")
                     manifest = BuildTaskManifest.from_yaml(yaml_content)
-                except Exception:
-                    logger.warning(
-                        "Failed to load build task manifest from artifact %s, "
-                        "falling back to static task steps",
-                        _art_id,
-                        exc_info=True,
+                    logger.info(
+                        "Loaded build task manifest with %d subtasks "
+                        "for run %s",
+                        len(manifest.tasks),
+                        run.run_id,
                     )
-                    return plan
-                break
+                    return manifest
+            except Exception:
+                logger.warning(
+                    "Failed to load manifest from artifact %s, "
+                    "falling back to static task steps",
+                    ref_id,
+                    exc_info=True,
+                )
+                return None
 
-        if manifest is None:
-            return plan
-
-        logger.info(
-            "Loaded build task manifest with %d subtasks, "
-            "rematerializing build-phase envelopes",
-            len(manifest.tasks),
-        )
-
-        # Rematerialize: generate full plan with manifest, then extract
-        # only the manifest-derived build envelopes (those with subtask_focus).
-        # Keep already-processed entries (0..task_idx), discard remaining
-        # static build steps, append manifest-derived envelopes.
-        try:
-            new_plan = generate_task_plan(cycle, run, profile, manifest=manifest)
-        except Exception:
-            logger.warning(
-                "Failed to rematerialize plan from manifest, "
-                "falling back to static task steps",
-                exc_info=True,
-            )
-            return plan
-
-        # Extract manifest-derived envelopes (have subtask_focus in inputs)
-        manifest_envelopes = [
-            e for e in new_plan if e.inputs.get("subtask_focus") is not None
-        ]
-
-        # Keep already-processed plan entries, replace everything after
-        return plan[: task_idx + 1] + manifest_envelopes
+        return None
 
     # ------------------------------------------------------------------
     # Extracted helpers for _execute_sequential
