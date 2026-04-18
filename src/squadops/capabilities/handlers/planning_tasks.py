@@ -458,10 +458,22 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             else ""
         )
 
+        # Constrain task_type to the known build task_types. Without this,
+        # models invent task_types like 'quality_assurance.validate' instead
+        # of the canonical 'qa.test'.
+        from squadops.cycles.build_manifest import _KNOWN_BUILD_TASK_TYPES
+
+        allowed_task_types = sorted(_KNOWN_BUILD_TASK_TYPES)
+        task_types_section = (
+            f"Available task_types (use ONLY these; do NOT invent new ones): "
+            f"{', '.join(allowed_task_types)}\n\n"
+        )
+
         manifest_prompt = (
             "Based on the following PRD and planning artifact, produce a build task "
             "manifest that decomposes the upcoming build into focused subtasks.\n\n"
             f"{roles_section}"
+            f"{task_types_section}"
             f"## PRD\n{prd}\n\n"
             f"## Planning Artifact\n{planning_content}\n\n"
             "Each subtask should:\n"
