@@ -58,12 +58,20 @@ def mock_cycle_registry():
 
 
 @pytest.fixture
-def client(mock_cycle_registry, monkeypatch):
+def mock_artifact_vault():
+    mock = AsyncMock()
+    mock.list_artifacts.return_value = []
+    return mock
+
+
+@pytest.fixture
+def client(mock_cycle_registry, mock_artifact_vault, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     import squadops.api.runtime.deps as deps_mod
 
     monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
+    monkeypatch.setattr(deps_mod, "_artifact_vault", mock_artifact_vault)
     return TestClient(app)
 
 
@@ -178,3 +186,110 @@ class TestGateDecision:
         )
         assert resp.status_code == 409
         assert resp.json()["detail"]["error"]["code"] == "RUN_TERMINAL"
+
+    def test_approve_promotes_working_artifacts(
+        self, client, mock_cycle_registry, mock_artifact_vault
+    ):
+        """SIP-0086: approved gate promotes all working artifacts for the run."""
+        from squadops.cycles.models import ArtifactRef
+
+        working_doc = ArtifactRef(
+            artifact_id="art_doc",
+            project_id="hello_squad",
+            artifact_type="document",
+            filename="plan.md",
+            content_hash="h1",
+            size_bytes=10,
+            media_type="text/markdown",
+            created_at=NOW,
+            cycle_id="cyc_001",
+            run_id="run_001",
+            promotion_status="working",
+        )
+        working_manifest = ArtifactRef(
+            artifact_id="art_manifest",
+            project_id="hello_squad",
+            artifact_type="control_manifest",
+            filename="build_task_manifest.yaml",
+            content_hash="h2",
+            size_bytes=20,
+            media_type="text/yaml",
+            created_at=NOW,
+            cycle_id="cyc_001",
+            run_id="run_001",
+            promotion_status="working",
+        )
+        already = ArtifactRef(
+            artifact_id="art_already",
+            project_id="hello_squad",
+            artifact_type="document",
+            filename="x.md",
+            content_hash="h3",
+            size_bytes=5,
+            media_type="text/markdown",
+            created_at=NOW,
+            cycle_id="cyc_001",
+            run_id="run_001",
+            promotion_status="promoted",
+        )
+        mock_artifact_vault.list_artifacts.return_value = [
+            working_doc,
+            working_manifest,
+            already,
+        ]
+        updated_run = Run(
+            run_id="run_001",
+            cycle_id="cyc_001",
+            run_number=1,
+            status="paused",
+            initiated_by="api",
+            resolved_config_hash="hash123",
+            gate_decisions=(
+                GateDecision(
+                    gate_name="progress_plan_review",
+                    decision="approved",
+                    decided_by="system",
+                    decided_at=NOW,
+                ),
+            ),
+        )
+        mock_cycle_registry.record_gate_decision.return_value = updated_run
+
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/gates/progress_plan_review",
+            json={"decision": "approved"},
+        )
+
+        assert resp.status_code == 200
+        promoted_ids = [
+            call.args[0] for call in mock_artifact_vault.promote_artifact.await_args_list
+        ]
+        assert promoted_ids == ["art_doc", "art_manifest"]
+
+    def test_reject_does_not_promote(self, client, mock_cycle_registry, mock_artifact_vault):
+        """Only approved decisions trigger promotion."""
+        updated_run = Run(
+            run_id="run_001",
+            cycle_id="cyc_001",
+            run_number=1,
+            status="paused",
+            initiated_by="api",
+            resolved_config_hash="hash123",
+            gate_decisions=(
+                GateDecision(
+                    gate_name="progress_plan_review",
+                    decision="rejected",
+                    decided_by="system",
+                    decided_at=NOW,
+                ),
+            ),
+        )
+        mock_cycle_registry.record_gate_decision.return_value = updated_run
+
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/gates/progress_plan_review",
+            json={"decision": "rejected"},
+        )
+
+        assert resp.status_code == 200
+        mock_artifact_vault.promote_artifact.assert_not_awaited()
