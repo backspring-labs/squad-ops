@@ -644,6 +644,168 @@ class TestGovernanceAssessReadinessValidation:
 
 
 # ---------------------------------------------------------------------------
+# 10b. _produce_manifest retry-on-error (SIP-0086 robustness)
+# ---------------------------------------------------------------------------
+
+
+_VALID_MANIFEST_YAML = """\
+```yaml:build_task_manifest.yaml
+version: 1
+project_id: test_proj
+cycle_id: test_cyc
+prd_hash: abc
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend"
+    description: |
+      Build backend
+    expected_artifacts:
+      - "backend/app.py"
+    acceptance_criteria:
+      - "Backend runs"
+    depends_on: []
+  - task_index: 1
+    task_type: development.develop
+    role: dev
+    focus: "Frontend"
+    description: |
+      Build frontend
+    expected_artifacts:
+      - "frontend/app.js"
+    acceptance_criteria:
+      - "Frontend renders"
+    depends_on: [0]
+  - task_index: 2
+    task_type: qa.test
+    role: qa
+    focus: "Tests"
+    description: |
+      Add tests
+    expected_artifacts:
+      - "tests/test_app.py"
+    acceptance_criteria:
+      - "Tests pass"
+    depends_on: [0, 1]
+summary:
+  total_dev_tasks: 2
+  total_qa_tasks: 1
+  total_tasks: 3
+  estimated_layers: [backend, frontend, test]
+```
+"""
+
+_MALFORMED_MANIFEST_YAML = """\
+```yaml:build_task_manifest.yaml
+version: 1
+project_id: test_proj
+cycle_id: test_cyc
+prd_hash: abc
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend"
+    description: |
+      Build backend
+    expected_artifacts:
+      - "backend/app.py" (the main app file)
+      - "backend/models.py"
+    depends_on: []
+summary:
+  total_dev_tasks: 1
+  total_qa_tasks: 0
+  total_tasks: 1
+```
+"""
+
+
+class TestProduceManifestRetry:
+    """SIP-0086 robustness: retry LLM once with error feedback before fallback."""
+
+    async def _call_produce(self, ctx, resolved_config: dict | None = None) -> dict | None:
+        h = GovernanceAssessReadinessHandler()
+        return await h._produce_manifest(
+            ctx,
+            inputs={"prd": "Build a widget"},
+            planning_content="plan",
+            resolved_config=resolved_config or {},
+        )
+
+    async def test_valid_manifest_on_first_attempt_no_retry(self):
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        result = await self._call_produce(ctx)
+
+        assert result is not None
+        assert result["name"] == "build_task_manifest.yaml"
+        assert result["type"] == "control_manifest"
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+
+    async def test_malformed_yaml_retries_then_succeeds(self):
+        """First call returns bad YAML, second returns valid — manifest is produced."""
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_MALFORMED_MANIFEST_YAML),
+            MagicMock(content=_VALID_MANIFEST_YAML),
+        ]
+        result = await self._call_produce(ctx)
+
+        assert result is not None
+        assert result["name"] == "build_task_manifest.yaml"
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 2
+
+    async def test_retry_prompt_includes_parse_error(self):
+        """Second LLM call must be given the specific error so it can correct."""
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_MALFORMED_MANIFEST_YAML),
+            MagicMock(content=_VALID_MANIFEST_YAML),
+        ]
+        await self._call_produce(ctx)
+
+        second_call_messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[1].args[0]
+        retry_user_msg = second_call_messages[-1].content
+        assert "failed validation" in retry_user_msg
+        assert "parenthetical" in retry_user_msg or "Quote every file path" in retry_user_msg
+
+    async def test_both_attempts_fail_returns_none(self):
+        """Two malformed responses → fall back to static steps (None)."""
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_MALFORMED_MANIFEST_YAML),
+            MagicMock(content=_MALFORMED_MANIFEST_YAML),
+        ]
+        result = await self._call_produce(ctx)
+
+        assert result is None
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 2
+
+    async def test_out_of_bounds_retries_with_specific_error(self):
+        """Manifest with too few subtasks triggers retry with bounds feedback."""
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_VALID_MANIFEST_YAML),  # has 3 tasks
+            MagicMock(content=_VALID_MANIFEST_YAML),
+        ]
+        # Set min to 5 so the 3-task manifest is out of bounds
+        await self._call_produce(ctx, resolved_config={"min_build_subtasks": 5})
+
+        second_call_messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[1].args[0]
+        retry_user_msg = second_call_messages[-1].content
+        assert "3 subtasks" in retry_user_msg
+        assert "5" in retry_user_msg  # min bound echoed
+
+    async def test_max_attempts_configurable(self):
+        """manifest_max_attempts=1 disables retry; first failure returns None."""
+        ctx = _make_context(_MALFORMED_MANIFEST_YAML)
+        result = await self._call_produce(ctx, resolved_config={"manifest_max_attempts": 1})
+
+        assert result is None
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+
+
+# ---------------------------------------------------------------------------
 # 11. D17 artifact content validation (Fix E)
 # ---------------------------------------------------------------------------
 

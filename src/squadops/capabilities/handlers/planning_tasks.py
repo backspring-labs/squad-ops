@@ -441,7 +441,6 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
         Separate from the planning artifact generation to keep prompts focused.
         Returns manifest artifact dict or None on graceful fallback (RC-4).
         """
-        import hashlib
 
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
         from squadops.cycles.build_manifest import BuildTaskManifest
@@ -477,13 +476,13 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             "  - task_index: 0\n"
             "    task_type: development.develop\n"
             "    role: dev\n"
-            "    focus: \"...\"\n"
+            '    focus: "..."\n'
             "    description: |\n"
             "      ...\n"
             "    expected_artifacts:\n"
-            "      - \"path/to/file\"\n"
+            '      - "path/to/file"\n'
             "    acceptance_criteria:\n"
-            "      - \"...\"\n"
+            '      - "..."\n'
             "    depends_on: []\n"
             "summary:\n"
             "  total_dev_tasks: N\n"
@@ -495,76 +494,102 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         chat_kwargs = self._build_chat_kwargs(inputs)
+        min_subtasks = resolved_config.get("min_build_subtasks", 3)
+        max_subtasks = resolved_config.get("max_build_subtasks", 15)
 
-        try:
-            response = await context.ports.llm.chat_stream_with_usage(
-                [
-                    ChatMessage(role="system", content=assembled.content),
-                    ChatMessage(role="user", content=manifest_prompt),
-                ],
-                **chat_kwargs,
-            )
-        except Exception as exc:
-            logger.warning(
-                "assess_readiness: manifest LLM call failed (%s), "
-                "falling back to static task steps",
-                exc,
-            )
-            return None
-
-        # Extract manifest from fenced YAML
-        extracted = extract_fenced_files(response.content)
-        manifest_files = [
-            f for f in extracted if f["filename"] == "build_task_manifest.yaml"
+        # Retry loop: small models occasionally produce malformed YAML or
+        # off-bounds manifests. Re-prompt with the specific error so the
+        # model can correct itself before falling back to static steps.
+        max_attempts = int(resolved_config.get("manifest_max_attempts", 2))
+        messages = [
+            ChatMessage(role="system", content=assembled.content),
+            ChatMessage(role="user", content=manifest_prompt),
         ]
 
-        if manifest_files:
-            yaml_content = manifest_files[0]["content"]
-        else:
-            # Fallback: search untagged ```yaml blocks
-            yaml_content = self._find_manifest_yaml(response.content)
-            if yaml_content is None:
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            except Exception as exc:
                 logger.warning(
-                    "assess_readiness: no manifest YAML found, "
+                    "assess_readiness: manifest LLM call failed on attempt %d/%d (%s)",
+                    attempt,
+                    max_attempts,
+                    exc,
+                )
+                if attempt >= max_attempts:
+                    return None
+                messages = messages[:2]  # reset and try once more from scratch
+                continue
+
+            # Extract manifest YAML — prefer filename-tagged fence
+            extracted = extract_fenced_files(response.content)
+            manifest_files = [f for f in extracted if f["filename"] == "build_task_manifest.yaml"]
+            if manifest_files:
+                yaml_content = manifest_files[0]["content"]
+            else:
+                yaml_content = self._find_manifest_yaml(response.content)
+
+            error_msg: str | None = None
+            manifest = None
+            if yaml_content is None:
+                error_msg = (
+                    "Your response did not contain a fenced YAML block tagged "
+                    "build_task_manifest.yaml. Reply with ONLY the fenced block."
+                )
+            else:
+                try:
+                    manifest = BuildTaskManifest.from_yaml(yaml_content)
+                except ValueError as exc:
+                    error_msg = (
+                        f"The previous manifest YAML failed validation: {exc}. "
+                        "Produce a corrected build_task_manifest.yaml. "
+                        "Quote every file path; do not put parenthetical comments "
+                        "after quoted strings on list items."
+                    )
+                else:
+                    n = len(manifest.tasks)
+                    if n < min_subtasks or n > max_subtasks:
+                        error_msg = (
+                            f"The previous manifest had {n} subtasks; bounds are "
+                            f"{min_subtasks}-{max_subtasks}. Produce a corrected "
+                            "build_task_manifest.yaml within bounds."
+                        )
+
+            if error_msg is None and manifest is not None:
+                logger.info(
+                    "assess_readiness: produced build task manifest with %d subtasks on attempt %d",
+                    len(manifest.tasks),
+                    attempt,
+                )
+                return {
+                    "name": "build_task_manifest.yaml",
+                    "content": yaml_content,
+                    "media_type": "text/yaml",
+                    "type": "control_manifest",
+                }
+
+            logger.warning(
+                "assess_readiness: manifest attempt %d/%d failed (%s)",
+                attempt,
+                max_attempts,
+                error_msg,
+            )
+            if attempt >= max_attempts:
+                logger.warning(
+                    "assess_readiness: exhausted %d manifest attempts, "
                     "falling back to static task steps",
+                    max_attempts,
                 )
                 return None
 
-        # Structural validation
-        try:
-            manifest = BuildTaskManifest.from_yaml(yaml_content)
-        except ValueError as exc:
-            logger.warning(
-                "assess_readiness: manifest validation failed (%s), "
-                "falling back to static task steps",
-                exc,
-            )
-            return None
+            # Append corrective feedback for the next attempt.
+            messages = [
+                *messages,
+                ChatMessage(role="assistant", content=response.content),
+                ChatMessage(role="user", content=error_msg),
+            ]
 
-        # Policy validation
-        min_subtasks = resolved_config.get("min_build_subtasks", 3)
-        max_subtasks = resolved_config.get("max_build_subtasks", 15)
-        if len(manifest.tasks) < min_subtasks or len(manifest.tasks) > max_subtasks:
-            logger.warning(
-                "assess_readiness: manifest has %d subtasks "
-                "(bounds: %d-%d), falling back to static task steps",
-                len(manifest.tasks),
-                min_subtasks,
-                max_subtasks,
-            )
-            return None
-
-        logger.info(
-            "assess_readiness: produced build task manifest with %d subtasks",
-            len(manifest.tasks),
-        )
-
-        return {
-            "name": "build_task_manifest.yaml",
-            "content": yaml_content,
-            "media_type": "text/yaml",
-            "type": "control_manifest",
-        }
+        return None
 
     @staticmethod
     def _find_manifest_yaml(content: str) -> str | None:
