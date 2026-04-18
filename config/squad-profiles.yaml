@@ -24,7 +24,7 @@ profiles:
 
   - profile_id: spark-squad-with-builder
     name: "Spark Squad with Builder"
-    description: "6 agents optimized for DGX Spark — 72b for dev/builder/strat, 7b for lead/qa/data"
+    description: "6 agents optimized for DGX Spark — 32b for lead/dev/strat, 7b for builder/qa/data"
     version: 1
     agents:
       - { agent_id: max, role: lead, model: "qwen2.5:32b", enabled: true }
