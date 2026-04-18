@@ -142,7 +142,9 @@ def cycle_to_response(cycle: Cycle, runs: list[Run]) -> CycleResponse:
     ws = cycle.applied_defaults.get("workload_sequence", [])
     progress = compute_workload_progress(ws, runs)
     workload_statuses = [e.status for e in progress] if progress else None
-    status = resolve_cycle_status(runs, cycle_cancelled=False, workload_statuses=workload_statuses)
+    status = resolve_cycle_status(
+        runs, cycle_cancelled=cycle.cancelled, workload_statuses=workload_statuses
+    )
     return CycleResponse(
         cycle_id=cycle.cycle_id,
         project_id=cycle.project_id,

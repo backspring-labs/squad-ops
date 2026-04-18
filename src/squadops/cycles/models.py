@@ -284,6 +284,10 @@ class Cycle:
 
     notes: str | None = None
 
+    # Operator cancellation flag. When True, derived status is CANCELLED
+    # regardless of run state.
+    cancelled: bool = False
+
 
 @dataclass(frozen=True)
 class Run:
