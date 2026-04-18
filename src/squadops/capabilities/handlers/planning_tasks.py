@@ -443,14 +443,25 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
         """
 
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-        from squadops.cycles.build_manifest import BuildTaskManifest
         from squadops.llm.models import ChatMessage
 
         prd = inputs.get("prd", "")
 
+        # Constrain role choices to what the active squad profile actually has.
+        # Without this, small models invent plausible-sounding roles like
+        # 'backend_dev' that fail profile validation at impl-time.
+        profile_roles = inputs.get("profile_roles") or []
+        roles_section = (
+            f"Available roles (use ONLY these; do NOT invent new ones): "
+            f"{', '.join(profile_roles)}\n\n"
+            if profile_roles
+            else ""
+        )
+
         manifest_prompt = (
             "Based on the following PRD and planning artifact, produce a build task "
             "manifest that decomposes the upcoming build into focused subtasks.\n\n"
+            f"{roles_section}"
             f"## PRD\n{prd}\n\n"
             f"## Planning Artifact\n{planning_content}\n\n"
             "Each subtask should:\n"
@@ -529,31 +540,9 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             else:
                 yaml_content = self._find_manifest_yaml(response.content)
 
-            error_msg: str | None = None
-            manifest = None
-            if yaml_content is None:
-                error_msg = (
-                    "Your response did not contain a fenced YAML block tagged "
-                    "build_task_manifest.yaml. Reply with ONLY the fenced block."
-                )
-            else:
-                try:
-                    manifest = BuildTaskManifest.from_yaml(yaml_content)
-                except ValueError as exc:
-                    error_msg = (
-                        f"The previous manifest YAML failed validation: {exc}. "
-                        "Produce a corrected build_task_manifest.yaml. "
-                        "Quote every file path; do not put parenthetical comments "
-                        "after quoted strings on list items."
-                    )
-                else:
-                    n = len(manifest.tasks)
-                    if n < min_subtasks or n > max_subtasks:
-                        error_msg = (
-                            f"The previous manifest had {n} subtasks; bounds are "
-                            f"{min_subtasks}-{max_subtasks}. Produce a corrected "
-                            "build_task_manifest.yaml within bounds."
-                        )
+            manifest, error_msg = self._validate_manifest_candidate(
+                yaml_content, min_subtasks, max_subtasks, profile_roles
+            )
 
             if error_msg is None and manifest is not None:
                 logger.info(
@@ -590,6 +579,58 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             ]
 
         return None
+
+    @staticmethod
+    def _validate_manifest_candidate(
+        yaml_content: str | None,
+        min_subtasks: int,
+        max_subtasks: int,
+        profile_roles: list[str],
+    ) -> tuple[Any | None, str | None]:
+        """Validate a candidate manifest YAML. Returns (manifest, error_msg).
+
+        error_msg is None iff the manifest is valid; in that case manifest is
+        the parsed BuildTaskManifest. The error_msg is the corrective feedback
+        appended to the next LLM attempt.
+        """
+        from squadops.cycles.build_manifest import BuildTaskManifest
+
+        if yaml_content is None:
+            return None, (
+                "Your response did not contain a fenced YAML block tagged "
+                "build_task_manifest.yaml. Reply with ONLY the fenced block."
+            )
+
+        try:
+            manifest = BuildTaskManifest.from_yaml(yaml_content)
+        except ValueError as exc:
+            return None, (
+                f"The previous manifest YAML failed validation: {exc}. "
+                "Produce a corrected build_task_manifest.yaml. "
+                "Quote every file path; do not put parenthetical comments "
+                "after quoted strings on list items."
+            )
+
+        n = len(manifest.tasks)
+        if n < min_subtasks or n > max_subtasks:
+            return None, (
+                f"The previous manifest had {n} subtasks; bounds are "
+                f"{min_subtasks}-{max_subtasks}. Produce a corrected "
+                "build_task_manifest.yaml within bounds."
+            )
+
+        if profile_roles:
+            allowed = set(profile_roles)
+            bad = sorted({t.role for t in manifest.tasks if t.role not in allowed})
+            if bad:
+                return None, (
+                    f"The previous manifest used role(s) not in the "
+                    f"squad profile: {', '.join(bad)}. "
+                    f"Use ONLY these roles: {', '.join(profile_roles)}. "
+                    "Produce a corrected build_task_manifest.yaml."
+                )
+
+        return manifest, None
 
     @staticmethod
     def _find_manifest_yaml(content: str) -> str | None:

@@ -278,9 +278,7 @@ def generate_task_plan(
         # Determine task ID
         if manifest_task is not None:
             # SIP-0086 RC-2: deterministic manifest namespace
-            task_id = (
-                f"task-{run.run_id[:12]}-m{manifest_task.task_index:03d}-{task_type}"
-            )
+            task_id = f"task-{run.run_id[:12]}-m{manifest_task.task_index:03d}-{task_type}"
         elif use_deterministic_ids:
             task_id = f"task-{run.run_id[:12]}-{step_index:03d}-{task_type}"
         else:
@@ -307,6 +305,9 @@ def generate_task_plan(
             "config_hash": run.resolved_config_hash,
             "agent_model": agent_model,
             "agent_config_overrides": agent_overrides,
+            # SIP-0086: expose active profile roles so planning handlers can
+            # constrain manifest role choices to what the squad actually has.
+            "profile_roles": sorted(profile_roles),
         }
 
         # SIP-0086: populate subtask fields from manifest

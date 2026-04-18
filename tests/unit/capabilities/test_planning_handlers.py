@@ -724,11 +724,19 @@ summary:
 class TestProduceManifestRetry:
     """SIP-0086 robustness: retry LLM once with error feedback before fallback."""
 
-    async def _call_produce(self, ctx, resolved_config: dict | None = None) -> dict | None:
+    async def _call_produce(
+        self,
+        ctx,
+        resolved_config: dict | None = None,
+        profile_roles: list[str] | None = None,
+    ) -> dict | None:
         h = GovernanceAssessReadinessHandler()
+        inputs: dict = {"prd": "Build a widget"}
+        if profile_roles is not None:
+            inputs["profile_roles"] = profile_roles
         return await h._produce_manifest(
             ctx,
-            inputs={"prd": "Build a widget"},
+            inputs=inputs,
             planning_content="plan",
             resolved_config=resolved_config or {},
         )
@@ -802,6 +810,40 @@ class TestProduceManifestRetry:
         result = await self._call_produce(ctx, resolved_config={"manifest_max_attempts": 1})
 
         assert result is None
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+
+    async def test_profile_roles_injected_into_prompt(self):
+        """profile_roles from inputs appear in the user prompt so the LLM is constrained."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        await self._call_produce(ctx, profile_roles=["dev", "qa", "lead"])
+
+        messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0]
+        user_prompt = messages[1].content
+        assert "Available roles" in user_prompt
+        assert "dev" in user_prompt and "qa" in user_prompt and "lead" in user_prompt
+
+    async def test_invented_role_triggers_retry_with_role_list(self):
+        """Manifest with role outside profile_roles must retry with a specific error."""
+        # _VALID_MANIFEST_YAML uses roles "dev" and "qa" — pass profile_roles
+        # that EXCLUDE them to simulate an invented-role scenario.
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_VALID_MANIFEST_YAML),
+            MagicMock(content=_VALID_MANIFEST_YAML),
+        ]
+        await self._call_produce(ctx, profile_roles=["lead", "builder"])
+
+        second_messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[1].args[0]
+        retry_msg = second_messages[-1].content
+        assert "not in the squad profile" in retry_msg
+        assert "dev" in retry_msg or "qa" in retry_msg  # bad role echoed
+
+    async def test_valid_roles_pass_without_retry(self):
+        """Roles matching profile_roles produce manifest on first attempt."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        result = await self._call_produce(ctx, profile_roles=["dev", "qa"])
+
+        assert result is not None
         assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
 
 
