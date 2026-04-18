@@ -506,12 +506,11 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # workload-type-specific keys
         wt = completed_run.workload_type
         if wt == "planning":
-            plan_docs = await self._artifact_vault.list_artifacts(
-                run_id=completed_run.run_id,
-                artifact_type="document",
-                promotion_status="promoted",
-            )
-            plan_refs = [a.artifact_id for a in sorted(plan_docs, key=lambda a: a.created_at)]
+            # SIP-0086: include control_manifest alongside documents so the
+            # build_task_manifest.yaml reaches the implementation workload.
+            plan_types = {"document", "control_manifest"}
+            plan_candidates = [a for a in promoted if a.artifact_type in plan_types]
+            plan_refs = [a.artifact_id for a in sorted(plan_candidates, key=lambda a: a.created_at)]
             if "plan_artifact_refs" in overrides:
                 existing = overrides["plan_artifact_refs"]
                 seen = set(existing)
@@ -925,22 +924,19 @@ class DistributedFlowExecutor(FlowExecutionPort):
             try:
                 ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
                 if ref.filename == "build_task_manifest.yaml" or (
-                    hasattr(ref, "artifact_type")
-                    and ref.artifact_type == "control_manifest"
+                    hasattr(ref, "artifact_type") and ref.artifact_type == "control_manifest"
                 ):
                     yaml_content = content_bytes.decode(errors="replace")
                     manifest = BuildTaskManifest.from_yaml(yaml_content)
                     logger.info(
-                        "Loaded build task manifest with %d subtasks "
-                        "for run %s",
+                        "Loaded build task manifest with %d subtasks for run %s",
                         len(manifest.tasks),
                         run.run_id,
                     )
                     return manifest
             except Exception:
                 logger.warning(
-                    "Failed to load manifest from artifact %s, "
-                    "falling back to static task steps",
+                    "Failed to load manifest from artifact %s, falling back to static task steps",
                     ref_id,
                     exc_info=True,
                 )
