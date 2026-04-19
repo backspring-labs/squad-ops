@@ -1923,8 +1923,9 @@ class QATestHandler(_CycleTaskHandler):
 
         # SIP-0086: Output validation + self-evaluation
         evidence_extra: dict[str, Any] = {}
+        output_validation_enabled = resolved_config.get("output_validation", False)
 
-        if resolved_config.get("output_validation", False):
+        if output_validation_enabled:
             validation = self._validate_output(inputs, artifacts)
 
             # Self-evaluation loop
@@ -1970,14 +1971,6 @@ class QATestHandler(_CycleTaskHandler):
                     validation = self._validate_output(inputs, artifacts)
 
                 evidence_extra["self_eval_passes"] = self_eval_count
-
-            evidence_extra["validation_result"] = {
-                "passed": validation.passed,
-                "checks": validation.checks,
-                "missing_components": validation.missing_components,
-                "coverage_ratio": validation.coverage_ratio,
-                "summary": validation.summary,
-            }
         else:
             validation = ValidationResult(passed=True, summary="Validation disabled")
 
@@ -1986,6 +1979,52 @@ class QATestHandler(_CycleTaskHandler):
             capability, sources, extracted
         )
         artifacts.append(test_report_artifact)
+
+        # Fold test-execution outcome into validation. The qa.test handler's
+        # objective is "produce tests that pass against the dev artifacts";
+        # artifacts-present-and-non-stub is necessary but not sufficient. A
+        # passing test file count with exit_code != 0 (e.g., import errors
+        # causing pytest to collect 0 tests) must surface as SEMANTIC_FAILURE
+        # so the correction protocol activates.
+        if output_validation_enabled and not (
+            test_result.executed and test_result.tests_passed
+        ):
+            if test_result.executed:
+                detail = f"tests_failed:exit_{test_result.exit_code}"
+                fail_note = f"Tests failed (exit {test_result.exit_code})"
+            else:
+                reason = test_result.error or "runner_error"
+                detail = f"tests_not_executed:{reason}"
+                fail_note = f"Tests not executed: {reason}"
+
+            validation.checks.append(
+                {
+                    "check": "tests_pass",
+                    "executed": test_result.executed,
+                    "exit_code": test_result.exit_code,
+                    "tests_passed": test_result.tests_passed,
+                    "passed": False,
+                }
+            )
+            validation.passed = False
+            validation.missing_components.append(detail)
+            validation.summary = (
+                fail_note
+                if validation.summary in ("", "All checks passed")
+                else f"{validation.summary}; {fail_note}"
+            )
+            if validation.checks:
+                passed_count = sum(1 for c in validation.checks if c["passed"])
+                validation.coverage_ratio = passed_count / len(validation.checks)
+
+        if output_validation_enabled:
+            evidence_extra["validation_result"] = {
+                "passed": validation.passed,
+                "checks": validation.checks,
+                "missing_components": validation.missing_components,
+                "coverage_ratio": validation.coverage_ratio,
+                "summary": validation.summary,
+            }
 
         if test_result.tests_passed:
             test_suffix = ", all tests passed"

@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from squadops.capabilities.handlers.cycle_tasks import (
     DevelopmentDevelopHandler,
     QATestHandler,
@@ -16,7 +14,6 @@ from squadops.capabilities.handlers.cycle_tasks import (
     _detect_stubs,
     _estimate_min_artifacts,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -306,7 +303,6 @@ class TestOutcomeClassification:
 
     async def test_passed_validation_outcome_success(self):
         from squadops.cycles.task_outcome import TaskOutcome
-        from squadops.llm.models import ChatMessage
 
         handler = DevelopmentDevelopHandler()
         ctx = self._make_context()
@@ -337,7 +333,6 @@ class TestOutcomeClassification:
 
     async def test_failed_validation_outcome_semantic_failure(self):
         from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
-        from squadops.llm.models import ChatMessage
 
         handler = DevelopmentDevelopHandler()
         ctx = self._make_context()
@@ -570,3 +565,200 @@ class TestSelfEvalLoop:
         assert result.success is False
         # 1 initial + 2 self-eval = 3 total calls
         assert ctx.ports.llm.chat_stream_with_usage.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# SIP-0086 closeout Fix #2: QA test-execution folded into outcome_class.
+# Before this fix, QATestHandler emitted outcome_class=SUCCESS whenever
+# test files were present, even when pytest collected zero tests or
+# actual tests failed. This hid real build failures from the correction
+# protocol. See cycle cyc_6483883fe4dd for the field-observed regression.
+# ---------------------------------------------------------------------------
+
+
+class TestQATestExecutionFoldsIntoOutcome:
+    def _make_context(self) -> MagicMock:
+        from dataclasses import dataclass
+
+        ctx = MagicMock()
+
+        @dataclass
+        class FakeAssembled:
+            content: str = "system prompt"
+            assembly_hash: str = "hash"
+
+        ctx.ports.prompt_service.get_system_prompt.return_value = FakeAssembled()
+        ctx.ports.llm.chat_stream_with_usage = AsyncMock()
+        ctx.ports.llm.default_model = "test"
+        ctx.ports.request_renderer = None
+        ctx.correlation_context = None
+        return ctx
+
+    def _mock_llm_test_output(self, ctx: MagicMock) -> None:
+        """Have Eve emit a plausible test file so artifact validation passes.
+
+        Content must clear _STUB_THRESHOLD_BYTES (100) so the file is not
+        flagged as a stub by the legacy QA validator.
+        """
+        content = (
+            "```python:tests/test_sample.py\n"
+            "import pytest\n"
+            "\n"
+            "def test_smoke():\n"
+            "    assert 1 + 1 == 2\n"
+            "\n"
+            "def test_another():\n"
+            "    assert isinstance([], list)\n"
+            "\n"
+            "def test_more():\n"
+            "    assert len('abc') == 3\n"
+            "```"
+        )
+        resp = MagicMock()
+        resp.content = content
+        resp.tokens_per_second = None
+        resp.prompt_tokens = 10
+        resp.completion_tokens = 20
+        resp.total_tokens = 30
+        ctx.ports.llm.chat_stream_with_usage.return_value = resp
+
+    def _patched_test_suite(self, handler: QATestHandler, result_kwargs: dict) -> None:
+        """Monkeypatch _run_test_suite to return a controlled RunTestsResult."""
+        from squadops.capabilities.handlers.test_runner import RunTestsResult
+
+        fake_result = RunTestsResult(**result_kwargs)
+        fake_report = {
+            "name": "test_report.md",
+            "content": "mock report",
+            "media_type": "text/markdown",
+            "type": "test_report",
+        }
+
+        async def _fake_run_test_suite(capability, sources, extracted):
+            return fake_result, fake_report
+
+        handler._run_test_suite = _fake_run_test_suite  # type: ignore[assignment]
+
+    def _qa_inputs(self) -> dict[str, Any]:
+        return {
+            "prd": "Build and test a trivial module",
+            "artifact_contents": {"sample.py": "def f():\n    return 1\n"},
+            "resolved_config": {
+                "output_validation": True,
+                "max_self_eval_passes": 0,
+                "dev_capability": "python_cli",
+            },
+        }
+
+    async def test_tests_pass_yields_success(self) -> None:
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        handler = QATestHandler()
+        ctx = self._make_context()
+        self._mock_llm_test_output(ctx)
+        self._patched_test_suite(
+            handler,
+            {"executed": True, "exit_code": 0, "test_file_count": 1, "source_file_count": 1},
+        )
+
+        result = await handler.handle(ctx, self._qa_inputs())
+
+        assert result.success is True
+        assert result.outputs["outcome_class"] == TaskOutcome.SUCCESS
+        assert result.outputs["test_result"]["tests_passed"] is True
+        # When outcome is SUCCESS the handler does not set failure_classification
+        assert "failure_classification" not in result.outputs
+
+    async def test_tests_fail_yields_semantic_failure(self) -> None:
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+        handler = QATestHandler()
+        ctx = self._make_context()
+        self._mock_llm_test_output(ctx)
+        # exit 1 = tests collected but some failed
+        self._patched_test_suite(
+            handler,
+            {"executed": True, "exit_code": 1, "test_file_count": 1, "source_file_count": 1},
+        )
+
+        result = await handler.handle(ctx, self._qa_inputs())
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
+        val = result.outputs["validation_result"]
+        checks = val["checks"]
+        tests_pass_check = next(c for c in checks if c["check"] == "tests_pass")
+        assert tests_pass_check["passed"] is False
+        assert tests_pass_check["exit_code"] == 1
+        assert any("tests_failed:exit_1" in m for m in val["missing_components"])
+        assert "Tests failed" in val["summary"]
+
+    async def test_tests_not_collected_yields_semantic_failure(self) -> None:
+        """Exit 5 (no tests collected — e.g., import errors) must fail the QA task.
+
+        This is the exact regression from cyc_6483883fe4dd: Eve produced test
+        files with broken relative imports; pytest collected zero tests and
+        returned exit 5, yet QATestHandler reported outcome_class=success.
+        """
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        handler = QATestHandler()
+        ctx = self._make_context()
+        self._mock_llm_test_output(ctx)
+        self._patched_test_suite(
+            handler,
+            {"executed": True, "exit_code": 5, "test_file_count": 1, "source_file_count": 5},
+        )
+
+        result = await handler.handle(ctx, self._qa_inputs())
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        val = result.outputs["validation_result"]
+        assert any("tests_failed:exit_5" in m for m in val["missing_components"])
+
+    async def test_tests_not_executed_yields_semantic_failure(self) -> None:
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        handler = QATestHandler()
+        ctx = self._make_context()
+        self._mock_llm_test_output(ctx)
+        self._patched_test_suite(
+            handler,
+            {"executed": False, "error": "runner_missing_pytest"},
+        )
+
+        result = await handler.handle(ctx, self._qa_inputs())
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        val = result.outputs["validation_result"]
+        assert any(
+            "tests_not_executed:runner_missing_pytest" in m
+            for m in val["missing_components"]
+        )
+
+    async def test_validation_disabled_preserves_legacy_pass(self) -> None:
+        """When output_validation is off, test failures do NOT fail the handler.
+
+        This keeps SIP-0086 strictly opt-in. Profiles with output_validation=False
+        retain pre-SIP-0086 behavior.
+        """
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        handler = QATestHandler()
+        ctx = self._make_context()
+        self._mock_llm_test_output(ctx)
+        self._patched_test_suite(
+            handler,
+            {"executed": True, "exit_code": 5, "test_file_count": 1, "source_file_count": 1},
+        )
+
+        inputs = self._qa_inputs()
+        inputs["resolved_config"]["output_validation"] = False
+
+        result = await handler.handle(ctx, inputs)
+
+        assert result.success is True
+        assert result.outputs["outcome_class"] == TaskOutcome.SUCCESS
