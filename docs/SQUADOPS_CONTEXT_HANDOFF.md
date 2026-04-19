@@ -14,7 +14,7 @@
 - **🛡️ Quality Guardrails**: Critical rules across all core prompt files
 - **📋 Test Suite Expansion**: BaseAgent run loop, LeadAgent PRD processing, QAAgent security
 - **🏗️ Factory Refactoring**: Dependency injection for testability
-- **📚 Consolidated Roadmap**: Single source of truth (docs/SQUADOPS_ROADMAP.md)
+- **📚 Consolidated Roadmap**: Single source of truth (docs/ROADMAP.md)
 - **🚫 No Shortcuts**: Documented lessons learned, enforced quality standards
 - **🔄 WarmBoot Validation**: 163+ WarmBoot runs with documented execution history
 - **🔧 Connection Pool Management**: Production-ready asyncpg connection pool management
@@ -26,8 +26,8 @@
 - **🤖 Agent Coordination**: Max → Neo → Nat → EVE coordination with state management
 
 ### 📋 **Strategic Roadmap**
-- **[docs/SQUADOPS_ROADMAP.md](./SQUADOPS_ROADMAP.md)** - **CURRENT**: Consolidated roadmap with MVP complete, multi-agent expansion phase
-- **Previous roadmaps archived**: See `docs/archive/SQUADOPS_*ROADMAP*.md` for historical planning documents
+- **[docs/ROADMAP.md](./ROADMAP.md)** - **CURRENT**: Canonical post-1.0 release timeline keyed to SIPs and shipped versions
+- **Previous roadmaps archived**: See `docs/archive/SQUADOPS_*ROADMAP*.md` for historical planning documents (including this doc's original `SQUADOPS_ROADMAP.md`)
 
 **✅ COMPLETED: Task Management System** (SIP-024/025):
 - **✅ Phase 1**: Task Management API with execution cycle tracking
