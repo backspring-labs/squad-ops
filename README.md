@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: v1.0.0 — Production-ready framework with hexagonal architecture, distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 3,030+ passing tests.
+**Current Status**: v1.0.3 — Production-ready framework with hexagonal architecture, distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 3,030+ passing tests.
 
 ---
 
@@ -29,7 +29,7 @@
 - **BaseAgent** – DI-enabled base class with SecretManager, DbRuntime, and port injection
 - **Capability Contracts** – Declarative delivery expectations with acceptance checks (SIP-0058)
 
-### Cycle Execution Pipeline (SIP-0064/0066/0068/0076–0080)
+### Cycle Execution Pipeline (SIP-0064/0066/0068/0076–0080/0083)
 - **Cycle API** – Create, monitor, and manage execution cycles via REST API
 - **Task Planning** – Automatic task plan generation from PRD references
 - **Distributed Flow Executor** – Sequential task dispatch to agent containers via RabbitMQ
@@ -69,7 +69,7 @@
 ## Documentation
 Comprehensive documentation and protocols are available in `/docs/`:
 
-- **SIPs (SquadOps Improvement Proposals)** – ~80 protocol specifications in `sips/` directory (54 implemented, 11 proposals, 15 deprecated)
+- **SIPs (SquadOps Improvement Proposals)** – ~88 protocol specifications in `sips/` directory (54 implemented, 1 accepted, 13 proposed, 20 deprecated)
 - **IDEA Documents** – 79 strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance
 - **Architecture Documents** – Design guides for agent implementations and handoff templates
 - **Book Chapters** – 9 chapters covering methodology, implementation, and operations
@@ -173,20 +173,20 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructio
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v1.0.0 — Architecture complete, ready for real-world cycle execution
+**Current**: v1.0.3 — Post-1.0 stable; distributed cycle execution, multi-run orchestration, and correction protocol shipped
 
 ---
 
 ## Current Status
-**Framework Version**: 1.0.0
-**Development Status**: Production-ready multi-agent orchestration with console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
+**Framework Version**: 1.0.3
+**Development Status**: Post-1.0 stable multi-agent orchestration with console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
 
 ### Project Statistics
 - **~39,000 lines** of Python source code
 - **~51,000 lines** of test code
 - **~84,000 lines** of documentation
 - **3,030+ tests** passing in regression suite
-- **~80 SIPs** (54 implemented, 11 proposals, 15 deprecated)
+- **~88 SIPs** (54 implemented, 1 accepted, 13 proposed, 20 deprecated)
 
 ### Functional Components
 - 6 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics)
@@ -214,6 +214,9 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 - OpenTelemetry with trace correlation
 - Console Control-Plane UI with Continuum plugin shell and auth BFF (SIP-0069)
 - Profile-driven bootstrap with doctor validation (SIP-0081)
+- Time budget awareness across cycle execution (SIP-0082)
+- Prompt registry integration for versioned prompt management (SIP-0084)
+- Console messaging capability for operator ↔ squad communication (SIP-0085)
 - Test quality enforcement: AST linter blocking in regression suite
 - Docker build system with deterministic multi-stage builds
 - 17-service Docker Compose development environment
