@@ -4,6 +4,37 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
+### v1.0.3 (2026-04) — Current
+Post-1.0 patch line. Docs hygiene, complexity tightening (C901 threshold 15→12), streaming LLM chat path (`chat_stream_with_usage()`).
+
+### v1.0.2 (2026-03-15) — Console Messaging
+- **SIP-0085** Console Messaging Capability for Live Agents via A2A
+  - Joi agent routes operator messages to the live squad via the A2A protocol
+  - Modal-overlay UI approach with phase audit gates
+- Continuum (console UI component) pinned to v1.0.2
+
+### v1.0.1 (2026-03-13) — Prompt Registry
+- **SIP-0084** Prompt Registry Integration
+  - Versioned prompt management for handler prompts
+
+### v1.0.0 (2026-03-10) — Architecture Complete
+Release milestone, not a new SIP. 13 SIPs landed between v0.9.0 and v1.0.0 (auth → LangFuse → cycles → workload protocols → correction → wrap-up → bootstrap → multi-run). 3,032 tests passing at release. See the v1.0 Progression section below for the retrospective.
+
+### v0.9.19 (2026-03-07) — Multi-Run Orchestration & Bootstrap
+- **SIP-0083** Multi-Run Cycle Orchestration
+  - `execute_cycle()` loops over `workload_sequence`, creating a Run per workload
+  - `"auto"` gate sentinel for workload-to-workload handoffs without HITL
+  - `_build_forwarding_overrides()` passes promoted artifacts and `impl_run_id` between workloads
+  - Multi-phase cycle request profile (1 HITL gate + 1 auto gate)
+- **SIP-0082** Time Budget Awareness in Planning Prompts
+  - `time_budget_seconds` coerced from string at CRP load time
+  - Budget awareness injected into planning prompt fragments
+- **SIP-0081** Profile-Driven Bootstrap
+  - Three-layer architecture: profile YAML → shell scripts → doctor validation
+  - Three profiles: `dev-mac`, `dev-pc`, `local-spark`
+  - `squadops bootstrap <profile>` and `squadops doctor <profile>` commands
+  - State file at `.squadops/bootstrap/<profile>.json`
+
 ### v0.9.18 (2026-03-06) — Wrap-Up Workload Protocol & Test Quality Enforcement
 - **SIP-0080** Wrap-Up Workload Protocol
   - Domain models: ConfidenceClassification, CloseoutRecommendation, UnresolvedIssueType/Severity, NextCycleRecommendation
@@ -161,11 +192,13 @@ Living document tracking the implementation progression from initial prototype t
 
 ---
 
-## v1.0 Progression
+## v1.0 Progression (Retrospective — 1.0 shipped 2026-03-10)
 
-The path to 1.0 is organized around one concrete objective: **the first trustworthy long-running DGX Spark cycle**. Every SIP is prioritized by how directly it contributes to that objective.
+1.0 was organized around one concrete objective: **the first trustworthy long-running DGX Spark cycle**. Every SIP was prioritized by how directly it contributed to that objective.
 
-The SIP set is divided into Spark-critical execution readiness (must land before the first long run) and 1.0 hardening (must land before the 1.0 release, but does not gate the first Spark run).
+**What actually shipped in 1.0**: all five Spark-critical SIPs (SIP-0076/77/78/79/80) landed between v0.9.14 and v0.9.18, followed by multi-run orchestration and bootstrap tooling in v0.9.19. The 1.0.0 release tag on 2026-03-10 marked architecture completion.
+
+**What did not ship in 1.0**: the two originally-scoped "1.0 Hardening" SIPs (API Contract Hardening, Cycle Evaluation Scorecard) remain in the proposed backlog. They are now post-1.0 work tracked separately. If they become blocking, they get numbered and promoted — but 1.0 did not gate on them.
 
 ### Cross-Cutting Dependency: Canonical Artifact Flow
 
@@ -256,18 +289,18 @@ Once local validation passes, the same protocols are exercised at longer duratio
 - [ ] Wrap-up quality does not degrade with larger evidence volume
 - [ ] Correction protocol handles real (not simulated) mid-run issues
 
-### 1.0 Hardening
+### Post-1.0 Hardening (Originally Scoped for 1.0 — Deferred)
 
-These SIPs are required for the 1.0 release but do not gate the first Spark validation run. If schedule pressure emerges, they trail the Spark-critical work — they do not displace it.
+These SIPs were originally scoped as "1.0 Hardening" but did not land before the 1.0.0 release. They remain in the proposed backlog.
 
 | SIP | Focus |
 |-----|-------|
 | API Contract Hardening | Pagination, error shapes, OpenAPI response models, status codes, gate identity, artifact validation, DB retry |
 | Cycle Evaluation Scorecard | Four-dimension evaluation (outcome, quality, coordination, efficiency), failure attribution, benchmarking, Scorecard console page |
 
-**API Contract Hardening** lands as a single SIP (the P0 items are tightly coupled), sequenced after the pipeline SIPs. If the Spark run exposes specific API contract issues that affect execution safety, those items get pulled forward.
+**API Contract Hardening** was kept out of 1.0 because the Spark validation path did not expose execution-safety-blocking API issues. It is sequenced whenever a consumer (console, external integrator) surfaces a specific contract pain point.
 
-**Cycle Evaluation Scorecard** depends on evidence quality from the event system and closeout artifacts. It should not outrun the fidelity of the evidence it consumes. Scorecard sophistication improves learning after runs — it does not improve the success of the first run itself.
+**Cycle Evaluation Scorecard** is gated on evidence-quality confidence from SIP-0077 events and SIP-0080 closeout artifacts. Scorecard sophistication improves learning *after* runs; it does not improve the success of any individual run.
 
 ### Critical Path
 
@@ -308,21 +341,13 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Accepted (Next Up)
 
-(none — all accepted SIPs are implemented)
+| SIP | Title | Accepted |
+|-----|-------|----------|
+| **SIP-0086** | Build Convergence Loop — Dynamic Task Decomposition, Output Validation & Correction Activation | 2026-04 |
 
 ## Proposals (Backlog)
 
-### 1.0 Track — Spark-Critical
-
-| SIP | Title | Status |
-|-----|-------|--------|
-| **SIP-0076** | Workload & Gate Canon | **Implemented** |
-| **SIP-0077** | Cycle Event System | **Implemented** |
-| **SIP-0078** | Planning Workload Protocol | **Implemented** |
-| **SIP-0079** | Implementation Run Contract & Correction Protocol | **Implemented (v0.9.17)** |
-| **SIP-0080** | Wrap-Up Workload Protocol | **Implemented (v0.9.18)** |
-
-### 1.0 Track — Hardening
+### Post-1.0 Hardening (Deferred from 1.0 Scope)
 
 | SIP | Title |
 |-----|-------|
@@ -337,16 +362,19 @@ The following areas are identified for future work but do not block 1.0 readines
 | SIP-0013 | Extensibility & Customization Protocol |
 | SIP-0016 | Human-Agent Hybrid Squad Operations |
 | SIP-0018 | Enterprise Process CoE Enablement |
+| SIP-0018-v2 | Squad Context Protocol |
 | SIP-0023 | Domain Expert Architecture for Product Strategy |
 | SIP-0028 | Hybrid Deployment Model (Multi-Environment) |
+| (unnumbered) | Edge Deployment Profile |
+| (unnumbered) | Experiment Queue and Cycle Assessment |
 | (unnumbered) | Intelligent Delegation Protocols |
 
 ---
 
 ## Stats
 
-- **Framework version**: 0.9.18
-- **SIPs**: 54 implemented, 0 accepted, 11 proposals (2 on 1.0 track), 15 deprecated
-- **Tests**: 2,890+ passing
+- **Framework version**: 1.0.3
+- **SIPs**: 54 implemented, 1 accepted (SIP-0086), 13 proposed, 20 deprecated (~88 total)
+- **Tests**: 3,030+ passing in the regression suite
 - **Python source**: ~39,000 lines (~51,000 test lines, ~84,000 doc lines)
-- **5 months** from initial repo to production-grade console UI
+- **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
