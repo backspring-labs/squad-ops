@@ -776,9 +776,9 @@ sips:
   sip_number: 86
   title: Build Convergence Loop — Dynamic Task Decomposition, Output Validation &
     Correction Activation
-  path: sips/accepted/SIP-0086-Build-Convergence-Loop-Dynamic.md
-  status: accepted
+  path: sips/implemented/SIP-0086-Build-Convergence-Loop-Dynamic.md
+  status: implemented
   author: SquadOps Architecture
   approver: jladd
   created_at: '2026-03-31T00:00:00Z'
-  updated_at: '2026-03-31T18:05:54.718507Z'
+  updated_at: '2026-04-19T16:22:45.033678Z'
