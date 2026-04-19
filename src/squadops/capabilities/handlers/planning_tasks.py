@@ -469,6 +469,42 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             f"{', '.join(allowed_task_types)}\n\n"
         )
 
+        # SIP-0086 + SIP-0071: when the squad includes a dedicated builder,
+        # route assembly/packaging work to `builder.assemble` tasks so the
+        # builder role is actually exercised by the convergence loop.
+        has_builder = "builder" in profile_roles
+        if has_builder:
+            builder_guideline = (
+                "- Route packaging, entrypoints, requirements.txt/package.json, "
+                "Dockerfile/startup scripts, and qa_handoff.md to `builder.assemble` "
+                "tasks (role: builder). Place AFTER all `development.develop` tasks "
+                "and BEFORE any `qa.test` tasks.\n"
+            )
+            qa_handoff_guideline = ""
+            builder_example = (
+                "  - task_index: 1\n"
+                "    task_type: builder.assemble\n"
+                "    role: builder\n"
+                '    focus: "Package build output and produce qa_handoff.md"\n'
+                "    description: |\n"
+                "      Assemble packaging (entrypoints, requirements/manifest, "
+                "Dockerfile if applicable) and write qa_handoff.md summarizing "
+                "how to run and test the build.\n"
+                "    expected_artifacts:\n"
+                '      - "qa_handoff.md"\n'
+                "    acceptance_criteria:\n"
+                '      - "..."\n'
+                "    depends_on: [0]\n"
+            )
+            summary_builder_line = "  total_builder_tasks: P\n"
+            total_tasks_expr = "N+M+P"
+        else:
+            builder_guideline = ""
+            qa_handoff_guideline = "- Put QA handoff last\n"
+            builder_example = ""
+            summary_builder_line = ""
+            total_tasks_expr = "N+M"
+
         manifest_prompt = (
             "Based on the following PRD and planning artifact, produce a build task "
             "manifest that decomposes the upcoming build into focused subtasks.\n\n"
@@ -488,7 +524,9 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             "- Separate UI shell/routing from individual view components\n"
             "- Put integration config (CORS, proxy, requirements) in its own task\n"
             "- Put tests after the code they test\n"
-            "- Put QA handoff last\n\n"
+            f"{builder_guideline}"
+            f"{qa_handoff_guideline}"
+            "\n"
             "Output ONLY the manifest as a YAML code block with filename tag:\n"
             "```yaml:build_task_manifest.yaml\n"
             "version: 1\n"
@@ -507,10 +545,12 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             "    acceptance_criteria:\n"
             '      - "..."\n'
             "    depends_on: []\n"
+            f"{builder_example}"
             "summary:\n"
             "  total_dev_tasks: N\n"
             "  total_qa_tasks: M\n"
-            "  total_tasks: N+M\n"
+            f"{summary_builder_line}"
+            f"  total_tasks: {total_tasks_expr}\n"
             "  estimated_layers: [backend, frontend, test, config]\n"
             "```\n"
         )

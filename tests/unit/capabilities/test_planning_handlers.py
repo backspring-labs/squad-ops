@@ -858,6 +858,41 @@ class TestProduceManifestRetry:
         assert result is not None
         assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
 
+    async def test_builder_guidance_added_when_builder_role_present(self):
+        """When profile includes builder, prompt directs Max to use builder.assemble."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        await self._call_produce(
+            ctx, profile_roles=["dev", "qa", "lead", "builder"]
+        )
+
+        user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][
+            1
+        ].content
+        assert "`builder.assemble`" in user_prompt
+        assert "AFTER all `development.develop`" in user_prompt
+        assert "BEFORE any `qa.test`" in user_prompt
+        # Example template includes a builder.assemble row
+        assert "task_type: builder.assemble" in user_prompt
+        assert "role: builder" in user_prompt
+        # Summary template includes total_builder_tasks
+        assert "total_builder_tasks: P" in user_prompt
+        assert "total_tasks: N+M+P" in user_prompt
+        # "Put QA handoff last" is removed since builder owns handoff now
+        assert "Put QA handoff last" not in user_prompt
+
+    async def test_builder_guidance_absent_when_builder_role_missing(self):
+        """Squads without a builder role get the legacy QA-handoff-last guideline."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        await self._call_produce(ctx, profile_roles=["dev", "qa", "lead"])
+
+        user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][
+            1
+        ].content
+        assert "task_type: builder.assemble" not in user_prompt
+        assert "total_builder_tasks" not in user_prompt
+        assert "total_tasks: N+M" in user_prompt
+        assert "Put QA handoff last" in user_prompt
+
 
 # ---------------------------------------------------------------------------
 # 11. D17 artifact content validation (Fix E)
