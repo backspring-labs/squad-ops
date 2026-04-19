@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: v1.0.3 — Production-ready framework with hexagonal architecture, distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 3,030+ passing tests.
+**Current Status**: v1.0.4 — Production-ready framework with hexagonal architecture, distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop with dynamic task decomposition (SIP-0086), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 3,400+ passing tests.
 
 ---
 
@@ -173,12 +173,12 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructio
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v1.0.3 — Post-1.0 stable; distributed cycle execution, multi-run orchestration, and correction protocol shipped
+**Current**: v1.0.4 — Post-1.0 stable; distributed cycle execution, multi-run orchestration, correction protocol, and build convergence loop (SIP-0086) shipped
 
 ---
 
 ## Current Status
-**Framework Version**: 1.0.3
+**Framework Version**: 1.0.4
 **Development Status**: Post-1.0 stable multi-agent orchestration with console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
 
 ### Project Statistics

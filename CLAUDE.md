@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 1.0.3 (single-sourced via `importlib.metadata.version("squadops")`)
+**Framework Version**: 1.0.4 (single-sourced via `importlib.metadata.version("squadops")`)
 **Python Requirement**: 3.11+
 
 ## Commands
@@ -183,6 +183,7 @@ Key principle: **acceptance is a design commitment on main, not an implementatio
 - **SIP-0069** – Console Control-Plane UI (Continuum Plugins)
 - **SIP-0070** – Pulse Checks and Verification Framework
 - **SIP-0071** – Builder Role (Dedicated Product Builder Agent)
+- **SIP-0086** – Build Convergence Loop (Dynamic Task Decomposition, Output Validation, Correction Activation)
 
 ### Moving a SIP (maintainer only)
 
