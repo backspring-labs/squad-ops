@@ -34,31 +34,29 @@ class TestProfileToResponse:
         )
 
     def test_role_label_populated(self):
-        profile = self._make_profile((
-            AgentProfileEntry(
-                agent_id="neo", role="dev", model="qwen2.5:7b", enabled=True
-            ),
-        ))
+        profile = self._make_profile(
+            (AgentProfileEntry(agent_id="neo", role="dev", model="qwen2.5:7b", enabled=True),)
+        )
         resp = profile_to_response(profile)
         agent = resp.agents[0]
         assert agent.role_label == "Developer"
 
     def test_display_name_from_agent_id(self):
-        profile = self._make_profile((
-            AgentProfileEntry(
-                agent_id="max", role="lead", model="qwen2.5:7b", enabled=True
-            ),
-        ))
+        profile = self._make_profile(
+            (AgentProfileEntry(agent_id="max", role="lead", model="qwen2.5:7b", enabled=True),)
+        )
         resp = profile_to_response(profile)
         agent = resp.agents[0]
         assert agent.display_name == "Max"
 
     def test_unknown_role_gets_title_label(self):
-        profile = self._make_profile((
-            AgentProfileEntry(
-                agent_id="zara", role="custom_role", model="qwen2.5:7b", enabled=True
-            ),
-        ))
+        profile = self._make_profile(
+            (
+                AgentProfileEntry(
+                    agent_id="zara", role="custom_role", model="qwen2.5:7b", enabled=True
+                ),
+            )
+        )
         resp = profile_to_response(profile)
         agent = resp.agents[0]
         assert agent.role_label == "Custom_Role"
@@ -81,7 +79,7 @@ class TestProfileToResponse:
             assert agent.display_name is not None
 
 
-def _make_cycle(workload_sequence: list[dict] | None = None) -> Cycle:
+def _make_cycle(workload_sequence: list[dict] | None = None, cancelled: bool = False) -> Cycle:
     defaults = {}
     if workload_sequence is not None:
         defaults["workload_sequence"] = workload_sequence
@@ -96,6 +94,7 @@ def _make_cycle(workload_sequence: list[dict] | None = None) -> Cycle:
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
         applied_defaults=defaults,
+        cancelled=cancelled,
     )
 
 
@@ -166,8 +165,7 @@ class TestCycleToResponseStatus:
             decided_at=NOW,
         )
         cycle = _make_cycle(workload_sequence=ws)
-        runs = [_make_run("run_001", 1, "completed", "planning",
-                          gate_decisions=(decision,))]
+        runs = [_make_run("run_001", 1, "completed", "planning", gate_decisions=(decision,))]
 
         resp = cycle_to_response(cycle, runs)
 
@@ -198,3 +196,20 @@ class TestCycleToResponseStatus:
 
         assert resp.status == "completed"
         assert resp.workload_progress == []
+
+    def test_cancelled_cycle_shows_cancelled_regardless_of_runs(self):
+        """cycle.cancelled=True overrides any run-derived status."""
+        cycle = _make_cycle(cancelled=True)
+        runs = [_make_run("run_001", 1, "completed")]
+
+        resp = cycle_to_response(cycle, runs)
+
+        assert resp.status == "cancelled"
+
+    def test_cancelled_cycle_with_no_runs_shows_cancelled(self):
+        """cycle.cancelled=True wins even before any runs exist."""
+        cycle = _make_cycle(cancelled=True)
+
+        resp = cycle_to_response(cycle, runs=[])
+
+        assert resp.status == "cancelled"

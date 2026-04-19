@@ -20,6 +20,7 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
+from squadops.cycles.build_manifest import BuildTaskManifest
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
     REQUIRED_REFINEMENT_ROLES,
@@ -206,17 +207,28 @@ def _resolve_legacy_steps(
     return steps, builder_used
 
 
-def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[TaskEnvelope]:
+def generate_task_plan(
+    cycle: Cycle,
+    run: Run,
+    profile: SquadProfile,
+    manifest: BuildTaskManifest | None = None,
+) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
     When ``run.workload_type`` is set, selects task steps based on workload
     type (SIP-0078). Otherwise falls back to legacy ``plan_tasks`` /
     ``build_tasks`` flags from ``applied_defaults``.
 
+    When a ``manifest`` is provided (SIP-0086), the build-phase segment
+    is materialized from the approved manifest instead of static
+    ``BUILD_TASK_STEPS``. The approved manifest is the build-phase plan;
+    ``TaskEnvelope`` objects are its deterministic execution materialization.
+
     Args:
         cycle: The cycle containing experiment config.
         run: The run to generate tasks for.
         profile: The squad profile for agent resolution.
+        manifest: Optional approved build task manifest (SIP-0086).
 
     Returns:
         Ordered list of TaskEnvelopes, one per pipeline step.
@@ -228,6 +240,12 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
     else:
         steps, builder_used = _resolve_legacy_steps(cycle, profile, profile_roles)
 
+    # SIP-0086: replace static build steps with manifest-derived steps.
+    # Only applies when the step list actually contains build steps.
+    has_build_steps = any(s[0] in _BUILD_TASK_TYPES for s in steps)
+    if manifest is not None and has_build_steps:
+        steps = _replace_build_steps_with_manifest(steps, manifest, profile, profile_roles)
+
     # Shared lineage IDs for the entire plan
     correlation_id = uuid4().hex
     trace_id = uuid4().hex
@@ -238,7 +256,8 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
     # Routing reason for build step metadata (D14)
     routing_reason = ROUTING_BUILDER_PRESENT if builder_used else ROUTING_FALLBACK_NO_BUILDER
 
-    # RC-1: Deterministic task IDs for implementation runs (stable across resume).
+    # RC-1 (SIP-0079): Deterministic task IDs for implementation runs.
+    # RC-2 (SIP-0086): Manifest-derived IDs use -m{index}- namespace.
     use_deterministic_ids = (
         run.workload_type is not None and run.workload_type == WorkloadType.IMPLEMENTATION
     )
@@ -246,11 +265,25 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
     envelopes: list[TaskEnvelope] = []
     prev_task_id: str | None = None
 
-    for step_index, (task_type, role) in enumerate(steps):
-        if use_deterministic_ids:
+    for step_index, step in enumerate(steps):
+        # Steps are either (task_type, role) tuples or ManifestTask objects
+        if isinstance(step, tuple):
+            task_type, role = step
+            manifest_task = None
+        else:
+            task_type = step.task_type
+            role = step.role
+            manifest_task = step
+
+        # Determine task ID
+        if manifest_task is not None:
+            # SIP-0086 RC-2: deterministic manifest namespace
+            task_id = f"task-{run.run_id[:12]}-m{manifest_task.task_index:03d}-{task_type}"
+        elif use_deterministic_ids:
             task_id = f"task-{run.run_id[:12]}-{step_index:03d}-{task_type}"
         else:
             task_id = uuid4().hex
+
         pulse_id = uuid4().hex
         span_id = uuid4().hex
         causation_id = prev_task_id or correlation_id
@@ -266,6 +299,25 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
         if task_type in _BUILD_TASK_TYPES:
             metadata["routing_reason"] = routing_reason
 
+        inputs: dict = {
+            "prd": cycle.prd_ref,
+            "resolved_config": resolved_config,
+            "config_hash": run.resolved_config_hash,
+            "agent_model": agent_model,
+            "agent_config_overrides": agent_overrides,
+            # SIP-0086: expose active profile roles so planning handlers can
+            # constrain manifest role choices to what the squad actually has.
+            "profile_roles": sorted(profile_roles),
+        }
+
+        # SIP-0086: populate subtask fields from manifest
+        if manifest_task is not None:
+            inputs["subtask_focus"] = manifest_task.focus
+            inputs["subtask_description"] = manifest_task.description
+            inputs["expected_artifacts"] = manifest_task.expected_artifacts
+            inputs["subtask_index"] = manifest_task.task_index
+            inputs["acceptance_criteria"] = manifest_task.acceptance_criteria
+
         envelope = TaskEnvelope(
             task_id=task_id,
             agent_id=agent_id,
@@ -277,16 +329,39 @@ def generate_task_plan(cycle: Cycle, run: Run, profile: SquadProfile) -> list[Ta
             causation_id=causation_id,
             trace_id=trace_id,
             span_id=span_id,
-            inputs={
-                "prd": cycle.prd_ref,
-                "resolved_config": resolved_config,
-                "config_hash": run.resolved_config_hash,
-                "agent_model": agent_model,
-                "agent_config_overrides": agent_overrides,
-            },
+            inputs=inputs,
             metadata=metadata,
         )
         envelopes.append(envelope)
         prev_task_id = task_id
 
     return envelopes
+
+
+def _replace_build_steps_with_manifest(
+    steps: list,
+    manifest: BuildTaskManifest,
+    profile: SquadProfile,
+    profile_roles: set[str],
+) -> list:
+    """Replace static build steps with manifest-derived ManifestTask objects.
+
+    Preserves planning steps; only the build-phase segment is replaced.
+    Validates that all manifest roles exist in the profile.
+    """
+    # Validate manifest roles against profile
+    errors = manifest.validate_against_profile(profile)
+    if errors:
+        raise CycleError(
+            f"Manifest validation failed against profile '{profile.profile_id}': "
+            + "; ".join(errors)
+        )
+
+    # Remove static build steps, keep everything else (planning steps)
+    static_build_types = {s[0] for s in BUILD_TASK_STEPS} | {
+        s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS
+    }
+    non_build_steps = [s for s in steps if s[0] not in static_build_types]
+
+    # Append manifest tasks (ManifestTask objects, not tuples)
+    return non_build_steps + list(manifest.tasks)

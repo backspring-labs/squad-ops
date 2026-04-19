@@ -471,6 +471,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             expected_artifact_types=tuple(row["expected_artifact_types"] or []),
             experiment_context=experiment,
             notes=row["notes"],
+            cancelled=row["cancelled"],
         )
 
     def _assemble_run(self, row: asyncpg.Record, gate_rows: list) -> Run:

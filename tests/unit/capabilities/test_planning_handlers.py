@@ -644,6 +644,257 @@ class TestGovernanceAssessReadinessValidation:
 
 
 # ---------------------------------------------------------------------------
+# 10b. _produce_manifest retry-on-error (SIP-0086 robustness)
+# ---------------------------------------------------------------------------
+
+
+_VALID_MANIFEST_YAML = """\
+```yaml:build_task_manifest.yaml
+version: 1
+project_id: test_proj
+cycle_id: test_cyc
+prd_hash: abc
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend"
+    description: |
+      Build backend
+    expected_artifacts:
+      - "backend/app.py"
+    acceptance_criteria:
+      - "Backend runs"
+    depends_on: []
+  - task_index: 1
+    task_type: development.develop
+    role: dev
+    focus: "Frontend"
+    description: |
+      Build frontend
+    expected_artifacts:
+      - "frontend/app.js"
+    acceptance_criteria:
+      - "Frontend renders"
+    depends_on: [0]
+  - task_index: 2
+    task_type: qa.test
+    role: qa
+    focus: "Tests"
+    description: |
+      Add tests
+    expected_artifacts:
+      - "tests/test_app.py"
+    acceptance_criteria:
+      - "Tests pass"
+    depends_on: [0, 1]
+summary:
+  total_dev_tasks: 2
+  total_qa_tasks: 1
+  total_tasks: 3
+  estimated_layers: [backend, frontend, test]
+```
+"""
+
+_MALFORMED_MANIFEST_YAML = """\
+```yaml:build_task_manifest.yaml
+version: 1
+project_id: test_proj
+cycle_id: test_cyc
+prd_hash: abc
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend"
+    description: |
+      Build backend
+    expected_artifacts:
+      - "backend/app.py" (the main app file)
+      - "backend/models.py"
+    depends_on: []
+summary:
+  total_dev_tasks: 1
+  total_qa_tasks: 0
+  total_tasks: 1
+```
+"""
+
+
+class TestProduceManifestRetry:
+    """SIP-0086 robustness: retry LLM once with error feedback before fallback."""
+
+    async def _call_produce(
+        self,
+        ctx,
+        resolved_config: dict | None = None,
+        profile_roles: list[str] | None = None,
+    ) -> dict | None:
+        h = GovernanceAssessReadinessHandler()
+        inputs: dict = {"prd": "Build a widget"}
+        if profile_roles is not None:
+            inputs["profile_roles"] = profile_roles
+        return await h._produce_manifest(
+            ctx,
+            inputs=inputs,
+            planning_content="plan",
+            resolved_config=resolved_config or {},
+        )
+
+    async def test_valid_manifest_on_first_attempt_no_retry(self):
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        result = await self._call_produce(ctx)
+
+        assert result is not None
+        assert result["name"] == "build_task_manifest.yaml"
+        assert result["type"] == "control_manifest"
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+
+    async def test_malformed_yaml_retries_then_succeeds(self):
+        """First call returns bad YAML, second returns valid — manifest is produced."""
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_MALFORMED_MANIFEST_YAML),
+            MagicMock(content=_VALID_MANIFEST_YAML),
+        ]
+        result = await self._call_produce(ctx)
+
+        assert result is not None
+        assert result["name"] == "build_task_manifest.yaml"
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 2
+
+    async def test_retry_prompt_includes_parse_error(self):
+        """Second LLM call must be given the specific error so it can correct."""
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_MALFORMED_MANIFEST_YAML),
+            MagicMock(content=_VALID_MANIFEST_YAML),
+        ]
+        await self._call_produce(ctx)
+
+        second_call_messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[1].args[0]
+        retry_user_msg = second_call_messages[-1].content
+        assert "failed validation" in retry_user_msg
+        assert "parenthetical" in retry_user_msg or "Quote every file path" in retry_user_msg
+
+    async def test_both_attempts_fail_returns_none(self):
+        """Two malformed responses → fall back to static steps (None)."""
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_MALFORMED_MANIFEST_YAML),
+            MagicMock(content=_MALFORMED_MANIFEST_YAML),
+        ]
+        result = await self._call_produce(ctx)
+
+        assert result is None
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 2
+
+    async def test_out_of_bounds_retries_with_specific_error(self):
+        """Manifest with too few subtasks triggers retry with bounds feedback."""
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_VALID_MANIFEST_YAML),  # has 3 tasks
+            MagicMock(content=_VALID_MANIFEST_YAML),
+        ]
+        # Set min to 5 so the 3-task manifest is out of bounds
+        await self._call_produce(ctx, resolved_config={"min_build_subtasks": 5})
+
+        second_call_messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[1].args[0]
+        retry_user_msg = second_call_messages[-1].content
+        assert "3 subtasks" in retry_user_msg
+        assert "5" in retry_user_msg  # min bound echoed
+
+    async def test_max_attempts_configurable(self):
+        """manifest_max_attempts=1 disables retry; first failure returns None."""
+        ctx = _make_context(_MALFORMED_MANIFEST_YAML)
+        result = await self._call_produce(ctx, resolved_config={"manifest_max_attempts": 1})
+
+        assert result is None
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+
+    async def test_profile_roles_injected_into_prompt(self):
+        """profile_roles from inputs appear in the user prompt so the LLM is constrained."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        await self._call_produce(ctx, profile_roles=["dev", "qa", "lead"])
+
+        messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0]
+        user_prompt = messages[1].content
+        assert "Available roles" in user_prompt
+        assert "dev" in user_prompt and "qa" in user_prompt and "lead" in user_prompt
+
+    async def test_allowed_task_types_injected_into_prompt(self):
+        """Known build task_types appear in the prompt so the LLM doesn't invent them."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        await self._call_produce(ctx)
+
+        messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0]
+        user_prompt = messages[1].content
+        assert "Available task_types" in user_prompt
+        assert "development.develop" in user_prompt
+        assert "qa.test" in user_prompt
+        assert "builder.assemble" in user_prompt
+
+    async def test_invented_role_triggers_retry_with_role_list(self):
+        """Manifest with role outside profile_roles must retry with a specific error."""
+        # _VALID_MANIFEST_YAML uses roles "dev" and "qa" — pass profile_roles
+        # that EXCLUDE them to simulate an invented-role scenario.
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=_VALID_MANIFEST_YAML),
+            MagicMock(content=_VALID_MANIFEST_YAML),
+        ]
+        await self._call_produce(ctx, profile_roles=["lead", "builder"])
+
+        second_messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[1].args[0]
+        retry_msg = second_messages[-1].content
+        assert "not in the squad profile" in retry_msg
+        assert "dev" in retry_msg or "qa" in retry_msg  # bad role echoed
+
+    async def test_valid_roles_pass_without_retry(self):
+        """Roles matching profile_roles produce manifest on first attempt."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        result = await self._call_produce(ctx, profile_roles=["dev", "qa"])
+
+        assert result is not None
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+
+    async def test_builder_guidance_added_when_builder_role_present(self):
+        """When profile includes builder, prompt directs Max to use builder.assemble."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        await self._call_produce(
+            ctx, profile_roles=["dev", "qa", "lead", "builder"]
+        )
+
+        user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][
+            1
+        ].content
+        assert "`builder.assemble`" in user_prompt
+        assert "AFTER all `development.develop`" in user_prompt
+        assert "BEFORE any `qa.test`" in user_prompt
+        # Example template includes a builder.assemble row
+        assert "task_type: builder.assemble" in user_prompt
+        assert "role: builder" in user_prompt
+        # Summary template includes total_builder_tasks
+        assert "total_builder_tasks: P" in user_prompt
+        assert "total_tasks: N+M+P" in user_prompt
+        # "Put QA handoff last" is removed since builder owns handoff now
+        assert "Put QA handoff last" not in user_prompt
+
+    async def test_builder_guidance_absent_when_builder_role_missing(self):
+        """Squads without a builder role get the legacy QA-handoff-last guideline."""
+        ctx = _make_context(_VALID_MANIFEST_YAML)
+        await self._call_produce(ctx, profile_roles=["dev", "qa", "lead"])
+
+        user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][
+            1
+        ].content
+        assert "task_type: builder.assemble" not in user_prompt
+        assert "total_builder_tasks" not in user_prompt
+        assert "total_tasks: N+M" in user_prompt
+        assert "Put QA handoff last" in user_prompt
+
+
+# ---------------------------------------------------------------------------
 # 11. D17 artifact content validation (Fix E)
 # ---------------------------------------------------------------------------
 

@@ -2,6 +2,7 @@
 Run API routes (SIP-0064 §9.4).
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -25,6 +26,8 @@ from squadops.cycles.models import (
     ValidationError,
     validate_workload_type,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles/{cycle_id}/runs", tags=["runs"])
 
@@ -136,6 +139,13 @@ async def gate_decision(
         )
         updated = await registry.record_gate_decision(run_id, decision)
 
+        # SIP-0086: auto-promote the run's artifacts on approval so they
+        # flow to the next workload via plan_artifact_refs /
+        # prior_workload_artifact_refs. Without this the manifest stays
+        # at "working" status and the impl workload gets no inputs.
+        if body.decision == "approved":
+            await _promote_run_artifacts(run_id)
+
         # SIP-0077: gate.decided
         from squadops.api.runtime.deps import get_cycle_event_bus
         from squadops.events.types import EventType
@@ -246,3 +256,34 @@ async def list_checkpoints(project_id: str, cycle_id: str, run_id: str):
         ]
     except CycleError as e:
         raise handle_cycle_error(e) from e
+
+
+async def _promote_run_artifacts(run_id: str) -> None:
+    """Promote all `working` artifacts produced by a run.
+
+    Called from gate_decision() on approval. Idempotent: already-promoted
+    artifacts are skipped by the vault. Errors are logged but do not fail
+    the gate decision — the decision is the source of truth; promotion is
+    a downstream effect that can be retried.
+    """
+    from squadops.api.runtime.deps import get_artifact_vault
+
+    try:
+        vault = get_artifact_vault()
+    except Exception:
+        logger.warning("artifact_vault unavailable; skipping promotion for run %s", run_id)
+        return
+
+    try:
+        artifacts = await vault.list_artifacts(run_id=run_id)
+    except Exception:
+        logger.exception("failed to list artifacts for run %s during promotion", run_id)
+        return
+
+    for art in artifacts:
+        if art.promotion_status == "promoted":
+            continue
+        try:
+            await vault.promote_artifact(art.artifact_id)
+        except Exception:
+            logger.exception("failed to promote artifact %s for run %s", art.artifact_id, run_id)

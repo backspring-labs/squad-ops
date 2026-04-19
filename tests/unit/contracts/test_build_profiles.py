@@ -23,20 +23,19 @@ class TestBuildProfileLoads:
         assert profile.name == "build"
 
     def test_build_profile_has_build_tasks(self):
-        """build.yaml defaults contain build_tasks list."""
+        """build.yaml defaults enable build_tasks."""
         profile = load_profile("build")
         build_tasks = profile.defaults.get("build_tasks")
         assert build_tasks is not None
-        assert "development.develop" in build_tasks
-        assert "qa.test" in build_tasks
+        assert build_tasks is True
 
     def test_build_profile_has_plan_review_gate(self):
-        """build.yaml has a plan-review gate after governance.review."""
+        """build.yaml has a progress_plan_review gate after governance.review."""
         profile = load_profile("build")
         gates = profile.defaults["task_flow_policy"]["gates"]
         assert len(gates) >= 1
         gate = gates[0]
-        assert gate["name"] == "plan-review"
+        assert gate["name"] == "progress_plan_review"
         assert "governance.review" in gate["after_task_types"]
 
     def test_build_profile_expected_artifact_types(self):

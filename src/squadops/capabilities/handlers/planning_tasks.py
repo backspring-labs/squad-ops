@@ -417,7 +417,283 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             )
             score = 3
 
+        # SIP-0086: Produce build task manifest when enabled.
+        # The manifest decomposes the upcoming build into focused subtasks.
+        resolved_config = inputs.get("resolved_config", {})
+        if resolved_config.get("build_manifest", False):
+            manifest_artifact = await self._produce_manifest(
+                context, inputs, content, resolved_config
+            )
+            if manifest_artifact is not None:
+                result.outputs["artifacts"].append(manifest_artifact)
+
         return result
+
+    async def _produce_manifest(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        planning_content: str,
+        resolved_config: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Generate build task manifest via a dedicated LLM call.
+
+        Separate from the planning artifact generation to keep prompts focused.
+        Returns manifest artifact dict or None on graceful fallback (RC-4).
+        """
+
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+        from squadops.llm.models import ChatMessage
+
+        prd = inputs.get("prd", "")
+
+        # Constrain role choices to what the active squad profile actually has.
+        # Without this, small models invent plausible-sounding roles like
+        # 'backend_dev' that fail profile validation at impl-time.
+        profile_roles = inputs.get("profile_roles") or []
+        roles_section = (
+            f"Available roles (use ONLY these; do NOT invent new ones): "
+            f"{', '.join(profile_roles)}\n\n"
+            if profile_roles
+            else ""
+        )
+
+        # Constrain task_type to the known build task_types. Without this,
+        # models invent task_types like 'quality_assurance.validate' instead
+        # of the canonical 'qa.test'.
+        from squadops.cycles.build_manifest import _KNOWN_BUILD_TASK_TYPES
+
+        allowed_task_types = sorted(_KNOWN_BUILD_TASK_TYPES)
+        task_types_section = (
+            f"Available task_types (use ONLY these; do NOT invent new ones): "
+            f"{', '.join(allowed_task_types)}\n\n"
+        )
+
+        # SIP-0086 + SIP-0071: when the squad includes a dedicated builder,
+        # route assembly/packaging work to `builder.assemble` tasks so the
+        # builder role is actually exercised by the convergence loop.
+        has_builder = "builder" in profile_roles
+        if has_builder:
+            builder_guideline = (
+                "- Route packaging, entrypoints, requirements.txt/package.json, "
+                "Dockerfile/startup scripts, and qa_handoff.md to `builder.assemble` "
+                "tasks (role: builder). Place AFTER all `development.develop` tasks "
+                "and BEFORE any `qa.test` tasks.\n"
+            )
+            qa_handoff_guideline = ""
+            builder_example = (
+                "  - task_index: 1\n"
+                "    task_type: builder.assemble\n"
+                "    role: builder\n"
+                '    focus: "Package build output and produce qa_handoff.md"\n'
+                "    description: |\n"
+                "      Assemble packaging (entrypoints, requirements/manifest, "
+                "Dockerfile if applicable) and write qa_handoff.md summarizing "
+                "how to run and test the build.\n"
+                "    expected_artifacts:\n"
+                '      - "qa_handoff.md"\n'
+                "    acceptance_criteria:\n"
+                '      - "..."\n'
+                "    depends_on: [0]\n"
+            )
+            summary_builder_line = "  total_builder_tasks: P\n"
+            total_tasks_expr = "N+M+P"
+        else:
+            builder_guideline = ""
+            qa_handoff_guideline = "- Put QA handoff last\n"
+            builder_example = ""
+            summary_builder_line = ""
+            total_tasks_expr = "N+M"
+
+        manifest_prompt = (
+            "Based on the following PRD and planning artifact, produce a build task "
+            "manifest that decomposes the upcoming build into focused subtasks.\n\n"
+            f"{roles_section}"
+            f"{task_types_section}"
+            f"## PRD\n{prd}\n\n"
+            f"## Planning Artifact\n{planning_content}\n\n"
+            "Each subtask should:\n"
+            "1. Have a clear, narrow focus (e.g., 'Backend data models' not 'Build the app')\n"
+            "2. List the specific files it should produce\n"
+            "3. Declare dependencies on prior subtasks by task_index\n"
+            "4. Define acceptance criteria\n"
+            "5. Be completable in a single focused LLM generation (~2-10 minutes)\n\n"
+            "Decomposition guidelines:\n"
+            "- Separate backend and frontend into distinct tasks\n"
+            "- Separate models/data from API endpoints/routes\n"
+            "- Separate UI shell/routing from individual view components\n"
+            "- Put integration config (CORS, proxy, requirements) in its own task\n"
+            "- Put tests after the code they test\n"
+            f"{builder_guideline}"
+            f"{qa_handoff_guideline}"
+            "\n"
+            "Output ONLY the manifest as a YAML code block with filename tag:\n"
+            "```yaml:build_task_manifest.yaml\n"
+            "version: 1\n"
+            "project_id: <project_id>\n"
+            "cycle_id: <cycle_id>\n"
+            "prd_hash: <hash>\n"
+            "tasks:\n"
+            "  - task_index: 0\n"
+            "    task_type: development.develop\n"
+            "    role: dev\n"
+            '    focus: "..."\n'
+            "    description: |\n"
+            "      ...\n"
+            "    expected_artifacts:\n"
+            '      - "path/to/file"\n'
+            "    acceptance_criteria:\n"
+            '      - "..."\n'
+            "    depends_on: []\n"
+            f"{builder_example}"
+            "summary:\n"
+            "  total_dev_tasks: N\n"
+            "  total_qa_tasks: M\n"
+            f"{summary_builder_line}"
+            f"  total_tasks: {total_tasks_expr}\n"
+            "  estimated_layers: [backend, frontend, test, config]\n"
+            "```\n"
+        )
+
+        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        chat_kwargs = self._build_chat_kwargs(inputs)
+        min_subtasks = resolved_config.get("min_build_subtasks", 3)
+        max_subtasks = resolved_config.get("max_build_subtasks", 15)
+
+        # Retry loop: small models occasionally produce malformed YAML or
+        # off-bounds manifests. Re-prompt with the specific error so the
+        # model can correct itself before falling back to static steps.
+        max_attempts = int(resolved_config.get("manifest_max_attempts", 2))
+        messages = [
+            ChatMessage(role="system", content=assembled.content),
+            ChatMessage(role="user", content=manifest_prompt),
+        ]
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            except Exception as exc:
+                logger.warning(
+                    "assess_readiness: manifest LLM call failed on attempt %d/%d (%s)",
+                    attempt,
+                    max_attempts,
+                    exc,
+                )
+                if attempt >= max_attempts:
+                    return None
+                messages = messages[:2]  # reset and try once more from scratch
+                continue
+
+            # Extract manifest YAML — prefer filename-tagged fence
+            extracted = extract_fenced_files(response.content)
+            manifest_files = [f for f in extracted if f["filename"] == "build_task_manifest.yaml"]
+            if manifest_files:
+                yaml_content = manifest_files[0]["content"]
+            else:
+                yaml_content = self._find_manifest_yaml(response.content)
+
+            manifest, error_msg = self._validate_manifest_candidate(
+                yaml_content, min_subtasks, max_subtasks, profile_roles
+            )
+
+            if error_msg is None and manifest is not None:
+                logger.info(
+                    "assess_readiness: produced build task manifest with %d subtasks on attempt %d",
+                    len(manifest.tasks),
+                    attempt,
+                )
+                return {
+                    "name": "build_task_manifest.yaml",
+                    "content": yaml_content,
+                    "media_type": "text/yaml",
+                    "type": "control_manifest",
+                }
+
+            logger.warning(
+                "assess_readiness: manifest attempt %d/%d failed (%s)",
+                attempt,
+                max_attempts,
+                error_msg,
+            )
+            if attempt >= max_attempts:
+                logger.warning(
+                    "assess_readiness: exhausted %d manifest attempts, "
+                    "falling back to static task steps",
+                    max_attempts,
+                )
+                return None
+
+            # Append corrective feedback for the next attempt.
+            messages = [
+                *messages,
+                ChatMessage(role="assistant", content=response.content),
+                ChatMessage(role="user", content=error_msg),
+            ]
+
+        return None
+
+    @staticmethod
+    def _validate_manifest_candidate(
+        yaml_content: str | None,
+        min_subtasks: int,
+        max_subtasks: int,
+        profile_roles: list[str],
+    ) -> tuple[Any | None, str | None]:
+        """Validate a candidate manifest YAML. Returns (manifest, error_msg).
+
+        error_msg is None iff the manifest is valid; in that case manifest is
+        the parsed BuildTaskManifest. The error_msg is the corrective feedback
+        appended to the next LLM attempt.
+        """
+        from squadops.cycles.build_manifest import BuildTaskManifest
+
+        if yaml_content is None:
+            return None, (
+                "Your response did not contain a fenced YAML block tagged "
+                "build_task_manifest.yaml. Reply with ONLY the fenced block."
+            )
+
+        try:
+            manifest = BuildTaskManifest.from_yaml(yaml_content)
+        except ValueError as exc:
+            return None, (
+                f"The previous manifest YAML failed validation: {exc}. "
+                "Produce a corrected build_task_manifest.yaml. "
+                "Quote every file path; do not put parenthetical comments "
+                "after quoted strings on list items."
+            )
+
+        n = len(manifest.tasks)
+        if n < min_subtasks or n > max_subtasks:
+            return None, (
+                f"The previous manifest had {n} subtasks; bounds are "
+                f"{min_subtasks}-{max_subtasks}. Produce a corrected "
+                "build_task_manifest.yaml within bounds."
+            )
+
+        if profile_roles:
+            allowed = set(profile_roles)
+            bad = sorted({t.role for t in manifest.tasks if t.role not in allowed})
+            if bad:
+                return None, (
+                    f"The previous manifest used role(s) not in the "
+                    f"squad profile: {', '.join(bad)}. "
+                    f"Use ONLY these roles: {', '.join(profile_roles)}. "
+                    "Produce a corrected build_task_manifest.yaml."
+                )
+
+        return manifest, None
+
+    @staticmethod
+    def _find_manifest_yaml(content: str) -> str | None:
+        """Search for untagged ```yaml block with manifest content."""
+        import re
+
+        for match in re.finditer(r"```yaml\s*\n(.*?)```", content, re.DOTALL):
+            block = match.group(1).strip()
+            if "task_index" in block and "task_type" in block and "focus" in block:
+                return block
+        return None
 
 
 # ---------------------------------------------------------------------------

@@ -76,6 +76,7 @@ class ArtifactType:
     BUILD_PLAN = "build_plan"
     CONFIG_SNAPSHOT = "config_snapshot"
     QA_HANDOFF = "qa_handoff"
+    CONTROL_MANIFEST = "control_manifest"
 
 
 class RunInitiator:
@@ -282,6 +283,10 @@ class Cycle:
     experiment_context: dict = field(default_factory=dict)
 
     notes: str | None = None
+
+    # Operator cancellation flag. When True, derived status is CANCELLED
+    # regardless of run state.
+    cancelled: bool = False
 
 
 @dataclass(frozen=True)

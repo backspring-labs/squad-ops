@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.dev_capabilities import get_capability
@@ -31,6 +32,87 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# SIP-0086: Output validation framework
+# ---------------------------------------------------------------------------
+
+_STUB_THRESHOLD_BYTES = 100
+_STUB_PATTERNS = ("# This file is kept empty", "# TODO", "pass\n", "# placeholder")
+
+# Heuristic keyword mapping for legacy monolithic stack layer detection.
+# These are bounded heuristics — not semantic truth. They catch obvious
+# incompleteness (e.g., missing frontend for a PRD that says "React").
+_STACK_INDICATORS: dict[str, dict[str, Any]] = {
+    "backend": {
+        "keywords": ["fastapi", "flask", "django", "uvicorn", "backend", "api endpoint"],
+        "extensions": (".py",),
+    },
+    "frontend": {
+        "keywords": ["react", "vue", "vite", "frontend", "jsx", "tsx", "component"],
+        "extensions": (".jsx", ".tsx", ".js", ".ts", ".html", ".css"),
+    },
+    "test": {
+        "keywords": ["pytest", "test", "jest", "vitest"],
+        "extensions": (".py", ".js", ".ts"),
+    },
+    "config": {
+        "keywords": ["requirements.txt", "package.json", "dockerfile"],
+        "extensions": (".txt", ".json", ".yaml", ".yml", ".toml"),
+    },
+}
+
+
+@dataclass
+class ValidationResult:
+    """Outcome of handler output validation (SIP-0086 §6.2)."""
+
+    passed: bool
+    checks: list[dict] = field(default_factory=list)
+    missing_components: list[str] = field(default_factory=list)
+    coverage_ratio: float = 1.0
+    summary: str = ""
+
+
+def _detect_stubs(artifacts: list[dict], threshold: int = _STUB_THRESHOLD_BYTES) -> list[str]:
+    """Return filenames of stub artifacts (non-boilerplate files with trivial content)."""
+    stubs = []
+    for art in artifacts:
+        content = art.get("content", "")
+        name = art.get("name", "")
+        if name.endswith("__init__.py"):
+            continue
+        if len(content) < threshold:
+            if any(pat in content for pat in _STUB_PATTERNS) or not content.strip():
+                stubs.append(name)
+    return stubs
+
+
+def _detect_expected_layers(prd: str, impl_plan: str | None = None) -> dict[str, tuple[str, ...]]:
+    """Heuristic: detect required stack layers from PRD keywords.
+
+    Returns dict of layer_name → file extensions for that layer.
+    This is a bounded heuristic for catching obvious incompleteness,
+    not a semantic truth engine.
+    """
+    combined = (prd + "\n" + (impl_plan or "")).lower()
+    expected: dict[str, tuple[str, ...]] = {}
+    for layer, indicators in _STACK_INDICATORS.items():
+        if any(kw in combined for kw in indicators["keywords"]):
+            expected[layer] = indicators["extensions"]
+    return expected
+
+
+def _estimate_min_artifacts(prd: str, impl_plan: str | None = None) -> int:
+    """Heuristic: estimate minimum artifact count from PRD complexity.
+
+    Rough estimate — catches extreme shortfalls (3 files for a full-stack app)
+    but should not be treated as a precise requirement.
+    """
+    layers = _detect_expected_layers(prd, impl_plan)
+    # At least 2 files per detected layer, minimum 3 total
+    return max(3, len(layers) * 2)
 
 
 class _CycleTaskHandler(CapabilityHandler):
@@ -113,8 +195,20 @@ class _CycleTaskHandler(CapabilityHandler):
         inputs: dict[str, Any],
         error: str,
         outputs: dict[str, Any] | None = None,
+        outcome_class: str | None = None,
+        failure_classification: str | None = None,
     ) -> HandlerResult:
-        """Build a failure HandlerResult with evidence."""
+        """Build a failure HandlerResult with evidence.
+
+        When ``outcome_class`` is provided (SIP-0086 Stage B), it is written
+        to ``outputs["outcome_class"]`` so the executor's correction-routing
+        path in ``_handle_task_outcome`` uses the semantic classification
+        instead of falling through to the D5 retry-then-SEMANTIC_FAILURE
+        fallback. Handlers with structural validation (e.g., missing
+        required artifacts) should emit ``TaskOutcome.SEMANTIC_FAILURE``
+        with ``FailureClassification.WORK_PRODUCT`` so analysis runs
+        against a known classification rather than "unknown".
+        """
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
@@ -122,9 +216,14 @@ class _CycleTaskHandler(CapabilityHandler):
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
         )
+        merged_outputs = dict(outputs or {})
+        if outcome_class is not None:
+            merged_outputs["outcome_class"] = outcome_class
+        if failure_classification is not None:
+            merged_outputs["failure_classification"] = failure_classification
         return HandlerResult(
             success=False,
-            outputs=outputs or {},
+            outputs=merged_outputs,
             _evidence=evidence,
             error=error,
         )
@@ -168,6 +267,72 @@ class _CycleTaskHandler(CapabilityHandler):
         if "timeout_seconds" in overrides:
             kwargs["timeout_seconds"] = overrides["timeout_seconds"]
         return kwargs
+
+    # SIP-0086: Output validation and self-evaluation (Stage B)
+
+    def _validate_output(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Validate handler output. Override in build handler subclasses."""
+        return ValidationResult(passed=True, summary="No validation configured")
+
+    @staticmethod
+    def _build_self_eval_prompt(
+        validation: ValidationResult,
+        artifacts: list[dict],
+    ) -> str:
+        """Build follow-up prompt for self-evaluation after validation failure."""
+        artifact_names = [a.get("name", "") for a in artifacts]
+        parts = [
+            "Your previous response was incomplete. Here is what's missing:\n\n",
+            f"**Validation Summary:** {validation.summary}\n\n",
+        ]
+        if validation.missing_components:
+            parts.append(
+                f"**Missing Components:** {', '.join(validation.missing_components)}\n\n"
+            )
+        parts.append(f"**Files You Already Produced:** {', '.join(artifact_names)}\n\n")
+        parts.append(
+            "Please produce ONLY the missing files. Use the same fenced code block format "
+            "(```language:path/to/file```). Do not reproduce files you already generated."
+        )
+        return "".join(parts)
+
+    @staticmethod
+    def _merge_artifacts(
+        existing: list[dict],
+        new: list[dict],
+        evidence: dict,
+    ) -> list[dict]:
+        """Merge new artifacts into existing, replacing files with same name.
+
+        RC-7: The merged set is the authoritative candidate for revalidation.
+        All additions and replacements are recorded in evidence.
+        """
+        by_name = {a["name"]: a for a in existing}
+        merge_log: list[dict] = []
+
+        for art in new:
+            name = art["name"]
+            if name in by_name:
+                merge_log.append({
+                    "action": "replaced",
+                    "name": name,
+                    "old_size": len(by_name[name].get("content", "")),
+                    "new_size": len(art.get("content", "")),
+                })
+            else:
+                merge_log.append({
+                    "action": "added",
+                    "name": name,
+                    "size": len(art.get("content", "")),
+                })
+            by_name[name] = art
+
+        evidence.setdefault("self_eval_merge_log", []).extend(merge_log)
+        return list(by_name.values())
 
     async def handle(
         self,
@@ -350,12 +515,322 @@ class DataReportHandler(_CycleTaskHandler):
 
 
 class GovernanceReviewHandler(_CycleTaskHandler):
-    """Cycle task handler for governance review (lead role)."""
+    """Cycle task handler for governance review (lead role).
+
+    When ``build_manifest`` is enabled in resolved config, this handler
+    produces both a governance review document AND a build task manifest
+    (SIP-0086 §6.1.3). The manifest is a control-plane artifact that
+    decomposes the build into focused subtasks.
+    """
 
     _handler_name = "governance_review_handler"
     _capability_id = "governance.review"
     _role = "lead"
     _artifact_name = "governance_review.md"
+
+    _MANIFEST_PROMPT_EXTENSION = (
+        "\n\n---\n\n"
+        "## Build Task Manifest\n\n"
+        "In addition to your governance review above, produce a build task manifest "
+        "that decomposes the upcoming build into focused subtasks.\n\n"
+        "Each subtask should:\n"
+        "1. Have a clear, narrow focus (e.g., 'Backend data models' not 'Build the app')\n"
+        "2. List the specific files it should produce\n"
+        "3. Declare dependencies on prior subtasks by task_index\n"
+        "4. Define acceptance criteria (what must be true for this subtask to pass)\n"
+        "5. Be completable in a single focused LLM generation (~2-10 minutes)\n\n"
+        "Decomposition guidelines:\n"
+        "- Separate backend and frontend into distinct tasks\n"
+        "- Separate models/data from API endpoints/routes\n"
+        "- Separate UI shell/routing from individual view components\n"
+        "- Put integration config (CORS, proxy, requirements) in its own task\n"
+        "- Put tests after the code they test\n"
+        "- Put QA handoff last\n\n"
+        "Output the manifest as a YAML code block with filename: "
+        "build_task_manifest.yaml\n\n"
+        "Use this exact schema:\n"
+        "```yaml:build_task_manifest.yaml\n"
+        "version: 1\n"
+        "project_id: <project_id>\n"
+        "cycle_id: <cycle_id>\n"
+        "prd_hash: <sha256 of PRD>\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: development.develop  # or qa.test\n"
+        "    role: dev  # or qa\n"
+        "    focus: \"Short description of this subtask\"\n"
+        "    description: |\n"
+        "      Detailed description of what to build.\n"
+        "    expected_artifacts:\n"
+        "      - \"path/to/file.py\"\n"
+        "    acceptance_criteria:\n"
+        "      - \"Criterion 1\"\n"
+        "    depends_on: []  # list of task_index values\n"
+        "summary:\n"
+        "  total_dev_tasks: N\n"
+        "  total_qa_tasks: M\n"
+        "  total_tasks: N+M\n"
+        "  estimated_layers: [backend, frontend, test, config]\n"
+        "```\n"
+    )
+
+    async def handle(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+    ) -> HandlerResult:
+        resolved_config = inputs.get("resolved_config", {})
+        build_manifest_enabled = resolved_config.get("build_manifest", True)
+
+        if not build_manifest_enabled:
+            return await super().handle(context, inputs)
+
+        # Multi-artifact path: governance review + build task manifest
+        start_time = time.perf_counter()
+        prd = inputs.get("prd", "")
+        prior_outputs = inputs.get("prior_outputs")
+
+        # Build prompt with manifest extension
+        renderer = getattr(context.ports, "request_renderer", None)
+        rendered = None
+        if renderer is not None:
+            variables = self._build_render_variables(prd, prior_outputs, inputs)
+            rendered = await renderer.render(self._request_template_id, variables)
+            user_prompt = rendered.content + self._MANIFEST_PROMPT_EXTENSION
+        else:
+            user_prompt = (
+                self._build_user_prompt(prd, prior_outputs)
+                + self._MANIFEST_PROMPT_EXTENSION
+            )
+
+        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        system_prompt = assembled.content
+
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_prompt),
+        ]
+
+        chat_kwargs = self._build_chat_kwargs(inputs)
+
+        try:
+            response = await context.ports.llm.chat_stream_with_usage(
+                messages, **chat_kwargs
+            )
+        except LLMError as exc:
+            logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
+            return self._fail_result(start_time, inputs, str(exc))
+
+        content = response.content
+        llm_duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # Record LLM generation for tracing
+        self._record_generation(
+            context, user_prompt, content, llm_duration_ms, chat_kwargs, rendered
+        )
+
+        prd_summary = str(prd)[:80] if prd else "(no PRD)"
+
+        # Build prompt provenance
+        provenance = self._build_provenance(assembled, renderer, rendered)
+
+        # Primary artifact: governance review (full response content)
+        artifacts: list[dict[str, Any]] = [
+            {
+                "name": self._artifact_name,
+                "content": content,
+                "media_type": "text/markdown",
+                "type": "document",
+            },
+        ]
+
+        # Extract and validate build task manifest
+        manifest_artifact = self._extract_manifest(content, resolved_config, prd)
+        if manifest_artifact is not None:
+            artifacts.append(manifest_artifact)
+
+        outputs = {
+            "summary": f"[{self._role}] {prd_summary}",
+            "role": self._role,
+            "artifacts": artifacts,
+            "prompt_provenance": provenance,
+        }
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+        )
+
+        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+
+    def _extract_manifest(
+        self, content: str, resolved_config: dict[str, Any], prd: str = ""
+    ) -> dict[str, Any] | None:
+        """Extract and validate build task manifest from LLM response.
+
+        Returns manifest artifact dict, or None on graceful fallback (RC-4).
+        """
+        import hashlib
+
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+        from squadops.cycles.build_manifest import BuildTaskManifest
+
+        extracted = extract_fenced_files(content)
+        manifest_files = [
+            f for f in extracted if f["filename"] == "build_task_manifest.yaml"
+        ]
+
+        if manifest_files:
+            yaml_content = manifest_files[0]["content"]
+        else:
+            # Fallback: LLM may have used ```yaml without the filename tag.
+            # Search for untagged YAML blocks that contain manifest-like content.
+            yaml_content = self._find_manifest_in_raw_yaml(content)
+            if yaml_content is None:
+                logger.warning(
+                    "%s: no build_task_manifest.yaml found in response, "
+                    "falling back to static task steps",
+                    self._handler_name,
+                )
+                return None
+            logger.info(
+                "%s: manifest found via untagged YAML fallback",
+                self._handler_name,
+            )
+
+        # Structural validation
+        try:
+            manifest = BuildTaskManifest.from_yaml(yaml_content)
+        except ValueError as exc:
+            logger.warning(
+                "%s: manifest validation failed (%s), "
+                "falling back to static task steps",
+                self._handler_name,
+                exc,
+            )
+            return None
+
+        # PRD hash integrity check
+        if prd and manifest.prd_hash:
+            expected_hash = hashlib.sha256(prd.encode()).hexdigest()
+            if manifest.prd_hash != expected_hash:
+                logger.warning(
+                    "%s: manifest prd_hash mismatch (got %s, expected %s), "
+                    "continuing with manifest (LLM-generated hash is best-effort)",
+                    self._handler_name,
+                    manifest.prd_hash[:12],
+                    expected_hash[:12],
+                )
+                # Note: this is a warning, not a fallback. The LLM generates
+                # the hash and may not produce an exact SHA-256. The hash is
+                # informational for audit, not a security gate.
+
+        # Policy validation — subtask count bounds from resolved config
+        min_subtasks = resolved_config.get("min_build_subtasks", 3)
+        max_subtasks = resolved_config.get("max_build_subtasks", 15)
+
+        if len(manifest.tasks) < min_subtasks:
+            logger.warning(
+                "%s: manifest has %d subtasks (min %d), "
+                "falling back to static task steps",
+                self._handler_name,
+                len(manifest.tasks),
+                min_subtasks,
+            )
+            return None
+
+        if len(manifest.tasks) > max_subtasks:
+            logger.warning(
+                "%s: manifest has %d subtasks (max %d), "
+                "falling back to static task steps",
+                self._handler_name,
+                len(manifest.tasks),
+                max_subtasks,
+            )
+            return None
+
+        return {
+            "name": "build_task_manifest.yaml",
+            "content": yaml_content,
+            "media_type": "text/yaml",
+            "type": "control_manifest",
+        }
+
+    @staticmethod
+    def _find_manifest_in_raw_yaml(content: str) -> str | None:
+        """Search for an untagged ```yaml block containing manifest-like content.
+
+        Fallback for when the LLM uses ```yaml instead of ```yaml:build_task_manifest.yaml.
+        Returns the YAML string if found, or None.
+        """
+        import re
+
+        # Match ```yaml ... ``` blocks (without filename tag)
+        pattern = r"```yaml\s*\n(.*?)```"
+        for match in re.finditer(pattern, content, re.DOTALL):
+            block = match.group(1).strip()
+            # Check for manifest-like content markers
+            if "task_index" in block and "task_type" in block and "focus" in block:
+                return block
+        return None
+
+    def _record_generation(
+        self,
+        context: ExecutionContext,
+        user_prompt: str,
+        content: str,
+        llm_duration_ms: float,
+        chat_kwargs: dict[str, Any],
+        rendered: Any,
+    ) -> None:
+        """Record LLM generation for LangFuse tracing (SIP-0061)."""
+        llm_obs = getattr(context.ports, "llm_observability", None)
+        if llm_obs and context.correlation_context:
+            import uuid
+
+            from squadops.telemetry.models import (
+                MAX_OBSERVABILITY_TEXT_LENGTH,
+                GenerationRecord,
+                PromptLayer,
+                PromptLayerMetadata,
+            )
+
+            resolved_model = chat_kwargs.get("model", context.ports.llm.default_model)
+            gen_record = GenerationRecord(
+                generation_id=str(uuid.uuid4()),
+                model=resolved_model,
+                prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                latency_ms=llm_duration_ms,
+            )
+            layers = PromptLayerMetadata(
+                prompt_layer_set_id=f"{self._role}-cycle",
+                layers=(
+                    PromptLayer(layer_type="system", layer_id=f"{self._role}-system"),
+                    PromptLayer(
+                        layer_type="user", layer_id=f"cycle-{self._capability_id}"
+                    ),
+                ),
+            )
+            llm_obs.record_generation(context.correlation_context, gen_record, layers)
+
+    def _build_provenance(
+        self, assembled: Any, renderer: Any, rendered: Any
+    ) -> dict[str, Any]:
+        """Build prompt provenance dict for artifact traceability (SIP-0084)."""
+        provenance: dict[str, Any] = {
+            "system_prompt_bundle_hash": assembled.assembly_hash,
+        }
+        if renderer is not None and rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+        return provenance
 
 
 # ---------------------------------------------------------------------------
@@ -442,6 +917,152 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
         return errors
 
+    def _validate_output(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Validate dev handler output (SIP-0086 §6.3).
+
+        Two modes: focused (manifest-driven) and legacy (monolithic).
+        See SIP §6.3.1 and §6.3.2 for the distinction.
+        """
+        if inputs.get("subtask_focus") is not None:
+            return self._validate_focused(inputs, artifacts)
+        return self._validate_monolithic(inputs, artifacts)
+
+    def _validate_focused(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Focused-task validation: strict, artifact-specific (SIP §6.3.1)."""
+        checks: list[dict] = []
+        missing: list[str] = []
+        artifact_names = [a.get("name", "") for a in artifacts]
+
+        # FC1: Expected artifacts present (required gate)
+        expected = inputs.get("expected_artifacts", [])
+        missing_files = [f for f in expected if f not in artifact_names]
+        checks.append({
+            "check": "expected_artifacts",
+            "expected": expected,
+            "present": [f for f in expected if f in artifact_names],
+            "missing": missing_files,
+            "passed": len(missing_files) == 0,
+        })
+        if missing_files:
+            missing.extend(f"file:{f}" for f in missing_files)
+
+        # FC2: Non-stub files (required gate)
+        stubs = _detect_stubs(artifacts)
+        checks.append({
+            "check": "non_stub_files",
+            "stubs_found": stubs,
+            "passed": len(stubs) == 0,
+        })
+
+        # FC3: Acceptance criteria (informational in Rev 1 — RC-8)
+        acceptance = inputs.get("acceptance_criteria", [])
+        checks.append({
+            "check": "acceptance_criteria",
+            "criteria": acceptance,
+            "evaluation": "included_in_evidence",
+            "passed": True,
+        })
+
+        passed = all(c["passed"] for c in checks)
+        passed_count = sum(1 for c in checks if c["passed"])
+        coverage = passed_count / len(checks) if checks else 1.0
+
+        summary_parts = []
+        if missing_files:
+            summary_parts.append(f"Missing files: {', '.join(missing_files)}")
+        if stubs:
+            summary_parts.append(f"Stub files: {', '.join(stubs)}")
+
+        return ValidationResult(
+            passed=passed,
+            checks=checks,
+            missing_components=missing,
+            coverage_ratio=coverage,
+            summary="; ".join(summary_parts) or "All checks passed",
+        )
+
+    def _validate_monolithic(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Legacy monolithic validation: coarse heuristic (SIP §6.3.2).
+
+        Designed to catch obvious incompleteness, not certify completeness.
+        """
+        prd = inputs.get("prd", "")
+        if not prd:
+            return ValidationResult(passed=True, summary="No PRD, skipping validation")
+
+        checks: list[dict] = []
+        missing: list[str] = []
+        artifact_names = [a.get("name", "") for a in artifacts]
+
+        # C1: Stack coverage heuristic
+        expected_layers = _detect_expected_layers(prd)
+        present_layers: set[str] = set()
+        for name in artifact_names:
+            for layer, exts in expected_layers.items():
+                if any(name.endswith(ext) for ext in exts):
+                    present_layers.add(layer)
+        missing_layers = set(expected_layers.keys()) - present_layers
+        if missing_layers:
+            missing.extend(f"stack_layer:{layer}" for layer in missing_layers)
+        checks.append({
+            "check": "stack_coverage_heuristic",
+            "expected": list(expected_layers.keys()),
+            "present": list(present_layers),
+            "missing": list(missing_layers),
+            "passed": len(missing_layers) == 0,
+        })
+
+        # C2: Artifact count heuristic
+        min_artifacts = _estimate_min_artifacts(prd)
+        checks.append({
+            "check": "artifact_count_heuristic",
+            "expected_min": min_artifacts,
+            "actual": len(artifacts),
+            "passed": len(artifacts) >= min_artifacts,
+        })
+
+        # C3: Non-stub files
+        stubs = _detect_stubs(artifacts)
+        checks.append({
+            "check": "non_stub_files",
+            "stubs_found": stubs,
+            "passed": len(stubs) == 0,
+        })
+
+        passed = all(c["passed"] for c in checks)
+        passed_count = sum(1 for c in checks if c["passed"])
+        coverage = passed_count / len(checks) if checks else 1.0
+
+        summary_parts = []
+        if missing_layers:
+            summary_parts.append(f"Missing stack layers: {', '.join(missing_layers)}")
+        if len(artifacts) < min_artifacts:
+            summary_parts.append(
+                f"Only {len(artifacts)} artifacts, expected >= {min_artifacts}"
+            )
+        if stubs:
+            summary_parts.append(f"Stub files: {', '.join(stubs)}")
+
+        return ValidationResult(
+            passed=passed,
+            checks=checks,
+            missing_components=missing,
+            coverage_ratio=coverage,
+            summary="; ".join(summary_parts) or "All checks passed",
+        )
+
     def _resolve_artifact_content(
         self,
         inputs: dict[str, Any],
@@ -516,6 +1137,42 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         return "\n".join(parts)
 
+    def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
+        """Build a focused prompt for manifest-driven subtasks (SIP-0086 §6.1.5).
+
+        RC-6: When subtask_focus is present, this path is used exclusively.
+        The legacy monolithic prompt path is NOT used.
+        """
+        prd = inputs.get("prd", "")
+        focus = inputs["subtask_focus"]
+        description = inputs.get("subtask_description", "")
+        expected_files = inputs.get("expected_artifacts", [])
+        acceptance_criteria = inputs.get("acceptance_criteria", [])
+        artifact_contents = inputs.get("artifact_contents", {})
+
+        parts = [f"## Build Task: {focus}\n\n{description}\n"]
+
+        parts.append("### Expected Output Files\n")
+        parts.extend(f"- `{f}`\n" for f in expected_files)
+
+        if acceptance_criteria:
+            parts.append("\n### Acceptance Criteria\n")
+            parts.extend(f"- {c}\n" for c in acceptance_criteria)
+
+        parts.append(f"\n### Context\nPRD:\n{prd}\n")
+
+        if artifact_contents:
+            parts.append("\n### Prior Artifacts (already built — do not reproduce)\n")
+            for name, content in artifact_contents.items():
+                parts.append(f"**{name}:**\n```\n{content}\n```\n")
+
+        parts.append(
+            "\nProduce ONLY the files listed in Expected Output Files. "
+            "Use fenced code blocks with ```language:path/to/file``` format. "
+            "Do not reproduce files from prior artifacts."
+        )
+        return "".join(parts)
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -531,31 +1188,48 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
 
-        # Resolve capability (fail fast on unknown dev_capability)
-        try:
-            capability = get_capability(self._resolved_config.get("dev_capability", "python_cli"))
-        except ValueError as exc:
-            return self._fail_result(start_time, inputs, str(exc))
+        # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
+        if inputs.get("subtask_focus") is not None:
+            user_prompt = self._build_focused_prompt(inputs)
+            rendered = None
+            try:
+                capability = get_capability(
+                    self._resolved_config.get("dev_capability", "python_cli")
+                )
+            except ValueError as exc:
+                return self._fail_result(start_time, inputs, str(exc))
+        else:
+            # Legacy monolithic prompt path (unchanged)
 
-        # Resolve plan artifacts with vault fallback (D3)
-        impl_plan = await self._resolve_with_vault_fallback(
-            inputs,
-            "implementation_plan",
-        )
-        strategy = await self._resolve_with_vault_fallback(inputs, "strategy_analysis")
+            # Resolve capability (fail fast on unknown dev_capability)
+            try:
+                capability = get_capability(
+                    self._resolved_config.get("dev_capability", "python_cli")
+                )
+            except ValueError as exc:
+                return self._fail_result(start_time, inputs, str(exc))
 
-        # Check required artifacts (fail only when vault was available but empty)
-        if impl_plan is None and inputs.get("artifact_vault") is not None:
-            return self._fail_result(start_time, inputs, "Required plan artifacts not available")
+            # Resolve plan artifacts with vault fallback (D3)
+            impl_plan = await self._resolve_with_vault_fallback(
+                inputs,
+                "implementation_plan",
+            )
+            strategy = await self._resolve_with_vault_fallback(inputs, "strategy_analysis")
 
-        rendered, user_prompt = await self._build_dev_prompt(
-            context,
-            prd,
-            prior_outputs,
-            capability,
-            impl_plan,
-            strategy,
-        )
+            # Check required artifacts (fail only when vault was available but empty)
+            if impl_plan is None and inputs.get("artifact_vault") is not None:
+                return self._fail_result(
+                    start_time, inputs, "Required plan artifacts not available"
+                )
+
+            rendered, user_prompt = await self._build_dev_prompt(
+                context,
+                prd,
+                prior_outputs,
+                capability,
+                impl_plan,
+                strategy,
+            )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
@@ -649,6 +1323,69 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 }
             )
 
+        # SIP-0086: Output validation + self-evaluation + outcome classification
+        resolved_config = inputs.get("resolved_config", {})
+        evidence_extra: dict[str, Any] = {}
+
+        if resolved_config.get("output_validation", False):
+            validation = self._validate_output(inputs, artifacts)
+
+            # Self-evaluation loop (Phase 7)
+            if not validation.passed:
+                max_self_eval = resolved_config.get("max_self_eval_passes", 1)
+                self_eval_count = 0
+
+                while not validation.passed and self_eval_count < max_self_eval:
+                    self_eval_count += 1
+                    followup_prompt = self._build_self_eval_prompt(validation, artifacts)
+
+                    try:
+                        followup_response = await context.ports.llm.chat_stream_with_usage(
+                            [
+                                ChatMessage(role="system", content=system_prompt),
+                                ChatMessage(role="user", content=user_prompt),
+                                ChatMessage(role="assistant", content=content),
+                                ChatMessage(role="user", content=followup_prompt),
+                            ],
+                            **chat_kwargs,
+                        )
+                    except LLMError as exc:
+                        logger.warning(
+                            "Self-eval LLM call failed for %s: %s",
+                            self._handler_name,
+                            exc,
+                        )
+                        break
+
+                    new_extracted = extract_fenced_files(followup_response.content)
+                    new_artifacts = [
+                        {
+                            "name": f["filename"],
+                            "content": f["content"],
+                            "media_type": _classify_file(f["filename"])[1],
+                            "type": _classify_file(f["filename"])[0],
+                        }
+                        for f in new_extracted
+                    ]
+                    artifacts = self._merge_artifacts(
+                        artifacts, new_artifacts, evidence_extra
+                    )
+
+                    # RC-7: validate merged artifact set
+                    validation = self._validate_output(inputs, artifacts)
+
+                evidence_extra["self_eval_passes"] = self_eval_count
+
+            evidence_extra["validation_result"] = {
+                "passed": validation.passed,
+                "checks": validation.checks,
+                "missing_components": validation.missing_components,
+                "coverage_ratio": validation.coverage_ratio,
+                "summary": validation.summary,
+            }
+        else:
+            validation = ValidationResult(passed=True, summary="Validation disabled")
+
         # SIP-0084 §10: build prompt provenance for artifact traceability
         provenance: dict[str, Any] = {
             "system_prompt_bundle_hash": assembled.assembly_hash,
@@ -659,12 +1396,27 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             provenance["request_render_hash"] = rendered.render_hash
             provenance["prompt_environment"] = "production"
 
-        outputs = {
+        outputs: dict[str, Any] = {
             "summary": f"[dev] Generated {len(artifacts)} source file(s)",
             "role": self._role,
             "artifacts": artifacts,
             "prompt_provenance": provenance,
         }
+
+        # Phase 6: Outcome classification
+        if validation.passed:
+            from squadops.cycles.task_outcome import TaskOutcome
+
+            outputs["outcome_class"] = TaskOutcome.SUCCESS
+        else:
+            from squadops.cycles.task_outcome import (
+                FailureClassification,
+                TaskOutcome,
+            )
+
+            outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
+            outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
+            outputs["validation_result"] = evidence_extra.get("validation_result", {})
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
@@ -673,9 +1425,15 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
+            metadata=evidence_extra if evidence_extra else None,
         )
 
-        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+        return HandlerResult(
+            success=validation.passed,
+            outputs=outputs,
+            _evidence=evidence,
+            error=validation.summary if not validation.passed else None,
+        )
 
     async def _build_dev_prompt(
         self,
@@ -787,6 +1545,70 @@ class QATestHandler(_CycleTaskHandler):
         if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
             errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
         return errors
+
+    def _validate_output(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+    ) -> ValidationResult:
+        """Validate QA handler output (SIP-0086 §6.4)."""
+        checks: list[dict] = []
+        missing: list[str] = []
+
+        if inputs.get("subtask_focus") is not None:
+            # Focused mode: check expected artifacts
+            expected = inputs.get("expected_artifacts", [])
+            artifact_names = [a.get("name", "") for a in artifacts]
+            missing_files = [f for f in expected if f not in artifact_names]
+            checks.append({
+                "check": "expected_artifacts",
+                "expected": expected,
+                "present": [f for f in expected if f in artifact_names],
+                "missing": missing_files,
+                "passed": len(missing_files) == 0,
+            })
+            if missing_files:
+                missing.extend(f"file:{f}" for f in missing_files)
+        else:
+            # Legacy mode: at least one test file with content
+            test_files = [
+                a for a in artifacts
+                if "test" in a.get("name", "").lower()
+                and len(a.get("content", "")) > _STUB_THRESHOLD_BYTES
+            ]
+            checks.append({
+                "check": "test_file_presence",
+                "test_files_found": len(test_files),
+                "passed": len(test_files) > 0,
+            })
+            if not test_files:
+                missing.append("test_files")
+
+        # Non-stub check (both modes)
+        stubs = _detect_stubs(artifacts)
+        checks.append({
+            "check": "non_stub_files",
+            "stubs_found": stubs,
+            "passed": len(stubs) == 0,
+        })
+
+        passed = all(c["passed"] for c in checks)
+        passed_count = sum(1 for c in checks if c["passed"])
+        coverage = passed_count / len(checks) if checks else 1.0
+
+        summary_parts = []
+        if missing:
+            summary_parts.append(f"Missing: {', '.join(missing)}")
+        if stubs:
+            summary_parts.append(f"Stub files: {', '.join(stubs)}")
+
+        return ValidationResult(
+            passed=passed,
+            checks=checks,
+            missing_components=missing,
+            coverage_ratio=coverage,
+            summary="; ".join(summary_parts) or "All checks passed",
+        )
 
     def _resolve_artifact_content(
         self,
@@ -950,6 +1772,42 @@ class QATestHandler(_CycleTaskHandler):
         }
         return test_result, report_artifact
 
+    def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
+        """Build a focused prompt for manifest-driven QA subtasks (SIP-0086).
+
+        RC-6: When subtask_focus is present, this path is used exclusively.
+        """
+        prd = inputs.get("prd", "")
+        focus = inputs["subtask_focus"]
+        description = inputs.get("subtask_description", "")
+        expected_files = inputs.get("expected_artifacts", [])
+        acceptance_criteria = inputs.get("acceptance_criteria", [])
+        artifact_contents = inputs.get("artifact_contents", {})
+
+        parts = [f"## QA Task: {focus}\n\n{description}\n"]
+
+        parts.append("### Expected Output Files\n")
+        parts.extend(f"- `{f}`\n" for f in expected_files)
+
+        if acceptance_criteria:
+            parts.append("\n### Acceptance Criteria\n")
+            parts.extend(f"- {c}\n" for c in acceptance_criteria)
+
+        parts.append(f"\n### Context\nPRD:\n{prd}\n")
+
+        if artifact_contents:
+            parts.append("\n### Source Artifacts to Test\n")
+            for name, content in artifact_contents.items():
+                lang = self._fence_lang(name)
+                parts.append(f"**{name}:**\n```{lang}\n{content}\n```\n")
+
+        parts.append(
+            "\nProduce ONLY the files listed in Expected Output Files. "
+            "Use fenced code blocks with ```language:path/to/file``` format. "
+            "Do not reproduce source artifacts."
+        )
+        return "".join(parts)
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -970,23 +1828,33 @@ class QATestHandler(_CycleTaskHandler):
         except ValueError as exc:
             return self._fail_result(start_time, inputs, str(exc))
 
-        # Resolve plan artifacts with vault fallback (D3)
-        val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
-        sources = self._get_source_artifacts(inputs)
+        # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
+        if inputs.get("subtask_focus") is not None:
+            user_prompt = self._build_focused_prompt(inputs)
+            rendered = None
+            sources = self._get_source_artifacts(inputs)
+        else:
+            # Legacy monolithic prompt path (unchanged)
 
-        # Check required artifacts (fail only when vault was available but empty)
-        if val_plan is None and inputs.get("artifact_vault") is not None:
-            return self._fail_result(start_time, inputs, "Required plan artifacts not available")
+            # Resolve plan artifacts with vault fallback (D3)
+            val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
+            sources = self._get_source_artifacts(inputs)
 
-        rendered, user_prompt = await self._build_qa_prompt(
-            context,
-            prd,
-            prior_outputs,
-            capability,
-            val_plan,
-            sources,
-            capability_name,
-        )
+            # Check required artifacts (fail only when vault was available but empty)
+            if val_plan is None and inputs.get("artifact_vault") is not None:
+                return self._fail_result(
+                    start_time, inputs, "Required plan artifacts not available"
+                )
+
+            rendered, user_prompt = await self._build_qa_prompt(
+                context,
+                prd,
+                prior_outputs,
+                capability,
+                val_plan,
+                sources,
+                capability_name,
+            )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
@@ -1070,11 +1938,110 @@ class QATestHandler(_CycleTaskHandler):
             for f in extracted
         ]
 
+        # SIP-0086: Output validation + self-evaluation
+        evidence_extra: dict[str, Any] = {}
+        output_validation_enabled = resolved_config.get("output_validation", False)
+
+        if output_validation_enabled:
+            validation = self._validate_output(inputs, artifacts)
+
+            # Self-evaluation loop
+            if not validation.passed:
+                max_self_eval = resolved_config.get("max_self_eval_passes", 1)
+                self_eval_count = 0
+
+                while not validation.passed and self_eval_count < max_self_eval:
+                    self_eval_count += 1
+                    followup_prompt = self._build_self_eval_prompt(validation, artifacts)
+
+                    try:
+                        followup_response = await context.ports.llm.chat_stream_with_usage(
+                            [
+                                ChatMessage(role="system", content=system_prompt),
+                                ChatMessage(role="user", content=user_prompt),
+                                ChatMessage(role="assistant", content=content),
+                                ChatMessage(role="user", content=followup_prompt),
+                            ],
+                            **chat_kwargs,
+                        )
+                    except LLMError as exc:
+                        logger.warning(
+                            "Self-eval LLM call failed for %s: %s",
+                            self._handler_name,
+                            exc,
+                        )
+                        break
+
+                    new_extracted = extract_fenced_files(followup_response.content)
+                    new_artifacts = [
+                        {
+                            "name": f["filename"],
+                            "content": f["content"],
+                            "media_type": _classify_file(f["filename"])[1],
+                            "type": "test",
+                        }
+                        for f in new_extracted
+                    ]
+                    artifacts = self._merge_artifacts(
+                        artifacts, new_artifacts, evidence_extra
+                    )
+                    validation = self._validate_output(inputs, artifacts)
+
+                evidence_extra["self_eval_passes"] = self_eval_count
+        else:
+            validation = ValidationResult(passed=True, summary="Validation disabled")
+
         # Run generated tests and build report
         test_result, test_report_artifact = await self._run_test_suite(
             capability, sources, extracted
         )
         artifacts.append(test_report_artifact)
+
+        # Fold test-execution outcome into validation. The qa.test handler's
+        # objective is "produce tests that pass against the dev artifacts";
+        # artifacts-present-and-non-stub is necessary but not sufficient. A
+        # passing test file count with exit_code != 0 (e.g., import errors
+        # causing pytest to collect 0 tests) must surface as SEMANTIC_FAILURE
+        # so the correction protocol activates.
+        if output_validation_enabled and not (
+            test_result.executed and test_result.tests_passed
+        ):
+            if test_result.executed:
+                detail = f"tests_failed:exit_{test_result.exit_code}"
+                fail_note = f"Tests failed (exit {test_result.exit_code})"
+            else:
+                reason = test_result.error or "runner_error"
+                detail = f"tests_not_executed:{reason}"
+                fail_note = f"Tests not executed: {reason}"
+
+            validation.checks.append(
+                {
+                    "check": "tests_pass",
+                    "executed": test_result.executed,
+                    "exit_code": test_result.exit_code,
+                    "tests_passed": test_result.tests_passed,
+                    "passed": False,
+                }
+            )
+            validation.passed = False
+            validation.missing_components.append(detail)
+            validation.summary = (
+                fail_note
+                if validation.summary in ("", "All checks passed")
+                else f"{validation.summary}; {fail_note}"
+            )
+            if validation.checks:
+                passed_count = sum(1 for c in validation.checks if c["passed"])
+                validation.coverage_ratio = passed_count / len(validation.checks)
+
+        if output_validation_enabled:
+            evidence_extra["validation_result"] = {
+                "passed": validation.passed,
+                "checks": validation.checks,
+                "missing_components": validation.missing_components,
+                "coverage_ratio": validation.coverage_ratio,
+                "summary": validation.summary,
+            }
 
         if test_result.tests_passed:
             test_suffix = ", all tests passed"
@@ -1093,7 +2060,7 @@ class QATestHandler(_CycleTaskHandler):
             provenance["request_render_hash"] = rendered.render_hash
             provenance["prompt_environment"] = "production"
 
-        outputs = {
+        outputs: dict[str, Any] = {
             "summary": f"[qa] Generated {len(artifacts) - 1} test file(s){test_suffix}",
             "role": self._role,
             "artifacts": artifacts,
@@ -1108,6 +2075,21 @@ class QATestHandler(_CycleTaskHandler):
             "prompt_provenance": provenance,
         }
 
+        # Phase 6: Outcome classification
+        if validation.passed:
+            from squadops.cycles.task_outcome import TaskOutcome
+
+            outputs["outcome_class"] = TaskOutcome.SUCCESS
+        else:
+            from squadops.cycles.task_outcome import (
+                FailureClassification,
+                TaskOutcome,
+            )
+
+            outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
+            outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
+            outputs["validation_result"] = evidence_extra.get("validation_result", {})
+
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
@@ -1115,9 +2097,15 @@ class QATestHandler(_CycleTaskHandler):
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
+            metadata=evidence_extra if evidence_extra else None,
         )
 
-        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+        return HandlerResult(
+            success=validation.passed,
+            outputs=outputs,
+            _evidence=evidence,
+            error=validation.summary if not validation.passed else None,
+        )
 
     async def _build_qa_prompt(
         self,
@@ -1515,7 +2503,15 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         sources = self._get_assembly_inputs(inputs)
 
         if not sources:
-            return self._fail_result(start_time, inputs, "No source artifacts found for assembly")
+            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+            return self._fail_result(
+                start_time,
+                inputs,
+                "No source artifacts found for assembly",
+                outcome_class=TaskOutcome.SEMANTIC_FAILURE,
+                failure_classification=FailureClassification.WORK_PRODUCT,
+            )
 
         # Step 3: Build assembly prompt
         rendered, user_prompt = await self._build_assembly_prompt(
@@ -1564,14 +2560,30 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         extracted = extract_fenced_files(content)
 
         if not extracted:
-            return self._fail_result(start_time, inputs, "No valid fenced code blocks found")
+            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+            return self._fail_result(
+                start_time,
+                inputs,
+                "No valid fenced code blocks found",
+                outcome_class=TaskOutcome.SEMANTIC_FAILURE,
+                failure_classification=FailureClassification.WORK_PRODUCT,
+            )
 
         # Step 6-8: Validate builder output
         validation_error = self._validate_builder_output(
             extracted, profile, QA_HANDOFF_REQUIRED_SECTIONS
         )
         if validation_error is not None:
-            return self._fail_result(start_time, inputs, validation_error)
+            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+            return self._fail_result(
+                start_time,
+                inputs,
+                validation_error,
+                outcome_class=TaskOutcome.SEMANTIC_FAILURE,
+                failure_classification=FailureClassification.WORK_PRODUCT,
+            )
 
         # Step 8b: Deduplicate and classify
         extracted, artifacts, qa_handoff_content = self._dedup_and_classify(extracted)

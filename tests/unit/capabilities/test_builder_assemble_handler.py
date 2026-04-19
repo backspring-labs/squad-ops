@@ -673,3 +673,95 @@ class TestAssemblyInputsExpandedExtensions:
         call_args = mock_context.ports.llm.chat_stream_with_usage.call_args
         user_msg = call_args[0][0][1].content
         assert "my_app/main.py" in user_msg
+
+
+# ---------------------------------------------------------------------------
+# SIP-0086 closeout Fix #3: BuilderAssembleHandler emits outcome_class on
+# structural validation failures. Before this fix, _fail_result returned an
+# empty outputs dict and the executor's D5 fallback classified the failure
+# as "unknown" after a retry — observed on cycle cyc_a2a15b81d3b9 run
+# run_33a4c714b818 where plan_delta.failure_classification was "unknown"
+# and data.analyze_failure produced "N/A".
+# ---------------------------------------------------------------------------
+
+
+class TestBuilderFailureOutcomeClass:
+    async def test_missing_qa_handoff_emits_semantic_failure(
+        self, mock_context, builder_inputs
+    ):
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_MISSING_QA_HANDOFF),
+        )
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, builder_inputs)
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
+        assert "qa_handoff.md not found" in result.error
+
+    async def test_missing_required_file_emits_semantic_failure(
+        self, mock_context, builder_inputs
+    ):
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_MISSING_REQUIRED_FILE),
+        )
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, builder_inputs)
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
+
+    async def test_no_fenced_blocks_emits_semantic_failure(
+        self, mock_context, builder_inputs
+    ):
+        """LLM responds with prose only — no fenced code blocks extractable."""
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant",
+                content="I would build the package but no code was produced.",
+            ),
+        )
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, builder_inputs)
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
+        assert "No valid fenced code blocks" in result.error
+
+    async def test_no_source_artifacts_emits_semantic_failure(self, mock_context):
+        """Bob given no sources to assemble → SEMANTIC_FAILURE, not unclassified."""
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+        inputs = {
+            "prd": "Build something",
+            "resolved_config": {},
+            "artifact_contents": {},
+        }
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, inputs)
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
+
+    async def test_llm_exception_stays_unclassified(self, mock_context, builder_inputs):
+        """LLM connection errors are transient — D5 fallback retries; no semantic class."""
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            side_effect=LLMConnectionError("connection refused"),
+        )
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, builder_inputs)
+
+        assert result.success is False
+        # Transient failures must NOT set outcome_class so the executor's
+        # D5 retry-before-semantic-failure path activates.
+        assert "outcome_class" not in result.outputs

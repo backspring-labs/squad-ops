@@ -233,6 +233,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
             )
             d["task_flow_policy"] = TaskFlowPolicy(mode=tfp["mode"], gates=gates)
         d["expected_artifact_types"] = tuple(d.get("expected_artifact_types", ()))
+        d["cancelled"] = d.get("cycle_id", data.get("cycle_id")) in self._cancelled_cycles
         return Cycle(**d)
 
     def _to_run(self, data: dict) -> Run:

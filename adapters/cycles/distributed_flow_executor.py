@@ -165,7 +165,14 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     },
                 )
 
-            plan = generate_task_plan(cycle, run, profile)
+            # SIP-0086: Load manifest for implementation workloads.
+            # The manifest is produced by the planning workload and forwarded
+            # via plan_artifact_refs. Loading it here (not mid-loop) keeps the
+            # executor deterministic — the plan is fully materialized before
+            # task dispatch begins.
+            manifest = await self._load_manifest_for_run(cycle, run)
+
+            plan = generate_task_plan(cycle, run, profile, manifest=manifest)
 
             # Build-only validation (D6): require plan_artifact_refs
             include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
@@ -499,12 +506,11 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # workload-type-specific keys
         wt = completed_run.workload_type
         if wt == "planning":
-            plan_docs = await self._artifact_vault.list_artifacts(
-                run_id=completed_run.run_id,
-                artifact_type="document",
-                promotion_status="promoted",
-            )
-            plan_refs = [a.artifact_id for a in sorted(plan_docs, key=lambda a: a.created_at)]
+            # SIP-0086: include control_manifest alongside documents so the
+            # build_task_manifest.yaml reaches the implementation workload.
+            plan_types = {"document", "control_manifest"}
+            plan_candidates = [a for a in promoted if a.artifact_type in plan_types]
+            plan_refs = [a.artifact_id for a in sorted(plan_candidates, key=lambda a: a.created_at)]
             if "plan_artifact_refs" in overrides:
                 existing = overrides["plan_artifact_refs"]
                 seen = set(existing)
@@ -605,7 +611,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
     # by_type / by_type_fallback: match on artifact_type for artifacts without provenance
     _BUILD_ARTIFACT_FILTER: dict[str, dict[str, list[str]]] = {
         "development.develop": {
-            "by_producing_task": ["strategy.analyze_prd", "development.design"],
+            # SIP-0086: include prior development.develop for manifest-driven
+            # subtask chaining (dev→dev artifact accumulation)
+            "by_producing_task": [
+                "strategy.analyze_prd",
+                "development.design",
+                "development.develop",
+            ],
             "by_type_fallback": ["document"],
         },
         "builder.assemble": {
@@ -613,7 +625,9 @@ class DistributedFlowExecutor(FlowExecutionPort):
             "by_type": ["source", "config"],
         },
         "qa.test": {
-            "by_producing_task": ["qa.validate", "builder.assemble"],
+            # SIP-0086: include development.develop for manifest-driven QA
+            # subtasks that need to see all prior build artifacts
+            "by_producing_task": ["qa.validate", "builder.assemble", "development.develop"],
             "by_type": ["source", "config"],
         },
     }
@@ -877,6 +891,58 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # Post-task gate check (runs after verification)
             if self._is_gate_boundary(cycle, envelope.task_type):
                 await self._handle_gate(run_id, cycle, envelope.task_type)
+
+    # ------------------------------------------------------------------
+    # SIP-0086: Manifest loading for implementation workloads
+    # ------------------------------------------------------------------
+
+    async def _load_manifest_for_run(
+        self,
+        cycle: Any,
+        run: Any,
+    ) -> Any:
+        """Load build task manifest for an implementation workload run.
+
+        Searches forwarded plan_artifact_refs for a control_manifest artifact.
+        Called before generate_task_plan() so the plan is fully materialized
+        before task dispatch begins — no mid-loop mutation.
+
+        Returns BuildTaskManifest or None (RC-4 graceful fallback).
+        """
+        from squadops.cycles.build_manifest import BuildTaskManifest
+
+        # Only load manifest when build_manifest is enabled
+        if not cycle.applied_defaults.get("build_manifest", False):
+            return None
+
+        # Search forwarded planning artifacts for manifest
+        plan_refs = cycle.execution_overrides.get("plan_artifact_refs", [])
+        if not plan_refs:
+            return None
+
+        for ref_id in plan_refs:
+            try:
+                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
+                if ref.filename == "build_task_manifest.yaml" or (
+                    hasattr(ref, "artifact_type") and ref.artifact_type == "control_manifest"
+                ):
+                    yaml_content = content_bytes.decode(errors="replace")
+                    manifest = BuildTaskManifest.from_yaml(yaml_content)
+                    logger.info(
+                        "Loaded build task manifest with %d subtasks for run %s",
+                        len(manifest.tasks),
+                        run.run_id,
+                    )
+                    return manifest
+            except Exception:
+                logger.warning(
+                    "Failed to load manifest from artifact %s, falling back to static task steps",
+                    ref_id,
+                    exc_info=True,
+                )
+                return None
+
+        return None
 
     # ------------------------------------------------------------------
     # Extracted helpers for _execute_sequential

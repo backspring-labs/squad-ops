@@ -1,12 +1,12 @@
 name: build
-description: Plan-then-build cycle with optional gate between plan and build phases.
+description: Plan-then-build cycle with gate between planning and implementation workloads.
 defaults:
   build_strategy: fresh
   task_flow_policy:
     mode: sequential
     gates:
-      - name: plan-review
-        description: Review planning artifacts before build begins.
+      - name: progress_plan_review
+        description: Review planning artifacts and build manifest before implementation begins.
         after_task_types:
           - governance.review
   expected_artifact_types:
@@ -14,8 +14,15 @@ defaults:
     - source
     - test
     - config
-  build_tasks:
-    - development.develop
-    - qa.test
+  workload_sequence:
+    - type: planning
+      gate: progress_plan_review
+    - type: implementation
+      gate: null
+  build_tasks: true
+  build_manifest: true
+  output_validation: true
+  max_self_eval_passes: 1
+  max_build_subtasks: 15
   experiment_context: {}
-  notes: "Plan-then-build cycle"
+  notes: "Plan-then-build cycle with manifest decomposition (SIP-0086)"
