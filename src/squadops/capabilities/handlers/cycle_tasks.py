@@ -195,8 +195,20 @@ class _CycleTaskHandler(CapabilityHandler):
         inputs: dict[str, Any],
         error: str,
         outputs: dict[str, Any] | None = None,
+        outcome_class: str | None = None,
+        failure_classification: str | None = None,
     ) -> HandlerResult:
-        """Build a failure HandlerResult with evidence."""
+        """Build a failure HandlerResult with evidence.
+
+        When ``outcome_class`` is provided (SIP-0086 Stage B), it is written
+        to ``outputs["outcome_class"]`` so the executor's correction-routing
+        path in ``_handle_task_outcome`` uses the semantic classification
+        instead of falling through to the D5 retry-then-SEMANTIC_FAILURE
+        fallback. Handlers with structural validation (e.g., missing
+        required artifacts) should emit ``TaskOutcome.SEMANTIC_FAILURE``
+        with ``FailureClassification.WORK_PRODUCT`` so analysis runs
+        against a known classification rather than "unknown".
+        """
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
@@ -204,9 +216,14 @@ class _CycleTaskHandler(CapabilityHandler):
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
         )
+        merged_outputs = dict(outputs or {})
+        if outcome_class is not None:
+            merged_outputs["outcome_class"] = outcome_class
+        if failure_classification is not None:
+            merged_outputs["failure_classification"] = failure_classification
         return HandlerResult(
             success=False,
-            outputs=outputs or {},
+            outputs=merged_outputs,
             _evidence=evidence,
             error=error,
         )
@@ -2486,7 +2503,15 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         sources = self._get_assembly_inputs(inputs)
 
         if not sources:
-            return self._fail_result(start_time, inputs, "No source artifacts found for assembly")
+            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+            return self._fail_result(
+                start_time,
+                inputs,
+                "No source artifacts found for assembly",
+                outcome_class=TaskOutcome.SEMANTIC_FAILURE,
+                failure_classification=FailureClassification.WORK_PRODUCT,
+            )
 
         # Step 3: Build assembly prompt
         rendered, user_prompt = await self._build_assembly_prompt(
@@ -2535,14 +2560,30 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         extracted = extract_fenced_files(content)
 
         if not extracted:
-            return self._fail_result(start_time, inputs, "No valid fenced code blocks found")
+            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+            return self._fail_result(
+                start_time,
+                inputs,
+                "No valid fenced code blocks found",
+                outcome_class=TaskOutcome.SEMANTIC_FAILURE,
+                failure_classification=FailureClassification.WORK_PRODUCT,
+            )
 
         # Step 6-8: Validate builder output
         validation_error = self._validate_builder_output(
             extracted, profile, QA_HANDOFF_REQUIRED_SECTIONS
         )
         if validation_error is not None:
-            return self._fail_result(start_time, inputs, validation_error)
+            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+            return self._fail_result(
+                start_time,
+                inputs,
+                validation_error,
+                outcome_class=TaskOutcome.SEMANTIC_FAILURE,
+                failure_classification=FailureClassification.WORK_PRODUCT,
+            )
 
         # Step 8b: Deduplicate and classify
         extracted, artifacts, qa_handoff_content = self._dedup_and_classify(extracted)
