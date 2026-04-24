@@ -1,9 +1,17 @@
-# SIP-0XXX: Prefect Task-Scoped Log Streaming
+---
+title: Prefect Task-Scoped Log Streaming
+status: accepted
+author: SquadOps Architecture
+created_at: '2026-04-18T00:00:00Z'
+sip_number: 87
+updated_at: '2026-04-24T13:25:26.944007Z'
+---
+# SIP-0087: Prefect Task-Scoped Log Streaming
 
-**Status:** Proposed
+**Status:** Accepted
 **Authors:** SquadOps Architecture
 **Created:** 2026-04-18
-**Revision:** 1
+**Revision:** 2
 
 ## 1. Abstract
 
@@ -110,10 +118,16 @@ In `_dispatch_task` (executor side), spawn a background heartbeat coroutine when
 - LangFuse adapter (`adapters/telemetry/langfuse/adapter.py`) — buffered, best-effort, graceful-degradation pattern used as reference.
 - Prefect OSS 2.x `/api/logs` endpoint contract.
 
-## 9. Open Questions
+## 9. Resolved Decisions
 
-1. Should heartbeat cadence be configurable per-capability_id (e.g., longer for known-slow LLM handlers) or one global default?
-2. Should DEBUG-level logs be forwardable (behind a flag) for deep-diagnosis sessions, or are we INFO+ only?
-3. Should the forwarder honor Prefect's rate limits if/when the OSS server adds them, or assume the local Prefect-server deployment is trusted?
-4. Do we need a "log replay" tool that dumps a flow_run's logs from `agent_task_log` back into Prefect for post-hoc analysis, or is the Prefect-server retention window sufficient?
-5. Should failed forwarder batches be persisted to disk for later replay, or is fire-and-forget acceptable given we also write to stdout?
+Questions from the Revision 1 draft, resolved at acceptance (Revision 2, 2026-04-24):
+
+1. **Heartbeat cadence — global 30s default.** Per-capability tuning is premature; a 30s heartbeat during a 5-min LLM call produces ~10 lines (acceptable noise), and short handlers emit 0–1 heartbeats. Revisit if a specific handler class pollutes the UI.
+
+2. **Log level — INFO+ default, overridable via `SQUADOPS__PREFECT__LOG_LEVEL`.** The logger-name prefix filter (`squadops.*`, `adapters.*`) already excludes 3rd-party DEBUG firehoses (`aio_pika`, `httpx`, `asyncpg`), so lowering the threshold stays safe for diagnosis sessions.
+
+3. **Rate limits — no client-side throttling.** OSS Prefect 2.x has no documented server-side limits; the local Prefect-server deployment is trusted. Drop-on-failure already handles any future 429 responses. Revisit only if rate-limit rejections are observed in practice.
+
+4. **Log replay tool — out of scope.** Prefect's 7-day retention on OSS + LangFuse traces + the `agent_task_log` table cover post-hoc analysis. A replay tool can be proposed as a follow-up SIP if a concrete need surfaces.
+
+5. **Failed-batch disk persistence — fire-and-forget.** Matches the LangFuse adapter pattern. Stdout and `agent_task_log` remain the durable record; disk persistence adds corruption risk, cleanup policy, and write-path failure modes for minimal gain.
