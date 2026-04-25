@@ -59,8 +59,20 @@ async def install_prefect_log_handler(
         level = logging.getLevelNamesMapping()[prefect_cfg.log_level]
         forwarder = PrefectLogForwarder(api_url=prefect_cfg.api_url)
         forwarder.start()
-        handler = PrefectLogHandler(forwarder, filters=LogHandlerFilters(min_level=level))
+        filters = LogHandlerFilters(min_level=level)
+        handler = PrefectLogHandler(forwarder, filters=filters)
         logging.getLogger().addHandler(handler)
+
+        # Ensure source loggers don't filter records below the configured
+        # level before they reach our handler. The runtime-api process
+        # inherits uvicorn's WARNING-level root, so without this, INFO
+        # records from squadops/adapters (heartbeats, executor lifecycle,
+        # handler logs) are dropped at the source and never enqueued.
+        # Agents call basicConfig(level=INFO) at import; this lift is a
+        # no-op there. Idempotent and bounded to the prefixes we forward.
+        for prefix in filters.allowed_prefixes:
+            logging.getLogger(prefix).setLevel(level)
+
         logger.info(
             "Prefect log forwarding enabled (level=%s, api_url=%s)",
             prefect_cfg.log_level,

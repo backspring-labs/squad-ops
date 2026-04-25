@@ -174,6 +174,28 @@ async def test_records_without_correlation_context_are_dropped():
 # ---------------------------------------------------------------------------
 
 
+async def test_install_lifts_source_logger_levels():
+    """Records emitted by squadops/adapters loggers must clear their own
+    filter so they reach the root handler. Without this, runtime-api
+    (uvicorn-managed root at WARNING) silently drops every INFO record."""
+    cfg = _prefect_cfg(log_level="INFO")
+    fake_forwarder = MagicMock(start=MagicMock(), enqueue=MagicMock())
+
+    # Start with both loggers at WARNING (the runtime-api default).
+    logging.getLogger("squadops").setLevel(logging.WARNING)
+    logging.getLogger("adapters").setLevel(logging.WARNING)
+
+    with patch(
+        "adapters.cycles.log_forwarding_install.PrefectLogForwarder",
+        return_value=fake_forwarder,
+    ):
+        handle = await install_prefect_log_handler(cfg)
+
+    assert handle is not None
+    assert logging.getLogger("squadops").level == logging.INFO
+    assert logging.getLogger("adapters").level == logging.INFO
+
+
 async def test_handle_aclose_removes_handler_and_closes_forwarder():
     cfg = _prefect_cfg()
     fake_forwarder = MagicMock(start=MagicMock(), close=AsyncMock(), enqueue=MagicMock())
