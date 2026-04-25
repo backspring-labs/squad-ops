@@ -20,6 +20,57 @@ Embodiment (Discord, browser, eventually Minecraft) and durable workflows (Tempo
 
 ---
 
+## Bounded Context and Dependency Direction
+
+**Runtime bounded context.** The runtime context owns: agent runtime coordination — current `RuntimeMode`, `Assignment`, `DutyWindow`, `FocusLease`, `RuntimeActivity`, transition policy, and reason-coded runtime events. It **does not** own: cycle planning, task execution, handler implementation, persistence mechanics, embodiment adapters, or durable workflow orchestration. This boundary protects the runtime layer from becoming a junk drawer.
+
+**Dependency direction (the safe Hex shape).** All v1.1 implementation must follow this direction:
+
+```
+External drivers
+  • CLI commands
+  • AgentHeartbeatReporter
+  • In-process scheduler
+  • Cycle/task handlers
+  • (future) Temporal duty adapter (SIP-0091)
+  • (future) Embodiment adapters (SIP-0090)
+        │
+        ▼ call into
+Runtime application/domain services (src/squadops/runtime/)
+  • Coordinator (sole authority for RuntimeMode transitions, per D16)
+  • Policy functions
+  • RuntimeActivityReporter / RuntimeActivityService
+  • Canonical events + reasons
+        │
+        ▼ depend on
+Ports (src/squadops/ports/runtime/)
+  • RuntimeStatePort
+  • AssignmentPort
+  • FocusLeasePort
+  • RuntimeActivityPort
+  • EventPublisherPort (per D22)
+        │
+        ▼ implemented by
+Adapters
+  • Postgres persistence (adapters/persistence/runtime/*)
+  • Event bridges (events/bridges/workflow_tracker.py or runtime_state.py)
+  • (future) Temporal durability adapter
+  • (future) Embodiment surface adapters
+```
+
+**Forbidden directions** (statically enforced by D26):
+
+- `runtime/*` → `adapters.*` (any adapter)
+- `runtime/coordinator.py` → `events/bridges/*` (use the publisher port instead)
+- `runtime/*` → CLI modules
+- `runtime/*` → Temporal- or embodiment-specific modules
+- `capabilities/handlers/*` → runtime persistence adapters
+- `cli/*` → Postgres runtime adapters
+
+This shape is the contract. Every PR is reviewed against it.
+
+---
+
 ## Recent main activity (review-time snapshot, 2026-04-25)
 
 Significant changes landed on main between plan drafting and this PR. Reviewers should be aware:
@@ -112,7 +163,7 @@ These derive from the umbrella SIP and the v1.1 coordinator-authority invariant.
 
 | ID | Decision | Rationale |
 |----|----------|-----------|
-| D1 | All new primitives live in `src/squadops/runtime/` (new package). Persistence adapters stay outside. CLI commands must not import Postgres adapters directly | Keeps runtime-coordination layer distinct; matches hexagonal pattern |
+| D1 | `src/squadops/runtime/` is the **runtime application/coordination layer**. It depends on ports, never on adapters. **MAY contain:** runtime models, policy functions, coordinator/application services, transition rules, canonical events/reasons, pure scheduling calculations. **MUST NOT contain:** adapter imports (`adapters.*`), CLI parsing, env/config loading, framework bootstrap, Temporal-specific code, embodiment-specific code, handler execution logic. Enforced by D26 | Keeps runtime as pure coordination layer; matches hexagonal direction |
 | D2 | Postgres is the persistence backend; reuse the existing `DbRuntime` connection pool | Cycle registry already lives there (SIP-0067). Migrations sequenced per D11 |
 | D3 | `RuntimeMode`, `runtime_status`, `RuntimeActivity.state` are string-valued enums in DB **with `Literal` types or constants in code** to prevent typo-driven drift. DB migrations include CHECK constraints for known values | Matches existing patterns; CHECK constraint catches invalid writes at DB level, not just test level |
 | D4 | `RuntimeActivity` is **emitted by existing handlers and workload runners**, not a new execution engine. Handlers do not import persistence adapters; they call a small `RuntimeActivityReporter`/`RuntimeActivityService` injected via ports | Per package invariant. Hexagonal seam keeps handlers decoupled from runtime-state plumbing |
@@ -133,11 +184,11 @@ These derive from the umbrella SIP and the v1.1 coordinator-authority invariant.
 | D19 | **`RuntimeActivity` granularity is task/handler-level for v1.1 cycle execution.** Workload boundaries continue to emit workflow/cycle events but **must not** create a competing active `RuntimeActivity` under D9's strict-one rule. Workload context is metadata on the task-level RuntimeActivity (e.g., `source_ref` carries `workload_id`) | Resolves D9-vs-Phase-4 conflict in original draft |
 | D20 | **FocusLease queueing is deferred to v1.2+.** v1.1 implements `granted | rejected | preempting` only. Requests that would have queued are rejected with reason `focus_lease_queueing_not_supported_in_v1.1`. Reintroducing `queued` in a future version requires queue persistence storage, a queue-draining processor, and ordering tests | Frozen for v1.1 — prevents queue infrastructure from sneaking in under time pressure |
 | D21 | **Scheduler is a claimant, not an authority:** the in-process scheduler detects duty-window timing and submits transition requests to the coordinator. It does not directly mutate `AgentRuntimeState`. Repeated scheduler ticks within the same window must be idempotent (window-open transition fires exactly once per assignment/window) | Prevents duplicate transition events from polling |
-| D22 | **Runtime events use shared event infrastructure without semantic leakage.** Routes through `events/bridges/workflow_tracker.py` only if that bridge is intentionally generic. If it is cycle/workflow-specific, a dedicated `events/bridges/runtime_state.py` is introduced. Decision is made during the Phase 1 spike, not deferred to Phase 4 | Avoids contorting runtime events into workflow shapes |
+| D22 | **Runtime emits events through an injected event publisher port, never through a direct bridge import.** `runtime/coordinator.py` (and any other runtime emitter) depends on an `EventPublisherPort` (or the existing equivalent), and infrastructure wiring routes that publisher to `events/bridges/workflow_tracker.py` (if generic) or a dedicated `events/bridges/runtime_state.py` (if workflow_tracker is cycle/workflow-specific). The bridge-routing decision is made during the Phase 1 spike (§1.0); the dependency direction is fixed regardless | Avoids binding runtime code to a specific bridge; preserves dependency direction |
 | D23 | **`current_assignment_ref` is active-only, not upcoming.** It is `null` unless the agent is currently operating under that assignment's mode. Future or queued assignments are queried via `AssignmentPort.list_assignments_for_agent`, never copied into `AgentRuntimeState` | Preserves the Mode vs Assignment boundary; prevents `current_assignment_ref` from drifting into "next thing that may claim me" semantics |
 | D24 | **Cycle ownership uses `FocusLease.owner_type=cycle` + `owner_ref=<cycle/task identifier>`** without requiring a synthetic `Assignment` row. `Assignment` remains primarily for duty / reserve / cycle_eligibility commitments. Ordinary cycle execution does not create an assignment | Prevents implementers from creating dummy assignment rows for normal cycle work |
 | D25 | **Coordinator transitions execute in one Postgres transaction where practical.** All v1.1 runtime ports share the `DbRuntime` pool, so the §4.5 transition steps that touch `AgentRuntimeState`, `FocusLease`, and `RuntimeActivity` are wrapped in a single DB transaction. The §4.5 rollback rule becomes "transaction abort" rather than best-effort compensation. If a future adapter cannot share the transaction, the coordinator must use explicit compensation and emit a transition failure event | Makes rollback semantics concrete; prevents partial-state corruption |
-| D26 | **Forbidden-import architecture test enforces hexagonal boundaries.** `tests/unit/architecture/test_forbidden_imports.py` asserts: `src/squadops/runtime/` does not import `adapters.persistence.*`; `src/squadops/capabilities/handlers/` does not import runtime persistence adapters directly; `src/squadops/cli/` does not import Postgres runtime adapters directly | Cheap static guard for boundaries the plan repeatedly relies on |
+| D26 | **Forbidden-import architecture test enforces hexagonal boundaries.** `tests/unit/architecture/test_forbidden_imports.py` asserts: (1) `src/squadops/runtime/` does not import **any `adapters.*` module**, CLI modules, embodiment-specific modules, or Temporal-specific modules; (2) `src/squadops/runtime/coordinator.py` does not import `events/bridges/*` directly (per D22); (3) `src/squadops/capabilities/handlers/` does not import runtime persistence adapters directly; (4) `src/squadops/cli/` does not import Postgres runtime adapters directly | Broad static guard for the dependency direction in §"Bounded Context and Dependency Direction" |
 
 ---
 
@@ -189,7 +240,8 @@ New files:
 - `src/squadops/runtime/models.py` — `AgentRuntimeState` dataclass
 - `src/squadops/runtime/events.py` — canonical event name string constants
 - `src/squadops/runtime/reasons.py` — canonical reason code string constants (per D18, separate from events)
-- `src/squadops/ports/runtime_state.py` — `RuntimeStatePort` interface (mirror the structure of `ports/cycles/workflow_tracker.py`)
+- `src/squadops/ports/runtime/__init__.py`
+- `src/squadops/ports/runtime/state.py` — `RuntimeStatePort` interface (matches the existing `ports/cycles/` and `ports/observability/` namespace pattern from 1.0.5)
 
 `AgentRuntimeState` is a frozen dataclass with the fields from SIP-0089 §10.1, mutated via `dataclasses.replace()`. Use `Literal` types in code for string enums per D3.
 
@@ -214,7 +266,7 @@ Also create/update `infra/migrations/README.md` with the D11 range reservation t
 
 ### 1.3 Adapter
 
-New: `adapters/persistence/runtime_state_postgres.py` implementing `RuntimeStatePort`.
+New: `adapters/persistence/runtime/state_postgres.py` implementing `RuntimeStatePort`.
 
 Reuses existing `DbRuntime` connection pool. Operations:
 
@@ -328,8 +380,8 @@ Creates `agent_assignments` table:
 
 ### 2.3 Port + adapter
 
-- `src/squadops/ports/assignments.py` — `AssignmentPort`
-- `adapters/persistence/assignments_postgres.py`
+- `src/squadops/ports/runtime/assignments.py` — `AssignmentPort`
+- `adapters/persistence/runtime/assignments_postgres.py`
 
 Operations needed by scheduler and coordinator (so we don't fetch all assignments and filter in memory):
 
@@ -495,8 +547,8 @@ Constraint: at most one `released_at IS NULL` row per `agent_id`. Enforce via pa
 
 ### 3.3 Port + adapter
 
-- `src/squadops/ports/focus_lease.py` — `FocusLeasePort`
-- `adapters/persistence/focus_lease_postgres.py`
+- `src/squadops/ports/runtime/focus_lease.py` — `FocusLeasePort`
+- `adapters/persistence/runtime/focus_lease_postgres.py`
 
 Operations:
 
@@ -608,8 +660,8 @@ Constraint: at most one row per `agent_id` with `state IN ('pending', 'running',
 
 ### 4.3 Port + adapter
 
-- `src/squadops/ports/runtime_activity.py` — `RuntimeActivityPort`
-- `adapters/persistence/runtime_activity_postgres.py`
+- `src/squadops/ports/runtime/activity.py` — `RuntimeActivityPort`
+- `adapters/persistence/runtime/activity_postgres.py`
 
 Operations:
 
@@ -745,7 +797,7 @@ Per the agreed workflow:
   - `src/squadops/capabilities/handlers/cycle_tasks.py` — Phase 4 will add task-level observability hooks
   - `src/squadops/events/bridges/` — recently refactored; Phase 1 spike (D22) decides routing
   - `src/squadops/telemetry/context.py` — new in 1.0.5; D15 specifies optional usage
-  - `src/squadops/ports/cycles/` and `src/squadops/ports/observability/` — new ports landed in 1.0.5 set the structural pattern for the new `ports/runtime_state.py`
+  - `src/squadops/ports/cycles/` and `src/squadops/ports/observability/` — established the namespace pattern matched by the new `ports/runtime/` (per Item-6 of revision 4 review)
   - `infra/migrations/` — v1.1 uses `1100–1199` range; Spark 1.0.x uses `1000–1099` (per D11). Migration registry note added in Phase 1 (§1.2)
 - **No `pyproject.toml` version bump on the Mac side** — Spark continues `1.0.5+`; v1.1 bump is one coordinated commit at end of Phase 4
 
