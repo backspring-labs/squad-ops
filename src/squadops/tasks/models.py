@@ -63,14 +63,25 @@ class TaskEnvelope:
     metadata: dict[str, Any] = field(default_factory=dict)
     task_name: str | None = None
 
+    # SIP-0087: Prefect run IDs propagated from runtime-api → agent so the
+    # agent's PrefectLogHandler can scope handler logs to the right Prefect
+    # task pane. Empty string when Prefect is not configured.
+    flow_run_id: str = ""
+    task_run_id: str = ""
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for JSON transport."""
         return dataclasses.asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TaskEnvelope:
-        """Deserialize from dict."""
-        return cls(**data)
+        """Deserialize from dict.
+
+        Unknown keys are dropped so an envelope produced by a newer publisher
+        deserializes cleanly on an older consumer (rolling-deploy safety).
+        """
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 @dataclass(frozen=True)

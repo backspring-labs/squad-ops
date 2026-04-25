@@ -13,6 +13,7 @@ pattern over the ``{agent_id}_comms`` queue.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import os
@@ -620,6 +621,15 @@ class DistributedFlowExecutor(FlowExecutionPort):
         """
         if task_run_id is None:
             task_run_id = await self._create_task_run_if_enabled(flow_run_id, envelope)
+
+        # SIP-0087 B1: propagate run IDs to the agent over the wire so the
+        # agent's PrefectLogHandler can scope handler logs to the right task
+        # pane. The agent enters use_correlation_context(...) on receipt.
+        envelope = dataclasses.replace(
+            envelope,
+            flow_run_id=flow_run_id or "",
+            task_run_id=task_run_id or "",
+        )
 
         base_ctx = CorrelationContext.from_envelope(
             envelope,

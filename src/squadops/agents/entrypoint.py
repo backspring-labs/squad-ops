@@ -669,7 +669,8 @@ class AgentRunner:
             },
         )
 
-        # Build correlation context for LangFuse tracing
+        # Build correlation context for LangFuse tracing + Prefect log scoping (SIP-0087).
+        from squadops.telemetry.context import use_correlation_context, use_run_ids
         from squadops.telemetry.models import CorrelationContext
 
         ctx = CorrelationContext.from_envelope(
@@ -683,12 +684,26 @@ class AgentRunner:
             llm_obs.start_cycle_trace(ctx)
             llm_obs.start_task_span(ctx)
 
+        # SIP-0087 B1: scope the contextvar so handler logs emitted during
+        # submit_task carry flow_run_id / task_run_id and reach the right
+        # Prefect task pane. Run IDs come from the envelope sent by the
+        # runtime-api executor (default "" when Prefect is disabled).
+        flow_run_id = envelope.flow_run_id or None
+        task_run_id = envelope.task_run_id or None
+
         try:
             if not self.system:
                 raise RuntimeError("AgentRunner.system not initialized")
-            result = await self.system.orchestrator.submit_task(
-                envelope, timeout_seconds=self._config.llm.timeout
-            )
+            with use_correlation_context(ctx):
+                if flow_run_id is not None or task_run_id is not None:
+                    with use_run_ids(flow_run_id=flow_run_id, task_run_id=task_run_id):
+                        result = await self.system.orchestrator.submit_task(
+                            envelope, timeout_seconds=self._config.llm.timeout
+                        )
+                else:
+                    result = await self.system.orchestrator.submit_task(
+                        envelope, timeout_seconds=self._config.llm.timeout
+                    )
         except Exception as e:
             logger.error(f"Task execution failed: {e}", extra={"task_id": envelope.task_id})
             result = TaskResult(

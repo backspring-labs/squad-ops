@@ -2714,6 +2714,54 @@ class TestDispatchTaskPrefectLifecycle:
         mock_reporter.create_task_run.assert_not_awaited()
         mock_reporter.set_task_run_state.assert_not_awaited()
 
+    async def test_published_envelope_carries_run_ids(
+        self, mock_queue, mock_reporter, envelope
+    ):
+        """SIP-0087 B1: dispatched envelope on the wire carries flow_run_id /
+        task_run_id so the agent can scope its handler logs to the right
+        Prefect task pane."""
+        published_payload: dict[str, object] = {}
+
+        async def capture_publish(_queue_name, body):
+            published_payload.update(json.loads(body)["payload"])
+
+        mock_queue.publish.side_effect = capture_publish
+        self._wire_success_reply(mock_queue, envelope.task_id)
+        executor = self._build_executor(mock_queue, mock_reporter)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor._dispatch_task(
+                envelope, "run_001", flow_run_id="fr_abc", task_run_id="tr_123"
+            )
+
+        assert published_payload["flow_run_id"] == "fr_abc"
+        assert published_payload["task_run_id"] == "tr_123"
+
+    async def test_published_envelope_run_ids_empty_when_prefect_disabled(
+        self, mock_queue, envelope
+    ):
+        """No Prefect → run IDs serialize as empty strings (not nulls)."""
+        published_payload: dict[str, object] = {}
+
+        async def capture_publish(_queue_name, body):
+            published_payload.update(json.loads(body)["payload"])
+
+        mock_queue.publish.side_effect = capture_publish
+        self._wire_success_reply(mock_queue, envelope.task_id)
+        executor = self._build_executor(mock_queue, mock_reporter=None)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor._dispatch_task(envelope, "run_001")
+
+        assert published_payload["flow_run_id"] == ""
+        assert published_payload["task_run_id"] == ""
+
     async def test_scopes_correlation_context_during_publish(
         self, mock_queue, mock_reporter, envelope
     ):
