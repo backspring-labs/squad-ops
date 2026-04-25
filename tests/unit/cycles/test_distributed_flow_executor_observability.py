@@ -7,6 +7,7 @@ creation in execute_run().
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -288,6 +289,61 @@ class TestWithoutObservability:
 # ---------------------------------------------------------------------------
 # Prefect flow/task reporting
 # ---------------------------------------------------------------------------
+
+
+class TestFlowLevelCorrelationScope:
+    """SIP-0087 B4: orchestrator-level logs emitted between dispatches must
+    carry flow_run_id (and no task_run_id) so they land in the flow-run pane,
+    not in any task pane (acceptance criterion §7.2)."""
+
+    async def test_executor_run_log_carries_flow_run_id_only(
+        self, executor, mock_queue, mock_prefect, caplog
+    ):
+        """The "Executing run ..." line and the "Run %s completed" line are
+        emitted from execute_run between dispatches. They must reach a
+        PrefectLogHandler with flow_run_id set and task_run_id unset."""
+        from adapters.cycles.prefect_log_forwarder import (
+            LogHandlerFilters,
+            PrefectLogHandler,
+        )
+
+        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
+
+        forwarder = MagicMock(enqueue=MagicMock())
+        handler = PrefectLogHandler(
+            forwarder, filters=LogHandlerFilters(min_level=logging.INFO)
+        )
+        logging.getLogger().addHandler(handler)
+        prior_levels = {n: logging.getLogger(n).level for n in ("squadops", "adapters")}
+        logging.getLogger("squadops").setLevel(logging.INFO)
+        logging.getLogger("adapters").setLevel(logging.INFO)
+
+        try:
+            with patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ):
+                await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        finally:
+            logging.getLogger().removeHandler(handler)
+            for name, level in prior_levels.items():
+                logging.getLogger(name).setLevel(level)
+
+        # Filter for orchestrator-level enqueues — flow_run_id set, task_run_id empty.
+        flow_only = [
+            c.args[0]
+            for c in forwarder.enqueue.call_args_list
+            if c.args[0].get("flow_run_id") and not c.args[0].get("task_run_id")
+        ]
+        assert flow_only, (
+            "no flow-only log records reached the forwarder — "
+            "execute_run must wrap orchestrator work in use_correlation_context"
+        )
+
+        # The two canonical orchestrator log lines must both be present.
+        messages = " | ".join(p["message"] for p in flow_only)
+        assert "Executing run run_001" in messages
+        assert "Run run_001 completed successfully" in messages
 
 
 class TestPrefectFlowRun:

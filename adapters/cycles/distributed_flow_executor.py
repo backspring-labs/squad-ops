@@ -201,60 +201,71 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 plan,
             )
 
-            logger.info(
-                "Executing run %s for cycle %s (%d tasks, mode=%s, dispatch=distributed)",
-                run_id,
-                cycle_id,
-                len(plan),
-                cycle.task_flow_policy.mode,
-            )
-
-            # Dispatch based on policy mode
-            mode = cycle.task_flow_policy.mode
-            if mode == "sequential":
-                await self._execute_sequential(
-                    plan,
+            # SIP-0087 B4: enter flow-level correlation scope so orchestrator
+            # logs emitted between dispatches (workload progression, gate
+            # decisions, executor lifecycle) carry flow_run_id (and no
+            # task_run_id) and land in the flow-run pane in the Prefect UI.
+            # _dispatch_task nests its own per-task scope inside this one.
+            flow_ctx = CorrelationContext(cycle_id=cycle_id, flow_run_id=flow_run_id)
+            with use_correlation_context(flow_ctx):
+                logger.info(
+                    "Executing run %s for cycle %s (%d tasks, mode=%s, dispatch=distributed)",
                     run_id,
-                    cycle,
-                    flow_run_id,
-                    seed_artifact_refs,
-                    obs_ctx=obs_ctx,
-                    profile=profile,
-                    run_root=run_root,
-                )
-            elif mode == "fan_out_fan_in":
-                await self._execute_fan_out(plan, run_id, cycle, flow_run_id)
-            elif mode == "fan_out_soft_gates":
-                await self._execute_sequential(
-                    plan,
-                    run_id,
-                    cycle,
-                    flow_run_id,
-                    seed_artifact_refs,
-                    obs_ctx=obs_ctx,
-                    profile=profile,
-                    run_root=run_root,
-                )
-            else:
-                await self._execute_sequential(
-                    plan,
-                    run_id,
-                    cycle,
-                    flow_run_id,
-                    seed_artifact_refs,
-                    obs_ctx=obs_ctx,
-                    run_root=run_root,
+                    cycle_id,
+                    len(plan),
+                    cycle.task_flow_policy.mode,
                 )
 
-            # Success -> completed
-            await self._cycle_registry.update_run_status(run_id, RunStatus.COMPLETED)
-            self._cycle_event_bus.emit(
-                EventType.RUN_COMPLETED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle_id, "run_id": run_id, "project_id": cycle.project_id},
-            )
-            logger.info("Run %s completed successfully", run_id)
+                # Dispatch based on policy mode
+                mode = cycle.task_flow_policy.mode
+                if mode == "sequential":
+                    await self._execute_sequential(
+                        plan,
+                        run_id,
+                        cycle,
+                        flow_run_id,
+                        seed_artifact_refs,
+                        obs_ctx=obs_ctx,
+                        profile=profile,
+                        run_root=run_root,
+                    )
+                elif mode == "fan_out_fan_in":
+                    await self._execute_fan_out(plan, run_id, cycle, flow_run_id)
+                elif mode == "fan_out_soft_gates":
+                    await self._execute_sequential(
+                        plan,
+                        run_id,
+                        cycle,
+                        flow_run_id,
+                        seed_artifact_refs,
+                        obs_ctx=obs_ctx,
+                        profile=profile,
+                        run_root=run_root,
+                    )
+                else:
+                    await self._execute_sequential(
+                        plan,
+                        run_id,
+                        cycle,
+                        flow_run_id,
+                        seed_artifact_refs,
+                        obs_ctx=obs_ctx,
+                        run_root=run_root,
+                    )
+
+                # Success -> completed
+                await self._cycle_registry.update_run_status(run_id, RunStatus.COMPLETED)
+                self._cycle_event_bus.emit(
+                    EventType.RUN_COMPLETED,
+                    entity_type="run",
+                    entity_id=run_id,
+                    context={
+                        "cycle_id": cycle_id,
+                        "run_id": run_id,
+                        "project_id": cycle.project_id,
+                    },
+                )
+                logger.info("Run %s completed successfully", run_id)
 
         except _CancellationError:
             terminal_status = "CANCELLED"
