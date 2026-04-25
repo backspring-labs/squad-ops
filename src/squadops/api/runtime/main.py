@@ -139,8 +139,8 @@ rabbitmq_channel: aio_pika.Channel | None = None
 # PrefectReporter for shutdown cleanup
 _prefect_reporter = None
 
-# Prefect log forwarder handle for shutdown cleanup (SIP-0087 phase-3)
-_prefect_log_handle = None
+# Log forwarder port for shutdown cleanup (SIP-0087)
+_log_forwarder = None
 
 # Redis client + health checker for platform health routes
 _redis_client = None
@@ -221,12 +221,16 @@ async def _init_migrations(config, pool) -> None:
         logger.error("Failed to apply migrations during startup: %s", e)
 
 
-async def _init_prefect_log_forwarding(config) -> None:
-    """Install ``PrefectLogHandler`` on the root logger (SIP-0087 phase-3)."""
-    global _prefect_log_handle
-    from adapters.cycles.log_forwarding_install import install_prefect_log_handler
+async def _init_log_forwarding(config) -> None:
+    """Install the log forwarder via factory (SIP-0087).
 
-    _prefect_log_handle = await install_prefect_log_handler(config.prefect)
+    Always-inject pattern — a NoOp adapter is returned when no backend is
+    configured, so the rest of the runtime never branches on enablement.
+    """
+    global _log_forwarder
+    from adapters.observability.log_forwarder import create_log_forwarder
+
+    _log_forwarder = await create_log_forwarder(config.prefect)
 
 
 async def _init_cycle_subsystem(config, pool) -> None:
@@ -421,7 +425,7 @@ async def startup_event():
     await _init_auth_subsystem(config)
 
     await _init_migrations(config, pool)
-    await _init_prefect_log_forwarding(config)
+    await _init_log_forwarding(config)
     await _init_cycle_subsystem(config, pool)
     await _init_monitoring(config, pool)
 
@@ -442,8 +446,8 @@ async def shutdown_event():
         await pool.close()
     if rabbitmq_connection:
         await rabbitmq_connection.close()
-    if _prefect_log_handle is not None:
-        await _prefect_log_handle.aclose()
+    if _log_forwarder is not None:
+        await _log_forwarder.aclose()
     if _prefect_reporter:
         await _prefect_reporter.close()
 

@@ -1,10 +1,10 @@
-"""Tests for AgentRunner Prefect log forwarder wiring (SIP-0087 phase-3).
+"""Tests for AgentRunner log-forwarder wiring (SIP-0087, hex-arch refactor).
 
-Behavior of the install/teardown helper itself is covered in
-``tests/unit/cycles/test_log_forwarding_install.py``. These tests focus on
-the AgentRunner-side wiring: the runner stores the handle returned by the
-helper, releases it on ``stop()``, and tears it down on a partial-start
-failure.
+Behavior of the factory + adapter is covered in
+``tests/unit/observability/test_log_forwarder_factory.py``. These tests focus
+on the AgentRunner-side wiring: the runner builds a port through the factory,
+stores the resulting :class:`LogForwarderPort`, releases it on ``stop()``, and
+tears it down on a partial-start failure.
 """
 
 from __future__ import annotations
@@ -15,10 +15,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from adapters.cycles.log_forwarding_install import PrefectLogForwarderHandle
+from adapters.observability.log_forwarder import (
+    NoOpLogForwarder,
+    PrefectLogForwarderAdapter,
+)
 from squadops.config.schema import PrefectConfig
 
 pytestmark = [pytest.mark.domain_agents]
+
+_PREFECT_FWD_PATCH = "adapters.observability.log_forwarder.prefect.PrefectLogForwarder"
 
 
 def _make_runner():
@@ -27,15 +32,13 @@ def _make_runner():
 
     runner = AgentRunner.__new__(AgentRunner)
     runner.agent_id = "neo"
-    runner._prefect_log_handle = None
+    runner._log_forwarder = None
     return runner
 
 
 def _config_with_prefect(*, api_url: str, log_forwarding: bool, log_level: str = "INFO"):
     cfg = MagicMock()
-    cfg.prefect = PrefectConfig(
-        api_url=api_url, log_forwarding=log_forwarding, log_level=log_level
-    )
+    cfg.prefect = PrefectConfig(api_url=api_url, log_forwarding=log_forwarding, log_level=log_level)
     return cfg
 
 
@@ -49,49 +52,45 @@ def _strip_added_root_handlers():
 
 
 # ---------------------------------------------------------------------------
-# Wiring delegates to the helper
+# Wiring goes through the factory and yields a port
 # ---------------------------------------------------------------------------
 
 
-async def test_no_handle_when_disabled():
+async def test_factory_returns_noop_when_disabled_and_runner_stores_it():
+    """Always-inject contract: even with forwarding off, the runner gets a port."""
     runner = _make_runner()
     cfg = _config_with_prefect(api_url="http://prefect:4200/api", log_forwarding=False)
-    await runner._install_prefect_log_forwarding(cfg)
-    assert runner._prefect_log_handle is None
+    runner._log_forwarder = await runner._create_log_forwarder(cfg)
+    assert isinstance(runner._log_forwarder, NoOpLogForwarder)
 
 
-async def test_handle_is_stored_when_install_succeeds():
+async def test_runner_stores_prefect_adapter_when_install_succeeds():
     runner = _make_runner()
     cfg = _config_with_prefect(api_url="http://prefect:4200/api", log_forwarding=True)
 
     fake_forwarder = MagicMock(start=MagicMock(), close=AsyncMock())
-    with patch(
-        "adapters.cycles.log_forwarding_install.PrefectLogForwarder",
-        return_value=fake_forwarder,
-    ):
-        await runner._install_prefect_log_forwarding(cfg)
+    with patch(_PREFECT_FWD_PATCH, return_value=fake_forwarder):
+        runner._log_forwarder = await runner._create_log_forwarder(cfg)
 
-    assert isinstance(runner._prefect_log_handle, PrefectLogForwarderHandle)
-    assert runner._prefect_log_handle.handler in logging.getLogger().handlers
+    assert isinstance(runner._log_forwarder, PrefectLogForwarderAdapter)
+    assert runner._log_forwarder._handler in logging.getLogger().handlers
 
 
 # ---------------------------------------------------------------------------
-# Lifecycle: stop() and partial-start failure both close the handle
+# Lifecycle: stop() and partial-start failure both close the port
 # ---------------------------------------------------------------------------
 
 
-async def test_stop_closes_handle():
+async def test_stop_closes_port():
     runner = _make_runner()
     cfg = _config_with_prefect(api_url="http://prefect:4200/api", log_forwarding=True)
 
     fake_forwarder = MagicMock(start=MagicMock(), close=AsyncMock())
-    with patch(
-        "adapters.cycles.log_forwarding_install.PrefectLogForwarder",
-        return_value=fake_forwarder,
-    ):
-        await runner._install_prefect_log_forwarding(cfg)
+    with patch(_PREFECT_FWD_PATCH, return_value=fake_forwarder):
+        runner._log_forwarder = await runner._create_log_forwarder(cfg)
 
-    handle = runner._prefect_log_handle
+    port = runner._log_forwarder
+    handler = port._handler
     runner._shutdown_event = asyncio.Event()
     runner._heartbeat_task = None
     runner.system = None
@@ -100,13 +99,13 @@ async def test_stop_closes_handle():
 
     await AgentRunner.stop(runner)
 
-    assert handle.handler not in logging.getLogger().handlers
+    assert handler not in logging.getLogger().handlers
     fake_forwarder.close.assert_awaited_once()
-    assert runner._prefect_log_handle is None
+    assert runner._log_forwarder is None
 
 
-async def test_start_failure_after_install_tears_down_handle():
-    """If start() raises after the handle is installed, the forwarder is closed."""
+async def test_start_failure_after_install_tears_down_port():
+    """If start() raises after the port is installed, the forwarder is closed."""
     cfg = _config_with_prefect(api_url="http://prefect:4200/api", log_forwarding=True)
     fake_forwarder = MagicMock(start=MagicMock(), close=AsyncMock())
 
@@ -115,10 +114,7 @@ async def test_start_failure_after_install_tears_down_handle():
 
     with (
         patch("squadops.config.load_config", return_value=cfg),
-        patch(
-            "adapters.cycles.log_forwarding_install.PrefectLogForwarder",
-            return_value=fake_forwarder,
-        ),
+        patch(_PREFECT_FWD_PATCH, return_value=fake_forwarder),
         patch(
             "adapters.observability.healthcheck_http.HealthCheckHttpReporter",
             side_effect=RuntimeError("bootstrap exploded"),
@@ -130,4 +126,4 @@ async def test_start_failure_after_install_tears_down_handle():
             await AgentRunner.start(runner)
 
     fake_forwarder.close.assert_awaited_once()
-    assert runner._prefect_log_handle is None
+    assert runner._log_forwarder is None
