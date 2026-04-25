@@ -94,7 +94,7 @@ def _make_executor(mock_prefect_reporter):
         queue=queue,
         squad_profile=squad,
         task_timeout=5.0,
-        prefect_reporter=mock_prefect_reporter,
+        workflow_tracker=mock_prefect_reporter,
     )
     ex._cycle_event_bus = MagicMock()
     return ex

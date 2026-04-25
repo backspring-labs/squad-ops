@@ -93,11 +93,11 @@ def create_flow_executor(
     elif provider == "distributed":
         from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
 
-        prefect_reporter = kwargs.get("prefect_reporter")
-        if not prefect_reporter and kwargs.get("prefect_api_url"):
+        workflow_tracker = kwargs.get("workflow_tracker")
+        if not workflow_tracker and kwargs.get("prefect_api_url"):
             from adapters.cycles.prefect_reporter import PrefectReporter
 
-            prefect_reporter = PrefectReporter(api_url=kwargs["prefect_api_url"])
+            workflow_tracker = PrefectReporter(api_url=kwargs["prefect_api_url"])
 
         return DistributedFlowExecutor(
             cycle_registry=cycle_registry,
@@ -107,7 +107,7 @@ def create_flow_executor(
             project_registry=project_registry,
             task_timeout=kwargs.get("task_timeout", 300.0),
             llm_observability=kwargs.get("llm_observability"),
-            prefect_reporter=prefect_reporter,
+            workflow_tracker=workflow_tracker,
             event_bus=kwargs.get("event_bus"),
         )
     raise ValueError(f"Unknown flow executor provider: {provider}")

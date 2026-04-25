@@ -1,12 +1,16 @@
-"""PrefectBridge — translates CycleEvent to PrefectReporter state transitions.
+"""PrefectBridge — translates CycleEvent to WorkflowTrackerPort state transitions.
 
-Maps run lifecycle events to Prefect flow run state changes. As of SIP-0087,
+Maps run lifecycle events to flow-run state changes. As of SIP-0087,
 task-run lifecycle (creation + state transitions) lives in
 ``DistributedFlowExecutor._dispatch_task`` where the ``task_run_id`` is
 available for correlation-context scoping and the long-task heartbeat.
 The bridge still forwards terminal task-state transitions when a
 ``task_run_id`` is carried in the event context, but it no longer creates
 task runs itself.
+
+The class name is retained for parity with :class:`LangFuseBridge`, but the
+bridge depends on the vendor-neutral :class:`WorkflowTrackerPort` and works
+with any compliant adapter (including :class:`NoOpWorkflowTracker`).
 """
 
 from __future__ import annotations
@@ -18,8 +22,8 @@ from typing import TYPE_CHECKING
 from squadops.events.types import EventType
 
 if TYPE_CHECKING:
-    from adapters.cycles.prefect_reporter import PrefectReporter
     from squadops.events.models import CycleEvent
+    from squadops.ports.cycles import WorkflowTrackerPort
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +45,7 @@ _TASK_STATE_MAP: dict[str, tuple[str, str]] = {
 
 
 class PrefectBridge:
-    """Subscriber that forwards CycleEvents to PrefectReporter.
+    """Subscriber that forwards CycleEvents to a :class:`WorkflowTrackerPort`.
 
     Handles run-level state transitions and terminal task-state transitions
     (when the emitter supplies ``task_run_id`` in the event context).
@@ -50,15 +54,15 @@ class PrefectBridge:
     starts emitting logs.
     """
 
-    def __init__(self, prefect_reporter: PrefectReporter) -> None:
-        self._prefect = prefect_reporter
+    def __init__(self, workflow_tracker: WorkflowTrackerPort) -> None:
+        self._tracker = workflow_tracker
 
     def on_event(self, event: CycleEvent) -> None:
         flow_run_id = event.context.get("flow_run_id", "")
 
         if event.event_type in _RUN_STATE_MAP and flow_run_id:
             state_type, state_name = _RUN_STATE_MAP[event.event_type]
-            self._schedule(self._prefect.set_flow_run_state(flow_run_id, state_type, state_name))
+            self._schedule(self._tracker.set_flow_run_state(flow_run_id, state_type, state_name))
             return
 
         if event.event_type in _TASK_STATE_MAP:
@@ -66,7 +70,7 @@ class PrefectBridge:
             if task_run_id:
                 state_type, state_name = _TASK_STATE_MAP[event.event_type]
                 self._schedule(
-                    self._prefect.set_task_run_state(task_run_id, state_type, state_name)
+                    self._tracker.set_task_run_state(task_run_id, state_type, state_name)
                 )
             return
 

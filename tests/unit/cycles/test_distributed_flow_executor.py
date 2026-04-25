@@ -2623,7 +2623,7 @@ class TestDispatchTaskPrefectLifecycle:
         return DistributedFlowExecutor(
             queue=mock_queue,
             task_timeout=5.0,
-            prefect_reporter=mock_reporter,
+            workflow_tracker=mock_reporter,
         )
 
     def _wire_success_reply(self, mock_queue, task_id: str):

@@ -206,7 +206,7 @@ def executor(
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
         llm_observability=mock_llm_obs,
-        prefect_reporter=mock_prefect,
+        workflow_tracker=mock_prefect,
     )
 
 

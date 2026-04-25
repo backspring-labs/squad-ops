@@ -49,7 +49,6 @@ from squadops.telemetry.context import use_correlation_context, use_run_ids
 from squadops.telemetry.models import CorrelationContext
 
 if TYPE_CHECKING:
-    from adapters.cycles.prefect_reporter import PrefectReporter
     from squadops.capabilities.acceptance import AcceptanceCheckEngine
     from squadops.capabilities.models import AcceptanceContext
     from squadops.cycles.models import GateDecision, SquadProfile
@@ -59,6 +58,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
     from squadops.ports.cycles.squad_profile import SquadProfilePort
+    from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
@@ -94,7 +94,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         project_registry: ProjectRegistryPort | None = None,
         task_timeout: float = 300.0,
         llm_observability: LLMObservabilityPort | None = None,
-        prefect_reporter: PrefectReporter | None = None,
+        workflow_tracker: WorkflowTrackerPort | None = None,
         event_bus: CycleEventBusPort | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
@@ -104,7 +104,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         self._project_registry = project_registry
         self._task_timeout = task_timeout
         self._llm_observability = llm_observability
-        self._prefect = prefect_reporter
+        self._workflow_tracker = workflow_tracker
         self._cancelled: set[str] = set()
 
         # SIP-0077: Cycle event bus (defaults to NoOp if not provided)
@@ -572,14 +572,14 @@ class DistributedFlowExecutor(FlowExecutionPort):
         envelope: TaskEnvelope,
     ) -> str | None:
         """Create a Prefect task_run + set RUNNING. Returns task_run_id or None."""
-        if self._prefect is None or not flow_run_id:
+        if self._workflow_tracker is None or not flow_run_id:
             return None
         role = envelope.metadata.get("role", "unknown") if envelope.metadata else "unknown"
         task_name = f"{role}: {envelope.task_type}"
-        task_run_id = await self._prefect.create_task_run(
+        task_run_id = await self._workflow_tracker.create_task_run(
             flow_run_id, envelope.task_id, task_name
         )
-        await self._prefect.set_task_run_state(task_run_id, "RUNNING", "Running")
+        await self._workflow_tracker.set_task_run_state(task_run_id, "RUNNING", "Running")
         return task_run_id
 
     async def _task_heartbeat(
@@ -622,8 +622,8 @@ class DistributedFlowExecutor(FlowExecutionPort):
         """Publish task to agent queue, wait for result on reply queue.
 
         If ``task_run_id`` is not supplied but ``flow_run_id`` is and a
-        ``PrefectReporter`` is wired, one is created here — supports
-        correction/repair paths that don't pre-create the Prefect run.
+        :class:`WorkflowTrackerPort` is wired, one is created here — supports
+        correction/repair paths that don't pre-create the workflow run.
 
         Enters a ``CorrelationContext`` scope with flow/task run IDs so the
         ``PrefectLogHandler`` scopes handler logs to the right Prefect task
@@ -648,8 +648,9 @@ class DistributedFlowExecutor(FlowExecutionPort):
             agent_role=(envelope.metadata.get("role") if envelope.metadata else None),
         )
 
-        with use_correlation_context(base_ctx), use_run_ids(
-            flow_run_id=flow_run_id, task_run_id=task_run_id
+        with (
+            use_correlation_context(base_ctx),
+            use_run_ids(flow_run_id=flow_run_id, task_run_id=task_run_id),
         ):
             heartbeat = asyncio.create_task(
                 self._task_heartbeat(envelope, interval=heartbeat_interval),
@@ -1667,10 +1668,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
             )
 
         # Prefect: create flow run
-        if self._prefect:
+        if self._workflow_tracker:
             try:
-                flow_id = await self._prefect.ensure_flow()
-                flow_run_id = await self._prefect.create_flow_run(
+                flow_id = await self._workflow_tracker.ensure_flow()
+                flow_run_id = await self._workflow_tracker.create_flow_run(
                     flow_id,
                     run_name=f"{cycle.project_id}/{cycle_id[:12]}/{run_id[:12]}",
                     parameters={
@@ -1679,7 +1680,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         "project_id": cycle.project_id,
                     },
                 )
-                await self._prefect.set_flow_run_state(flow_run_id, "RUNNING", "Running")
+                await self._workflow_tracker.set_flow_run_state(flow_run_id, "RUNNING", "Running")
             except Exception:
                 logger.warning("Prefect flow run creation failed", exc_info=True)
 
@@ -1711,9 +1712,9 @@ class DistributedFlowExecutor(FlowExecutionPort):
             self._llm_observability.flush()
 
         # Prefect: set terminal state
-        if self._prefect and flow_run_id:
+        if self._workflow_tracker and flow_run_id:
             try:
-                await self._prefect.set_flow_run_state(
+                await self._workflow_tracker.set_flow_run_state(
                     flow_run_id, terminal_status, terminal_status.title()
                 )
             except Exception:
@@ -1938,9 +1939,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
             # dispatch so the agent's PrefectLogHandler can scope correction-
             # task logs to a dedicated UI pane and the bridge can transition
             # terminal state without owning the ID.
-            corr_task_run_id = await self._create_task_run_if_enabled(
-                flow_run_id, corr_envelope
-            )
+            corr_task_run_id = await self._create_task_run_if_enabled(flow_run_id, corr_envelope)
             corr_task_context = {
                 "cycle_id": cycle.cycle_id,
                 "run_id": run_id,
