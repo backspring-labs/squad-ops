@@ -11,67 +11,25 @@ Design (matches the LangFuse adapter's buffered, best-effort pattern):
   memory without bound.
 - A ``PrefectLogHandler`` (``logging.Handler``) filters by logger-name prefix
   and minimum level before enqueueing, pulls ``flow_run_id`` / ``task_run_id``
-  from a contextvar, and posts to the forwarder.
+  from the active ``CorrelationContext`` (``squadops.telemetry.context``), and
+  posts to the forwarder.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import contextmanager
-from contextvars import ContextVar
+import threading
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
+from squadops.telemetry.context import get_correlation_context
+
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Correlation contextvar — carries Prefect run IDs for the current async task
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class PrefectRunIds:
-    """Prefect flow/task run identifiers scoped to the current async context."""
-
-    flow_run_id: str | None = None
-    task_run_id: str | None = None
-
-
-_EMPTY_IDS = PrefectRunIds()
-_prefect_run_ids: ContextVar[PrefectRunIds | None] = ContextVar(
-    "squadops_prefect_run_ids", default=None
-)
-
-
-def get_prefect_run_ids() -> PrefectRunIds:
-    """Return the current context's Prefect run IDs (empty if unset)."""
-    return _prefect_run_ids.get() or _EMPTY_IDS
-
-
-@contextmanager
-def prefect_run_context(*, flow_run_id: str | None = None, task_run_id: str | None = None):
-    """Scope Prefect run IDs to a block of code.
-
-    The handler pulls these from the contextvar at ``emit`` time, so any log
-    emitted inside this ``with`` block (including from coroutines spawned via
-    ``asyncio.create_task`` — contextvars copy at task creation) gets tagged
-    with the matching ``flow_run_id`` / ``task_run_id``.
-    """
-    current = get_prefect_run_ids()
-    merged = PrefectRunIds(
-        flow_run_id=flow_run_id if flow_run_id is not None else current.flow_run_id,
-        task_run_id=task_run_id if task_run_id is not None else current.task_run_id,
-    )
-    token = _prefect_run_ids.set(merged)
-    try:
-        yield merged
-    finally:
-        _prefect_run_ids.reset(token)
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +47,11 @@ class _LogBatchStats:
 class PrefectLogForwarder:
     """Async batching client for Prefect's ``POST /api/logs/`` endpoint.
 
-    Not thread-safe. Must be used from a single asyncio event loop.
+    ``enqueue()`` is thread-safe: the internal buffer is a ``deque`` guarded
+    by a ``threading.Lock``. The flush loop runs on the asyncio event loop
+    and pops batches from the same buffer under the same lock. This matters
+    because ``PrefectLogHandler`` is a ``logging.Handler`` that can be called
+    from any thread (e.g. the LangFuse adapter's background flush thread).
     """
 
     def __init__(
@@ -105,7 +67,9 @@ class PrefectLogForwarder:
         self._api_url = api_url.rstrip("/")
         self._flush_interval = flush_interval
         self._batch_max_size = batch_max_size
-        self._queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=queue_max_size)
+        self._queue_max_size = queue_max_size
+        self._buffer: deque[dict[str, Any]] = deque()
+        self._lock = threading.Lock()
         self._client = client if client is not None else httpx.AsyncClient(timeout=timeout)
         self._owns_client = client is None
         self._flush_task: asyncio.Task[None] | None = None
@@ -126,24 +90,21 @@ class PrefectLogForwarder:
             )
 
     def enqueue(self, record: dict[str, Any]) -> None:
-        """Put a log record dict on the queue. Non-blocking.
+        """Append a log record to the buffer. Thread-safe, non-blocking.
 
-        If the queue is full we drop the record and increment a counter —
-        better than blocking the producer (the whole point of this adapter
-        is to stay off the critical path).
+        If the buffer is at ``queue_max_size`` we drop the new record and
+        increment a counter — producers never block on telemetry.
         """
-        try:
-            self._queue.put_nowait(record)
-        except asyncio.QueueFull:
-            self._stats.dropped_on_overflow += 1
+        with self._lock:
+            if len(self._buffer) >= self._queue_max_size:
+                self._stats.dropped_on_overflow += 1
+                return
+            self._buffer.append(record)
 
-    async def _drain_batch(self) -> list[dict[str, Any]]:
-        batch: list[dict[str, Any]] = []
-        while len(batch) < self._batch_max_size:
-            try:
-                batch.append(self._queue.get_nowait())
-            except asyncio.QueueEmpty:
-                break
+    def _drain_batch(self) -> list[dict[str, Any]]:
+        with self._lock:
+            take = min(len(self._buffer), self._batch_max_size)
+            batch = [self._buffer.popleft() for _ in range(take)]
         return batch
 
     async def _flush_once(self, batch: list[dict[str, Any]]) -> None:
@@ -173,7 +134,7 @@ class PrefectLogForwarder:
                 await asyncio.wait_for(self._stopping.wait(), timeout=self._flush_interval)
             except TimeoutError:
                 pass
-            batch = await self._drain_batch()
+            batch = self._drain_batch()
             await self._flush_once(batch)
 
     async def close(self, *, timeout: float = 2.0) -> None:
@@ -185,7 +146,7 @@ class PrefectLogForwarder:
             except (TimeoutError, asyncio.CancelledError):
                 self._flush_task.cancel()
         # Final drain — best-effort.
-        remaining = await self._drain_batch()
+        remaining = self._drain_batch()
         if remaining:
             try:
                 await asyncio.wait_for(self._flush_once(remaining), timeout=timeout)
@@ -212,7 +173,8 @@ class PrefectLogHandler(logging.Handler):
     Filter order (cheapest first):
     1. ``record.levelno < min_level`` — drop.
     2. ``record.name`` doesn't start with any allowed prefix — drop.
-    3. No ``flow_run_id`` and no ``task_run_id`` in context — drop (system log).
+    3. No active ``CorrelationContext`` with ``flow_run_id`` or ``task_run_id``
+       — drop (system log, not task-scoped).
     4. Enqueue to forwarder.
 
     Per the SIP: enqueue is non-blocking and never raises; a broken forwarder
@@ -224,9 +186,16 @@ class PrefectLogHandler(logging.Handler):
         forwarder: PrefectLogForwarder,
         filters: LogHandlerFilters | None = None,
     ) -> None:
-        super().__init__(level=(filters.min_level if filters else logging.INFO))
+        # Pass NOTSET so the base ``Handler.level`` doesn't double-filter; the
+        # single source of truth is ``LogHandlerFilters.min_level`` below. This
+        # lets callers tune the level at runtime without restarting the handler.
+        super().__init__(level=logging.NOTSET)
         self._forwarder = forwarder
         self._filters = filters or LogHandlerFilters()
+        # Default formatter so ``self.format(record)`` produces a full message
+        # including ``exc_info`` tracebacks — otherwise ``logger.exception(...)``
+        # records would arrive at Prefect with no stack.
+        self.setFormatter(logging.Formatter())
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -237,8 +206,10 @@ class PrefectLogHandler(logging.Handler):
                 for p in self._filters.allowed_prefixes
             ):
                 return
-            ids = get_prefect_run_ids()
-            if ids.flow_run_id is None and ids.task_run_id is None:
+            ctx = get_correlation_context()
+            flow_run_id = ctx.flow_run_id if ctx is not None else None
+            task_run_id = ctx.task_run_id if ctx is not None else None
+            if flow_run_id is None and task_run_id is None:
                 return
             payload: dict[str, Any] = {
                 "name": record.name,
@@ -246,10 +217,10 @@ class PrefectLogHandler(logging.Handler):
                 "message": self.format(record),
                 "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat(),
             }
-            if ids.flow_run_id is not None:
-                payload["flow_run_id"] = ids.flow_run_id
-            if ids.task_run_id is not None:
-                payload["task_run_id"] = ids.task_run_id
+            if flow_run_id is not None:
+                payload["flow_run_id"] = flow_run_id
+            if task_run_id is not None:
+                payload["task_run_id"] = task_run_id
             self._forwarder.enqueue(payload)
         except Exception:
             self.handleError(record)
@@ -259,7 +230,4 @@ __all__ = [
     "LogHandlerFilters",
     "PrefectLogForwarder",
     "PrefectLogHandler",
-    "PrefectRunIds",
-    "get_prefect_run_ids",
-    "prefect_run_context",
 ]

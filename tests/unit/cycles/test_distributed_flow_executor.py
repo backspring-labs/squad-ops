@@ -9,6 +9,7 @@ of mocked AgentOrchestrator.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -963,7 +964,7 @@ class TestPulseVerificationCadence:
 
         # Mock _dispatch_task to return success instantly (bypasses time.monotonic
         # in the dispatch polling loop)
-        async def fake_dispatch(envelope, run_id):
+        async def fake_dispatch(envelope, run_id, **kwargs):
             return TaskResult(
                 task_id=envelope.task_id,
                 status="SUCCEEDED",
@@ -2582,3 +2583,251 @@ class TestPulseRepairTelemetry:
         assert "data-agent_comms" in published_queues, (
             "Data repair task should go to data-agent_comms"
         )
+
+
+# ---------------------------------------------------------------------------
+# SIP-0087: Prefect task-run lifecycle + contextvar scope + heartbeat
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchTaskPrefectLifecycle:
+    """Verify _dispatch_task drives the Prefect task-run lifecycle, enters the
+    correlation contextvar scope, and spawns the heartbeat."""
+
+    @pytest.fixture
+    def envelope(self):
+        return TaskEnvelope(
+            task_id="task_abc",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="development.design",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            metadata={"role": "dev", "capability_id": "dev.design"},
+        )
+
+    @pytest.fixture
+    def mock_reporter(self):
+        reporter = MagicMock()
+        reporter.create_task_run = AsyncMock(return_value="tr_new")
+        reporter.set_task_run_state = AsyncMock()
+        return reporter
+
+    def _build_executor(self, mock_queue, mock_reporter=None):
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        return DistributedFlowExecutor(
+            queue=mock_queue,
+            task_timeout=5.0,
+            prefect_reporter=mock_reporter,
+        )
+
+    def _wire_success_reply(self, mock_queue, task_id: str):
+        call_count = 0
+
+        async def consume_side_effect(queue_name, max_messages=1):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return [
+                    _make_result_message(
+                        task_id=task_id,
+                        outputs={"summary": "ok", "artifacts": []},
+                        queue_name=queue_name,
+                    )
+                ]
+            return []
+
+        mock_queue.consume.side_effect = consume_side_effect
+
+    async def test_creates_task_run_and_sets_running_when_prefect_enabled(
+        self, mock_queue, mock_reporter, envelope
+    ):
+        self._wire_success_reply(mock_queue, envelope.task_id)
+        executor = self._build_executor(mock_queue, mock_reporter)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor._dispatch_task(envelope, "run_001", flow_run_id="fr_abc")
+
+        mock_reporter.create_task_run.assert_awaited_once_with(
+            "fr_abc", "task_abc", "dev: development.design"
+        )
+        mock_reporter.set_task_run_state.assert_awaited_once_with(
+            "tr_new", "RUNNING", "Running"
+        )
+
+    async def test_no_prefect_calls_when_reporter_missing(
+        self, mock_queue, envelope
+    ):
+        self._wire_success_reply(mock_queue, envelope.task_id)
+        executor = self._build_executor(mock_queue, mock_reporter=None)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            result = await executor._dispatch_task(
+                envelope, "run_001", flow_run_id="fr_abc"
+            )
+
+        assert result.status == "SUCCEEDED"
+
+    async def test_no_prefect_calls_when_flow_run_id_missing(
+        self, mock_queue, mock_reporter, envelope
+    ):
+        self._wire_success_reply(mock_queue, envelope.task_id)
+        executor = self._build_executor(mock_queue, mock_reporter)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor._dispatch_task(envelope, "run_001", flow_run_id=None)
+
+        mock_reporter.create_task_run.assert_not_awaited()
+        mock_reporter.set_task_run_state.assert_not_awaited()
+
+    async def test_skips_creation_when_task_run_id_preallocated(
+        self, mock_queue, mock_reporter, envelope
+    ):
+        # Sequential path pre-creates the task_run (so TASK_DISPATCHED can
+        # emit it) and passes task_run_id in. _dispatch_task must not create
+        # a second one.
+        self._wire_success_reply(mock_queue, envelope.task_id)
+        executor = self._build_executor(mock_queue, mock_reporter)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor._dispatch_task(
+                envelope, "run_001", flow_run_id="fr_abc", task_run_id="tr_preallocated"
+            )
+
+        mock_reporter.create_task_run.assert_not_awaited()
+        mock_reporter.set_task_run_state.assert_not_awaited()
+
+    async def test_scopes_correlation_context_during_publish(
+        self, mock_queue, mock_reporter, envelope
+    ):
+        """The publish coroutine must see the active CorrelationContext so
+        any logs emitted during dispatch land in the right Prefect pane."""
+        from squadops.telemetry.context import get_correlation_context
+
+        seen: dict[str, object] = {}
+
+        async def capture_ctx(*args, **kwargs):
+            ctx = get_correlation_context()
+            seen["cycle_id"] = ctx.cycle_id if ctx else None
+            seen["flow_run_id"] = ctx.flow_run_id if ctx else None
+            seen["task_run_id"] = ctx.task_run_id if ctx else None
+
+        mock_queue.publish.side_effect = capture_ctx
+        self._wire_success_reply(mock_queue, envelope.task_id)
+        executor = self._build_executor(mock_queue, mock_reporter)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor._dispatch_task(
+                envelope, "run_001", flow_run_id="fr_abc", task_run_id="tr_123"
+            )
+
+        assert seen == {
+            "cycle_id": "cyc_001",
+            "flow_run_id": "fr_abc",
+            "task_run_id": "tr_123",
+        }
+        # Context must be cleared after dispatch returns.
+        assert get_correlation_context() is None
+
+    async def test_task_heartbeat_logs_periodically_under_contextvar_scope(
+        self, mock_queue, envelope, caplog
+    ):
+        """``_task_heartbeat`` emits an INFO line per interval and carries
+        the live correlation context so records are tagged for Prefect."""
+        import logging as stdlog
+
+        import adapters.cycles.distributed_flow_executor as dfe
+        from squadops.telemetry.context import (
+            get_correlation_context,
+            use_correlation_context,
+            use_run_ids,
+        )
+        from squadops.telemetry.models import CorrelationContext
+
+        executor = self._build_executor(mock_queue)
+
+        seen_ids: list[tuple[str | None, str | None]] = []
+        real_sleep = asyncio.sleep
+
+        async def capturing_sleep(_interval: float) -> None:
+            ctx = get_correlation_context()
+            seen_ids.append(
+                (ctx.flow_run_id if ctx else None, ctx.task_run_id if ctx else None)
+            )
+            # Let the event loop advance; real sleep avoids tight-looping.
+            await real_sleep(0)
+
+        with (
+            patch.object(dfe.asyncio, "sleep", capturing_sleep),
+            caplog.at_level(stdlog.INFO, logger=dfe.__name__),
+        ):
+            base = CorrelationContext(cycle_id="cyc_001")
+            with use_correlation_context(base), use_run_ids(
+                flow_run_id="fr_abc", task_run_id="tr_123"
+            ):
+                hb = asyncio.create_task(
+                    executor._task_heartbeat(envelope, interval=0.01)
+                )
+                # Yield a few times so the heartbeat can iterate.
+                for _ in range(5):
+                    await real_sleep(0)
+                hb.cancel()
+                try:
+                    await hb
+                except asyncio.CancelledError:
+                    pass
+
+        messages = [
+            r.getMessage() for r in caplog.records if "task_heartbeat" in r.getMessage()
+        ]
+        assert messages, "expected at least one task_heartbeat log line"
+        first = messages[0]
+        assert "capability_id=dev.design" in first
+        assert "task_id=task_abc" in first
+        # Heartbeat coroutine saw the active flow/task run IDs via contextvar
+        # inheritance at create_task time.
+        assert ("fr_abc", "tr_123") in seen_ids
+
+    async def test_dispatch_task_cancels_heartbeat_on_return(
+        self, mock_queue, mock_reporter, envelope
+    ):
+        """After ``_dispatch_task`` returns, no orphan heartbeat task should
+        remain on the event loop."""
+        self._wire_success_reply(mock_queue, envelope.task_id)
+        executor = self._build_executor(mock_queue, mock_reporter)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor._dispatch_task(
+                envelope, "run_001", flow_run_id="fr_abc", task_run_id="tr_123"
+            )
+
+        leftover = [
+            t
+            for t in asyncio.all_tasks()
+            if t.get_name().startswith("prefect-heartbeat-") and not t.done()
+        ]
+        assert leftover == []
+
