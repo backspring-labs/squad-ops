@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from squadops.events.bridges.langfuse import LangFuseBridge
+from squadops.events.bridges.llm_observability import LLMObservabilityBridge
 from squadops.events.bridges.metrics import MetricsBridge
-from squadops.events.bridges.prefect import PrefectBridge
+from squadops.events.bridges.workflow_tracker import WorkflowTrackerBridge
 from squadops.events.models import CycleEvent
 from squadops.events.types import EventType
 from squadops.telemetry.models import CorrelationContext
@@ -52,7 +52,7 @@ class TestLangFuseParity:
         current taxonomy (run.started), but the bridge faithfully forwards
         whatever event_type it receives."""
         obs = MagicMock()
-        bridge = LangFuseBridge(obs)
+        bridge = LLMObservabilityBridge(obs)
         bridge.on_event(_event(EventType.RUN_STARTED, "run", "run_1"))
 
         se = obs.record_event.call_args[0][1]
@@ -62,7 +62,7 @@ class TestLangFuseParity:
         """Executor constructs CorrelationContext(cycle_id=..., trace_id=...).
         Bridge constructs the same from event.context."""
         obs = MagicMock()
-        bridge = LangFuseBridge(obs)
+        bridge = LLMObservabilityBridge(obs)
         bridge.on_event(
             _event(
                 EventType.RUN_STARTED,
@@ -80,7 +80,7 @@ class TestLangFuseParity:
     def test_cycle_completed_event_name(self):
         """Executor record_event name='cycle.completed' maps to run.completed."""
         obs = MagicMock()
-        bridge = LangFuseBridge(obs)
+        bridge = LLMObservabilityBridge(obs)
         bridge.on_event(_event(EventType.RUN_COMPLETED, "run", "run_1"))
 
         se = obs.record_event.call_args[0][1]
@@ -90,7 +90,7 @@ class TestLangFuseParity:
         """Executor passes attributes as tuple of tuples.
         Bridge converts payload dict items to StructuredEvent attributes."""
         obs = MagicMock()
-        bridge = LangFuseBridge(obs)
+        bridge = LLMObservabilityBridge(obs)
         bridge.on_event(
             _event(
                 EventType.TASK_SUCCEEDED,
@@ -108,7 +108,7 @@ class TestLangFuseParity:
     def test_all_events_produce_record_event_call(self):
         """Every event type in the taxonomy produces exactly one record_event call."""
         obs = MagicMock()
-        bridge = LangFuseBridge(obs)
+        bridge = LLMObservabilityBridge(obs)
         for et in EventType.all():
             obs.reset_mock()
             entity = et.split(".")[0]
@@ -129,7 +129,7 @@ class TestPrefectParity:
         """Executor: set_flow_run_state(frid, 'RUNNING', 'Running')"""
         reporter = MagicMock()
         reporter.set_flow_run_state = AsyncMock()
-        bridge = PrefectBridge(reporter)
+        bridge = WorkflowTrackerBridge(reporter)
 
         bridge.on_event(
             _event(
@@ -150,7 +150,7 @@ class TestPrefectParity:
         ]:
             reporter = MagicMock()
             reporter.set_flow_run_state = AsyncMock()
-            bridge = PrefectBridge(reporter)
+            bridge = WorkflowTrackerBridge(reporter)
 
             bridge.on_event(
                 _event(
@@ -169,7 +169,7 @@ class TestPrefectParity:
         reporter = MagicMock()
         reporter.create_task_run = AsyncMock()
         reporter.set_task_run_state = AsyncMock()
-        bridge = PrefectBridge(reporter)
+        bridge = WorkflowTrackerBridge(reporter)
 
         bridge.on_event(
             _event(
@@ -192,7 +192,7 @@ class TestPrefectParity:
         """Bridge forwards COMPLETED when executor supplies task_run_id."""
         reporter = MagicMock()
         reporter.set_task_run_state = AsyncMock()
-        bridge = PrefectBridge(reporter)
+        bridge = WorkflowTrackerBridge(reporter)
 
         ctx = {
             "cycle_id": "cyc_1",
@@ -207,7 +207,7 @@ class TestPrefectParity:
         """Bridge forwards FAILED when executor supplies task_run_id."""
         reporter = MagicMock()
         reporter.set_task_run_state = AsyncMock()
-        bridge = PrefectBridge(reporter)
+        bridge = WorkflowTrackerBridge(reporter)
 
         ctx = {
             "cycle_id": "cyc_1",
@@ -222,7 +222,7 @@ class TestPrefectParity:
         """Without task_run_id in context, bridge has nothing to address."""
         reporter = MagicMock()
         reporter.set_task_run_state = AsyncMock()
-        bridge = PrefectBridge(reporter)
+        bridge = WorkflowTrackerBridge(reporter)
 
         ctx = {"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"}
         bridge.on_event(_event(EventType.TASK_SUCCEEDED, "task", "t_1", context=ctx))
@@ -312,7 +312,7 @@ class TestPrefectResumedParity:
         """RUN_RESUMED maps to (RUNNING, Running) in Prefect."""
         reporter = MagicMock()
         reporter.set_flow_run_state = AsyncMock()
-        bridge = PrefectBridge(reporter)
+        bridge = WorkflowTrackerBridge(reporter)
 
         bridge.on_event(
             _event(

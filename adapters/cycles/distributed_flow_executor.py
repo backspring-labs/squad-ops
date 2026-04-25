@@ -564,7 +564,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
     # Dispatch
     # ------------------------------------------------------------------
 
-    # SIP-0087: task-run lifecycle lives here (moved out of PrefectBridge) so
+    # SIP-0087: task-run lifecycle lives here (moved out of WorkflowTrackerBridge) so
     # the task_run_id is known before the agent starts producing logs.
     async def _create_task_run_if_enabled(
         self,

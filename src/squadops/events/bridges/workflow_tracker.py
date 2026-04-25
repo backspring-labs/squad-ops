@@ -1,4 +1,4 @@
-"""PrefectBridge — translates CycleEvent to WorkflowTrackerPort state transitions.
+"""WorkflowTrackerBridge — translates CycleEvent to WorkflowTrackerPort state transitions.
 
 Maps run lifecycle events to flow-run state changes. As of SIP-0087,
 task-run lifecycle (creation + state transitions) lives in
@@ -44,7 +44,7 @@ _TASK_STATE_MAP: dict[str, tuple[str, str]] = {
 }
 
 
-class PrefectBridge:
+class WorkflowTrackerBridge:
     """Subscriber that forwards CycleEvents to a :class:`WorkflowTrackerPort`.
 
     Handles run-level state transitions and terminal task-state transitions

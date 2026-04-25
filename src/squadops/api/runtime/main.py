@@ -280,18 +280,16 @@ async def _init_cycle_subsystem(config, pool) -> None:
         from adapters.events.factory import create_cycle_event_bus
         from squadops.api.runtime.deps import set_cycle_event_bus
 
+        # Bridges are subscribed inside the factory so the composition root
+        # never names ``LLMObservabilityBridge`` / ``WorkflowTrackerBridge``
+        # directly — only the ports cross this boundary.
         event_bus = create_cycle_event_bus(
             "in_process",
             source_service="runtime-api",
             source_version=SQUADOPS_VERSION,
+            llm_observability=llm_obs,
+            workflow_tracker=_workflow_tracker,
         )
-        if llm_obs:
-            from squadops.events.bridges.langfuse import LangFuseBridge
-
-            event_bus.subscribe(LangFuseBridge(llm_obs))
-        from squadops.events.bridges.prefect import PrefectBridge
-
-        event_bus.subscribe(PrefectBridge(_workflow_tracker))
         set_cycle_event_bus(event_bus)
 
         flow_executor = create_flow_executor(

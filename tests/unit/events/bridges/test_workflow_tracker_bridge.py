@@ -1,4 +1,4 @@
-"""Tests for PrefectBridge subscriber.
+"""Tests for WorkflowTrackerBridge subscriber.
 
 As of SIP-0087 the bridge handles only flow-level state transitions and
 terminal task-state transitions — task-run creation + RUNNING is done in
@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from squadops.events.bridges.prefect import PrefectBridge
+from squadops.events.bridges.workflow_tracker import WorkflowTrackerBridge
 from squadops.events.models import CycleEvent
 from squadops.events.types import EventType
 
@@ -50,11 +50,11 @@ def mock_reporter():
 
 @pytest.fixture
 def bridge(mock_reporter):
-    return PrefectBridge(mock_reporter)
+    return WorkflowTrackerBridge(mock_reporter)
 
 
 @pytest.mark.domain_events
-class TestPrefectBridgeRunStates:
+class TestWorkflowTrackerBridgeRunStates:
     def test_run_started_sets_flow_running(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_STARTED))
         mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "RUNNING", "Running")
@@ -85,10 +85,8 @@ class TestPrefectBridgeRunStates:
 
 
 @pytest.mark.domain_events
-class TestPrefectBridgeTaskStates:
-    def test_task_succeeded_sets_completed_using_context_task_run_id(
-        self, bridge, mock_reporter
-    ):
+class TestWorkflowTrackerBridgeTaskStates:
+    def test_task_succeeded_sets_completed_using_context_task_run_id(self, bridge, mock_reporter):
         event = _make_event(
             event_type=EventType.TASK_SUCCEEDED,
             entity_type="task",
@@ -116,9 +114,7 @@ class TestPrefectBridgeTaskStates:
             },
         )
         bridge.on_event(event)
-        mock_reporter.set_task_run_state.assert_called_once_with(
-            "tr_failed", "FAILED", "Failed"
-        )
+        mock_reporter.set_task_run_state.assert_called_once_with("tr_failed", "FAILED", "Failed")
 
     def test_task_succeeded_without_task_run_id_is_noop(self, bridge, mock_reporter):
         # Executor didn't create a Prefect task_run (no flow_run_id) — bridge
