@@ -104,6 +104,7 @@ These derive from the umbrella SIP and the v1.1 coordinator-authority invariant.
 6. **Scheduler is not a semantic authority.** It detects timing; it requests transitions through the coordinator.
 7. **`RuntimeActivity` does not execute work.** Existing handlers and runners do; they emit RuntimeActivity records as observation.
 8. **`FocusLease` does not imply `RuntimeMode`.** Acquiring a lease does not transition mode; only the coordinator does.
+9. **Hexagonal boundaries enforced by `tests/unit/architecture/test_forbidden_imports.py`** (per D26). New modules added in any phase must pass the import test in CI.
 
 ---
 
@@ -115,7 +116,7 @@ These derive from the umbrella SIP and the v1.1 coordinator-authority invariant.
 | D2 | Postgres is the persistence backend; reuse the existing `DbRuntime` connection pool | Cycle registry already lives there (SIP-0067). Migrations sequenced per D11 |
 | D3 | `RuntimeMode`, `runtime_status`, `RuntimeActivity.state` are string-valued enums in DB **with `Literal` types or constants in code** to prevent typo-driven drift. DB migrations include CHECK constraints for known values | Matches existing patterns; CHECK constraint catches invalid writes at DB level, not just test level |
 | D4 | `RuntimeActivity` is **emitted by existing handlers and workload runners**, not a new execution engine. Handlers do not import persistence adapters; they call a small `RuntimeActivityReporter`/`RuntimeActivityService` injected via ports | Per package invariant. Hexagonal seam keeps handlers decoupled from runtime-state plumbing |
-| D5 | `FocusLease` resolution returns one of `granted | rejected | queued | preempting`. **`queued` is only returned if v1.1 implements queue persistence and a queue-draining processor.** If queueing is deferred, `queued` must not be returned in v1.1 — see D20 | Prevents fake semantics |
+| D5 | `FocusLease` resolution returns one of `granted | rejected | preempting`. **`queued` is recognized as a v1.2+ outcome and is NOT implemented in v1.1** (per D20). Requests that would require queueing return `rejected` with reason `focus_lease_queueing_not_supported_in_v1.1` | Frozen v1.1 outcomes; avoids fake semantics |
 | D6 | `runtime_status` is scoped to health only: `online | degraded | recovering | offline`. CLI may *display* derived availability (`idle`/`busy`/`paused`) computed from FocusLease + RuntimeActivity, but it is never *stored* in `runtime_status` | Per umbrella boundary table |
 | D7 | Pre-duty reserve buffer defaults: hard duty `reserve_before_window=15min, reserve_after_window=0`; soft duty `reserve_before_window=0, reserve_after_window=0`. Both fields exist on every Assignment | Per SIP-0089 §11.4; explicit defaults prevent NULL ambiguity |
 | D8 | Heartbeat extension carries mode/focus/runtime_status as **reported observations only**. See D17 for non-authoritative semantics. Pre-implementation spike confirms integration with post-1.0.5 `agents/entrypoint.py` | Cheapest path; existing wiring proven, but entrypoint changed in 1.0.5 |
@@ -130,9 +131,13 @@ These derive from the umbrella SIP and the v1.1 coordinator-authority invariant.
 | D17 | **Heartbeat non-authoritative for mode:** heartbeat may initialize missing runtime state (`mode=ambient, runtime_status=online`) and update `last_heartbeat_at` + `runtime_status`. It must not overwrite coordinator-owned `mode`, `focus`, `current_assignment_ref`, or `current_runtime_activity_id` with defaults | Prevents heartbeat from racing the scheduler/coordinator |
 | D18 | **Event names and reason codes are distinct.** Events describe what happened (`cycle.recruitment.rejected`). Reason codes describe why a decision happened (`upcoming_hard_duty_window`). Both are canonical constants; neither stands in for the other | Avoids the conflated "long reason-as-event-name" trap |
 | D19 | **`RuntimeActivity` granularity is task/handler-level for v1.1 cycle execution.** Workload boundaries continue to emit workflow/cycle events but **must not** create a competing active `RuntimeActivity` under D9's strict-one rule. Workload context is metadata on the task-level RuntimeActivity (e.g., `source_ref` carries `workload_id`) | Resolves D9-vs-Phase-4 conflict in original draft |
-| D20 | **`queued` FocusLease outcome requires real queue semantics.** Returning `queued` is only permitted if v1.1 implements queue persistence and a queue-draining processor. If deferred, the lease implementation rejects requests that would have been queued, with a distinct reason code, and `queued` is removed from the v1.1 outcome set | Prevents the "we modeled it but never drain it" failure mode |
+| D20 | **FocusLease queueing is deferred to v1.2+.** v1.1 implements `granted | rejected | preempting` only. Requests that would have queued are rejected with reason `focus_lease_queueing_not_supported_in_v1.1`. Reintroducing `queued` in a future version requires queue persistence storage, a queue-draining processor, and ordering tests | Frozen for v1.1 — prevents queue infrastructure from sneaking in under time pressure |
 | D21 | **Scheduler is a claimant, not an authority:** the in-process scheduler detects duty-window timing and submits transition requests to the coordinator. It does not directly mutate `AgentRuntimeState`. Repeated scheduler ticks within the same window must be idempotent (window-open transition fires exactly once per assignment/window) | Prevents duplicate transition events from polling |
 | D22 | **Runtime events use shared event infrastructure without semantic leakage.** Routes through `events/bridges/workflow_tracker.py` only if that bridge is intentionally generic. If it is cycle/workflow-specific, a dedicated `events/bridges/runtime_state.py` is introduced. Decision is made during the Phase 1 spike, not deferred to Phase 4 | Avoids contorting runtime events into workflow shapes |
+| D23 | **`current_assignment_ref` is active-only, not upcoming.** It is `null` unless the agent is currently operating under that assignment's mode. Future or queued assignments are queried via `AssignmentPort.list_assignments_for_agent`, never copied into `AgentRuntimeState` | Preserves the Mode vs Assignment boundary; prevents `current_assignment_ref` from drifting into "next thing that may claim me" semantics |
+| D24 | **Cycle ownership uses `FocusLease.owner_type=cycle` + `owner_ref=<cycle/task identifier>`** without requiring a synthetic `Assignment` row. `Assignment` remains primarily for duty / reserve / cycle_eligibility commitments. Ordinary cycle execution does not create an assignment | Prevents implementers from creating dummy assignment rows for normal cycle work |
+| D25 | **Coordinator transitions execute in one Postgres transaction where practical.** All v1.1 runtime ports share the `DbRuntime` pool, so the §4.5 transition steps that touch `AgentRuntimeState`, `FocusLease`, and `RuntimeActivity` are wrapped in a single DB transaction. The §4.5 rollback rule becomes "transaction abort" rather than best-effort compensation. If a future adapter cannot share the transaction, the coordinator must use explicit compensation and emit a transition failure event | Makes rollback semantics concrete; prevents partial-state corruption |
+| D26 | **Forbidden-import architecture test enforces hexagonal boundaries.** `tests/unit/architecture/test_forbidden_imports.py` asserts: `src/squadops/runtime/` does not import `adapters.persistence.*`; `src/squadops/capabilities/handlers/` does not import runtime persistence adapters directly; `src/squadops/cli/` does not import Postgres runtime adapters directly | Cheap static guard for boundaries the plan repeatedly relies on |
 
 ---
 
@@ -254,6 +259,13 @@ No `--watch` flag in v1.1; defer to a follow-up if needed.
 - `--json` produces valid JSON
 - Derived availability is shown when applicable but not persisted
 
+`tests/unit/architecture/test_forbidden_imports.py` (new in Phase 1, expanded in subsequent phases per D26):
+
+- `src/squadops/runtime/` modules do not import `adapters.persistence.*`
+- `src/squadops/capabilities/handlers/` modules do not import runtime persistence adapters directly
+- `src/squadops/cli/` modules do not import Postgres runtime adapters directly
+- Test uses AST parsing or import-graph inspection; runs in the regression suite
+
 **Acceptance for Phase 1:**
 
 - An operator can run `squadops agent state max` and see current mode + RuntimeActivity ID
@@ -339,6 +351,21 @@ Polling-based scheduler (interval configurable; default 30 seconds):
 
 Designed so the v1.3 Temporal adapter sits behind the same `DutyDurabilityPort` interface (SIP-0091). For v1.1, only the in-process implementation exists.
 
+**Lifecycle and config:** the scheduler is started by the runtime/bootstrap layer **only when enabled** by config. It must have a clean shutdown path. **It must not start implicitly in unit tests** unless explicitly constructed by the test — this prevents background-tick flakiness.
+
+Config keys:
+
+- `runtime.scheduler.enabled` (bool, default `false` — opt-in for v1.1)
+- `runtime.scheduler.poll_interval_seconds` (int, default `30`)
+
+**Missed-window behavior** (§2.4 scheduler enacts the policy declared on each `Assignment`):
+
+| `MissedWindowPolicy` | Scheduler behavior on a missed window |
+|----------------------|----------------------------------------|
+| `skip` | Do not open the missed window. Emit `assignment.window.skipped` with reason `duty_window_missed`. Do not request a transition |
+| `start_late_within_grace` | If `now ≤ window_start + graceful_window`, open the window and request the transition with reason `duty_window_started_late`. Otherwise behave as `skip` |
+| `require_operator_review` | Do not transition. Emit `assignment.window.review_required` with reason `duty_window_missed_operator_review`. Block until an `operator_override` reason code is supplied via CLI |
+
 ### 2.5 Reserve buffer policy in cycle recruitment
 
 Per the §2.0 spike, the recruitment seam is identified before this sub-step. Recruitment ordering:
@@ -407,6 +434,8 @@ The coordinator does **not** own scheduler polling, handler execution, persisten
 - Reserve buffer rejects cycle recruitment for hard duty
 - Reserve buffer permits cycle recruitment for soft duty when policy allows
 - Scheduler does NOT directly mutate `AgentRuntimeState` (only requests via coordinator)
+- **Scheduler does not run unless explicitly enabled/configured** (no implicit background activation in tests)
+- Missed-window behavior matches §2.4 table for each `MissedWindowPolicy` value (one test per policy)
 
 `tests/unit/orchestration/test_recruitment_with_assignments.py`:
 
@@ -428,24 +457,23 @@ The coordinator does **not** own scheduler polling, handler execution, persisten
 
 **Goal:** Implement `FocusLease` with the explicit-outcome resolution model. Make lease the hard gate for primary attention.
 
-### 3.0 D20 decision
+### 3.0 Queue semantics (deferred per D5/D20)
 
-Before implementing, resolve D20 explicitly: **does v1.1 implement queue persistence and a queue-draining processor, or not?**
+FocusLease queueing is **deferred to v1.2+**. v1.1 implements `granted | rejected | preempting` only. Requests that would have queued return `rejected` with reason `focus_lease_queueing_not_supported_in_v1.1`.
 
-Recommended v1.1 stance: **defer queueing.** Implement `granted | rejected | preempting` only. Requests that would have queued get `rejected` with reason `focus_lease_would_queue_unsupported_in_v1.1`. Document `queued` as a v1.2+ outcome.
-
-If queueing is implemented in v1.1, Phase 3 must include the queue store, the draining processor, and tests for queue-drain ordering.
+Future versions reintroducing `queued` must include queue persistence storage, a queue-draining processor, and ordering tests. None of those are in scope for this plan.
 
 ### 3.1 Model
 
 `FocusLease` frozen dataclass in `src/squadops/runtime/models.py` per SIP-0089 §10.4.
 
-`LeaseDecision` discriminated union (with `queued` optional per §3.0):
+`LeaseDecision` discriminated union (queueing deferred per D20):
 
 - `LeaseGranted(lease_id, expires_at, reason_code)`
 - `LeaseRejected(current_owner_ref, reason_code, retry_after?)`
 - `LeasePreempting(current_owner_ref, preemption_grace, reason_code)`
-- `LeaseQueued(queue_position, current_owner_ref, reason_code)` — only if §3.0 enables queueing
+
+`LeaseQueued` is recognized as a v1.2+ outcome and is not part of the v1.1 union.
 
 ### 3.2 Postgres migration
 
@@ -498,7 +526,7 @@ Recruitment that passes the §2.5 reserve check must then acquire a `FocusLease`
 | `focus_lease_conflict` | `cycle.recruitment.rejected` |
 | `current_activity_cannot_pause` | `cycle.recruitment.rejected` |
 | `agent_runtime_status_unavailable` | `cycle.recruitment.rejected` |
-| `focus_lease_would_queue_unsupported_in_v1.1` | `cycle.recruitment.rejected` (only if §3.0 defers queueing) |
+| `focus_lease_queueing_not_supported_in_v1.1` | `cycle.recruitment.rejected` (per D20 deferral) |
 
 ### 3.6 Tests
 
@@ -513,7 +541,7 @@ Recruitment that passes the §2.5 reserve check must then acquire a `FocusLease`
 - `revoke_lease` removes the active lease (non-cooperative)
 - `get_current_lease` returns null for an agent with no active lease
 - Idempotent acquire: same `idempotency_key` does not create a duplicate lease
-- (If §3.0 enables queueing) queue: request with `wait` policy queues; queue position is correct; queue drains in order
+- Request with `wait` policy is rejected with reason `focus_lease_queueing_not_supported_in_v1.1` (per D20)
 
 `tests/unit/runtime/test_coordinator_with_lease.py`:
 
@@ -524,7 +552,7 @@ Recruitment that passes the §2.5 reserve check must then acquire a `FocusLease`
 **Acceptance for Phase 3:**
 
 - The framework can explain why an agent did or did not accept a cycle request via distinct reason codes
-- All v1.1 lease outcomes (per §3.0 decision) are observable via canonical events
+- All v1.1 lease outcomes (`granted`/`rejected`/`preempting`) are observable via canonical events
 - Partial unique index enforces single-lease invariant
 - No stranded leases on failed transitions
 - All tests pass
@@ -540,6 +568,8 @@ Recruitment that passes the §2.5 reserve check must then acquire a `FocusLease`
 `RuntimeActivity` frozen dataclass per SIP-0089 §10.6.
 
 `ActivityState` enum: `pending | running | paused | completed | aborted | failed`.
+
+**Source identity columns** (per review feedback): RuntimeActivity carries explicit nullable `cycle_id`, `workload_id`, `task_id` columns for queryability. `source_ref` remains opaque adapter/source-specific detail; **core never parses `source_ref`**. If history-by-cycle / by-workload / by-task is needed, query the explicit columns. New source kinds (e.g., `embodied_action` in v1.2) may add their own columns rather than overload `source_ref`.
 
 Timestamps:
 
@@ -564,7 +594,10 @@ Creates `runtime_activities` table:
 - `priority` (int)
 - `state` (text, CHECK in (`pending`, `running`, `paused`, `completed`, `aborted`, `failed`))
 - `source_kind` (text, CHECK in (`cycle_task`, `workload`, `duty_handler`, `ambient_observation`, `embodied_action`))
-- `source_ref` (text) — opaque; carries workload_id / cycle_id / handler context as needed
+- `cycle_id` (text, nullable, indexed) — explicit per §4.1
+- `workload_id` (text, nullable, indexed) — explicit per §4.1
+- `task_id` (text, nullable, indexed) — explicit per §4.1
+- `source_ref` (text) — opaque adapter/source-specific detail; **never parsed in core**
 - `can_pause`, `can_resume`, `can_abort` (bool)
 - `completion_conditions` (jsonb)
 - `evidence_requirements` (jsonb)
@@ -610,6 +643,8 @@ The Phase 2 coordinator stub for RuntimeActivity decisions becomes real. **Trans
 7. **Emit transition completed event** — canonical event + reason code
 
 If any step fails, the transition is rejected. Steps before the failure that produced side effects (e.g., a granted lease in step 4) must be rolled back. Prior mode remains authoritative; emit `agent.mode.transition.rejected` with the failure reason code.
+
+**Per D25, steps 4–6 (lease, activity, mode) execute inside a single Postgres transaction since all three ports share the `DbRuntime` pool.** The "rollback" is then a transaction abort, not best-effort compensation. Step 7 (event emission) sits outside the transaction so failures to publish do not corrupt state, but they must produce a follow-up alert.
 
 ### 4.6 Ambient irreversibility hook (seam for v1.2)
 
@@ -680,7 +715,7 @@ Across all four phases:
 1. The framework can answer (for any agent at any time): mode, assignments, current RuntimeActivity, what may claim next.
 2. An agent cannot be simultaneously in Duty, Cycle, and Ambient.
 3. Cycle recruitment respects future duty windows AND the reserve buffer.
-4. All v1.1 `FocusLease` outcomes (per §3.0 decision) are observable via canonical events.
+4. All v1.1 `FocusLease` outcomes (`granted`/`rejected`/`preempting`; queueing deferred per D20) are observable via canonical events.
 5. Every transition and lease decision carries a canonical reason code, **distinct from the event name** (D18).
 6. Existing cycle execution remains intact — `run_regression_tests.sh` continues to pass at its current count (verify pre-implementation baseline; recent SIP-0087 added significant test surface).
 7. The end-to-end nightly-research walkthrough from SIP-0089 §16 executes correctly.
@@ -689,6 +724,11 @@ Across all four phases:
 10. **Scheduler ticks are idempotent** and do not duplicate window-open/window-close transitions (D21).
 11. **`RuntimeActivity` instrumentation does not create nested active activities** under the strict-one D9 rule (D19 enforced by integration test).
 12. **Event names and reason codes are separated and canonical** (D18 verified by static check or naming convention test).
+13. **`current_assignment_ref` is active-only** (D23 verified by Phase 2 test: agent with future-only duty assignment has `current_assignment_ref = null`).
+14. **Coordinator transitions are transactional** (D25 verified by Phase 4 test: simulated step-6 failure aborts the transaction and leaves no granted lease).
+15. **Forbidden-import test passes on the regression suite** (D26 verified continuously).
+16. **Scheduler does not auto-start in tests** (D21 lifecycle verified in Phase 2).
+17. **Missed-window policy behavior matches the §2.4 table** for all three policy values.
 
 ---
 
