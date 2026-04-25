@@ -1,10 +1,10 @@
 ---
 title: Prefect Task-Scoped Log Streaming
-status: accepted
+status: implemented
 author: SquadOps Architecture
 created_at: '2026-04-18T00:00:00Z'
 sip_number: 87
-updated_at: '2026-04-24T13:25:26.944007Z'
+updated_at: '2026-04-24T22:18:28.183182Z'
 ---
 # SIP-0087: Prefect Task-Scoped Log Streaming
 
