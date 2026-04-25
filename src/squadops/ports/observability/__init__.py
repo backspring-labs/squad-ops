@@ -6,5 +6,6 @@ binding to concrete transports or vendors.
 """
 
 from squadops.ports.observability.heartbeat import AgentHeartbeatReporter
+from squadops.ports.observability.log_forwarder import LogForwarderPort
 
-__all__ = ["AgentHeartbeatReporter"]
+__all__ = ["AgentHeartbeatReporter", "LogForwarderPort"]

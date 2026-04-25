@@ -1,12 +1,18 @@
-"""Tests for PrefectBridge subscriber."""
+"""Tests for WorkflowTrackerBridge subscriber.
 
-import asyncio
+As of SIP-0087 the bridge handles only flow-level state transitions and
+terminal task-state transitions — task-run creation + RUNNING is done in
+``DistributedFlowExecutor._dispatch_task``. The bridge therefore expects
+``task_run_id`` to be carried in the event context for TASK_SUCCEEDED /
+TASK_FAILED events.
+"""
+
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from squadops.events.bridges.prefect import PrefectBridge
+from squadops.events.bridges.workflow_tracker import WorkflowTrackerBridge
 from squadops.events.models import CycleEvent
 from squadops.events.types import EventType
 
@@ -44,11 +50,11 @@ def mock_reporter():
 
 @pytest.fixture
 def bridge(mock_reporter):
-    return PrefectBridge(mock_reporter)
+    return WorkflowTrackerBridge(mock_reporter)
 
 
 @pytest.mark.domain_events
-class TestPrefectBridge:
+class TestWorkflowTrackerBridgeRunStates:
     def test_run_started_sets_flow_running(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_STARTED))
         mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "RUNNING", "Running")
@@ -69,82 +75,6 @@ class TestPrefectBridge:
         bridge.on_event(_make_event(event_type=EventType.RUN_PAUSED))
         mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "PAUSED", "Paused")
 
-    def test_task_dispatched_creates_and_runs(self, bridge, mock_reporter):
-        event = _make_event(
-            event_type=EventType.TASK_DISPATCHED,
-            entity_type="task",
-            entity_id="task_a",
-            payload={"task_name": "My Task"},
-        )
-        bridge.on_event(event)
-        mock_reporter.create_task_run.assert_called_once_with("fr_abc", "task_a", "My Task")
-        mock_reporter.set_task_run_state.assert_called_once_with("tr_123", "RUNNING", "Running")
-
-    def test_task_succeeded_sets_completed(self, bridge, mock_reporter):
-        # First dispatch to register the task_run_id
-        dispatch = _make_event(
-            event_type=EventType.TASK_DISPATCHED,
-            entity_type="task",
-            entity_id="task_a",
-        )
-        bridge.on_event(dispatch)
-        mock_reporter.reset_mock()
-
-        succeed = _make_event(
-            event_type=EventType.TASK_SUCCEEDED,
-            entity_type="task",
-            entity_id="task_a",
-        )
-        bridge.on_event(succeed)
-        mock_reporter.set_task_run_state.assert_called_once_with("tr_123", "COMPLETED", "Completed")
-
-    def test_task_failed_sets_failed(self, bridge, mock_reporter):
-        dispatch = _make_event(
-            event_type=EventType.TASK_DISPATCHED,
-            entity_type="task",
-            entity_id="task_a",
-        )
-        bridge.on_event(dispatch)
-        mock_reporter.reset_mock()
-
-        fail = _make_event(
-            event_type=EventType.TASK_FAILED,
-            entity_type="task",
-            entity_id="task_a",
-        )
-        bridge.on_event(fail)
-        mock_reporter.set_task_run_state.assert_called_once_with("tr_123", "FAILED", "Failed")
-
-    def test_unrelated_event_no_calls(self, bridge, mock_reporter):
-        event = _make_event(event_type=EventType.CYCLE_CREATED)
-        bridge.on_event(event)
-        mock_reporter.set_flow_run_state.assert_not_called()
-        mock_reporter.create_task_run.assert_not_called()
-        mock_reporter.set_task_run_state.assert_not_called()
-
-    def test_duplicate_task_dispatched_ignored(self, bridge, mock_reporter):
-        event = _make_event(
-            event_type=EventType.TASK_DISPATCHED,
-            entity_type="task",
-            entity_id="task_a",
-        )
-        bridge.on_event(event)
-        bridge.on_event(event)
-        assert mock_reporter.create_task_run.call_count == 1
-
-    async def test_task_dispatched_no_deadlock_in_async_context(self, bridge, mock_reporter):
-        """on_event from async context must not block the event loop."""
-        event = _make_event(
-            event_type=EventType.TASK_DISPATCHED,
-            entity_type="task",
-            entity_id="task_a",
-            payload={"task_name": "My Task"},
-        )
-        bridge.on_event(event)
-        await asyncio.sleep(0)  # yield to let scheduled task complete
-        mock_reporter.create_task_run.assert_called_once()
-        mock_reporter.set_task_run_state.assert_called_once_with("tr_123", "RUNNING", "Running")
-
     def test_no_flow_run_id_skips_run_state(self, bridge, mock_reporter):
         event = _make_event(
             event_type=EventType.RUN_STARTED,
@@ -152,3 +82,74 @@ class TestPrefectBridge:
         )
         bridge.on_event(event)
         mock_reporter.set_flow_run_state.assert_not_called()
+
+
+@pytest.mark.domain_events
+class TestWorkflowTrackerBridgeTaskStates:
+    def test_task_succeeded_sets_completed_using_context_task_run_id(self, bridge, mock_reporter):
+        event = _make_event(
+            event_type=EventType.TASK_SUCCEEDED,
+            entity_type="task",
+            entity_id="task_a",
+            context={
+                "cycle_id": "cyc_1",
+                "run_id": "run_1",
+                "task_run_id": "tr_from_executor",
+            },
+        )
+        bridge.on_event(event)
+        mock_reporter.set_task_run_state.assert_called_once_with(
+            "tr_from_executor", "COMPLETED", "Completed"
+        )
+
+    def test_task_failed_sets_failed_using_context_task_run_id(self, bridge, mock_reporter):
+        event = _make_event(
+            event_type=EventType.TASK_FAILED,
+            entity_type="task",
+            entity_id="task_a",
+            context={
+                "cycle_id": "cyc_1",
+                "run_id": "run_1",
+                "task_run_id": "tr_failed",
+            },
+        )
+        bridge.on_event(event)
+        mock_reporter.set_task_run_state.assert_called_once_with("tr_failed", "FAILED", "Failed")
+
+    def test_task_succeeded_without_task_run_id_is_noop(self, bridge, mock_reporter):
+        # Executor didn't create a Prefect task_run (no flow_run_id) — bridge
+        # must not try to transition a missing ID.
+        event = _make_event(
+            event_type=EventType.TASK_SUCCEEDED,
+            entity_type="task",
+            entity_id="task_a",
+            context={"cycle_id": "cyc_1", "run_id": "run_1"},
+        )
+        bridge.on_event(event)
+        mock_reporter.set_task_run_state.assert_not_called()
+
+    def test_task_dispatched_is_noop(self, bridge, mock_reporter):
+        # Task-run creation moved to the executor; bridge must not react to
+        # TASK_DISPATCHED anymore.
+        event = _make_event(
+            event_type=EventType.TASK_DISPATCHED,
+            entity_type="task",
+            entity_id="task_a",
+            context={
+                "cycle_id": "cyc_1",
+                "run_id": "run_1",
+                "flow_run_id": "fr_abc",
+                "task_run_id": "tr_from_executor",
+            },
+            payload={"task_name": "My Task"},
+        )
+        bridge.on_event(event)
+        mock_reporter.create_task_run.assert_not_called()
+        mock_reporter.set_task_run_state.assert_not_called()
+
+    def test_unrelated_event_no_calls(self, bridge, mock_reporter):
+        event = _make_event(event_type=EventType.CYCLE_CREATED)
+        bridge.on_event(event)
+        mock_reporter.set_flow_run_state.assert_not_called()
+        mock_reporter.create_task_run.assert_not_called()
+        mock_reporter.set_task_run_state.assert_not_called()

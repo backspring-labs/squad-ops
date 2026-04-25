@@ -441,7 +441,7 @@ class TestBuildOnlySeeding:
         )
 
         # Mock dispatch to succeed
-        async def fake_dispatch(envelope, rid):
+        async def fake_dispatch(envelope, rid, **_kwargs):
             from squadops.tasks.models import TaskResult
 
             return TaskResult(
@@ -561,7 +561,7 @@ class TestPlanOnlyCyclesUnaffected:
         )
 
         # Mock _dispatch_task to return success for any task
-        async def fake_dispatch(envelope, rid):
+        async def fake_dispatch(envelope, rid, **_kwargs):
             from squadops.tasks.models import TaskResult
 
             return TaskResult(

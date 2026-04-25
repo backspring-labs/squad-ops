@@ -1,4 +1,4 @@
-"""LangFuseBridge — translates CycleEvent to LLMObservabilityPort.record_event().
+"""LLMObservabilityBridge — translates CycleEvent to LLMObservabilityPort.record_event().
 
 Converts canonical lifecycle events into CorrelationContext + StructuredEvent
 pairs and forwards them to the LLM observability port. This bridges the
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class LangFuseBridge:
+class LLMObservabilityBridge:
     """Subscriber that forwards CycleEvents to LLMObservabilityPort.record_event().
 
     Translates each CycleEvent into:

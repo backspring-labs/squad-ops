@@ -136,8 +136,11 @@ pool: asyncpg.Pool | None = None
 rabbitmq_connection: aio_pika.Connection | None = None
 rabbitmq_channel: aio_pika.Channel | None = None
 
-# PrefectReporter for shutdown cleanup
-_prefect_reporter = None
+# Workflow tracker port for shutdown cleanup
+_workflow_tracker = None
+
+# Log forwarder port for shutdown cleanup (SIP-0087)
+_log_forwarder = None
 
 # Redis client + health checker for platform health routes
 _redis_client = None
@@ -218,9 +221,21 @@ async def _init_migrations(config, pool) -> None:
         logger.error("Failed to apply migrations during startup: %s", e)
 
 
+async def _init_log_forwarding(config) -> None:
+    """Install the log forwarder via factory (SIP-0087).
+
+    Always-inject pattern — a NoOp adapter is returned when no backend is
+    configured, so the rest of the runtime never branches on enablement.
+    """
+    global _log_forwarder
+    from adapters.observability.log_forwarder import create_log_forwarder
+
+    _log_forwarder = await create_log_forwarder(config.prefect)
+
+
 async def _init_cycle_subsystem(config, pool) -> None:
     """Initialize SIP-0064 cycle ports + SIP-0066 orchestrator."""
-    global _prefect_reporter
+    global _workflow_tracker
     try:
         from adapters.cycles.factory import (
             create_artifact_vault,
@@ -229,6 +244,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             create_project_registry,
             create_squad_profile_port,
         )
+        from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
 
         project_registry = create_project_registry("config")
         cycle_registry = create_cycle_registry(
@@ -259,27 +275,21 @@ async def _init_cycle_subsystem(config, pool) -> None:
         queue_adapter = RabbitMQAdapter(url=RABBITMQ_URL)
         llm_obs = create_llm_observability_provider(config=config.langfuse)
 
-        if config.prefect.api_url:
-            from adapters.cycles.prefect_reporter import PrefectReporter
-
-            _prefect_reporter = PrefectReporter(api_url=config.prefect.api_url)
+        _workflow_tracker = create_workflow_tracker(config.prefect)
 
         from adapters.events.factory import create_cycle_event_bus
         from squadops.api.runtime.deps import set_cycle_event_bus
 
+        # Bridges are subscribed inside the factory so the composition root
+        # never names ``LLMObservabilityBridge`` / ``WorkflowTrackerBridge``
+        # directly — only the ports cross this boundary.
         event_bus = create_cycle_event_bus(
             "in_process",
             source_service="runtime-api",
             source_version=SQUADOPS_VERSION,
+            llm_observability=llm_obs,
+            workflow_tracker=_workflow_tracker,
         )
-        if llm_obs:
-            from squadops.events.bridges.langfuse import LangFuseBridge
-
-            event_bus.subscribe(LangFuseBridge(llm_obs))
-        if _prefect_reporter:
-            from squadops.events.bridges.prefect import PrefectBridge
-
-            event_bus.subscribe(PrefectBridge(_prefect_reporter))
         set_cycle_event_bus(event_bus)
 
         flow_executor = create_flow_executor(
@@ -291,7 +301,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             queue=queue_adapter,
             task_timeout=float(config.llm.timeout),
             llm_observability=llm_obs,
-            prefect_reporter=_prefect_reporter,
+            workflow_tracker=_workflow_tracker,
             event_bus=event_bus,
         )
 
@@ -410,6 +420,7 @@ async def startup_event():
     await _init_auth_subsystem(config)
 
     await _init_migrations(config, pool)
+    await _init_log_forwarding(config)
     await _init_cycle_subsystem(config, pool)
     await _init_monitoring(config, pool)
 
@@ -430,8 +441,10 @@ async def shutdown_event():
         await pool.close()
     if rabbitmq_connection:
         await rabbitmq_connection.close()
-    if _prefect_reporter:
-        await _prefect_reporter.close()
+    if _log_forwarder is not None:
+        await _log_forwarder.aclose()
+    if _workflow_tracker is not None:
+        await _workflow_tracker.close()
 
 
 @app.get("/health")
