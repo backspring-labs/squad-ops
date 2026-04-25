@@ -1,11 +1,11 @@
-"""Tests for LangFuseBridge subscriber."""
+"""Tests for LLMObservabilityBridge subscriber."""
 
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
 
-from squadops.events.bridges.langfuse import LangFuseBridge
+from squadops.events.bridges.llm_observability import LLMObservabilityBridge
 from squadops.events.models import CycleEvent
 from squadops.events.types import EventType
 from squadops.telemetry.models import CorrelationContext, StructuredEvent
@@ -36,11 +36,11 @@ def mock_obs():
 
 @pytest.fixture
 def bridge(mock_obs):
-    return LangFuseBridge(mock_obs)
+    return LLMObservabilityBridge(mock_obs)
 
 
 @pytest.mark.domain_events
-class TestLangFuseBridge:
+class TestLLMObservabilityBridge:
     def test_record_event_called(self, bridge, mock_obs):
         bridge.on_event(_make_event())
         mock_obs.record_event.assert_called_once()

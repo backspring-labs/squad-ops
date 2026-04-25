@@ -7,6 +7,7 @@ creation in execute_run().
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -205,7 +206,7 @@ def executor(
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
         llm_observability=mock_llm_obs,
-        prefect_reporter=mock_prefect,
+        workflow_tracker=mock_prefect,
     )
 
 
@@ -290,6 +291,61 @@ class TestWithoutObservability:
 # ---------------------------------------------------------------------------
 
 
+class TestFlowLevelCorrelationScope:
+    """SIP-0087 B4: orchestrator-level logs emitted between dispatches must
+    carry flow_run_id (and no task_run_id) so they land in the flow-run pane,
+    not in any task pane (acceptance criterion §7.2)."""
+
+    async def test_executor_run_log_carries_flow_run_id_only(
+        self, executor, mock_queue, mock_prefect, caplog
+    ):
+        """The "Executing run ..." line and the "Run %s completed" line are
+        emitted from execute_run between dispatches. They must reach a
+        PrefectLogHandler with flow_run_id set and task_run_id unset."""
+        from adapters.cycles.prefect_log_forwarder import (
+            LogHandlerFilters,
+            PrefectLogHandler,
+        )
+
+        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
+
+        forwarder = MagicMock(enqueue=MagicMock())
+        handler = PrefectLogHandler(
+            forwarder, filters=LogHandlerFilters(min_level=logging.INFO)
+        )
+        logging.getLogger().addHandler(handler)
+        prior_levels = {n: logging.getLogger(n).level for n in ("squadops", "adapters")}
+        logging.getLogger("squadops").setLevel(logging.INFO)
+        logging.getLogger("adapters").setLevel(logging.INFO)
+
+        try:
+            with patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ):
+                await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        finally:
+            logging.getLogger().removeHandler(handler)
+            for name, level in prior_levels.items():
+                logging.getLogger(name).setLevel(level)
+
+        # Filter for orchestrator-level enqueues — flow_run_id set, task_run_id empty.
+        flow_only = [
+            c.args[0]
+            for c in forwarder.enqueue.call_args_list
+            if c.args[0].get("flow_run_id") and not c.args[0].get("task_run_id")
+        ]
+        assert flow_only, (
+            "no flow-only log records reached the forwarder — "
+            "execute_run must wrap orchestrator work in use_correlation_context"
+        )
+
+        # The two canonical orchestrator log lines must both be present.
+        messages = " | ".join(p["message"] for p in flow_only)
+        assert "Executing run run_001" in messages
+        assert "Run run_001 completed successfully" in messages
+
+
 class TestPrefectFlowRun:
     """Verify Prefect flow run created at start."""
 
@@ -313,10 +369,14 @@ class TestPrefectFlowRun:
 
 
 class TestPrefectTaskRuns:
-    """Verify task lifecycle delegated to event bus (PrefectBridge handles Prefect calls)."""
+    """Verify task lifecycle handled in executor (SIP-0087: task_run_id needed
+    before dispatch for log-streaming correlation context)."""
 
-    async def test_no_direct_prefect_task_calls(self, executor, mock_queue, mock_prefect):
-        """Executor delegates task run management to PrefectBridge via events."""
+    async def test_executor_creates_task_runs_and_sets_running(
+        self, executor, mock_queue, mock_prefect
+    ):
+        """Executor creates task runs + transitions to RUNNING directly so the
+        ``task_run_id`` is available for the per-task log forwarder."""
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
@@ -325,9 +385,22 @@ class TestPrefectTaskRuns:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # No direct task-level Prefect calls — PrefectBridge handles via events
-        mock_prefect.create_task_run.assert_not_awaited()
-        mock_prefect.set_task_run_state.assert_not_awaited()
+        # 5 sequential tasks → 5 create_task_run + 5 set_task_run_state(RUNNING)
+        assert mock_prefect.create_task_run.await_count == 5
+        running_calls = [
+            c
+            for c in mock_prefect.set_task_run_state.await_args_list
+            if c.args[1] == "RUNNING"
+        ]
+        assert len(running_calls) == 5
+        # Terminal task states come through PrefectBridge events, not direct
+        # executor calls — the executor only emits RUNNING directly.
+        terminal_calls = [
+            c
+            for c in mock_prefect.set_task_run_state.await_args_list
+            if c.args[1] in ("COMPLETED", "FAILED")
+        ]
+        assert terminal_calls == []
 
     async def test_emits_task_dispatched_events(self, executor, mock_queue, mock_prefect):
         """Executor emits TASK_DISPATCHED for each of the 5 sequential tasks."""

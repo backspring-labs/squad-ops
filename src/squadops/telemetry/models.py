@@ -65,6 +65,8 @@ class CorrelationContext:
     - Cycle level: only cycle_id is required
     - Pulse level: cycle_id + pulse_id
     - Task level: cycle_id + pulse_id + task_id + lineage fields
+    - Prefect scope (SIP-0087): flow_run_id at flow boundary, task_run_id at
+      dispatch — so log records emitted during a task land in the right UI pane.
     """
 
     cycle_id: str
@@ -77,6 +79,8 @@ class CorrelationContext:
     agent_id: str | None = None
     agent_role: str | None = None
     message_id: str | None = None
+    flow_run_id: str | None = None
+    task_run_id: str | None = None
 
     @classmethod
     def for_cycle(cls, cycle_id: str, agent_id: str | None = None) -> CorrelationContext:

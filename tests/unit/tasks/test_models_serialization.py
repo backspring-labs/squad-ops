@@ -76,6 +76,25 @@ class TestTaskEnvelopeSerialization:
         assert rebuilt.inputs == {}
         assert rebuilt.metadata == {}
         assert rebuilt.priority is None
+        # SIP-0087 B1: Prefect run IDs default to empty string when absent.
+        assert rebuilt.flow_run_id == ""
+        assert rebuilt.task_run_id == ""
+
+    def test_prefect_run_ids_round_trip(self, envelope: TaskEnvelope) -> None:
+        """SIP-0087 B1: flow_run_id / task_run_id survive JSON transport."""
+        import dataclasses
+
+        with_ids = dataclasses.replace(envelope, flow_run_id="fr-1", task_run_id="tr-99")
+        rebuilt = TaskEnvelope.from_dict(json.loads(json.dumps(with_ids.to_dict())))
+        assert rebuilt.flow_run_id == "fr-1"
+        assert rebuilt.task_run_id == "tr-99"
+
+    def test_unknown_fields_are_dropped(self, envelope: TaskEnvelope) -> None:
+        """from_dict ignores unknown keys (forward-compat for rolling deploys)."""
+        payload = envelope.to_dict()
+        payload["a_future_field"] = "some-value"
+        rebuilt = TaskEnvelope.from_dict(payload)
+        assert rebuilt == envelope
 
 
 class TestTaskResultSerialization:

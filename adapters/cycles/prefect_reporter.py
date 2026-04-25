@@ -1,7 +1,8 @@
 """Prefect REST API reporter for cycle execution visibility.
 
-Reports cycle execution progress to Prefect 2.x server via REST API.
-Uses httpx.AsyncClient — no ``prefect`` SDK dependency.
+Concrete :class:`WorkflowTrackerPort` implementation. Reports cycle execution
+progress to Prefect 2.x server via REST API. Uses httpx.AsyncClient — no
+``prefect`` SDK dependency.
 
 Best-effort: all public methods catch exceptions and log warnings.
 Execution never blocks on Prefect failures.
@@ -16,14 +17,16 @@ from uuid import uuid4
 
 import httpx
 
+from squadops.ports.cycles import WorkflowTrackerPort
+
 logger = logging.getLogger(__name__)
 
 
-class PrefectReporter:
-    """Reports cycle execution progress to Prefect server via REST API.
+class PrefectReporter(WorkflowTrackerPort):
+    """Prefect-backed :class:`WorkflowTrackerPort`.
 
-    Best-effort: all methods catch exceptions and log warnings.
-    Execution never blocks on Prefect failures.
+    Best-effort: all methods catch exceptions and log warnings. Execution
+    never blocks on Prefect failures.
     """
 
     def __init__(self, api_url: str, timeout: int = 10) -> None:

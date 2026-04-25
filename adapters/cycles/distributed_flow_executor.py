@@ -13,6 +13,7 @@ pattern over the ``{agent_id}_comms`` queue.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import os
@@ -44,9 +45,10 @@ from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.tasks.models import TaskEnvelope, TaskResult
+from squadops.telemetry.context import use_correlation_context, use_run_ids
+from squadops.telemetry.models import CorrelationContext
 
 if TYPE_CHECKING:
-    from adapters.cycles.prefect_reporter import PrefectReporter
     from squadops.capabilities.acceptance import AcceptanceCheckEngine
     from squadops.capabilities.models import AcceptanceContext
     from squadops.cycles.models import GateDecision, SquadProfile
@@ -56,6 +58,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
     from squadops.ports.cycles.squad_profile import SquadProfilePort
+    from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
@@ -91,7 +94,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         project_registry: ProjectRegistryPort | None = None,
         task_timeout: float = 300.0,
         llm_observability: LLMObservabilityPort | None = None,
-        prefect_reporter: PrefectReporter | None = None,
+        workflow_tracker: WorkflowTrackerPort | None = None,
         event_bus: CycleEventBusPort | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
@@ -101,7 +104,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         self._project_registry = project_registry
         self._task_timeout = task_timeout
         self._llm_observability = llm_observability
-        self._prefect = prefect_reporter
+        self._workflow_tracker = workflow_tracker
         self._cancelled: set[str] = set()
 
         # SIP-0077: Cycle event bus (defaults to NoOp if not provided)
@@ -198,60 +201,71 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 plan,
             )
 
-            logger.info(
-                "Executing run %s for cycle %s (%d tasks, mode=%s, dispatch=distributed)",
-                run_id,
-                cycle_id,
-                len(plan),
-                cycle.task_flow_policy.mode,
-            )
-
-            # Dispatch based on policy mode
-            mode = cycle.task_flow_policy.mode
-            if mode == "sequential":
-                await self._execute_sequential(
-                    plan,
+            # SIP-0087 B4: enter flow-level correlation scope so orchestrator
+            # logs emitted between dispatches (workload progression, gate
+            # decisions, executor lifecycle) carry flow_run_id (and no
+            # task_run_id) and land in the flow-run pane in the Prefect UI.
+            # _dispatch_task nests its own per-task scope inside this one.
+            flow_ctx = CorrelationContext(cycle_id=cycle_id, flow_run_id=flow_run_id)
+            with use_correlation_context(flow_ctx):
+                logger.info(
+                    "Executing run %s for cycle %s (%d tasks, mode=%s, dispatch=distributed)",
                     run_id,
-                    cycle,
-                    flow_run_id,
-                    seed_artifact_refs,
-                    obs_ctx=obs_ctx,
-                    profile=profile,
-                    run_root=run_root,
-                )
-            elif mode == "fan_out_fan_in":
-                await self._execute_fan_out(plan, run_id, cycle, flow_run_id)
-            elif mode == "fan_out_soft_gates":
-                await self._execute_sequential(
-                    plan,
-                    run_id,
-                    cycle,
-                    flow_run_id,
-                    seed_artifact_refs,
-                    obs_ctx=obs_ctx,
-                    profile=profile,
-                    run_root=run_root,
-                )
-            else:
-                await self._execute_sequential(
-                    plan,
-                    run_id,
-                    cycle,
-                    flow_run_id,
-                    seed_artifact_refs,
-                    obs_ctx=obs_ctx,
-                    run_root=run_root,
+                    cycle_id,
+                    len(plan),
+                    cycle.task_flow_policy.mode,
                 )
 
-            # Success -> completed
-            await self._cycle_registry.update_run_status(run_id, RunStatus.COMPLETED)
-            self._cycle_event_bus.emit(
-                EventType.RUN_COMPLETED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle_id, "run_id": run_id, "project_id": cycle.project_id},
-            )
-            logger.info("Run %s completed successfully", run_id)
+                # Dispatch based on policy mode
+                mode = cycle.task_flow_policy.mode
+                if mode == "sequential":
+                    await self._execute_sequential(
+                        plan,
+                        run_id,
+                        cycle,
+                        flow_run_id,
+                        seed_artifact_refs,
+                        obs_ctx=obs_ctx,
+                        profile=profile,
+                        run_root=run_root,
+                    )
+                elif mode == "fan_out_fan_in":
+                    await self._execute_fan_out(plan, run_id, cycle, flow_run_id)
+                elif mode == "fan_out_soft_gates":
+                    await self._execute_sequential(
+                        plan,
+                        run_id,
+                        cycle,
+                        flow_run_id,
+                        seed_artifact_refs,
+                        obs_ctx=obs_ctx,
+                        profile=profile,
+                        run_root=run_root,
+                    )
+                else:
+                    await self._execute_sequential(
+                        plan,
+                        run_id,
+                        cycle,
+                        flow_run_id,
+                        seed_artifact_refs,
+                        obs_ctx=obs_ctx,
+                        run_root=run_root,
+                    )
+
+                # Success -> completed
+                await self._cycle_registry.update_run_status(run_id, RunStatus.COMPLETED)
+                self._cycle_event_bus.emit(
+                    EventType.RUN_COMPLETED,
+                    entity_type="run",
+                    entity_id=run_id,
+                    context={
+                        "cycle_id": cycle_id,
+                        "run_id": run_id,
+                        "project_id": cycle.project_id,
+                    },
+                )
+                logger.info("Run %s completed successfully", run_id)
 
         except _CancellationError:
             terminal_status = "CANCELLED"
@@ -550,12 +564,113 @@ class DistributedFlowExecutor(FlowExecutionPort):
     # Dispatch
     # ------------------------------------------------------------------
 
+    # SIP-0087: task-run lifecycle lives here (moved out of WorkflowTrackerBridge) so
+    # the task_run_id is known before the agent starts producing logs.
+    async def _create_task_run_if_enabled(
+        self,
+        flow_run_id: str | None,
+        envelope: TaskEnvelope,
+    ) -> str | None:
+        """Create a Prefect task_run + set RUNNING. Returns task_run_id or None."""
+        if self._workflow_tracker is None or not flow_run_id:
+            return None
+        role = envelope.metadata.get("role", "unknown") if envelope.metadata else "unknown"
+        task_name = f"{role}: {envelope.task_type}"
+        task_run_id = await self._workflow_tracker.create_task_run(
+            flow_run_id, envelope.task_id, task_name
+        )
+        await self._workflow_tracker.set_task_run_state(task_run_id, "RUNNING", "Running")
+        return task_run_id
+
+    async def _task_heartbeat(
+        self,
+        envelope: TaskEnvelope,
+        *,
+        interval: float,
+    ) -> None:
+        """Log a heartbeat line every ``interval`` seconds until cancelled.
+
+        Runs inside the task's ``use_run_ids`` scope (contextvars copy across
+        ``asyncio.create_task``), so emitted records carry the active
+        flow_run_id + task_run_id and land in the right Prefect pane.
+        """
+        start = time.monotonic()
+        capability_id = (
+            envelope.metadata.get("capability_id", envelope.task_type)
+            if envelope.metadata
+            else envelope.task_type
+        )
+        while True:
+            await asyncio.sleep(interval)
+            elapsed = time.monotonic() - start
+            logger.info(
+                "task_heartbeat elapsed=%.1fs capability_id=%s task_id=%s",
+                elapsed,
+                capability_id,
+                envelope.task_id,
+            )
+
     async def _dispatch_task(
         self,
         envelope: TaskEnvelope,
         run_id: str,
+        *,
+        flow_run_id: str | None = None,
+        task_run_id: str | None = None,
+        heartbeat_interval: float = 30.0,
     ) -> TaskResult:
-        """Publish task to agent queue, wait for result on reply queue."""
+        """Publish task to agent queue, wait for result on reply queue.
+
+        If ``task_run_id`` is not supplied but ``flow_run_id`` is and a
+        :class:`WorkflowTrackerPort` is wired, one is created here — supports
+        correction/repair paths that don't pre-create the workflow run.
+
+        Enters a ``CorrelationContext`` scope with flow/task run IDs so the
+        ``PrefectLogHandler`` scopes handler logs to the right Prefect task
+        pane, and spawns a periodic heartbeat coroutine so long-running LLM
+        calls show liveness in the UI.
+        """
+        if task_run_id is None:
+            task_run_id = await self._create_task_run_if_enabled(flow_run_id, envelope)
+
+        # SIP-0087 B1: propagate run IDs to the agent over the wire so the
+        # agent's PrefectLogHandler can scope handler logs to the right task
+        # pane. The agent enters use_correlation_context(...) on receipt.
+        envelope = dataclasses.replace(
+            envelope,
+            flow_run_id=flow_run_id or "",
+            task_run_id=task_run_id or "",
+        )
+
+        base_ctx = CorrelationContext.from_envelope(
+            envelope,
+            agent_id=envelope.agent_id or "",
+            agent_role=(envelope.metadata.get("role") if envelope.metadata else None),
+        )
+
+        with (
+            use_correlation_context(base_ctx),
+            use_run_ids(flow_run_id=flow_run_id, task_run_id=task_run_id),
+        ):
+            heartbeat = asyncio.create_task(
+                self._task_heartbeat(envelope, interval=heartbeat_interval),
+                name=f"prefect-heartbeat-{envelope.task_id}",
+            )
+            try:
+                return await self._publish_and_await(envelope, run_id)
+            finally:
+                heartbeat.cancel()
+                try:
+                    await heartbeat
+                except asyncio.CancelledError:
+                    pass
+
+    async def _publish_and_await(
+        self,
+        envelope: TaskEnvelope,
+        run_id: str,
+    ) -> TaskResult:
+        """Dispatch over the queue and poll the reply queue for a result."""
         reply_queue = f"cycle_results_{run_id}"
 
         message = {
@@ -578,7 +693,6 @@ class DistributedFlowExecutor(FlowExecutionPort):
             reply_queue,
         )
 
-        # Poll reply queue for result
         deadline = time.monotonic() + self._task_timeout
         while time.monotonic() < deadline:
             messages = await self._queue.consume(reply_queue, max_messages=1)
@@ -790,7 +904,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 stored_artifacts,
             )
 
-            # SIP-0077: task.dispatched (PrefectBridge handles task run creation)
+            # SIP-0087: executor owns Prefect task-run creation so task_run_id
+            # is available for contextvar scoping + heartbeat before the
+            # agent starts emitting logs.
+            task_run_id = await self._create_task_run_if_enabled(flow_run_id, envelope)
+
+            # SIP-0077: task.dispatched event (bridge now only reads terminal
+            # state from context; creation already happened above).
             self._cycle_event_bus.emit(
                 EventType.TASK_DISPATCHED,
                 entity_type="task",
@@ -799,6 +919,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     "cycle_id": cycle.cycle_id,
                     "run_id": run_id,
                     "flow_run_id": flow_run_id or "",
+                    "task_run_id": task_run_id or "",
                 },
                 payload={
                     "task_type": envelope.task_type,
@@ -821,6 +942,8 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 completed_task_ids=completed_task_ids,
                 plan_delta_refs=plan_delta_refs,
                 profile=profile,
+                flow_run_id=flow_run_id,
+                task_run_id=task_run_id,
             )
 
             if not task_succeeded:
@@ -1034,21 +1157,34 @@ class DistributedFlowExecutor(FlowExecutionPort):
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
         profile: Any = None,
+        flow_run_id: str | None = None,
+        task_run_id: str | None = None,
     ) -> tuple[bool, TaskResult]:
         """Dispatch a task with retry loop for retryable failures.
 
         Returns (task_succeeded, result). Raises on unrecoverable failures.
         """
         while True:
-            result = await self._dispatch_task(enriched, run_id)
+            result = await self._dispatch_task(
+                enriched,
+                run_id,
+                flow_run_id=flow_run_id,
+                task_run_id=task_run_id,
+            )
 
-            # SIP-0077: task.succeeded or task.failed (PrefectBridge handles state)
+            # SIP-0087: task_run_id carried in context so the bridge can set
+            # terminal Prefect state without owning the ID.
+            task_context = {
+                "cycle_id": cycle.cycle_id,
+                "run_id": run_id,
+                "task_run_id": task_run_id or "",
+            }
             if result.status == "SUCCEEDED":
                 self._cycle_event_bus.emit(
                     EventType.TASK_SUCCEEDED,
                     entity_type="task",
                     entity_id=envelope.task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    context=task_context,
                     payload={"task_type": envelope.task_type},
                 )
             else:
@@ -1056,7 +1192,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     EventType.TASK_FAILED,
                     entity_type="task",
                     entity_id=envelope.task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    context=task_context,
                     payload={
                         "task_type": envelope.task_type,
                         "error": result.error or "",
@@ -1078,6 +1214,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     completed_task_ids=completed_task_ids,
                     plan_delta_refs=plan_delta_refs,
                     profile=profile,
+                    flow_run_id=flow_run_id,
                 )
 
                 if action == "continue":
@@ -1231,6 +1368,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
         profile: Any = None,
+        flow_run_id: str | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
 
@@ -1290,6 +1428,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
             completed_task_ids=completed_task_ids,
             plan_delta_refs=plan_delta_refs,
             profile=profile,
+            flow_run_id=flow_run_id,
         )
 
         if correction_path == "abort":
@@ -1529,10 +1668,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
             )
 
         # Prefect: create flow run
-        if self._prefect:
+        if self._workflow_tracker:
             try:
-                flow_id = await self._prefect.ensure_flow()
-                flow_run_id = await self._prefect.create_flow_run(
+                flow_id = await self._workflow_tracker.ensure_flow()
+                flow_run_id = await self._workflow_tracker.create_flow_run(
                     flow_id,
                     run_name=f"{cycle.project_id}/{cycle_id[:12]}/{run_id[:12]}",
                     parameters={
@@ -1541,7 +1680,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         "project_id": cycle.project_id,
                     },
                 )
-                await self._prefect.set_flow_run_state(flow_run_id, "RUNNING", "Running")
+                await self._workflow_tracker.set_flow_run_state(flow_run_id, "RUNNING", "Running")
             except Exception:
                 logger.warning("Prefect flow run creation failed", exc_info=True)
 
@@ -1573,9 +1712,9 @@ class DistributedFlowExecutor(FlowExecutionPort):
             self._llm_observability.flush()
 
         # Prefect: set terminal state
-        if self._prefect and flow_run_id:
+        if self._workflow_tracker and flow_run_id:
             try:
-                await self._prefect.set_flow_run_state(
+                await self._workflow_tracker.set_flow_run_state(
                     flow_run_id, terminal_status, terminal_status.title()
                 )
             except Exception:
@@ -1732,6 +1871,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
         profile: Any = None,
+        flow_run_id: str | None = None,
     ) -> str:
         """Run the correction protocol: analyze → decide → act.
 
@@ -1795,23 +1935,38 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 metadata={"role": role, "step_index": step_idx},
             )
 
-            # 3. Dispatch correction task
+            # 3. Dispatch correction task. SIP-0087 B2: create task_run before
+            # dispatch so the agent's PrefectLogHandler can scope correction-
+            # task logs to a dedicated UI pane and the bridge can transition
+            # terminal state without owning the ID.
+            corr_task_run_id = await self._create_task_run_if_enabled(flow_run_id, corr_envelope)
+            corr_task_context = {
+                "cycle_id": cycle.cycle_id,
+                "run_id": run_id,
+                "flow_run_id": flow_run_id or "",
+                "task_run_id": corr_task_run_id or "",
+            }
             self._cycle_event_bus.emit(
                 EventType.TASK_DISPATCHED,
                 entity_type="task",
                 entity_id=corr_task_id,
-                context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                context=corr_task_context,
                 payload={"task_type": task_type},
             )
 
-            corr_result = await self._dispatch_task(corr_envelope, run_id)
+            corr_result = await self._dispatch_task(
+                corr_envelope,
+                run_id,
+                flow_run_id=flow_run_id,
+                task_run_id=corr_task_run_id,
+            )
 
             if corr_result.status == "SUCCEEDED":
                 self._cycle_event_bus.emit(
                     EventType.TASK_SUCCEEDED,
                     entity_type="task",
                     entity_id=corr_task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    context=corr_task_context,
                     payload={"task_type": task_type},
                 )
                 await self._checkpoint_correction_task(
@@ -1828,7 +1983,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     EventType.TASK_FAILED,
                     entity_type="task",
                     entity_id=corr_task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    context=corr_task_context,
                     payload={"task_type": task_type, "error": corr_result.error or ""},
                 )
 
@@ -1911,22 +2066,39 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     metadata={"role": role, "step_index": step_idx},
                 )
 
+                # SIP-0087 B2: create repair task_run + propagate IDs through
+                # dispatch and terminal events so correction-driven repairs
+                # appear in the Prefect UI.
+                repair_task_run_id = await self._create_task_run_if_enabled(
+                    flow_run_id, repair_envelope
+                )
+                repair_task_context = {
+                    "cycle_id": cycle.cycle_id,
+                    "run_id": run_id,
+                    "flow_run_id": flow_run_id or "",
+                    "task_run_id": repair_task_run_id or "",
+                }
                 self._cycle_event_bus.emit(
                     EventType.TASK_DISPATCHED,
                     entity_type="task",
                     entity_id=repair_task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    context=repair_task_context,
                     payload={"task_type": task_type},
                 )
 
-                repair_result = await self._dispatch_task(repair_envelope, run_id)
+                repair_result = await self._dispatch_task(
+                    repair_envelope,
+                    run_id,
+                    flow_run_id=flow_run_id,
+                    task_run_id=repair_task_run_id,
+                )
 
                 if repair_result.status == "SUCCEEDED":
                     self._cycle_event_bus.emit(
                         EventType.TASK_SUCCEEDED,
                         entity_type="task",
                         entity_id=repair_task_id,
-                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                        context=repair_task_context,
                         payload={"task_type": task_type},
                     )
                     await self._checkpoint_correction_task(
@@ -1943,7 +2115,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         EventType.TASK_FAILED,
                         entity_type="task",
                         entity_id=repair_task_id,
-                        context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                        context=repair_task_context,
                         payload={"task_type": task_type, "error": repair_result.error or ""},
                     )
 
@@ -1978,8 +2150,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
             raise _CancellationError(run_id)
 
         tasks = []
+        task_run_ids: list[str | None] = []
         for envelope in plan:
-            # SIP-0077: task.dispatched (fan-out path)
+            # SIP-0087: create Prefect task_run here so task_run_id is in the
+            # TASK_DISPATCHED context and visible to the contextvar scope.
+            task_run_id = await self._create_task_run_if_enabled(flow_run_id, envelope)
+            task_run_ids.append(task_run_id)
+
             self._cycle_event_bus.emit(
                 EventType.TASK_DISPATCHED,
                 entity_type="task",
@@ -1988,6 +2165,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     "cycle_id": cycle.cycle_id,
                     "run_id": run_id,
                     "flow_run_id": flow_run_id or "",
+                    "task_run_id": task_run_id or "",
                 },
                 payload={
                     "task_type": envelope.task_type,
@@ -1998,29 +2176,39 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 envelope,
                 inputs={**envelope.inputs, "prior_outputs": {}, "artifact_refs": []},
             )
-            tasks.append(self._dispatch_task(enriched, run_id))
+            tasks.append(
+                self._dispatch_task(
+                    enriched,
+                    run_id,
+                    flow_run_id=flow_run_id,
+                    task_run_id=task_run_id,
+                )
+            )
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_artifact_refs: list[str] = []
         for i, result in enumerate(results):
+            task_context = {
+                "cycle_id": cycle.cycle_id,
+                "run_id": run_id,
+                "task_run_id": task_run_ids[i] or "",
+            }
             if isinstance(result, Exception):
-                # SIP-0077: task.failed (fan-out exception, PrefectBridge handles state)
                 self._cycle_event_bus.emit(
                     EventType.TASK_FAILED,
                     entity_type="task",
                     entity_id=plan[i].task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    context=task_context,
                     payload={"task_type": plan[i].task_type, "error": str(result)},
                 )
                 raise _ExecutionError(f"Task {plan[i].task_id} raised exception: {result}")
-            # SIP-0077: task.succeeded or task.failed (PrefectBridge handles state)
             if result.status == "SUCCEEDED":
                 self._cycle_event_bus.emit(
                     EventType.TASK_SUCCEEDED,
                     entity_type="task",
                     entity_id=plan[i].task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    context=task_context,
                     payload={"task_type": plan[i].task_type},
                 )
             else:
@@ -2028,7 +2216,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     EventType.TASK_FAILED,
                     entity_type="task",
                     entity_id=plan[i].task_id,
-                    context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+                    context=task_context,
                     payload={"task_type": plan[i].task_type, "error": result.error or ""},
                 )
             if result.status != "SUCCEEDED":
@@ -2442,24 +2630,36 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     },
                 )
 
-                # SIP-0077: task.dispatched (PrefectBridge handles task run creation)
+                # SIP-0087 B2: create the Prefect task_run before dispatch so
+                # SIP-0086 pulse-repair handlers also stream logs to a per-task
+                # UI pane and the bridge can transition terminal state.
+                pulse_repair_task_run_id = await self._create_task_run_if_enabled(
+                    flow_run_id, enriched_repair
+                )
                 role = repair_env.metadata.get("role", "unknown")
+                pulse_repair_context = {
+                    "cycle_id": cycle.cycle_id,
+                    "run_id": run_id,
+                    "flow_run_id": flow_run_id or "",
+                    "task_run_id": pulse_repair_task_run_id or "",
+                }
                 self._cycle_event_bus.emit(
                     EventType.TASK_DISPATCHED,
                     entity_type="task",
                     entity_id=repair_env.task_id,
-                    context={
-                        "cycle_id": cycle.cycle_id,
-                        "run_id": run_id,
-                        "flow_run_id": flow_run_id or "",
-                    },
+                    context=pulse_repair_context,
                     payload={
                         "task_type": repair_env.task_type,
                         "task_name": f"{role}: {repair_env.task_type} (repair #{repair_attempt})",
                     },
                 )
 
-                result = await self._dispatch_task(enriched_repair, run_id)
+                result = await self._dispatch_task(
+                    enriched_repair,
+                    run_id,
+                    flow_run_id=flow_run_id,
+                    task_run_id=pulse_repair_task_run_id,
+                )
 
                 # SIP-0077: task.succeeded or task.failed
                 if result.status == "SUCCEEDED":
@@ -2467,11 +2667,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         EventType.TASK_SUCCEEDED,
                         entity_type="task",
                         entity_id=repair_env.task_id,
-                        context={
-                            "cycle_id": cycle.cycle_id,
-                            "run_id": run_id,
-                            "flow_run_id": flow_run_id or "",
-                        },
+                        context=pulse_repair_context,
                         payload={"task_type": repair_env.task_type},
                     )
                 else:
@@ -2479,11 +2675,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         EventType.TASK_FAILED,
                         entity_type="task",
                         entity_id=repair_env.task_id,
-                        context={
-                            "cycle_id": cycle.cycle_id,
-                            "run_id": run_id,
-                            "flow_run_id": flow_run_id or "",
-                        },
+                        context=pulse_repair_context,
                         payload={
                             "task_type": repair_env.task_type,
                             "error": result.error or "",

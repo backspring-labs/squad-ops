@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from squadops.bootstrap.system import SquadOpsSystem
+    from squadops.ports.observability import LogForwarderPort
 
 
 def load_instance_config(agent_id: str) -> dict | None:
@@ -98,6 +99,7 @@ class AgentRunner:
         self._lifecycle_state = "STARTING"
         self._queue = None
         self._config = None
+        self._log_forwarder: LogForwarderPort | None = None
 
         # Load instance-specific configuration (required)
         self._instance_config = load_instance_config(self.agent_id)
@@ -137,7 +139,17 @@ class AgentRunner:
 
         Bootstraps the system, connects to queue, and starts consuming tasks.
         """
+        from squadops.config import load_config
+
+        # Single config load — reused by log-forwarder install and _create_system.
+        self._config = load_config()
+
         try:
+            # Install the log forwarder before bootstrap so handler/system logs
+            # from the rest of startup are routed by the configured backend
+            # (SIP-0087). Always-inject pattern — NoOp when disabled.
+            self._log_forwarder = await self._create_log_forwarder(self._config)
+
             # Create heartbeat reporter
             from adapters.observability.healthcheck_http import HealthCheckHttpReporter
 
@@ -172,7 +184,20 @@ class AgentRunner:
 
         except Exception as e:
             logger.exception("Failed to start agent", extra={"error": str(e)})
+            # Tear down the log forwarder if startup failed after install,
+            # otherwise its flush task and any HTTP client leak.
+            if self._log_forwarder is not None:
+                try:
+                    await self._log_forwarder.aclose()
+                finally:
+                    self._log_forwarder = None
             raise
+
+    async def _create_log_forwarder(self, config) -> LogForwarderPort:
+        """Build the log forwarder via factory (SIP-0087)."""
+        from adapters.observability.log_forwarder import create_log_forwarder
+
+        return await create_log_forwarder(config.prefect)
 
     async def stop(self) -> None:
         """Stop the agent gracefully."""
@@ -197,6 +222,11 @@ class AgentRunner:
         if self.system:
             await self.system.shutdown()
 
+        # Tear down log forwarder (SIP-0087)
+        if self._log_forwarder is not None:
+            await self._log_forwarder.aclose()
+            self._log_forwarder = None
+
         logger.info("Agent stopped", extra={"agent_id": self.agent_id})
 
     async def _create_system(self) -> SquadOpsSystem:
@@ -207,9 +237,10 @@ class AgentRunner:
         from squadops.bootstrap import SystemConfig, create_system
         from squadops.config import load_config
 
-        # Load configuration
-        config = load_config()
-        self._config = config
+        # Reuse config loaded by start(); only load if invoked standalone.
+        if self._config is None:
+            self._config = load_config()
+        config = self._config
 
         # Create adapters based on configuration
         ports = await self._create_ports(config)
@@ -640,7 +671,9 @@ class AgentRunner:
             },
         )
 
-        # Build correlation context for LangFuse tracing
+        # Build correlation context for LLM-observability tracing and
+        # task-scoped log forwarding (SIP-0087).
+        from squadops.telemetry.context import use_correlation_context, use_run_ids
         from squadops.telemetry.models import CorrelationContext
 
         ctx = CorrelationContext.from_envelope(
@@ -654,12 +687,27 @@ class AgentRunner:
             llm_obs.start_cycle_trace(ctx)
             llm_obs.start_task_span(ctx)
 
+        # SIP-0087 B1: scope the contextvar so handler logs emitted during
+        # submit_task carry flow_run_id / task_run_id. The active log
+        # forwarder reads these from the contextvar; when no forwarder is
+        # configured the IDs are inert. Envelope fields default to "" when
+        # the runtime-api executor has no run IDs to attach.
+        flow_run_id = envelope.flow_run_id or None
+        task_run_id = envelope.task_run_id or None
+
         try:
             if not self.system:
                 raise RuntimeError("AgentRunner.system not initialized")
-            result = await self.system.orchestrator.submit_task(
-                envelope, timeout_seconds=self._config.llm.timeout
-            )
+            with use_correlation_context(ctx):
+                if flow_run_id is not None or task_run_id is not None:
+                    with use_run_ids(flow_run_id=flow_run_id, task_run_id=task_run_id):
+                        result = await self.system.orchestrator.submit_task(
+                            envelope, timeout_seconds=self._config.llm.timeout
+                        )
+                else:
+                    result = await self.system.orchestrator.submit_task(
+                        envelope, timeout_seconds=self._config.llm.timeout
+                    )
         except Exception as e:
             logger.error(f"Task execution failed: {e}", extra={"task_id": envelope.task_id})
             result = TaskResult(

@@ -10,6 +10,7 @@ from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
+from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
 
 __all__ = [
     "ProjectRegistryPort",
@@ -17,4 +18,5 @@ __all__ = [
     "SquadProfilePort",
     "ArtifactVaultPort",
     "FlowExecutionPort",
+    "WorkflowTrackerPort",
 ]
