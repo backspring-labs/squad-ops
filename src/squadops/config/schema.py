@@ -419,6 +419,14 @@ class PrefectConfig(BaseModel):
         default=None, description="Prefect API key (use secret:// reference)"
     )
     timeout: int = Field(default=30, ge=1, description="Prefect API timeout in seconds")
+    log_forwarding: bool = Field(
+        default=True,
+        description="Forward squadops/adapters log records to Prefect /api/logs (SIP-0087)",
+    )
+    log_level: str = Field(
+        default="INFO",
+        description="Minimum log level forwarded to Prefect (SIP-0087)",
+    )
 
 
 class LLMConfig(BaseModel):

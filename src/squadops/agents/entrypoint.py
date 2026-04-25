@@ -98,6 +98,8 @@ class AgentRunner:
         self._lifecycle_state = "STARTING"
         self._queue = None
         self._config = None
+        self._prefect_log_forwarder = None
+        self._prefect_log_handler = None
 
         # Load instance-specific configuration (required)
         self._instance_config = load_instance_config(self.agent_id)
@@ -138,6 +140,10 @@ class AgentRunner:
         Bootstraps the system, connects to queue, and starts consuming tasks.
         """
         try:
+            # Install Prefect log forwarder before bootstrap so handler/system
+            # logs from the rest of startup land in the flow_run pane (SIP-0087).
+            self._install_prefect_log_forwarding()
+
             # Create heartbeat reporter
             from adapters.observability.healthcheck_http import HealthCheckHttpReporter
 
@@ -174,6 +180,16 @@ class AgentRunner:
             logger.exception("Failed to start agent", extra={"error": str(e)})
             raise
 
+    def _install_prefect_log_forwarding(self) -> None:
+        """Install ``PrefectLogHandler`` on the root logger (SIP-0087 phase-3)."""
+        from squadops.api.runtime.prefect_log_forwarding import install_prefect_log_handler
+        from squadops.config import load_config
+
+        config = load_config()
+        self._prefect_log_forwarder, self._prefect_log_handler = install_prefect_log_handler(
+            config
+        )
+
     async def stop(self) -> None:
         """Stop the agent gracefully."""
         logger.info("Stopping agent", extra={"agent_id": self.agent_id})
@@ -196,6 +212,15 @@ class AgentRunner:
         # Shutdown system
         if self.system:
             await self.system.shutdown()
+
+        # Tear down Prefect log forwarder (SIP-0087)
+        from squadops.api.runtime.prefect_log_forwarding import teardown_prefect_log_handler
+
+        await teardown_prefect_log_handler(
+            self._prefect_log_forwarder, self._prefect_log_handler
+        )
+        self._prefect_log_forwarder = None
+        self._prefect_log_handler = None
 
         logger.info("Agent stopped", extra={"agent_id": self.agent_id})
 

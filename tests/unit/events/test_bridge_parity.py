@@ -164,10 +164,10 @@ class TestPrefectParity:
                 "fr_1", expected_state, expected_state.title()
             )
 
-    def test_task_dispatch_creates_then_runs(self):
-        """Executor: create_task_run() then set_task_run_state(trid, 'RUNNING', 'Running')"""
+    def test_task_dispatch_is_noop(self):
+        """SIP-0087: task_run creation moved to executor. Bridge ignores TASK_DISPATCHED."""
         reporter = MagicMock()
-        reporter.create_task_run = AsyncMock(return_value="tr_99")
+        reporter.create_task_run = AsyncMock()
         reporter.set_task_run_state = AsyncMock()
         bridge = PrefectBridge(reporter)
 
@@ -176,40 +176,57 @@ class TestPrefectParity:
                 EventType.TASK_DISPATCHED,
                 "task",
                 "task_key_a",
-                context={"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"},
+                context={
+                    "cycle_id": "cyc_1",
+                    "run_id": "run_1",
+                    "flow_run_id": "fr_1",
+                    "task_run_id": "tr_99",
+                },
                 payload={"task_name": "dev: implementation"},
             )
         )
-        reporter.create_task_run.assert_called_once()
-        reporter.set_task_run_state.assert_called_with("tr_99", "RUNNING", "Running")
+        reporter.create_task_run.assert_not_called()
+        reporter.set_task_run_state.assert_not_called()
 
-    def test_task_success_sets_completed(self):
-        """Executor: set_task_run_state(trid, 'COMPLETED', 'Completed')"""
+    def test_task_success_sets_completed_when_task_run_id_in_context(self):
+        """Bridge forwards COMPLETED when executor supplies task_run_id."""
         reporter = MagicMock()
-        reporter.create_task_run = AsyncMock(return_value="tr_99")
         reporter.set_task_run_state = AsyncMock()
         bridge = PrefectBridge(reporter)
 
-        ctx = {"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"}
-        bridge.on_event(_event(EventType.TASK_DISPATCHED, "task", "t_1", context=ctx))
-        reporter.reset_mock()
-
+        ctx = {
+            "cycle_id": "cyc_1",
+            "run_id": "run_1",
+            "flow_run_id": "fr_1",
+            "task_run_id": "tr_99",
+        }
         bridge.on_event(_event(EventType.TASK_SUCCEEDED, "task", "t_1", context=ctx))
         reporter.set_task_run_state.assert_called_with("tr_99", "COMPLETED", "Completed")
 
-    def test_task_failure_sets_failed(self):
-        """Executor: set_task_run_state(trid, 'FAILED', 'Failed')"""
+    def test_task_failure_sets_failed_when_task_run_id_in_context(self):
+        """Bridge forwards FAILED when executor supplies task_run_id."""
         reporter = MagicMock()
-        reporter.create_task_run = AsyncMock(return_value="tr_99")
+        reporter.set_task_run_state = AsyncMock()
+        bridge = PrefectBridge(reporter)
+
+        ctx = {
+            "cycle_id": "cyc_1",
+            "run_id": "run_1",
+            "flow_run_id": "fr_1",
+            "task_run_id": "tr_99",
+        }
+        bridge.on_event(_event(EventType.TASK_FAILED, "task", "t_1", context=ctx))
+        reporter.set_task_run_state.assert_called_with("tr_99", "FAILED", "Failed")
+
+    def test_terminal_event_without_task_run_id_is_dropped(self):
+        """Without task_run_id in context, bridge has nothing to address."""
+        reporter = MagicMock()
         reporter.set_task_run_state = AsyncMock()
         bridge = PrefectBridge(reporter)
 
         ctx = {"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"}
-        bridge.on_event(_event(EventType.TASK_DISPATCHED, "task", "t_1", context=ctx))
-        reporter.reset_mock()
-
-        bridge.on_event(_event(EventType.TASK_FAILED, "task", "t_1", context=ctx))
-        reporter.set_task_run_state.assert_called_with("tr_99", "FAILED", "Failed")
+        bridge.on_event(_event(EventType.TASK_SUCCEEDED, "task", "t_1", context=ctx))
+        reporter.set_task_run_state.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

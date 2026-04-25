@@ -313,10 +313,14 @@ class TestPrefectFlowRun:
 
 
 class TestPrefectTaskRuns:
-    """Verify task lifecycle delegated to event bus (PrefectBridge handles Prefect calls)."""
+    """Verify task lifecycle handled in executor (SIP-0087: task_run_id needed
+    before dispatch for log-streaming correlation context)."""
 
-    async def test_no_direct_prefect_task_calls(self, executor, mock_queue, mock_prefect):
-        """Executor delegates task run management to PrefectBridge via events."""
+    async def test_executor_creates_task_runs_and_sets_running(
+        self, executor, mock_queue, mock_prefect
+    ):
+        """Executor creates task runs + transitions to RUNNING directly so the
+        ``task_run_id`` is available for the per-task log forwarder."""
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
@@ -325,9 +329,22 @@ class TestPrefectTaskRuns:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # No direct task-level Prefect calls — PrefectBridge handles via events
-        mock_prefect.create_task_run.assert_not_awaited()
-        mock_prefect.set_task_run_state.assert_not_awaited()
+        # 5 sequential tasks → 5 create_task_run + 5 set_task_run_state(RUNNING)
+        assert mock_prefect.create_task_run.await_count == 5
+        running_calls = [
+            c
+            for c in mock_prefect.set_task_run_state.await_args_list
+            if c.args[1] == "RUNNING"
+        ]
+        assert len(running_calls) == 5
+        # Terminal task states come through PrefectBridge events, not direct
+        # executor calls — the executor only emits RUNNING directly.
+        terminal_calls = [
+            c
+            for c in mock_prefect.set_task_run_state.await_args_list
+            if c.args[1] in ("COMPLETED", "FAILED")
+        ]
+        assert terminal_calls == []
 
     async def test_emits_task_dispatched_events(self, executor, mock_queue, mock_prefect):
         """Executor emits TASK_DISPATCHED for each of the 5 sequential tasks."""
