@@ -1,6 +1,14 @@
-# SIP: Agent Runtime Modes — Vision and Index
+---
+title: Agent Runtime Modes
+status: accepted
+author: Jason Ladd
+created_at: '2026-04-25T00:00:00Z'
+sip_number: 88
+updated_at: '2026-04-25T17:57:04.777541Z'
+---
+# SIP-0088: Agent Runtime Modes — Vision and Index
 
-**Status:** Proposed (umbrella / vision)
+**Status:** Accepted (umbrella / vision)
 **Authors:** Jason Ladd
 **Created:** 2026-04-25
 **Revision:** 3 (incorporated review feedback on 2026-04-25; r2 split umbrella into three implementing SIPs)
@@ -133,19 +141,19 @@ Use these names in code, schemas, and design discussion. "Activity" is permitted
 
 ## The three implementing SIPs
 
-### 1. `SIP-Agent-Runtime-State.md` — v1.1 candidate
+### 1. `SIP-0089-Agent-Runtime-State.md` — v1.1 candidate
 
 **Scope:** RuntimeMode, Assignment, DutyWindow, FocusLease, RuntimeActivity. Pure runtime-state primitives. No embodiment, no Temporal.
 
 **Why first:** Everything else depends on these primitives. Once an agent has `mode`, `focus`, `current_runtime_activity`, `assignments`, and `focus_lease`, it is observable and schedulable. Embodiment and durable workflows attach to these primitives later.
 
-### 2. `SIP-Agent-Embodiment-Substrate.md` — v1.2 candidate
+### 2. `SIP-0090-Agent-Embodiment-Substrate.md` — v1.2 candidate
 
 **Scope:** Embodiment abstraction (identity / runtime-surface separation), generic location, capability-aware RuntimeActivity scheduling, resource budgets, first proof point on Discord.
 
 **Why second:** Once persistent agents exist, the next architectural question is "how do they act in external surfaces?" Discord is chosen as the first proof point because it is lighter to test than Minecraft. Minecraft becomes a future follow-on SIP (`SIP-Minecraft-Embodiment-Adapter.md`, not in this package).
 
-### 3. `SIP-Duty-Durability-Temporal.md` — v1.3 candidate
+### 3. `SIP-0091-Duty-Durability-via-Temporal.md` — v1.3 candidate
 
 **Scope:** Temporal as a narrowly-scoped durability layer for Duty workflows only. Optional dependency. Proof point: a `nightly_research` duty surviving worker restarts.
 
@@ -268,8 +276,8 @@ For implementation detail, read the implementing SIPs.
 
 ## References
 
-- `sips/proposed/SIP-Agent-Runtime-State.md` — v1.1 candidate
-- `sips/proposed/SIP-Agent-Embodiment-Substrate.md` — v1.2 candidate
-- `sips/proposed/SIP-Duty-Durability-Temporal.md` — v1.3 candidate
+- `sips/accepted/SIP-0089-Agent-Runtime-State.md` — v1.1 candidate
+- `sips/accepted/SIP-0090-Agent-Embodiment-Substrate.md` — v1.2 candidate
+- `sips/accepted/SIP-0091-Duty-Durability-via-Temporal.md` — v1.3 candidate
 - Future follow-on: `SIP-Minecraft-Embodiment-Adapter.md` (not in this package)
 - Original full proposal: commit `76a1f90` on main (`git show 76a1f90:sips/proposed/SIP-Agent-Runtime-Modes.md`)

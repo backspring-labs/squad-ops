@@ -1,20 +1,28 @@
-# SIP: Agent Runtime State — Modes, Duty Windows, Focus, and RuntimeActivity
+---
+title: Agent Runtime State
+status: accepted
+author: Jason Ladd
+created_at: '2026-04-25T00:00:00Z'
+sip_number: 89
+updated_at: '2026-04-25T17:57:13.678325Z'
+---
+# SIP-0089: Agent Runtime State — Modes, Duty Windows, Focus, and RuntimeActivity
 
-**Status:** Proposed (draft)
+**Status:** Accepted
 **Authors:** Jason Ladd
 **Created:** 2026-04-25
 **Revision:** 2 (incorporated review feedback on 2026-04-25)
 **Targets:** v1.1
-**Parent vision:** `sips/proposed/SIP-Agent-Runtime-Modes.md` (umbrella index)
+**Parent vision:** `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (umbrella index)
 **Sibling SIPs:**
-- `SIP-Agent-Embodiment-Substrate.md` (v1.2 candidate, builds on this)
-- `SIP-Duty-Durability-Temporal.md` (v1.3 candidate, builds on this)
+- `sips/accepted/SIP-0090-Agent-Embodiment-Substrate.md` (v1.2 candidate, builds on this)
+- `sips/accepted/SIP-0091-Duty-Durability-via-Temporal.md` (v1.3 candidate, builds on this)
 
 ---
 
 ## 1. Summary
 
-This SIP introduces the **runtime-state foundation** for persistent SquadOps agents. It is the first of three SIPs that emerged from splitting the original umbrella proposal (`SIP-Agent-Runtime-Modes.md`).
+This SIP introduces the **runtime-state foundation** for persistent SquadOps agents. It is the first of three SIPs that emerged from splitting the original umbrella proposal (`SIP-0088-Agent-Runtime-Modes.md`).
 
 It proposes the minimum runtime primitives needed to make persistent agents observable, schedulable, and recallable, without introducing embodiment or durable workflow concerns.
 
@@ -65,9 +73,9 @@ The challenge:
 
 This SIP does **not** propose:
 
-- Embodiment abstractions (Mineflayer, Discord, browser) — see `SIP-Agent-Embodiment-Substrate.md`
-- Location modeling — see `SIP-Agent-Embodiment-Substrate.md`
-- Temporal or any external workflow durability layer — see `SIP-Duty-Durability-Temporal.md`
+- Embodiment abstractions (Mineflayer, Discord, browser) — see `SIP-0090-Agent-Embodiment-Substrate.md`
+- Location modeling — see `SIP-0090-Agent-Embodiment-Substrate.md`
+- Temporal or any external workflow durability layer — see `SIP-0091-Duty-Durability-via-Temporal.md`
 - Replacing the current cycle mechanism
 - Replacing or competing with the existing task/workload/handler execution model
 - A fully autonomous "agent life" loop
@@ -452,7 +460,7 @@ Every step produces a queryable event with a reason code. Nothing is implicit.
 
 ## 19. References
 
-- Parent vision: `sips/proposed/SIP-Agent-Runtime-Modes.md` (canonical reason codes, event names, terminology)
+- Parent vision: `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (canonical reason codes, event names, terminology)
 - Original full proposal: commit `76a1f90` on main
 - Related: SIP-0042 (LanceDB Semantic Memory), SIP-0061 (LangFuse Observability), SIP-0067 (Postgres Cycle Registry), SIP-0071 (Builder Role)
 - W3C SCXML — https://www.w3.org/TR/scxml/

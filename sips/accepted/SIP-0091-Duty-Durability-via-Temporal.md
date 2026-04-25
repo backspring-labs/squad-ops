@@ -1,13 +1,21 @@
-# SIP: Duty Durability via Temporal
+---
+title: Duty Durability via Temporal
+status: accepted
+author: Jason Ladd
+created_at: '2026-04-25T00:00:00Z'
+sip_number: 91
+updated_at: '2026-04-25T17:57:14.005001Z'
+---
+# SIP-0091: Duty Durability via Temporal
 
-**Status:** Proposed (draft)
+**Status:** Accepted
 **Authors:** Jason Ladd
 **Created:** 2026-04-25
 **Revision:** 2 (incorporated review feedback on 2026-04-25)
 **Targets:** v1.3
-**Depends on:** `SIP-Agent-Runtime-State.md` (v1.1) — must land first
-**Parent vision:** `sips/proposed/SIP-Agent-Runtime-Modes.md` (umbrella index)
-**Sibling:** `SIP-Agent-Embodiment-Substrate.md` (v1.2)
+**Depends on:** `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1) — must land first
+**Parent vision:** `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (umbrella index)
+**Sibling:** `sips/accepted/SIP-0090-Agent-Embodiment-Substrate.md` (v1.2)
 
 ---
 
@@ -27,7 +35,7 @@ This SIP is intentionally the smallest of the three split SIPs. It adds one opti
 
 ## 2. Problem Statement
 
-Once duty windows exist (per `SIP-Agent-Runtime-State.md`), the next question is durability:
+Once duty windows exist (per `SIP-0089-Agent-Runtime-State.md`), the next question is durability:
 
 - A duty agent must wake up at `01:00` even if the worker was offline at midnight
 - A duty workflow may wait minutes, hours, or days for an event
@@ -428,8 +436,8 @@ The SIP is successful when:
 
 ## 17. References
 
-- Depends on: `sips/proposed/SIP-Agent-Runtime-State.md` (v1.1)
-- Parent vision: `sips/proposed/SIP-Agent-Runtime-Modes.md` (canonical reason codes, event names, package invariant)
+- Depends on: `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1)
+- Parent vision: `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (canonical reason codes, event names, package invariant)
 - Original full proposal: commit `76a1f90` on main
 - Temporal Workflows — https://docs.temporal.io/workflows
 - Workflow Execution — https://docs.temporal.io/workflow-execution
