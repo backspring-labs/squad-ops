@@ -98,8 +98,7 @@ class AgentRunner:
         self._lifecycle_state = "STARTING"
         self._queue = None
         self._config = None
-        self._prefect_log_forwarder = None
-        self._prefect_log_handler = None
+        self._prefect_log_handle = None
 
         # Load instance-specific configuration (required)
         self._instance_config = load_instance_config(self.agent_id)
@@ -139,10 +138,15 @@ class AgentRunner:
 
         Bootstraps the system, connects to queue, and starts consuming tasks.
         """
+        from squadops.config import load_config
+
+        # Single config load — reused by log-forwarder install and _create_system.
+        self._config = load_config()
+
         try:
             # Install Prefect log forwarder before bootstrap so handler/system
             # logs from the rest of startup land in the flow_run pane (SIP-0087).
-            self._install_prefect_log_forwarding()
+            await self._install_prefect_log_forwarding(self._config)
 
             # Create heartbeat reporter
             from adapters.observability.healthcheck_http import HealthCheckHttpReporter
@@ -178,17 +182,20 @@ class AgentRunner:
 
         except Exception as e:
             logger.exception("Failed to start agent", extra={"error": str(e)})
+            # Tear down the log forwarder if startup failed after install,
+            # otherwise the flush task and httpx client leak.
+            if self._prefect_log_handle is not None:
+                try:
+                    await self._prefect_log_handle.aclose()
+                finally:
+                    self._prefect_log_handle = None
             raise
 
-    def _install_prefect_log_forwarding(self) -> None:
+    async def _install_prefect_log_forwarding(self, config) -> None:
         """Install ``PrefectLogHandler`` on the root logger (SIP-0087 phase-3)."""
-        from squadops.api.runtime.prefect_log_forwarding import install_prefect_log_handler
-        from squadops.config import load_config
+        from adapters.cycles.log_forwarding_install import install_prefect_log_handler
 
-        config = load_config()
-        self._prefect_log_forwarder, self._prefect_log_handler = install_prefect_log_handler(
-            config
-        )
+        self._prefect_log_handle = await install_prefect_log_handler(config.prefect)
 
     async def stop(self) -> None:
         """Stop the agent gracefully."""
@@ -214,13 +221,9 @@ class AgentRunner:
             await self.system.shutdown()
 
         # Tear down Prefect log forwarder (SIP-0087)
-        from squadops.api.runtime.prefect_log_forwarding import teardown_prefect_log_handler
-
-        await teardown_prefect_log_handler(
-            self._prefect_log_forwarder, self._prefect_log_handler
-        )
-        self._prefect_log_forwarder = None
-        self._prefect_log_handler = None
+        if self._prefect_log_handle is not None:
+            await self._prefect_log_handle.aclose()
+            self._prefect_log_handle = None
 
         logger.info("Agent stopped", extra={"agent_id": self.agent_id})
 
@@ -232,9 +235,10 @@ class AgentRunner:
         from squadops.bootstrap import SystemConfig, create_system
         from squadops.config import load_config
 
-        # Load configuration
-        config = load_config()
-        self._config = config
+        # Reuse config loaded by start(); only load if invoked standalone.
+        if self._config is None:
+            self._config = load_config()
+        config = self._config
 
         # Create adapters based on configuration
         ports = await self._create_ports(config)

@@ -423,7 +423,7 @@ class PrefectConfig(BaseModel):
         default=True,
         description="Forward squadops/adapters log records to Prefect /api/logs (SIP-0087)",
     )
-    log_level: str = Field(
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO",
         description="Minimum log level forwarded to Prefect (SIP-0087)",
     )

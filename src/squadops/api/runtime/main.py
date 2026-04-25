@@ -139,9 +139,8 @@ rabbitmq_channel: aio_pika.Channel | None = None
 # PrefectReporter for shutdown cleanup
 _prefect_reporter = None
 
-# PrefectLogForwarder + handler for shutdown cleanup (SIP-0087 phase-3)
-_prefect_log_forwarder = None
-_prefect_log_handler = None
+# Prefect log forwarder handle for shutdown cleanup (SIP-0087 phase-3)
+_prefect_log_handle = None
 
 # Redis client + health checker for platform health routes
 _redis_client = None
@@ -224,10 +223,10 @@ async def _init_migrations(config, pool) -> None:
 
 async def _init_prefect_log_forwarding(config) -> None:
     """Install ``PrefectLogHandler`` on the root logger (SIP-0087 phase-3)."""
-    global _prefect_log_forwarder, _prefect_log_handler
-    from squadops.api.runtime.prefect_log_forwarding import install_prefect_log_handler
+    global _prefect_log_handle
+    from adapters.cycles.log_forwarding_install import install_prefect_log_handler
 
-    _prefect_log_forwarder, _prefect_log_handler = install_prefect_log_handler(config)
+    _prefect_log_handle = await install_prefect_log_handler(config.prefect)
 
 
 async def _init_cycle_subsystem(config, pool) -> None:
@@ -443,9 +442,8 @@ async def shutdown_event():
         await pool.close()
     if rabbitmq_connection:
         await rabbitmq_connection.close()
-    from squadops.api.runtime.prefect_log_forwarding import teardown_prefect_log_handler
-
-    await teardown_prefect_log_handler(_prefect_log_forwarder, _prefect_log_handler)
+    if _prefect_log_handle is not None:
+        await _prefect_log_handle.aclose()
     if _prefect_reporter:
         await _prefect_reporter.close()
 
