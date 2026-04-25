@@ -614,9 +614,9 @@ class DistributedFlowExecutor(FlowExecutionPort):
         correction/repair paths that don't pre-create the Prefect run.
 
         Enters a ``CorrelationContext`` scope with flow/task run IDs so the
-        ``PrefectLogHandler`` (Phase 4) can scope handler logs to the right
-        Prefect task pane, and spawns a periodic heartbeat coroutine so
-        long-running LLM calls show liveness in the UI.
+        ``PrefectLogHandler`` scopes handler logs to the right Prefect task
+        pane, and spawns a periodic heartbeat coroutine so long-running LLM
+        calls show liveness in the UI.
         """
         if task_run_id is None:
             task_run_id = await self._create_task_run_if_enabled(flow_run_id, envelope)
