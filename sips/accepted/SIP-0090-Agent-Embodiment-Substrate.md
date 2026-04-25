@@ -1,13 +1,21 @@
-# SIP: Agent Embodiment Substrate
+---
+title: Agent Embodiment Substrate
+status: accepted
+author: Jason Ladd
+created_at: '2026-04-25T00:00:00Z'
+sip_number: 90
+updated_at: '2026-04-25T17:57:13.839284Z'
+---
+# SIP-0090: Agent Embodiment Substrate
 
-**Status:** Proposed (draft)
+**Status:** Accepted
 **Authors:** Jason Ladd
 **Created:** 2026-04-25
 **Revision:** 2 (incorporated review feedback on 2026-04-25)
 **Targets:** v1.2
-**Depends on:** `SIP-Agent-Runtime-State.md` (v1.1) — must land first
-**Parent vision:** `sips/proposed/SIP-Agent-Runtime-Modes.md` (umbrella index)
-**Sibling:** `SIP-Duty-Durability-Temporal.md` (v1.3)
+**Depends on:** `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1) — must land first
+**Parent vision:** `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (umbrella index)
+**Sibling:** `sips/accepted/SIP-0091-Duty-Durability-via-Temporal.md` (v1.3)
 **Future follow-on:** `SIP-Minecraft-Embodiment-Adapter.md` (not in this package)
 
 ---
@@ -26,7 +34,7 @@ Minecraft is a **named future follow-on** (`SIP-Minecraft-Embodiment-Adapter.md`
 
 ## 2. Problem Statement
 
-Once an agent can be persistent (per `SIP-Agent-Runtime-State.md`), the next architectural question is:
+Once an agent can be persistent (per `SIP-0089-Agent-Runtime-State.md`), the next architectural question is:
 
 > How does an agent act in environments that are not its own process?
 
@@ -63,7 +71,7 @@ This SIP does **not** propose:
 - Minecraft, Mineflayer, or any virtual-world game logic — see `SIP-Minecraft-Embodiment-Adapter.md` (future)
 - Spatial reasoning, pathfinding, or world simulation
 - Replacing existing agent communication (RabbitMQ, message envelopes) with embodiment events
-- Temporal or durable workflow integration — see `SIP-Duty-Durability-Temporal.md`
+- Temporal or durable workflow integration — see `SIP-0091-Duty-Durability-via-Temporal.md`
 - Ambient autonomy beyond what the runtime-state SIP already permits
 - A full EmbodiedAction ledger as a first-class table — explicitly deferred (see §5.6)
 - Multiple simultaneously-attached embodiments per agent — explicitly deferred (see §5.5)
@@ -416,8 +424,8 @@ The SIP is successful when:
 
 ## 17. References
 
-- Depends on: `sips/proposed/SIP-Agent-Runtime-State.md` (v1.1)
-- Parent vision: `sips/proposed/SIP-Agent-Runtime-Modes.md` (canonical reason codes, event names, terminology, package invariant)
+- Depends on: `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1)
+- Parent vision: `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (canonical reason codes, event names, terminology, package invariant)
 - Future follow-on: `SIP-Minecraft-Embodiment-Adapter.md`
 - Original full proposal: commit `76a1f90` on main
 - Related: SIP-0061 (LangFuse Observability — telemetry pattern reused for embodiment events), SIP-0042 (memory adapter — pattern for optional integrations), `SecretManager` in `src/squadops/core/`
