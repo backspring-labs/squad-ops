@@ -1,4 +1,15 @@
 profiles:
+  - profile_id: smoke
+    name: "Smoke Squad"
+    description: "All 5 agents on qwen2.5:3b-instruct — for hello_squad / selftest cycles only"
+    version: 1
+    agents:
+      - { agent_id: max, role: lead, model: "qwen2.5:3b-instruct", enabled: true }
+      - { agent_id: neo, role: dev, model: "qwen2.5:3b-instruct", enabled: true }
+      - { agent_id: nat, role: strat, model: "qwen2.5:3b-instruct", enabled: true }
+      - { agent_id: eve, role: qa, model: "qwen2.5:3b-instruct", enabled: true }
+      - { agent_id: data, role: data, model: "qwen2.5:3b-instruct", enabled: true }
+
   - profile_id: full-squad
     name: "Full Squad"
     description: "All 5 agents with per-role models"
