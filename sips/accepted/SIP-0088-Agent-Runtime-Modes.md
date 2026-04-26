@@ -274,6 +274,96 @@ For implementation detail, read the implementing SIPs.
 
 ---
 
+## Future Considerations
+
+This section captures known unresolved design questions that fall outside the scope of SIP-0089 / SIP-0090 / SIP-0091 but will need answers as real operational use cases arrive. They are documented here so the questions are not lost and so the implementing SIPs can be evaluated against them when concrete workloads expose the trade-offs.
+
+### Composition of Duty work and Cycle work
+
+The package commits to mutually exclusive top-level modes (Duty, Cycle, Ambient) and to FocusLease as the single attention owner. This handles the case of "an unrelated cycle wants this duty agent" cleanly: hard duty rejects, soft duty allows preemption with a graceful window.
+
+It does **not** elegantly handle a case that real operational duty work is likely to surface:
+
+> **Duty work that itself requires a coordinated squad cycle to make progress.**
+
+Examples:
+
+- **Customer support duty.** The on-duty Lead receives a ticket that needs Dev + QA triage to resolve. The duty work is *to handle the ticket*, but resolving the ticket requires squad coordination — exactly what cycles exist for.
+- **Nightly research duty.** The on-duty Strat agent is producing a research synthesis. The synthesis genuinely needs Data's analysis to be complete. Strat is not "interrupted" by Data — the duty work *requires* collaboration with Data.
+- **Inventory anomaly duty.** The on-duty Data agent detects an anomaly. Investigating it requires Lead + Strat to assess implications and decide on remediation.
+- **Build pipeline watch duty.** The on-duty agent observes a CI failure overnight. Diagnosis and repair may need Dev + QA cooperation.
+
+In all four cases the duty agent isn't *competing* with a cycle — the duty work is the *origin* of the cycle. The current package invariant doesn't tell us whether the duty agent participates in that cycle, gets temporarily replaced, stays out and consumes its output, or transitions between modes during the engagement.
+
+Three candidate patterns have been identified during design discussion. None are committed; none are implementable until a concrete workload makes the trade-offs unambiguous.
+
+#### Pattern B — Preempt-and-return (single-agent extension)
+
+The duty agent stays *assigned* to the duty but its current mode flips Duty → Cycle for the cycle's duration. The underlying duty RuntimeActivity is paused (the activity model already supports `can_pause` / `can_resume`). When the cycle completes, mode flips back to Duty and the paused activity resumes.
+
+This is mostly a generalization of soft-duty preemption semantics, applied to **self-spawned** cycles rather than external interruption. Architectural lift is small. The package invariants survive intact: at any instant the agent is in exactly one mode, and FocusLease has exactly one owner.
+
+The weakness is that it does not solve the case where the duty *must be covered* during the cycle — if the duty's purpose is monitoring or availability, pausing it for a multi-hour cycle defeats the duty.
+
+#### Pattern D — Backfill / assignment transfer (multi-agent coverage)
+
+This mirrors human on-call rotations. When the on-duty agent must engage in cycle work that would otherwise pause the duty, the duty assignment temporarily transfers to a backfill-eligible agent. The original holder joins the cycle. When the cycle completes, policy decides whether the original resumes or the backfill finishes the rotation.
+
+This is the most operationally realistic pattern but requires concepts the current package does not model:
+
+- Assignment transferability (currently `Assignment` has a single `agent_id` owner)
+- Backfill eligibility per assignment (`backfill_eligible_roles`, capability matching)
+- Handoff event chain (`assignment.transferred`, `assignment.returned`, `assignment.coverage_assumed`)
+- Decisions about state continuity — does the backfill inherit the original's in-flight RuntimeActivity, start fresh, or merge handoff context?
+- Reverse-handoff policy when the original returns (or doesn't, if the cycle runs long)
+
+Architectural lift is significant. This is not a v1.x extension — it is a substantive new capability that would warrant its own SIP.
+
+#### Pattern E — Duty has dual nature (planned work + reserve availability)
+
+The current package treats duty as monolithic: an agent is either on duty or not. Real operational duty often has two distinct components:
+
+- **Planned work** — the duty's scheduled tasks (e.g., the nightly research synthesis itself)
+- **Reserve availability** — interrupt-readiness for related cycle work or escalations
+
+These could be modeled as separate policies on the same Assignment rather than as separate modes. The current `hard | soft` strictness collapses to a binary; richer expression might look like:
+
+| Posture | Planned work | Interrupt readiness |
+|---------|--------------|---------------------|
+| **Hard duty** | Non-pausable | Not interruptible |
+| **Soft duty** | Pausable | Cycle preempts within graceful window |
+| **On-call duty** | Pausable | *Expected* to be interrupted; no graceful_window penalty for cycle joins |
+| **Background duty** | Non-pausable | No interrupt readiness — duty runs to completion |
+
+Same primitives, richer policy expression. Pattern E might be the *underlying primitive* that makes Pattern B and Pattern D cleaner to implement. Architectural lift is medium — extends Assignment policy fields without introducing new modes.
+
+#### How this should be resolved
+
+The right way to choose between B, D, and E (or combine them) is **not** to design speculatively now. The right way is to collect concrete duty workloads that Backspring actually wants the squad to perform, write a paragraph on each describing how the agent gets pulled into related cycle work, and let the pattern-counts drive the design.
+
+Suggested seed workloads to evaluate:
+
+1. **Customer support** — does the on-duty support agent escalate to a cycle, or does the cycle pull them in?
+2. **Nightly research synthesis** — does the duty agent stay and spawn a cycle that excludes itself, or join?
+3. **Inventory anomaly response** — does the on-duty Data agent escalate by triggering a cycle that pulls Lead/Strat in?
+4. **Build pipeline watch** — does the on-duty agent attempt repair (cycle?) or page a backfill?
+5. **Customer-facing incident response** — does the duty agent run point on a multi-agent investigation, or hand off?
+
+Each will lean toward B, D, or E differently. Once 3–5 workloads are characterized, the dominant pattern will be visible. If B dominates, a small extension to soft-duty semantics is enough. If D dominates, a backfill SIP is warranted. If E dominates, the right move is to enrich Assignment policy fields and let B and D become emergent behaviors.
+
+Until that exercise happens, the package's mutual-exclusivity invariant holds, and duty workloads in v1.1 / v1.2 / v1.3 must compose with cycle work via Pattern A from the original analysis: the duty handler may spawn a cycle that recruits *other* agents and consume the cycle's output, but the duty agent itself does not participate in the spawned cycle. This is the most conservative behavior and is implementable today without any SIP changes.
+
+### Other deferred questions
+
+Two smaller deferred questions worth noting:
+
+- **Multi-active-embodiment per agent** — SIP-0090 v1.2 commits to single-active-embodiment. A future SIP could allow concurrent embodiments (e.g., one agent presenting in Discord and a browser session simultaneously). Deferred until a real workload requires it.
+- **FocusLease queueing** — SIP-0089 D20 explicitly defers `queued` lease semantics to v1.2+. A future SIP would add the queue persistence storage, draining processor, and ordering tests required to make `queued` a real outcome rather than fake semantics.
+
+These are smaller scope than the duty/cycle composition question and are flagged in the implementing SIPs themselves; they are listed here only for visibility.
+
+---
+
 ## References
 
 - `sips/accepted/SIP-0089-Agent-Runtime-State.md` — v1.1 candidate
