@@ -56,7 +56,7 @@ defaults:
   cadence_policy:
     max_pulse_seconds: 600
     max_tasks_per_pulse: 3
-  build_manifest: true
+  implementation_plan: true
   output_validation: true
   max_self_eval_passes: 2
   max_build_subtasks: 15

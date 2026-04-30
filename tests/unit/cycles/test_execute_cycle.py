@@ -924,7 +924,7 @@ class TestBuildForwardingOverrides:
         assert result["prior_workload_artifact_refs"] == []
 
     async def test_planning_run_forwards_plan_artifact_refs(self, executor):
-        """Planning workload forwards promoted documents + control_manifests."""
+        """Planning workload forwards promoted documents + control_implementation_plans."""
         cycle = _make_cycle()
         completed = _make_run("run_001", 1, "completed", "planning")
         doc1 = _make_artifact_ref("art_plan_01", artifact_type="document", created_at=T2)
@@ -937,13 +937,13 @@ class TestBuildForwardingOverrides:
         assert result["plan_artifact_refs"] == ["art_plan_02", "art_plan_01"]
         assert "impl_run_id" not in result
 
-    async def test_planning_run_includes_control_manifest(self, executor):
-        """SIP-0086: control_manifest artifacts are forwarded as plan_artifact_refs."""
+    async def test_planning_run_includes_control_implementation_plan(self, executor):
+        """SIP-0086: control_implementation_plan artifacts are forwarded as plan_artifact_refs."""
         cycle = _make_cycle()
         completed = _make_run("run_001", 1, "completed", "planning")
         doc = _make_artifact_ref("art_doc", artifact_type="document", created_at=T1)
         manifest = _make_artifact_ref(
-            "art_manifest", artifact_type="control_manifest", created_at=T2
+            "art_manifest", artifact_type="control_implementation_plan", created_at=T2
         )
         noise = _make_artifact_ref("art_report", artifact_type="run_report", created_at=T3)
 

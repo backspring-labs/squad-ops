@@ -20,7 +20,7 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
-from squadops.cycles.build_manifest import BuildTaskManifest
+from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
     REQUIRED_REFINEMENT_ROLES,
@@ -211,7 +211,7 @@ def generate_task_plan(
     cycle: Cycle,
     run: Run,
     profile: SquadProfile,
-    manifest: BuildTaskManifest | None = None,
+    plan: ImplementationPlan | None = None,
 ) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
@@ -219,16 +219,16 @@ def generate_task_plan(
     type (SIP-0078). Otherwise falls back to legacy ``plan_tasks`` /
     ``build_tasks`` flags from ``applied_defaults``.
 
-    When a ``manifest`` is provided (SIP-0086), the build-phase segment
-    is materialized from the approved manifest instead of static
-    ``BUILD_TASK_STEPS``. The approved manifest is the build-phase plan;
+    When a ``plan`` is provided (SIP-0086 / SIP-0092), the build-phase segment
+    is materialized from the approved implementation plan instead of static
+    ``BUILD_TASK_STEPS``. The approved plan is the build-phase contract;
     ``TaskEnvelope`` objects are its deterministic execution materialization.
 
     Args:
         cycle: The cycle containing experiment config.
         run: The run to generate tasks for.
         profile: The squad profile for agent resolution.
-        manifest: Optional approved build task manifest (SIP-0086).
+        plan: Optional approved implementation plan (SIP-0086 / SIP-0092).
 
     Returns:
         Ordered list of TaskEnvelopes, one per pipeline step.
@@ -240,11 +240,11 @@ def generate_task_plan(
     else:
         steps, builder_used = _resolve_legacy_steps(cycle, profile, profile_roles)
 
-    # SIP-0086: replace static build steps with manifest-derived steps.
+    # SIP-0086: replace static build steps with plan-derived steps.
     # Only applies when the step list actually contains build steps.
     has_build_steps = any(s[0] in _BUILD_TASK_TYPES for s in steps)
-    if manifest is not None and has_build_steps:
-        steps = _replace_build_steps_with_manifest(steps, manifest, profile, profile_roles)
+    if plan is not None and has_build_steps:
+        steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles)
 
     # Shared lineage IDs for the entire plan
     correlation_id = uuid4().hex
@@ -266,19 +266,19 @@ def generate_task_plan(
     prev_task_id: str | None = None
 
     for step_index, step in enumerate(steps):
-        # Steps are either (task_type, role) tuples or ManifestTask objects
+        # Steps are either (task_type, role) tuples or PlanTask objects
         if isinstance(step, tuple):
             task_type, role = step
-            manifest_task = None
+            plan_task = None
         else:
             task_type = step.task_type
             role = step.role
-            manifest_task = step
+            plan_task = step
 
         # Determine task ID
-        if manifest_task is not None:
-            # SIP-0086 RC-2: deterministic manifest namespace
-            task_id = f"task-{run.run_id[:12]}-m{manifest_task.task_index:03d}-{task_type}"
+        if plan_task is not None:
+            # SIP-0086 RC-2: deterministic plan-task namespace
+            task_id = f"task-{run.run_id[:12]}-m{plan_task.task_index:03d}-{task_type}"
         elif use_deterministic_ids:
             task_id = f"task-{run.run_id[:12]}-{step_index:03d}-{task_type}"
         else:
@@ -306,17 +306,17 @@ def generate_task_plan(
             "agent_model": agent_model,
             "agent_config_overrides": agent_overrides,
             # SIP-0086: expose active profile roles so planning handlers can
-            # constrain manifest role choices to what the squad actually has.
+            # constrain plan role choices to what the squad actually has.
             "profile_roles": sorted(profile_roles),
         }
 
-        # SIP-0086: populate subtask fields from manifest
-        if manifest_task is not None:
-            inputs["subtask_focus"] = manifest_task.focus
-            inputs["subtask_description"] = manifest_task.description
-            inputs["expected_artifacts"] = manifest_task.expected_artifacts
-            inputs["subtask_index"] = manifest_task.task_index
-            inputs["acceptance_criteria"] = manifest_task.acceptance_criteria
+        # SIP-0086: populate subtask fields from plan
+        if plan_task is not None:
+            inputs["subtask_focus"] = plan_task.focus
+            inputs["subtask_description"] = plan_task.description
+            inputs["expected_artifacts"] = plan_task.expected_artifacts
+            inputs["subtask_index"] = plan_task.task_index
+            inputs["acceptance_criteria"] = plan_task.acceptance_criteria
 
         envelope = TaskEnvelope(
             task_id=task_id,
@@ -338,22 +338,22 @@ def generate_task_plan(
     return envelopes
 
 
-def _replace_build_steps_with_manifest(
+def _replace_build_steps_with_plan(
     steps: list,
-    manifest: BuildTaskManifest,
+    plan: ImplementationPlan,
     profile: SquadProfile,
     profile_roles: set[str],
 ) -> list:
-    """Replace static build steps with manifest-derived ManifestTask objects.
+    """Replace static build steps with plan-derived PlanTask objects.
 
     Preserves planning steps; only the build-phase segment is replaced.
-    Validates that all manifest roles exist in the profile.
+    Validates that all plan roles exist in the profile.
     """
-    # Validate manifest roles against profile
-    errors = manifest.validate_against_profile(profile)
+    # Validate plan roles against profile
+    errors = plan.validate_against_profile(profile)
     if errors:
         raise CycleError(
-            f"Manifest validation failed against profile '{profile.profile_id}': "
+            f"Plan validation failed against profile '{profile.profile_id}': "
             + "; ".join(errors)
         )
 
@@ -363,5 +363,5 @@ def _replace_build_steps_with_manifest(
     }
     non_build_steps = [s for s in steps if s[0] not in static_build_types]
 
-    # Append manifest tasks (ManifestTask objects, not tuples)
-    return non_build_steps + list(manifest.tasks)
+    # Append plan tasks (PlanTask objects, not tuples)
+    return non_build_steps + list(plan.tasks)

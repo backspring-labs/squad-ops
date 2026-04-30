@@ -417,10 +417,10 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             )
             score = 3
 
-        # SIP-0086: Produce build task manifest when enabled.
-        # The manifest decomposes the upcoming build into focused subtasks.
+        # SIP-0086 / SIP-0092: Produce implementation plan when enabled.
+        # The plan decomposes the upcoming build into focused subtasks.
         resolved_config = inputs.get("resolved_config", {})
-        if resolved_config.get("build_manifest", False):
+        if resolved_config.get("implementation_plan", False):
             manifest_artifact = await self._produce_manifest(
                 context, inputs, content, resolved_config
             )
@@ -461,7 +461,7 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
         # Constrain task_type to the known build task_types. Without this,
         # models invent task_types like 'quality_assurance.validate' instead
         # of the canonical 'qa.test'.
-        from squadops.cycles.build_manifest import _KNOWN_BUILD_TASK_TYPES
+        from squadops.cycles.implementation_plan import _KNOWN_BUILD_TASK_TYPES
 
         allowed_task_types = sorted(_KNOWN_BUILD_TASK_TYPES)
         task_types_section = (
@@ -528,7 +528,7 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             f"{qa_handoff_guideline}"
             "\n"
             "Output ONLY the manifest as a YAML code block with filename tag:\n"
-            "```yaml:build_task_manifest.yaml\n"
+            "```yaml:implementation_plan.yaml\n"
             "version: 1\n"
             "project_id: <project_id>\n"
             "cycle_id: <cycle_id>\n"
@@ -586,7 +586,7 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
 
             # Extract manifest YAML — prefer filename-tagged fence
             extracted = extract_fenced_files(response.content)
-            manifest_files = [f for f in extracted if f["filename"] == "build_task_manifest.yaml"]
+            manifest_files = [f for f in extracted if f["filename"] == "implementation_plan.yaml"]
             if manifest_files:
                 yaml_content = manifest_files[0]["content"]
             else:
@@ -603,10 +603,10 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
                     attempt,
                 )
                 return {
-                    "name": "build_task_manifest.yaml",
+                    "name": "implementation_plan.yaml",
                     "content": yaml_content,
                     "media_type": "text/yaml",
-                    "type": "control_manifest",
+                    "type": "control_implementation_plan",
                 }
 
             logger.warning(
@@ -639,26 +639,26 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
         max_subtasks: int,
         profile_roles: list[str],
     ) -> tuple[Any | None, str | None]:
-        """Validate a candidate manifest YAML. Returns (manifest, error_msg).
+        """Validate a candidate plan YAML. Returns (plan, error_msg).
 
-        error_msg is None iff the manifest is valid; in that case manifest is
-        the parsed BuildTaskManifest. The error_msg is the corrective feedback
-        appended to the next LLM attempt.
+        error_msg is None iff the plan is valid; in that case the first return
+        is the parsed ImplementationPlan. The error_msg is the corrective
+        feedback appended to the next LLM attempt.
         """
-        from squadops.cycles.build_manifest import BuildTaskManifest
+        from squadops.cycles.implementation_plan import ImplementationPlan
 
         if yaml_content is None:
             return None, (
                 "Your response did not contain a fenced YAML block tagged "
-                "build_task_manifest.yaml. Reply with ONLY the fenced block."
+                "implementation_plan.yaml. Reply with ONLY the fenced block."
             )
 
         try:
-            manifest = BuildTaskManifest.from_yaml(yaml_content)
+            manifest = ImplementationPlan.from_yaml(yaml_content)
         except ValueError as exc:
             return None, (
-                f"The previous manifest YAML failed validation: {exc}. "
-                "Produce a corrected build_task_manifest.yaml. "
+                f"The previous plan YAML failed validation: {exc}. "
+                "Produce a corrected implementation_plan.yaml. "
                 "Quote every file path; do not put parenthetical comments "
                 "after quoted strings on list items."
             )
@@ -668,7 +668,7 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             return None, (
                 f"The previous manifest had {n} subtasks; bounds are "
                 f"{min_subtasks}-{max_subtasks}. Produce a corrected "
-                "build_task_manifest.yaml within bounds."
+                "implementation_plan.yaml within bounds."
             )
 
         if profile_roles:
@@ -679,7 +679,7 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
                     f"The previous manifest used role(s) not in the "
                     f"squad profile: {', '.join(bad)}. "
                     f"Use ONLY these roles: {', '.join(profile_roles)}. "
-                    "Produce a corrected build_task_manifest.yaml."
+                    "Produce a corrected implementation_plan.yaml."
                 )
 
         return manifest, None

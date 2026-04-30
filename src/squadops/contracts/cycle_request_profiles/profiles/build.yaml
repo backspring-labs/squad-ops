@@ -20,7 +20,7 @@ defaults:
     - type: implementation
       gate: null
   build_tasks: true
-  build_manifest: true
+  implementation_plan: true
   output_validation: true
   max_self_eval_passes: 1
   max_build_subtasks: 15

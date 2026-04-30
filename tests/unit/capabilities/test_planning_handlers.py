@@ -649,7 +649,7 @@ class TestGovernanceAssessReadinessValidation:
 
 
 _VALID_MANIFEST_YAML = """\
-```yaml:build_task_manifest.yaml
+```yaml:implementation_plan.yaml
 version: 1
 project_id: test_proj
 cycle_id: test_cyc
@@ -697,7 +697,7 @@ summary:
 """
 
 _MALFORMED_MANIFEST_YAML = """\
-```yaml:build_task_manifest.yaml
+```yaml:implementation_plan.yaml
 version: 1
 project_id: test_proj
 cycle_id: test_cyc
@@ -746,8 +746,8 @@ class TestProduceManifestRetry:
         result = await self._call_produce(ctx)
 
         assert result is not None
-        assert result["name"] == "build_task_manifest.yaml"
-        assert result["type"] == "control_manifest"
+        assert result["name"] == "implementation_plan.yaml"
+        assert result["type"] == "control_implementation_plan"
         assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
 
     async def test_malformed_yaml_retries_then_succeeds(self):
@@ -760,7 +760,7 @@ class TestProduceManifestRetry:
         result = await self._call_produce(ctx)
 
         assert result is not None
-        assert result["name"] == "build_task_manifest.yaml"
+        assert result["name"] == "implementation_plan.yaml"
         assert ctx.ports.llm.chat_stream_with_usage.await_count == 2
 
     async def test_retry_prompt_includes_parse_error(self):
