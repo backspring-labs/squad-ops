@@ -13,7 +13,7 @@ The 1.0.x series targets **autonomous cycles long enough to build the best possi
 
 | # | SIP | Status | Where |
 |---|-----|--------|-------|
-| 1 | **Build Manifest Maturation** — typed acceptance criteria + separated authoring + delta overlays (SIP-0086 follow-up) | drafted 2026-04-27 | `sips/proposed/SIP-Build-Manifest-Maturation.md` |
+| 1 | **SIP-0092 Build Manifest Maturation** — typed acceptance criteria + separated authoring + delta overlays (SIP-0086 follow-up) | accepted 2026-04-29; plan on `feature/sip-0092-build-manifest-maturation` | `sips/accepted/SIP-0092-Build-Manifest-Maturation-Mechanical.md` |
 | 2 | **Smoke & Acceptance Capability Pack** — `qa.start_app` / `qa.probe_endpoint` / `qa.capture_evidence`, cadence-bound for long cycles | net new — to write | — |
 | 3 | **Cycle Evaluation Scorecard — phases 1+2 only** — evaluation contract + evidence capture; defer console UI to post-1.0 | proposed, needs scope cut | `sips/proposed/SIP-Cycle-Evaluation-Scorecard.md` |
 | 4 | **Cross-Run Memory & Context Handoff** — typed `cycle_handoff.json` ledgers (decisions/defects/open-questions/artifact pointers/known failing checks) + run-startup primer + within-run summarization | net new — to write | — |
