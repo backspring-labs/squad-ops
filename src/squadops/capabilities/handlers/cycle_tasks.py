@@ -517,7 +517,7 @@ class DataReportHandler(_CycleTaskHandler):
 class GovernanceReviewHandler(_CycleTaskHandler):
     """Cycle task handler for governance review (lead role).
 
-    When ``build_plan`` is enabled in resolved config, this handler
+    When ``implementation_plan`` is enabled in resolved config, this handler
     produces both a governance review document AND an implementation plan
     (SIP-0086 §6.1.3 / SIP-0092). The plan is a control-plane artifact that
     decomposes the build into focused subtasks.
@@ -580,9 +580,9 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         inputs: dict[str, Any],
     ) -> HandlerResult:
         resolved_config = inputs.get("resolved_config", {})
-        build_plan_enabled = resolved_config.get("build_plan", True)
+        implementation_plan_enabled = resolved_config.get("implementation_plan", True)
 
-        if not build_plan_enabled:
+        if not implementation_plan_enabled:
             return await super().handle(context, inputs)
 
         # Multi-artifact path: governance review + implementation plan

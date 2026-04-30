@@ -7,7 +7,7 @@ defaults:
     gates: []
   expected_artifact_types:
     - test_report
-  build_plan: false
+  implementation_plan: false
   output_validation: false
   execution_overrides: {}
   experiment_context:

@@ -420,7 +420,7 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
         # SIP-0086 / SIP-0092: Produce implementation plan when enabled.
         # The plan decomposes the upcoming build into focused subtasks.
         resolved_config = inputs.get("resolved_config", {})
-        if resolved_config.get("build_plan", False):
+        if resolved_config.get("implementation_plan", False):
             manifest_artifact = await self._produce_manifest(
                 context, inputs, content, resolved_config
             )

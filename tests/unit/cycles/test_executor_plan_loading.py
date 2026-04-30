@@ -92,7 +92,7 @@ class TestLoadManifestForRun:
 
     def _make_cycle(self, **overrides) -> MagicMock:
         cycle = MagicMock()
-        cycle.applied_defaults = {"build_plan": True}
+        cycle.applied_defaults = {"implementation_plan": True}
         cycle.execution_overrides = {}
         for k, v in overrides.items():
             setattr(cycle, k, v)
@@ -114,7 +114,7 @@ class TestLoadManifestForRun:
     async def test_build_plan_disabled_returns_none(self):
         executor = self._make_executor()
         cycle = self._make_cycle(
-            applied_defaults={"build_plan": False},
+            applied_defaults={"implementation_plan": False},
             execution_overrides={"plan_artifact_refs": ["art_manifest"]},
         )
 

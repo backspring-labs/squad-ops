@@ -83,7 +83,7 @@ def _make_context() -> MagicMock:
 
 
 def _make_inputs(
-    build_plan: bool = True,
+    implementation_plan: bool = True,
     min_subtasks: int = 3,
     max_subtasks: int = 15,
 ) -> dict[str, Any]:
@@ -91,7 +91,7 @@ def _make_inputs(
         "prd": "Build a group run app with FastAPI and React.",
         "prior_outputs": {"strat": "Strategy analysis content"},
         "resolved_config": {
-            "build_plan": build_plan,
+            "implementation_plan": implementation_plan,
             "min_build_subtasks": min_subtasks,
             "max_build_subtasks": max_subtasks,
         },
@@ -128,14 +128,14 @@ class TestGovernanceReviewManifest:
         assert manifest["name"] == "implementation_plan.yaml"
         assert manifest["type"] == "control_implementation_plan"
 
-    async def test_review_only_when_build_plan_disabled(self):
+    async def test_review_only_when_implementation_plan_disabled(self):
         handler = GovernanceReviewHandler()
         ctx = _make_context()
         ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
             "## Governance Review\nLooks good."
         )
 
-        result = await handler.handle(ctx, _make_inputs(build_plan=False))
+        result = await handler.handle(ctx, _make_inputs(implementation_plan=False))
 
         assert result.success
         artifacts = result.outputs["artifacts"]

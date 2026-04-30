@@ -1035,8 +1035,8 @@ class DistributedFlowExecutor(FlowExecutionPort):
         """
         from squadops.cycles.implementation_plan import ImplementationPlan
 
-        # Only load the plan when build_plan is enabled
-        if not cycle.applied_defaults.get("build_plan", False):
+        # Only load the plan when implementation_plan is enabled in resolved config
+        if not cycle.applied_defaults.get("implementation_plan", False):
             return None
 
         # Search forwarded planning artifacts for the plan

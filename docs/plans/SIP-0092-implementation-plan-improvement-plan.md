@@ -652,7 +652,7 @@ These ship with the M1 PRs. They activate typed acceptance and leave the M2/M3 s
 ```yaml
 # build profile — current rollout (M1 on, M2 off, M3 off)
 defaults:
-  build_plan: true
+  implementation_plan: true
   output_validation: true
   max_self_eval_passes: 1
   typed_acceptance: true               # M1 default-on
@@ -668,7 +668,7 @@ defaults:
 # signal and the structural_plan_change_candidate diagnostic field
 # (added in M2.2) accumulate at the rate the gates require.
 defaults:
-  build_plan: true
+  implementation_plan: true
   output_validation: true
   max_self_eval_passes: 2                   # implementation-profile depth
   max_correction_attempts: 3                # enough budget for correction to surface structural-change candidates (RC-9b / diagnostic field)
@@ -696,7 +696,7 @@ Do **not** enable these flags before the corresponding gate evaluation docs are 
 ```yaml
 # implementation profile — post-gate target (long-cycle, all on, deeper)
 defaults:
-  build_plan: true
+  implementation_plan: true
   output_validation: true
   max_self_eval_passes: 2
   typed_acceptance: true

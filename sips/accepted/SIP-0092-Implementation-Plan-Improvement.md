@@ -667,7 +667,7 @@ The default profiles for the SIP-0092 rollout keep M2 and M3 off because their s
 ```yaml
 # build profile (current rollout — M1 on, M2 off, M3 off)
 defaults:
-  build_plan: true
+  implementation_plan: true
   output_validation: true
   max_self_eval_passes: 1
   typed_acceptance: true               # M1 default-on
@@ -681,7 +681,7 @@ defaults:
 # Intentionally distinct from `build` (which has shallow self-eval) and from
 # `implementation` (which is the post-gate target with M2/M3 on).
 defaults:
-  build_plan: true
+  implementation_plan: true
   output_validation: true
   max_self_eval_passes: 2                   # implementation-profile depth — exercises typed checks meaningfully
   max_correction_attempts: 3                # gives correction enough budget to surface structural-change candidates (RC-9b / diagnostic field)
@@ -709,7 +709,7 @@ These profiles show the **target state after the M1 → M2 and M2 → M3 milesto
 ```yaml
 # implementation profile (long-cycle — post-gate target, all on, deeper)
 defaults:
-  build_plan: true
+  implementation_plan: true
   output_validation: true
   max_self_eval_passes: 2
   typed_acceptance: true

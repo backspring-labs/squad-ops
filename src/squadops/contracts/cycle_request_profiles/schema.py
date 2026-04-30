@@ -32,7 +32,7 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "max_correction_attempts",
     "time_budget_seconds",
     "implementation_pulse_checks",
-    "build_plan",
+    "implementation_plan",
     "max_build_subtasks",
     "min_build_subtasks",
     "output_validation",
