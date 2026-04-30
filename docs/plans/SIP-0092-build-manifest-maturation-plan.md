@@ -20,13 +20,26 @@ The three stages (M1/M2/M3) are independently shippable and can land in separate
 
 These invariants govern implementation across all phases. Numbered to extend SIP-0086's plan (RC-1..RC-8) without renumbering them.
 
-**RC-9 (Acceptance is severity-weighted):** A typed acceptance check failure contributes to `missing_components` only when its severity is `error`. `warning`, `info`, and `skipped` outcomes are reported in `ValidationResult.checks` evidence but do not fail the task and do not trigger correction.
+**RC-9 (Severity and outcome status are independent dimensions):**
 
-**RC-10 (Manifest is untrusted input):** Every value in a typed check is treated as LLM-authored input. Paths are workspace-chrooted; commands are argv-only and safelisted; regex and globs are bounded; symlinks pointing outside the workspace are rejected. Evaluator code never invokes a shell.
+- *Severity* is authored on the criterion: `error | warning | info`.
+- *Outcome status* is produced by the evaluator: `passed | failed | skipped | error`.
+- The two are evaluated together. Only the combination `severity=error` AND `status ∈ {failed, error}` blocks validation (contributes to `missing_components` and triggers self-eval/correction).
+- `status=skipped` never blocks, regardless of severity. `severity ∈ {warning, info}` never blocks, regardless of status. Both are surfaced in `ValidationResult.checks` evidence for triage.
+
+**RC-9a (Evaluator error ≠ app incompleteness):** `status=error` means the evaluator could not safely or correctly evaluate the criterion (path-escape, regex timeout, command timeout, command-must-be-argv, parser exception). `status=failed` means the generated output did not meet the criterion. When `severity=error` + `status=error` blocks, the surfaced reason in `missing_components` and the self-eval prompt MUST identify the entry as an *evaluator/check failure*, not as missing app behavior — wording like `evaluator-error: <check>: <reason>` rather than `acceptance: <description>`. Repeated evaluator errors on the same criterion across self-eval passes escalate to correction (or operator) instead of looping; see RC-9b.
+
+**RC-9b (Bounded evaluator-error retry):** A criterion that produces `status=error` on two consecutive evaluations within the same run is taken out of the self-eval feedback loop for that run: it remains in evidence as a permanent error, but it does not contribute to the self-eval prompt's gap list past the second failure. The structured error is escalated via the same surface that handles correction-protocol escalation (`max_correction_attempts` exhaustion). This prevents pathological criteria from driving endless self-eval loops.
+
+**RC-10 (Manifest is untrusted input):** Every value in a typed check is treated as LLM-authored input. Paths are workspace-chrooted; commands are pattern-safelisted argv lists (RC-10a); regex and globs are bounded; symlinks pointing outside the workspace are rejected. Evaluator code never invokes a shell.
+
+**RC-10a (Pattern-based command safelist):** The `command_check_safelist` is a list of *command patterns*, not bare argv[0] values. A pattern names argv[0] *and* the permitted argv[1..] shape. Examples: `python -m py_compile <file>`, `python -m mypy <args>`, `node --check <file>`, `ruff check <args?>`, `tsc --noEmit`, `eslint <args?>`, `pyflakes <file>`. Any of `python -c`, `python -m pip`, `python -m anything-not-listed`, `node -e`, shell strings, or argv that doesn't match a registered pattern produces `status=error` reason `command_not_in_safelist` (treating it as an evaluator error per RC-9a, not as a soft skip — the manifest author asked for something we won't run). Pattern entries are operator-controlled config; manifest authors cannot extend them.
 
 **RC-11 (Authoring-time validation):** Unknown `check` names, malformed `params`, and unknown `severity` values are rejected by `BuildTaskManifest.from_yaml()`. The existing `_produce_manifest` retry loop (`planning_tasks.py:572`) treats these as parse failures and re-prompts. Stack-unsupported but well-formed checks are valid manifests; they evaluate to `status: skipped`.
 
 **RC-12 (Stack-aware bounded evaluators):** Each typed check declares the stacks it supports. Inputs outside that set produce `status: skipped` with reason `unsupported_stack_or_syntax`. New stacks are added in scoped follow-up PRs, never as heuristic expansion inside an existing check.
+
+**RC-12a (Stack context is authoritative, not guessed):** Framework-level checks (e.g., `endpoint_defined`, `field_present` on Pydantic) require explicit stack context. The evaluator receives stack context from the resolved profile / manifest metadata via `HandlerContext` — *not* by sniffing arbitrary file content. File extension (e.g., `.py`, `.ts`) is acceptable for language-level parsing decisions; framework-level decisions ("is this FastAPI?", "is this Pydantic v2?") consult declared stack context. When stack context is unset and a check requires it, the check returns `status: skipped` with reason `unsupported_stack_or_syntax` (NOT `error`), since the absence of context is an authoring/profile gap, not an evaluator failure.
 
 **RC-13 (Original manifest immutability):** The approved manifest hash and the original manifest YAML never change after gate approval. The "current working manifest" is always derived as `apply_overlays(original, overlays)`. The original is the source of truth; overlays are an append-only audit trail rooted in the original via `parent_manifest_hash` over the canonical serialization.
 
@@ -42,6 +55,10 @@ These invariants govern implementation across all phases. Numbered to extend SIP
 
 **RC-19 (Backward compatibility per stage):** Each stage preserves prior behavior under its disable flag. M1 off → criteria stay informational. M2 off (`split_manifest_authoring: false`) → manifest authoring stays inside `assess_readiness`. M3 off (`manifest_overlays_enabled: false`) → working manifest equals original; correction stays in patch-only mode.
 
+**RC-20 (Overlay application timing — re-expansion at the next boundary):** Overlays land between executor build-plan expansion passes, not mid-task. The chosen mechanism: after a correction-protocol overlay is persisted *and* validated by both the structural applier and `validate_overlay_for_run`, the executor performs a fresh build-plan expansion for the run — `working = apply_overlays(load_original(run), load_overlays_for_run(run))` — and materializes envelopes for any newly active tasks (added by `add_task` or unmasked by tightened acceptance) at that boundary. In-flight task envelopes are not interrupted; already-completed checkpoints are not re-materialized. Tasks already materialized but not yet started inherit any `tighten_acceptance` updates by re-reading the working manifest at handler entry — handlers MUST resolve criteria from the working manifest at execution time, never from a snapshot taken at materialization time.
+
+**RC-21 (Loader hard-fails on inconsistent overlay state):** If overlays exist for a run and any of `apply_overlays(original, overlays)` (hash mismatch, broken chain, structural invariant violation) or `validate_overlay_for_run` (runtime invariant violation) rejects the chain, the loader does NOT silently fall back to the original manifest. Instead it: (a) emits a structured control-plane error with the rejected overlay's `overlay_id` and reason; (b) marks the run state `overlays_inconsistent: true`; (c) prevents further overlay production for the run; (d) escalates if the rejected overlay was needed for continued execution (e.g., the failed task's correction was contingent on the overlay) — pausing the run pending operator action. Silent fallback is explicitly disallowed because it makes the executor act on a manifest the operator never approved as the working manifest.
+
 ---
 
 ## Stage M1 — Mechanical Acceptance Criteria
@@ -50,12 +67,12 @@ Three PRs. Independently valuable: even without M2 or M3, M1 makes today's manif
 
 ### Phase M1.1 — Schema, Parser, Authoring-Time Validation
 
-**Modified files:**
+**Modified / new files:**
 
 | File | Change |
 |------|--------|
 | `src/squadops/cycles/build_manifest.py` | Add `TypedCheck` frozen dataclass. Extend `ManifestTask.acceptance_criteria` to `list[str \| TypedCheck]`. Update `from_yaml()` to parse mixed lists with the flat-YAML normalization rule (SIP §6.1.1). |
-| `src/squadops/cycles/build_manifest.py` | New `_KNOWN_CHECKS` registry (name → required-params spec) used by the parser to enforce RC-11. |
+| `src/squadops/cycles/acceptance_check_spec.py` (new) | **Single source of truth for check metadata.** Defines a `CheckSpec` dataclass (`name`, `required_params`, `optional_params`, `param_types`, `supported_stacks`, `requires_stack_context: bool`) and a registry `CHECK_SPECS: dict[str, CheckSpec]`. The parser in `build_manifest.py` imports this registry to enforce RC-11; the evaluator framework in M1.2 imports the *same* registry to declare its capabilities. No separate `_KNOWN_CHECKS` table. This is the registry-of-record going forward; drift between parser and evaluator is structurally prevented. |
 
 **`TypedCheck` dataclass (canonical internal form):**
 
@@ -72,8 +89,8 @@ class TypedCheck:
 
 **Parse-time rejections (raise `ValueError`):**
 
-- Unknown `check` name.
-- Required field for the named check missing or wrong type (per `_KNOWN_CHECKS` spec).
+- Unknown `check` name (not in `CHECK_SPECS`).
+- Required field for the named check missing or wrong type (per `CHECK_SPECS[name].required_params` / `param_types`).
 - `severity` not in `{error, warning, info}`.
 - Path field with `..` traversal or absolute path (cheap pre-eval rejection at parse time; full chrooting still applies at evaluation).
 
@@ -108,50 +125,72 @@ class CheckOutcome:
     reason: str          # human-readable summary
 
 class BaseCheck:
-    name: str
-    supported_stacks: frozenset[str]   # e.g., {"fastapi"}; empty = stack-agnostic
+    spec: CheckSpec      # references CHECK_SPECS[name] from acceptance_check_spec.py
 
     async def evaluate(
         self,
         params: dict,
         workspace_root: Path,
         artifacts: list[Artifact],
-        context: HandlerContext,
+        context: HandlerContext,   # carries resolved stack context per RC-12a
     ) -> CheckOutcome: ...
 ```
 
-**Registry:** `_CHECK_REGISTRY: dict[str, type[BaseCheck]]`. Adding a new check is a class registration, not a dispatch edit.
+**Registry:** evaluator implementations register against the canonical `CHECK_SPECS` registry from `acceptance_check_spec.py` (the same one the parser uses — item from RC-11 / single-source-of-truth rule). A `_CHECK_IMPLS: dict[str, type[BaseCheck]]` table maps each spec name to its evaluator class. Startup assertion verifies every entry in `CHECK_SPECS` has an implementation in `_CHECK_IMPLS`. Adding a new check is one entry in `CHECK_SPECS` plus one class registration — no dispatch edit, no parser edit.
 
 **Revision 1 vocabulary:**
 
-| Check | Stacks | Implementation notes |
-|---|---|---|
-| `endpoint_defined` | `fastapi` | AST walk for `@app.METHOD("/path")` and `@router.METHOD("/path")` decorators; path matching tolerant of trailing slash. Flask deferred to a separate scoped PR. |
-| `import_present` | `python` (AST). JS/TS regex fallback gated behind `frontend_acceptance_checks` follow-up flag (out of scope here). | Walks `import` and `from ... import ...` nodes. |
-| `field_present` | `python` (AST: dataclasses, Pydantic v2 models) | Walks class body assignments; matches `Annotated[...]` and `Field(...)` declarations. |
-| `regex_match` | stack-agnostic | Compiled regex with input-size bound. `count_min` defaults to 1. |
-| `count_at_least` | stack-agnostic | Glob with workspace-chroot and 10,000-match cap. |
-| `command_exit_zero` | stack-agnostic; gated by `command_acceptance_checks` flag | Runs in ACI executor; argv-only; safelist enforced. |
+| Check | `requires_stack_context` | Stacks | Implementation notes |
+|---|---|---|---|
+| `endpoint_defined` | true | `fastapi` | AST walk for `@app.METHOD("/path")` and `@router.METHOD("/path")` decorators; path matching tolerant of trailing slash. Stack context comes from resolved profile/manifest metadata (RC-12a) — never sniffed from file content. Flask deferred to a separate scoped PR. |
+| `import_present` | false (language-only) | `python` (AST), JS/TS regex fallback gated behind `frontend_acceptance_checks` follow-up flag (out of scope here) | Walks `import` and `from ... import ...` nodes. Language detection from file extension (`.py`, `.ts`, `.js`) is sufficient — no framework context required. |
+| `field_present` | true | `python` dataclasses, Pydantic v2 models | Walks class body assignments; matches `Annotated[...]` and `Field(...)` declarations. Pydantic-vs-dataclass distinction comes from declared stack context. |
+| `regex_match` | false | stack-agnostic | Compiled regex with input-size bound. `count_min` defaults to 1. |
+| `count_at_least` | false | stack-agnostic | Glob with workspace-chroot and 10,000-match cap. |
+| `command_exit_zero` | false | stack-agnostic; gated by `command_acceptance_checks` flag | Runs in ACI executor; argv-only; pattern-safelisted (RC-10a). |
 
-**Safety implementation (RC-10):**
+**Stack context wiring (RC-12a):** `HandlerContext` already carries the resolved profile. The check evaluator reads stack identity from `context.resolved_profile.stack` (or `context.manifest.metadata.stack` if SIP-0072's stack registry concretization lands first). When `requires_stack_context=true` and stack is unset, the evaluator returns `status: skipped` reason `unsupported_stack_or_syntax` — not `error`, since this is an authoring/profile gap, not an evaluator failure.
 
-- Path resolution helper `_safe_resolve(path: str, workspace_root: Path) -> Path` rejects absolute paths, `..` traversal, and symlinks pointing outside `workspace_root`. Returns `CheckOutcome(status="error", reason="path_escapes_workspace")` to caller via raised `PathSafetyError`.
-- Glob match cap (default 10_000). Exceeding produces `status: error` with reason `glob_match_cap_exceeded`.
-- Regex compilation guarded by input-size bound; pathological regex against long files produces `status: error` with reason `regex_timeout`.
-- Command safelist `command_check_safelist` (config-loaded; built-in default in SIP §6.1.5). Argv[0] not in safelist → `status: skipped` reason `command_not_in_safelist`. Shell-string command (single string instead of list) → `status: error` reason `command_must_be_argv`.
-- Per-command timeout: default 10s, max 60s. Exceeding produces `status: failed` reason `command_timeout`.
+**Safety implementation (RC-10 / RC-10a):**
+
+- Path resolution helper `_safe_resolve(path: str, workspace_root: Path) -> Path` rejects absolute paths, `..` traversal, and symlinks pointing outside `workspace_root`. Returns `CheckOutcome(status="error", reason="path_escapes_workspace")` (RC-9a: evaluator error, not app incompleteness).
+- Glob match cap (default 10_000). Exceeding produces `status: error` reason `glob_match_cap_exceeded`.
+- Regex compilation guarded by input-size bound; pathological regex against long files produces `status: error` reason `regex_timeout`.
+- **Pattern-based command safelist (RC-10a).** `command_check_safelist` is a list of patterns matched against the full argv, *not* just `argv[0]`. Patterns specify the permitted argv shape — examples in RC-10a above. Built-in default safelist:
+
+  | Pattern | Allows |
+  |---|---|
+  | `python -m py_compile <file>` | exactly `argv = ["python", "-m", "py_compile", <single-file-path>]` |
+  | `python -m mypy <args...>` | `argv[0:3] == ["python", "-m", "mypy"]`, remaining args are paths or known mypy flags |
+  | `node --check <file>` | exactly `argv = ["node", "--check", <single-file-path>]` |
+  | `ruff check <args...>` | `argv[0:2] == ["ruff", "check"]`, remaining args are paths/flags |
+  | `tsc --noEmit` | exactly `argv = ["tsc", "--noEmit"]` (cwd = workspace) |
+  | `eslint <args...>` | `argv[0] == "eslint"`, remaining args are paths/flags |
+  | `pyflakes <file>` | exactly `argv = ["pyflakes", <single-file-path>]` |
+
+  Any of `python -c <anything>`, `python -m pip <anything>`, `python -m <unlisted-module>`, `node -e <anything>`, shell strings, or argv that does not match a registered pattern → `status: error` reason `command_not_in_safelist` (RC-9a: evaluator-error, not skip — the manifest asked for something we explicitly won't run, treat it as a check failure rather than silently passing). Shell-string command (single string instead of list) → `status: error` reason `command_must_be_argv`.
+- Per-command timeout: default 10s, max 60s. Exceeding produces `status: error` reason `command_timeout` (RC-9a: an evaluator failure mode, not an app failure).
 - Command env: clean restricted env (no `LD_PRELOAD`, no `PYTHONPATH` injection).
 
 **Tests:** `tests/unit/cycles/test_acceptance_checks.py`
 
 Per-check parametrized matrix covering `passed` / `failed` / `skipped` / `error`:
 
-- `endpoint_defined`: all paths defined → passed; subset missing → failed with `actual.found` listing what was found and `actual.missing` listing what wasn't; non-FastAPI file → skipped `unsupported_stack_or_syntax`.
-- `import_present`: imports present → passed; module imported but symbol not imported → failed; non-Python target → skipped.
-- `field_present`: all fields declared on the named class → passed; partial → failed with `actual.missing`; class not found in file → failed `class_not_found`.
+- `endpoint_defined`: all paths defined → passed; subset missing → failed with `actual.found` listing what was found and `actual.missing` listing what wasn't; stack context unset → skipped `unsupported_stack_or_syntax` (RC-12a); declared stack is FastAPI but file is not parseable Python AST → error.
+- `import_present`: imports present → passed; module imported but symbol not imported → failed; file extension not in `{.py, .ts, .js}` → skipped.
+- `field_present`: all fields declared on the named class → passed; partial → failed with `actual.missing`; class not found in file → failed `class_not_found`; stack context unset → skipped.
 - `regex_match`: matches ≥ `count_min` → passed; matches < `count_min` → failed with `actual.match_count`; pathological regex on big input → error.
 - `count_at_least`: glob meets minimum → passed; below minimum → failed; cap exceeded → error.
-- `command_exit_zero`: argv exits 0 → passed; non-zero → failed with `actual.stdout_tail`/`stderr_tail`/`exit_code`; argv[0] not safelisted → skipped; shell string → error; over timeout → failed `command_timeout`.
+- `command_exit_zero`: argv matches a safelist pattern and exits 0 → passed; matches pattern but exits non-zero → failed with `actual.stdout_tail`/`stderr_tail`/`exit_code`; argv does not match any safelist pattern → **error reason `command_not_in_safelist`** (RC-10a — not skipped); shell string → error reason `command_must_be_argv`; over timeout → error reason `command_timeout`.
+
+Pattern-matching tests (parametrized on `command_exit_zero`):
+
+- `["python", "-m", "py_compile", "backend/main.py"]` → matches; runs.
+- `["python", "-c", "print(1)"]` → no pattern match → error `command_not_in_safelist`.
+- `["python", "-m", "pip", "install", "anything"]` → no pattern match → error.
+- `["python", "-m", "unknown_module"]` → no pattern match → error (RC-10a explicitly: argv[0]=python alone is insufficient).
+- `["ruff", "check", "src/"]` → matches.
+- `"ruff check src/"` (string instead of list) → error `command_must_be_argv`.
 
 Safety tests (parametrized across check types):
 
@@ -173,6 +212,8 @@ Safety tests (parametrized across check types):
 
 ```python
 typed = [c for c in inputs.get("acceptance_criteria", []) if isinstance(c, TypedCheck)]
+prior_errors = self._load_prior_evaluator_errors(run_state, task_id)  # RC-9b: per-criterion error count
+
 for criterion in typed:
     outcome = await self._evaluate_typed_check(criterion, artifacts, context)
     checks.append({
@@ -184,9 +225,27 @@ for criterion in typed:
         "actual": outcome.actual,
         "reason": outcome.reason,
     })
-    if outcome.status == "failed" and criterion.severity == "error":
+
+    # RC-9: severity AND status are independent dimensions. Only error+{failed,error} blocks.
+    if criterion.severity != "error":
+        continue
+    if outcome.status == "failed":
+        # RC-9a: app-incompleteness wording.
         missing.append(f"acceptance:{criterion.description or criterion.check}")
+    elif outcome.status == "error":
+        criterion_key = criterion.fingerprint()  # stable id of criterion shape
+        prior_count = prior_errors.get(criterion_key, 0)
+        # RC-9b: drop from feedback after 2 consecutive errors; escalate via correction surface.
+        if prior_count < 2:
+            # RC-9a: evaluator-error wording, distinct from app-incompleteness.
+            missing.append(f"evaluator-error:{criterion.check}: {outcome.reason}")
+        else:
+            self._escalate_persistent_evaluator_error(criterion, outcome)
+        self._record_evaluator_error(run_state, task_id, criterion_key, prior_count + 1)
+    # status in {passed, skipped} → never blocks
 ```
+
+`fingerprint()` returns a stable key from `(check, params, severity)` so retries against the same criterion share an error counter, but a tightened-acceptance overlay producing a distinct shape resets it.
 
 **Config keys (extend `_APPLIED_DEFAULTS_EXTRA_KEYS`):**
 
@@ -200,9 +259,26 @@ for criterion in typed:
 
 Unit (`tests/unit/capabilities/test_cycle_tasks.py` extension):
 
-- Manifest with typed `endpoint_defined` (severity `error`) and incomplete generated code → `missing_components` contains the criterion description; `ValidationResult.checks` includes the failed entry.
+RC-9 / RC-9a / RC-9b coverage matrix (parametrized over `(severity, status)`):
+
+| severity | status | blocks? | `missing_components` entry |
+|---|---|---|---|
+| `error` | `passed` | no | — |
+| `error` | `failed` | yes | `acceptance:<desc>` (app-incomplete) |
+| `error` | `error` (1st) | yes | `evaluator-error:<check>: <reason>` |
+| `error` | `error` (2nd) | yes | `evaluator-error:<check>: <reason>` |
+| `error` | `error` (3rd+) | NO; escalated | dropped from prompt; surfaced via correction-escalation channel |
+| `error` | `skipped` | no | — |
+| `warning` | any | no | — (visible in evidence only) |
+| `info` | any | no | — (visible in evidence only) |
+
+Tests:
+
+- Manifest with typed `endpoint_defined` (severity `error`) and incomplete generated code → `missing_components` contains `acceptance:<desc>`; `ValidationResult.checks` includes the failed entry.
 - Same manifest, severity `warning` → `missing_components` empty; check appears in evidence.
-- Manifest with typed `endpoint_defined` for non-FastAPI artifact → `status: skipped`; not in `missing_components` regardless of severity.
+- Manifest with typed `endpoint_defined`, stack context unset → `status: skipped` reason `unsupported_stack_or_syntax`; not in `missing_components` regardless of severity.
+- Manifest with `command_exit_zero` argv `["python", "-c", "print(1)"]` and severity `error` → `status: error` reason `command_not_in_safelist`; `missing_components` entry is `evaluator-error:command_exit_zero: command_not_in_safelist` (not `acceptance:...`).
+- Same `command_exit_zero` retried twice across self-eval passes → both errors surfaced; on the third evaluation the criterion is escalated and removed from the self-eval prompt feedback list (RC-9b).
 - Manifest with `mechanical_acceptance: false` in config → all typed checks evaluate to skipped with `mechanical_acceptance_disabled`.
 - Manifest with `command_acceptance_checks: false` → only `command_exit_zero` checks skip; static checks still evaluate.
 
@@ -222,12 +298,15 @@ Two PRs. Default-off behind `split_manifest_authoring: bool = false`. Default-fl
 
 | File | Change |
 |------|--------|
-| `src/squadops/capabilities/handlers/planning_tasks.py` | New `GovernancePlanBuildHandler` class. Body of `_produce_manifest` (`planning_tasks.py:432–620`) moves verbatim into `GovernancePlanBuildHandler.handle()`. The retry loop, prompt construction, role/task_type constraint logic, and YAML validation all transfer. |
-| `src/squadops/capabilities/handlers/planning_tasks.py` | `GovernanceAssessReadinessHandler.handle()` keeps its current path *only* when `split_manifest_authoring: false`. When the flag is true, it skips the inline `_produce_manifest` call and instead consumes the manifest produced by the upstream `governance.plan_build` step. |
+| `src/squadops/capabilities/handlers/_manifest_authoring.py` (new) | **Shared `ManifestAuthoringService`**: extracts the body of `_produce_manifest` (`planning_tasks.py:432–620`) into a service with one entry point — `produce_manifest(prompt_inputs, llm_client, run_state) -> BuildTaskManifest`. The retry loop, prompt construction, role/task_type constraint logic, and YAML validation move here intact. Both legacy and split paths call this service. NO duplicated logic. |
+| `src/squadops/capabilities/handlers/planning_tasks.py` | `GovernanceAssessReadinessHandler.handle()` calls `ManifestAuthoringService.produce_manifest(...)` when `split_manifest_authoring: false` (replacing the inline call to `_produce_manifest`). When `split_manifest_authoring: true`, this handler does NOT call the service at all — it consumes the manifest produced by the upstream `governance.plan_build` step. |
+| `src/squadops/capabilities/handlers/planning_tasks.py` | New `GovernancePlanBuildHandler.handle()` calls the same `ManifestAuthoringService.produce_manifest(...)` and returns the manifest as its primary output artifact. |
 | `src/squadops/cycles/task_plan.py` | Add `governance.plan_build` to `PLANNING_TASK_STEPS` immediately before `governance.assess_readiness`, gated on `split_manifest_authoring`. |
 | Capability registry (where planning task types are registered) | Register `governance.plan_build`. |
 
-**Backward compatibility (RC-19):** when `split_manifest_authoring: false`, `PLANNING_TASK_STEPS` and `assess_readiness` behavior are byte-identical to today. No new task is dispatched. This is the safe default for Revision 1 of this SIP.
+**Why a service, not a verbatim move:** verbatim move would leave the legacy path with a near-duplicate of the new code, guaranteed to drift on the next prompt or retry-loop tweak. Extracting first means both paths share one implementation; the only difference is *which handler invokes it* and *whether the resulting manifest is the assess_readiness primary output or its review input*. This also makes M2.2's revision loop (`governance.plan_build_revise`) trivial: it's a third caller of the same service with concerns appended to `prompt_inputs`.
+
+**Backward compatibility (RC-19):** when `split_manifest_authoring: false`, the legacy path calls `ManifestAuthoringService.produce_manifest(...)` with the same `prompt_inputs` as today's `_produce_manifest` invocation, producing a byte-identical manifest given identical seeded LLM responses. The verbatim-equivalence test below is the regression anchor.
 
 **Config keys:**
 
@@ -295,6 +374,8 @@ Each `*Concern` is a frozen dataclass with the fields listed in SIP §6.2.2.
 
 Three PRs. Default-on behind `manifest_overlays_enabled: bool = true` once shipped (zero overlays produced ⇒ working manifest equals original ⇒ no observable change vs today).
 
+**Schedule-pressure fallback (Rev 1 narrowing):** the autonomous correction producer (RC-16) only needs `add_task` and `tighten_acceptance` end-to-end. If implementation drags on M3, ship those two operations first across all three phases (schema + applier + validator + producer) and *defer* `remove_task`, `replace_task`, and `reorder` from the schema and applier to a follow-up PR. Those operations stay in the SIP design as the contract for future operator overlays and `governance.replan`, but the structural applier and tests for them can land later without blocking the autonomous correction loop. The narrowing decision should be explicit (call it out in standup / PR description) rather than silently descoping. Indicators that suggest taking this off-ramp: M3.1 PR open more than two weeks, schema/applier review surfacing significant complexity in the unused-by-correction operations, or a higher-priority hardening item (smoke pack — #2) blocked on M1+M3 minimal landing.
+
 ### Phase M3.1 — Overlay Schema and Pure Structural Applier
 
 **New files:**
@@ -322,7 +403,7 @@ Three PRs. Default-on behind `manifest_overlays_enabled: bool = true` once shipp
 2. Verify the chain: `overlays[i].parent_overlay_id == overlays[i-1].overlay_id` for `i ≥ 1`; first overlay has `parent_overlay_id = null`. Mismatch → `OverlayChainBroken`.
 3. Verify `overlay_id` uniqueness across the chain. Collision → `OverlayIdCollision`.
 4. Apply each overlay's operations in order. Per-op invariants (SIP §6.3.2):
-   - `add_task`: new index strictly greater than current max across original + applied overlays; non-empty contract (≥1 expected_artifact OR ≥1 error-severity typed criterion); dependencies reference live or tombstoned existing indices.
+   - `add_task`: new index strictly greater than current max across original + applied overlays; non-empty contract (≥1 expected_artifact OR ≥1 error-severity typed criterion); **dependencies must reference *active* (non-tombstoned) tasks in the working manifest**. Revision 1 explicitly disallows dependencies on tombstoned tasks — this avoids modeling "is the artifact still there?" runtime semantics in the structural applier. Future-work: if a new task legitimately needs artifacts from a tombstoned task, model that as a separate concept (e.g., `artifact_dependency`) rather than overloading `depends_on`.
    - `remove_task`: target exists and is not already tombstoned; tombstones it (`status: removed_by_overlay`); any dependent that is not also tombstoned in the same overlay is an error.
    - `replace_task`: target exists, has not been tombstoned; replacement preserves `task_index` and `task_type`; replacement criteria are at least as strict (no removed criteria, no severity downgrades).
    - `tighten_acceptance`: append-only; existing criteria preserved unchanged; severity may rise (`warning → error`) but not fall.
@@ -337,7 +418,7 @@ Three PRs. Default-on behind `manifest_overlays_enabled: bool = true` once shipp
 
 Per-operation:
 
-- `add_task`: index monotonicity enforced; empty-contract addition rejected; dependency on a tombstoned-but-artifacts-still-present task allowed; dependency on a non-existent index rejected.
+- `add_task`: index monotonicity enforced; empty-contract addition rejected; **dependency on a tombstoned task rejected (Rev 1 rule)**; dependency on a non-existent index rejected.
 - `remove_task`: tombstones target; live dependent without same-overlay tombstoning rejected.
 - `replace_task`: index/task_type immutability enforced; criteria-loosening rejected; severity-downgrade rejected.
 - `tighten_acceptance`: append-only enforced; severity-raise allowed; severity-downgrade rejected.
@@ -366,7 +447,7 @@ Loosening:
 | File | Change |
 |------|--------|
 | `src/squadops/cycles/manifest_overlay.py` | `validate_overlay_for_run(overlay, working_manifest, run_state) -> list[ValidationError]` (SIP §6.3.4). |
-| `src/squadops/cycles/task_plan.py` | Update `_replace_build_steps_with_manifest` (`task_plan.py:341`) — and a renamed `_load_manifest_for_run` helper if absent — to load original manifest + overlays and apply them: `working = apply_overlays(load_original(run), load_overlays_for_run(run))`. Existing materialization runs against `working`. |
+| `src/squadops/cycles/task_plan.py` | Update `_replace_build_steps_with_manifest` (`task_plan.py:341`) — and a renamed `_load_manifest_for_run` helper if absent — to load original manifest + overlays and apply them: `working = apply_overlays(load_original(run), load_overlays_for_run(run))`. Existing materialization runs against `working`. **Re-expansion timing per RC-20:** the loader is called at executor build-plan expansion boundaries (initial expansion at gate, and after each accepted overlay), never mid-task. Materialized envelopes for newly-active tasks are produced at that boundary. Already-materialized but not-yet-started tasks pick up `tighten_acceptance` updates via re-reading the working manifest at handler entry — handlers MUST resolve criteria from the working manifest at execution time (verified by handler-side test). |
 | `src/squadops/api/routes/cycles/runs.py` | Extend forwarding path that today carries `control_manifest` artifacts (`af306d3`, `075fd9e`) to also carry every `control_manifest_delta` for the run, ordered by `parent_overlay_id` chain. |
 | `src/squadops/cycles/task_plan.py` | When materializing an envelope from an overlay-added task, populate metadata: `overlay_id`, `overlay_operation_index`, `overlay_reason`, `correction_decision_id` (when produced by correction protocol). |
 | Persistence layer (cycle registry / artifact store) | Recognize `artifact_type: "control_manifest_delta"` (extend `ArtifactType` enum). |
@@ -376,9 +457,19 @@ Loosening:
 - `remove_task` targeting a started/completed task → reject (`overlay_removes_started_task`).
 - `replace_task` targeting a started/completed task → reject (`overlay_replaces_started_task`).
 - `reorder` involving any started task → reject in Revision 1 (`overlay_reorders_started_task`).
-- `add_task` whose dependencies include a tombstoned task whose required artifacts are not produced → reject (`overlay_depends_on_tombstoned_without_artifacts`).
+- `add_task` with any tombstoned-task dependency → reject (`overlay_depends_on_tombstoned`). Per the M3.1 Rev 1 rule, tombstoned-task dependencies are disallowed at the structural-applier level too; this validator rule is defense in depth.
 
-`apply_overlays(original, overlays)` must succeed *and* `validate_overlay_for_run` must return empty before an overlay is forwarded to the executor. Either failure → reject, log structured error, surface to operator (no overlay applied to the run state).
+`apply_overlays(original, overlays)` must succeed *and* `validate_overlay_for_run` must return empty before an overlay is forwarded to the executor.
+
+**Loader hard-fail behavior (RC-21).** When `apply_overlays` or `validate_overlay_for_run` rejects the overlay chain, the loader does NOT silently fall back to the original manifest. The loader:
+
+1. Emits a structured control-plane error (event type `overlay_chain_rejected`) with the rejected overlay's `overlay_id`, the rejection reason, and the run id.
+2. Sets run state `overlays_inconsistent: true` (persisted on the cycle registry row).
+3. Marks the run as ineligible for further overlay production — the correction protocol consults this flag and falls back to `patch` or `escalate` for the remainder of the run.
+4. If the rejected overlay's predecessor was successfully applied, execution continues against that earlier valid working manifest (the rejected overlay is discarded; everything before it in the chain stands).
+5. If no valid predecessor exists (rejection is on the very first overlay) AND the rejected overlay was needed for continued execution (a downstream task is blocked on it), the loader **pauses the run pending operator action** rather than continuing on a stale manifest. The operator surface receives the structured error from step 1 with sufficient context to choose: roll forward via re-gate with corrected overlay, abort, or unblock manually.
+
+Silent fallback to the original manifest is explicitly disallowed because the executor would act on a manifest the operator never approved as the working manifest, which violates RC-13's "original is the source of truth, working is what the executor acts on, and the two are linked by an unbroken overlay chain."
 
 **Config keys:**
 
@@ -399,9 +490,11 @@ Unit (`validate_overlay_for_run`):
 Integration (`tests/integration/cycles/test_manifest_overlay_loader.py`, new):
 
 - 0 overlays: working manifest equals original (regression guard for default-on rollout).
-- 1 overlay (`add_task`): loader produces working manifest with the new task; materialized envelope carries provenance metadata fields (assert exact field values, not just presence).
+- 1 overlay (`add_task`): loader produces working manifest with the new task at re-expansion boundary; materialized envelope carries provenance metadata fields (assert exact field values, not just presence).
 - N overlays in chain: ordering is `parent_overlay_id`-chain regardless of `created_at` (RC-13 / SIP §6.3.6).
-- Hash mismatch on first overlay → loader logs and falls back to original manifest; correction may not produce further overlays this run.
+- **Hash mismatch on first overlay → loader emits `overlay_chain_rejected` event, sets `overlays_inconsistent: true`, blocks further overlay production, and (since no valid predecessor exists) pauses the run pending operator action.** Test asserts: structured event emitted with correct fields, run-state flag set, correction protocol reads the flag and falls back to patch/escalate, run marked paused (not silently continued on original manifest).
+- Hash mismatch on third overlay in a chain of three → loader keeps the first two applied, discards the third, marks `overlays_inconsistent: true`, blocks further overlay production. Run continues against the working manifest derived from the first two overlays (no pause if no downstream task is blocked).
+- `tighten_acceptance` overlay accepted between materialization and execution of a not-yet-started task → handler resolves the tightened criteria at execution time from the working manifest (RC-20), not from the snapshot at materialization. Test seeds a tightened-acceptance overlay against task index 5 after task 5's envelope was materialized but before it ran; assert the validator sees the tightened criteria.
 
 ### Phase M3.3 — Correction-Protocol Integration (Restricted Producer)
 
@@ -524,7 +617,23 @@ These are *plan-execution* risks — distinct from SIP §9 design risks.
 - `src/squadops/cycles/build_manifest.py` — extended by M1.1
 - `src/squadops/cycles/task_plan.py:341` — extended by M3.2
 - `src/squadops/capabilities/handlers/cycle_tasks.py:965` — replaced by M1.3 (FC3 → typed-check evaluation)
-- `src/squadops/capabilities/handlers/planning_tasks.py:432` — `_produce_manifest`, source for the verbatim move in M2.1
+- `src/squadops/capabilities/handlers/planning_tasks.py:432` — `_produce_manifest`, source for the `ManifestAuthoringService` extraction in M2.1
 - `src/squadops/api/routes/cycles/runs.py` — overlay forwarding extension in M3.2
 - `adapters/capabilities/aci_executor.py` — sandbox executor used by `command_exit_zero`
 - `docs/TEST_QUALITY_STANDARD.md` — bar every test in this plan must clear
+
+---
+
+## Plan Revision History
+
+- **Plan Rev 2 (2026-04-29):** Incorporated reviewer feedback. Major changes:
+  - **RC-9 rewritten to separate severity from outcome status.** Only `severity=error` AND `status ∈ {failed, error}` blocks. Added `RC-9a` distinguishing evaluator error (`status=error`) from app incompleteness (`status=failed`) — evaluator errors surface with `evaluator-error:<check>` wording, not as missing app behavior. Added `RC-9b` bounding evaluator-error retry to two consecutive failures before escalating, preventing pathological criteria from driving endless self-eval loops.
+  - **RC-10a added — pattern-based command safelist.** `command_check_safelist` now matches full argv shapes (e.g., `python -m py_compile <file>`), not just `argv[0]`. `python -c`, `python -m pip`, `python -m <unlisted>` are explicitly rejected. Out-of-pattern argv produces `status=error` reason `command_not_in_safelist` (treated as evaluator error per RC-9a, not silently skipped). Added `_CHECK_IMPLS` startup assertion.
+  - **RC-12a added — stack context is authoritative, not guessed.** Framework-level checks read stack from resolved profile/manifest metadata via `HandlerContext`, not by sniffing file content. File extension is fine for language-level decisions; framework decisions consult declared context. Stack-context-unset → `skipped` (authoring gap), not `error` (evaluator failure).
+  - **RC-20 added — overlay application timing.** Overlays land at executor build-plan re-expansion boundaries, never mid-task. Already-materialized but not-yet-started tasks pick up `tighten_acceptance` updates by re-reading the working manifest at handler entry.
+  - **RC-21 added — loader hard-fails on inconsistent overlay state.** Replaces silent fallback. Hash/chain/runtime rejection emits structured event, sets `overlays_inconsistent: true`, blocks further overlay production, and (when no valid predecessor exists for a needed overlay) pauses the run pending operator action.
+  - **Single source of truth for check metadata.** New `acceptance_check_spec.py` with `CheckSpec` registry consumed by *both* the parser (for `from_yaml()` validation) and the evaluator framework. No separate `_KNOWN_CHECKS` table that could drift.
+  - **`_produce_manifest` extracted into shared `ManifestAuthoringService`** instead of moved verbatim. Both legacy `assess_readiness` and new `governance.plan_build` paths call the service. M2.2's revision loop is a third caller. Eliminates the verbatim-duplicate drift risk.
+  - **M3.1 Rev 1 disallows tombstoned-task dependencies.** Was: "dependency on tombstoned-but-artifacts-still-present allowed." Now: dependencies must reference active tasks. Avoids modeling runtime artifact persistence in the structural applier; future-work hook for an `artifact_dependency` concept if needed.
+  - **M3 schedule-pressure fallback.** If implementation drags, ship `add_task` + `tighten_acceptance` end-to-end first; defer `remove_task` / `replace_task` / `reorder` from the schema and applier (they stay in the SIP for future operator overlays / `governance.replan`).
+- **Plan Rev 1 (2026-04-29):** Initial plan. Three stages M1/M2/M3 mapping to SIP §8. RC-9..RC-19 runtime contracts.
