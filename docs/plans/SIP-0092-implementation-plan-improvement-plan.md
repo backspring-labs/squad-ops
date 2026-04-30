@@ -4,7 +4,7 @@
 
 SIP-0092 is a SIP-0086 follow-up that closes three deferred gaps in the implementation plan pipeline:
 
-- **M1 — Mechanical Acceptance Criteria.** Today `acceptance_criteria` is `list[str]` informational input only; FC3 in `_validate_output_focused` is `included_in_evidence`. M1 introduces typed checks, severity, a `CheckOutcome` status enum, untrusted-input safety, and validator integration.
+- **M1 — Typed Acceptance Criteria.** Today `acceptance_criteria` is `list[str]` informational input only; FC3 in `_validate_output_focused` is `included_in_evidence`. M1 introduces typed checks, severity, a `CheckOutcome` status enum, untrusted-input safety, and validator integration.
 - **M2 — Separated Plan Authoring.** `_produce_plan` currently runs as a side-effect inside `GovernanceReviewPlanHandler.handle()` (`planning_tasks.py:424`). M2 splits authoring into a new `development.plan_implementation` task and turns `review_plan` into a structured reviewer that emits `plan_review.yaml`.
 - **M3 — Plan Changes.** SIP-0086 §6.1.6 specified plan changes as the immutability-preserving evolution path; nothing was implemented. M3 introduces a plan-change schema, a pure structural applier, an execution-aware validator, conservative producer-side restrictions on autonomous correction (`add_task` + `tighten_acceptance` only), and provenance metadata on change-created tasks.
 
@@ -71,7 +71,7 @@ A handler-side test verifies this: seed a task envelope with criteria set A, per
 
 ---
 
-## Stage M1 — Mechanical Acceptance Criteria
+## Stage M1 — Typed Acceptance Criteria
 
 Three PRs. Independently valuable: even without M2 or M3, M1 makes today's plans far more discriminating during validation.
 
@@ -261,7 +261,7 @@ for criterion in typed:
 
 | Key | Default | Notes |
 |---|---|---|
-| `mechanical_acceptance` | `true` | Master flag. False → typed checks parse but evaluate to `skipped` reason `mechanical_acceptance_disabled`. |
+| `typed_acceptance` | `true` | Master flag. False → typed checks parse but evaluate to `skipped` reason `typed_acceptance_disabled`. |
 | `command_acceptance_checks` | `true` (`false` in `selftest`) | Independent rollback for `command_exit_zero` only. |
 | `command_check_safelist` | built-in safelist | Operator-controlled; plan authors cannot extend it. |
 
@@ -289,7 +289,7 @@ Tests:
 - Plan with typed `endpoint_defined`, stack context unset → `status: skipped` reason `unsupported_stack_or_syntax`; not in `missing_components` regardless of severity.
 - Plan with `command_exit_zero` argv `["python", "-c", "print(1)"]` and severity `error` → `status: error` reason `command_not_in_safelist`; `missing_components` entry is `evaluator-error:command_exit_zero: command_not_in_safelist` (not `acceptance:...`).
 - Same `command_exit_zero` retried twice across self-eval passes → both errors surfaced; on the third evaluation the criterion is escalated and removed from the self-eval prompt feedback list (RC-9b).
-- Plan with `mechanical_acceptance: false` in config → all typed checks evaluate to skipped with `mechanical_acceptance_disabled`.
+- Plan with `typed_acceptance: false` in config → all typed checks evaluate to skipped with `typed_acceptance_disabled`.
 - Plan with `command_acceptance_checks: false` → only `command_exit_zero` checks skip; static checks still evaluate.
 
 Integration (`tests/integration/cycles/test_plan_acceptance.py`, new):
@@ -655,7 +655,7 @@ defaults:
   build_plan: true
   output_validation: true
   max_self_eval_passes: 1
-  mechanical_acceptance: true               # M1 default-on
+  typed_acceptance: true               # M1 default-on
   command_acceptance_checks: true
   split_implementation_planning: false      # M2 awaits gate
   plan_changes_enabled: false               # M3 loader awaits gate
@@ -672,7 +672,7 @@ defaults:
   output_validation: true
   max_self_eval_passes: 2                   # implementation-profile depth
   max_correction_attempts: 3                # enough budget for correction to surface structural-change candidates (RC-9b / diagnostic field)
-  mechanical_acceptance: true
+  typed_acceptance: true
   command_acceptance_checks: true
   split_implementation_planning: false      # M2 stays off until its gate
   plan_changes_enabled: false               # M3 loader stays off
@@ -680,7 +680,7 @@ defaults:
 
 # selftest profile — current rollout (smoke, minimal mechanical surface)
 defaults:
-  mechanical_acceptance: true
+  typed_acceptance: true
   command_acceptance_checks: false
   split_implementation_planning: false
   plan_changes_enabled: false
@@ -699,7 +699,7 @@ defaults:
   build_plan: true
   output_validation: true
   max_self_eval_passes: 2
-  mechanical_acceptance: true
+  typed_acceptance: true
   command_acceptance_checks: true
   split_implementation_planning: true       # post-M2 gate
   max_planning_revisions: 1
@@ -828,6 +828,10 @@ This check applies to **new code introduced under this plan's PRs**. The shipped
 
 ## Plan Revision History
 
+- **Plan Rev 5 (2026-04-30):** "Mechanical Acceptance" → "Typed Acceptance" rename throughout.
+  - Config flag `mechanical_acceptance` → `typed_acceptance`; status reason `mechanical_acceptance_disabled` → `typed_acceptance_disabled`.
+  - Stage M1 heading "Mechanical Acceptance Criteria" → "Typed Acceptance Criteria." Context-section bullet, validator integration text, and Profile Config Examples updated to match.
+  - Pairs with SIP Rev 4 (same change in the SIP). Pre-implementation; zero blast radius. Rationale: "Typed" matches `TypedCheck` and the plan's "typed checks" usage; "Mechanical" reads opaque outside the SIP body's "informational vs mechanical" pairing.
 - **Plan Rev 4 (2026-04-30):** Targeted tightening pre-implementation. Major changes:
   - **Resolved `decision: overlay` → `decision: plan_change`** everywhere (item 1). The previously-flagged open decision is closed; `overlay` is no longer a supported value anywhere in this plan, the SIP, prompts, handler branches, tests, logs, event names, artifacts, or examples. The SIP §6.1.6 quote was paraphrased to use post-rename terminology.
   - **Narrowed M3 Rev 1 operation set to `add_task` + `tighten_acceptance` only** (item 9). `remove_task`, `replace_task`, and `reorder` are deferred from code entirely (no dataclass, no applier branch, no validator branch, no tests). They remain in the SIP as future-work design for operator plan changes and `governance.replan`. The YAML parser rejects deferred operations at parse time with `unsupported_operation_in_rev_1`. This is a deliberate scope cut, not a fallback.

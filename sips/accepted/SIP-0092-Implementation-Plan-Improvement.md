@@ -1,5 +1,5 @@
 ---
-title: Implementation Plan Improvement — Mechanical Acceptance, Separated Authoring, and
+title: Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and
   Plan Changes
 status: accepted
 author: SquadOps Architecture
@@ -7,7 +7,7 @@ created_at: '2026-04-27T00:00:00Z'
 sip_number: 92
 updated_at: '2026-04-29T23:39:19.875323Z'
 ---
-# SIP-0092: Implementation Plan Improvement — Mechanical Acceptance, Separated Authoring, and Plan Changes
+# SIP-0092: Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes
 
 **Status:** Accepted
 **Authors:** SquadOps Architecture
@@ -29,7 +29,7 @@ Three follow-up gaps now bound how reliably a squad can build a non-trivial app 
 
 This SIP introduces three independently shippable capabilities that close those gaps:
 
-- **Capability M1 — Mechanical Acceptance Criteria.** Add a typed acceptance check schema embedded in plan tasks; evaluate them at handler validation time; surface results as first-class check entries in `ValidationResult.checks` alongside the existing FC1/FC2 checks. Checks carry severity (`error` / `warning` / `info`) and produce a typed `CheckOutcome` (`passed` / `failed` / `skipped` / `error`).
+- **Capability M1 — Typed Acceptance Criteria.** Add a typed acceptance check schema embedded in plan tasks; evaluate them at handler validation time; surface results as first-class check entries in `ValidationResult.checks` alongside the existing FC1/FC2 checks. Checks carry severity (`error` / `warning` / `info`) and produce a typed `CheckOutcome` (`passed` / `failed` / `skipped` / `error`).
 - **Capability M2 — Separated Plan Authoring.** Introduce a dedicated `development.plan_implementation` planning task that authors the plan. `governance.review_plan` reviews and signs off, restoring the proposer/reviewer separation. Reviewer concerns are produced as a typed `plan_review.yaml` artifact that can be fed mechanically into a bounded revision loop.
 - **Capability M3 — Plan Changes.** Define a `plan_change.yaml` change schema and a *pure structural applier* paired with an *execution-aware validator*. Wire the correction protocol to emit plan changes restricted to `add_task` and `tighten_acceptance` operations only — the broader operation set (`remove_task` / `replace_task` / `reorder`) is supported in the schema and applier but reserved for operator action or a future `governance.replan` task, not autonomous correction.
 
@@ -192,7 +192,7 @@ This SIP does not redefine SIP-0086's plan schema, executor materialization, det
 
 ## 6. Design
 
-### 6.1 Capability M1 — Mechanical Acceptance Criteria
+### 6.1 Capability M1 — Typed Acceptance Criteria
 
 #### 6.1.1 Schema: flat YAML, normalized internal form
 
@@ -275,7 +275,7 @@ Each typed check carries a `severity` field with values `error` (default), `warn
 | `warning` | Failed check is reported in evidence but does not fail the task or block progress. |
 | `info` | Informational; result captured in evidence for tuning, never fails or warns. |
 
-This gives a safe rollout path for new checks without globally disabling `mechanical_acceptance`.
+This gives a safe rollout path for new checks without globally disabling `typed_acceptance`.
 
 #### 6.1.3 Check vocabulary (Revision 1)
 
@@ -306,7 +306,7 @@ Status values:
 |---|---|
 | `passed` | Check evaluated and the assertion held. |
 | `failed` | Check evaluated and the assertion did not hold. |
-| `skipped` | Check is well-formed but not evaluable in this context — e.g., target file missing, unsupported stack/syntax (`unsupported_stack_or_syntax` reason), command type disabled by config (`command_acceptance_checks: false`), or `mechanical_acceptance: false`. Reported as evidence; not a failure. |
+| `skipped` | Check is well-formed but not evaluable in this context — e.g., target file missing, unsupported stack/syntax (`unsupported_stack_or_syntax` reason), command type disabled by config (`command_acceptance_checks: false`), or `typed_acceptance: false`. Reported as evidence; not a failure. |
 | `error` | Evaluator itself raised an unexpected exception. Treated as a failure for `error`-severity checks; logged with stack trace. |
 
 `ValidationResult` consumers that expect a legacy `passed: bool` derive it from `status == "passed"` (with severity weighting — `warning`/`info` failures are not `passed=False`).
@@ -649,7 +649,7 @@ Add to `_APPLIED_DEFAULTS_EXTRA_KEYS`:
 
 | Key | Type | Default | Capability |
 |-----|------|---------|------|
-| `mechanical_acceptance` | `bool` | `true` | M1 — evaluate typed checks |
+| `typed_acceptance` | `bool` | `true` | M1 — evaluate typed checks |
 | `command_acceptance_checks` | `bool` | `true` (false in `selftest`) | M1 — enable `command_exit_zero` |
 | `command_check_safelist` | `list[str]` | (built-in safelist, see §6.1.5) | M1 |
 | `split_implementation_planning` | `bool` | `false` | M2 — enable `development.plan_implementation` |
@@ -670,7 +670,7 @@ defaults:
   build_plan: true
   output_validation: true
   max_self_eval_passes: 1
-  mechanical_acceptance: true               # M1 default-on
+  typed_acceptance: true               # M1 default-on
   command_acceptance_checks: true
   split_implementation_planning: false      # M2 awaits gate
   plan_changes_enabled: false               # M3 loader awaits gate
@@ -685,7 +685,7 @@ defaults:
   output_validation: true
   max_self_eval_passes: 2                   # implementation-profile depth — exercises typed checks meaningfully
   max_correction_attempts: 3                # gives correction enough budget to surface structural-change candidates (RC-9b / diagnostic field)
-  mechanical_acceptance: true               # M1 active
+  typed_acceptance: true               # M1 active
   command_acceptance_checks: true
   split_implementation_planning: false      # M2 stays off until its gate
   plan_changes_enabled: false               # M3 loader stays off
@@ -693,7 +693,7 @@ defaults:
 
 # selftest profile (smoke — minimal mechanical surface, M2/M3 off)
 defaults:
-  mechanical_acceptance: true
+  typed_acceptance: true
   command_acceptance_checks: false          # static checks only
   split_implementation_planning: false
   plan_changes_enabled: false
@@ -712,7 +712,7 @@ defaults:
   build_plan: true
   output_validation: true
   max_self_eval_passes: 2
-  mechanical_acceptance: true
+  typed_acceptance: true
   command_acceptance_checks: true
   split_implementation_planning: true       # post-M2 gate
   max_planning_revisions: 1
@@ -756,7 +756,7 @@ Long-cycle group_run (4-hour budget) running `implementation` profile:
 
 Three independently shippable stages mapped to the three capabilities. Each stage delivers value alone.
 
-### Stage M1 — Mechanical Acceptance (3 PRs)
+### Stage M1 — Typed Acceptance (3 PRs)
 
 **PR 1.1:** Schema + parser + authoring-time validation
 - Extend `PlanTask.acceptance_criteria` to accept typed dicts via flat YAML.
@@ -834,7 +834,7 @@ Every test must catch a specific bug per `docs/TEST_QUALITY_STANDARD.md`. No tau
 
 | Risk | Capability | Mitigation |
 |---|---|---|
-| Typed checks too strict; valid output flagged | M1 | Severity field lets new checks ship at `warning`. `mechanical_acceptance: false` global escape hatch. Failed-check details in evidence support fast tuning. |
+| Typed checks too strict; valid output flagged | M1 | Severity field lets new checks ship at `warning`. `typed_acceptance: false` global escape hatch. Failed-check details in evidence support fast tuning. |
 | Authoring prompt drowns in check syntax docs | M1 | Examples-first prompting (one concrete typed criterion per check type) plus a single-paragraph reference; mixed prose+typed lists explicitly allowed. |
 | `command_exit_zero` runs untrusted code | M1 | Hard safelist; commands run in ACI-executor sandbox; per-check timeout; `command_acceptance_checks: false` disable flag; future smoke pack provides full container isolation. |
 | Path/glob/regex injection from LLM-authored plans | M1 | Workspace chroot, argv-only, glob match cap, regex timeout, symlink rejection (§6.1.5). Plan is treated as untrusted input by design. |
@@ -868,9 +868,9 @@ Simpler API but loses the audit trail and the operator-readable "what changed si
 
 Re-gate is heavy: it implies operator attention every time the squad needs to add a subtask. For autonomous long cycles (the explicit motivation in the cycle-length thread), this defeats the purpose. M3's bounded plan changes let the squad self-correct within governed limits.
 
-### 10.5 Defer mechanical acceptance until full sandbox execution lands
+### 10.5 Defer typed acceptance until full sandbox execution lands
 
-Sandbox execution (run-the-app) is the smoke pack's job and is significant work. Mechanical acceptance via static analysis + safelisted commands is small, ships now, and complements the smoke pack rather than competing with it. Smoke pack later validates "the app runs"; M1 validates "the code says what the plan said it should say." Both useful; not redundant.
+Sandbox execution (run-the-app) is the smoke pack's job and is significant work. Typed acceptance via static analysis + safelisted commands is small, ships now, and complements the smoke pack rather than competing with it. Smoke pack later validates "the app runs"; M1 validates "the code says what the plan said it should say." Both useful; not redundant.
 
 ### 10.6 Hash raw YAML rather than canonical serialization
 
@@ -892,6 +892,11 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
 
 ## 12. Revision History
 
+- **Rev 4 (2026-04-30):** "Mechanical Acceptance" → "Typed Acceptance" rename throughout.
+  - Title: "Implementation Plan Improvement — **Mechanical Acceptance**, Separated Authoring, and Plan Changes" → "Implementation Plan Improvement — **Typed Acceptance**, Separated Authoring, and Plan Changes."
+  - Config flag: `mechanical_acceptance` → `typed_acceptance`. Status reason `mechanical_acceptance_disabled` → `typed_acceptance_disabled`.
+  - §6.1 heading "Capability M1 — Mechanical Acceptance Criteria" → "Capability M1 — Typed Acceptance Criteria." Stage heading and §10.5 alternative renamed similarly. Body prose updated.
+  - **Rationale:** "Mechanical" was paired with "informational" inside the SIP body to make its meaning crisp, but in headings, titles, and config keys it reads opaque ("mechanical" can be misread as "rote" or "industrial"). "Typed" matches the dataclass `TypedCheck`, the plan-doc usage of "typed checks," and the user-facing language we already use elsewhere. Pre-implementation, no shipped code touches the flag, so the rename has zero blast radius. The SIP-0086 future-work item this SIP closes is still named "Mechanical acceptance criteria evaluation" in SIP-0086 itself; that historical reference is preserved verbatim in §References with a note that this SIP renames it.
 - **Rev 3 (2026-04-30):** Terminology + scope tightening pre-implementation. Major changes:
   - **Title:** "Build Manifest Maturation — Mechanical Acceptance, Separated Authoring, and Delta Overlays" → "Implementation Plan Improvement — Mechanical Acceptance, Separated Authoring, and Plan Changes." Build manifest → implementation plan, delta overlay → plan change throughout. Three-layer alignment: module `cycles/implementation_plan.py`, class `ImplementationPlan`, artifact_type `control_implementation_plan`.
   - **Resolved correction-protocol decision name:** `decision: overlay` → `decision: plan_change` everywhere. The deprecated value is not supported.
@@ -925,7 +930,7 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
 
 ## 13. References
 
-- **SIP-0086** — Build Convergence Loop (parent SIP; this SIP closes its §10 "Mechanical acceptance criteria evaluation" and "Separate plan authoring from governance review" future-work items)
+- **SIP-0086** — Build Convergence Loop (parent SIP; this SIP closes its §10 "Mechanical acceptance criteria evaluation" — referenced here as "typed acceptance" — and "Separate plan authoring from governance review" future-work items)
 - **SIP-0079** — Implementation Run Contract (correction protocol the change producer integrates with)
 - **SIP-0078** — Planning Workload Protocol (planning task step list extended by M2)
 - **SIP-0072** — Stack-Aware Development Capabilities (future complement to typed-check authoring defaults)
