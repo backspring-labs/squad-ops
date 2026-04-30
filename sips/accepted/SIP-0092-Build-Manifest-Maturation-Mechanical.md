@@ -1,6 +1,15 @@
-# SIP-XXXX: Build Manifest Maturation — Mechanical Acceptance, Separated Authoring, and Delta Overlays
+---
+title: Build Manifest Maturation — Mechanical Acceptance, Separated Authoring, and
+  Delta Overlays
+status: accepted
+author: SquadOps Architecture
+created_at: '2026-04-27T00:00:00Z'
+sip_number: 92
+updated_at: '2026-04-29T23:39:19.875323Z'
+---
+# SIP-0092: Build Manifest Maturation — Mechanical Acceptance, Separated Authoring, and Delta Overlays
 
-**Status:** Proposed
+**Status:** Accepted
 **Authors:** SquadOps Architecture
 **Created:** 2026-04-27
 **Revision:** 2
