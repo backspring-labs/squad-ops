@@ -29,7 +29,13 @@ These invariants govern implementation across all phases. Numbered to extend SIP
 
 **RC-9a (Evaluator error ≠ app incompleteness):** `status=error` means the evaluator could not safely or correctly evaluate the criterion (path-escape, regex timeout, command timeout, command-must-be-argv, parser exception). `status=failed` means the generated output did not meet the criterion. When `severity=error` + `status=error` blocks, the surfaced reason in `missing_components` and the self-eval prompt MUST identify the entry as an *evaluator/check failure*, not as missing app behavior — wording like `evaluator-error: <check>: <reason>` rather than `acceptance: <description>`. Repeated evaluator errors on the same criterion across self-eval passes escalate to correction (or operator) instead of looping; see RC-9b.
 
-**RC-9b (Bounded evaluator-error retry):** A criterion that produces `status=error` on two consecutive evaluations within the same run is taken out of the self-eval feedback loop for that run: it remains in evidence as a permanent error, but it does not contribute to the self-eval prompt's gap list past the second failure. The structured error is escalated via the same surface that handles correction-protocol escalation (`max_correction_attempts` exhaustion). This prevents pathological criteria from driving endless self-eval loops.
+**RC-9b (Bounded evaluator-error retry, with explicit escalation contract):** A criterion that produces `status=error` on two consecutive evaluations within the same run hits the retry limit. Past the limit:
+
+1. The criterion is **removed from the self-eval feedback list for that criterion** — the self-eval prompt for the same task no longer surfaces it as a gap to fix. (Other criteria continue to drive self-eval normally.) The criterion remains in `ValidationResult.checks` as evidence of permanent error.
+2. A **structured validation-escalation event/artifact** is emitted (event type `evaluator_error_persisted`) carrying the criterion fingerprint, the last evaluator-error reason, the task ID, and the count of consecutive errors. This lands on the same escalation surface that handles `max_correction_attempts` exhaustion, so operators see persistent evaluator failures alongside correction exhaustion.
+3. The **correction protocol may inspect the escalation event** as part of its decision-making, but **must not treat the evaluator error as missing application behavior**. Specifically: `evaluator-error:<check>` entries in the escalation context must not appear in correction prompts as `acceptance:<description>` strings. The wording boundary from RC-9a is load-bearing here — bad checks, unsafe paths, regex timeouts, or unsupported commands cannot drive `development.repair` loops.
+
+This prevents pathological criteria from driving endless self-eval loops AND from hijacking correction into repair work it shouldn't be doing.
 
 **RC-10 (Plan is untrusted input):** Every value in a typed check is treated as LLM-authored input. Paths are workspace-chrooted; commands are pattern-safelisted argv lists (RC-10a); regex and globs are bounded; symlinks pointing outside the workspace are rejected. Evaluator code never invokes a shell.
 
@@ -47,15 +53,19 @@ These invariants govern implementation across all phases. Numbered to extend SIP
 
 **RC-15 (Completed-work immutability):** Plan changes affect only the remaining execution plan. They never replace, remove, reorder, or otherwise rewrite the semantic meaning of started or completed task checkpoints. Corrections to completed work are represented as new tasks (`add_task`) — never as mutations of prior ones. This is enforced by the execution-aware validator.
 
-**RC-16 (Conservative autonomous producer):** The autonomous correction protocol may produce plan changes containing only `add_task` and `tighten_acceptance` operations. The schema and the structural applier support all five operation types; producer-side restriction is enforced in the execution-aware validator. Other operations require operator action or a future `governance.replan`.
+**RC-16 (Conservative autonomous producer):** The autonomous correction protocol may produce plan changes containing only `add_task` and `tighten_acceptance` operations. **In Rev 1 these are the only operations the schema and applier support at all** (per SIP §6.3.2 Rev 3 tightening) — the YAML parser rejects `remove_task`, `replace_task`, and `reorder` at parse time. Those operations remain in the SIP as the future-work design for operator-driven plan changes and `governance.replan`, but they are not present in Rev 1 code.
 
 **RC-17 (Task index ≠ execution order after plan changes):** `task_index` is identity. Execution order is determined by `after_index` and `depends_on` in the working plan. Tooling and operator UI must not assume monotone-index ⇒ monotone-execution.
 
 **RC-18 (Bounded plan change count):** Plan changes per run are bounded by `max_plan_changes` (default 5). After exhaustion, the correction protocol may not produce further plan changes — only patch or escalate. This is the runaway guardrail.
 
-**RC-19 (Backward compatibility per stage):** Each stage preserves prior behavior under its disable flag. M1 off → criteria stay informational. M2 off (`split_implementation_planning: false`) → plan authoring stays inside `review_plan`. M3 off (`plan_changes_enabled: false`) → working plan equals original; correction stays in patch-only mode.
+**RC-19 (Backward compatibility per stage):** Each stage preserves prior behavior under its disable flags. M1 off → criteria stay informational. M2 off (`split_implementation_planning: false`) → plan authoring stays inside `review_plan`. M3 loader off (`plan_changes_enabled: false`) → working plan equals original; correction stays in patch-only mode regardless of `correction_plan_changes_enabled`. M3 producer off (`correction_plan_changes_enabled: false`) → correction protocol restricted to `patch` and `escalate` even if loader is on. Misconfiguration (`correction_plan_changes_enabled: true` while `plan_changes_enabled: false`) is rejected at startup as inconsistent — the producer would emit changes the executor would never load.
 
-**RC-20 (Plan change application timing — re-expansion at the next boundary):** Plan changes land between executor build-plan expansion passes, not mid-task. The chosen mechanism: after a correction-protocol plan change is persisted *and* validated by both the structural applier and `validate_plan_change_for_run`, the executor performs a fresh build-plan expansion for the run — `working = apply_plan_changes(load_original_plan(run), load_plan_changes_for_run(run))` — and materializes envelopes for any newly active tasks (added by `add_task` or unmasked by tightened acceptance) at that boundary. In-flight task envelopes are not interrupted; already-completed checkpoints are not re-materialized. Tasks already materialized but not yet started inherit any `tighten_acceptance` updates by re-reading the working plan at handler entry — handlers MUST resolve criteria from the working plan at execution time, never from a snapshot taken at materialization time.
+**RC-20 (Plan change application timing + WorkingPlan as authoritative source at handler entry):** Plan changes land between executor build-plan expansion passes, not mid-task. The chosen mechanism: after a correction-protocol plan change is persisted *and* validated by both the structural applier and `validate_plan_change_for_run`, the executor performs a fresh build-plan expansion for the run — `working = apply_plan_changes(load_original_plan(run), load_plan_changes_for_run(run))` — and materializes envelopes for any newly active tasks (added by `add_task` or unmasked by tightened acceptance) at that boundary. In-flight task envelopes are not interrupted; already-completed checkpoints are not re-materialized.
+
+**Envelope semantics when `plan_changes_enabled=true` (load-bearing rule):** Task envelopes are **identity carriers only**. They may carry `task_index`, `task_type`, role, focus, `expected_artifacts`, and metadata, but **acceptance criteria used for validation MUST be loaded from the current `WorkingPlan` by `task_index` at handler entry**, not from the envelope payload. If envelopes still contain acceptance criteria for legacy reasons, those criteria are non-authoritative once `plan_changes_enabled=true` and the handler must ignore them. This is what lets `tighten_acceptance` actually take effect on already-materialized but not-yet-started tasks: the envelope was materialized with the pre-tighten criteria, but the handler reads the post-tighten criteria from `WorkingPlan` when it runs.
+
+A handler-side test verifies this: seed a task envelope with criteria set A, persist a `tighten_acceptance` plan change adding criterion B, then run the handler — it must validate against criteria A ∪ {B} sourced from `WorkingPlan`, not just criteria A from the envelope.
 
 **RC-21 (Loader hard-fails on inconsistent plan-change state):** If plan changes exist for a run and any of `apply_plan_changes(original, plan_changes)` (hash mismatch, broken chain, structural invariant violation) or `validate_plan_change_for_run` (runtime invariant violation) rejects the chain, the loader does NOT silently fall back to the original plan. Instead it: (a) emits a structured control-plane error with the rejected plan change's `change_id` and reason; (b) marks the run state `plan_changes_inconsistent: true`; (c) prevents further plan-change production for the run; (d) escalates if the rejected plan change was needed for continued execution (e.g., the failed task's correction was contingent on the plan change) — pausing the run pending operator action. Silent fallback is explicitly disallowed because it makes the executor act on a plan the operator never approved as the working plan.
 
@@ -332,6 +342,7 @@ Two PRs. Default-off behind `split_implementation_planning: bool = false`. Defau
 | `src/squadops/cycles/plan_review.py` (new) | `PlanReview` frozen dataclass + `from_yaml()` parser. Enforces the rule: `review_status: revision_requested` requires at least one structured concern with `target_task_index` or `prd_requirement` set. Pure prose revision requests are normalized to `approved_with_concerns` (the SIP §6.2.2 rule). |
 | `src/squadops/capabilities/handlers/planning_tasks.py` | New `DevelopmentPlanImplementationReviseHandler`. Re-runs plan authoring with the structured concerns appended to the prompt. Triggered only when `review_status: revision_requested` and revision count < `max_planning_revisions`. |
 | `src/squadops/cycles/task_plan.py` | Conditional `development.plan_implementation_revise` step inserted after `review_plan` when revision is requested and the revision budget remains. After exhaustion, planning proceeds with the latest plan; unresolved concerns are documented in `operator_notes`. |
+| `governance.correction_decision` handler | Add the **non-operative `structural_plan_change_candidate` diagnostic field** to the correction-decision log artifact. Allowed values: `none | add_task | tighten_acceptance | other`. The correction LLM's prompt is extended to elicit this field even though M3.3's producer is not yet enabled. This is the diagnostic signal the M2 → M3 gate measures (see Milestone Gates section). The field is non-operative — it does not execute a plan change and does not affect the actual `decision`. |
 
 **`PlanReview` schema (matches SIP §6.2.2):**
 
@@ -376,9 +387,14 @@ Each `*Concern` is a frozen dataclass with the fields listed in SIP §6.2.2.
 
 **Conditional on the M2 → M3 gate.** Do not start this stage until the gate evaluation doc (`docs/plans/SIP-0092-gate-M2-evaluation.md`) is committed showing the criteria are met. See the Milestone Gates section below.
 
-Three PRs. Default-on behind `plan_changes_enabled: bool = true` once shipped (zero plan changes produced ⇒ working plan equals original ⇒ no observable change vs today).
+Three PRs. Default behavior split across two flags (per Rev 3 tightening):
 
-**Schedule-pressure fallback (Rev 1 narrowing):** the autonomous correction producer (RC-16) only needs `add_task` and `tighten_acceptance` end-to-end. If implementation drags on M3, ship those two operations first across all three phases (schema + applier + validator + producer) and *defer* `remove_task`, `replace_task`, and `reorder` from the schema and applier to a follow-up PR. Those operations stay in the SIP design as the contract for future operator plan changes and `governance.replan`, but the structural applier and tests for them can land later without blocking the autonomous correction loop. The narrowing decision should be explicit (call it out in standup / PR description) rather than silently descoping. Indicators that suggest taking this off-ramp: M3.1 PR open more than two weeks, schema/applier review surfacing significant complexity in the unused-by-correction operations, or a higher-priority hardening item (smoke pack — #2) blocked on M1+M3 minimal landing.
+- `plan_changes_enabled` (loader/applier) — when true, the executor loads any persisted plan-change artifacts and applies them at re-expansion boundaries. Zero plan changes produced ⇒ working plan equals original ⇒ no observable change vs today.
+- `correction_plan_changes_enabled` (autonomous producer) — when true, the correction protocol may emit plan changes. When false, correction is restricted to `patch` and `escalate` regardless of loader state.
+
+This split lets us ship and test loader behavior (M3.2) before authorizing the autonomous correction protocol to produce plan changes (M3.3). Default rollout has both off; each is enabled per-profile after its phase ships and the milestone gate confirms readiness.
+
+**Rev 1 operation scope (per SIP §6.3.2 Rev 3 tightening):** Rev 1 implements **only `add_task` and `tighten_acceptance`** in the schema, applier, validator, and producer. The other three operations (`remove_task`, `replace_task`, `reorder`) are **deferred from code entirely** — they remain in the SIP as the future-work design for operator plan changes and `governance.replan`, but they have no dataclass, no applier branch, and no tests in this plan's PRs. A plan change YAML containing a deferred operation fails parsing. This narrowing is a deliberate scope cut, not a fallback.
 
 ### Phase M3.1 — Plan Change Schema and Pure Structural Applier
 
@@ -389,15 +405,20 @@ Three PRs. Default-on behind `plan_changes_enabled: bool = true` once shipped (z
 | `src/squadops/cycles/plan_change.py` | `PlanChange` dataclass + sub-types per operation; `apply_plan_changes()` pure function; canonical-serialization hashing helper. |
 | `tests/unit/cycles/test_plan_change.py` | Per-operation applier tests, identity invariants, hash chain checks. |
 
-**Operation types (SIP §6.3.2):**
+**Operation types — Rev 1 scope (per SIP §6.3.2 Rev 3 tightening):**
 
-| Op | Dataclass |
-|---|---|
-| `add_task` | `AddTaskOp(after_index: int, task: PlanTask)` |
-| `remove_task` | `RemoveTaskOp(task_index: int)` |
-| `replace_task` | `ReplaceTaskOp(task_index: int, replacement: PlanTask)` |
-| `tighten_acceptance` | `TightenAcceptanceOp(task_index: int, add_criteria: list[str \| TypedCheck])` |
-| `reorder` | `ReorderOp(new_order: list[int])` |
+| Op | Dataclass | Status |
+|---|---|---|
+| `add_task` | `AddTaskOp(after_index: int, task: PlanTask)` | **Rev 1** |
+| `tighten_acceptance` | `TightenAcceptanceOp(task_index: int, add_criteria: list[str \| TypedCheck])` | **Rev 1** |
+
+Deferred to future work (no dataclass, no applier branch, no tests in Rev 1):
+
+- `remove_task` — operator/`governance.replan` only
+- `replace_task` — operator/`governance.replan` only
+- `reorder` — operator/`governance.replan` only
+
+The YAML parser must reject plan-change documents that contain any deferred operation with a clear error message (`unsupported_operation_in_rev_1`).
 
 **Canonical hashing (SIP §6.3.6):** dedicated helper `canonical_plan_hash(plan: ImplementationPlan) -> str`. Sorted keys, normalized whitespace, deterministic list ordering, SHA-256. Must round-trip stable across YAML re-saves; the round-trip test from M1.1 is the regression anchor.
 
@@ -406,27 +427,28 @@ Three PRs. Default-on behind `plan_changes_enabled: bool = true` once shipped (z
 1. Verify `plan_changes[0].parent_plan_hash == canonical_plan_hash(original)`. Mismatch → `PlanChangeHashMismatch`.
 2. Verify the chain: `plan_changes[i].parent_change_id == plan_changes[i-1].change_id` for `i ≥ 1`; first plan change has `parent_change_id = null`. Mismatch → `PlanChangeChainBroken`.
 3. Verify `change_id` uniqueness across the chain. Collision → `PlanChangeIdCollision`.
-4. Apply each plan change's operations in order. Per-op invariants (SIP §6.3.2):
-   - `add_task`: new index strictly greater than current max across original + applied plan changes; non-empty contract (≥1 expected_artifact OR ≥1 error-severity typed criterion); **dependencies must reference *active* (non-tombstoned) tasks in the working plan**. Revision 1 explicitly disallows dependencies on tombstoned tasks — this avoids modeling "is the artifact still there?" runtime semantics in the structural applier. Future-work: if a new task legitimately needs artifacts from a tombstoned task, model that as a separate concept (e.g., `artifact_dependency`) rather than overloading `depends_on`.
-   - `remove_task`: target exists and is not already tombstoned; tombstones it (`status: removed_by_change`); any dependent that is not also tombstoned in the same plan change is an error.
-   - `replace_task`: target exists, has not been tombstoned; replacement preserves `task_index` and `task_type`; replacement criteria are at least as strict (no removed criteria, no severity downgrades).
+4. Apply each plan change's operations in order. Per-op invariants for Rev 1:
+   - `add_task`: new index strictly greater than current max across original + applied plan changes; non-empty contract (≥1 expected_artifact OR ≥1 error-severity typed criterion); dependencies must reference existing (active) tasks in the working plan.
    - `tighten_acceptance`: append-only; existing criteria preserved unchanged; severity may rise (`warning → error`) but not fall.
-   - `reorder`: target indices form a permutation of not-yet-tombstoned tasks; `depends_on` constraints satisfied by the new order.
-5. Returns a `WorkingPlan` with the original task list plus tombstones plus added tasks, and a derived execution order honoring `after_index` and `depends_on`.
+   - Any other operation type → reject at parse time (`unsupported_operation_in_rev_1`) before reaching the applier.
+5. Returns a `WorkingPlan` with the original task list plus added tasks, and a derived execution order honoring `after_index` and `depends_on`.
 
-**`WorkingPlan`:** identical task identity (indices, deterministic IDs) for original and pass-through tasks; tombstoned tasks remain queryable by index/ID; added tasks carry their (change-assigned) indices.
+(Rev 1 scope means the applier never sees `remove_task`, `replace_task`, or `reorder` — those are rejected during parsing. The `WorkingPlan` therefore has no tombstoning logic in Rev 1; tombstoning is part of the future-work `remove_task` / `replace_task` design but does not ship now.)
 
-**Loosening explicitly unsupported.** No operation type permits removing or weakening criteria. Severity downgrade in `replace_task` or `tighten_acceptance` raises `PlanChangeLoosensAcceptance`.
+**`WorkingPlan`:** identical task identity (indices, deterministic IDs) for original tasks; added tasks carry their (change-assigned) indices.
+
+**Loosening explicitly unsupported.** Severity downgrade in `tighten_acceptance` raises `PlanChangeLoosensAcceptance`. Loosening will not be supported in any future operation either.
 
 **Tests:**
 
-Per-operation:
+Per-operation (Rev 1 scope):
 
-- `add_task`: index monotonicity enforced; empty-contract addition rejected; **dependency on a tombstoned task rejected (Rev 1 rule)**; dependency on a non-existent index rejected.
-- `remove_task`: tombstones target; live dependent without same-plan-change tombstoning rejected.
-- `replace_task`: index/task_type immutability enforced; criteria-loosening rejected; severity-downgrade rejected.
+- `add_task`: index monotonicity enforced; empty-contract addition rejected; dependency on a non-existent index rejected.
 - `tighten_acceptance`: append-only enforced; severity-raise allowed; severity-downgrade rejected.
-- `reorder`: dependency-violating order rejected.
+
+Parse-time rejection of deferred ops:
+
+- A plan-change YAML containing `op: remove_task`, `op: replace_task`, or `op: reorder` raises `UnsupportedOperationInRev1` at parse time, before the applier runs. Test parametrized over the three op names.
 
 Chain and hash:
 
@@ -456,12 +478,12 @@ Loosening:
 | `src/squadops/cycles/task_plan.py` | When materializing an envelope from an change-added task, populate metadata: `change_id`, `change_operation_index`, `change_reason`, `correction_decision_id` (when produced by correction protocol). |
 | Persistence layer (cycle registry / artifact store) | Recognize `artifact_type: "control_implementation_plan_change"` (extend `ArtifactType` enum). |
 
-**Execution-aware validator rejection rules (SIP §6.3.4):**
+**Execution-aware validator rejection rules (Rev 1 scope):**
 
-- `remove_task` targeting a started/completed task → reject (`plan_change_removes_started_task`).
-- `replace_task` targeting a started/completed task → reject (`plan_change_replaces_started_task`).
-- `reorder` involving any started task → reject in Revision 1 (`plan_change_reorders_started_task`).
-- `add_task` with any tombstoned-task dependency → reject (`plan_change_depends_on_tombstoned`). Per the M3.1 Rev 1 rule, tombstoned-task dependencies are disallowed at the structural-applier level too; this validator rule is defense in depth.
+- `tighten_acceptance` targeting a started/completed task → reject (`plan_change_tightens_started_task`). Even though the operation is append-only on criteria, mutating acceptance for in-flight or completed work would change what "passing" means for an artifact that already exists. Tightening is allowed only on not-yet-started tasks.
+- `add_task` whose `depends_on` references a non-existent index → reject (`plan_change_depends_on_unknown`).
+
+The validator does not need rules for `remove_task` / `replace_task` / `reorder` because those operations cannot reach this code path in Rev 1 — they're rejected at parse time (M3.1). Reservations for those rejection rules will land alongside the future operations in their own follow-up.
 
 `apply_plan_changes(original, plan_changes)` must succeed *and* `validate_plan_change_for_run` must return empty before a plan change is forwarded to the executor.
 
@@ -506,18 +528,18 @@ Integration (`tests/integration/cycles/test_plan_change_loader.py`, new):
 
 | File | Change |
 |------|--------|
-| `governance.correction_decision` handler (location TBD per current handler layout) | Add `decision: overlay` branch. Producer constructs `plan_change.yaml` containing only `add_task` and/or `tighten_acceptance` operations (RC-16). Any other operation produced here is a programming error and is rejected by `validate_plan_change_for_run` regardless. |
+| `governance.correction_decision` handler (location TBD per current handler layout) | Add `decision: plan_change` branch. Producer constructs `plan_change.yaml` containing only `add_task` and/or `tighten_acceptance` operations (RC-16). Any other operation produced here is a programming error and is rejected by `validate_plan_change_for_run` regardless. |
 | Same handler | Bound by `max_plan_changes`; on exhaustion, falls back to `decision: patch` or `decision: escalate`. |
 | Same handler | Populates `correction_decision_id` linking the plan change back to the correction event. |
 
-**Producer construction rule:** the LLM is prompted to choose between `patch`, `overlay (add_task)`, `overlay (tighten_acceptance)`, and `escalate`. The handler enforces the operation restriction in code; even if the LLM emits a different op, it is dropped before the plan change is persisted, with a structured warning.
+**Producer construction rule:** the LLM is prompted to choose between `patch`, `plan_change (add_task)`, `plan_change (tighten_acceptance)`, and `escalate`. The handler enforces the operation restriction in code; even if the LLM emits a different op, it is dropped before the plan change is persisted, with a structured warning.
 
 **Tests:**
 
 Unit (correction handler):
 
-- Seeded `SEMANTIC_FAILURE` warranting an additional task → handler emits `decision: overlay` with one `add_task`; plan change parses; `correction_decision_id` populated.
-- Seeded failure warranting tightened criteria → handler emits `decision: overlay` with one `tighten_acceptance`.
+- Seeded `SEMANTIC_FAILURE` warranting an additional task → handler emits `decision: plan_change` with one `add_task`; plan change parses; `correction_decision_id` populated.
+- Seeded failure warranting tightened criteria → handler emits `decision: plan_change` with one `tighten_acceptance`.
 - Seeded failure where LLM proposes `remove_task` → handler drops the op, emits structured warning, falls back to `decision: patch`. (Test asserts both the warning emission and the fallback decision.)
 - `max_plan_changes` exhausted → handler does not emit plan change; falls back to patch or escalate.
 
@@ -534,7 +556,17 @@ The three stages ship as one SIP, but **M2 and M3 are conditional**. Each is gat
 
 ### Why gates, not pre-commitment
 
-M1 has concrete prod evidence forcing the issue (filename-only validation passing broken code, per `project_sip0086_manifest_handoff_bug.md`). M2 and M3 are designing against acknowledged-tradeoff failure modes (M2: proposer-judge collapse per SIP-0086 §6.1.3; M3: plan immutability blocks long-cycle adaptability) — real concerns, but without sustained-load prod evidence on the post-SIP-0086 plan artifact. Gates make the next-stage decision a question evidence answers, not a decision the SIP locks in up-front.
+M1 has concrete prod evidence forcing the issue (filename-only validation passing broken code). M2 and M3 are designing against acknowledged-tradeoff failure modes (M2: proposer-judge collapse per SIP-0086 §6.1.3; M3: plan immutability blocks long-cycle adaptability) — real concerns, but without sustained-load prod evidence on the post-SIP-0086 plan artifact. Gates make the next-stage decision a question evidence answers, not a decision the SIP locks in up-front.
+
+### What counts as a "long-cycle group_run" for gate measurement
+
+Gate samples are long-cycle group_run runs, defined as:
+
+- **Profile:** uses an agreed long-cycle implementation/build profile (e.g., the `implementation` profile from §6.4) with M1 enabled. Materially longer execution budget than the historical 1-hour smoke cycles — ≥2 hours wall-clock or until natural termination, whichever comes first.
+- **Reaches plan-relevant execution:** the run reaches at least the planning-phase gate, exposing plan-authoring, plan-validation, plan-review (when M2 is on), or correction behavior. Runs that fail before planning completes due to **infrastructure-only failures unrelated to the plan artifact** (RabbitMQ outage, Postgres connection refused, OOM kill, cosmic-ray restart) are **excluded** from the sample.
+- **Inclusion when build-phase fails:** runs that reach planning or build and surface plan, validation, correction, or review behavior count toward the sample **even if they ultimately fail to produce a working app**. The gate is measuring whether SIP-0092's machinery is doing real work, not whether the squad is shipping perfect apps.
+
+This makes the gate sample auditable. Each gate evaluation doc must list the cycle IDs in scope and which (if any) were excluded under the infrastructure-failure rule.
 
 ### Gate M1 → M2
 
@@ -544,7 +576,7 @@ Proceed to Stage M2 only when **all** of the following hold across a tracking wi
 |---|---|---|
 | Typed-acceptance evaluator-error rate (RC-9b) | <5% of typed checks per cycle | Pathological evaluator errors mean M1 itself is misbehaving; ship M2 on top of an unstable base and the signal is noise. |
 | Cycles where typed acceptance changed an outcome | ≥5 of 10 cycles show at least one typed-check `failed` that triggered self-eval or correction (and would have passed under filename-only validation) | Confirms M1 is doing real work, not decorative. |
-| Cycles where planning-phase plan-quality issues propagated to gate or build | ≥3 of 10 cycles show a plan defect (missing PRD requirement, wrong-role task, dependency error) that M2's reviewer would plausibly have caught | This is the M2-justification criterion. If plans are coming out clean under M1's discipline, the proposer-judge collapse isn't a load-bearing problem and M2 should defer. |
+| Cycles with a planning defect detectable from plan + PRD before build | ≥3 of 10 cycles show a planning defect identified during post-run review where the defect is **visible from the plan artifact plus PRD/test strategy alone** (no need to inspect build outputs) **and** the defect maps to one of M2's `plan_review.yaml` concern categories: `coverage`, `dependency`, `role`, or `acceptance` | This is the M2-justification criterion. The criterion proves the defect lives in M2's detection surface (i.e., a structured reviewer with access to plan + PRD could have caught it) without claiming Max definitely would have. If plans are coming out clean under M1's discipline, the proposer-judge collapse isn't load-bearing and M2 should defer. |
 
 If any criterion fails, **M2 is spun out as a separate proposed SIP** (`SIP-Implementation-Plan-Reviewer-Separation`) that re-litigates the design with the evidence-in-hand.
 
@@ -556,10 +588,32 @@ Proceed to Stage M3 only when **all** of the following hold across ≥10 long-cy
 |---|---|---|
 | Reviewer non-rubber-stamp rate | ≥3 of 10 cycles show the reviewer (Max) requesting at least one structured revision the proposer (Neo) would not have caught alone | Confirms M2 is solving the proposer-judge collapse, not just adding a second LLM call. If Max approves everything, M2 isn't earning its complexity. |
 | Revision-loop activation rate | <50% of cycles enter the revision loop | If the reviewer is requesting revisions on most cycles, the prompt or rubric is wrong. Fix M2 before stacking M3 on top. |
-| Cycles where autonomous correction wanted a structural change | ≥3 of 10 cycles show correction-decision logs where the LLM proposed (or would have proposed) `add_task` / `tighten_acceptance`, not just `patch` | This is the M3-justification criterion. If correction is converging on `patch` for everything, plan-changes are solving a problem we don't have. |
+| Cycles where autonomous correction identified a structural-change candidate | ≥3 of 10 cycles show correction-decision logs with `structural_plan_change_candidate ∈ {add_task, tighten_acceptance}` (see diagnostic field below) | This is the M3-justification criterion. Measured from a non-operative diagnostic field, not speculation. If correction is consistently choosing `patch`, plan-changes are solving a problem we don't have and M3 should defer. |
 | Plan-quality regression check | Plan YAML validity rate ≥ baseline (per SIP §6.2.4) | Ensures M2 didn't regress the artifact M1 is built on. |
 
 If any criterion fails, **M3 is spun out as a separate proposed SIP** (`SIP-Implementation-Plan-Changes`) with the gate evidence appended to its motivation section.
+
+#### Diagnostic field for measuring M3 demand (added during M2 tracking, before M3 ships)
+
+The M2 → M3 gate's "structural change candidate" criterion needs a measurable signal that doesn't require M3 to be implemented. The correction-decision handler (`governance.correction_decision`) records a non-operative diagnostic field in its decision log artifact during M2 tracking:
+
+```yaml
+# correction_decision.yaml (excerpt)
+decision: patch                                 # the operative decision (what actually runs)
+structural_plan_change_candidate: add_task      # diagnostic only — what the LLM would have chosen
+                                                # if M3.3 were enabled
+structural_plan_change_rationale: |
+  Subtask 6 failed regex_match count_min=5; coverage gap requires a new subtask
+  for join/leave endpoint tests, not a re-run of subtask 6.
+```
+
+Allowed values: `none | add_task | tighten_acceptance | other`.
+
+- `none` — the correction LLM judged `patch` or `escalate` adequate; no structural change considered.
+- `add_task` / `tighten_acceptance` — the LLM judged a structural plan change would be appropriate. These are the M3-relevant signal.
+- `other` — the LLM proposed `remove_task` / `replace_task` / `reorder`; recorded for visibility but does not contribute to the M2 → M3 gate criterion (those operations are out of Rev 1 scope per §6.3.2).
+
+The field is non-operative: it does not execute a plan change, does not gate the cycle, does not affect the actual `decision`. It exists only so the M2 → M3 gate can measure whether plan-change demand actually appears in production. The prompt that elicits it is added in M2.2 (so it's available throughout the M2 → M3 tracking window) and reused by M3.3's producer when that ships.
 
 ### Evaluation artifacts
 
@@ -589,38 +643,63 @@ Each evaluation doc contains:
 
 ## Profile Config Examples
 
-Verbatim from SIP §6.4 (build / implementation / selftest). Land alongside Stage M3 PR 3.2 since it activates `plan_changes_enabled` and `max_plan_changes`.
+Mirrors SIP §6.4. The current rollout defaults keep M2 and M3 off (those stages are conditional on milestone gates). The post-gate target is shown separately so there's no contradiction between "M2/M3 are gated" and "profile examples enable them."
+
+### Current rollout defaults (M1 on, M2 off, M3 off)
+
+These ship with the M1 PRs. They activate typed acceptance and leave the M2/M3 surfaces dormant until their gates pass.
 
 ```yaml
-# build profile (Rev 1 defaults — M1 on, M2 off, M3 on)
+# build profile — current rollout (M1 on, M2 off, M3 off)
 defaults:
   build_plan: true
   output_validation: true
   max_self_eval_passes: 1
-  mechanical_acceptance: true
+  mechanical_acceptance: true               # M1 default-on
   command_acceptance_checks: true
-  plan_changes_enabled: true
-  max_plan_changes: 5
-  split_implementation_planning: false
+  split_implementation_planning: false      # M2 awaits gate
+  plan_changes_enabled: false               # M3 loader awaits gate
+  correction_plan_changes_enabled: false    # M3 producer awaits gate
 
-# implementation profile (long-cycle — all on, deeper)
+# selftest profile — current rollout (smoke, minimal mechanical surface)
+defaults:
+  mechanical_acceptance: true
+  command_acceptance_checks: false
+  split_implementation_planning: false
+  plan_changes_enabled: false
+  correction_plan_changes_enabled: false
+```
+
+### Post-gate target profile (after M1 → M2 and M2 → M3 gates pass)
+
+Do **not** enable these flags before the corresponding gate evaluation docs are committed. The implementation profile below is the long-cycle target once M2 and M3 ship.
+
+```yaml
+# implementation profile — post-gate target (long-cycle, all on, deeper)
 defaults:
   build_plan: true
   output_validation: true
   max_self_eval_passes: 2
   mechanical_acceptance: true
   command_acceptance_checks: true
-  plan_changes_enabled: true
+  split_implementation_planning: true       # post-M2 gate
+  max_planning_revisions: 1
+  plan_changes_enabled: true                # post-M3.2 ship
+  correction_plan_changes_enabled: true     # post-M3.3 ship
   max_plan_changes: 8
-  split_implementation_planning: true
   max_correction_attempts: 3
+```
 
-# selftest profile (smoke — minimal mechanical surface)
+### Loader-only intermediate profile (between M3.2 and M3.3)
+
+Useful for testing plan-change loading and applier behavior with synthesized changes (e.g., test fixtures) before authorizing the autonomous correction protocol to produce them.
+
+```yaml
 defaults:
-  mechanical_acceptance: true
-  command_acceptance_checks: false
-  plan_changes_enabled: true
-  max_plan_changes: 2
+  ...
+  plan_changes_enabled: true                # loader on
+  correction_plan_changes_enabled: false    # producer still off
+  max_plan_changes: 5
 ```
 
 ---
@@ -671,6 +750,47 @@ These are *plan-execution* risks — distinct from SIP §9 design risks.
 
 ---
 
+## Terminology Lock (PR Checklist)
+
+Per Rev 3 the artifact, dataclass, and module names were renamed. To prevent the rename from becoming half-applied during implementation, every PR landing under this plan must pass this checklist before merge:
+
+**Banned terms in new code** (allowed only in historical comments, in references to SIP-0086 quotes, or when reading legacy on-disk artifacts during a migration):
+
+- `BuildManifest`, `BuildTaskManifest`
+- `ManifestTask`
+- `ManifestDelta`, `manifest_delta`, `manifest_overlay`
+- `ManifestReview`
+- `WorkingManifest`
+- `control_manifest`, `control_manifest_delta`
+- `manifest_review.yaml`, `manifest_delta.yaml`
+- `overlay` (as a noun for plan changes), `overlay_id`, `parent_overlay_id`, `apply_overlays`, `validate_overlay_for_run`
+- `delta` (as a noun for plan changes)
+- `decision: overlay`
+
+**Canonical terms** that must be used instead:
+
+| Concept | Canonical term |
+|---|---|
+| Plan dataclass | `ImplementationPlan` |
+| Plan task element | `PlanTask` |
+| Plan-change dataclass | `PlanChange` |
+| Plan-change file | `plan_change.yaml`, `src/squadops/cycles/plan_change.py` |
+| Plan review dataclass | `PlanReview` |
+| Plan review file | `plan_review.yaml`, `src/squadops/cycles/plan_review.py` |
+| Working plan dataclass | `WorkingPlan` |
+| Plan artifact type | `control_implementation_plan` |
+| Plan-change artifact type | `control_implementation_plan_change` |
+| Correction decision value | `decision: plan_change` |
+| Plan loader | `_load_plan_for_run`, `apply_plan_changes`, `validate_plan_change_for_run`, `load_plan_changes_for_run`, `load_original_plan` |
+| Author handler | `DevelopmentPlanImplementationHandler` (`development.plan_implementation`) |
+| Reviewer handler | `GovernanceReviewPlanHandler` (`governance.review_plan`) |
+
+**Implementation:** the simplest landing is a tiny `tests/unit/cycles/test_terminology_lock.py` that greps the SIP-0092 source files for banned terms and asserts none appear (allowing exceptions in `tests/unit/cycles/legacy_*.py` for migration tests). Run as part of the regression test suite; failure indicates a half-applied rename. Lower-cost alternative: a PR-template checkbox referencing this section. Either is fine; the goal is to catch drift before it ships.
+
+This check applies to **new code introduced under this plan's PRs**. The shipped SIP-0086 code on main still uses `control_manifest` / `BuildTaskManifest` until M1.1 (which migrates `cycles/build_manifest.py` → `cycles/implementation_plan.py`); the migration itself is allowed to read legacy names as it converts them.
+
+---
+
 ## References
 
 - `sips/accepted/SIP-0092-Implementation-Plan-Improvement.md` — design (this plan implements §6 and §8)
@@ -689,8 +809,19 @@ These are *plan-execution* risks — distinct from SIP §9 design risks.
 
 ## Plan Revision History
 
+- **Plan Rev 4 (2026-04-30):** Targeted tightening pre-implementation. Major changes:
+  - **Resolved `decision: overlay` → `decision: plan_change`** everywhere (item 1). The previously-flagged open decision is closed; `overlay` is no longer a supported value anywhere in this plan, the SIP, prompts, handler branches, tests, logs, event names, artifacts, or examples. The SIP §6.1.6 quote was paraphrased to use post-rename terminology.
+  - **Narrowed M3 Rev 1 operation set to `add_task` + `tighten_acceptance` only** (item 9). `remove_task`, `replace_task`, and `reorder` are deferred from code entirely (no dataclass, no applier branch, no validator branch, no tests). They remain in the SIP as future-work design for operator plan changes and `governance.replan`. The YAML parser rejects deferred operations at parse time with `unsupported_operation_in_rev_1`. This is a deliberate scope cut, not a fallback.
+  - **Split plan-change loader from autonomous producer** via two flags (item 8): `plan_changes_enabled` (M3.2 — loader/applier) and `correction_plan_changes_enabled` (M3.3 — autonomous producer). Lets us test loader behavior with synthesized plan changes before authorizing the correction protocol to produce them. Misconfiguration (producer on, loader off) is rejected at startup.
+  - **Profile examples separated** into current rollout defaults (M2/M3 off, gated) and post-gate target (item 2). Removes the contradiction between "M2/M3 are gated" and "profile examples enable them." Added a loader-only intermediate profile for M3.2 ↔ M3.3 testing.
+  - **Defined "long-cycle group_run" for gate measurement** (item 3): profile, duration, what counts as reaching plan-relevant execution, and the infrastructure-failure exclusion rule. Each gate evaluation doc must cite cycle IDs and excluded runs.
+  - **Tightened M1 → M2 gate criterion wording** (item 4): replaced "would plausibly have caught" with a concrete map-to-categories test — defects must be visible from plan + PRD + test strategy alone and map to one of M2's `plan_review.yaml` concern categories (coverage / dependency / role / acceptance). Proves the defect lives in M2's detection surface without speculating about reviewer behavior.
+  - **Added `structural_plan_change_candidate` diagnostic field** (item 5) to the correction-decision log artifact. Non-operative; allowed values `none | add_task | tighten_acceptance | other`. Captured during M2 tracking so the M2 → M3 gate has a measurable signal without speculation. Added to M2.2 implementation scope so it's available throughout the M2 → M3 tracking window.
+  - **Sharpened RC-9b** (item 6): persistent evaluator errors emit a structured `evaluator_error_persisted` escalation event, are removed from the self-eval feedback list for that criterion, and **the correction protocol must not treat the error as missing application behavior** (no `acceptance:<description>` wording in correction prompts for evaluator errors). Prevents bad checks / unsafe paths / regex timeouts from driving development repair loops.
+  - **Tightened RC-20** (item 7): when `plan_changes_enabled=true`, task envelopes are identity carriers only. Acceptance criteria used for validation MUST be loaded from the current `WorkingPlan` by `task_index` at handler entry. Stale envelope criteria (if present) are non-authoritative. Handler-side test verifies `tighten_acceptance` actually takes effect on already-materialized but not-yet-started tasks.
+  - **Added Terminology Lock (PR Checklist) section** (item 10) listing banned terms (`BuildManifest`, `manifest_delta`, `overlay`, `delta`, etc.) and canonical replacements. Implementation suggestion: a tiny terminology-lock test that greps SIP-0092 sources, or a PR-template checkbox. Catches half-applied renames before they ship.
 - **Plan Rev 3 (2026-04-30):** Terminology rename pass + milestone gates. Major changes:
-  - **Renamed throughout** to align with the SIP-0092 title rename (Maturation → Improvement, manifest → implementation plan, overlay/delta → plan change, control_manifest → control_implementation_plan, governance.assess_readiness → governance.review_plan, governance.plan_build → development.plan_implementation, etc.). No semantic changes; vocabulary now matches the accepted SIP and the post-rename module/class names. The `decision: overlay` correction-protocol enum value was preserved as a flagged open decision pending broader naming alignment.
+  - **Renamed throughout** to align with the SIP-0092 title rename (Maturation → Improvement, manifest → implementation plan, overlay/delta → plan change, control_manifest → control_implementation_plan, governance.assess_readiness → governance.review_plan, governance.plan_build → development.plan_implementation, etc.). No semantic changes; vocabulary now matches the accepted SIP and the post-rename module/class names. The `decision: plan_change` correction-protocol enum value was preserved as a flagged open decision pending broader naming alignment.
   - **Added Milestone Gates section** with concrete proceed-if criteria for M1 → M2 and M2 → M3, recorded in evaluation docs (`SIP-0092-gate-M1-evaluation.md`, `SIP-0092-gate-M2-evaluation.md`). M2 and M3 stage headings tagged as conditional on their respective gates. Default behavior is stop-and-re-evaluate; failed gate criteria spin the next stage out as a separate proposed SIP. Converts the linear plan into an evidence-driven one so we don't pay the cost of M2 and M3 on hypothetical failure modes.
 - **Plan Rev 2 (2026-04-29):** Incorporated reviewer feedback. Major changes:
   - **RC-9 rewritten to separate severity from outcome status.** Only `severity=error` AND `status ∈ {failed, error}` blocks. Added `RC-9a` distinguishing evaluator error (`status=error`) from app incompleteness (`status=failed`) — evaluator errors surface with `evaluator-error:<check>` wording, not as missing app behavior. Added `RC-9b` bounding evaluator-error retry to two consecutive failures before escalating, preventing pathological criteria from driving endless self-eval loops.

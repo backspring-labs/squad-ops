@@ -104,7 +104,7 @@ Two operational consequences:
 
 SIP-0086 §6.1.6 ("Plan identity"):
 
-> *"The plan becomes immutable after gate approval. The executor does not modify, reorder, or add to the plan's task list. Correction-driven additions or substitutions are represented as plan-change artifacts applied as overlays; they do not mutate the original approved plan."*
+> *"The plan becomes immutable after gate approval. The executor does not modify, reorder, or add to the plan's task list. Correction-driven additions or substitutions are represented as plan-change artifacts applied as changes; they do not mutate the original approved plan."* (Quoted from SIP-0086 §6.1.6, paraphrased to use SIP-0092's renamed terminology.)
 
 That's the design intent. The implementation has only the immutability half. There is no `plan_change.yaml` schema, no change producer, and no change applier. Today, when correction fires:
 
@@ -505,17 +505,24 @@ operations:
 
 #### 6.3.2 Operations and invariants
 
-Five operations are supported in the schema and the applier. Each has explicit invariants enforced at apply time.
+**Revision 1 implements only `add_task` and `tighten_acceptance` in the schema, applier, and validator.** The other three operations (`remove_task`, `replace_task`, `reorder`) are **not present in code in Rev 1** — they remain in this section as the future-work design for operator-driven plan changes and a future `governance.replan` task. This narrows the implementation surface to the only operations the autonomous correction protocol justifies (per §6.3.10), reducing risk and aligning code with current use cases.
 
-| Op | Invariants |
-|---|---|
-| `add_task` | New `task_index` strictly greater than max existing index across original + prior plan changes. Dependencies must reference existing (active or tombstoned) task indices. Added task must include at least one `expected_artifact` or one `error`-severity typed acceptance criterion (no empty-contract additions). |
-| `remove_task` | Cannot remove a task that has already started or completed in the current run (execution-aware validation, §6.3.4). Tombstones the task in the working plan; does not delete from history. Any active task that depends on the removed task is an error unless the dependent is also tombstoned in the same plan change. |
-| `replace_task` | `task_index` and `task_type` immutable. Cannot replace a task that has already started or completed (use `add_task` for a follow-up instead). May not loosen acceptance — replacement criteria must be at least as strict as the original. |
-| `tighten_acceptance` | Append-only. New criteria added; existing criteria neither removed nor weakened. Severity may be raised (`warning` → `error`) but not lowered. |
-| `reorder` | Must not violate `depends_on`. Revision 1 limited to not-yet-started tasks. |
+Rev 1 operations and invariants enforced at apply time:
 
-`loosen_acceptance` (removing or weakening criteria) is intentionally not supported in any form. Loosening is suspicious and should be a manual operator action via re-gate, not a correction-driven plan change.
+| Op | Invariants | Status |
+|---|---|---|
+| `add_task` | New `task_index` strictly greater than max existing index across original + prior plan changes. Dependencies must reference existing (active or tombstoned) task indices. Added task must include at least one `expected_artifact` or one `error`-severity typed acceptance criterion (no empty-contract additions). | **Rev 1** |
+| `tighten_acceptance` | Append-only. New criteria added; existing criteria neither removed nor weakened. Severity may be raised (`warning` → `error`) but not lowered. | **Rev 1** |
+
+Future-work operations (designed here, not implemented in Rev 1):
+
+| Op | Invariants | Status |
+|---|---|---|
+| `remove_task` | Cannot remove a task that has already started or completed in the current run. Tombstones the task in the working plan; does not delete from history. Any active task that depends on the removed task is an error unless the dependent is also tombstoned in the same plan change. | Future (operator / `governance.replan`) |
+| `replace_task` | `task_index` and `task_type` immutable. Cannot replace a task that has already started or completed (use `add_task` for a follow-up instead). May not loosen acceptance — replacement criteria must be at least as strict as the original. | Future (operator / `governance.replan`) |
+| `reorder` | Must not violate `depends_on`. Limited to not-yet-started tasks. | Future (operator / `governance.replan`) |
+
+`loosen_acceptance` (removing or weakening criteria) is intentionally not supported in any form, ever. Loosening is suspicious and should be a manual operator action via re-gate, not a correction-driven plan change.
 
 #### 6.3.3 Pure structural applier
 
@@ -550,7 +557,7 @@ Before a plan change is accepted for an active run, an execution-aware validator
 
 ```python
 def validate_plan_change_for_run(
-    overlay: PlanChange,
+    plan_change: PlanChange,
     working_plan: WorkingPlan,
     run_state: RunState,        # which task IDs have started/completed/checkpointed
 ) -> list[ValidationError]:
@@ -622,15 +629,15 @@ working_plan = apply_plan_changes(plan, plan_changes)
 
 #### 6.3.10 Re-gate matrix
 
-| Operation | Autonomous correction producer (Rev 1) | Operator action | Future `governance.replan` |
-|---|---|---|---|
-| `add_task` | ✅ allowed | ✅ allowed | ✅ allowed |
-| `tighten_acceptance` | ✅ allowed | ✅ allowed | ✅ allowed |
-| `remove_task` | ❌ requires re-gate | ✅ allowed | reserved |
-| `replace_task` | ❌ requires re-gate | ✅ allowed | reserved |
-| `reorder` (not-yet-started) | ❌ requires re-gate | ✅ allowed | reserved |
+| Operation | Rev 1 implementation | Autonomous correction producer | Operator action (future) | Future `governance.replan` |
+|---|---|---|---|---|
+| `add_task` | ✅ shipped | ✅ allowed | ✅ allowed | ✅ allowed |
+| `tighten_acceptance` | ✅ shipped | ✅ allowed | ✅ allowed | ✅ allowed |
+| `remove_task` | ❌ not in code | n/a (deferred) | requires schema + applier extension | reserved |
+| `replace_task` | ❌ not in code | n/a (deferred) | requires schema + applier extension | reserved |
+| `reorder` | ❌ not in code | n/a (deferred) | requires schema + applier extension | reserved |
 
-The autonomous correction protocol in Revision 1 may only emit plan changes containing `add_task` or `tighten_acceptance` operations. A plan change containing any other operation type produced by the correction protocol is rejected by the execution-aware validator.
+Rev 1 narrowing rationale (§6.3.2): the autonomous correction protocol only justifies `add_task` and `tighten_acceptance`; the other three operations are designed here for future operator-driven plan changes and a future `governance.replan` task, but their schema, applier, and validator implementations are deferred. A plan change containing a deferred operation fails parsing in Rev 1.
 
 #### 6.3.11 Bounded plan change count
 
@@ -647,41 +654,55 @@ Add to `_APPLIED_DEFAULTS_EXTRA_KEYS`:
 | `command_check_safelist` | `list[str]` | (built-in safelist, see §6.1.5) | M1 |
 | `split_implementation_planning` | `bool` | `false` | M2 — enable `development.plan_implementation` |
 | `max_planning_revisions` | `int` | `1` | M2 — bounded revision rounds |
-| `plan_changes_enabled` | `bool` | `true` | M3 — apply plan changes on load |
-| `max_plan_changes` | `int` | `5` | M3 — plan change count ceiling |
+| `plan_changes_enabled` | `bool` | `false` | M3.2 — loader/applier reads and applies persisted plan-change artifacts |
+| `correction_plan_changes_enabled` | `bool` | `false` | M3.3 — autonomous correction protocol may emit plan changes |
+| `max_plan_changes` | `int` | `5` | M3 — plan change count ceiling per run |
 
-Profile examples:
+The split between `plan_changes_enabled` (loader/applier) and `correction_plan_changes_enabled` (autonomous producer) lets us ship and observe loader behavior with synthesized plan changes before authorizing the correction protocol to produce them. When `correction_plan_changes_enabled=true` but `plan_changes_enabled=false`, the producer is configured to emit changes but the executor never loads them — the producer is rejected at startup as a misconfiguration.
+
+#### 6.4.1 Profile examples — current rollout defaults
+
+The default profiles for the SIP-0092 rollout keep M2 and M3 off because their stages are conditional on milestone gates (see plan doc Milestone Gates section). M1 is enabled by default once shipped because it has prod evidence forcing the issue and is not gate-conditional.
 
 ```yaml
-# build profile (Revision 1 defaults — M1 on, M2 off, M3 on)
+# build profile (current rollout — M1 on, M2 off, M3 off)
 defaults:
   build_plan: true
   output_validation: true
   max_self_eval_passes: 1
-  mechanical_acceptance: true
+  mechanical_acceptance: true               # M1 default-on
   command_acceptance_checks: true
-  plan_changes_enabled: true
-  max_plan_changes: 5
-  split_implementation_planning: false   # Flip true after §6.2.4 criteria met
+  split_implementation_planning: false      # M2 awaits gate
+  plan_changes_enabled: false               # M3 loader awaits gate
+  correction_plan_changes_enabled: false    # M3 producer awaits gate
 
-# implementation profile (long-cycle — all on, deeper)
+# selftest profile (smoke — minimal mechanical surface, M2/M3 off)
+defaults:
+  mechanical_acceptance: true
+  command_acceptance_checks: false          # static checks only
+  split_implementation_planning: false
+  plan_changes_enabled: false
+  correction_plan_changes_enabled: false
+```
+
+#### 6.4.2 Profile examples — post-gate target
+
+These profiles show the **target state after the M1 → M2 and M2 → M3 milestone gates pass** and the corresponding stages ship. Do not enable these flags until the gate evaluation docs (`docs/plans/SIP-0092-gate-M{N}-evaluation.md`) are committed.
+
+```yaml
+# implementation profile (long-cycle — post-gate target, all on, deeper)
 defaults:
   build_plan: true
   output_validation: true
   max_self_eval_passes: 2
   mechanical_acceptance: true
   command_acceptance_checks: true
-  plan_changes_enabled: true
+  split_implementation_planning: true       # post-M2 gate
+  max_planning_revisions: 1
+  plan_changes_enabled: true                # post-M3.2 ship
+  correction_plan_changes_enabled: true     # post-M3.3 ship
   max_plan_changes: 8
-  split_implementation_planning: true
   max_correction_attempts: 3
-
-# selftest profile (smoke — minimal mechanical surface)
-defaults:
-  mechanical_acceptance: true
-  command_acceptance_checks: false   # static checks only
-  plan_changes_enabled: true
-  max_plan_changes: 2
 ```
 
 ---
@@ -705,7 +726,7 @@ Long-cycle group_run (4-hour budget) running `implementation` profile:
   - Subtask 1 (Backend API endpoints): `endpoint_defined` for all 5 endpoints (severity `error`) + `import_present` for repository → all `passed`.
   - Subtask 4 (Frontend detail view): `regex_match` for duplicate-name error display (severity `error`) → `failed`. Self-eval fires; second LLM call sees the specific missing pattern in the failure description and adds the handler. Re-validates → `passed`.
 - Subtask 6 (qa.test backend): tests run but only cover 3 of 5 endpoints. `regex_match` over `tests/test_backend.py` with `pattern: "client\\.(get|post)\\(['\"]/runs"`, `count_min: 5`, severity `error` → `failed` (only 3 matches). **Correction protocol fires.**
-- Correction decision: `overlay` (not `patch`). The autonomous producer is restricted to `add_task` and `tighten_acceptance`. It emits a plan change with one `add_task` operation (new subtask 9 "Add tests for join/leave endpoints") plus a `tighten_acceptance` on subtask 6 (raise `count_min` to enforce future runs see all 5). The execution-aware validator confirms neither operation touches completed work — subtask 6's existing checkpoint is preserved as `status: original_failed`; subtask 9 is appended. Working plan now has 10 active tasks.
+- Correction decision: `plan_change` (not `patch`). The autonomous producer is restricted to `add_task` and `tighten_acceptance`. It emits a plan change with one `add_task` operation (new subtask 9 "Add tests for join/leave endpoints") plus a `tighten_acceptance` on subtask 6 (raise `count_min` to enforce future runs see all 5). The execution-aware validator confirms neither operation touches completed work — subtask 6's existing checkpoint is preserved as `status: original_failed`; subtask 9 is appended. Working plan now has 10 active tasks.
 - Build resumes from subtask 9. The new task carries provenance metadata (`change_id: ovl_xyz`, `correction_decision_id: corr_abc`, `change_reason: "qa.test backend coverage failed regex_match count_min=5"`), so any operator looking at task `m009` can trace exactly why it exists.
 
 **Wrap-up (~5 minutes):** Standard. Closeout artifact references the original plan, the one plan change, the working plan, and the `plan_review.yaml`.
@@ -772,7 +793,7 @@ Three independently shippable stages mapped to the three capabilities. Each stag
 - Tests: working-plan derivation across 0/1/N plan changes; rejection of plan changes mutating started/completed tasks; provenance fields populated on materialized envelopes.
 
 **PR 3.3:** Correction-protocol integration (restricted operations only)
-- Extend `governance.correction_decision` to emit `decision: overlay` with a generated `plan_change.yaml`.
+- Extend `governance.correction_decision` to emit `decision: plan_change` with a generated `plan_change.yaml`.
 - **Producer-side restriction:** correction protocol may only emit `add_task` and `tighten_acceptance` operations. Any other operation in a correction-produced plan change is rejected by the execution-aware validator.
 - Bound by `max_plan_changes`.
 - Integration test: a `SEMANTIC_FAILURE` that warrants a structural change produces a plan change with a single `add_task` (or `tighten_acceptance`); plan change is applied; cycle continues with revised plan; provenance metadata flows through.
@@ -854,6 +875,14 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
 
 ## 12. Revision History
 
+- **Rev 3 (2026-04-30):** Terminology + scope tightening pre-implementation. Major changes:
+  - **Title:** "Build Manifest Maturation — Mechanical Acceptance, Separated Authoring, and Delta Overlays" → "Implementation Plan Improvement — Mechanical Acceptance, Separated Authoring, and Plan Changes." Build manifest → implementation plan, delta overlay → plan change throughout. Three-layer alignment: module `cycles/implementation_plan.py`, class `ImplementationPlan`, artifact_type `control_implementation_plan`.
+  - **Resolved correction-protocol decision name:** `decision: overlay` → `decision: plan_change` everywhere. The deprecated value is not supported.
+  - **Narrowed M3 Rev 1 schema/applier scope to `add_task` + `tighten_acceptance`** (§6.3.2). The other three operations (`remove_task`, `replace_task`, `reorder`) are deferred from code entirely; they remain in this SIP as future-work design for operator-driven plan changes and `governance.replan`. The YAML parser rejects deferred operations at parse time.
+  - **Split plan-change config** (§6.4): `plan_changes_enabled` (loader/applier) is now distinct from `correction_plan_changes_enabled` (autonomous producer). Default rollout has both off; misconfiguration (producer on, loader off) is rejected at startup.
+  - **Profile examples reorganized** (§6.4.1, §6.4.2): current rollout defaults (M2/M3 off, gated) separated from post-gate target. Removes the contradiction between "M2/M3 are gated" and "examples enable them."
+  - **Re-gate matrix updated** (§6.3.10) to show Rev 1 implementation status alongside autonomous/operator/replan eligibility.
+  - **Implementation plan doc** introduces concrete milestone gates (M1 → M2, M2 → M3) and a structural-plan-change diagnostic field captured during M2 tracking. See `docs/plans/SIP-0092-implementation-plan-improvement-plan.md`.
 - **Rev 2 (2026-04-27):** Incorporated external review. Major changes:
   - Typed-check schema normalized: flat YAML for authoring, internal `TypedCheck(check, params, severity, description)` for evaluators (§6.1.1).
   - Added severity field (§6.1.2) — `error` (default), `warning`, `info`. Only `error` failures contribute to `missing_components`.
