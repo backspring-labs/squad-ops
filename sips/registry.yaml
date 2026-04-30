@@ -829,9 +829,9 @@ sips:
   updated_at: '2026-04-24T22:18:28.183743Z'
 - sip_uid: null
   sip_number: 92
-  title: Build Manifest Maturation — Mechanical Acceptance, Separated Authoring, and
-    Delta Overlays
-  path: sips/accepted/SIP-0092-Build-Manifest-Maturation-Mechanical.md
+  title: Implementation Plan Improvement — Mechanical Acceptance, Separated Authoring, and
+    Plan Changes
+  path: sips/accepted/SIP-0092-Implementation-Plan-Improvement.md
   status: accepted
   author: SquadOps Architecture
   approver: jladd

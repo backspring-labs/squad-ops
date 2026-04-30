@@ -1,13 +1,13 @@
 ---
-title: Build Manifest Maturation — Mechanical Acceptance, Separated Authoring, and
-  Delta Overlays
+title: Implementation Plan Improvement — Mechanical Acceptance, Separated Authoring, and
+  Plan Changes
 status: accepted
 author: SquadOps Architecture
 created_at: '2026-04-27T00:00:00Z'
 sip_number: 92
 updated_at: '2026-04-29T23:39:19.875323Z'
 ---
-# SIP-0092: Build Manifest Maturation — Mechanical Acceptance, Separated Authoring, and Delta Overlays
+# SIP-0092: Implementation Plan Improvement — Mechanical Acceptance, Separated Authoring, and Plan Changes
 
 **Status:** Accepted
 **Authors:** SquadOps Architecture
@@ -19,21 +19,21 @@ updated_at: '2026-04-29T23:39:19.875323Z'
 
 ## 1. Abstract
 
-SIP-0086 introduced the build task manifest — a control-plane artifact produced during planning that decomposes a build into focused, role-typed subtasks. Capability A (manifest production, materialization, focused prompts, deterministic task IDs) shipped on main: `src/squadops/cycles/build_manifest.py`, `_produce_manifest` in `planning_tasks.py:432`, manifest expansion in `task_plan.py:341`. The first reliable group_run cycles to fill a build timebox came from this work.
+SIP-0086 introduced the implementation plan — a control-plane artifact produced during planning that decomposes a build into focused, role-typed subtasks. Capability A (plan production, materialization, focused prompts, deterministic task IDs) shipped on main: `src/squadops/cycles/implementation_plan.py`, `_produce_plan` in `planning_tasks.py:432`, plan expansion in `task_plan.py:341`. The first reliable group_run cycles to fill a build timebox came from this work.
 
 Three follow-up gaps now bound how reliably a squad can build a non-trivial app over a long cycle. Each is named in SIP-0086 §10 (Future Work) but deferred at the time:
 
-1. **Acceptance criteria are informational only** — they appear in the manifest, in the focused prompt, and in the self-evaluation prompt, but the validator does not evaluate them. Validation reduces to `expected_artifacts` filename matching plus stub detection (`cycle_tasks.py` FC1/FC2). A subtask whose generated code imports the wrong module, exposes the wrong endpoints, or omits required fields passes validation as long as the file names are right.
-2. **Manifest authoring is colocated with planning approval** — `governance.assess_readiness` (Max) authors the manifest *and* signs off on planning readiness in the same handler call (`planning_tasks.py:420–428`). The proposer-judge collapse is acknowledged in SIP-0086 §6.1.3 as a known tradeoff; the operator gate is the only external check.
-3. **The manifest is one-shot and immutable** — SIP-0086 §6.1.6 specifies that correction-driven changes are "represented as delta artifacts applied as overlays," but no overlay format, no overlay producer, and no overlay applier exist. In practice, a manifest that turns out wrong at hour 2 of a 6-hour cycle has no machine-readable revision path; the cycle either limps along with a bad plan or terminates at gate.
+1. **Acceptance criteria are informational only** — they appear in the plan, in the focused prompt, and in the self-evaluation prompt, but the validator does not evaluate them. Validation reduces to `expected_artifacts` filename matching plus stub detection (`cycle_tasks.py` FC1/FC2). A subtask whose generated code imports the wrong module, exposes the wrong endpoints, or omits required fields passes validation as long as the file names are right.
+2. **Plan authoring is colocated with planning approval** — `governance.review_plan` (Max) authors the plan *and* signs off on planning readiness in the same handler call (`planning_tasks.py:420–428`). The proposer-judge collapse is acknowledged in SIP-0086 §6.1.3 as a known tradeoff; the operator gate is the only external check.
+3. **The plan is one-shot and immutable** — SIP-0086 §6.1.6 specifies that correction-driven changes are "represented as plan-change artifacts applied as changes," but no change format, no change producer, and no change applier exist. In practice, a plan that turns out wrong at hour 2 of a 6-hour cycle has no machine-readable revision path; the cycle either limps along with a bad plan or terminates at gate.
 
 This SIP introduces three independently shippable capabilities that close those gaps:
 
-- **Capability M1 — Mechanical Acceptance Criteria.** Add a typed acceptance check schema embedded in manifest tasks; evaluate them at handler validation time; surface results as first-class check entries in `ValidationResult.checks` alongside the existing FC1/FC2 checks. Checks carry severity (`error` / `warning` / `info`) and produce a typed `CheckOutcome` (`passed` / `failed` / `skipped` / `error`).
-- **Capability M2 — Separated Manifest Authoring.** Introduce a dedicated `governance.plan_build` planning task that authors the manifest. `governance.assess_readiness` reviews and signs off, restoring the proposer/reviewer separation. Reviewer concerns are produced as a typed `manifest_review.yaml` artifact that can be fed mechanically into a bounded revision loop.
-- **Capability M3 — Manifest Delta Overlays.** Define a `manifest_delta.yaml` overlay schema and a *pure structural applier* paired with an *execution-aware validator*. Wire the correction protocol to emit overlays restricted to `add_task` and `tighten_acceptance` operations only — the broader operation set (`remove_task` / `replace_task` / `reorder`) is supported in the schema and applier but reserved for operator action or a future `governance.replan` task, not autonomous correction.
+- **Capability M1 — Mechanical Acceptance Criteria.** Add a typed acceptance check schema embedded in plan tasks; evaluate them at handler validation time; surface results as first-class check entries in `ValidationResult.checks` alongside the existing FC1/FC2 checks. Checks carry severity (`error` / `warning` / `info`) and produce a typed `CheckOutcome` (`passed` / `failed` / `skipped` / `error`).
+- **Capability M2 — Separated Plan Authoring.** Introduce a dedicated `development.plan_implementation` planning task that authors the plan. `governance.review_plan` reviews and signs off, restoring the proposer/reviewer separation. Reviewer concerns are produced as a typed `plan_review.yaml` artifact that can be fed mechanically into a bounded revision loop.
+- **Capability M3 — Plan Changes.** Define a `plan_change.yaml` change schema and a *pure structural applier* paired with an *execution-aware validator*. Wire the correction protocol to emit plan changes restricted to `add_task` and `tighten_acceptance` operations only — the broader operation set (`remove_task` / `replace_task` / `reorder`) is supported in the schema and applier but reserved for operator action or a future `governance.replan` task, not autonomous correction.
 
-Each capability is independently valuable. M1 alone makes today's manifests far more discriminating. M2 alone improves planning-phase quality. M3 alone unlocks long-cycle adaptability. Together they turn the manifest from "produced once, consumed once" into a living plan the squad can iterate against — without giving autonomous correction the keys to rewrite history.
+Each capability is independently valuable. M1 alone makes today's plans far more discriminating. M2 alone improves planning-phase quality. M3 alone unlocks long-cycle adaptability. Together they turn the plan from "produced once, consumed once" into a living plan the squad can iterate against — without giving autonomous correction the keys to rewrite history.
 
 ---
 
@@ -45,25 +45,25 @@ Code grounded as of 2026-04-27 on main:
 
 | Component | Location | Status |
 |---|---|---|
-| Manifest dataclasses + YAML parser + DAG validator | `src/squadops/cycles/build_manifest.py` | ✅ Shipped |
-| Manifest production handler | `_produce_manifest` in `src/squadops/capabilities/handlers/planning_tasks.py:432` | ✅ Shipped (with retry loop and corrective feedback per `fbea2d7`) |
+| Plan dataclasses + YAML parser + DAG validator | `src/squadops/cycles/implementation_plan.py` | ✅ Shipped |
+| Plan production handler | `_produce_plan` in `src/squadops/capabilities/handlers/planning_tasks.py:432` | ✅ Shipped (with retry loop and corrective feedback per `fbea2d7`) |
 | Role + task_type constraints (squad-aware) | `planning_tasks.py:450–470` | ✅ Shipped (`c38a523`, `dc8e7c0`) |
-| Builder routing in manifest prompt | `planning_tasks.py:475–504` | ✅ Shipped (`ec4db16`) |
-| Manifest expansion to envelopes | `_replace_build_steps_with_manifest` in `task_plan.py:341` | ✅ Shipped |
+| Builder routing in plan prompt | `planning_tasks.py:475–504` | ✅ Shipped (`ec4db16`) |
+| Plan expansion to envelopes | `_replace_build_steps_with_plan` in `task_plan.py:341` | ✅ Shipped |
 | Deterministic task IDs (`task-{run}-m{idx}-{type}`) | `task_plan.py:281` | ✅ Shipped |
 | Focused-task prompt adaptation | `cycle_tasks.py` (`subtask_focus` branch) | ✅ Shipped |
 | Validation FC1 (expected_artifacts) + FC2 (non-stub) | `cycle_tasks.py` | ✅ Shipped |
 | `outcome_class: SEMANTIC_FAILURE` emission | `cycle_tasks.py` | ✅ Shipped |
 | Self-evaluation pass | `cycle_tasks.py` | ✅ Shipped |
-| Gate promotion + control_manifest forwarding | `api/routes/cycles/runs.py` (`af306d3`, `075fd9e`) | ✅ Shipped |
+| Gate promotion + control_implementation_plan forwarding | `api/routes/cycles/runs.py` (`af306d3`, `075fd9e`) | ✅ Shipped |
 
-The framework can decompose, materialize, prompt, validate, self-correct, and forward. What it cannot yet do is **judge whether the produced code does what the manifest said it should do**, and it cannot **revise the manifest mid-cycle**.
+The framework can decompose, materialize, prompt, validate, self-correct, and forward. What it cannot yet do is **judge whether the produced code does what the plan said it should do**, and it cannot **revise the plan mid-cycle**.
 
 ### 2.2 Gap M1: Acceptance Criteria Are Informational
 
-`BuildTaskManifest` already carries `acceptance_criteria: list[str]` per task (`build_manifest.py:38`). The criteria are passed into the focused prompt (`cycle_tasks.py` `subtask_focus` branch) and the self-evaluation follow-up. They are *never* evaluated.
+`ImplementationPlan` already carries `acceptance_criteria: list[str]` per task (`implementation_plan.py:38`). The criteria are passed into the focused prompt (`cycle_tasks.py` `subtask_focus` branch) and the self-evaluation follow-up. They are *never* evaluated.
 
-Consequence: a manifest entry like
+Consequence: a plan entry like
 
 ```yaml
 - task_index: 1
@@ -82,42 +82,42 @@ passes validation if the LLM produces files at `backend/main.py` and `backend/ro
 
 This is not a hypothetical. SIP-0086 §6.3.1 marks FC3 as `"evaluation": "included_in_evidence"` and `"passed": True` (informational). On 2026-04-18 group_run cycles (memory `project_sip0086_manifest_handoff_bug.md`), correction never fired even on visibly partial implementations because the validators couldn't see the gap.
 
-### 2.3 Gap M2: Manifest Authoring Is Colocated With Planning Sign-Off
+### 2.3 Gap M2: Plan Authoring Is Colocated With Planning Sign-Off
 
-`governance.assess_readiness` (Max) currently:
+`governance.review_plan` (Max) currently:
 
 1. Reads the planning artifact draft.
 2. Validates frontmatter (`readiness`, `sufficiency_score`).
 3. Decides whether planning is ready for the gate.
-4. **Authors the build manifest in the same handler call** (`planning_tasks.py:420–428`).
+4. **Authors the implementation plan in the same handler call** (`planning_tasks.py:420–428`).
 
 The same agent invocation that judges planning sufficiency also produces the build decomposition that planning sufficiency is supposed to gate. SIP-0086 §6.1.3 explicitly named this:
 
-> *"This introduces proposal-review colocation: the same component that proposes the build plan is judging its adequacy. The gate remains the human/operator checkpoint that mitigates this — the operator reviews the manifest before approving, providing an external check on decomposition quality. Long-term, a dedicated manifest producer (e.g., `governance.plan_build`) before `governance.review` may provide cleaner separation."*
+> *"This introduces proposal-review colocation: the same component that proposes the build plan is judging its adequacy. The gate remains the human/operator checkpoint that mitigates this — the operator reviews the plan before approving, providing an external check on decomposition quality. Long-term, a dedicated plan producer (e.g., `development.plan_implementation`) before `governance.review` may provide cleaner separation."*
 
 Two operational consequences:
 
-- **Single-call concentration.** A 32B model is asked to do governance review *and* manifest authoring in one call. Empirically (memory `project_spark_cycle_status.md`), Max occasionally emits invalid YAML in `build_task_manifest.yaml` even at 32B; concentration of both responsibilities is a contributing factor.
+- **Single-call concentration.** A 32B model is asked to do governance review *and* plan authoring in one call. Empirically (memory `project_spark_cycle_status.md`), Max occasionally emits invalid YAML in `implementation_plan.yaml` even at 32B; concentration of both responsibilities is a contributing factor.
 - **No reviewer for the proposer.** The operator gate is the only check; the squad itself never checks Max's decomposition before it reaches the gate. For a long cycle with a less-attentive operator, this is the weakest link in planning quality.
 
-### 2.4 Gap M3: The Manifest Cannot Evolve
+### 2.4 Gap M3: The Plan Cannot Evolve
 
 SIP-0086 §6.1.6 ("Plan identity"):
 
-> *"The manifest becomes immutable after gate approval. The executor does not modify, reorder, or add to the manifest's task list. Correction-driven additions or substitutions are represented as delta artifacts applied as overlays; they do not mutate the original approved manifest."*
+> *"The plan becomes immutable after gate approval. The executor does not modify, reorder, or add to the plan's task list. Correction-driven additions or substitutions are represented as plan-change artifacts applied as overlays; they do not mutate the original approved plan."*
 
-That's the design intent. The implementation has only the immutability half. There is no `manifest_delta.yaml` schema, no overlay producer, and no overlay applier. Today, when correction fires:
+That's the design intent. The implementation has only the immutability half. There is no `plan_change.yaml` schema, no change producer, and no change applier. Today, when correction fires:
 
 - The repair handler (`development.repair`) operates against the failed subtask with prior-artifact context.
 - The original subtask checkpoint is preserved.
 - No new subtasks can be added; no existing subtasks can be removed or reordered; no acceptance criteria can be tightened.
 
-For a one-hour cycle this is acceptable — the repair handler converges or the cycle terminates. For a multi-hour cycle, the failure modes that warrant manifest evolution show up routinely:
+For a one-hour cycle this is acceptable — the repair handler converges or the cycle terminates. For a multi-hour cycle, the failure modes that warrant plan evolution show up routinely:
 
-- **Discovered missing layer** (e.g., manifest has no `auth` task because Max underweighted the PRD's auth requirement; correction needs to add a subtask, not just patch).
+- **Discovered missing layer** (e.g., plan has no `auth` task because Max underweighted the PRD's auth requirement; correction needs to add a subtask, not just patch).
 - **Stricter acceptance** (e.g., Eve discovers the original criteria were too loose; needs to ratchet them on a re-run).
 
-Without overlays, the cycle either limps along on a stale plan or terminates at the gate.
+Without changes, the cycle either limps along on a stale plan or terminates at the gate.
 
 ---
 
@@ -127,63 +127,63 @@ Without overlays, the cycle either limps along on a stale plan or terminates at 
 
 Free-text criteria are operator-readable, model-readable, and validator-illegible. The minimum useful unit is a typed check the validator can run. Criteria authoring should be guided into typed shapes rather than left as prose.
 
-### 3.2 Treat the manifest as untrusted input
+### 3.2 Treat the plan as untrusted input
 
-The manifest is LLM-authored. Typed checks reference file paths, glob patterns, regexes, and command specs. Every one of those is a foot-gun if treated as trusted. The evaluator chroots paths to the workspace root, rejects shell strings, runs commands as argv arrays, and enforces a safelist.
+The plan is LLM-authored. Typed checks reference file paths, glob patterns, regexes, and command specs. Every one of those is a foot-gun if treated as trusted. The evaluator chroots paths to the workspace root, rejects shell strings, runs commands as argv arrays, and enforces a safelist.
 
 ### 3.3 Separate the proposer from the reviewer
 
 Authoring the build plan and signing off on planning readiness are different cognitive tasks. They should be different handler calls — even if the same agent role (Max) performs both — so the second call has a chance to catch the first call's mistakes.
 
-### 3.4 Original manifest is the source of truth; overlays accumulate
+### 3.4 Original plan is the source of truth; plan changes accumulate
 
-The approved manifest stays immutable. Overlays are append-only audit trail. The "current working manifest" is always derived: `apply(original, overlays)`. This preserves the gate's contract (what the operator approved) while admitting evolution.
+The approved plan stays immutable. Plan changes are append-only audit trail. The "current working plan" is always derived: `apply(original, changes)`. This preserves the gate's contract (what the operator approved) while admitting evolution.
 
 ### 3.5 Pure structural applier; execution-aware validator
 
-The applier is pure: same `(original, overlays)` always yields the same working manifest. Runtime constraints — "this overlay would invalidate already-completed work" — live in a separate execution-aware validator that consults run state. Keeping these layers apart preserves test tractability without weakening runtime safety.
+The applier is pure: same `(original, changes)` always yields the same working plan. Runtime constraints — "this plan change would invalidate already-completed work" — live in a separate execution-aware validator that consults run state. Keeping these layers apart preserves test tractability without weakening runtime safety.
 
 ### 3.6 Autonomous correction is conservative
 
 The schema supports five operations (`add_task`, `remove_task`, `replace_task`, `tighten_acceptance`, `reorder`). The autonomous correction producer in Revision 1 emits only the two safe ones (`add_task`, `tighten_acceptance`). Everything else requires operator action or a future `governance.replan` task. Correction can grow the plan and tighten the contract; it cannot rewrite history.
 
-### 3.7 Overlays affect only the remaining execution plan
+### 3.7 Plan changes affect only the remaining execution plan
 
-Overlays do not replace, remove, reorder, or otherwise rewrite the semantic meaning of already-completed task checkpoints. Corrections to completed work are represented as new tasks, not mutations of prior ones. This protects artifact lineage so the working manifest never makes history look different from what actually happened.
+Plan changes do not replace, remove, reorder, or otherwise rewrite the semantic meaning of already-completed task checkpoints. Corrections to completed work are represented as new tasks, not mutations of prior ones. This protects artifact lineage so the working plan never makes history look different from what actually happened.
 
 ### 3.8 Backward-compatible at every layer
 
-Manifests without typed acceptance still work (criteria continue to be informational for those tasks). Cycles without `governance.plan_build` still work (manifest production stays in `assess_readiness` as today). Cycles with no overlays produced still work (the working manifest equals the original).
+Plans without typed acceptance still work (criteria continue to be informational for those tasks). Cycles without `development.plan_implementation` still work (plan production stays in `review_plan` as today). Cycles with no plan changes produced still work (the working plan equals the original).
 
 ### 3.9 Build on what shipped, don't re-spec it
 
-This SIP does not redefine SIP-0086's manifest schema, executor materialization, deterministic task IDs, or correction routing. All of that is reused. Only acceptance evaluation, the authoring split, and the overlay format are new.
+This SIP does not redefine SIP-0086's plan schema, executor materialization, deterministic task IDs, or correction routing. All of that is reused. Only acceptance evaluation, the authoring split, and the change format are new.
 
 ---
 
 ## 4. Goals
 
-1. **Acceptance criteria with teeth.** A manifest task can carry typed acceptance checks with explicit severity that the build validator evaluates and reports as pass/fail/skipped/error in `ValidationResult.checks`.
+1. **Acceptance criteria with teeth.** A plan task can carry typed acceptance checks with explicit severity that the build validator evaluates and reports as pass/fail/skipped/error in `ValidationResult.checks`.
 2. **Untrusted-input safety.** All paths chrooted to workspace root, no shell execution, command invocations are argv-only and safelisted.
-3. **Authoring-time validation.** Unknown check names or malformed params fail manifest validation (at planning/gate), not at hour 2 of build.
+3. **Authoring-time validation.** Unknown check names or malformed params fail plan validation (at planning/gate), not at hour 2 of build.
 4. **Bounded stack support.** Stack-specific check evaluators target the actual reference-app stacks (FastAPI, React+Vite); other stacks produce `skipped` outcomes rather than guessing.
-5. **Separated authoring.** A new `governance.plan_build` planning task authors the manifest. `governance.assess_readiness` becomes a true reviewer/sign-off step that may reject or request structured revisions to the manifest.
-6. **Manifest delta overlays — schema and pure applier.** Five operation types in the schema; pure structural applier producing a deterministic working manifest from `(original, [overlay_1, ..., overlay_N])`.
-7. **Execution-aware overlay validation.** Before any overlay is accepted for an active run, an execution-aware validator rejects overlays that would invalidate already-started or completed work.
-8. **Conservative autonomous correction.** The correction protocol can produce overlays — but only `add_task` and `tighten_acceptance` operations. Removal/replacement/reordering require operator action or future `governance.replan`.
-9. **Observability.** Every overlay is stored as `artifact_type: "control_manifest_delta"`. Every overlay-created task carries provenance metadata (`overlay_id`, `operation_index`, `reason`, `correction_decision_id`). Every typed acceptance check result is in `ValidationResult.checks`.
-10. **No regression.** Existing build profiles and existing manifests (with informational criteria, no overlays, monolithic authoring) continue to work without change.
+5. **Separated authoring.** A new `development.plan_implementation` planning task authors the plan. `governance.review_plan` becomes a true reviewer/sign-off step that may reject or request structured revisions to the plan.
+6. **Plan changes — schema and pure applier.** Five operation types in the schema; pure structural applier producing a deterministic working plan from `(original, [change_1, ..., change_N])`.
+7. **Execution-aware change validation.** Before any plan change is accepted for an active run, an execution-aware validator rejects plan changes that would invalidate already-started or completed work.
+8. **Conservative autonomous correction.** The correction protocol can produce plan changes — but only `add_task` and `tighten_acceptance` operations. Removal/replacement/reordering require operator action or future `governance.replan`.
+9. **Observability.** Every plan change is stored as `artifact_type: "control_implementation_plan_change"`. Every change-created task carries provenance metadata (`change_id`, `operation_index`, `reason`, `correction_decision_id`). Every typed acceptance check result is in `ValidationResult.checks`.
+10. **No regression.** Existing build profiles and existing plans (with informational criteria, no changes, monolithic authoring) continue to work without change.
 
 ---
 
 ## 5. Non-Goals
 
-- Replacing the SIP-0086 manifest schema or task materialization mechanism.
+- Replacing the SIP-0086 plan schema or task materialization mechanism.
 - Defining a general-purpose constraint language. Typed acceptance checks are a small, fixed vocabulary chosen for build verification, not a Turing-complete DSL.
 - Sandbox execution of generated code. Acceptance checks are static analysis (AST, regex, file content) plus targeted shell invocations against a safelist (lint exit code, type-check exit code) — not running the app. Running the app is the smoke pack's job (separate SIP).
 - Browser/UI verification.
 - Cross-handler "did the test exercise the code" checks. Listed in SIP-0086 §10 future work; remains out of scope here.
-- Autonomous overlay operations beyond `add_task` and `tighten_acceptance` in Revision 1. The applier supports more; the autonomous producer does not.
+- Autonomous plan change operations beyond `add_task` and `tighten_acceptance` in Revision 1. The applier supports more; the autonomous producer does not.
 - Adaptive thresholds learned from prior cycles. Out of scope; criteria are author-specified per cycle.
 - Replacing the operator gate. The gate still exists; M2 adds an *internal* reviewer step on top of it, not instead of it.
 - Universal framework parsing. `endpoint_defined` and similar checks target the reference-app stacks only; other stacks return `skipped` rather than risk false negatives.
@@ -196,7 +196,7 @@ This SIP does not redefine SIP-0086's manifest schema, executor materialization,
 
 #### 6.1.1 Schema: flat YAML, normalized internal form
 
-`ManifestTask.acceptance_criteria` today is `list[str]`. Extend it to accept either strings (informational, backward-compatible) or **flat-YAML typed entries**. The parser normalizes every typed entry into a `TypedCheck` object before evaluators see it.
+`PlanTask.acceptance_criteria` today is `list[str]`. Extend it to accept either strings (informational, backward-compatible) or **flat-YAML typed entries**. The parser normalizes every typed entry into a `TypedCheck` object before evaluators see it.
 
 **Authoring-friendly YAML (flat keys):**
 
@@ -248,7 +248,7 @@ class TypedCheck:
     description: str = ""
 
 @dataclass(frozen=True)
-class ManifestTask:
+class PlanTask:
     task_index: int
     task_type: str
     role: str
@@ -323,7 +323,7 @@ All typed checks are evaluated against LLM-authored input. The evaluator treats 
 - **Commands**: only argv lists accepted; shell strings rejected outright. Argv[0] must be in the safelist (`python -m py_compile`, `python -m mypy`, `ruff check`, `tsc --noEmit`, `eslint`, `pyflakes`, `node --check`, `npm run lint`). Out-of-safelist commands produce `status: skipped` with reason `command_not_in_safelist`. Execution runs in the existing ACI executor (`adapters/capabilities/aci_executor.py`) with the workspace as cwd and a clean restricted environment (no `LD_PRELOAD`, no `PYTHONPATH` injection, etc.).
 - **Timeouts**: every command-bearing check has a hard timeout (default 10s, max 60s).
 
-The safelist is configurable via `command_check_safelist`; entries can only be added by operator-controlled config, not by manifest authors.
+The safelist is configurable via `command_check_safelist`; entries can only be added by operator-controlled config, not by plan authors.
 
 #### 6.1.6 Stack-aware bounded evaluators
 
@@ -346,13 +346,13 @@ Bad typed checks should be caught at planning/gate time, not at hour 2 of build:
 
 | Condition | Outcome |
 |---|---|
-| Unknown `check` name | Manifest invalid; `BuildTaskManifest.from_yaml()` raises `ValueError`. Manifest production retry loop sees the error and re-prompts. |
-| Malformed `params` for a known check (missing required field, wrong type) | Manifest invalid; same handling. |
-| Well-formed check for unsupported stack | Manifest valid; check evaluates with `status: skipped`, reason `unsupported_stack_or_syntax`. |
+| Unknown `check` name | Plan invalid; `ImplementationPlan.from_yaml()` raises `ValueError`. Plan production retry loop sees the error and re-prompts. |
+| Malformed `params` for a known check (missing required field, wrong type) | Plan invalid; same handling. |
+| Well-formed check for unsupported stack | Plan valid; check evaluates with `status: skipped`, reason `unsupported_stack_or_syntax`. |
 | Free-text string criterion | Valid; informational. |
-| Unknown `severity` value | Manifest invalid. |
+| Unknown `severity` value | Plan invalid. |
 
-The retry loop in `_produce_manifest` (`planning_tasks.py:572`) already re-prompts on `ValueError`; this rule extends what counts as invalid.
+The retry loop in `_produce_plan` (`planning_tasks.py:572`) already re-prompts on `ValueError`; this rule extends what counts as invalid.
 
 #### 6.1.8 Validator integration
 
@@ -379,49 +379,49 @@ Only `error`-severity failed checks contribute to `missing_components`. The self
 
 #### 6.1.9 Authoring guidance
 
-The manifest authoring prompt is extended to document the typed-check vocabulary, severity defaults, the stack-bounded check semantics, and the path/command safety rules:
+The plan authoring prompt is extended to document the typed-check vocabulary, severity defaults, the stack-bounded check semantics, and the path/command safety rules:
 
 > *Where possible, express acceptance criteria as typed checks rather than prose. Available checks: `endpoint_defined`, `import_present`, `field_present`, `regex_match`, `count_at_least`, `command_exit_zero`. Use flat YAML keys for the check-specific fields. Severity defaults to `error`; use `warning` for new or experimental checks. All paths must be inside the workspace root. Commands must be argv lists drawn from the safelist. Mixed prose+typed lists are fine; prose criteria are surfaced to the implementer but not auto-evaluated.*
 
-### 6.2 Capability M2 — Separated Manifest Authoring
+### 6.2 Capability M2 — Separated Plan Authoring
 
-#### 6.2.1 New planning task: `governance.plan_build`
+#### 6.2.1 New planning task: `development.plan_implementation`
 
-Add a planning task that runs *before* `governance.assess_readiness`:
+Add a planning task that runs *before* `governance.review_plan`:
 
 ```
 CURRENT (post-SIP-0086):
   Planning: data.research → strategy.frame → development.design_plan
-            → qa.define_test_strategy → governance.assess_readiness (sign-off + manifest authoring)
+            → qa.define_test_strategy → governance.review_plan (sign-off + plan authoring)
             → [GATE]
 
 PROPOSED:
   Planning: data.research → strategy.frame → development.design_plan
-            → qa.define_test_strategy → governance.plan_build (manifest authoring)
-            → governance.assess_readiness (sign-off + manifest review)
-            → [optional governance.plan_build_revise loop, bounded by max_planning_revisions]
+            → qa.define_test_strategy → development.plan_implementation (plan authoring)
+            → governance.review_plan (sign-off + plan review)
+            → [optional development.plan_implementation_revise loop, bounded by max_planning_revisions]
             → [GATE]
 ```
 
-Implementation: a new handler `GovernancePlanBuildHandler` in `planning_tasks.py` that takes the existing `_produce_manifest` logic (and its retry loop) verbatim, returns the manifest as its primary output rather than a side-effect on the planning artifact.
+Implementation: a new handler `DevelopmentPlanImplementationHandler` in `planning_tasks.py` that takes the existing `_produce_plan` logic (and its retry loop) verbatim, returns the plan as its primary output rather than a side-effect on the planning artifact.
 
-`governance.assess_readiness` loses its manifest-production responsibility and gains a manifest-review responsibility.
+`governance.review_plan` loses its plan-production responsibility and gains a plan-review responsibility.
 
-#### 6.2.2 `manifest_review.yaml` schema
+#### 6.2.2 `plan_review.yaml` schema
 
 The reviewer step produces a structured artifact. Prose-only review concerns are explicitly disallowed.
 
 ```yaml
-# manifest_review.yaml
+# plan_review.yaml
 version: 1
 review_status: approved | revision_requested | approved_with_concerns
 reviewer_confidence: low | medium | high
-target_manifest_id: <manifest artifact id>
+target_plan_id: <plan artifact id>
 
 coverage_concerns:
   - prd_requirement: "duplicate-join 409 handling"
-    target_task_index: null            # null = missing entirely from manifest
-    note: "PRD requires 409 on duplicate join; no manifest task references it."
+    target_task_index: null            # null = missing entirely from plan
+    note: "PRD requires 409 on duplicate join; no plan task references it."
 
 dependency_concerns:
   - target_task_index: 4
@@ -440,39 +440,39 @@ acceptance_concerns:
       methods_paths: [[POST, /runs/{id}/join]]
 
 revision_instructions: |
-  Free-text guidance for the next manifest authoring attempt.
+  Free-text guidance for the next plan authoring attempt.
 
 operator_notes: |
   Anything the operator should see at gate, even on approval.
 ```
 
-**Rule:** `governance.assess_readiness` may not return `review_status: revision_requested` unless it emits at least one structured concern with a `target_task_index` or `prd_requirement` reference where applicable. Pure prose revision requests are rejected and treated as `approved_with_concerns`.
+**Rule:** `governance.review_plan` may not return `review_status: revision_requested` unless it emits at least one structured concern with a `target_task_index` or `prd_requirement` reference where applicable. Pure prose revision requests are rejected and treated as `approved_with_concerns`.
 
 #### 6.2.3 Revision loop
 
-If `review_status: revision_requested`, dispatch `governance.plan_build_revise` — a lightweight task that re-runs manifest authoring with the structured concerns appended to the prompt. Bounded by `max_planning_revisions: int = 1` in resolved config. After exhaustion, planning proceeds with the latest manifest and the unresolved concerns documented in `operator_notes` for the gate.
+If `review_status: revision_requested`, dispatch `development.plan_implementation_revise` — a lightweight task that re-runs plan authoring with the structured concerns appended to the prompt. Bounded by `max_planning_revisions: int = 1` in resolved config. After exhaustion, planning proceeds with the latest plan and the unresolved concerns documented in `operator_notes` for the gate.
 
 #### 6.2.4 Default-flip criteria
 
-`split_manifest_authoring: bool = false` in Revision 1. Flip to `true` once these conditions hold across a tracking window:
+`split_implementation_planning: bool = false` in Revision 1. Flip to `true` once these conditions hold across a tracking window:
 
 - At least 5 successful long-cycle planning runs with the split enabled (no gate failures attributable to the new flow).
-- Manifest YAML validity rate (parses on first attempt) is equal to or better than the colocated baseline.
+- Plan YAML validity rate (parses on first attempt) is equal to or better than the colocated baseline.
 - Planning workload duration regression ≤ 20% relative to the colocated baseline.
 - Revision-loop activation rate is below 50% (otherwise the reviewer is requesting too many revisions, which usually means the prompt or rubric is wrong).
 
 These thresholds are intentionally low-bar; the goal is to prevent indefinite "after stabilization" drift, not to set perfectionist gates. Flipping the default is a small follow-up PR, not part of this SIP's first delivery.
 
-### 6.3 Capability M3 — Manifest Delta Overlays
+### 6.3 Capability M3 — Plan Changes
 
-#### 6.3.1 Overlay schema
+#### 6.3.1 Plan change schema
 
 ```yaml
-# manifest_delta.yaml
+# plan_change.yaml
 version: 1
-overlay_id: ovl_<uuid>
-parent_manifest_hash: <sha256 of CANONICAL serialized manifest, see 6.3.6>
-parent_overlay_id: <prior overlay's overlay_id, or null if first>
+change_id: ovl_<uuid>
+parent_plan_hash: <sha256 of CANONICAL serialized plan, see 6.3.6>
+parent_change_id: <prior plan change's change_id, or null if first>
 created_at: 2026-04-27T18:00:00Z
 created_by: governance.correction_decision
 reason: "Subtask 4 failed acceptance after self-eval and one repair attempt; PRD requires duplicate-join 409 not present anywhere."
@@ -480,7 +480,7 @@ operations:
   - op: add_task
     after_index: 4
     task:
-      task_index: 8        # Always > max existing index across original + prior overlays
+      task_index: 8        # Always > max existing index across original + prior plan changes
       task_type: development.develop
       role: dev
       focus: "Add 409 duplicate-join handling"
@@ -509,31 +509,31 @@ Five operations are supported in the schema and the applier. Each has explicit i
 
 | Op | Invariants |
 |---|---|
-| `add_task` | New `task_index` strictly greater than max existing index across original + prior overlays. Dependencies must reference existing (active or tombstoned) task indices. Added task must include at least one `expected_artifact` or one `error`-severity typed acceptance criterion (no empty-contract additions). |
-| `remove_task` | Cannot remove a task that has already started or completed in the current run (execution-aware validation, §6.3.4). Tombstones the task in the working manifest; does not delete from history. Any active task that depends on the removed task is an error unless the dependent is also tombstoned in the same overlay. |
+| `add_task` | New `task_index` strictly greater than max existing index across original + prior plan changes. Dependencies must reference existing (active or tombstoned) task indices. Added task must include at least one `expected_artifact` or one `error`-severity typed acceptance criterion (no empty-contract additions). |
+| `remove_task` | Cannot remove a task that has already started or completed in the current run (execution-aware validation, §6.3.4). Tombstones the task in the working plan; does not delete from history. Any active task that depends on the removed task is an error unless the dependent is also tombstoned in the same plan change. |
 | `replace_task` | `task_index` and `task_type` immutable. Cannot replace a task that has already started or completed (use `add_task` for a follow-up instead). May not loosen acceptance — replacement criteria must be at least as strict as the original. |
 | `tighten_acceptance` | Append-only. New criteria added; existing criteria neither removed nor weakened. Severity may be raised (`warning` → `error`) but not lowered. |
 | `reorder` | Must not violate `depends_on`. Revision 1 limited to not-yet-started tasks. |
 
-`loosen_acceptance` (removing or weakening criteria) is intentionally not supported in any form. Loosening is suspicious and should be a manual operator action via re-gate, not a correction-driven overlay.
+`loosen_acceptance` (removing or weakening criteria) is intentionally not supported in any form. Loosening is suspicious and should be a manual operator action via re-gate, not a correction-driven plan change.
 
 #### 6.3.3 Pure structural applier
 
 ```python
-def apply_overlays(
-    original: BuildTaskManifest,
-    overlays: list[ManifestDelta],
-) -> WorkingManifest:
-    """Apply overlays in order to produce the working manifest.
+def apply_plan_changes(
+    original: ImplementationPlan,
+    changes: list[PlanChange],
+) -> WorkingPlan:
+    """Apply plan changes in order to produce the working plan.
 
-    Pure function: same (original, overlays) always yields same WorkingManifest.
+    Pure function: same (original, changes) always yields same WorkingPlan.
     Validates structural invariants ONLY:
-      - parent_overlay_id chain is linear and well-formed
-      - parent_manifest_hash matches canonical hash of original
+      - parent_change_id chain is linear and well-formed
+      - parent_plan_hash matches canonical hash of original
       - operations satisfy structural invariants (§6.3.2)
       - new task indices are monotonic and unique
 
-    Does NOT validate runtime constraints (that's apply_overlay_for_active_run).
+    Does NOT validate runtime constraints (that's validate_plan_change_for_run).
     """
 ```
 
@@ -541,22 +541,22 @@ Identity invariants the applier guarantees:
 
 - Original task indices never change.
 - Original task IDs (`task-{run}-m{idx}-{type}`) never change. Already-completed checkpoints stay valid.
-- New tasks added via overlays use indices strictly greater than any prior index, including across overlays. Deterministic IDs continue to be unique and stable.
-- Removed tasks are tombstoned, not deleted — the working manifest preserves them as `status: removed_by_overlay` so audit trail and prior task IDs remain queryable.
+- New tasks added via plan changes use indices strictly greater than any prior index, including across plan changes. Deterministic IDs continue to be unique and stable.
+- Removed tasks are tombstoned, not deleted — the working plan preserves them as `status: removed_by_change` so audit trail and prior task IDs remain queryable.
 
 #### 6.3.4 Execution-aware validator
 
-Before an overlay is accepted for an active run, an execution-aware validator consults run state and rejects overlays that would invalidate already-started or completed work:
+Before a plan change is accepted for an active run, an execution-aware validator consults run state and rejects plan changes that would invalidate already-started or completed work:
 
 ```python
-def validate_overlay_for_run(
-    overlay: ManifestDelta,
-    working_manifest: WorkingManifest,
+def validate_plan_change_for_run(
+    overlay: PlanChange,
+    working_plan: WorkingPlan,
     run_state: RunState,        # which task IDs have started/completed/checkpointed
 ) -> list[ValidationError]:
-    """Reject overlays that mutate completed or in-flight work.
+    """Reject plan changes that mutate completed or in-flight work.
 
-    Returns empty list if overlay is safe to accept.
+    Returns empty list if plan change is safe to accept.
     """
 ```
 
@@ -567,41 +567,41 @@ Rejection rules:
 - `reorder` involving any started task → reject in Revision 1.
 - `add_task` whose dependencies include a tombstoned task that has not produced the artifacts the new task expects → reject.
 
-The applier produces the manifest derivation; the validator approves the overlay for runtime use. Both must succeed before an overlay is forwarded to the executor.
+The applier produces the plan derivation; the validator approves the plan change for runtime use. Both must succeed before a plan change is forwarded to the executor.
 
 #### 6.3.5 Completed-work immutability (explicit)
 
-> Overlays affect the remaining execution plan. They do not rewrite the semantic meaning of already-completed task checkpoints. Corrections to completed work are represented as new tasks (`add_task`) or repair tasks, not mutations of prior ones.
+> Plan changes affect the remaining execution plan. They do not rewrite the semantic meaning of already-completed task checkpoints. Corrections to completed work are represented as new tasks (`add_task`) or repair tasks, not mutations of prior ones.
 
 This is what the execution-aware validator enforces; called out separately because it's the load-bearing safety property.
 
 #### 6.3.6 Canonical hashing and chain order
 
-- **Manifest hash** is computed over a canonical serialization of the parsed `BuildTaskManifest` (sorted keys, normalized whitespace, deterministic list ordering), not over raw YAML text. Raw YAML hashing is a footgun because re-saved manifests can produce different bytes despite identical content.
-- **Overlay chain order** is determined by `parent_overlay_id` linkage, forming a strict linear chain rooted at the original manifest. `created_at` is metadata for display only; it does not affect chain order or hash inputs.
-- `overlay_id` uniqueness is enforced; collisions are rejected at apply time.
+- **Plan hash** is computed over a canonical serialization of the parsed `ImplementationPlan` (sorted keys, normalized whitespace, deterministic list ordering), not over raw YAML text. Raw YAML hashing is a footgun because re-saved plans can produce different bytes despite identical content.
+- **Plan change chain order** is determined by `parent_change_id` linkage, forming a strict linear chain rooted at the original plan. `created_at` is metadata for display only; it does not affect chain order or hash inputs.
+- `change_id` uniqueness is enforced; collisions are rejected at apply time.
 
 #### 6.3.7 Task identity vs. execution order
 
-The applier preserves task indices as identity; execution order can diverge when overlays add tasks. For example, an overlay adding `task_index: 9` `after_index: 4` produces a working manifest where `m009` executes between `m004` and `m005` despite its higher index.
+The applier preserves task indices as identity; execution order can diverge when plan changes add tasks. For example, a plan change adding `task_index: 9` `after_index: 4` produces a working plan where `m009` executes between `m004` and `m005` despite its higher index.
 
-> **Task index is identity, not execution order.** `task-{run}-m009-development.develop` is a stable, unique reference for that task across checkpoints, logs, and artifacts. Its position in the working manifest's execution order is determined by `after_index` and `depends_on`, not by index sort order.
+> **Task index is identity, not execution order.** `task-{run}-m009-development.develop` is a stable, unique reference for that task across checkpoints, logs, and artifacts. Its position in the working plan's execution order is determined by `after_index` and `depends_on`, not by index sort order.
 
 Tooling and operator UI must not assume monotone-index ⇒ monotone-execution.
 
-#### 6.3.8 Overlay-created task provenance
+#### 6.3.8 Change-created task provenance
 
-Every task materialized from an overlay carries metadata identifying the overlay that produced it:
+Every task materialized from a plan change carries metadata identifying the plan change that produced it:
 
 ```python
 metadata = {
     "step_index": ...,
     "role": ...,
     "routing_reason": ...,
-    # SIP-Build-Manifest-Maturation: overlay provenance
-    "overlay_id": "ovl_abc123",
-    "overlay_operation_index": 0,         # which op in the overlay produced this task
-    "overlay_reason": "Subtask 4 failed acceptance...",
+    # SIP-0092: plan change provenance
+    "change_id": "ovl_abc123",
+    "change_operation_index": 0,         # which op in the plan change produced this task
+    "change_reason": "Subtask 4 failed acceptance...",
     "correction_decision_id": "corr_def456",  # if produced by correction protocol
 }
 ```
@@ -610,14 +610,14 @@ This is what lets an operator answer "why does task `m009` exist" without greppi
 
 #### 6.3.9 Storage and forwarding
 
-Overlays are stored in the artifact vault with `artifact_type: "control_manifest_delta"`. The forwarding path that today carries `control_manifest` artifacts to the implementation workload (fixed in `075fd9e`) is extended to carry all `control_manifest_delta` artifacts for the run, ordered by `parent_overlay_id` chain.
+Plan changes are stored in the artifact vault with `artifact_type: "control_implementation_plan_change"`. The forwarding path that today carries `control_implementation_plan` artifacts to the implementation workload (fixed in `075fd9e`) is extended to carry all `control_implementation_plan_change` artifacts for the run, ordered by `parent_change_id` chain.
 
-The executor's manifest-loading code (`_load_manifest_for_run`) becomes:
+The executor's plan-loading code (`_load_plan_for_run`) becomes:
 
 ```python
-manifest = load_original_manifest(run)
-overlays = load_overlays_for_run(run)            # ordered by parent_overlay_id chain
-working_manifest = apply_overlays(manifest, overlays)
+plan = load_original_plan(run)
+plan_changes = load_plan_changes_for_run(run)            # ordered by parent_change_id chain
+working_plan = apply_plan_changes(plan, plan_changes)
 ```
 
 #### 6.3.10 Re-gate matrix
@@ -630,11 +630,11 @@ working_manifest = apply_overlays(manifest, overlays)
 | `replace_task` | ❌ requires re-gate | ✅ allowed | reserved |
 | `reorder` (not-yet-started) | ❌ requires re-gate | ✅ allowed | reserved |
 
-The autonomous correction protocol in Revision 1 may only emit overlays containing `add_task` or `tighten_acceptance` operations. An overlay containing any other operation type produced by the correction protocol is rejected by the execution-aware validator.
+The autonomous correction protocol in Revision 1 may only emit plan changes containing `add_task` or `tighten_acceptance` operations. A plan change containing any other operation type produced by the correction protocol is rejected by the execution-aware validator.
 
-#### 6.3.11 Bounded overlay count
+#### 6.3.11 Bounded plan change count
 
-Unbounded overlays are a runaway risk. `max_manifest_overlays: int = 5` in resolved config. When exhausted, the correction protocol can no longer produce overlays — only patch or escalate. Operators see a clear signal that the manifest itself is the wrong shape and the cycle should re-gate.
+Unbounded plan changes are a runaway risk. `max_plan_changes: int = 5` in resolved config. When exhausted, the correction protocol can no longer produce plan changes — only patch or escalate. Operators see a clear signal that the plan itself is the wrong shape and the cycle should re-gate.
 
 ### 6.4 Configuration Keys
 
@@ -645,43 +645,43 @@ Add to `_APPLIED_DEFAULTS_EXTRA_KEYS`:
 | `mechanical_acceptance` | `bool` | `true` | M1 — evaluate typed checks |
 | `command_acceptance_checks` | `bool` | `true` (false in `selftest`) | M1 — enable `command_exit_zero` |
 | `command_check_safelist` | `list[str]` | (built-in safelist, see §6.1.5) | M1 |
-| `split_manifest_authoring` | `bool` | `false` | M2 — enable `governance.plan_build` |
+| `split_implementation_planning` | `bool` | `false` | M2 — enable `development.plan_implementation` |
 | `max_planning_revisions` | `int` | `1` | M2 — bounded revision rounds |
-| `manifest_overlays_enabled` | `bool` | `true` | M3 — apply overlays on load |
-| `max_manifest_overlays` | `int` | `5` | M3 — overlay count ceiling |
+| `plan_changes_enabled` | `bool` | `true` | M3 — apply plan changes on load |
+| `max_plan_changes` | `int` | `5` | M3 — plan change count ceiling |
 
 Profile examples:
 
 ```yaml
 # build profile (Revision 1 defaults — M1 on, M2 off, M3 on)
 defaults:
-  build_manifest: true
+  build_plan: true
   output_validation: true
   max_self_eval_passes: 1
   mechanical_acceptance: true
   command_acceptance_checks: true
-  manifest_overlays_enabled: true
-  max_manifest_overlays: 5
-  split_manifest_authoring: false   # Flip true after §6.2.4 criteria met
+  plan_changes_enabled: true
+  max_plan_changes: 5
+  split_implementation_planning: false   # Flip true after §6.2.4 criteria met
 
 # implementation profile (long-cycle — all on, deeper)
 defaults:
-  build_manifest: true
+  build_plan: true
   output_validation: true
   max_self_eval_passes: 2
   mechanical_acceptance: true
   command_acceptance_checks: true
-  manifest_overlays_enabled: true
-  max_manifest_overlays: 8
-  split_manifest_authoring: true
+  plan_changes_enabled: true
+  max_plan_changes: 8
+  split_implementation_planning: true
   max_correction_attempts: 3
 
 # selftest profile (smoke — minimal mechanical surface)
 defaults:
   mechanical_acceptance: true
   command_acceptance_checks: false   # static checks only
-  manifest_overlays_enabled: true
-  max_manifest_overlays: 2
+  plan_changes_enabled: true
+  max_plan_changes: 2
 ```
 
 ---
@@ -695,22 +695,22 @@ Long-cycle group_run (4-hour budget) running `implementation` profile:
 2. `strategy.frame` → objective frame
 3. `development.design_plan` → design plan
 4. `qa.define_test_strategy` → test strategy with concrete typed criteria suggestions
-5. **`governance.plan_build`** (Max) → manifest with 9 subtasks; typed acceptance with mixed `error` and `warning` severity on 5 of them
-6. **`governance.assess_readiness`** (Max) → reviews manifest, emits `manifest_review.yaml` with `review_status: revision_requested` and one structured `acceptance_concern` (subtask 6 has no acceptance check for join/leave 409 handling)
-7. `governance.plan_build_revise` (Max) → tightens subtask 6 acceptance with a `regex_match` for the 409 status code
-8. **Gate** — operator sees the original manifest, the structured review concerns, and the revised manifest side-by-side; approves.
+5. **`development.plan_implementation`** (Max) → plan with 9 subtasks; typed acceptance with mixed `error` and `warning` severity on 5 of them
+6. **`governance.review_plan`** (Max) → reviews plan, emits `plan_review.yaml` with `review_status: revision_requested` and one structured `acceptance_concern` (subtask 6 has no acceptance check for join/leave 409 handling)
+7. `development.plan_implementation_revise` (Max) → tightens subtask 6 acceptance with a `regex_match` for the 409 status code
+8. **Gate** — operator sees the original plan, the structured review concerns, and the revised plan side-by-side; approves.
 
 **Build phase (~2.5 hours):**
 - Subtasks 0–4 run sequentially. Each validates against typed acceptance:
   - Subtask 1 (Backend API endpoints): `endpoint_defined` for all 5 endpoints (severity `error`) + `import_present` for repository → all `passed`.
   - Subtask 4 (Frontend detail view): `regex_match` for duplicate-name error display (severity `error`) → `failed`. Self-eval fires; second LLM call sees the specific missing pattern in the failure description and adds the handler. Re-validates → `passed`.
 - Subtask 6 (qa.test backend): tests run but only cover 3 of 5 endpoints. `regex_match` over `tests/test_backend.py` with `pattern: "client\\.(get|post)\\(['\"]/runs"`, `count_min: 5`, severity `error` → `failed` (only 3 matches). **Correction protocol fires.**
-- Correction decision: `overlay` (not `patch`). The autonomous producer is restricted to `add_task` and `tighten_acceptance`. It emits an overlay with one `add_task` operation (new subtask 9 "Add tests for join/leave endpoints") plus a `tighten_acceptance` on subtask 6 (raise `count_min` to enforce future runs see all 5). The execution-aware validator confirms neither operation touches completed work — subtask 6's existing checkpoint is preserved as `status: original_failed`; subtask 9 is appended. Working manifest now has 10 active tasks.
-- Build resumes from subtask 9. The new task carries provenance metadata (`overlay_id: ovl_xyz`, `correction_decision_id: corr_abc`, `overlay_reason: "qa.test backend coverage failed regex_match count_min=5"`), so any operator looking at task `m009` can trace exactly why it exists.
+- Correction decision: `overlay` (not `patch`). The autonomous producer is restricted to `add_task` and `tighten_acceptance`. It emits a plan change with one `add_task` operation (new subtask 9 "Add tests for join/leave endpoints") plus a `tighten_acceptance` on subtask 6 (raise `count_min` to enforce future runs see all 5). The execution-aware validator confirms neither operation touches completed work — subtask 6's existing checkpoint is preserved as `status: original_failed`; subtask 9 is appended. Working plan now has 10 active tasks.
+- Build resumes from subtask 9. The new task carries provenance metadata (`change_id: ovl_xyz`, `correction_decision_id: corr_abc`, `change_reason: "qa.test backend coverage failed regex_match count_min=5"`), so any operator looking at task `m009` can trace exactly why it exists.
 
-**Wrap-up (~5 minutes):** Standard. Closeout artifact references the original manifest, the one overlay, the working manifest, and the `manifest_review.yaml`.
+**Wrap-up (~5 minutes):** Standard. Closeout artifact references the original plan, the one plan change, the working plan, and the `plan_review.yaml`.
 
-**Net effect compared to today:** typed `regex_match` with explicit `count_min` catches the partial test coverage that today's filename-only validation misses; the autonomous correction overlay (limited to `add_task` + `tighten_acceptance`) lets the squad add a missing test subtask without re-gating; the separated authoring caught a planning gap before the gate; the structured `manifest_review.yaml` made the revision loop mechanical rather than prose-driven.
+**Net effect compared to today:** typed `regex_match` with explicit `count_min` catches the partial test coverage that today's filename-only validation misses; the autonomous correction plan change (limited to `add_task` + `tighten_acceptance`) lets the squad add a missing test subtask without re-gating; the separated authoring caught a planning gap before the gate; the structured `plan_review.yaml` made the revision loop mechanical rather than prose-driven.
 
 ---
 
@@ -721,9 +721,9 @@ Three independently shippable stages mapped to the three capabilities. Each stag
 ### Stage M1 — Mechanical Acceptance (3 PRs)
 
 **PR 1.1:** Schema + parser + authoring-time validation
-- Extend `ManifestTask.acceptance_criteria` to accept typed dicts via flat YAML.
+- Extend `PlanTask.acceptance_criteria` to accept typed dicts via flat YAML.
 - Add `TypedCheck` dataclass and the normalization rule (§6.1.1).
-- Update `BuildTaskManifest.from_yaml()` to parse mixed lists and reject unknown check names / malformed params (§6.1.7).
+- Update `ImplementationPlan.from_yaml()` to parse mixed lists and reject unknown check names / malformed params (§6.1.7).
 - Tests: typed-only, prose-only, mixed; malformed typed shapes; unknown check name; unknown severity; flat-vs-nested parsing.
 
 **PR 1.2:** Check evaluator framework + static checks + safety
@@ -739,43 +739,43 @@ Three independently shippable stages mapped to the three capabilities. Each stag
 - `error`-severity failures contribute to `missing_components`; `warning`/`info` and `skipped` reported in evidence only.
 - Update self-eval prompt to include specific failed check descriptions.
 - Update authoring prompt to document the check vocabulary, severity, and safety rules.
-- Integration test: a manifest with typed checks fails when generated code is incomplete; passes when complete; warning-severity check failure does not fail the task.
+- Integration test: a plan with typed checks fails when generated code is incomplete; passes when complete; warning-severity check failure does not fail the task.
 
 ### Stage M2 — Separated Authoring (2 PRs)
 
-**PR 2.1:** New `governance.plan_build` handler
-- Move `_produce_manifest` body verbatim from `assess_readiness` to a new `GovernancePlanBuildHandler`.
-- Register `governance.plan_build` task type.
-- Add to planning step list when `split_manifest_authoring: true`.
-- Backward-compat: keep `assess_readiness` manifest production behind the flag.
+**PR 2.1:** New `development.plan_implementation` handler
+- Move `_produce_plan` body verbatim from `review_plan` to a new `DevelopmentPlanImplementationHandler`.
+- Register `development.plan_implementation` task type.
+- Add to planning step list when `split_implementation_planning: true`.
+- Backward-compat: keep `review_plan` plan production behind the flag.
 
 **PR 2.2:** Reviewer logic + structured review schema + revision loop
-- Add `manifest_review.yaml` schema (§6.2.2) and reviewer prompt.
+- Add `plan_review.yaml` schema (§6.2.2) and reviewer prompt.
 - Reject prose-only revision requests (§6.2.2 rule).
-- Add `governance.plan_build_revise` task triggered on `review_status: revision_requested`.
+- Add `development.plan_implementation_revise` task triggered on `review_status: revision_requested`.
 - Bound revisions by `max_planning_revisions`.
 - Document default-flip criteria (§6.2.4) in the SIP and surface a metric the operator can check.
-- Integration test: structured concern produces a revised manifest that addresses the concern; bound exhaustion proceeds with annotations in `operator_notes`.
+- Integration test: structured concern produces a revised plan that addresses the concern; bound exhaustion proceeds with annotations in `operator_notes`.
 
-### Stage M3 — Delta Overlays (3 PRs)
+### Stage M3 — Plan Changes (3 PRs)
 
-**PR 3.1:** Overlay schema + pure structural applier
-- New module `src/squadops/cycles/manifest_overlay.py`: `ManifestDelta`, `apply_overlays`, canonical hashing (§6.3.6), parent chain check, identity invariants, structural operation invariants (§6.3.2).
+**PR 3.1:** Plan change schema + pure structural applier
+- New module `src/squadops/cycles/plan_change.py`: `PlanChange`, `apply_plan_changes`, canonical hashing (§6.3.6), parent chain check, identity invariants, structural operation invariants (§6.3.2).
 - Schema supports all 5 operations.
 - Tests for each operation type, parent-chain mismatches, hash mismatches, removed-task dependency errors, index uniqueness, severity-tightening rules.
 
 **PR 3.2:** Execution-aware validator + loader integration + provenance
-- `validate_overlay_for_run()` (§6.3.4) consulting run state.
-- Update `_load_manifest_for_run` to load and apply overlays via the chain order.
-- Update overlay forwarding to carry `control_manifest_delta` artifacts.
-- Add overlay provenance metadata to materialized envelopes (§6.3.8).
-- Tests: working-manifest derivation across 0/1/N overlays; rejection of overlays mutating started/completed tasks; provenance fields populated on materialized envelopes.
+- `validate_plan_change_for_run()` (§6.3.4) consulting run state.
+- Update `_load_plan_for_run` to load and apply plan changes via the chain order.
+- Update plan change forwarding to carry `control_implementation_plan_change` artifacts.
+- Add plan change provenance metadata to materialized envelopes (§6.3.8).
+- Tests: working-plan derivation across 0/1/N plan changes; rejection of plan changes mutating started/completed tasks; provenance fields populated on materialized envelopes.
 
 **PR 3.3:** Correction-protocol integration (restricted operations only)
-- Extend `governance.correction_decision` to emit `decision: overlay` with a generated `manifest_delta.yaml`.
-- **Producer-side restriction:** correction protocol may only emit `add_task` and `tighten_acceptance` operations. Any other operation in a correction-produced overlay is rejected by the execution-aware validator.
-- Bound by `max_manifest_overlays`.
-- Integration test: a `SEMANTIC_FAILURE` that warrants a structural change produces an overlay with a single `add_task` (or `tighten_acceptance`); overlay is applied; cycle continues with revised plan; provenance metadata flows through.
+- Extend `governance.correction_decision` to emit `decision: overlay` with a generated `plan_change.yaml`.
+- **Producer-side restriction:** correction protocol may only emit `add_task` and `tighten_acceptance` operations. Any other operation in a correction-produced plan change is rejected by the execution-aware validator.
+- Bound by `max_plan_changes`.
+- Integration test: a `SEMANTIC_FAILURE` that warrants a structural change produces a plan change with a single `add_task` (or `tighten_acceptance`); plan change is applied; cycle continues with revised plan; provenance metadata flows through.
 
 ### Tests
 
@@ -784,7 +784,7 @@ Coverage targets per stage:
 | Layer | M1 | M2 | M3 |
 |-------|----|----|----|
 | Unit (parser/dataclasses) | ✅ | ✅ | ✅ |
-| Unit (check eval / overlay applier / overlay validator) | ✅ | n/a | ✅ |
+| Unit (check eval / change applier / plan change validator) | ✅ | n/a | ✅ |
 | Integration (handler) | ✅ | ✅ | ✅ |
 | End-to-end cycle | ✅ | ✅ | ✅ |
 
@@ -799,16 +799,16 @@ Every test must catch a specific bug per `docs/TEST_QUALITY_STANDARD.md`. No tau
 | Typed checks too strict; valid output flagged | M1 | Severity field lets new checks ship at `warning`. `mechanical_acceptance: false` global escape hatch. Failed-check details in evidence support fast tuning. |
 | Authoring prompt drowns in check syntax docs | M1 | Examples-first prompting (one concrete typed criterion per check type) plus a single-paragraph reference; mixed prose+typed lists explicitly allowed. |
 | `command_exit_zero` runs untrusted code | M1 | Hard safelist; commands run in ACI-executor sandbox; per-check timeout; `command_acceptance_checks: false` disable flag; future smoke pack provides full container isolation. |
-| Path/glob/regex injection from LLM-authored manifests | M1 | Workspace chroot, argv-only, glob match cap, regex timeout, symlink rejection (§6.1.5). Manifest is treated as untrusted input by design. |
+| Path/glob/regex injection from LLM-authored plans | M1 | Workspace chroot, argv-only, glob match cap, regex timeout, symlink rejection (§6.1.5). Plan is treated as untrusted input by design. |
 | Stack expansion creep in `endpoint_defined` etc. | M1 | Explicit `unsupported_stack_or_syntax` skip outcome; new stacks added only via separate scoped PR (§6.1.6). |
-| Reviewer rubber-stamps the proposer (M2) | M2 | Reviewer prompt is structured against named gaps; structured `manifest_review.yaml` cannot be prose-only. Operator gate remains as final external check. |
+| Reviewer rubber-stamps the proposer (M2) | M2 | Reviewer prompt is structured against named gaps; structured `plan_review.yaml` cannot be prose-only. Operator gate remains as final external check. |
 | Revision loop oscillates | M2 | `max_planning_revisions: 1` bound (Revision 1); future expansion only after metrics support it. |
-| `split_manifest_authoring` flag stays default-off forever | M2 | Concrete flip criteria (§6.2.4) instead of "after stabilization." |
-| Overlay storms (correction repeatedly emits overlays) | M3 | `max_manifest_overlays: 5` bound; after exhaustion, correction limited to patch or escalate. |
+| `split_implementation_planning` flag stays default-off forever | M2 | Concrete flip criteria (§6.2.4) instead of "after stabilization." |
+| Plan change storms (correction repeatedly emits changes) | M3 | `max_plan_changes: 5` bound; after exhaustion, correction limited to patch or escalate. |
 | Autonomous correction makes plan incoherent via removal/replacement | M3 | Producer-side restriction: correction protocol may only emit `add_task` and `tighten_acceptance` (§6.3.10). Schema and applier support more operations, but only operator or future `governance.replan` may produce them. |
-| Working-manifest divergence between runs | M3 | Pure deterministic applier; canonical-form hashing (not raw YAML); parent-overlay-id chain ordering; replay tests on every PR. |
-| Overlay mutates completed work, invalidating checkpoints | M3 | Execution-aware validator (§6.3.4) rejects any overlay touching started/completed task IDs. Completed-work immutability is an explicit principle (§3.7) and an enforced rule. |
-| Operator confusion: which manifest am I looking at? | M3 | Console must show original + overlay chain + working manifest distinctly. Overlay-created tasks carry `overlay_id` / `overlay_reason` / `correction_decision_id` provenance metadata (§6.3.8). |
+| Working-plan divergence between runs | M3 | Pure deterministic applier; canonical-form hashing (not raw YAML); parent-change-id chain ordering; replay tests on every PR. |
+| Plan change mutates completed work, invalidating checkpoints | M3 | Execution-aware validator (§6.3.4) rejects any plan change touching started/completed task IDs. Completed-work immutability is an explicit principle (§3.7) and an enforced rule. |
+| Operator confusion: which plan am I looking at? | M3 | Console must show original + change chain + working plan distinctly. Change-created tasks carry `change_id` / `change_reason` / `correction_decision_id` provenance metadata (§6.3.8). |
 
 ---
 
@@ -822,17 +822,17 @@ Cleaner, but loses operator-readable intent. Mixed lists let prose carry the "wh
 
 Initial draft of M3 allowed the correction producer to emit all five operation types. Rev 2 restricted to `add_task` + `tighten_acceptance` because removal/replacement/reordering can easily make a long-cycle plan incoherent — the very situation correction is supposed to fix. Conservative producer plus full schema support gives us the full operation set when an operator (or future `governance.replan`) needs it, without giving autonomous correction the keys to rewrite history.
 
-### 10.3 Treat overlays as in-place mutations of the manifest
+### 10.3 Treat plan changes as in-place mutations of the plan
 
 Simpler API but loses the audit trail and the operator-readable "what changed since gate approval." The append-only chain is the same cost in implementation and a much stronger contract.
 
-### 10.4 Skip M3; restrict long cycles to re-gate when the manifest is wrong
+### 10.4 Skip M3; restrict long cycles to re-gate when the plan is wrong
 
-Re-gate is heavy: it implies operator attention every time the squad needs to add a subtask. For autonomous long cycles (the explicit motivation in the cycle-length thread), this defeats the purpose. M3's bounded overlays let the squad self-correct within governed limits.
+Re-gate is heavy: it implies operator attention every time the squad needs to add a subtask. For autonomous long cycles (the explicit motivation in the cycle-length thread), this defeats the purpose. M3's bounded plan changes let the squad self-correct within governed limits.
 
 ### 10.5 Defer mechanical acceptance until full sandbox execution lands
 
-Sandbox execution (run-the-app) is the smoke pack's job and is significant work. Mechanical acceptance via static analysis + safelisted commands is small, ships now, and complements the smoke pack rather than competing with it. Smoke pack later validates "the app runs"; M1 validates "the code says what the manifest said it should say." Both useful; not redundant.
+Sandbox execution (run-the-app) is the smoke pack's job and is significant work. Mechanical acceptance via static analysis + safelisted commands is small, ships now, and complements the smoke pack rather than competing with it. Smoke pack later validates "the app runs"; M1 validates "the code says what the plan said it should say." Both useful; not redundant.
 
 ### 10.6 Hash raw YAML rather than canonical serialization
 
@@ -843,12 +843,12 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
 ## 11. Future Work
 
 - **Expand autonomous correction operation set.** Once long-cycle telemetry supports it, `governance.replan` can be the producer for `remove_task` / `replace_task` / `reorder`. Correction protocol stays conservative.
-- **Stack-aware acceptance defaults.** When SIP-0072 (Stack Capability Registry) concretization lands, manifest authoring can pull stack-default check sets (e.g., FastAPI ⇒ `endpoint_defined` + `import_present` for the repo; React ⇒ `count_at_least` for components).
+- **Stack-aware acceptance defaults.** When SIP-0072 (Stack Capability Registry) concretization lands, plan authoring can pull stack-default check sets (e.g., FastAPI ⇒ `endpoint_defined` + `import_present` for the repo; React ⇒ `count_at_least` for components).
 - **Cross-handler validation.** A check that QA tests actually exercise the dev artifacts (named in SIP-0086 §10).
-- **Operator-driven overlays via API.** An endpoint to submit an overlay manually for active runs, with the same applier and bounds. Operator overlays may use any of the five operations.
-- **Replan task.** A `governance.replan` cadence-bound task that produces overlays based on accumulated cycle state (time-budget pressure, defect density). Hooks reserved by M3.
+- **Operator-driven plan changes via API.** An endpoint to submit a plan change manually for active runs, with the same applier and bounds. Operator plan changes may use any of the five operations.
+- **Replan task.** A `governance.replan` cadence-bound task that produces plan changes based on accumulated cycle state (time-budget pressure, defect density). Hooks reserved by M3.
 - **Adaptive safelist.** Per-stack expansions to `command_check_safelist` driven by the stack capability registry.
-- **Loosen-acceptance via gate.** Operator-initiated acceptance loosening as a re-gated action, distinct from in-cycle correction overlays.
+- **Loosen-acceptance via gate.** Operator-initiated acceptance loosening as a re-gated action, distinct from in-cycle correction plan changes.
 
 ---
 
@@ -860,17 +860,17 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
   - Added `CheckOutcome` status enum (§6.1.4) — `passed` / `failed` / `skipped` / `error`.
   - Added explicit path/command safety subsection (§6.1.5).
   - Added stack-aware bounded evaluation rule with `unsupported_stack_or_syntax` skip outcome (§6.1.6).
-  - Added authoring-time validation rules (§6.1.7) — unknown check names / malformed params fail manifest validation at parse time.
+  - Added authoring-time validation rules (§6.1.7) — unknown check names / malformed params fail plan validation at parse time.
   - Added `command_acceptance_checks` config flag for independent rollback of `command_exit_zero`.
-  - Added `manifest_review.yaml` schema (§6.2.2) with rule that revision requests cannot be prose-only.
+  - Added `plan_review.yaml` schema (§6.2.2) with rule that revision requests cannot be prose-only.
   - Added M2 default-flip criteria (§6.2.4) replacing "after stabilization."
-  - Split overlay handling into pure structural applier (§6.3.3) and execution-aware validator (§6.3.4).
+  - Split plan change handling into pure structural applier (§6.3.3) and execution-aware validator (§6.3.4).
   - Added explicit completed-work immutability principle (§3.7) and rule (§6.3.5).
   - **Restricted autonomous correction producer to `add_task` + `tighten_acceptance` only** (§6.3.10). Schema and applier still support all 5 ops; producer does not.
   - Tightened operation-level invariants per op (§6.3.2).
-  - Specified canonical hashing and parent-overlay-id chain order (§6.3.6).
-  - Clarified task index ≠ execution order after overlays (§6.3.7).
-  - Added overlay-created task provenance metadata (§6.3.8).
+  - Specified canonical hashing and parent-change-id chain order (§6.3.6).
+  - Clarified task index ≠ execution order after plan changes (§6.3.7).
+  - Added change-created task provenance metadata (§6.3.8).
   - Fixed group_run example: replaced `endpoint_defined` cross-applied to test files with `regex_match` `count_min: 5` over the test file (§7).
   - Added Alternatives 10.2 and 10.6.
 - **Rev 1 (2026-04-27):** Initial proposal.
@@ -879,16 +879,16 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
 
 ## 13. References
 
-- **SIP-0086** — Build Convergence Loop (parent SIP; this SIP closes its §10 "Mechanical acceptance criteria evaluation" and "Separate manifest authoring from governance review" future-work items)
-- **SIP-0079** — Implementation Run Contract (correction protocol the overlay producer integrates with)
+- **SIP-0086** — Build Convergence Loop (parent SIP; this SIP closes its §10 "Mechanical acceptance criteria evaluation" and "Separate plan authoring from governance review" future-work items)
+- **SIP-0079** — Implementation Run Contract (correction protocol the change producer integrates with)
 - **SIP-0078** — Planning Workload Protocol (planning task step list extended by M2)
 - **SIP-0072** — Stack-Aware Development Capabilities (future complement to typed-check authoring defaults)
 - **SIP-0070** — Pulse Checks and Verification Framework (validator pattern reused)
-- `src/squadops/cycles/build_manifest.py` — current manifest dataclasses and parser
-- `src/squadops/capabilities/handlers/planning_tasks.py:432` — current `_produce_manifest` (moves under M2)
-- `src/squadops/cycles/task_plan.py:341` — current `_replace_build_steps_with_manifest` (extended by M3 to apply overlays)
+- `src/squadops/cycles/implementation_plan.py` — current plan dataclasses and parser
+- `src/squadops/capabilities/handlers/planning_tasks.py:432` — current `_produce_plan` (moves under M2)
+- `src/squadops/cycles/task_plan.py:341` — current `_replace_build_steps_with_plan` (extended by M3 to apply changes)
 - `src/squadops/capabilities/handlers/cycle_tasks.py` — current `_validate_output_focused` (extended by M1)
-- `src/squadops/api/routes/cycles/runs.py` — gate promotion + control_manifest forwarding (extended by M3 to forward `control_manifest_delta`)
+- `src/squadops/api/routes/cycles/runs.py` — gate promotion + control_implementation_plan forwarding (extended by M3 to forward `control_implementation_plan_change`)
 - `adapters/capabilities/aci_executor.py` — sandbox executor for `command_exit_zero`
-- Memory: `project_sip0086_manifest_handoff_bug.md` — observed manifest forwarding bugs that motivate the artifact-type discipline overlays inherit
+- Memory: `project_sip0086_manifest_handoff_bug.md` — observed plan forwarding bugs that motivate the artifact-type discipline plan changes inherit
 - Memory: `project_spark_cycle_status.md` — observed YAML emission failures motivating M2's authoring-vs-review split
