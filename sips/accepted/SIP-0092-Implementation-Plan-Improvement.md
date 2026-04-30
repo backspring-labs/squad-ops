@@ -676,6 +676,21 @@ defaults:
   plan_changes_enabled: false               # M3 loader awaits gate
   correction_plan_changes_enabled: false    # M3 producer awaits gate
 
+# validation profile (gate-cycle target — long-cycle depth with M2/M3 still off)
+# Used to gather evidence for the M1 → M2 milestone gate (and reusable for M2 → M3).
+# Intentionally distinct from `build` (which has shallow self-eval) and from
+# `implementation` (which is the post-gate target with M2/M3 on).
+defaults:
+  build_plan: true
+  output_validation: true
+  max_self_eval_passes: 2                   # implementation-profile depth — exercises typed checks meaningfully
+  max_correction_attempts: 3                # gives correction enough budget to surface structural-change candidates (RC-9b / diagnostic field)
+  mechanical_acceptance: true               # M1 active
+  command_acceptance_checks: true
+  split_implementation_planning: false      # M2 stays off until its gate
+  plan_changes_enabled: false               # M3 loader stays off
+  correction_plan_changes_enabled: false    # M3 producer stays off
+
 # selftest profile (smoke — minimal mechanical surface, M2/M3 off)
 defaults:
   mechanical_acceptance: true
@@ -684,6 +699,8 @@ defaults:
   plan_changes_enabled: false
   correction_plan_changes_enabled: false
 ```
+
+The `validation` profile fills the gap between the shallow rollout default (`build`) and the post-gate target (`implementation`). It runs M1 at implementation-profile depth so the typed-check signal and correction-decision diagnostics (the M2 → M3 `structural_plan_change_candidate` field) accumulate at the rate the gates require. After M2 → M3 ships, the same profile shape with M2/M3 flags flipped on becomes the M2 → M3 gate's measurement profile.
 
 #### 6.4.2 Profile examples — post-gate target
 
@@ -880,7 +897,7 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
   - **Resolved correction-protocol decision name:** `decision: overlay` → `decision: plan_change` everywhere. The deprecated value is not supported.
   - **Narrowed M3 Rev 1 schema/applier scope to `add_task` + `tighten_acceptance`** (§6.3.2). The other three operations (`remove_task`, `replace_task`, `reorder`) are deferred from code entirely; they remain in this SIP as future-work design for operator-driven plan changes and `governance.replan`. The YAML parser rejects deferred operations at parse time.
   - **Split plan-change config** (§6.4): `plan_changes_enabled` (loader/applier) is now distinct from `correction_plan_changes_enabled` (autonomous producer). Default rollout has both off; misconfiguration (producer on, loader off) is rejected at startup.
-  - **Profile examples reorganized** (§6.4.1, §6.4.2): current rollout defaults (M2/M3 off, gated) separated from post-gate target. Removes the contradiction between "M2/M3 are gated" and "examples enable them."
+  - **Profile examples reorganized** (§6.4.1, §6.4.2): current rollout defaults (M2/M3 off, gated) separated from post-gate target. Removes the contradiction between "M2/M3 are gated" and "examples enable them." Added a `validation` profile to §6.4.1 — implementation-profile depth (`max_self_eval_passes: 2`) with M2/M3 still off — used to feed milestone gate evaluation cycles.
   - **Re-gate matrix updated** (§6.3.10) to show Rev 1 implementation status alongside autonomous/operator/replan eligibility.
   - **Implementation plan doc** introduces concrete milestone gates (M1 → M2, M2 → M3) and a structural-plan-change diagnostic field captured during M2 tracking. See `docs/plans/SIP-0092-implementation-plan-improvement-plan.md`.
 - **Rev 2 (2026-04-27):** Incorporated external review. Major changes:

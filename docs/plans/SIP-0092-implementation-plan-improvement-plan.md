@@ -562,7 +562,7 @@ M1 has concrete prod evidence forcing the issue (filename-only validation passin
 
 Gate samples are long-cycle group_run runs, defined as:
 
-- **Profile:** uses an agreed long-cycle implementation/build profile (e.g., the `implementation` profile from §6.4) with M1 enabled. Materially longer execution budget than the historical 1-hour smoke cycles — ≥2 hours wall-clock or until natural termination, whichever comes first.
+- **Profile:** the `validation` profile (defined in §6.4.1 / Profile Config Examples). It runs M1 at implementation-profile depth (`max_self_eval_passes: 2`, `max_correction_attempts: 3`) with M2 and M3 still off, so the typed-check signal and correction-decision diagnostics accumulate without M2/M3 confounding the measurement. Materially longer execution budget than the historical 1-hour smoke cycles — ≥2 hours wall-clock or until natural termination, whichever comes first. The same profile shape with M2/M3 flags flipped on becomes the M2 → M3 gate's measurement profile after those stages ship.
 - **Reaches plan-relevant execution:** the run reaches at least the planning-phase gate, exposing plan-authoring, plan-validation, plan-review (when M2 is on), or correction behavior. Runs that fail before planning completes due to **infrastructure-only failures unrelated to the plan artifact** (RabbitMQ outage, Postgres connection refused, OOM kill, cosmic-ray restart) are **excluded** from the sample.
 - **Inclusion when build-phase fails:** runs that reach planning or build and surface plan, validation, correction, or review behavior count toward the sample **even if they ultimately fail to produce a working app**. The gate is measuring whether SIP-0092's machinery is doing real work, not whether the squad is shipping perfect apps.
 
@@ -661,6 +661,23 @@ defaults:
   plan_changes_enabled: false               # M3 loader awaits gate
   correction_plan_changes_enabled: false    # M3 producer awaits gate
 
+# validation profile — gate-cycle target (long-cycle depth, M2/M3 still off)
+# Used to gather evidence for the M1 → M2 milestone gate. Distinct from
+# `build` (shallow self-eval) and `implementation` (post-gate target with
+# M2/M3 on). Runs M1 at implementation-profile depth so typed-check
+# signal and the structural_plan_change_candidate diagnostic field
+# (added in M2.2) accumulate at the rate the gates require.
+defaults:
+  build_plan: true
+  output_validation: true
+  max_self_eval_passes: 2                   # implementation-profile depth
+  max_correction_attempts: 3                # enough budget for correction to surface structural-change candidates (RC-9b / diagnostic field)
+  mechanical_acceptance: true
+  command_acceptance_checks: true
+  split_implementation_planning: false      # M2 stays off until its gate
+  plan_changes_enabled: false               # M3 loader stays off
+  correction_plan_changes_enabled: false    # M3 producer stays off
+
 # selftest profile — current rollout (smoke, minimal mechanical surface)
 defaults:
   mechanical_acceptance: true
@@ -669,6 +686,8 @@ defaults:
   plan_changes_enabled: false
   correction_plan_changes_enabled: false
 ```
+
+**Use the `validation` profile for cycles that feed the milestone gate evaluation docs.** The `build` profile is for default operator-driven cycles where `max_self_eval_passes: 1` is the right tradeoff for routine work; the `validation` profile is specifically tuned to give M1 enough depth that the gate criteria can be met or disconfirmed in a reasonable cycle-count window.
 
 ### Post-gate target profile (after M1 → M2 and M2 → M3 gates pass)
 
@@ -814,6 +833,7 @@ This check applies to **new code introduced under this plan's PRs**. The shipped
   - **Narrowed M3 Rev 1 operation set to `add_task` + `tighten_acceptance` only** (item 9). `remove_task`, `replace_task`, and `reorder` are deferred from code entirely (no dataclass, no applier branch, no validator branch, no tests). They remain in the SIP as future-work design for operator plan changes and `governance.replan`. The YAML parser rejects deferred operations at parse time with `unsupported_operation_in_rev_1`. This is a deliberate scope cut, not a fallback.
   - **Split plan-change loader from autonomous producer** via two flags (item 8): `plan_changes_enabled` (M3.2 — loader/applier) and `correction_plan_changes_enabled` (M3.3 — autonomous producer). Lets us test loader behavior with synthesized plan changes before authorizing the correction protocol to produce them. Misconfiguration (producer on, loader off) is rejected at startup.
   - **Profile examples separated** into current rollout defaults (M2/M3 off, gated) and post-gate target (item 2). Removes the contradiction between "M2/M3 are gated" and "profile examples enable them." Added a loader-only intermediate profile for M3.2 ↔ M3.3 testing.
+  - **Added `validation` profile** to current rollout defaults (§6.4.1 / Profile Config Examples). Distinct from `build` (which has shallow self-eval) and `implementation` (the post-gate target with M2/M3 on). Runs M1 at implementation-profile depth with M2/M3 still off. This is the profile that feeds milestone gate evaluation cycles — the long-cycle group_run definition in the Milestone Gates section now points at it explicitly. Same profile shape with M2/M3 flags flipped on becomes the M2 → M3 gate's measurement profile after those stages ship.
   - **Defined "long-cycle group_run" for gate measurement** (item 3): profile, duration, what counts as reaching plan-relevant execution, and the infrastructure-failure exclusion rule. Each gate evaluation doc must cite cycle IDs and excluded runs.
   - **Tightened M1 → M2 gate criterion wording** (item 4): replaced "would plausibly have caught" with a concrete map-to-categories test — defects must be visible from plan + PRD + test strategy alone and map to one of M2's `plan_review.yaml` concern categories (coverage / dependency / role / acceptance). Proves the defect lives in M2's detection surface without speculating about reviewer behavior.
   - **Added `structural_plan_change_candidate` diagnostic field** (item 5) to the correction-decision log artifact. Non-operative; allowed values `none | add_task | tighten_acceptance | other`. Captured during M2 tracking so the M2 → M3 gate has a measurable signal without speculation. Added to M2.2 implementation scope so it's available throughout the M2 → M3 tracking window.
