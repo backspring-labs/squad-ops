@@ -6,7 +6,7 @@ import pytest
 
 from datetime import datetime, timezone
 
-from squadops.cycles.build_manifest import BuildTaskManifest
+from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -125,12 +125,12 @@ def _make_profile() -> SquadProfile:
 
 class TestGenerateTaskPlanWithManifest:
     def test_manifest_produces_correct_envelope_count(self):
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
+        envelopes = generate_task_plan(cycle, run, profile, plan=manifest)
 
         # 5 planning steps + 4 manifest build steps = 9
         assert len(envelopes) == 9
@@ -140,18 +140,18 @@ class TestGenerateTaskPlanWithManifest:
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=None)
+        envelopes = generate_task_plan(cycle, run, profile, plan=None)
 
         # 5 planning steps + 2 static build steps = 7
         assert len(envelopes) == 7
 
     def test_manifest_envelopes_have_deterministic_ids(self):
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
+        envelopes = generate_task_plan(cycle, run, profile, plan=manifest)
 
         # Manifest-derived envelopes are the last 4
         manifest_envelopes = envelopes[5:]
@@ -169,12 +169,12 @@ class TestGenerateTaskPlanWithManifest:
         )
 
     def test_manifest_envelopes_have_subtask_focus(self):
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
+        envelopes = generate_task_plan(cycle, run, profile, plan=manifest)
 
         build_env = envelopes[5]  # First manifest task
         assert build_env.inputs["subtask_focus"] == "Backend models"
@@ -183,35 +183,35 @@ class TestGenerateTaskPlanWithManifest:
         assert build_env.inputs["subtask_index"] == 0
 
     def test_manifest_envelopes_have_acceptance_criteria(self):
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
+        envelopes = generate_task_plan(cycle, run, profile, plan=manifest)
 
         build_env = envelopes[5]
         assert build_env.inputs["acceptance_criteria"] == ["Models exist"]
 
     def test_causation_chain_links_sequentially(self):
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
+        envelopes = generate_task_plan(cycle, run, profile, plan=manifest)
 
         # Each envelope's causation_id should be the previous task's task_id
         for i in range(1, len(envelopes)):
             assert envelopes[i].causation_id == envelopes[i - 1].task_id
 
     def test_planning_steps_preserved_before_manifest(self):
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
+        envelopes = generate_task_plan(cycle, run, profile, plan=manifest)
 
         # First 5 are planning steps
         planning_types = [e.task_type for e in envelopes[:5]]
@@ -224,18 +224,18 @@ class TestGenerateTaskPlanWithManifest:
         ]
 
     def test_planning_envelopes_have_no_subtask_focus(self):
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
+        envelopes = generate_task_plan(cycle, run, profile, plan=manifest)
 
         for env in envelopes[:5]:
             assert "subtask_focus" not in env.inputs
 
     def test_missing_role_raises_cycle_error(self):
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
         # Profile without qa role
@@ -264,16 +264,16 @@ class TestGenerateTaskPlanWithManifest:
         from squadops.cycles.models import CycleError
 
         with pytest.raises(CycleError, match="qa"):
-            generate_task_plan(cycle, run, profile, manifest=manifest)
+            generate_task_plan(cycle, run, profile, plan=manifest)
 
     def test_task_id_namespaces_do_not_collide(self):
         """Planning (UUID), manifest (-m{idx}-), correction (corr-) are distinct."""
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle()
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
+        envelopes = generate_task_plan(cycle, run, profile, plan=manifest)
 
         planning_ids = [e.task_id for e in envelopes[:5]]
         manifest_ids = [e.task_id for e in envelopes[5:]]
@@ -287,12 +287,12 @@ class TestGenerateTaskPlanWithManifest:
 
     def test_no_build_tasks_skips_manifest(self):
         """Manifest is ignored when build_tasks is not enabled."""
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
         cycle = _make_cycle(applied_defaults={"plan_tasks": True, "build_tasks": False})
         run = _make_run()
         profile = _make_profile()
 
-        envelopes = generate_task_plan(cycle, run, profile, manifest=manifest)
+        envelopes = generate_task_plan(cycle, run, profile, plan=manifest)
 
         # Only planning steps, no build steps at all
         assert len(envelopes) == 5

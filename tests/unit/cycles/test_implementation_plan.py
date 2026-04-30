@@ -1,4 +1,4 @@
-"""Tests for BuildTaskManifest model (SIP-0086 Phase 1a)."""
+"""Tests for ImplementationPlan model (SIP-0086 Phase 1a)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from squadops.cycles.build_manifest import BuildTaskManifest
+from squadops.cycles.implementation_plan import ImplementationPlan
 
 
 # ---------------------------------------------------------------------------
@@ -74,9 +74,9 @@ class _FakeProfile:
 # ---------------------------------------------------------------------------
 
 
-class TestBuildTaskManifestParsing:
+class TestImplementationPlanParsing:
     def test_valid_manifest_round_trips(self):
-        manifest = BuildTaskManifest.from_yaml(VALID_MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
 
         assert manifest.version == 1
         assert manifest.project_id == "group_run"
@@ -86,7 +86,7 @@ class TestBuildTaskManifestParsing:
         assert manifest.summary.total_tasks == 3
 
     def test_task_fields_populated(self):
-        manifest = BuildTaskManifest.from_yaml(VALID_MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
         task0 = manifest.tasks[0]
 
         assert task0.task_index == 0
@@ -98,20 +98,20 @@ class TestBuildTaskManifestParsing:
         assert task0.depends_on == []
 
     def test_dependency_chain_parsed(self):
-        manifest = BuildTaskManifest.from_yaml(VALID_MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
 
         assert manifest.tasks[1].depends_on == [0]
         assert manifest.tasks[2].depends_on == [0, 1]
 
     def test_acceptance_criteria_optional(self):
         """Tasks without acceptance_criteria default to empty list."""
-        manifest = BuildTaskManifest.from_yaml(VALID_MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
 
         # Task 1 has no acceptance_criteria in the YAML
         assert manifest.tasks[1].acceptance_criteria == []
 
     def test_to_dict_serializes(self):
-        manifest = BuildTaskManifest.from_yaml(VALID_MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
         d = manifest.to_dict()
 
         assert d["version"] == 1
@@ -124,14 +124,14 @@ class TestBuildTaskManifestParsing:
 # ---------------------------------------------------------------------------
 
 
-class TestBuildTaskManifestValidation:
+class TestImplementationPlanValidation:
     def test_malformed_yaml_raises(self):
         with pytest.raises(ValueError, match="Malformed YAML"):
-            BuildTaskManifest.from_yaml("{{not: valid: yaml::")
+            ImplementationPlan.from_yaml("{{not: valid: yaml::")
 
     def test_non_mapping_raises(self):
         with pytest.raises(ValueError, match="must be a YAML mapping"):
-            BuildTaskManifest.from_yaml("- just a list")
+            ImplementationPlan.from_yaml("- just a list")
 
     def test_missing_required_field_raises(self):
         yaml_str = """\
@@ -140,7 +140,7 @@ project_id: test
 # missing cycle_id, prd_hash, tasks, summary
 """
         with pytest.raises(ValueError, match="Missing required field"):
-            BuildTaskManifest.from_yaml(yaml_str)
+            ImplementationPlan.from_yaml(yaml_str)
 
     def test_empty_tasks_raises(self):
         yaml_str = """\
@@ -153,7 +153,7 @@ summary:
   total_tasks: 0
 """
         with pytest.raises(ValueError, match="at least one task"):
-            BuildTaskManifest.from_yaml(yaml_str)
+            ImplementationPlan.from_yaml(yaml_str)
 
     def test_unknown_task_type_raises(self):
         yaml_str = """\
@@ -171,7 +171,7 @@ summary:
   total_tasks: 1
 """
         with pytest.raises(ValueError, match="unknown task_type"):
-            BuildTaskManifest.from_yaml(yaml_str)
+            ImplementationPlan.from_yaml(yaml_str)
 
     def test_missing_task_field_raises(self):
         yaml_str = """\
@@ -187,7 +187,7 @@ summary:
   total_tasks: 1
 """
         with pytest.raises(ValueError, match="missing required field"):
-            BuildTaskManifest.from_yaml(yaml_str)
+            ImplementationPlan.from_yaml(yaml_str)
 
     def test_depends_on_out_of_range_raises(self):
         yaml_str = """\
@@ -206,7 +206,7 @@ summary:
   total_tasks: 1
 """
         with pytest.raises(ValueError, match="non-existent task_index 99"):
-            BuildTaskManifest.from_yaml(yaml_str)
+            ImplementationPlan.from_yaml(yaml_str)
 
     def test_dependency_cycle_raises(self):
         yaml_str = """\
@@ -231,7 +231,7 @@ summary:
   total_tasks: 2
 """
         with pytest.raises(ValueError, match="Dependency cycle"):
-            BuildTaskManifest.from_yaml(yaml_str)
+            ImplementationPlan.from_yaml(yaml_str)
 
     def test_duplicate_task_index_raises(self):
         yaml_str = """\
@@ -254,7 +254,7 @@ summary:
   total_tasks: 2
 """
         with pytest.raises(ValueError, match="Duplicate task_index"):
-            BuildTaskManifest.from_yaml(yaml_str)
+            ImplementationPlan.from_yaml(yaml_str)
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +264,7 @@ summary:
 
 class TestValidateAgainstProfile:
     def test_valid_profile_returns_no_errors(self):
-        manifest = BuildTaskManifest.from_yaml(VALID_MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
         profile = _FakeProfile(agents=[_FakeAgent("dev"), _FakeAgent("qa")])
 
         errors = manifest.validate_against_profile(profile)
@@ -272,7 +272,7 @@ class TestValidateAgainstProfile:
         assert errors == []
 
     def test_missing_role_returns_error(self):
-        manifest = BuildTaskManifest.from_yaml(VALID_MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
         profile = _FakeProfile(agents=[_FakeAgent("dev")])  # no qa
 
         errors = manifest.validate_against_profile(profile)
@@ -281,7 +281,7 @@ class TestValidateAgainstProfile:
         assert "role 'qa' not in profile" in errors[0]
 
     def test_disabled_agent_treated_as_missing(self):
-        manifest = BuildTaskManifest.from_yaml(VALID_MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
         profile = _FakeProfile(
             agents=[_FakeAgent("dev"), _FakeAgent("qa", enabled=False)]
         )

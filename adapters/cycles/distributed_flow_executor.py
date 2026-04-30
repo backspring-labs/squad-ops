@@ -168,14 +168,14 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     },
                 )
 
-            # SIP-0086: Load manifest for implementation workloads.
-            # The manifest is produced by the planning workload and forwarded
-            # via plan_artifact_refs. Loading it here (not mid-loop) keeps the
-            # executor deterministic — the plan is fully materialized before
-            # task dispatch begins.
-            manifest = await self._load_manifest_for_run(cycle, run)
+            # SIP-0086 / SIP-0092: Load implementation plan for implementation
+            # workloads. The plan is produced by the planning workload and
+            # forwarded via plan_artifact_refs. Loading it here (not mid-loop)
+            # keeps the executor deterministic — the plan is fully materialized
+            # before task dispatch begins.
+            implementation_plan = await self._load_plan_for_run(cycle, run)
 
-            plan = generate_task_plan(cycle, run, profile, manifest=manifest)
+            plan = generate_task_plan(cycle, run, profile, plan=implementation_plan)
 
             # Build-only validation (D6): require plan_artifact_refs
             include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
@@ -520,9 +520,10 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # workload-type-specific keys
         wt = completed_run.workload_type
         if wt == "planning":
-            # SIP-0086: include control_manifest alongside documents so the
-            # build_task_manifest.yaml reaches the implementation workload.
-            plan_types = {"document", "control_manifest"}
+            # SIP-0086 / SIP-0092: include control_implementation_plan
+            # alongside documents so the implementation_plan.yaml reaches the
+            # implementation workload.
+            plan_types = {"document", "control_implementation_plan"}
             plan_candidates = [a for a in promoted if a.artifact_type in plan_types]
             plan_refs = [a.artifact_id for a in sorted(plan_candidates, key=lambda a: a.created_at)]
             if "plan_artifact_refs" in overrides:
@@ -1019,26 +1020,26 @@ class DistributedFlowExecutor(FlowExecutionPort):
     # SIP-0086: Manifest loading for implementation workloads
     # ------------------------------------------------------------------
 
-    async def _load_manifest_for_run(
+    async def _load_plan_for_run(
         self,
         cycle: Any,
         run: Any,
     ) -> Any:
-        """Load build task manifest for an implementation workload run.
+        """Load implementation plan for an implementation workload run.
 
-        Searches forwarded plan_artifact_refs for a control_manifest artifact.
-        Called before generate_task_plan() so the plan is fully materialized
-        before task dispatch begins — no mid-loop mutation.
+        Searches forwarded plan_artifact_refs for a control_implementation_plan
+        artifact. Called before generate_task_plan() so the plan is fully
+        materialized before task dispatch begins — no mid-loop mutation.
 
-        Returns BuildTaskManifest or None (RC-4 graceful fallback).
+        Returns ImplementationPlan or None (RC-4 graceful fallback).
         """
-        from squadops.cycles.build_manifest import BuildTaskManifest
+        from squadops.cycles.implementation_plan import ImplementationPlan
 
-        # Only load manifest when build_manifest is enabled
-        if not cycle.applied_defaults.get("build_manifest", False):
+        # Only load the plan when build_plan is enabled
+        if not cycle.applied_defaults.get("build_plan", False):
             return None
 
-        # Search forwarded planning artifacts for manifest
+        # Search forwarded planning artifacts for the plan
         plan_refs = cycle.execution_overrides.get("plan_artifact_refs", [])
         if not plan_refs:
             return None
@@ -1046,13 +1047,14 @@ class DistributedFlowExecutor(FlowExecutionPort):
         for ref_id in plan_refs:
             try:
                 ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
-                if ref.filename == "build_task_manifest.yaml" or (
-                    hasattr(ref, "artifact_type") and ref.artifact_type == "control_manifest"
+                if ref.filename == "implementation_plan.yaml" or (
+                    hasattr(ref, "artifact_type")
+                    and ref.artifact_type == "control_implementation_plan"
                 ):
                     yaml_content = content_bytes.decode(errors="replace")
-                    manifest = BuildTaskManifest.from_yaml(yaml_content)
+                    manifest = ImplementationPlan.from_yaml(yaml_content)
                     logger.info(
-                        "Loaded build task manifest with %d subtasks for run %s",
+                        "Loaded implementation plan with %d subtasks for run %s",
                         len(manifest.tasks),
                         run.run_id,
                     )

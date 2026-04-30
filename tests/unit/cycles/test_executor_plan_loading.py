@@ -53,8 +53,8 @@ summary:
 @dataclass
 class _FakeArtifactRef:
     artifact_id: str = "art_manifest"
-    filename: str = "build_task_manifest.yaml"
-    artifact_type: str = "control_manifest"
+    filename: str = "implementation_plan.yaml"
+    artifact_type: str = "control_implementation_plan"
     metadata: dict = field(default_factory=dict)
 
 
@@ -79,7 +79,7 @@ class _FakeDocArtifactRef:
 
 
 # ---------------------------------------------------------------------------
-# Phase 3b: _load_manifest_for_run
+# Phase 3b: _load_plan_for_run
 # ---------------------------------------------------------------------------
 
 
@@ -92,7 +92,7 @@ class TestLoadManifestForRun:
 
     def _make_cycle(self, **overrides) -> MagicMock:
         cycle = MagicMock()
-        cycle.applied_defaults = {"build_manifest": True}
+        cycle.applied_defaults = {"build_plan": True}
         cycle.execution_overrides = {}
         for k, v in overrides.items():
             setattr(cycle, k, v)
@@ -107,18 +107,18 @@ class TestLoadManifestForRun:
         executor = self._make_executor()
         cycle = self._make_cycle(execution_overrides={})
 
-        result = await executor._load_manifest_for_run(cycle, self._make_run())
+        result = await executor._load_plan_for_run(cycle, self._make_run())
 
         assert result is None
 
-    async def test_build_manifest_disabled_returns_none(self):
+    async def test_build_plan_disabled_returns_none(self):
         executor = self._make_executor()
         cycle = self._make_cycle(
-            applied_defaults={"build_manifest": False},
+            applied_defaults={"build_plan": False},
             execution_overrides={"plan_artifact_refs": ["art_manifest"]},
         )
 
-        result = await executor._load_manifest_for_run(cycle, self._make_run())
+        result = await executor._load_plan_for_run(cycle, self._make_run())
 
         assert result is None
 
@@ -133,7 +133,7 @@ class TestLoadManifestForRun:
             execution_overrides={"plan_artifact_refs": ["art_manifest"]},
         )
 
-        result = await executor._load_manifest_for_run(cycle, self._make_run())
+        result = await executor._load_plan_for_run(cycle, self._make_run())
 
         assert result is not None
         assert len(result.tasks) == 3
@@ -150,7 +150,7 @@ class TestLoadManifestForRun:
             execution_overrides={"plan_artifact_refs": ["art_doc"]},
         )
 
-        result = await executor._load_manifest_for_run(cycle, self._make_run())
+        result = await executor._load_plan_for_run(cycle, self._make_run())
 
         assert result is None
 
@@ -161,7 +161,7 @@ class TestLoadManifestForRun:
             execution_overrides={"plan_artifact_refs": ["art_manifest"]},
         )
 
-        result = await executor._load_manifest_for_run(cycle, self._make_run())
+        result = await executor._load_plan_for_run(cycle, self._make_run())
 
         assert result is None
 
@@ -176,15 +176,15 @@ class TestLoadManifestForRun:
             execution_overrides={"plan_artifact_refs": ["art_manifest"]},
         )
 
-        result = await executor._load_manifest_for_run(cycle, self._make_run())
+        result = await executor._load_plan_for_run(cycle, self._make_run())
 
         assert result is None
 
     def test_rc1_manifest_is_frozen_dataclass(self):
-        """RC-1: BuildTaskManifest is a frozen dataclass — field reassignment blocked."""
-        from squadops.cycles.build_manifest import BuildTaskManifest
+        """RC-1: ImplementationPlan is a frozen dataclass — field reassignment blocked."""
+        from squadops.cycles.implementation_plan import ImplementationPlan
 
-        manifest = BuildTaskManifest.from_yaml(MANIFEST_YAML)
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
 
         with pytest.raises(AttributeError):
             manifest.version = 99  # type: ignore[misc]

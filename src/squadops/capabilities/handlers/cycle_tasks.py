@@ -517,9 +517,9 @@ class DataReportHandler(_CycleTaskHandler):
 class GovernanceReviewHandler(_CycleTaskHandler):
     """Cycle task handler for governance review (lead role).
 
-    When ``build_manifest`` is enabled in resolved config, this handler
-    produces both a governance review document AND a build task manifest
-    (SIP-0086 §6.1.3). The manifest is a control-plane artifact that
+    When ``build_plan`` is enabled in resolved config, this handler
+    produces both a governance review document AND an implementation plan
+    (SIP-0086 §6.1.3 / SIP-0092). The plan is a control-plane artifact that
     decomposes the build into focused subtasks.
     """
 
@@ -547,9 +547,9 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         "- Put tests after the code they test\n"
         "- Put QA handoff last\n\n"
         "Output the manifest as a YAML code block with filename: "
-        "build_task_manifest.yaml\n\n"
+        "implementation_plan.yaml\n\n"
         "Use this exact schema:\n"
-        "```yaml:build_task_manifest.yaml\n"
+        "```yaml:implementation_plan.yaml\n"
         "version: 1\n"
         "project_id: <project_id>\n"
         "cycle_id: <cycle_id>\n"
@@ -580,12 +580,12 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         inputs: dict[str, Any],
     ) -> HandlerResult:
         resolved_config = inputs.get("resolved_config", {})
-        build_manifest_enabled = resolved_config.get("build_manifest", True)
+        build_plan_enabled = resolved_config.get("build_plan", True)
 
-        if not build_manifest_enabled:
+        if not build_plan_enabled:
             return await super().handle(context, inputs)
 
-        # Multi-artifact path: governance review + build task manifest
+        # Multi-artifact path: governance review + implementation plan
         start_time = time.perf_counter()
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
@@ -677,11 +677,11 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         import hashlib
 
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-        from squadops.cycles.build_manifest import BuildTaskManifest
+        from squadops.cycles.implementation_plan import ImplementationPlan
 
         extracted = extract_fenced_files(content)
         manifest_files = [
-            f for f in extracted if f["filename"] == "build_task_manifest.yaml"
+            f for f in extracted if f["filename"] == "implementation_plan.yaml"
         ]
 
         if manifest_files:
@@ -692,7 +692,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             yaml_content = self._find_manifest_in_raw_yaml(content)
             if yaml_content is None:
                 logger.warning(
-                    "%s: no build_task_manifest.yaml found in response, "
+                    "%s: no implementation_plan.yaml found in response, "
                     "falling back to static task steps",
                     self._handler_name,
                 )
@@ -704,7 +704,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
 
         # Structural validation
         try:
-            manifest = BuildTaskManifest.from_yaml(yaml_content)
+            manifest = ImplementationPlan.from_yaml(yaml_content)
         except ValueError as exc:
             logger.warning(
                 "%s: manifest validation failed (%s), "
@@ -754,17 +754,17 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             return None
 
         return {
-            "name": "build_task_manifest.yaml",
+            "name": "implementation_plan.yaml",
             "content": yaml_content,
             "media_type": "text/yaml",
-            "type": "control_manifest",
+            "type": "control_implementation_plan",
         }
 
     @staticmethod
     def _find_manifest_in_raw_yaml(content: str) -> str | None:
         """Search for an untagged ```yaml block containing manifest-like content.
 
-        Fallback for when the LLM uses ```yaml instead of ```yaml:build_task_manifest.yaml.
+        Fallback for when the LLM uses ```yaml instead of ```yaml:implementation_plan.yaml.
         Returns the YAML string if found, or None.
         """
         import re

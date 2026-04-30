@@ -209,8 +209,8 @@ class TestGateDecision:
         working_manifest = ArtifactRef(
             artifact_id="art_manifest",
             project_id="hello_squad",
-            artifact_type="control_manifest",
-            filename="build_task_manifest.yaml",
+            artifact_type="control_implementation_plan",
+            filename="implementation_plan.yaml",
             content_hash="h2",
             size_bytes=20,
             media_type="text/yaml",

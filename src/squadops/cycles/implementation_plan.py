@@ -1,12 +1,16 @@
-"""Build Task Manifest — control-plane artifact for dynamic build decomposition (SIP-0086 §6.1).
+"""Implementation Plan — control-plane artifact for dynamic build decomposition.
 
-The manifest is produced by GovernanceReviewHandler during planning and consumed
-by generate_task_plan() after gate approval. It decomposes a build into focused
-subtasks, each targeting a specific component with explicit expected artifacts
-and acceptance criteria.
+Originally introduced as the build task manifest in SIP-0086 §6.1. Renamed to
+"implementation plan" by SIP-0092 to disambiguate from build/CI/Docker manifests
+and to align with the artifact's actual role as the squad's plan for the build
+phase.
 
-The approved manifest becomes immutable after gate approval (RC-1). Correction-
-driven changes are represented as delta overlays, not mutations.
+The plan is produced during planning and consumed by generate_task_plan() after
+gate approval. It decomposes a build into focused subtasks, each targeting a
+specific component with explicit expected artifacts and acceptance criteria.
+
+The approved plan becomes immutable after gate approval (RC-1). Correction-
+driven changes are represented as plan changes (SIP-0092 M3), not mutations.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ from dataclasses import dataclass, field
 import yaml
 
 
-# Known task types that may appear in manifest tasks.
+# Known task types that may appear in plan tasks.
 _KNOWN_BUILD_TASK_TYPES = {
     "development.develop",
     "qa.test",
@@ -26,8 +30,8 @@ _KNOWN_BUILD_TASK_TYPES = {
 
 
 @dataclass(frozen=True)
-class ManifestTask:
-    """A single focused build subtask within the manifest."""
+class PlanTask:
+    """A single focused build subtask within the plan."""
 
     task_index: int
     task_type: str
@@ -40,8 +44,8 @@ class ManifestTask:
 
 
 @dataclass(frozen=True)
-class ManifestSummary:
-    """Metadata summary for the manifest."""
+class PlanSummary:
+    """Metadata summary for the plan."""
 
     total_dev_tasks: int
     total_qa_tasks: int
@@ -50,7 +54,7 @@ class ManifestSummary:
 
 
 @dataclass(frozen=True)
-class BuildTaskManifest:
+class ImplementationPlan:
     """Structured build decomposition plan — a control-plane artifact.
 
     Produced at planning time by GovernanceReviewHandler. Consumed at build
@@ -61,12 +65,12 @@ class BuildTaskManifest:
     project_id: str
     cycle_id: str
     prd_hash: str
-    tasks: list[ManifestTask]
-    summary: ManifestSummary
+    tasks: list[PlanTask]
+    summary: PlanSummary
 
     @classmethod
-    def from_yaml(cls, content: str) -> BuildTaskManifest:
-        """Parse and validate a manifest from YAML string.
+    def from_yaml(cls, content: str) -> ImplementationPlan:
+        """Parse and validate a plan from YAML string.
 
         Performs structural validation: required fields, known task types,
         dependency DAG correctness, and non-empty task list.
@@ -83,7 +87,7 @@ class BuildTaskManifest:
             raise ValueError(f"Malformed YAML: {exc}") from exc
 
         if not isinstance(data, dict):
-            raise ValueError("Manifest must be a YAML mapping")
+            raise ValueError("Plan must be a YAML mapping")
 
         # Required top-level fields
         for key in ("version", "project_id", "cycle_id", "prd_hash", "tasks", "summary"):
@@ -92,10 +96,10 @@ class BuildTaskManifest:
 
         tasks_data = data["tasks"]
         if not isinstance(tasks_data, list) or len(tasks_data) == 0:
-            raise ValueError("Manifest must contain at least one task")
+            raise ValueError("Plan must contain at least one task")
 
         # Parse tasks
-        tasks: list[ManifestTask] = []
+        tasks: list[PlanTask] = []
         seen_indices: set[int] = set()
         for i, td in enumerate(tasks_data):
             if not isinstance(td, dict):
@@ -122,7 +126,7 @@ class BuildTaskManifest:
                 raise ValueError(f"Task {task_index}: depends_on must be a list")
 
             tasks.append(
-                ManifestTask(
+                PlanTask(
                     task_index=task_index,
                     task_type=task_type,
                     role=td["role"],
@@ -151,7 +155,7 @@ class BuildTaskManifest:
         summary_data = data["summary"]
         if not isinstance(summary_data, dict):
             raise ValueError("summary must be a mapping")
-        summary = ManifestSummary(
+        summary = PlanSummary(
             total_dev_tasks=summary_data.get("total_dev_tasks", 0),
             total_qa_tasks=summary_data.get("total_qa_tasks", 0),
             total_tasks=summary_data.get("total_tasks", len(tasks)),
@@ -168,7 +172,7 @@ class BuildTaskManifest:
         )
 
     def validate_against_profile(self, profile: object) -> list[str]:
-        """Check that all manifest roles exist in the squad profile.
+        """Check that all plan roles exist in the squad profile.
 
         Args:
             profile: A SquadProfile object with an ``agents`` attribute.
@@ -190,7 +194,7 @@ class BuildTaskManifest:
         return dataclasses.asdict(self)
 
 
-def _check_dependency_dag(tasks: list[ManifestTask]) -> None:
+def _check_dependency_dag(tasks: list[PlanTask]) -> None:
     """Validate that task dependencies form a DAG (no cycles).
 
     Raises:

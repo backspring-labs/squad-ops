@@ -16,7 +16,7 @@ from squadops.capabilities.handlers.cycle_tasks import GovernanceReviewHandler
 # ---------------------------------------------------------------------------
 
 VALID_MANIFEST_BLOCK = """\
-```yaml:build_task_manifest.yaml
+```yaml:implementation_plan.yaml
 version: 1
 project_id: group_run
 cycle_id: cyc_test
@@ -83,7 +83,7 @@ def _make_context() -> MagicMock:
 
 
 def _make_inputs(
-    build_manifest: bool = True,
+    build_plan: bool = True,
     min_subtasks: int = 3,
     max_subtasks: int = 15,
 ) -> dict[str, Any]:
@@ -91,7 +91,7 @@ def _make_inputs(
         "prd": "Build a group run app with FastAPI and React.",
         "prior_outputs": {"strat": "Strategy analysis content"},
         "resolved_config": {
-            "build_manifest": build_manifest,
+            "build_plan": build_plan,
             "min_build_subtasks": min_subtasks,
             "max_build_subtasks": max_subtasks,
         },
@@ -125,17 +125,17 @@ class TestGovernanceReviewManifest:
         assert review["type"] == "document"
 
         manifest = artifacts[1]
-        assert manifest["name"] == "build_task_manifest.yaml"
-        assert manifest["type"] == "control_manifest"
+        assert manifest["name"] == "implementation_plan.yaml"
+        assert manifest["type"] == "control_implementation_plan"
 
-    async def test_review_only_when_build_manifest_disabled(self):
+    async def test_review_only_when_build_plan_disabled(self):
         handler = GovernanceReviewHandler()
         ctx = _make_context()
         ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
             "## Governance Review\nLooks good."
         )
 
-        result = await handler.handle(ctx, _make_inputs(build_manifest=False))
+        result = await handler.handle(ctx, _make_inputs(build_plan=False))
 
         assert result.success
         artifacts = result.outputs["artifacts"]
@@ -158,7 +158,7 @@ class TestGovernanceReviewManifest:
     async def test_graceful_fallback_malformed_yaml(self):
         handler = GovernanceReviewHandler()
         ctx = _make_context()
-        bad_manifest = "```yaml:build_task_manifest.yaml\n{{invalid yaml\n```"
+        bad_manifest = "```yaml:implementation_plan.yaml\n{{invalid yaml\n```"
         ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
             "Review.\n\n" + bad_manifest
         )
@@ -206,7 +206,7 @@ class TestGovernanceReviewManifest:
 
         manifest = result.outputs["artifacts"][1]
         assert manifest["media_type"] == "text/yaml"
-        assert manifest["type"] == "control_manifest"
+        assert manifest["type"] == "control_implementation_plan"
 
     async def test_prd_hash_mismatch_logs_warning_but_accepts(self):
         """PRD hash is informational — mismatch logs warning but doesn't reject."""
