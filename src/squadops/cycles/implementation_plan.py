@@ -17,8 +17,15 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
+from typing import Union
 
 import yaml
+
+from squadops.cycles.acceptance_check_spec import (
+    ALLOWED_SEVERITIES,
+    CHECK_SPECS,
+    reserved_keys_for,
+)
 
 
 # Known task types that may appear in plan tasks.
@@ -27,6 +34,31 @@ _KNOWN_BUILD_TASK_TYPES = {
     "qa.test",
     "builder.assemble",
 }
+
+
+@dataclass(frozen=True)
+class TypedCheck:
+    """Canonical internal form of a machine-evaluable acceptance criterion (SIP-0092 M1).
+
+    Authored in YAML as a flat dict with check, severity, description, and
+    check-specific param keys. The parser normalizes the flat shape into this
+    dataclass so the evaluator framework (M1.2) doesn't need to re-parse the
+    raw YAML.
+
+    Attributes:
+        check: Vocabulary name. Must be a key in CHECK_SPECS.
+        params: Check-specific parameters. Equals the authored dict minus the
+            reserved keys ({check, severity, description}).
+        severity: One of {error, warning, info}. Defaults to ``error``.
+            Per RC-9, only severity=error AND status ∈ {failed, error}
+            blocks validation.
+        description: Human-readable description for evidence/UI. Optional.
+    """
+
+    check: str
+    params: dict
+    severity: str = "error"
+    description: str = ""
 
 
 @dataclass(frozen=True)
@@ -39,7 +71,10 @@ class PlanTask:
     focus: str
     description: str
     expected_artifacts: list[str] = field(default_factory=list)
-    acceptance_criteria: list[str] = field(default_factory=list)
+    # Mixed list: prose strings stay informational; TypedCheck instances are
+    # machine-evaluated by the M1.2 framework. The parser normalizes flat-YAML
+    # typed entries into TypedCheck (see ImplementationPlan.from_yaml).
+    acceptance_criteria: list[Union[str, TypedCheck]] = field(default_factory=list)
     depends_on: list[int] = field(default_factory=list)
 
 
@@ -125,6 +160,13 @@ class ImplementationPlan:
             if not isinstance(depends_on, list):
                 raise ValueError(f"Task {task_index}: depends_on must be a list")
 
+            raw_criteria = td.get("acceptance_criteria", [])
+            if not isinstance(raw_criteria, list):
+                raise ValueError(
+                    f"Task {task_index}: acceptance_criteria must be a list"
+                )
+            criteria = _parse_acceptance_criteria(raw_criteria, task_index)
+
             tasks.append(
                 PlanTask(
                     task_index=task_index,
@@ -133,7 +175,7 @@ class ImplementationPlan:
                     focus=td["focus"],
                     description=td["description"],
                     expected_artifacts=td.get("expected_artifacts", []),
-                    acceptance_criteria=td.get("acceptance_criteria", []),
+                    acceptance_criteria=criteria,
                     depends_on=depends_on,
                 )
             )
@@ -190,8 +232,21 @@ class ImplementationPlan:
         return errors
 
     def to_dict(self) -> dict:
-        """Serialize to dict for YAML/JSON transport."""
-        return dataclasses.asdict(self)
+        """Serialize to dict for YAML/JSON transport.
+
+        TypedCheck entries in ``acceptance_criteria`` are serialized as flat
+        authored-form mappings (params spread to top level alongside check /
+        severity / description), matching the on-disk YAML schema parsed by
+        ``from_yaml``. This makes round-trip ``from_yaml → to_dict → safe_dump
+        → from_yaml`` a stable identity, which is load-bearing for the
+        canonical-hashing helper SIP-0092 M3 introduces.
+        """
+        result = dataclasses.asdict(self)
+        for task_dict, task in zip(result["tasks"], self.tasks):
+            task_dict["acceptance_criteria"] = [
+                _serialize_acceptance_criterion(c) for c in task.acceptance_criteria
+            ]
+        return result
 
 
 def _check_dependency_dag(tasks: list[PlanTask]) -> None:
@@ -218,3 +273,178 @@ def _check_dependency_dag(tasks: list[PlanTask]) -> None:
 
     for task in tasks:
         _visit(task.task_index)
+
+
+def _serialize_acceptance_criterion(c: Union[str, TypedCheck]) -> Union[str, dict]:
+    """Inverse of the parser's flat-YAML normalization.
+
+    str entries pass through unchanged. TypedCheck entries become flat dicts
+    with the wrapper keys (check, severity, description) at top level next to
+    the check-specific params.
+    """
+    if isinstance(c, str):
+        return c
+    flat: dict = {"check": c.check}
+    flat.update(c.params)
+    flat["severity"] = c.severity
+    if c.description:
+        flat["description"] = c.description
+    return flat
+
+
+def _parse_acceptance_criteria(
+    raw: list, task_index: int
+) -> list[Union[str, TypedCheck]]:
+    """Parse a mixed acceptance_criteria list per SIP-0092 M1.
+
+    Accepts:
+        - str items: kept as-is (informational prose)
+        - dict items: normalized into TypedCheck per the flat-YAML rule
+          (params = dict minus reserved keys {check, severity, description})
+
+    Authoring-time rejections (RC-11):
+        - Unknown check name (not in CHECK_SPECS).
+        - Missing required param per CHECK_SPECS[check].required_params.
+        - Wrong-type param per CHECK_SPECS[check].param_types.
+        - Unknown param key (not in required_params ∪ optional_params).
+        - Unknown severity value (not in {error, warning, info}).
+        - Path-typed param value containing absolute path or '..' traversal
+          (cheap pre-eval rejection; full chrooting still applies at
+          evaluation time per RC-10).
+
+    Returns:
+        Mixed list of str and TypedCheck instances, preserving authored order.
+    """
+    parsed: list[Union[str, TypedCheck]] = []
+    for j, item in enumerate(raw):
+        if isinstance(item, str):
+            parsed.append(item)
+            continue
+
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"Task {task_index}.acceptance_criteria[{j}]: "
+                f"each entry must be a string (informational) or mapping (typed)"
+            )
+
+        # Typed check — must declare which check
+        if "check" not in item:
+            raise ValueError(
+                f"Task {task_index}.acceptance_criteria[{j}]: "
+                f"typed criterion missing required key 'check'"
+            )
+        check_name = item["check"]
+        if not isinstance(check_name, str):
+            raise ValueError(
+                f"Task {task_index}.acceptance_criteria[{j}]: "
+                f"'check' must be a string"
+            )
+        if check_name not in CHECK_SPECS:
+            raise ValueError(
+                f"Task {task_index}.acceptance_criteria[{j}]: "
+                f"unknown check '{check_name}'. "
+                f"Known checks: {', '.join(sorted(CHECK_SPECS))}"
+            )
+
+        spec = CHECK_SPECS[check_name]
+
+        # Severity
+        severity = item.get("severity", "error")
+        if severity not in ALLOWED_SEVERITIES:
+            raise ValueError(
+                f"Task {task_index}.acceptance_criteria[{j}] "
+                f"({check_name}): unknown severity '{severity}'. "
+                f"Allowed: {', '.join(sorted(ALLOWED_SEVERITIES))}"
+            )
+
+        # Description
+        description = item.get("description", "")
+        if not isinstance(description, str):
+            raise ValueError(
+                f"Task {task_index}.acceptance_criteria[{j}] "
+                f"({check_name}): 'description' must be a string"
+            )
+
+        # Params = item minus reserved keys
+        reserved = reserved_keys_for(check_name)
+        params = {k: v for k, v in item.items() if k not in reserved}
+
+        # Required params
+        missing = spec.required_params - set(params)
+        if missing:
+            raise ValueError(
+                f"Task {task_index}.acceptance_criteria[{j}] "
+                f"({check_name}): missing required param(s): "
+                f"{', '.join(sorted(missing))}"
+            )
+
+        # Unknown params
+        allowed_params = spec.required_params | spec.optional_params
+        unknown = set(params) - allowed_params
+        if unknown:
+            raise ValueError(
+                f"Task {task_index}.acceptance_criteria[{j}] "
+                f"({check_name}): unknown param(s): "
+                f"{', '.join(sorted(unknown))}. "
+                f"Allowed: {', '.join(sorted(allowed_params))}"
+            )
+
+        # Param types
+        for key, value in params.items():
+            expected = spec.param_types.get(key)
+            if expected is None:
+                continue  # spec didn't declare a type; tolerated
+            if not isinstance(value, expected):
+                expected_name = (
+                    expected.__name__
+                    if isinstance(expected, type)
+                    else " | ".join(t.__name__ for t in expected)
+                )
+                raise ValueError(
+                    f"Task {task_index}.acceptance_criteria[{j}] "
+                    f"({check_name}): param '{key}' must be {expected_name}, "
+                    f"got {type(value).__name__}"
+                )
+
+        # Path-traversal pre-eval rejection
+        for path_key in spec.path_params:
+            if path_key in params:
+                _reject_unsafe_path(
+                    params[path_key], path_key, task_index, j, check_name
+                )
+
+        parsed.append(
+            TypedCheck(
+                check=check_name,
+                params=params,
+                severity=severity,
+                description=description,
+            )
+        )
+
+    return parsed
+
+
+def _reject_unsafe_path(
+    value: object, key: str, task_index: int, criterion_index: int, check_name: str
+) -> None:
+    """Cheap pre-evaluation rejection of obviously unsafe paths.
+
+    Full chrooting and symlink rejection still happens at evaluation time
+    (M1.2, RC-10). This catches authoring errors at parse time so the squad
+    sees feedback at the gate rather than at hour 2 of build.
+    """
+    if not isinstance(value, str):
+        return  # type validation already handled by param_types check
+    if value.startswith("/") or value.startswith("\\"):
+        raise ValueError(
+            f"Task {task_index}.acceptance_criteria[{criterion_index}] "
+            f"({check_name}): {key}={value!r} is absolute "
+            f"(must be workspace-relative)"
+        )
+    parts = value.replace("\\", "/").split("/")
+    if ".." in parts:
+        raise ValueError(
+            f"Task {task_index}.acceptance_criteria[{criterion_index}] "
+            f"({check_name}): {key}={value!r} contains '..' traversal"
+        )

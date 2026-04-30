@@ -1,4 +1,4 @@
-"""Tests for ImplementationPlan model (SIP-0086 Phase 1a)."""
+"""Tests for ImplementationPlan model (SIP-0086 Phase 1a + SIP-0092 M1.1)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from squadops.cycles.implementation_plan import ImplementationPlan
+from squadops.cycles.acceptance_check_spec import CHECK_SPECS
+from squadops.cycles.implementation_plan import ImplementationPlan, TypedCheck
 
 
 # ---------------------------------------------------------------------------
@@ -290,3 +291,250 @@ class TestValidateAgainstProfile:
 
         assert len(errors) == 1
         assert "qa" in errors[0]
+
+
+# ---------------------------------------------------------------------------
+# SIP-0092 M1.1 — Typed acceptance criteria
+# ---------------------------------------------------------------------------
+
+
+def _plan_with_criteria(criteria_yaml: str) -> str:
+    """Helper: build a minimal valid plan with a custom acceptance_criteria block."""
+    return f"""\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend"
+    description: "Build endpoints"
+    expected_artifacts:
+      - "backend/routes.py"
+    acceptance_criteria:
+{criteria_yaml}
+    depends_on: []
+
+summary:
+  total_dev_tasks: 1
+  total_qa_tasks: 0
+  total_tasks: 1
+"""
+
+
+class TestTypedAcceptanceParsing:
+    """SIP-0092 M1.1: parser normalizes mixed prose+typed lists into TypedCheck."""
+
+    def test_mixed_prose_and_typed_preserved(self):
+        yaml_block = """\
+      - "Endpoint exists"
+      - check: regex_match
+        file: backend/routes.py
+        pattern: "status_code\\\\s*=\\\\s*409"
+"""
+        plan = ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+        criteria = plan.tasks[0].acceptance_criteria
+        assert len(criteria) == 2
+        assert criteria[0] == "Endpoint exists"
+        assert isinstance(criteria[1], TypedCheck)
+        assert criteria[1].check == "regex_match"
+
+    def test_typed_only_list_parses(self):
+        yaml_block = """\
+      - check: regex_match
+        file: backend/routes.py
+        pattern: "status_code"
+      - check: count_at_least
+        glob: "tests/**/*.py"
+        min_count: 1
+"""
+        plan = ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+        assert all(isinstance(c, TypedCheck) for c in plan.tasks[0].acceptance_criteria)
+
+    def test_params_excludes_reserved_keys(self):
+        """flat-YAML normalization: params = entry minus {check, severity, description}."""
+        yaml_block = """\
+      - check: regex_match
+        severity: warning
+        description: "Coverage"
+        file: backend/routes.py
+        pattern: "status_code"
+"""
+        plan = ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+        tc = plan.tasks[0].acceptance_criteria[0]
+        assert isinstance(tc, TypedCheck)
+        assert tc.severity == "warning"
+        assert tc.description == "Coverage"
+        assert set(tc.params.keys()) == {"file", "pattern"}
+        # Reserved keys must NOT appear in params
+        assert "check" not in tc.params
+        assert "severity" not in tc.params
+        assert "description" not in tc.params
+
+    def test_default_severity_is_error(self):
+        yaml_block = """\
+      - check: regex_match
+        file: backend/routes.py
+        pattern: "x"
+"""
+        plan = ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+        tc = plan.tasks[0].acceptance_criteria[0]
+        assert isinstance(tc, TypedCheck)
+        assert tc.severity == "error"
+
+    def test_round_trip_re_serialize(self):
+        """from_yaml → to_dict → re-emit YAML → from_yaml produces equal task criteria."""
+        import yaml as _yaml
+
+        original_yaml = """\
+      - "Prose entry"
+      - check: regex_match
+        severity: warning
+        file: backend/routes.py
+        pattern: "x"
+"""
+        plan = ImplementationPlan.from_yaml(_plan_with_criteria(original_yaml))
+        serialized = _yaml.safe_dump(plan.to_dict())
+        plan2 = ImplementationPlan.from_yaml(serialized)
+        assert plan.tasks[0].acceptance_criteria == plan2.tasks[0].acceptance_criteria
+
+
+class TestTypedAcceptanceRejections:
+    """RC-11 authoring-time validation: parser rejects malformed typed criteria."""
+
+    def test_unknown_check_raises_with_name_in_message(self):
+        yaml_block = """\
+      - check: invented_check
+        file: foo.py
+"""
+        with pytest.raises(ValueError, match="invented_check"):
+            ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+
+    @pytest.mark.parametrize(
+        "check_name,present_param",
+        [
+            ("regex_match", "pattern"),  # missing 'file'
+            ("count_at_least", "min_count"),  # missing 'glob'
+            ("import_present", "module"),  # missing 'file'
+        ],
+    )
+    def test_missing_required_param_raises(self, check_name, present_param):
+        yaml_block = f"""\
+      - check: {check_name}
+        {present_param}: "x"
+"""
+        with pytest.raises(ValueError, match="missing required param"):
+            ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+
+    def test_wrong_param_type_raises(self):
+        """methods_paths: "GET /runs" as string instead of list → ValueError."""
+        yaml_block = """\
+      - check: endpoint_defined
+        file: backend/routes.py
+        methods_paths: "GET /runs"
+"""
+        with pytest.raises(ValueError, match="methods_paths.*must be list"):
+            ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+
+    def test_unknown_severity_raises(self):
+        yaml_block = """\
+      - check: regex_match
+        severity: critical
+        file: backend/routes.py
+        pattern: "x"
+"""
+        with pytest.raises(ValueError, match="unknown severity"):
+            ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+
+    def test_unknown_param_raises(self):
+        yaml_block = """\
+      - check: regex_match
+        file: backend/routes.py
+        pattern: "x"
+        bogus_param: 1
+"""
+        with pytest.raises(ValueError, match="unknown param"):
+            ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+
+    def test_absolute_path_raises(self):
+        yaml_block = """\
+      - check: regex_match
+        file: "/etc/passwd"
+        pattern: "x"
+"""
+        with pytest.raises(ValueError, match="absolute"):
+            ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+
+    def test_dotdot_traversal_raises(self):
+        yaml_block = """\
+      - check: regex_match
+        file: "../../etc/passwd"
+        pattern: "x"
+"""
+        with pytest.raises(ValueError, match=r"'\.\.' traversal"):
+            ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+
+    def test_typed_entry_missing_check_key_raises(self):
+        yaml_block = """\
+      - file: backend/routes.py
+        pattern: "x"
+"""
+        with pytest.raises(ValueError, match="missing required key 'check'"):
+            ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+
+    def test_non_str_non_dict_entry_raises(self):
+        yaml_block = """\
+      - 42
+"""
+        with pytest.raises(ValueError, match="string.*or mapping"):
+            ImplementationPlan.from_yaml(_plan_with_criteria(yaml_block))
+
+    def test_acceptance_criteria_must_be_list(self):
+        yaml = """\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "x"
+    description: "x"
+    acceptance_criteria: "not a list"
+    depends_on: []
+summary:
+  total_dev_tasks: 1
+  total_qa_tasks: 0
+  total_tasks: 1
+"""
+        with pytest.raises(ValueError, match="acceptance_criteria must be a list"):
+            ImplementationPlan.from_yaml(yaml)
+
+
+class TestTypedCheckRegistryCoverage:
+    """The CHECK_SPECS registry is the single source of truth — sanity-check it."""
+
+    def test_all_rev1_checks_registered(self):
+        rev1 = {
+            "endpoint_defined",
+            "import_present",
+            "field_present",
+            "regex_match",
+            "count_at_least",
+            "command_exit_zero",
+        }
+        assert rev1.issubset(CHECK_SPECS.keys())
+
+    def test_each_spec_path_params_subset_of_declared_params(self):
+        """A path_param key must be a declared (required or optional) param."""
+        for name, spec in CHECK_SPECS.items():
+            declared = spec.required_params | spec.optional_params
+            stragglers = spec.path_params - declared
+            assert not stragglers, (
+                f"CHECK_SPECS[{name!r}].path_params declares "
+                f"{stragglers} which are not in required ∪ optional params"
+            )
