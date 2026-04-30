@@ -15,7 +15,7 @@ defaults:
     - test
     - config
   workload_sequence:
-    - type: planning
+    - type: framing
       gate: progress_plan_review
     - type: implementation
       gate: null

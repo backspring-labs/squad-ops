@@ -351,7 +351,7 @@ class TestCyclesShow:
                 "workload_progress": [
                     {
                         "index": 0,
-                        "workload_type": "planning",
+                        "workload_type": "framing",
                         "status": "completed",
                         "run_id": "run_001",
                     },
@@ -373,7 +373,7 @@ class TestCyclesShow:
         result = runner.invoke(app, ["cycles", "show", "proj1", "cyc_1"])
         assert result.exit_code == 0
         # Sub-table renders workload types and statuses
-        assert "planning" in result.output
+        assert "framing" in result.output
         assert "implementation" in result.output
         assert "wrapup" in result.output
         assert "Workload Progress" in result.output

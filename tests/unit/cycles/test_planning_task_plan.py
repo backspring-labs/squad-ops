@@ -22,7 +22,7 @@ from squadops.cycles.task_plan import (
     BUILDER_ASSEMBLY_TASK_STEPS,
     CYCLE_TASK_STEPS,
     IMPLEMENTATION_TASK_STEPS,
-    PLANNING_TASK_STEPS,
+    FRAMING_TASK_STEPS,
     REFINEMENT_TASK_STEPS,
     generate_task_plan,
 )
@@ -124,40 +124,40 @@ def _run(workload_type=None):
 
 class TestPlanningWorkload:
     def test_produces_5_planning_envelopes(self, cycle, full_profile):
-        envelopes = generate_task_plan(cycle, _run("planning"), full_profile)
+        envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         assert len(envelopes) == 5
 
     def test_task_types_match_planning_steps(self, cycle, full_profile):
-        envelopes = generate_task_plan(cycle, _run("planning"), full_profile)
+        envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         actual = [e.task_type for e in envelopes]
-        expected = [s[0] for s in PLANNING_TASK_STEPS]
+        expected = [s[0] for s in FRAMING_TASK_STEPS]
         assert actual == expected
 
     def test_roles_match_planning_steps(self, cycle, full_profile):
-        envelopes = generate_task_plan(cycle, _run("planning"), full_profile)
+        envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         actual = [e.metadata["role"] for e in envelopes]
-        expected = [s[1] for s in PLANNING_TASK_STEPS]
+        expected = [s[1] for s in FRAMING_TASK_STEPS]
         assert actual == expected
 
     def test_agent_ids_resolved_from_profile(self, cycle, full_profile):
-        envelopes = generate_task_plan(cycle, _run("planning"), full_profile)
+        envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         expected = ["data-agent", "nat", "neo", "eve", "max"]
         assert [e.agent_id for e in envelopes] == expected
 
     def test_shared_correlation_and_trace_ids(self, cycle, full_profile):
-        envelopes = generate_task_plan(cycle, _run("planning"), full_profile)
+        envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         assert len({e.correlation_id for e in envelopes}) == 1
         assert len({e.trace_id for e in envelopes}) == 1
 
     def test_causation_chain(self, cycle, full_profile):
-        envelopes = generate_task_plan(cycle, _run("planning"), full_profile)
+        envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         assert envelopes[0].causation_id == envelopes[0].correlation_id
         for i in range(1, len(envelopes)):
             assert envelopes[i].causation_id == envelopes[i - 1].task_id
 
     def test_missing_role_raises_cycle_error(self, cycle, lead_qa_profile):
         with pytest.raises(CycleError, match="missing required roles"):
-            generate_task_plan(cycle, _run("planning"), lead_qa_profile)
+            generate_task_plan(cycle, _run("framing"), lead_qa_profile)
 
 
 # ---- Refinement workload tests ----
@@ -282,9 +282,9 @@ class TestLegacyBackwardCompat:
             cycle,
             applied_defaults={"plan_tasks": True, "build_tasks": True},
         )
-        envelopes = generate_task_plan(cycle_with_flags, _run("planning"), full_profile)
+        envelopes = generate_task_plan(cycle_with_flags, _run("framing"), full_profile)
         # Should produce 5 planning steps, NOT 5 plan + 2 build
         assert len(envelopes) == 5
         actual = [e.task_type for e in envelopes]
-        expected = [s[0] for s in PLANNING_TASK_STEPS]
+        expected = [s[0] for s in FRAMING_TASK_STEPS]
         assert actual == expected

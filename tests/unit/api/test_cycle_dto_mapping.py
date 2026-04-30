@@ -124,12 +124,12 @@ class TestCycleToResponseStatus:
         """Bug that motivated SIP-0083 D5: derive returns COMPLETED but
         pending workloads remain — resolve_cycle_status returns ACTIVE."""
         ws = [
-            {"type": "planning"},
+            {"type": "framing"},
             {"type": "implementation"},
             {"type": "wrapup"},
         ]
         cycle = _make_cycle(workload_sequence=ws)
-        runs = [_make_run("run_001", 1, "completed", "planning")]
+        runs = [_make_run("run_001", 1, "completed", "framing")]
 
         resp = cycle_to_response(cycle, runs)
 
@@ -141,11 +141,11 @@ class TestCycleToResponseStatus:
     def test_gate_awaiting_shows_paused(self):
         """Paused run at inter-workload gate → cycle status is PAUSED."""
         ws = [
-            {"type": "planning", "gate": "progress_plan_review"},
+            {"type": "framing", "gate": "progress_plan_review"},
             {"type": "implementation"},
         ]
         cycle = _make_cycle(workload_sequence=ws)
-        runs = [_make_run("run_001", 1, "paused", "planning")]
+        runs = [_make_run("run_001", 1, "paused", "framing")]
 
         resp = cycle_to_response(cycle, runs)
 
@@ -155,7 +155,7 @@ class TestCycleToResponseStatus:
     def test_rejected_gate_shows_failed(self):
         """Rejected gate decision → cycle status is FAILED."""
         ws = [
-            {"type": "planning", "gate": "progress_plan_review"},
+            {"type": "framing", "gate": "progress_plan_review"},
             {"type": "implementation"},
         ]
         decision = GateDecision(
@@ -165,7 +165,7 @@ class TestCycleToResponseStatus:
             decided_at=NOW,
         )
         cycle = _make_cycle(workload_sequence=ws)
-        runs = [_make_run("run_001", 1, "completed", "planning", gate_decisions=(decision,))]
+        runs = [_make_run("run_001", 1, "completed", "framing", gate_decisions=(decision,))]
 
         resp = cycle_to_response(cycle, runs)
 
@@ -174,12 +174,12 @@ class TestCycleToResponseStatus:
     def test_all_workloads_completed_shows_completed(self):
         """All workloads done → COMPLETED (no pending guard fires)."""
         ws = [
-            {"type": "planning"},
+            {"type": "framing"},
             {"type": "implementation"},
         ]
         cycle = _make_cycle(workload_sequence=ws)
         runs = [
-            _make_run("run_001", 1, "completed", "planning"),
+            _make_run("run_001", 1, "completed", "framing"),
             _make_run("run_002", 2, "completed", "implementation"),
         ]
 

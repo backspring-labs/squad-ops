@@ -1,10 +1,11 @@
-"""Planning task handlers — LLM-powered handlers for planning workload pipeline.
+"""Framing task handlers — LLM-powered handlers for the framing workload pipeline.
 
-5 planning handlers and 2 refinement handlers whose capability_ids match
-the pinned task_type values from PLANNING_TASK_STEPS and REFINEMENT_TASK_STEPS
-(SIP-0078 §5.3, §5.10).
+5 framing handlers and 2 refinement handlers whose capability_ids match
+the pinned task_type values from FRAMING_TASK_STEPS and REFINEMENT_TASK_STEPS
+(SIP-0078 §5.3, §5.10). The module filename remains ``planning_tasks.py`` as
+a legacy identifier; imports across the codebase pin to that name.
 
-All planning/refinement handlers extend ``_PlanningTaskHandler``, which
+All framing/refinement handlers extend ``_PlanningTaskHandler``, which
 overrides the system prompt assembly to activate the ``task_type`` prompt
 layer via ``context.ports.prompt_service.assemble(role, hook, task_type=...)``.
 This is the key difference from standard ``_CycleTaskHandler`` which calls

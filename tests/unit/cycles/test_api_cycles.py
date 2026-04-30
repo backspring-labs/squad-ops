@@ -133,7 +133,7 @@ class TestCreateCycle:
                 "squad_profile_id": "full-squad",
                 "applied_defaults": {
                     "workload_sequence": [
-                        {"type": "planning", "gate": "progress_plan_review"},
+                        {"type": "framing", "gate": "progress_plan_review"},
                         {"type": "implementation", "gate": None},
                     ],
                 },
@@ -141,7 +141,7 @@ class TestCreateCycle:
         )
         assert resp.status_code == 200
         run = mock_cycle_registry.create_run.call_args[0][0]
-        assert run.workload_type == "planning"
+        assert run.workload_type == "framing"
 
     def test_workload_type_none_without_workload_sequence(self, client, mock_cycle_registry):
         """Without workload_sequence, run.workload_type stays None (legacy path)."""

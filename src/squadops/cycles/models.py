@@ -95,7 +95,7 @@ class WorkloadType:
     document the standard vocabulary. Custom values are permitted.
     """
 
-    PLANNING = "planning"
+    FRAMING = "framing"
     IMPLEMENTATION = "implementation"
     EVALUATION = "evaluation"
     REFINEMENT = "refinement"

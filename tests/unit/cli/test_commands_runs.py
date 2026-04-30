@@ -43,7 +43,7 @@ class TestRunsList:
                     "run_id": "run_1",
                     "run_number": 1,
                     "status": "completed",
-                    "workload_type": "planning",
+                    "workload_type": "framing",
                     "started_at": None,
                 },
                 {
@@ -57,7 +57,7 @@ class TestRunsList:
         )
         result = runner.invoke(app, ["runs", "list", "proj1", "cyc_1"])
         assert result.exit_code == 0
-        assert "planning" in result.output
+        assert "framing" in result.output
         assert "implementation" in result.output
         assert "Workload" in result.output
 

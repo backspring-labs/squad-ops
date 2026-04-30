@@ -519,7 +519,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         # workload-type-specific keys
         wt = completed_run.workload_type
-        if wt == "planning":
+        if wt == "framing":
             # SIP-0086 / SIP-0092: include control_implementation_plan
             # alongside documents so the implementation_plan.yaml reaches the
             # implementation workload.
