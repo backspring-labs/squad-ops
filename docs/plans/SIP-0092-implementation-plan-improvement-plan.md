@@ -580,6 +580,8 @@ Proceed to Stage M2 only when **all** of the following hold across a tracking wi
 
 If any criterion fails, **M2 is spun out as a separate proposed SIP** (`SIP-Implementation-Plan-Reviewer-Separation`) that re-litigates the design with the evidence-in-hand.
 
+**Alternative authoring model on the table.** A sibling proposed SIP — [`SIP-Multi-Role-Plan-Authoring`](../../sips/proposed/SIP-Multi-Role-Plan-Authoring.md) — argues that both M1's combined-author/reviewer and M2's split (Neo authors, Max reviews) share a sole-broker structural property, and proposes a propose-merge model where each contributing role authors plan tasks for its domain and Max merges. The M1 → M2 gate evaluation should treat the gate's "is M2 needed?" question as "is *some* authoring change needed, and if so, which model?" — with three paths: ship M2 as written, ship the multi-role alternative, or ship neither and revisit. The evaluation doc must explicitly record which path was chosen and why; if a path other than M2-as-written wins, M2 is the spun-out SIP rather than the alternative.
+
 ### Gate M2 → M3
 
 Proceed to Stage M3 only when **all** of the following hold across ≥10 long-cycle cycles with M2 enabled (`split_implementation_planning: true`):
