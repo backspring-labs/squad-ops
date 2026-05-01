@@ -30,6 +30,10 @@ REGRESSION_DIRS=(
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+echo "Running ruff lint (fail-stop)..."
+ruff check .
+echo ""
+
 echo "Running test quality lint..."
 python "$SCRIPT_DIR/lint_test_quality.py" "${REGRESSION_DIRS[@]}"
 echo ""
