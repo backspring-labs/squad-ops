@@ -42,7 +42,7 @@ async def seeded_registry(registry):
     )
     await registry.create_cycle(cycle)
 
-    for i, wt in enumerate(["planning", "implementation", None], start=1):
+    for i, wt in enumerate(["framing", "implementation", None], start=1):
         run = Run(
             run_id=f"run_{i:03d}",
             cycle_id="cyc_001",
@@ -62,9 +62,9 @@ class TestWorkloadTypeFilter:
         assert len(runs) == 3
 
     async def test_filter_planning(self, seeded_registry):
-        runs = await seeded_registry.list_runs("cyc_001", workload_type="planning")
+        runs = await seeded_registry.list_runs("cyc_001", workload_type="framing")
         assert len(runs) == 1
-        assert runs[0].workload_type == "planning"
+        assert runs[0].workload_type == "framing"
 
     async def test_filter_implementation(self, seeded_registry):
         runs = await seeded_registry.list_runs("cyc_001", workload_type="implementation")
@@ -77,7 +77,7 @@ class TestWorkloadTypeFilter:
 
     async def test_workload_type_persisted(self, seeded_registry):
         run = await seeded_registry.get_run("run_001")
-        assert run.workload_type == "planning"
+        assert run.workload_type == "framing"
 
     async def test_null_workload_type_persisted(self, seeded_registry):
         run = await seeded_registry.get_run("run_003")

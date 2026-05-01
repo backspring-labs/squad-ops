@@ -52,8 +52,8 @@ class TestRunWorkloadType:
         assert run.workload_type is None
 
     def test_explicit_workload_type(self):
-        run = self._make_run(workload_type="planning")
-        assert run.workload_type == "planning"
+        run = self._make_run(workload_type="framing")
+        assert run.workload_type == "framing"
 
     def test_custom_workload_type(self):
         run = self._make_run(workload_type="my_custom_phase")
@@ -114,10 +114,10 @@ class TestValidateWorkloadType:
         assert validate_workload_type(None) is None
 
     def test_normal_string(self):
-        assert validate_workload_type("planning") == "planning"
+        assert validate_workload_type("framing") == "framing"
 
     def test_trims_whitespace(self):
-        assert validate_workload_type("  planning  ") == "planning"
+        assert validate_workload_type("  framing  ") == "framing"
 
     def test_empty_string_rejected(self):
         with pytest.raises(ValidationError, match="non-empty"):

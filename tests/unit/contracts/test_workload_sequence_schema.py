@@ -21,7 +21,7 @@ class TestWorkloadSequenceKey:
             defaults={
                 "squad_profile_id": "full-squad",
                 "workload_sequence": [
-                    {"type": "planning", "gate": "progress_plan_review"},
+                    {"type": "framing", "gate": "progress_plan_review"},
                     {"type": "implementation", "gate": None},
                 ],
             },
@@ -44,7 +44,7 @@ class TestAutoGateValue:
             name="test",
             defaults={
                 "workload_sequence": [
-                    {"type": "planning", "gate": "progress_approval_required"},
+                    {"type": "framing", "gate": "progress_approval_required"},
                     {"type": "implementation", "gate": "auto"},
                     {"type": "wrapup", "gate": None},
                 ],
@@ -63,7 +63,7 @@ class TestGateNameValidation:
                 name="test",
                 defaults={
                     "workload_sequence": [
-                        {"type": "planning", "gate": "my_custom_gate"},
+                        {"type": "framing", "gate": "my_custom_gate"},
                     ],
                 },
             )
@@ -75,7 +75,7 @@ class TestGateNameValidation:
                 name="test",
                 defaults={
                     "workload_sequence": [
-                        {"type": "planning", "gate": "Progress_plan_review"},
+                        {"type": "framing", "gate": "Progress_plan_review"},
                     ],
                 },
             )
@@ -87,7 +87,7 @@ class TestGateNameValidation:
                 name="test",
                 defaults={
                     "workload_sequence": [
-                        {"type": "planning", "gate": "progress_plan_review"},
+                        {"type": "framing", "gate": "progress_plan_review"},
                         {"type": "implementation", "gate": "bad_gate"},
                     ],
                 },

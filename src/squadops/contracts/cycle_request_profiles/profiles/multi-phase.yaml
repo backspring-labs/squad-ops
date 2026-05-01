@@ -12,7 +12,7 @@ defaults:
         description: "Human approval required before advancing to next workload"
         after_task_types: []
   workload_sequence:
-    - type: planning
+    - type: framing
       gate: progress_approval_required
     - type: implementation
       gate: auto

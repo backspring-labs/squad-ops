@@ -45,7 +45,7 @@ _MULTI_WORKLOAD_CYCLE = Cycle(
     build_strategy="fresh",
     applied_defaults={
         "workload_sequence": [
-            {"type": "planning", "gate": "progress_plan_review"},
+            {"type": "framing", "gate": "progress_plan_review"},
             {"type": "implementation"},
             {"type": "wrapup"},
         ],

@@ -34,7 +34,7 @@ class TestMultiPhaseWorkloadSequence:
         profile = load_profile("multi-phase")
         seq = profile.defaults["workload_sequence"]
         types = [w["type"] for w in seq]
-        assert types == ["planning", "implementation", "wrapup"]
+        assert types == ["framing", "implementation", "wrapup"]
 
 
 class TestMultiPhaseGates:

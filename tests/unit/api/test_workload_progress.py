@@ -49,11 +49,11 @@ class TestWorkloadProgress:
     def test_one_completed_two_pending(self):
         """3-entry sequence with 1 completed run → first completed, others pending."""
         ws = [
-            {"type": "planning"},
+            {"type": "framing"},
             {"type": "implementation"},
             {"type": "wrapup"},
         ]
-        runs = [_run("run_001", 1, "completed", "planning")]
+        runs = [_run("run_001", 1, "completed", "framing")]
 
         result = compute_workload_progress(ws, runs)
 
@@ -61,7 +61,7 @@ class TestWorkloadProgress:
         assert result[0].index == 0
         assert result[0].run_id == "run_001"
         assert result[0].status == "completed"
-        assert result[0].workload_type == "planning"
+        assert result[0].workload_type == "framing"
         assert result[1].run_id is None
         assert result[1].status == "pending"
         assert result[2].run_id is None
@@ -70,11 +70,11 @@ class TestWorkloadProgress:
     def test_all_completed(self):
         """All runs completed → all entries have run_ids and completed status."""
         ws = [
-            {"type": "planning"},
+            {"type": "framing"},
             {"type": "implementation"},
         ]
         runs = [
-            _run("run_001", 1, "completed", "planning"),
+            _run("run_001", 1, "completed", "framing"),
             _run("run_002", 2, "completed", "implementation"),
         ]
 
@@ -87,12 +87,12 @@ class TestWorkloadProgress:
     def test_cancelled_run_excluded_from_alignment(self):
         """Cancelled run is skipped — next non-cancelled run aligns."""
         ws = [
-            {"type": "planning"},
+            {"type": "framing"},
             {"type": "implementation"},
         ]
         runs = [
-            _run("run_001", 1, "cancelled", "planning"),
-            _run("run_002", 2, "completed", "planning"),
+            _run("run_001", 1, "cancelled", "framing"),
+            _run("run_002", 2, "completed", "framing"),
             _run("run_003", 3, "completed", "implementation"),
         ]
 
@@ -106,7 +106,7 @@ class TestWorkloadProgress:
     def test_rejected_gate_shows_rejected_status(self):
         """Rejected gate decision → status is 'rejected' not raw run status."""
         ws = [
-            {"type": "planning", "gate": "progress_plan_review"},
+            {"type": "framing", "gate": "progress_plan_review"},
             {"type": "implementation"},
         ]
         decision = GateDecision(
@@ -115,7 +115,7 @@ class TestWorkloadProgress:
             decided_by="user",
             decided_at=NOW,
         )
-        runs = [_run("run_001", 1, "completed", "planning", gate_decisions=(decision,))]
+        runs = [_run("run_001", 1, "completed", "framing", gate_decisions=(decision,))]
 
         result = compute_workload_progress(ws, runs)
 
@@ -124,7 +124,7 @@ class TestWorkloadProgress:
 
     def test_paused_run_shows_gate_awaiting(self):
         """Paused run → status is 'gate_awaiting' not 'paused'."""
-        ws = [{"type": "planning"}]
+        ws = [{"type": "framing"}]
         runs = [_run("run_001", 1, RunStatus.PAUSED.value)]
 
         result = compute_workload_progress(ws, runs)
@@ -133,7 +133,7 @@ class TestWorkloadProgress:
 
     def test_queued_run_shows_pending(self):
         """Queued run → status is 'pending' not 'queued'."""
-        ws = [{"type": "planning"}]
+        ws = [{"type": "framing"}]
         runs = [_run("run_001", 1, RunStatus.QUEUED.value)]
 
         result = compute_workload_progress(ws, runs)
@@ -152,7 +152,7 @@ class TestWorkloadProgress:
     def test_approved_with_refinements_shows_completed(self):
         """approved_with_refinements gate does not change status (still completed)."""
         ws = [
-            {"type": "planning", "gate": "progress_plan_review"},
+            {"type": "framing", "gate": "progress_plan_review"},
             {"type": "implementation"},
         ]
         decision = GateDecision(
@@ -162,7 +162,7 @@ class TestWorkloadProgress:
             decided_at=NOW,
             notes="Add error handling",
         )
-        runs = [_run("run_001", 1, "completed", "planning", gate_decisions=(decision,))]
+        runs = [_run("run_001", 1, "completed", "framing", gate_decisions=(decision,))]
 
         result = compute_workload_progress(ws, runs)
 

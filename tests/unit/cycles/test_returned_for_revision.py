@@ -66,7 +66,7 @@ class TestReturnedForRevision:
             status="paused",
             initiated_by="api",
             resolved_config_hash="h",
-            workload_type="planning",
+            workload_type="framing",
         )
         await registry.create_run(run)
 
@@ -88,7 +88,7 @@ class TestReturnedForRevision:
             status="paused",
             initiated_by="api",
             resolved_config_hash="h",
-            workload_type="planning",
+            workload_type="framing",
         )
         await registry.create_run(run)
 
@@ -113,7 +113,7 @@ class TestReturnedForRevision:
             status="paused",
             initiated_by="api",
             resolved_config_hash="h",
-            workload_type="planning",
+            workload_type="framing",
         )
         await registry.create_run(run1)
 
@@ -133,10 +133,10 @@ class TestReturnedForRevision:
             status="queued",
             initiated_by="retry",
             resolved_config_hash="h",
-            workload_type="planning",
+            workload_type="framing",
         )
         created = await registry.create_run(run2)
-        assert created.workload_type == "planning"
+        assert created.workload_type == "framing"
 
         # Both runs coexist with independent gate decisions
         all_runs = await registry.list_runs("cyc_001")

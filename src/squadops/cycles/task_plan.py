@@ -55,8 +55,8 @@ BUILDER_ASSEMBLY_TASK_STEPS: list[tuple[str, str]] = [
     ("qa.test", "qa"),
 ]
 
-# Planning task steps (SIP-0078 §5.3)
-PLANNING_TASK_STEPS: list[tuple[str, str]] = [
+# Framing task steps (SIP-0078 §5.3) — the pre-build sequence run during a framing workload
+FRAMING_TASK_STEPS: list[tuple[str, str]] = [
     ("data.research_context", "data"),
     ("strategy.frame_objective", "strat"),
     ("development.design_plan", "dev"),
@@ -100,7 +100,7 @@ WRAPUP_TASK_STEPS: list[tuple[str, str]] = [
 
 # Well-known workload types that have dedicated step selection.
 _KNOWN_WORKLOAD_TYPES = {
-    WorkloadType.PLANNING,
+    WorkloadType.FRAMING,
     WorkloadType.IMPLEMENTATION,
     WorkloadType.REFINEMENT,
     WorkloadType.EVALUATION,
@@ -158,9 +158,9 @@ def _resolve_workload_steps(
 
     builder_used = False
 
-    if workload_type == WorkloadType.PLANNING:
+    if workload_type == WorkloadType.FRAMING:
         _check_required_roles(profile.profile_id, REQUIRED_PLAN_ROLES, profile_roles)
-        steps = list(PLANNING_TASK_STEPS)
+        steps = list(FRAMING_TASK_STEPS)
     elif workload_type == WorkloadType.REFINEMENT:
         _check_required_roles(
             profile.profile_id, REQUIRED_REFINEMENT_ROLES, profile_roles, "refinement"

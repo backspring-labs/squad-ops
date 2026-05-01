@@ -152,7 +152,7 @@ class TestSingleWorkloadFastPath:
 
     async def test_single_entry_delegates(self, executor, mock_registry):
         """Single-entry workload_sequence → delegates to execute_run()."""
-        cycle = _make_cycle(workload_sequence=[{"type": "planning"}])
+        cycle = _make_cycle(workload_sequence=[{"type": "framing"}])
         mock_registry.get_cycle.return_value = cycle
 
         await executor.execute_cycle("cyc_001", "run_001")
@@ -172,13 +172,13 @@ class TestMultiWorkloadOrchestration:
         """2-entry sequence: first run completes, second run created and executed."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning"},
+                {"type": "framing"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run2 = _make_run("run_002", 2, "completed", "implementation")
 
         mock_registry.get_run.side_effect = [run1, run2]
@@ -199,14 +199,14 @@ class TestMultiWorkloadOrchestration:
         """3-entry sequence creates all Runs sequentially."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning"},
+                {"type": "framing"},
                 {"type": "implementation"},
                 {"type": "wrapup"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run2 = _make_run("run_002", 2, "completed", "implementation")
         run3 = _make_run("run_003", 3, "completed", "wrapup")
 
@@ -242,13 +242,13 @@ class TestOrchestrationStopping:
         """Failed or cancelled first run → no second run created."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning"},
+                {"type": "framing"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, terminal_status, "planning")
+        run1 = _make_run("run_001", 1, terminal_status, "framing")
         mock_registry.get_run.return_value = run1
 
         await executor.execute_cycle("cyc_001", "run_001")
@@ -260,7 +260,7 @@ class TestOrchestrationStopping:
         assert emit_call[0][0] == EventType.WORKLOAD_COMPLETED
         payload = emit_call[1]["payload"]
         assert payload["terminal_status"] == terminal_status
-        assert payload["workload_type"] == "planning"
+        assert payload["workload_type"] == "framing"
 
 
 # ---------------------------------------------------------------------------
@@ -277,18 +277,18 @@ class TestInterWorkloadGates:
         """approved gate decision → next workload Run created and executed."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning", "gate": "progress_plan_review"},
+                {"type": "framing", "gate": "progress_plan_review"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1_no_decision = _make_run("run_001", 1, "completed", "planning")
+        run1_no_decision = _make_run("run_001", 1, "completed", "framing")
         run1_with_decision = _make_run(
             "run_001",
             1,
             "completed",
-            "planning",
+            "framing",
             gate_decisions=(_gate_decision("progress_plan_review", GateDecisionValue.APPROVED),),
         )
         run2 = _make_run("run_002", 2, "completed", "implementation")
@@ -318,18 +318,18 @@ class TestInterWorkloadGates:
         """rejected gate → no next workload Run created."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning", "gate": "progress_plan_review"},
+                {"type": "framing", "gate": "progress_plan_review"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run1_with_rejection = _make_run(
             "run_001",
             1,
             "completed",
-            "planning",
+            "framing",
             gate_decisions=(_gate_decision("progress_plan_review", GateDecisionValue.REJECTED),),
         )
 
@@ -350,13 +350,13 @@ class TestInterWorkloadGates:
         """No gate on workload entry → advances without polling."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning"},  # No gate key
+                {"type": "framing"},  # No gate key
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run2 = _make_run("run_002", 2, "completed", "implementation")
 
         mock_registry.get_run.side_effect = [run1, run2]
@@ -395,19 +395,19 @@ class TestInterWorkloadGates:
         """Named gate polls, auto gate auto-progresses in same cycle."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning", "gate": "progress_approval_required"},
+                {"type": "framing", "gate": "progress_approval_required"},
                 {"type": "implementation", "gate": "auto"},
                 {"type": "wrapup"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run1_decided = _make_run(
             "run_001",
             1,
             "completed",
-            "planning",
+            "framing",
             gate_decisions=(
                 _gate_decision("progress_approval_required", GateDecisionValue.APPROVED),
             ),
@@ -458,13 +458,13 @@ class TestDuplicateRunGuard:
         """If a non-cancelled run already exists at position i+1, reuse it."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning"},
+                {"type": "framing"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         existing_run2 = _make_run("run_existing", 2, "queued", "implementation")
         run2_completed = _make_run("run_existing", 2, "completed", "implementation")
 
@@ -495,13 +495,13 @@ class TestEventEmission:
         """Each completed workload emits WORKLOAD_COMPLETED with terminal_status."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning"},
+                {"type": "framing"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run2 = _make_run("run_002", 2, "completed", "implementation")
 
         mock_registry.get_run.side_effect = [run1, run2]
@@ -522,18 +522,18 @@ class TestEventEmission:
         """Gate polling emits WORKLOAD_GATE_AWAITING before polling."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning", "gate": "progress_plan_review"},
+                {"type": "framing", "gate": "progress_plan_review"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run1_decided = _make_run(
             "run_001",
             1,
             "completed",
-            "planning",
+            "framing",
             gate_decisions=(_gate_decision("progress_plan_review", GateDecisionValue.APPROVED),),
         )
         run2 = _make_run("run_002", 2, "completed", "implementation")
@@ -561,13 +561,13 @@ class TestEventEmission:
         """Creating next run emits WORKLOAD_ADVANCED with next workload_type."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning"},
+                {"type": "framing"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run2 = _make_run("run_002", 2, "completed", "implementation")
 
         mock_registry.get_run.side_effect = [run1, run2]
@@ -589,13 +589,13 @@ class TestEventEmission:
         """2-workload no-gate cycle emits: COMPLETED, ADVANCED, COMPLETED."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning"},
+                {"type": "framing"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run2 = _make_run("run_002", 2, "completed", "implementation")
 
         mock_registry.get_run.side_effect = [run1, run2]
@@ -683,7 +683,7 @@ class TestCreateNextWorkloadRun:
     async def test_creates_run_with_correct_fields(self, executor, mock_registry):
         """New Run has correct run_number, status, workload_type, initiated_by."""
         cycle = _make_cycle()
-        completed = _make_run("run_001", 1, "completed", "planning")
+        completed = _make_run("run_001", 1, "completed", "framing")
         mock_registry.list_runs.return_value = [completed]
         mock_registry.create_run.side_effect = lambda r: r
 
@@ -759,18 +759,18 @@ class TestRefinementArtifactWriting:
         """approved_with_refinements with notes writes refinement_notes.md."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning", "gate": "progress_plan_review"},
+                {"type": "framing", "gate": "progress_plan_review"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run1_decided = _make_run(
             "run_001",
             1,
             "completed",
-            "planning",
+            "framing",
             gate_decisions=(
                 _gate_decision(
                     "progress_plan_review",
@@ -816,18 +816,18 @@ class TestRefinementArtifactWriting:
         """approved_with_refinements with empty/None notes skips artifact."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning", "gate": "progress_plan_review"},
+                {"type": "framing", "gate": "progress_plan_review"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run1_decided = _make_run(
             "run_001",
             1,
             "completed",
-            "planning",
+            "framing",
             gate_decisions=(
                 _gate_decision(
                     "progress_plan_review",
@@ -855,18 +855,18 @@ class TestRefinementArtifactWriting:
         """approved_with_refinements proceeds to next workload (not blocked)."""
         cycle = _make_cycle(
             workload_sequence=[
-                {"type": "planning", "gate": "progress_plan_review"},
+                {"type": "framing", "gate": "progress_plan_review"},
                 {"type": "implementation"},
             ]
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "planning")
+        run1 = _make_run("run_001", 1, "completed", "framing")
         run1_decided = _make_run(
             "run_001",
             1,
             "completed",
-            "planning",
+            "framing",
             gate_decisions=(
                 _gate_decision(
                     "progress_plan_review",
@@ -915,7 +915,7 @@ class TestBuildForwardingOverrides:
     async def test_no_promoted_artifacts_returns_empty_list(self, executor):
         """No promoted artifacts → empty prior_workload_artifact_refs."""
         cycle = _make_cycle()
-        completed = _make_run("run_001", 1, "completed", "planning")
+        completed = _make_run("run_001", 1, "completed", "framing")
 
         executor._artifact_vault.list_artifacts.return_value = []
 
@@ -926,7 +926,7 @@ class TestBuildForwardingOverrides:
     async def test_planning_run_forwards_plan_artifact_refs(self, executor):
         """Planning workload forwards promoted documents + control_implementation_plans."""
         cycle = _make_cycle()
-        completed = _make_run("run_001", 1, "completed", "planning")
+        completed = _make_run("run_001", 1, "completed", "framing")
         doc1 = _make_artifact_ref("art_plan_01", artifact_type="document", created_at=T2)
         doc2 = _make_artifact_ref("art_plan_02", artifact_type="document", created_at=T1)
 
@@ -940,7 +940,7 @@ class TestBuildForwardingOverrides:
     async def test_planning_run_includes_control_implementation_plan(self, executor):
         """SIP-0086: control_implementation_plan artifacts are forwarded as plan_artifact_refs."""
         cycle = _make_cycle()
-        completed = _make_run("run_001", 1, "completed", "planning")
+        completed = _make_run("run_001", 1, "completed", "framing")
         doc = _make_artifact_ref("art_doc", artifact_type="document", created_at=T1)
         manifest = _make_artifact_ref(
             "art_manifest", artifact_type="control_implementation_plan", created_at=T2
@@ -982,7 +982,7 @@ class TestBuildForwardingOverrides:
         cycle = _make_cycle(
             execution_overrides={"prior_workload_artifact_refs": ["art_existing", "art_001"]}
         )
-        completed = _make_run("run_001", 1, "completed", "planning")
+        completed = _make_run("run_001", 1, "completed", "framing")
         art1 = _make_artifact_ref("art_001", created_at=T1)
         art2 = _make_artifact_ref("art_new", created_at=T2)
 
@@ -997,7 +997,7 @@ class TestBuildForwardingOverrides:
     async def test_forwarded_refs_sorted_by_creation_time(self, executor):
         """Forwarded artifact refs are deterministically sorted by created_at."""
         cycle = _make_cycle()
-        completed = _make_run("run_001", 1, "completed", "planning")
+        completed = _make_run("run_001", 1, "completed", "framing")
         # Out of order by creation time
         art_late = _make_artifact_ref("art_late", created_at=T3)
         art_early = _make_artifact_ref("art_early", created_at=T1)

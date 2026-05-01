@@ -1,5 +1,5 @@
-name: planning
-description: "Planning workload with design sufficiency review gate"
+name: framing
+description: "Framing workload with design sufficiency review gate"
 defaults:
   build_strategy: fresh
   task_flow_policy:
@@ -12,7 +12,7 @@ defaults:
   expected_artifact_types:
     - document
   workload_sequence:
-    - type: planning
+    - type: framing
       gate: progress_plan_review
     - type: implementation
       gate: null
