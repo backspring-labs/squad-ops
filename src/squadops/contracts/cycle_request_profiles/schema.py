@@ -39,6 +39,11 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "max_self_eval_passes",
     "min_artifact_count",
     "stub_threshold_bytes",
+    # SIP-0092 M1.3 typed acceptance
+    "typed_acceptance",            # master flag (default true)
+    "command_acceptance_checks",   # gate command_exit_zero independently
+    "command_check_safelist",      # operator-controlled extension to argv safelist
+    "stack",                       # resolved stack identity for typed-check evaluators
 }
 
 _ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS

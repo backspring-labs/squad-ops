@@ -13,8 +13,10 @@ Part of SIP-0066.
 from __future__ import annotations
 
 import logging
+import tempfile
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.dev_capabilities import get_capability
@@ -24,6 +26,8 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
+from squadops.cycles.acceptance_checks import CheckOutcome, get_check
+from squadops.cycles.implementation_plan import TypedCheck
 from squadops.llm.exceptions import LLMError
 from squadops.llm.model_registry import get_model_spec
 from squadops.llm.models import ChatMessage
@@ -270,12 +274,19 @@ class _CycleTaskHandler(CapabilityHandler):
 
     # SIP-0086: Output validation and self-evaluation (Stage B)
 
-    def _validate_output(
+    async def _validate_output(
         self,
         inputs: dict[str, Any],
         artifacts: list[dict],
+        *,
+        typed_error_counts: dict[str, int] | None = None,
     ) -> ValidationResult:
-        """Validate handler output. Override in build handler subclasses."""
+        """Validate handler output. Override in build handler subclasses.
+
+        SIP-0092 M1.3: typed-acceptance evaluation may run async work
+        (subprocess execution for command_exit_zero); the base method is
+        async so subclasses can await without restructuring.
+        """
         return ValidationResult(passed=True, summary="No validation configured")
 
     @staticmethod
@@ -917,26 +928,43 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
         return errors
 
-    def _validate_output(
+    async def _validate_output(
         self,
         inputs: dict[str, Any],
         artifacts: list[dict],
+        *,
+        typed_error_counts: dict[str, int] | None = None,
     ) -> ValidationResult:
-        """Validate dev handler output (SIP-0086 §6.3).
+        """Validate dev handler output (SIP-0086 §6.3, SIP-0092 M1.3).
 
         Two modes: focused (manifest-driven) and legacy (monolithic).
-        See SIP §6.3.1 and §6.3.2 for the distinction.
+        See SIP §6.3.1 and §6.3.2 for the distinction. Focused mode now
+        evaluates typed acceptance criteria (M1.3) — see ``_validate_focused``.
         """
         if inputs.get("subtask_focus") is not None:
-            return self._validate_focused(inputs, artifacts)
+            return await self._validate_focused(
+                inputs, artifacts, typed_error_counts=typed_error_counts
+            )
         return self._validate_monolithic(inputs, artifacts)
 
-    def _validate_focused(
+    async def _validate_focused(
         self,
         inputs: dict[str, Any],
         artifacts: list[dict],
+        *,
+        typed_error_counts: dict[str, int] | None = None,
     ) -> ValidationResult:
-        """Focused-task validation: strict, artifact-specific (SIP §6.3.1)."""
+        """Focused-task validation: strict, artifact-specific (SIP §6.3.1).
+
+        FC1 (expected artifacts) and FC2 (non-stub) are unchanged. FC3 was
+        previously informational ("included_in_evidence"); SIP-0092 M1.3
+        replaces it with typed-check evaluation per RC-9 — severity AND
+        status are independent dimensions, only ``severity=error`` AND
+        ``status ∈ {failed, error}`` blocks validation.
+        """
+        if typed_error_counts is None:
+            typed_error_counts = {}
+
         checks: list[dict] = []
         missing: list[str] = []
         artifact_names = [a.get("name", "") for a in artifacts]
@@ -962,17 +990,13 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             "passed": len(stubs) == 0,
         })
 
-        # FC3: Acceptance criteria (informational in Rev 1 — RC-8)
-        acceptance = inputs.get("acceptance_criteria", [])
-        checks.append({
-            "check": "acceptance_criteria",
-            "criteria": acceptance,
-            "evaluation": "included_in_evidence",
-            "passed": True,
-        })
+        # FC3 (SIP-0092 M1.3): Typed acceptance criteria evaluation.
+        await self._evaluate_typed_acceptance(
+            inputs, artifacts, checks, missing, typed_error_counts
+        )
 
-        passed = all(c["passed"] for c in checks)
-        passed_count = sum(1 for c in checks if c["passed"])
+        passed = all(c.get("passed", True) for c in checks) and not missing
+        passed_count = sum(1 for c in checks if c.get("passed", True))
         coverage = passed_count / len(checks) if checks else 1.0
 
         summary_parts = []
@@ -980,6 +1004,14 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             summary_parts.append(f"Missing files: {', '.join(missing_files)}")
         if stubs:
             summary_parts.append(f"Stub files: {', '.join(stubs)}")
+        typed_failed = [
+            c for c in checks
+            if c.get("check", "").startswith("acceptance:") and c.get("status") in {"failed", "error"}
+        ]
+        if typed_failed:
+            summary_parts.append(
+                f"Typed checks failed: {len(typed_failed)} of {sum(1 for c in checks if c.get('check', '').startswith('acceptance:'))}"
+            )
 
         return ValidationResult(
             passed=passed,
@@ -987,6 +1019,168 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             missing_components=missing,
             coverage_ratio=coverage,
             summary="; ".join(summary_parts) or "All checks passed",
+        )
+
+    # ---- SIP-0092 M1.3 typed acceptance helpers --------------------------
+
+    async def _evaluate_typed_acceptance(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+        checks: list[dict],
+        missing: list[str],
+        typed_error_counts: dict[str, int],
+    ) -> None:
+        """Evaluate typed acceptance criteria, mutating ``checks`` and ``missing`` in place.
+
+        Implements RC-9 (severity × status blocking matrix), RC-9a (error-vs-
+        failed wording distinction), RC-9b (per-criterion error count with
+        2-strikes escalation), RC-12a (skipped-not-error for unset stack).
+        """
+        criteria = inputs.get("acceptance_criteria", [])
+        typed_criteria = [c for c in criteria if isinstance(c, TypedCheck)]
+        prose_criteria = [c for c in criteria if not isinstance(c, TypedCheck)]
+
+        # Prose strings stay informational, evidence-only — same as Rev 1's
+        # included_in_evidence behavior. They never block.
+        if prose_criteria:
+            checks.append({
+                "check": "acceptance_criteria_prose",
+                "criteria": prose_criteria,
+                "evaluation": "included_in_evidence",
+                "passed": True,
+            })
+
+        if not typed_criteria:
+            return
+
+        resolved_config = inputs.get("resolved_config", {})
+        typed_acceptance_enabled = resolved_config.get("typed_acceptance", True)
+        command_acceptance_enabled = resolved_config.get("command_acceptance_checks", True)
+        stack = resolved_config.get("stack")
+
+        with tempfile.TemporaryDirectory(prefix="squadops-typed-acc-") as tmpdir_str:
+            workspace_root = Path(tmpdir_str)
+            self._materialize_artifacts(artifacts, workspace_root)
+
+            for criterion in typed_criteria:
+                outcome = await self._evaluate_typed_check(
+                    criterion,
+                    workspace_root,
+                    stack=stack,
+                    typed_acceptance_enabled=typed_acceptance_enabled,
+                    command_acceptance_enabled=command_acceptance_enabled,
+                )
+                check_record = {
+                    "check": f"acceptance:{criterion.check}",
+                    "severity": criterion.severity,
+                    "params": criterion.params,
+                    "description": criterion.description,
+                    "status": outcome.status,
+                    "actual": outcome.actual,
+                    "reason": outcome.reason,
+                    # `passed` flag for compatibility with the legacy
+                    # all-checks-pass aggregator: only severity=error AND
+                    # blocking status counts as not-passed.
+                    "passed": not (
+                        criterion.severity == "error"
+                        and outcome.status in {"failed", "error"}
+                    ),
+                }
+                checks.append(check_record)
+
+                # RC-9: severity AND status are independent. Only error+blocking missions.
+                if criterion.severity != "error":
+                    continue
+                if outcome.status == "failed":
+                    # RC-9a: app-incompleteness wording.
+                    label = criterion.description or criterion.check
+                    missing.append(f"acceptance:{label}")
+                elif outcome.status == "error":
+                    fp = criterion.fingerprint()
+                    prior = typed_error_counts.get(fp, 0)
+                    if prior < 2:
+                        # RC-9a: evaluator-error wording, distinct from app-incomplete.
+                        missing.append(
+                            f"evaluator-error:{criterion.check}: {outcome.reason}"
+                        )
+                    else:
+                        self._escalate_persistent_evaluator_error(criterion, outcome)
+                    typed_error_counts[fp] = prior + 1
+                # status in {passed, skipped} never blocks.
+
+    @staticmethod
+    def _materialize_artifacts(artifacts: list[dict], workspace_root: Path) -> None:
+        """Write in-memory artifacts to disk under ``workspace_root``.
+
+        Skips entries whose ``name`` is missing or escapes the workspace —
+        the typed-check evaluators apply their own ``_safe_resolve`` chroot
+        on top of this, but it is cheaper to refuse here than to
+        materialize a malformed file just to fail evaluation.
+        """
+        root_resolved = workspace_root.resolve()
+        for art in artifacts:
+            name = art.get("name")
+            content = art.get("content", "")
+            if not isinstance(name, str) or not name:
+                continue
+            if Path(name).is_absolute():
+                continue
+            target = (workspace_root / name).resolve()
+            try:
+                target.relative_to(root_resolved)
+            except ValueError:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(content, bytes):
+                target.write_bytes(content)
+            else:
+                target.write_text(str(content), encoding="utf-8")
+
+    @staticmethod
+    async def _evaluate_typed_check(
+        criterion: TypedCheck,
+        workspace_root: Path,
+        *,
+        stack: str | None,
+        typed_acceptance_enabled: bool,
+        command_acceptance_enabled: bool,
+    ) -> CheckOutcome:
+        """Dispatch a typed criterion to its registered evaluator, honoring config gates."""
+        if not typed_acceptance_enabled:
+            return CheckOutcome.skipped(reason="typed_acceptance_disabled")
+        if criterion.check == "command_exit_zero" and not command_acceptance_enabled:
+            return CheckOutcome.skipped(reason="command_acceptance_checks_disabled")
+        try:
+            evaluator = get_check(criterion.check)
+        except KeyError:
+            # Should not happen — parser already enforces vocabulary — but
+            # treat as evaluator-error rather than crashing the cycle.
+            return CheckOutcome.error(reason="no_evaluator_registered")
+        return await evaluator.evaluate(
+            criterion.params, workspace_root, stack=stack
+        )
+
+    @staticmethod
+    def _escalate_persistent_evaluator_error(
+        criterion: TypedCheck, outcome: CheckOutcome
+    ) -> None:
+        """RC-9b: surface a persistent evaluator error outside the self-eval feedback loop.
+
+        Logged at WARNING with structured fields; the correction protocol
+        and operator-facing surfaces consume the log. A first-class
+        escalation channel is a follow-up if/when the prompt-feedback
+        suppression proves insufficient.
+        """
+        logger.warning(
+            "typed_check_evaluator_error_escalated",
+            extra={
+                "check": criterion.check,
+                "severity": criterion.severity,
+                "fingerprint": criterion.fingerprint(),
+                "reason": outcome.reason,
+                "actual": outcome.actual,
+            },
         )
 
     def _validate_monolithic(
@@ -1328,7 +1522,12 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         evidence_extra: dict[str, Any] = {}
 
         if resolved_config.get("output_validation", False):
-            validation = self._validate_output(inputs, artifacts)
+            # SIP-0092 M1.3 / RC-9b: per-criterion error counts persist across
+            # self-eval passes within this handle() invocation, then are dropped.
+            typed_error_counts: dict[str, int] = {}
+            validation = await self._validate_output(
+                inputs, artifacts, typed_error_counts=typed_error_counts
+            )
 
             # Self-evaluation loop (Phase 7)
             if not validation.passed:
@@ -1372,7 +1571,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                     )
 
                     # RC-7: validate merged artifact set
-                    validation = self._validate_output(inputs, artifacts)
+                    validation = await self._validate_output(
+                        inputs, artifacts, typed_error_counts=typed_error_counts
+                    )
 
                 evidence_extra["self_eval_passes"] = self_eval_count
 
@@ -1546,12 +1747,21 @@ class QATestHandler(_CycleTaskHandler):
             errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
         return errors
 
-    def _validate_output(
+    async def _validate_output(
         self,
         inputs: dict[str, Any],
         artifacts: list[dict],
+        *,
+        typed_error_counts: dict[str, int] | None = None,
     ) -> ValidationResult:
-        """Validate QA handler output (SIP-0086 §6.4)."""
+        """Validate QA handler output (SIP-0086 §6.4).
+
+        SIP-0092 M1.3: signature is async to match the base class. Typed
+        acceptance evaluation in the QA path is out of scope for M1.3 —
+        the SIP focuses on the dev FC3 site. The ``typed_error_counts``
+        kwarg is accepted for caller compatibility but unused here.
+        """
+        del typed_error_counts  # accepted for caller compat; not used in QA
         checks: list[dict] = []
         missing: list[str] = []
 
@@ -1943,7 +2153,7 @@ class QATestHandler(_CycleTaskHandler):
         output_validation_enabled = resolved_config.get("output_validation", False)
 
         if output_validation_enabled:
-            validation = self._validate_output(inputs, artifacts)
+            validation = await self._validate_output(inputs, artifacts)
 
             # Self-evaluation loop
             if not validation.passed:
@@ -1985,7 +2195,7 @@ class QATestHandler(_CycleTaskHandler):
                     artifacts = self._merge_artifacts(
                         artifacts, new_artifacts, evidence_extra
                     )
-                    validation = self._validate_output(inputs, artifacts)
+                    validation = await self._validate_output(inputs, artifacts)
 
                 evidence_extra["self_eval_passes"] = self_eval_count
         else:
