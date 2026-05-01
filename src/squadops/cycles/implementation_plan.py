@@ -16,6 +16,8 @@ driven changes are represented as plan changes (SIP-0092 M3), not mutations.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Union
 
@@ -59,6 +61,22 @@ class TypedCheck:
     params: dict
     severity: str = "error"
     description: str = ""
+
+    def fingerprint(self) -> str:
+        """Stable identity for per-criterion error counting (SIP-0092 M1.3 / RC-9b).
+
+        Hash spans (check, severity, params) so retries against the same
+        criterion share an error counter, but a tightened-acceptance plan
+        change that produces a distinct param shape resets it. Description
+        is excluded — it's prose for evidence/UI, not part of the criterion's
+        identity.
+        """
+        canonical = json.dumps(
+            {"check": self.check, "severity": self.severity, "params": self.params},
+            sort_keys=True,
+            default=str,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 @dataclass(frozen=True)

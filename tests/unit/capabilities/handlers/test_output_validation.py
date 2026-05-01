@@ -34,15 +34,15 @@ def _stub_art(name: str) -> dict:
 
 
 class TestValidationResultDefaults:
-    def test_default_passes(self):
+    async def test_default_passes(self):
         v = ValidationResult(passed=True)
         assert v.passed is True
         assert v.checks == []
         assert v.coverage_ratio == 1.0
 
-    def test_base_handler_returns_pass(self):
+    async def test_base_handler_returns_pass(self):
         handler = _CycleTaskHandler()
-        result = handler._validate_output({}, [])
+        result = await handler._validate_output({}, [])
         assert result.passed is True
 
 
@@ -55,7 +55,7 @@ class TestDevFocusedValidation:
     def _handler(self) -> DevelopmentDevelopHandler:
         return DevelopmentDevelopHandler()
 
-    def test_all_expected_artifacts_present_passes(self):
+    async def test_all_expected_artifacts_present_passes(self):
         h = self._handler()
         inputs = {
             "subtask_focus": "Backend models",
@@ -63,37 +63,37 @@ class TestDevFocusedValidation:
             "acceptance_criteria": ["Models exist"],
         }
         artifacts = [_art("models.py"), _art("repo.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is True
         assert result.summary == "All checks passed"
 
-    def test_missing_expected_artifact_fails(self):
+    async def test_missing_expected_artifact_fails(self):
         h = self._handler()
         inputs = {
             "subtask_focus": "Backend models",
             "expected_artifacts": ["models.py", "repo.py"],
         }
         artifacts = [_art("models.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is False
         assert "repo.py" in result.summary
         assert "file:repo.py" in result.missing_components
 
-    def test_stub_file_detected_fails(self):
+    async def test_stub_file_detected_fails(self):
         h = self._handler()
         inputs = {
             "subtask_focus": "Backend models",
             "expected_artifacts": ["models.py"],
         }
         artifacts = [_stub_art("models.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is False
         assert "Stub" in result.summary
 
-    def test_acceptance_criteria_in_evidence_not_gate(self):
+    async def test_acceptance_criteria_in_evidence_not_gate(self):
         """RC-8: Acceptance criteria are informational, not pass/fail gates."""
         h = self._handler()
         inputs = {
@@ -102,23 +102,23 @@ class TestDevFocusedValidation:
             "acceptance_criteria": ["Models have id field"],
         }
         artifacts = [_art("models.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         # Should pass even though we can't verify acceptance criteria
         assert result.passed is True
-        # Criteria captured in checks
-        ac_check = next(c for c in result.checks if c["check"] == "acceptance_criteria")
+        # Prose criteria (non-TypedCheck) captured in evidence as informational
+        ac_check = next(c for c in result.checks if c["check"] == "acceptance_criteria_prose")
         assert ac_check["criteria"] == ["Models have id field"]
-        assert ac_check["passed"] is True  # Informational
+        assert ac_check["passed"] is True  # Informational, never blocking
 
-    def test_coverage_ratio_computed(self):
+    async def test_coverage_ratio_computed(self):
         h = self._handler()
         inputs = {
             "subtask_focus": "test",
             "expected_artifacts": ["a.py", "b.py"],
         }
         artifacts = [_art("a.py")]  # Missing b.py
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         # 2 of 3 checks pass (non_stub + acceptance pass, expected_artifacts fails)
         assert 0.0 < result.coverage_ratio < 1.0
@@ -133,61 +133,61 @@ class TestDevMonolithicValidation:
     def _handler(self) -> DevelopmentDevelopHandler:
         return DevelopmentDevelopHandler()
 
-    def test_fastapi_react_prd_expects_backend_and_frontend(self):
+    async def test_fastapi_react_prd_expects_backend_and_frontend(self):
         h = self._handler()
         inputs = {"prd": "Build a FastAPI backend and React frontend app."}
         artifacts = [_art("main.py"), _art("App.jsx"), _art("repo.py"),
                      _art("index.html"), _art("package.json"), _art("routes.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is True
 
-    def test_backend_only_for_fullstack_prd_fails(self):
+    async def test_backend_only_for_fullstack_prd_fails(self):
         h = self._handler()
         inputs = {"prd": "Build a FastAPI backend and React frontend app."}
         artifacts = [_art("main.py"), _art("utils.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is False
         assert "frontend" in result.summary.lower()
 
-    def test_few_artifacts_for_complex_prd_fails(self):
+    async def test_few_artifacts_for_complex_prd_fails(self):
         h = self._handler()
         inputs = {"prd": "Build a FastAPI backend with pytest tests and React frontend."}
         artifacts = [_art("main.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is False
         assert "artifacts" in result.summary.lower() or "stack" in result.summary.lower()
 
-    def test_stub_file_in_monolithic_fails(self):
+    async def test_stub_file_in_monolithic_fails(self):
         h = self._handler()
         inputs = {"prd": "Build a CLI tool."}
         artifacts = [_art("main.py"), _art("utils.py"), _stub_art("board.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is False
         assert "Stub" in result.summary
 
-    def test_backend_only_prd_no_false_frontend(self):
+    async def test_backend_only_prd_no_false_frontend(self):
         h = self._handler()
         inputs = {"prd": "Build a FastAPI backend API service."}
         artifacts = [_art("main.py"), _art("routes.py"), _art("models.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is True
 
-    def test_no_prd_passes(self):
+    async def test_no_prd_passes(self):
         h = self._handler()
-        result = h._validate_output({"prd": ""}, [_art("main.py")])
+        result = await h._validate_output({"prd": ""}, [_art("main.py")])
 
         assert result.passed is True
 
-    def test_summary_is_human_readable(self):
+    async def test_summary_is_human_readable(self):
         h = self._handler()
         inputs = {"prd": "Build a React app."}
         artifacts = [_art("main.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert isinstance(result.summary, str)
         assert len(result.summary) > 0
@@ -202,41 +202,41 @@ class TestQAValidation:
     def _handler(self) -> QATestHandler:
         return QATestHandler()
 
-    def test_focused_expected_artifacts_present_passes(self):
+    async def test_focused_expected_artifacts_present_passes(self):
         h = self._handler()
         inputs = {
             "subtask_focus": "Backend tests",
             "expected_artifacts": ["tests/test_api.py"],
         }
         artifacts = [_art("tests/test_api.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is True
 
-    def test_focused_missing_artifact_fails(self):
+    async def test_focused_missing_artifact_fails(self):
         h = self._handler()
         inputs = {
             "subtask_focus": "Backend tests",
             "expected_artifacts": ["tests/test_api.py"],
         }
         artifacts = []
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is False
 
-    def test_legacy_test_file_present_passes(self):
+    async def test_legacy_test_file_present_passes(self):
         h = self._handler()
         inputs = {"prd": "Build a CLI tool."}
         artifacts = [_art("test_main.py")]
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is True
 
-    def test_legacy_no_test_files_fails(self):
+    async def test_legacy_no_test_files_fails(self):
         h = self._handler()
         inputs = {"prd": "Build a CLI tool."}
         artifacts = [_art("qa_handoff.md")]  # Not a test file
-        result = h._validate_output(inputs, artifacts)
+        result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is False
 
@@ -247,33 +247,33 @@ class TestQAValidation:
 
 
 class TestDetectStubs:
-    def test_stub_detected(self):
+    async def test_stub_detected(self):
         assert _detect_stubs([{"name": "x.py", "content": "# TODO"}]) == ["x.py"]
 
-    def test_init_py_skipped(self):
+    async def test_init_py_skipped(self):
         assert _detect_stubs([{"name": "__init__.py", "content": ""}]) == []
 
-    def test_substantial_content_passes(self):
+    async def test_substantial_content_passes(self):
         assert _detect_stubs([{"name": "x.py", "content": "x = 1\n" * 50}]) == []
 
 
 class TestDetectExpectedLayers:
-    def test_fastapi_react_detects_both(self):
+    async def test_fastapi_react_detects_both(self):
         layers = _detect_expected_layers("Build with FastAPI backend and React frontend")
         assert "backend" in layers
         assert "frontend" in layers
 
-    def test_backend_only(self):
+    async def test_backend_only(self):
         layers = _detect_expected_layers("Build a FastAPI REST API")
         assert "backend" in layers
         assert "frontend" not in layers
 
 
 class TestEstimateMinArtifacts:
-    def test_returns_at_least_3(self):
+    async def test_returns_at_least_3(self):
         assert _estimate_min_artifacts("Simple script") >= 3
 
-    def test_fullstack_higher_than_simple(self):
+    async def test_fullstack_higher_than_simple(self):
         simple = _estimate_min_artifacts("Build a CLI script")
         fullstack = _estimate_min_artifacts("Build a FastAPI backend with React frontend and pytest tests")
         assert fullstack > simple
@@ -373,7 +373,7 @@ class TestOutcomeClassification:
 
 
 class TestBuildSelfEvalPrompt:
-    def test_includes_validation_summary(self):
+    async def test_includes_validation_summary(self):
         v = ValidationResult(
             passed=False, summary="Missing files: models.py",
             missing_components=["file:models.py"],
@@ -382,7 +382,7 @@ class TestBuildSelfEvalPrompt:
 
         assert "Missing files: models.py" in prompt
 
-    def test_includes_missing_components(self):
+    async def test_includes_missing_components(self):
         v = ValidationResult(
             passed=False, summary="test",
             missing_components=["file:models.py", "file:routes.py"],
@@ -392,7 +392,7 @@ class TestBuildSelfEvalPrompt:
         assert "file:models.py" in prompt
         assert "file:routes.py" in prompt
 
-    def test_includes_already_produced_files(self):
+    async def test_includes_already_produced_files(self):
         v = ValidationResult(passed=False, summary="test")
         prompt = _CycleTaskHandler._build_self_eval_prompt(v, [_art("utils.py")])
 
@@ -400,7 +400,7 @@ class TestBuildSelfEvalPrompt:
 
 
 class TestMergeArtifacts:
-    def test_adds_new_files(self):
+    async def test_adds_new_files(self):
         evidence: dict = {}
         result = _CycleTaskHandler._merge_artifacts(
             [_art("a.py")], [_art("b.py")], evidence
@@ -411,7 +411,7 @@ class TestMergeArtifacts:
         assert "a.py" in names
         assert "b.py" in names
 
-    def test_replaces_same_name(self):
+    async def test_replaces_same_name(self):
         evidence: dict = {}
         result = _CycleTaskHandler._merge_artifacts(
             [_art("a.py", content="old")],
@@ -422,7 +422,7 @@ class TestMergeArtifacts:
         assert len(result) == 1
         assert result[0]["content"] == "new"
 
-    def test_records_in_evidence(self):
+    async def test_records_in_evidence(self):
         evidence: dict = {}
         _CycleTaskHandler._merge_artifacts(
             [_art("a.py", content="old")],
