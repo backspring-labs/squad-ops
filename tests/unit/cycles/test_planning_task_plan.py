@@ -21,8 +21,8 @@ from squadops.cycles.models import (
 from squadops.cycles.task_plan import (
     BUILDER_ASSEMBLY_TASK_STEPS,
     CYCLE_TASK_STEPS,
-    IMPLEMENTATION_TASK_STEPS,
     FRAMING_TASK_STEPS,
+    IMPLEMENTATION_TASK_STEPS,
     REFINEMENT_TASK_STEPS,
     generate_task_plan,
 )

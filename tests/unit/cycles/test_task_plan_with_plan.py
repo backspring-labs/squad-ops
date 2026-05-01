@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
+from datetime import UTC, datetime
 
-from datetime import datetime, timezone
+import pytest
 
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.models import (
@@ -16,7 +16,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.task_plan import generate_task_plan
 
-NOW = datetime(2026, 3, 31, tzinfo=timezone.utc)
+NOW = datetime(2026, 3, 31, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------

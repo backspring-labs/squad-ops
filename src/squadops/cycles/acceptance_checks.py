@@ -661,7 +661,7 @@ class CommandExitZeroCheck(BaseCheck):
             stdout_b, stderr_b = await asyncio.wait_for(
                 proc.communicate(), timeout=timeout_s
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             try:
                 await proc.wait()

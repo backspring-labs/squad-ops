@@ -9,7 +9,6 @@ import pytest
 from squadops.cycles.acceptance_check_spec import CHECK_SPECS
 from squadops.cycles.implementation_plan import ImplementationPlan, TypedCheck
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

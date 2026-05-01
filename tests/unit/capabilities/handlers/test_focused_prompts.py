@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from squadops.capabilities.handlers.cycle_tasks import (
     DevelopmentDevelopHandler,
     QATestHandler,
 )
-
 
 # ---------------------------------------------------------------------------
 # DevelopmentDevelopHandler focused prompt (Phase 4a)

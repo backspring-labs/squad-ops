@@ -6,10 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from squadops.capabilities.handlers.cycle_tasks import GovernanceReviewHandler
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
