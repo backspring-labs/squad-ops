@@ -13,10 +13,8 @@ Part of SIP-0066.
 from __future__ import annotations
 
 import logging
-import tempfile
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.dev_capabilities import get_capability
@@ -26,8 +24,9 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
-from squadops.cycles.acceptance_checks import CheckOutcome, get_check
-from squadops.cycles.implementation_plan import TypedCheck
+from squadops.capabilities.handlers.typed_acceptance import (
+    evaluate_typed_acceptance,
+)
 from squadops.llm.exceptions import LLMError
 from squadops.llm.model_registry import get_model_spec
 from squadops.llm.models import ChatMessage
@@ -991,7 +990,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         })
 
         # FC3 (SIP-0092 M1.3): Typed acceptance criteria evaluation.
-        await self._evaluate_typed_acceptance(
+        # Lives in ``typed_acceptance`` module; mutates ``checks`` and
+        # ``missing`` in place. ``typed_error_counts`` is the per-handle
+        # counter that drives RC-9b 2-strikes escalation.
+        await evaluate_typed_acceptance(
             inputs, artifacts, checks, missing, typed_error_counts
         )
 
@@ -1021,167 +1023,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             summary="; ".join(summary_parts) or "All checks passed",
         )
 
-    # ---- SIP-0092 M1.3 typed acceptance helpers --------------------------
-
-    async def _evaluate_typed_acceptance(
-        self,
-        inputs: dict[str, Any],
-        artifacts: list[dict],
-        checks: list[dict],
-        missing: list[str],
-        typed_error_counts: dict[str, int],
-    ) -> None:
-        """Evaluate typed acceptance criteria, mutating ``checks`` and ``missing`` in place.
-
-        Implements RC-9 (severity × status blocking matrix), RC-9a (error-vs-
-        failed wording distinction), RC-9b (per-criterion error count with
-        2-strikes escalation), RC-12a (skipped-not-error for unset stack).
-        """
-        criteria = inputs.get("acceptance_criteria", [])
-        typed_criteria = [c for c in criteria if isinstance(c, TypedCheck)]
-        prose_criteria = [c for c in criteria if not isinstance(c, TypedCheck)]
-
-        # Prose strings stay informational, evidence-only — same as Rev 1's
-        # included_in_evidence behavior. They never block.
-        if prose_criteria:
-            checks.append({
-                "check": "acceptance_criteria_prose",
-                "criteria": prose_criteria,
-                "evaluation": "included_in_evidence",
-                "passed": True,
-            })
-
-        if not typed_criteria:
-            return
-
-        resolved_config = inputs.get("resolved_config", {})
-        typed_acceptance_enabled = resolved_config.get("typed_acceptance", True)
-        command_acceptance_enabled = resolved_config.get("command_acceptance_checks", True)
-        stack = resolved_config.get("stack")
-
-        with tempfile.TemporaryDirectory(prefix="squadops-typed-acc-") as tmpdir_str:
-            workspace_root = Path(tmpdir_str)
-            self._materialize_artifacts(artifacts, workspace_root)
-
-            for criterion in typed_criteria:
-                outcome = await self._evaluate_typed_check(
-                    criterion,
-                    workspace_root,
-                    stack=stack,
-                    typed_acceptance_enabled=typed_acceptance_enabled,
-                    command_acceptance_enabled=command_acceptance_enabled,
-                )
-                check_record = {
-                    "check": f"acceptance:{criterion.check}",
-                    "severity": criterion.severity,
-                    "params": criterion.params,
-                    "description": criterion.description,
-                    "status": outcome.status,
-                    "actual": outcome.actual,
-                    "reason": outcome.reason,
-                    # `passed` flag for compatibility with the legacy
-                    # all-checks-pass aggregator: only severity=error AND
-                    # blocking status counts as not-passed.
-                    "passed": not (
-                        criterion.severity == "error"
-                        and outcome.status in {"failed", "error"}
-                    ),
-                }
-                checks.append(check_record)
-
-                # RC-9: severity AND status are independent. Only error+blocking missions.
-                if criterion.severity != "error":
-                    continue
-                if outcome.status == "failed":
-                    # RC-9a: app-incompleteness wording.
-                    label = criterion.description or criterion.check
-                    missing.append(f"acceptance:{label}")
-                elif outcome.status == "error":
-                    fp = criterion.fingerprint()
-                    prior = typed_error_counts.get(fp, 0)
-                    if prior < 2:
-                        # RC-9a: evaluator-error wording, distinct from app-incomplete.
-                        missing.append(
-                            f"evaluator-error:{criterion.check}: {outcome.reason}"
-                        )
-                    else:
-                        self._escalate_persistent_evaluator_error(criterion, outcome)
-                    typed_error_counts[fp] = prior + 1
-                # status in {passed, skipped} never blocks.
-
-    @staticmethod
-    def _materialize_artifacts(artifacts: list[dict], workspace_root: Path) -> None:
-        """Write in-memory artifacts to disk under ``workspace_root``.
-
-        Skips entries whose ``name`` is missing or escapes the workspace —
-        the typed-check evaluators apply their own ``_safe_resolve`` chroot
-        on top of this, but it is cheaper to refuse here than to
-        materialize a malformed file just to fail evaluation.
-        """
-        root_resolved = workspace_root.resolve()
-        for art in artifacts:
-            name = art.get("name")
-            content = art.get("content", "")
-            if not isinstance(name, str) or not name:
-                continue
-            if Path(name).is_absolute():
-                continue
-            target = (workspace_root / name).resolve()
-            try:
-                target.relative_to(root_resolved)
-            except ValueError:
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if isinstance(content, bytes):
-                target.write_bytes(content)
-            else:
-                target.write_text(str(content), encoding="utf-8")
-
-    @staticmethod
-    async def _evaluate_typed_check(
-        criterion: TypedCheck,
-        workspace_root: Path,
-        *,
-        stack: str | None,
-        typed_acceptance_enabled: bool,
-        command_acceptance_enabled: bool,
-    ) -> CheckOutcome:
-        """Dispatch a typed criterion to its registered evaluator, honoring config gates."""
-        if not typed_acceptance_enabled:
-            return CheckOutcome.skipped(reason="typed_acceptance_disabled")
-        if criterion.check == "command_exit_zero" and not command_acceptance_enabled:
-            return CheckOutcome.skipped(reason="command_acceptance_checks_disabled")
-        try:
-            evaluator = get_check(criterion.check)
-        except KeyError:
-            # Should not happen — parser already enforces vocabulary — but
-            # treat as evaluator-error rather than crashing the cycle.
-            return CheckOutcome.error(reason="no_evaluator_registered")
-        return await evaluator.evaluate(
-            criterion.params, workspace_root, stack=stack
-        )
-
-    @staticmethod
-    def _escalate_persistent_evaluator_error(
-        criterion: TypedCheck, outcome: CheckOutcome
-    ) -> None:
-        """RC-9b: surface a persistent evaluator error outside the self-eval feedback loop.
-
-        Logged at WARNING with structured fields; the correction protocol
-        and operator-facing surfaces consume the log. A first-class
-        escalation channel is a follow-up if/when the prompt-feedback
-        suppression proves insufficient.
-        """
-        logger.warning(
-            "typed_check_evaluator_error_escalated",
-            extra={
-                "check": criterion.check,
-                "severity": criterion.severity,
-                "fingerprint": criterion.fingerprint(),
-                "reason": outcome.reason,
-                "actual": outcome.actual,
-            },
-        )
+    # FC3 typed acceptance lives in ``typed_acceptance`` module — see the
+    # call site in ``_validate_focused``. The helpers were extracted in
+    # the SIP-0092 M1 follow-up to keep this class focused.
 
     def _validate_monolithic(
         self,
@@ -1379,91 +1223,25 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         # D11: store resolved_config for use by _build_user_prompt()
         self._resolved_config = inputs.get("resolved_config", {})
 
-        prd = inputs.get("prd", "")
-        prior_outputs = inputs.get("prior_outputs")
+        # Phase 1: prompt assembly (capability + focused/monolithic branch)
+        prep = await self._prepare_dev_prompt(context, inputs, start_time)
+        if isinstance(prep, HandlerResult):
+            return prep
+        capability, rendered, user_prompt = prep
 
-        # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
-        if inputs.get("subtask_focus") is not None:
-            user_prompt = self._build_focused_prompt(inputs)
-            rendered = None
-            try:
-                capability = get_capability(
-                    self._resolved_config.get("dev_capability", "python_cli")
-                )
-            except ValueError as exc:
-                return self._fail_result(start_time, inputs, str(exc))
-        else:
-            # Legacy monolithic prompt path (unchanged)
-
-            # Resolve capability (fail fast on unknown dev_capability)
-            try:
-                capability = get_capability(
-                    self._resolved_config.get("dev_capability", "python_cli")
-                )
-            except ValueError as exc:
-                return self._fail_result(start_time, inputs, str(exc))
-
-            # Resolve plan artifacts with vault fallback (D3)
-            impl_plan = await self._resolve_with_vault_fallback(
-                inputs,
-                "implementation_plan",
-            )
-            strategy = await self._resolve_with_vault_fallback(inputs, "strategy_analysis")
-
-            # Check required artifacts (fail only when vault was available but empty)
-            if impl_plan is None and inputs.get("artifact_vault") is not None:
-                return self._fail_result(
-                    start_time, inputs, "Required plan artifacts not available"
-                )
-
-            rendered, user_prompt = await self._build_dev_prompt(
-                context,
-                prd,
-                prior_outputs,
-                capability,
-                impl_plan,
-                strategy,
-            )
-
-        assembled = context.ports.prompt_service.get_system_prompt(self._role)
-        system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
-
-        # Resolve model, token budget, and prompt guard
-        model_name, max_tokens, context_window = self._resolve_model_budget(
-            inputs, capability.max_completion_tokens, context.ports.llm.default_model
+        # Phase 2: model + chat kwargs + prompt guard
+        chat_setup = self._build_dev_chat_setup(
+            context, inputs, capability, user_prompt, start_time
         )
-        agent_overrides = inputs.get("agent_config_overrides", {})
-        agent_model = inputs.get("agent_model") or None
+        if isinstance(chat_setup, HandlerResult):
+            return chat_setup
+        assembled, system_prompt, model_name, chat_kwargs, user_prompt = chat_setup
 
-        # SIP-0073: guard prompt size against context window
-        try:
-            user_prompt = _guard_prompt_size(
-                system_prompt,
-                user_prompt,
-                max_tokens,
-                context_window,
-            )
-        except ValueError as exc:
-            return self._fail_result(start_time, inputs, str(exc))
-
-        # SIP-0073: resolve effective timeout (D6)
-        generation_timeout = self._resolved_config.get("generation_timeout", 300)
-
-        # SIP-0075 §3.3: build chat kwargs from overrides
-        chat_kwargs: dict[str, Any] = {
-            "max_tokens": max_tokens,
-            "timeout_seconds": generation_timeout,
-        }
-        if agent_model:
-            chat_kwargs["model"] = agent_model
-        if "temperature" in agent_overrides:
-            chat_kwargs["temperature"] = agent_overrides["temperature"]
-
+        # Phase 3: initial LLM call
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=user_prompt),
         ]
-
         try:
             response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
         except LLMError as exc:
@@ -1472,8 +1250,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         content = response.content
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
-
-        # Record LLM generation for LangFuse tracing
         self._record_generation(
             context,
             user_prompt,
@@ -1484,9 +1260,8 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             chat_response=response,
         )
 
-        # Parse fenced code blocks
+        # Phase 4: parse fenced code blocks → artifacts
         extracted = extract_fenced_files(content)
-
         if not extracted:
             return self._fail_result(
                 start_time,
@@ -1503,89 +1278,259 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                     ],
                 },
             )
+        artifacts = self._artifacts_from_extracted(extracted)
 
-        # Build artifact list from extracted files
-        artifacts = []
-        for file_rec in extracted:
-            artifact_type, media_type = _classify_file(file_rec["filename"])
-            artifacts.append(
-                {
-                    "name": file_rec["filename"],
-                    "content": file_rec["content"],
-                    "media_type": media_type,
-                    "type": artifact_type,
-                }
+        # Phase 5: validation + self-eval loop + outcome classification
+        evidence_extra: dict[str, Any] = {}
+        validation, artifacts = await self._validate_and_self_eval(
+            context,
+            inputs,
+            artifacts,
+            evidence_extra,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            initial_assistant_content=content,
+            chat_kwargs=chat_kwargs,
+        )
+
+        outputs = self._build_dev_outputs(assembled, rendered, artifacts, validation, evidence_extra)
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+            metadata=evidence_extra if evidence_extra else None,
+        )
+        return HandlerResult(
+            success=validation.passed,
+            outputs=outputs,
+            _evidence=evidence,
+            error=validation.summary if not validation.passed else None,
+        )
+
+    async def _prepare_dev_prompt(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        start_time: float,
+    ) -> HandlerResult | tuple[Any, Any, str]:
+        """Resolve capability + assemble user prompt (focused or monolithic).
+
+        Returns ``HandlerResult`` on early failure (unknown capability,
+        missing required plan artifacts) or ``(capability, rendered, user_prompt)``.
+        """
+        try:
+            capability = get_capability(
+                self._resolved_config.get("dev_capability", "python_cli")
+            )
+        except ValueError as exc:
+            return self._fail_result(start_time, inputs, str(exc))
+
+        if inputs.get("subtask_focus") is not None:
+            # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
+            return capability, None, self._build_focused_prompt(inputs)
+
+        # Legacy monolithic prompt path (unchanged)
+        impl_plan = await self._resolve_with_vault_fallback(inputs, "implementation_plan")
+        strategy = await self._resolve_with_vault_fallback(inputs, "strategy_analysis")
+
+        # Check required artifacts (fail only when vault was available but empty)
+        if impl_plan is None and inputs.get("artifact_vault") is not None:
+            return self._fail_result(
+                start_time, inputs, "Required plan artifacts not available"
             )
 
-        # SIP-0086: Output validation + self-evaluation + outcome classification
-        resolved_config = inputs.get("resolved_config", {})
-        evidence_extra: dict[str, Any] = {}
+        rendered, user_prompt = await self._build_dev_prompt(
+            context,
+            inputs.get("prd", ""),
+            inputs.get("prior_outputs"),
+            capability,
+            impl_plan,
+            strategy,
+        )
+        return capability, rendered, user_prompt
 
-        if resolved_config.get("output_validation", False):
-            # SIP-0092 M1.3 / RC-9b: per-criterion error counts persist across
-            # self-eval passes within this handle() invocation, then are dropped.
-            typed_error_counts: dict[str, int] = {}
+    def _build_dev_chat_setup(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        capability: Any,
+        user_prompt: str,
+        start_time: float,
+    ) -> HandlerResult | tuple[Any, str, str, dict[str, Any], str]:
+        """Resolve system prompt + chat kwargs + guard prompt size.
+
+        Returns ``HandlerResult`` on guard failure or
+        ``(assembled, system_prompt, model_name, chat_kwargs, guarded_user_prompt)``.
+        """
+        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
+
+        model_name, max_tokens, context_window = self._resolve_model_budget(
+            inputs, capability.max_completion_tokens, context.ports.llm.default_model
+        )
+
+        # SIP-0073: guard prompt size against context window
+        try:
+            user_prompt = _guard_prompt_size(
+                system_prompt, user_prompt, max_tokens, context_window
+            )
+        except ValueError as exc:
+            return self._fail_result(start_time, inputs, str(exc))
+
+        # SIP-0073: resolve effective timeout (D6)
+        generation_timeout = self._resolved_config.get("generation_timeout", 300)
+        chat_kwargs: dict[str, Any] = {
+            "max_tokens": max_tokens,
+            "timeout_seconds": generation_timeout,
+        }
+        # SIP-0075 §3.3: layer in agent overrides
+        agent_overrides = inputs.get("agent_config_overrides", {})
+        agent_model = inputs.get("agent_model") or None
+        if agent_model:
+            chat_kwargs["model"] = agent_model
+        if "temperature" in agent_overrides:
+            chat_kwargs["temperature"] = agent_overrides["temperature"]
+
+        return assembled, system_prompt, model_name, chat_kwargs, user_prompt
+
+    @staticmethod
+    def _artifacts_from_extracted(extracted: list[dict]) -> list[dict]:
+        """Map fenced-parser records to artifact dicts."""
+        artifacts: list[dict] = []
+        for file_rec in extracted:
+            artifact_type, media_type = _classify_file(file_rec["filename"])
+            artifacts.append({
+                "name": file_rec["filename"],
+                "content": file_rec["content"],
+                "media_type": media_type,
+                "type": artifact_type,
+            })
+        return artifacts
+
+    async def _validate_and_self_eval(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+        evidence_extra: dict[str, Any],
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        initial_assistant_content: str,
+        chat_kwargs: dict[str, Any],
+    ) -> tuple[ValidationResult, list[dict]]:
+        """Run output validation + the SIP-0086 Phase-7 self-eval loop.
+
+        Returns the final ``(validation, artifacts)`` and writes
+        ``self_eval_passes`` / ``validation_result`` into ``evidence_extra``.
+        Validation-disabled is the always-pass short-circuit.
+        """
+        resolved_config = inputs.get("resolved_config", {})
+        if not resolved_config.get("output_validation", False):
+            return ValidationResult(passed=True, summary="Validation disabled"), artifacts
+
+        # SIP-0092 M1.3 / RC-9b: per-criterion error counts persist across
+        # self-eval passes within this handle() invocation, then are dropped.
+        typed_error_counts: dict[str, int] = {}
+        validation = await self._validate_output(
+            inputs, artifacts, typed_error_counts=typed_error_counts
+        )
+
+        if not validation.passed:
+            validation, artifacts = await self._run_dev_self_eval_loop(
+                context,
+                inputs,
+                artifacts,
+                evidence_extra,
+                validation=validation,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                initial_assistant_content=initial_assistant_content,
+                chat_kwargs=chat_kwargs,
+                typed_error_counts=typed_error_counts,
+                max_self_eval=resolved_config.get("max_self_eval_passes", 1),
+            )
+
+        evidence_extra["validation_result"] = {
+            "passed": validation.passed,
+            "checks": validation.checks,
+            "missing_components": validation.missing_components,
+            "coverage_ratio": validation.coverage_ratio,
+            "summary": validation.summary,
+        }
+        return validation, artifacts
+
+    async def _run_dev_self_eval_loop(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+        evidence_extra: dict[str, Any],
+        *,
+        validation: ValidationResult,
+        system_prompt: str,
+        user_prompt: str,
+        initial_assistant_content: str,
+        chat_kwargs: dict[str, Any],
+        typed_error_counts: dict[str, int],
+        max_self_eval: int,
+    ) -> tuple[ValidationResult, list[dict]]:
+        """SIP-0086 Phase 7 self-eval loop. Returns (validation, artifacts)."""
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        self_eval_count = 0
+        while not validation.passed and self_eval_count < max_self_eval:
+            self_eval_count += 1
+            followup_prompt = self._build_self_eval_prompt(validation, artifacts)
+            try:
+                followup_response = await context.ports.llm.chat_stream_with_usage(
+                    [
+                        ChatMessage(role="system", content=system_prompt),
+                        ChatMessage(role="user", content=user_prompt),
+                        ChatMessage(role="assistant", content=initial_assistant_content),
+                        ChatMessage(role="user", content=followup_prompt),
+                    ],
+                    **chat_kwargs,
+                )
+            except LLMError as exc:
+                logger.warning(
+                    "Self-eval LLM call failed for %s: %s", self._handler_name, exc
+                )
+                break
+
+            new_extracted = extract_fenced_files(followup_response.content)
+            new_artifacts = [
+                {
+                    "name": f["filename"],
+                    "content": f["content"],
+                    "media_type": _classify_file(f["filename"])[1],
+                    "type": _classify_file(f["filename"])[0],
+                }
+                for f in new_extracted
+            ]
+            artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
+            # RC-7: validate merged artifact set
             validation = await self._validate_output(
                 inputs, artifacts, typed_error_counts=typed_error_counts
             )
 
-            # Self-evaluation loop (Phase 7)
-            if not validation.passed:
-                max_self_eval = resolved_config.get("max_self_eval_passes", 1)
-                self_eval_count = 0
+        evidence_extra["self_eval_passes"] = self_eval_count
+        return validation, artifacts
 
-                while not validation.passed and self_eval_count < max_self_eval:
-                    self_eval_count += 1
-                    followup_prompt = self._build_self_eval_prompt(validation, artifacts)
-
-                    try:
-                        followup_response = await context.ports.llm.chat_stream_with_usage(
-                            [
-                                ChatMessage(role="system", content=system_prompt),
-                                ChatMessage(role="user", content=user_prompt),
-                                ChatMessage(role="assistant", content=content),
-                                ChatMessage(role="user", content=followup_prompt),
-                            ],
-                            **chat_kwargs,
-                        )
-                    except LLMError as exc:
-                        logger.warning(
-                            "Self-eval LLM call failed for %s: %s",
-                            self._handler_name,
-                            exc,
-                        )
-                        break
-
-                    new_extracted = extract_fenced_files(followup_response.content)
-                    new_artifacts = [
-                        {
-                            "name": f["filename"],
-                            "content": f["content"],
-                            "media_type": _classify_file(f["filename"])[1],
-                            "type": _classify_file(f["filename"])[0],
-                        }
-                        for f in new_extracted
-                    ]
-                    artifacts = self._merge_artifacts(
-                        artifacts, new_artifacts, evidence_extra
-                    )
-
-                    # RC-7: validate merged artifact set
-                    validation = await self._validate_output(
-                        inputs, artifacts, typed_error_counts=typed_error_counts
-                    )
-
-                evidence_extra["self_eval_passes"] = self_eval_count
-
-            evidence_extra["validation_result"] = {
-                "passed": validation.passed,
-                "checks": validation.checks,
-                "missing_components": validation.missing_components,
-                "coverage_ratio": validation.coverage_ratio,
-                "summary": validation.summary,
-            }
-        else:
-            validation = ValidationResult(passed=True, summary="Validation disabled")
+    def _build_dev_outputs(
+        self,
+        assembled: Any,
+        rendered: Any,
+        artifacts: list[dict],
+        validation: ValidationResult,
+        evidence_extra: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Assemble the dev handler's ``outputs`` dict (provenance + outcome class)."""
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 
         # SIP-0084 §10: build prompt provenance for artifact traceability
         provenance: dict[str, Any] = {
@@ -1606,35 +1551,12 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         # Phase 6: Outcome classification
         if validation.passed:
-            from squadops.cycles.task_outcome import TaskOutcome
-
             outputs["outcome_class"] = TaskOutcome.SUCCESS
         else:
-            from squadops.cycles.task_outcome import (
-                FailureClassification,
-                TaskOutcome,
-            )
-
             outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
             outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
             outputs["validation_result"] = evidence_extra.get("validation_result", {})
-
-        duration_ms = (time.perf_counter() - start_time) * 1000
-        evidence = HandlerEvidence.create(
-            handler_name=self._handler_name,
-            capability_id=self._capability_id,
-            duration_ms=duration_ms,
-            inputs_hash=self._hash_dict(inputs),
-            outputs_hash=self._hash_dict(outputs),
-            metadata=evidence_extra if evidence_extra else None,
-        )
-
-        return HandlerResult(
-            success=validation.passed,
-            outputs=outputs,
-            _evidence=evidence,
-            error=validation.summary if not validation.passed else None,
-        )
+        return outputs
 
     async def _build_dev_prompt(
         self,
@@ -2026,82 +1948,27 @@ class QATestHandler(_CycleTaskHandler):
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 
         start_time = time.perf_counter()
-
-        prd = inputs.get("prd", "")
-        prior_outputs = inputs.get("prior_outputs")
         resolved_config = inputs.get("resolved_config", {})
-        capability_name = resolved_config.get("dev_capability", "python_cli")
 
-        # Resolve capability (fail fast on unknown dev_capability)
-        try:
-            capability = get_capability(capability_name)
-        except ValueError as exc:
-            return self._fail_result(start_time, inputs, str(exc))
+        # Phase 1: capability + prompt + sources
+        prep = await self._prepare_qa_prompt(context, inputs, start_time)
+        if isinstance(prep, HandlerResult):
+            return prep
+        capability, sources, rendered, user_prompt = prep
 
-        # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
-        if inputs.get("subtask_focus") is not None:
-            user_prompt = self._build_focused_prompt(inputs)
-            rendered = None
-            sources = self._get_source_artifacts(inputs)
-        else:
-            # Legacy monolithic prompt path (unchanged)
-
-            # Resolve plan artifacts with vault fallback (D3)
-            val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
-            sources = self._get_source_artifacts(inputs)
-
-            # Check required artifacts (fail only when vault was available but empty)
-            if val_plan is None and inputs.get("artifact_vault") is not None:
-                return self._fail_result(
-                    start_time, inputs, "Required plan artifacts not available"
-                )
-
-            rendered, user_prompt = await self._build_qa_prompt(
-                context,
-                prd,
-                prior_outputs,
-                capability,
-                val_plan,
-                sources,
-                capability_name,
-            )
-
-        assembled = context.ports.prompt_service.get_system_prompt(self._role)
-        system_prompt = assembled.content
-
-        # Resolve model, token budget, and prompt guard
-        model_name, max_tokens, context_window = self._resolve_model_budget(
-            inputs, capability.max_completion_tokens, context.ports.llm.default_model
+        # Phase 2: model + chat kwargs + prompt guard
+        chat_setup = self._build_qa_chat_setup(
+            context, inputs, capability, user_prompt, start_time
         )
+        if isinstance(chat_setup, HandlerResult):
+            return chat_setup
+        assembled, system_prompt, model_name, chat_kwargs, user_prompt = chat_setup
 
-        try:
-            user_prompt = _guard_prompt_size(
-                system_prompt,
-                user_prompt,
-                max_tokens,
-                context_window,
-            )
-        except ValueError as exc:
-            return self._fail_result(start_time, inputs, str(exc))
-
-        generation_timeout = resolved_config.get("generation_timeout", 300)
-        agent_overrides = inputs.get("agent_config_overrides", {})
-        agent_model = inputs.get("agent_model") or None
-
-        chat_kwargs: dict[str, Any] = {
-            "max_tokens": max_tokens,
-            "timeout_seconds": generation_timeout,
-        }
-        if agent_model:
-            chat_kwargs["model"] = agent_model
-        if "temperature" in agent_overrides:
-            chat_kwargs["temperature"] = agent_overrides["temperature"]
-
+        # Phase 3: initial LLM call
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=user_prompt),
         ]
-
         try:
             response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
         except LLMError as exc:
@@ -2120,6 +1987,7 @@ class QATestHandler(_CycleTaskHandler):
             chat_response=response,
         )
 
+        # Phase 4: parse fenced code blocks → artifacts
         extracted = extract_fenced_files(content)
         if not extracted:
             return self._fail_result(
@@ -2137,7 +2005,6 @@ class QATestHandler(_CycleTaskHandler):
                     ]
                 },
             )
-
         artifacts = [
             {
                 "name": f["filename"],
@@ -2148,71 +2015,203 @@ class QATestHandler(_CycleTaskHandler):
             for f in extracted
         ]
 
-        # SIP-0086: Output validation + self-evaluation
+        # Phase 5: validation + self-eval loop
         evidence_extra: dict[str, Any] = {}
         output_validation_enabled = resolved_config.get("output_validation", False)
+        validation, artifacts = await self._validate_qa_with_self_eval(
+            context,
+            inputs,
+            artifacts,
+            evidence_extra,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            initial_assistant_content=content,
+            chat_kwargs=chat_kwargs,
+            output_validation_enabled=output_validation_enabled,
+        )
 
-        if output_validation_enabled:
-            validation = await self._validate_output(inputs, artifacts)
-
-            # Self-evaluation loop
-            if not validation.passed:
-                max_self_eval = resolved_config.get("max_self_eval_passes", 1)
-                self_eval_count = 0
-
-                while not validation.passed and self_eval_count < max_self_eval:
-                    self_eval_count += 1
-                    followup_prompt = self._build_self_eval_prompt(validation, artifacts)
-
-                    try:
-                        followup_response = await context.ports.llm.chat_stream_with_usage(
-                            [
-                                ChatMessage(role="system", content=system_prompt),
-                                ChatMessage(role="user", content=user_prompt),
-                                ChatMessage(role="assistant", content=content),
-                                ChatMessage(role="user", content=followup_prompt),
-                            ],
-                            **chat_kwargs,
-                        )
-                    except LLMError as exc:
-                        logger.warning(
-                            "Self-eval LLM call failed for %s: %s",
-                            self._handler_name,
-                            exc,
-                        )
-                        break
-
-                    new_extracted = extract_fenced_files(followup_response.content)
-                    new_artifacts = [
-                        {
-                            "name": f["filename"],
-                            "content": f["content"],
-                            "media_type": _classify_file(f["filename"])[1],
-                            "type": "test",
-                        }
-                        for f in new_extracted
-                    ]
-                    artifacts = self._merge_artifacts(
-                        artifacts, new_artifacts, evidence_extra
-                    )
-                    validation = await self._validate_output(inputs, artifacts)
-
-                evidence_extra["self_eval_passes"] = self_eval_count
-        else:
-            validation = ValidationResult(passed=True, summary="Validation disabled")
-
-        # Run generated tests and build report
+        # Phase 6: run tests and fold result into validation
         test_result, test_report_artifact = await self._run_test_suite(
             capability, sources, extracted
         )
         artifacts.append(test_report_artifact)
+        self._fold_test_outcome_into_validation(
+            validation, test_result, output_validation_enabled, evidence_extra
+        )
 
-        # Fold test-execution outcome into validation. The qa.test handler's
-        # objective is "produce tests that pass against the dev artifacts";
-        # artifacts-present-and-non-stub is necessary but not sufficient. A
-        # passing test file count with exit_code != 0 (e.g., import errors
-        # causing pytest to collect 0 tests) must surface as SEMANTIC_FAILURE
-        # so the correction protocol activates.
+        # Phase 7: assemble outputs + evidence
+        outputs = self._build_qa_outputs(
+            assembled, rendered, artifacts, validation, test_result, evidence_extra
+        )
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+            metadata=evidence_extra if evidence_extra else None,
+        )
+        return HandlerResult(
+            success=validation.passed,
+            outputs=outputs,
+            _evidence=evidence,
+            error=validation.summary if not validation.passed else None,
+        )
+
+    async def _prepare_qa_prompt(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        start_time: float,
+    ) -> HandlerResult | tuple[Any, dict[str, str], Any, str]:
+        """Resolve capability + sources + assemble user prompt (focused or monolithic)."""
+        resolved_config = inputs.get("resolved_config", {})
+        capability_name = resolved_config.get("dev_capability", "python_cli")
+        try:
+            capability = get_capability(capability_name)
+        except ValueError as exc:
+            return self._fail_result(start_time, inputs, str(exc))
+
+        if inputs.get("subtask_focus") is not None:
+            # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
+            sources = self._get_source_artifacts(inputs)
+            return capability, sources, None, self._build_focused_prompt(inputs)
+
+        # Legacy monolithic prompt path (unchanged)
+        val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
+        sources = self._get_source_artifacts(inputs)
+        if val_plan is None and inputs.get("artifact_vault") is not None:
+            return self._fail_result(
+                start_time, inputs, "Required plan artifacts not available"
+            )
+
+        rendered, user_prompt = await self._build_qa_prompt(
+            context,
+            inputs.get("prd", ""),
+            inputs.get("prior_outputs"),
+            capability,
+            val_plan,
+            sources,
+            capability_name,
+        )
+        return capability, sources, rendered, user_prompt
+
+    def _build_qa_chat_setup(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        capability: Any,
+        user_prompt: str,
+        start_time: float,
+    ) -> HandlerResult | tuple[Any, str, str, dict[str, Any], str]:
+        """Resolve system prompt + chat kwargs + guard prompt size."""
+        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        system_prompt = assembled.content
+
+        model_name, max_tokens, context_window = self._resolve_model_budget(
+            inputs, capability.max_completion_tokens, context.ports.llm.default_model
+        )
+
+        try:
+            user_prompt = _guard_prompt_size(
+                system_prompt, user_prompt, max_tokens, context_window
+            )
+        except ValueError as exc:
+            return self._fail_result(start_time, inputs, str(exc))
+
+        resolved_config = inputs.get("resolved_config", {})
+        generation_timeout = resolved_config.get("generation_timeout", 300)
+        chat_kwargs: dict[str, Any] = {
+            "max_tokens": max_tokens,
+            "timeout_seconds": generation_timeout,
+        }
+        agent_overrides = inputs.get("agent_config_overrides", {})
+        agent_model = inputs.get("agent_model") or None
+        if agent_model:
+            chat_kwargs["model"] = agent_model
+        if "temperature" in agent_overrides:
+            chat_kwargs["temperature"] = agent_overrides["temperature"]
+
+        return assembled, system_prompt, model_name, chat_kwargs, user_prompt
+
+    async def _validate_qa_with_self_eval(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+        evidence_extra: dict[str, Any],
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        initial_assistant_content: str,
+        chat_kwargs: dict[str, Any],
+        output_validation_enabled: bool,
+    ) -> tuple[ValidationResult, list[dict]]:
+        """Output validation + SIP-0086 self-eval loop for QA artifacts."""
+        if not output_validation_enabled:
+            return ValidationResult(passed=True, summary="Validation disabled"), artifacts
+
+        validation = await self._validate_output(inputs, artifacts)
+        if validation.passed:
+            return validation, artifacts
+
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        resolved_config = inputs.get("resolved_config", {})
+        max_self_eval = resolved_config.get("max_self_eval_passes", 1)
+        self_eval_count = 0
+
+        while not validation.passed and self_eval_count < max_self_eval:
+            self_eval_count += 1
+            followup_prompt = self._build_self_eval_prompt(validation, artifacts)
+            try:
+                followup_response = await context.ports.llm.chat_stream_with_usage(
+                    [
+                        ChatMessage(role="system", content=system_prompt),
+                        ChatMessage(role="user", content=user_prompt),
+                        ChatMessage(role="assistant", content=initial_assistant_content),
+                        ChatMessage(role="user", content=followup_prompt),
+                    ],
+                    **chat_kwargs,
+                )
+            except LLMError as exc:
+                logger.warning(
+                    "Self-eval LLM call failed for %s: %s", self._handler_name, exc
+                )
+                break
+
+            new_extracted = extract_fenced_files(followup_response.content)
+            new_artifacts = [
+                {
+                    "name": f["filename"],
+                    "content": f["content"],
+                    "media_type": _classify_file(f["filename"])[1],
+                    "type": "test",
+                }
+                for f in new_extracted
+            ]
+            artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
+            validation = await self._validate_output(inputs, artifacts)
+
+        evidence_extra["self_eval_passes"] = self_eval_count
+        return validation, artifacts
+
+    @staticmethod
+    def _fold_test_outcome_into_validation(
+        validation: ValidationResult,
+        test_result: Any,
+        output_validation_enabled: bool,
+        evidence_extra: dict[str, Any],
+    ) -> None:
+        """Fold test-execution outcome into validation (mutates ``validation``).
+
+        The qa.test handler's objective is "produce tests that pass against
+        the dev artifacts"; artifacts-present-and-non-stub is necessary but
+        not sufficient. A passing test file count with exit_code != 0 (e.g.,
+        import errors causing pytest to collect 0 tests) must surface as
+        SEMANTIC_FAILURE so the correction protocol activates.
+        """
         if output_validation_enabled and not (
             test_result.executed and test_result.tests_passed
         ):
@@ -2224,15 +2223,13 @@ class QATestHandler(_CycleTaskHandler):
                 detail = f"tests_not_executed:{reason}"
                 fail_note = f"Tests not executed: {reason}"
 
-            validation.checks.append(
-                {
-                    "check": "tests_pass",
-                    "executed": test_result.executed,
-                    "exit_code": test_result.exit_code,
-                    "tests_passed": test_result.tests_passed,
-                    "passed": False,
-                }
-            )
+            validation.checks.append({
+                "check": "tests_pass",
+                "executed": test_result.executed,
+                "exit_code": test_result.exit_code,
+                "tests_passed": test_result.tests_passed,
+                "passed": False,
+            })
             validation.passed = False
             validation.missing_components.append(detail)
             validation.summary = (
@@ -2253,12 +2250,26 @@ class QATestHandler(_CycleTaskHandler):
                 "summary": validation.summary,
             }
 
+    def _build_qa_outputs(
+        self,
+        assembled: Any,
+        rendered: Any,
+        artifacts: list[dict],
+        validation: ValidationResult,
+        test_result: Any,
+        evidence_extra: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Assemble the QA handler's ``outputs`` dict (provenance + outcome class)."""
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
         if test_result.tests_passed:
             test_suffix = ", all tests passed"
         elif test_result.executed:
             test_suffix = f", tests failed (exit code {test_result.exit_code})"
         else:
-            test_suffix = f", tests not run: {test_result.error}" if test_result.error else ""
+            test_suffix = (
+                f", tests not run: {test_result.error}" if test_result.error else ""
+            )
 
         # SIP-0084 §10: build prompt provenance for artifact traceability
         provenance: dict[str, Any] = {
@@ -2287,35 +2298,12 @@ class QATestHandler(_CycleTaskHandler):
 
         # Phase 6: Outcome classification
         if validation.passed:
-            from squadops.cycles.task_outcome import TaskOutcome
-
             outputs["outcome_class"] = TaskOutcome.SUCCESS
         else:
-            from squadops.cycles.task_outcome import (
-                FailureClassification,
-                TaskOutcome,
-            )
-
             outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
             outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
             outputs["validation_result"] = evidence_extra.get("validation_result", {})
-
-        duration_ms = (time.perf_counter() - start_time) * 1000
-        evidence = HandlerEvidence.create(
-            handler_name=self._handler_name,
-            capability_id=self._capability_id,
-            duration_ms=duration_ms,
-            inputs_hash=self._hash_dict(inputs),
-            outputs_hash=self._hash_dict(outputs),
-            metadata=evidence_extra if evidence_extra else None,
-        )
-
-        return HandlerResult(
-            success=validation.passed,
-            outputs=outputs,
-            _evidence=evidence,
-            error=validation.summary if not validation.passed else None,
-        )
+        return outputs
 
     async def _build_qa_prompt(
         self,
