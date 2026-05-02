@@ -156,7 +156,9 @@ class TestAnalyzeFailure:
         assert result.outputs["classification"] == FailureClassification.WORK_PRODUCT
         assert "quality" in result.outputs["analysis_summary"]
 
-    async def test_unparseable_falls_back_to_execution(self, mock_context):
+    async def test_unparseable_routes_to_needs_replan(self, mock_context):
+        """Issue #84: unparseable LLM output rejects to NEEDS_REPLAN
+        instead of silently coercing to a useless EXECUTION default."""
         _set_llm_mock(
             mock_context,
             return_value=ChatMessage(role="assistant", content="unstructured analysis text"),
@@ -165,8 +167,68 @@ class TestAnalyzeFailure:
         h = DataAnalyzeFailureHandler()
         result = await h.handle(mock_context, {"prd": "test"})
 
-        assert result.success is True
-        assert result.outputs["classification"] == FailureClassification.EXECUTION
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.NEEDS_REPLAN
+        assert "rejected" in (result.error or "").lower() or "schema" in (result.error or "").lower()
+
+    async def test_empty_analysis_summary_rejected(self, mock_context):
+        """Issue #84: ``analysis_summary: ""`` is the failure mode that
+        produced ``analysis_summary: "N/A"`` corrections in the wild."""
+        analysis = {
+            "classification": FailureClassification.EXECUTION,
+            "analysis_summary": "",  # blocked by min_length=20
+            "contributing_factors": ["something specific enough"],
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(analysis)),
+        )
+        h = DataAnalyzeFailureHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.NEEDS_REPLAN
+
+    async def test_unknown_classification_rejected(self, mock_context):
+        analysis = {
+            "classification": "weird-made-up-bucket",
+            "analysis_summary": "Plenty long enough to pass the length gate.",
+            "contributing_factors": ["something specific enough"],
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(analysis)),
+        )
+        h = DataAnalyzeFailureHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+        assert result.success is False
+
+    async def test_empty_contributing_factors_rejected(self, mock_context):
+        analysis = {
+            "classification": FailureClassification.EXECUTION,
+            "analysis_summary": "Plenty long enough to pass the length gate.",
+            "contributing_factors": [],  # blocked by min_length=1
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(analysis)),
+        )
+        h = DataAnalyzeFailureHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+        assert result.success is False
+
+    async def test_short_contributing_factor_rejected(self, mock_context):
+        analysis = {
+            "classification": FailureClassification.EXECUTION,
+            "analysis_summary": "Plenty long enough to pass the length gate.",
+            "contributing_factors": ["x"],  # blocked by per-item >=5 chars
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(analysis)),
+        )
+        h = DataAnalyzeFailureHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+        assert result.success is False
 
 
 # ---------------------------------------------------------------------------
