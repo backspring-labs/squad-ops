@@ -1,7 +1,7 @@
 # 1.0.x Build Reliability Hardening Plan
 
 **Created:** 2026-04-27
-**Updated:** 2026-05-02 (rev 3 — added runtime substrate precondition)
+**Updated:** 2026-05-02 (rev 4 — S1 reshaped to per-agent reply queues)
 **Status:** Active — #1 drafted, #2 next; substrate SIP S1 proposed
 **Scope:** SquadOps 1.0.x patch series (Spark lane); orthogonal to v1.1 work (SIP-0088+)
 
@@ -15,7 +15,7 @@ These are not part of the "stay coherent over time" axis below — they are the 
 
 | # | SIP | Status | Where |
 |---|-----|--------|-------|
-| S1 | **Long-Lived Subscription Model for Cycle Reply Channels** — replace `_publish_and_await` poll loop with a single long-lived consumer per task, add reply-queue TTL/cleanup, drain-before-retry on lost replies. Tactical patch (cache invalidation + `consume_blocking()` chunked waits) already on PR #89. | proposed (2026-05-02); tactical patch on PR #89 | `sips/proposed/SIP-Reply-Channel-Subscription-Model.md` |
+| S1 | **Per-Agent Reply Queues + Long-Lived Subscription Model** — replace per-run `cycle_results_{run_id}` queues with per-agent `{agent_id}_results` queues (parallel to existing `{agent_id}_comms`), and replace `_publish_and_await` poll loop with a single orchestrator-startup subscription per agent feeding an in-process reply router. Eliminates orphan-queue leakage and consumer-tag-churn failure classes in one structural step. Tactical patch (PR #89, merged 2026-05-02) contains the bleeding. | proposed rev 2 (2026-05-02); tactical patch merged via PR #89 | `sips/proposed/SIP-Reply-Channel-Subscription-Model.md` |
 
 ## Build-reliability axis (priority order)
 
@@ -95,6 +95,7 @@ Everything else is either already in `sips/proposed/`, a follow-up to an accepte
 
 ## Revision history
 
+- **rev 4 (2026-05-02):** S1 reshaped to per-agent reply queues (`{agent_id}_results`) replacing per-run `cycle_results_*` queues. Eliminates the orphan-queue leakage class entirely instead of mitigating it via TTL + run-completion cleanup. Drain-before-retry dropped (no longer needed — the always-on consumer never misses a reply window). SIP rev bumped to 2.
 - **rev 3 (2026-05-02):** Added Runtime Substrate section with S1 (Reply-Channel Subscription Model) as a precondition to the build-reliability axis. Triggered by `cyc_c9ca088599c0` lost-reply incident. Tactical patch on PR #89; structural SIP in `sips/proposed/`.
 - **rev 2 (2026-04-27):** Incorporated external review. Three structural changes: (1) split former #9 into #5a (minimal breakers, precondition for #5) and #9 (full operator surface, original slot); (2) swapped former #6 ↔ #7 — Defect Report now precedes Resume Contract, with Resume scoped to technical idempotency only; (3) added explicit Capability/Policy Boundaries section. Plus annotations on #4 (typed-not-soup), #6 (machine-actionable fields), #8 (duration AND risk), #10↔#2 link, #11 (empirical, revertible).
 - **rev 1 (2026-04-27):** Initial plan landed via PR #67.
