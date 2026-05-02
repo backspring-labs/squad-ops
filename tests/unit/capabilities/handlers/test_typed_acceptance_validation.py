@@ -357,3 +357,88 @@ class TestFingerprint:
         c1 = TypedCheck(check="regex_match", params={"file": "a", "pattern": "x"})
         c2 = TypedCheck(check="regex_match", params={"pattern": "x", "file": "a"})
         assert c1.fingerprint() == c2.fingerprint()
+
+
+# ---------------------------------------------------------------------------
+# Issue #83 — M1.3 observability: log per-check + per-validation summary
+# ---------------------------------------------------------------------------
+
+
+class TestM13Observability:
+    """Verify _evaluate_typed_acceptance + _validate_focused emit log lines
+    operators can grep for. Without these the M1.3 path is invisible.
+    """
+
+    async def test_per_check_log_emitted_on_pass(self, caplog):
+        h = DevelopmentDevelopHandler()
+        criterion = TypedCheck(
+            check="endpoint_defined",
+            params={"file": "main.py", "methods_paths": ["GET /users"]},
+            severity="error",
+            description="users endpoint",
+        )
+        with caplog.at_level("DEBUG", logger="squadops.capabilities.handlers.cycle_tasks"):
+            await h._validate_output(
+                _inputs([criterion], config={"stack": "fastapi"}),
+                [_art("main.py", _FASTAPI_ALL)],
+            )
+        check_logs = [r for r in caplog.records if "typed_acceptance_check" in r.getMessage()]
+        assert len(check_logs) == 1
+        msg = check_logs[0].getMessage()
+        assert "check=endpoint_defined" in msg
+        assert "severity=error" in msg
+        assert "status=passed" in msg
+        assert "blocking=False" in msg
+
+    async def test_per_check_log_marks_blocking_failure_at_info_level(self, caplog):
+        h = DevelopmentDevelopHandler()
+        criterion = TypedCheck(
+            check="endpoint_defined",
+            params={"file": "main.py", "methods_paths": ["GET /users", "POST /users"]},
+            severity="error",
+            description="users CRUD",
+        )
+        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle_tasks"):
+            await h._validate_output(
+                _inputs([criterion], config={"stack": "fastapi"}),
+                [_art("main.py", _FASTAPI_MISSING)],
+            )
+        check_logs = [
+            r for r in caplog.records
+            if "typed_acceptance_check" in r.getMessage() and r.levelname == "INFO"
+        ]
+        assert len(check_logs) == 1
+        msg = check_logs[0].getMessage()
+        assert "status=failed" in msg
+        assert "blocking=True" in msg
+
+    async def test_summary_log_emitted_when_typed_checks_present(self, caplog):
+        h = DevelopmentDevelopHandler()
+        criterion = TypedCheck(
+            check="endpoint_defined",
+            params={"file": "main.py", "methods_paths": ["GET /users"]},
+            severity="error",
+        )
+        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle_tasks"):
+            await h._validate_output(
+                _inputs([criterion], focus="check focus", config={"stack": "fastapi"}),
+                [_art("main.py", _FASTAPI_ALL)],
+            )
+        summary_logs = [r for r in caplog.records if "typed_acceptance_summary" in r.getMessage()]
+        assert len(summary_logs) == 1
+        msg = summary_logs[0].getMessage()
+        assert "evaluated=1" in msg
+        assert "passed=1" in msg
+        assert "blocking_failures=0" in msg
+        assert "overall_passed=True" in msg
+
+    async def test_summary_log_skipped_when_no_typed_checks(self, caplog):
+        # Prose-only criteria → summary log should NOT fire (it would be noise).
+        h = DevelopmentDevelopHandler()
+        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle_tasks"):
+            await h._validate_output(
+                _inputs([_PROSE_CRITERION], config={"stack": "fastapi"}),
+                [_art("main.py", _FASTAPI_ALL)],
+            )
+        summary_logs = [r for r in caplog.records if "typed_acceptance_summary" in r.getMessage()]
+        assert len(summary_logs) == 0
