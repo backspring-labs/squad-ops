@@ -181,6 +181,78 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, r
 
 
 # ---------------------------------------------------------------------------
+# Prefect task name construction (issue #81)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildTaskName:
+    """Gantt-friendly Prefect task names: focused-mode envelopes show the
+    manifest focus and index instead of N identical role:task_type rows."""
+
+    @staticmethod
+    def _envelope(task_type: str = "development.develop", inputs: dict | None = None) -> TaskEnvelope:
+        return TaskEnvelope(
+            task_id="task_abc",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type=task_type,
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            inputs=inputs or {},
+            metadata={"role": "dev"},
+        )
+
+    def test_focused_envelope_uses_focus_and_index(self) -> None:
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        env = self._envelope(inputs={
+            "subtask_focus": "Backend data models and in-memory repository",
+            "subtask_index": 0,
+        })
+        assert DistributedFlowExecutor._build_task_name("dev", env) == (
+            "dev[0]: Backend data models and in-memory repository"
+        )
+
+    def test_focused_envelope_without_index_omits_brackets(self) -> None:
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        env = self._envelope(inputs={"subtask_focus": "FastAPI endpoints and validation"})
+        assert (
+            DistributedFlowExecutor._build_task_name("dev", env)
+            == "dev: FastAPI endpoints and validation"
+        )
+
+    def test_non_focused_envelope_falls_back_to_task_type(self) -> None:
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        env = self._envelope(task_type="development.develop", inputs={})
+        assert (
+            DistributedFlowExecutor._build_task_name("dev", env)
+            == "dev: development.develop"
+        )
+
+    def test_long_focus_truncates_at_60_chars(self) -> None:
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        long_focus = "X" * 100
+        env = self._envelope(inputs={"subtask_focus": long_focus, "subtask_index": 3})
+        name = DistributedFlowExecutor._build_task_name("dev", env)
+        assert name == f"dev[3]: {'X' * 60}"
+        assert len(name.split(": ", 1)[1]) == 60
+
+    def test_index_zero_renders_as_zero_not_omitted(self) -> None:
+        """Subtask index 0 must render as ``[0]`` — falsy but valid."""
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        env = self._envelope(inputs={"subtask_focus": "first", "subtask_index": 0})
+        assert DistributedFlowExecutor._build_task_name("dev", env) == "dev[0]: first"
+
+
+# ---------------------------------------------------------------------------
 # Dispatch mechanics
 # ---------------------------------------------------------------------------
 

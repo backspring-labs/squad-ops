@@ -567,6 +567,27 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
     # SIP-0087: task-run lifecycle lives here (moved out of WorkflowTrackerBridge) so
     # the task_run_id is known before the agent starts producing logs.
+    @staticmethod
+    def _build_task_name(role: str, envelope: TaskEnvelope) -> str:
+        """Build a Gantt-friendly Prefect task name.
+
+        Focused-mode envelopes (manifest-decomposed subtasks) get
+        ``role[idx]: focus`` so the Gantt distinguishes parallel subtasks
+        instead of showing N identical ``role: task_type`` rows.
+        Legacy / non-focused envelopes keep ``role: task_type``.
+        """
+        inputs = envelope.inputs or {}
+        focus = inputs.get("subtask_focus")
+        idx = inputs.get("subtask_index")
+        if focus:
+            focus_short = str(focus)[:60]
+            return (
+                f"{role}[{idx}]: {focus_short}"
+                if idx is not None
+                else f"{role}: {focus_short}"
+            )
+        return f"{role}: {envelope.task_type}"
+
     async def _create_task_run_if_enabled(
         self,
         flow_run_id: str | None,
@@ -576,7 +597,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         if self._workflow_tracker is None or not flow_run_id:
             return None
         role = envelope.metadata.get("role", "unknown") if envelope.metadata else "unknown"
-        task_name = f"{role}: {envelope.task_type}"
+        task_name = self._build_task_name(role, envelope)
         task_run_id = await self._workflow_tracker.create_task_run(
             flow_run_id, envelope.task_id, task_name
         )
