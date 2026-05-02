@@ -581,11 +581,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         idx = inputs.get("subtask_index")
         if focus:
             focus_short = str(focus)[:60]
-            return (
-                f"{role}[{idx}]: {focus_short}"
-                if idx is not None
-                else f"{role}: {focus_short}"
-            )
+            return f"{role}[{idx}]: {focus_short}" if idx is not None else f"{role}: {focus_short}"
         return f"{role}: {envelope.task_type}"
 
     async def _create_task_run_if_enabled(
@@ -716,8 +712,38 @@ class DistributedFlowExecutor(FlowExecutionPort):
         )
 
         deadline = time.monotonic() + self._task_timeout
-        while time.monotonic() < deadline:
-            messages = await self._queue.consume(reply_queue, max_messages=1)
+        # Block on the reply queue in long chunks so a single consumer
+        # registration covers each chunk — avoids the consumer-tag churn
+        # of poll-and-sleep that previously raced with arriving replies.
+        # Cap each chunk well below typical broker idle-disconnect windows.
+        chunk_seconds = 30.0
+
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            wait = min(chunk_seconds, remaining)
+
+            try:
+                messages = await self._queue.consume_blocking(
+                    reply_queue, timeout=wait, max_messages=1
+                )
+            except Exception as exc:
+                # Channel went stale or broker hiccup. Drop the cached
+                # queue handle and back off briefly before retrying so
+                # the next call re-declares against a fresh channel.
+                logger.warning(
+                    "consume_blocking on %s failed (%s); invalidating cache and retrying",
+                    reply_queue,
+                    exc,
+                )
+                try:
+                    await self._queue.invalidate_queue(reply_queue)
+                except Exception:
+                    logger.debug("invalidate_queue raised; continuing", exc_info=True)
+                await asyncio.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+                continue
+
             for msg in messages:
                 data = json.loads(msg.payload)
                 result_data = data.get("payload", {})
@@ -726,7 +752,6 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     return TaskResult.from_dict(result_data)
                 # Not our message — ack to avoid blocking
                 await self._queue.ack(msg)
-            await asyncio.sleep(0.5)
 
         return TaskResult(
             task_id=envelope.task_id,
