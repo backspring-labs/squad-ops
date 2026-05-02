@@ -1013,6 +1013,21 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 f"Typed checks failed: {len(typed_failed)} of {sum(1 for c in checks if c.get('check', '').startswith('acceptance:'))}"
             )
 
+        # Issue #83: emit a single summary line per focused validation so
+        # operators can see at-a-glance whether M1.3 ran and what it found.
+        acceptance_checks = [c for c in checks if c.get("check", "").startswith("acceptance:")]
+        if acceptance_checks:
+            ac_passed = sum(1 for c in acceptance_checks if c.get("passed", False))
+            logger.info(
+                "typed_acceptance_summary subtask=%s evaluated=%d passed=%d blocking_failures=%d "
+                "overall_passed=%s",
+                inputs.get("subtask_index"),
+                len(acceptance_checks),
+                ac_passed,
+                len(typed_failed),
+                passed,
+            )
+
         return ValidationResult(
             passed=passed,
             checks=checks,
@@ -1088,6 +1103,23 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                     ),
                 }
                 checks.append(check_record)
+
+                # Issue #83: per-check observability. Without these the M1.3
+                # path is invisible to operators — see issue body for context.
+                blocking = (
+                    criterion.severity == "error"
+                    and outcome.status in {"failed", "error"}
+                )
+                log_fn = logger.info if blocking else logger.debug
+                log_fn(
+                    "typed_acceptance_check subtask=%s check=%s severity=%s status=%s blocking=%s reason=%s",
+                    inputs.get("subtask_index"),
+                    criterion.check,
+                    criterion.severity,
+                    outcome.status,
+                    blocking,
+                    outcome.reason or "",
+                )
 
                 # RC-9: severity AND status are independent. Only error+blocking missions.
                 if criterion.severity != "error":
