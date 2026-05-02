@@ -133,7 +133,13 @@ def mock_queue():
     mock = AsyncMock()
     mock.publish.return_value = None
     mock.ack.return_value = None
+    mock.invalidate_queue.return_value = None
     mock.consume.return_value = []
+
+    async def _consume_blocking(queue_name, timeout, max_messages=1):
+        return await mock.consume(queue_name, max_messages=max_messages)
+
+    mock.consume_blocking.side_effect = _consume_blocking
     return mock
 
 

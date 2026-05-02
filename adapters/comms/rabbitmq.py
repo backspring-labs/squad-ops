@@ -64,14 +64,35 @@ class RabbitMQAdapter(QueuePort):
         return queue_name
 
     async def _get_queue(self, queue_name: str) -> Queue:
-        """Get or create a queue, applying namespace if configured."""
+        """Get or create a queue, applying namespace if configured.
+
+        Cached Queue handles are bound to the channel they were declared on.
+        If the underlying channel reconnects (RobustChannel) the cached
+        handle can become stale and operations against it raise
+        ``Channel was not opened``. We track which channel each cached
+        queue is bound to and re-declare on mismatch.
+        """
         full_name = self._apply_namespace(queue_name)
-        if full_name not in self._queues:
-            await self._ensure_connection()
-            queue = await self._channel.declare_queue(full_name, durable=True)
-            self._queues[full_name] = queue
-            logger.debug(f"Declared queue: {full_name}")
-        return self._queues[full_name]
+        await self._ensure_connection()
+
+        cached = self._queues.get(full_name)
+        if cached is not None and getattr(cached, "channel", None) is self._channel:
+            return cached
+
+        queue = await self._channel.declare_queue(full_name, durable=True)
+        self._queues[full_name] = queue
+        logger.debug(f"Declared queue: {full_name}")
+        return queue
+
+    async def invalidate_queue(self, queue_name: str) -> None:
+        """Drop the cached Queue handle for ``queue_name``.
+
+        Called by long-running consume loops after a transient failure
+        (e.g. ``Channel was not opened``) so the next call re-declares
+        against the current channel.
+        """
+        full_name = self._apply_namespace(queue_name)
+        self._queues.pop(full_name, None)
 
     async def publish(
         self, queue_name: str, payload: str, delay_seconds: int | None = None
@@ -187,6 +208,59 @@ class RabbitMQAdapter(QueuePort):
         except Exception as e:
             logger.error(f"Failed to consume messages from queue {queue_name}: {e}")
             raise QueueError(f"Failed to consume messages: {e}") from e
+
+    async def consume_blocking(
+        self, queue_name: str, timeout: float, max_messages: int = 1
+    ) -> list[QueueMessage]:
+        """Hold a single consumer registration on ``queue_name`` for up to
+        ``timeout`` seconds, returning as soon as ``max_messages`` arrive.
+
+        This avoids the consumer-tag churn of repeatedly calling :meth:`consume`
+        in a poll loop, which on busy/empty queues can race with arriving
+        messages (a message dispatched to a consumer tag that's about to be
+        canceled may not be redelivered to the next short-lived iterator).
+        """
+        try:
+            await self._ensure_connection()
+            queue = await self._get_queue(queue_name)
+
+            messages: list[QueueMessage] = []
+
+            async def collect_messages():
+                async with queue.iterator(no_ack=False) as queue_iter:
+                    async for message in queue_iter:
+                        payload = message.body.decode("utf-8")
+                        receipt_handle = str(message.delivery_tag)
+                        message_attributes = {
+                            "delivery_tag": message.delivery_tag,
+                            "routing_key": message.routing_key,
+                            "exchange": message.exchange,
+                            "redelivered": message.redelivered,
+                            "message": message,
+                        }
+                        messages.append(
+                            QueueMessage(
+                                message_id=str(message.delivery_tag),
+                                queue_name=queue_name,
+                                payload=payload,
+                                receipt_handle=receipt_handle,
+                                attributes=message_attributes,
+                            )
+                        )
+                        if len(messages) >= max_messages:
+                            break
+
+            try:
+                await asyncio.wait_for(collect_messages(), timeout=timeout)
+            except TimeoutError:
+                pass
+
+            logger.debug(f"consume_blocking returned {len(messages)} message(s) from {queue.name}")
+            return messages
+
+        except Exception as e:
+            logger.error(f"Failed to consume_blocking from queue {queue_name}: {e}")
+            raise QueueError(f"Failed to consume_blocking: {e}") from e
 
     async def ack(self, message: QueueMessage) -> None:
         """

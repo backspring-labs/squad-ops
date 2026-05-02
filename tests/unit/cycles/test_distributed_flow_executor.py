@@ -112,8 +112,16 @@ def mock_queue():
     mock = AsyncMock()
     mock.publish.return_value = None
     mock.ack.return_value = None
+    mock.invalidate_queue.return_value = None
     # Default: consume returns empty (override per-test)
     mock.consume.return_value = []
+
+    # Route consume_blocking through consume so tests that set
+    # consume.side_effect continue to work without modification.
+    async def _consume_blocking(queue_name, timeout, max_messages=1):
+        return await mock.consume(queue_name, max_messages=max_messages)
+
+    mock.consume_blocking.side_effect = _consume_blocking
     return mock
 
 
@@ -374,6 +382,107 @@ class TestDispatchTask:
 
         assert result.status == "FAILED"
         assert "Timed out" in result.error
+
+    async def test_recovers_from_transient_consume_error(
+        self, executor, mock_queue
+    ) -> None:
+        """A transient QueueError must invalidate the cached queue handle and
+        the loop must keep waiting until the deadline — not fail the task.
+
+        Regression: prior to fix, a single ``Channel was not opened`` from
+        the broker would propagate out of ``_publish_and_await`` and fail an
+        otherwise-recoverable wait, even though the agent's reply was sitting
+        in the queue.
+        """
+        executor._task_timeout = 1.0
+
+        envelope = TaskEnvelope(
+            task_id="task_recover",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="development.design",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            metadata={"role": "dev"},
+        )
+
+        # First consume_blocking raises (stale channel); second returns the
+        # reply that was waiting all along.
+        result_msg = _make_result_message(
+            task_id="task_recover",
+            outputs={"summary": "recovered", "artifacts": []},
+        )
+        call_count = {"n": 0}
+
+        async def flaky_consume_blocking(queue_name, timeout, max_messages=1):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("Channel was not opened")
+            return [result_msg]
+
+        mock_queue.consume_blocking.side_effect = flaky_consume_blocking
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            result = await executor._dispatch_task(envelope, "run_001")
+
+        assert result.status == "SUCCEEDED"
+        assert result.outputs["summary"] == "recovered"
+        # Cache must be invalidated so the retry re-declares against a fresh
+        # channel rather than reusing the broken handle.
+        mock_queue.invalidate_queue.assert_awaited_with("cycle_results_run_001")
+
+    async def test_uses_long_block_consume_not_short_poll(
+        self, executor, mock_queue
+    ) -> None:
+        """The wait must use ``consume_blocking`` (one consumer per chunk),
+        not the legacy ``consume`` poll-and-sleep that churned consumer tags.
+
+        Regression: the old loop opened ~3600 short-lived consumers per
+        30-min wait, racing with arriving messages. New loop must call
+        ``consume_blocking`` with a multi-second timeout.
+        """
+        executor._task_timeout = 0.05  # shortcut: single iteration
+
+        result_msg = _make_result_message(
+            task_id="task_blk",
+            outputs={"summary": "ok", "artifacts": []},
+        )
+        mock_queue.consume_blocking.side_effect = None
+        mock_queue.consume_blocking.return_value = [result_msg]
+
+        envelope = TaskEnvelope(
+            task_id="task_blk",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="development.design",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            metadata={"role": "dev"},
+        )
+
+        result = await executor._dispatch_task(envelope, "run_001")
+
+        assert result.status == "SUCCEEDED"
+        # Must have called consume_blocking, not the short-poll consume.
+        assert mock_queue.consume_blocking.await_count >= 1
+        # Each call must request a meaningful blocking window so the
+        # consumer subscription is held long enough to receive a reply.
+        first_call = mock_queue.consume_blocking.await_args_list[0]
+        timeout_arg = first_call.kwargs.get("timeout")
+        if timeout_arg is None and len(first_call.args) >= 2:
+            timeout_arg = first_call.args[1]
+        assert timeout_arg is not None and timeout_arg > 0
 
 
 # ---------------------------------------------------------------------------
