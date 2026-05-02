@@ -1,13 +1,21 @@
 # 1.0.x Build Reliability Hardening Plan
 
 **Created:** 2026-04-27
-**Updated:** 2026-04-27 (rev 2 — incorporated external review feedback)
-**Status:** Active — #1 drafted, #2 next
+**Updated:** 2026-05-02 (rev 3 — added runtime substrate precondition)
+**Status:** Active — #1 drafted, #2 next; substrate SIP S1 proposed
 **Scope:** SquadOps 1.0.x patch series (Spark lane); orthogonal to v1.1 work (SIP-0088+)
 
 ## Intent
 
 The 1.0.x series targets **autonomous cycles long enough to build the best possible vertical slice** — not 1-hour timeboxes. That scoping decision changes what "reliability" means: in a 1-hour cycle the bottleneck is *did the squad ship anything*; in a multi-hour cycle the bottleneck is *did the squad stay coherent over time*. Plans drift, decisions get re-litigated, context windows reset, runaway loops compound into cost incidents, and a half-right manifest at hour two poisons the rest of the run. The proposals in this plan are ordered to attack that "stay coherent" failure mode directly: each SIP either gives the squad better evidence to act on, a better way to evolve its plan when reality diverges, or a guardrail that keeps the loop bounded. Build-reliability work runs as a focused track; release/API hardening runs as a parallel track and is not the target of this plan.
+
+## Runtime substrate (preconditions to the build-reliability axis)
+
+These are not part of the "stay coherent over time" axis below — they are the dispatch/transport layer the axis runs on. Listed separately so they don't compete with planning/QA/continuation items for slot ordering, but called out as preconditions because every item below assumes the orchestrator reliably receives an agent reply on a long task. That assumption broke on `cyc_c9ca088599c0` (2026-05-02): a 9-minute dev[3] reply was lost because the reply-queue poll loop churned ~3600 short-lived consumer subscriptions over a 30-min wait, then wedged the channel.
+
+| # | SIP | Status | Where |
+|---|-----|--------|-------|
+| S1 | **Long-Lived Subscription Model for Cycle Reply Channels** — replace `_publish_and_await` poll loop with a single long-lived consumer per task, add reply-queue TTL/cleanup, drain-before-retry on lost replies. Tactical patch (cache invalidation + `consume_blocking()` chunked waits) already on PR #89. | proposed (2026-05-02); tactical patch on PR #89 | `sips/proposed/SIP-Reply-Channel-Subscription-Model.md` |
 
 ## Build-reliability axis (priority order)
 
@@ -56,6 +64,7 @@ These ship on the 1.0.x patch lane but do not contribute to build-reliability. L
 
 ## Why this order
 
+- **Substrate (S1) is a precondition, not a competitor.** Reply-channel reliability is not on the build-reliability axis but every item on the axis depends on it. The tactical patch lands first (PR #89); structural SIP soaks in dev before being slotted against axis work for engineering time.
 - **#1 first.** The current build manifest is informational and one-shot. There is no point hardening downstream signals until the plan can both *validate* against typed criteria and *evolve* via overlays when reality diverges.
 - **#2 and #3 next.** They produce the evidence every later SIP cites. A continuation decision (#5) cannot be stronger than the acceptance signal (#2) and the evaluation contract (#3) it references.
 - **#4 before #5.** Run trajectory and continuation only work if cross-run memory exists. Otherwise run N+1 starts amnesiac and re-litigates run N's decisions.
@@ -86,5 +95,6 @@ Everything else is either already in `sips/proposed/`, a follow-up to an accepte
 
 ## Revision history
 
+- **rev 3 (2026-05-02):** Added Runtime Substrate section with S1 (Reply-Channel Subscription Model) as a precondition to the build-reliability axis. Triggered by `cyc_c9ca088599c0` lost-reply incident. Tactical patch on PR #89; structural SIP in `sips/proposed/`.
 - **rev 2 (2026-04-27):** Incorporated external review. Three structural changes: (1) split former #9 into #5a (minimal breakers, precondition for #5) and #9 (full operator surface, original slot); (2) swapped former #6 ↔ #7 — Defect Report now precedes Resume Contract, with Resume scoped to technical idempotency only; (3) added explicit Capability/Policy Boundaries section. Plus annotations on #4 (typed-not-soup), #6 (machine-actionable fields), #8 (duration AND risk), #10↔#2 link, #11 (empirical, revertible).
 - **rev 1 (2026-04-27):** Initial plan landed via PR #67.
