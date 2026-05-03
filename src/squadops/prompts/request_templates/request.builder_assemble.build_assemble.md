@@ -1,6 +1,6 @@
 ---
 template_id: request.builder_assemble.build_assemble
-version: "1"
+version: "2"
 required_variables:
   - prd
   - source_files
@@ -49,20 +49,14 @@ Service responds with HTTP 200 on GET /health.
 
 Output that does NOT use this exact `<language>:<filepath>` header will be rejected.
 
-## Required deployment artifacts
-
-- `__main__.py` entrypoint (if not already present)
-- `Dockerfile` for containerized deployment
-- `requirements.txt` (if not already present)
-- Any startup scripts or config files needed for deployment
-
-You MUST also include a `qa_handoff.md` file containing these three sections, exactly as shown:
-- `## How to Run`
-- `## How to Test`
-- `## Expected Behavior`
-
 ## File path rules
 
 - File paths use forward slashes only. No colons, no spaces, no leading slash.
 - Do NOT re-emit source files the developer already wrote.
 - Only emit NEW files needed for packaging and deployment.
+
+## Which files to produce
+
+The exact set of required and optional files for this build, plus the
+`qa_handoff.md` required sections, is given in the system prompt for the
+build profile. Produce exactly that set — no more, no less.

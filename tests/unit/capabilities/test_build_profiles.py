@@ -188,3 +188,106 @@ class TestBuildProfilesRegistry:
             assert len(profile.qa_handoff_expectations) > 0, (
                 f"{name} has no qa_handoff_expectations"
             )
+
+
+class TestProfileSourceOfTruthInvariants:
+    """Issue #92: required_files/optional_files are the single source of truth.
+
+    The narrative `system_prompt_template` must NOT enumerate filenames; the
+    full prompt seen by the LLM is composed via `full_system_prompt` from
+    the validator's required/optional tuples. These invariants catch any
+    re-introduced drift between the prompt the LLM sees and the validator
+    that grades its output.
+    """
+
+    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
+    def test_qa_handoff_md_in_required_files(self, name, profile):
+        """The validator unconditionally rejects builder output without
+        qa_handoff.md (cycle_tasks.py:_validate_builder_output). Every
+        profile must list it in required_files so the prompt asks for it.
+        """
+        assert "qa_handoff.md" in profile.required_files, (
+            f"{name}: validator demands qa_handoff.md but profile doesn't list it"
+        )
+
+    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
+    def test_required_and_optional_disjoint(self, name, profile):
+        """A filename must appear in exactly one of required_files or
+        optional_files. Duplicates were a real source of LLM confusion.
+        """
+        required_set = set(profile.required_files)
+        optional_set = set(profile.optional_files)
+        overlap = required_set & optional_set
+        assert not overlap, f"{name}: files appear in both required and optional: {sorted(overlap)}"
+
+    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
+    def test_full_system_prompt_lists_every_required_file(self, name, profile):
+        """The composed system prompt the LLM sees must mention every
+        required file by name. Otherwise the LLM is being graded on a file
+        it was never asked to produce.
+        """
+        prompt = profile.full_system_prompt
+        for required in profile.required_files:
+            assert required in prompt, (
+                f"{name}: required file {required!r} not mentioned in full_system_prompt"
+            )
+
+    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
+    def test_full_system_prompt_lists_every_optional_file(self, name, profile):
+        """Optional files should be advertised so the LLM knows it MAY
+        produce them. Without this, optional files become invisible.
+        """
+        prompt = profile.full_system_prompt
+        for optional in profile.optional_files:
+            assert optional in prompt, (
+                f"{name}: optional file {optional!r} not mentioned in full_system_prompt"
+            )
+
+    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
+    def test_narrative_template_does_not_enumerate_filenames(self, name, profile):
+        """The narrative `system_prompt_template` must NOT enumerate
+        filenames — the file list comes from required_files/optional_files
+        via `full_system_prompt`. If a filename leaks into the narrative,
+        the prompt has two sources of truth again.
+
+        Heuristic: any token containing a recognized file extension or
+        a literal known structural file (Dockerfile) appearing in the
+        narrative template is a violation. We allow extensions only inside
+        backticked code-block languages (e.g. ```python:foo) by stripping
+        those before scanning.
+        """
+        import re
+
+        narrative = profile.system_prompt_template
+        # Strip backticked code/format tokens — those describe the output
+        # FORMAT (```dockerfile:Dockerfile), not enumerate which files.
+        # We only care about filenames that appear as literal prose.
+        stripped = re.sub(r"`[^`]*`", "", narrative)
+
+        # Forbidden patterns: anything that looks like a file with an
+        # extension, or known extension-less structural files.
+        forbidden = []
+        # Simple file-with-extension regex (word chars + dot + 2-5 letter ext)
+        for match in re.finditer(r"\b[\w./-]+\.[a-zA-Z]{2,5}\b", stripped):
+            forbidden.append(match.group(0))
+        for sentinel in ("Dockerfile", "Makefile"):
+            if sentinel in stripped:
+                forbidden.append(sentinel)
+
+        assert not forbidden, (
+            f"{name}: narrative system_prompt_template enumerates filenames "
+            f"{forbidden!r}; move them to required_files/optional_files so the "
+            f"prompt and validator share one source of truth (issue #92)."
+        )
+
+    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
+    def test_full_system_prompt_lists_qa_handoff_sections(self, name, profile):
+        """The composed prompt must surface every required QA handoff
+        section. Otherwise the LLM doesn't know what shape qa_handoff.md
+        must take.
+        """
+        prompt = profile.full_system_prompt
+        for section in profile.qa_handoff_expectations:
+            assert section in prompt, (
+                f"{name}: qa_handoff section {section!r} missing from full_system_prompt"
+            )

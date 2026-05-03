@@ -301,9 +301,7 @@ class _CycleTaskHandler(CapabilityHandler):
             f"**Validation Summary:** {validation.summary}\n\n",
         ]
         if validation.missing_components:
-            parts.append(
-                f"**Missing Components:** {', '.join(validation.missing_components)}\n\n"
-            )
+            parts.append(f"**Missing Components:** {', '.join(validation.missing_components)}\n\n")
         parts.append(f"**Files You Already Produced:** {', '.join(artifact_names)}\n\n")
         parts.append(
             "Please produce ONLY the missing files. Use the same fenced code block format "
@@ -328,18 +326,22 @@ class _CycleTaskHandler(CapabilityHandler):
         for art in new:
             name = art["name"]
             if name in by_name:
-                merge_log.append({
-                    "action": "replaced",
-                    "name": name,
-                    "old_size": len(by_name[name].get("content", "")),
-                    "new_size": len(art.get("content", "")),
-                })
+                merge_log.append(
+                    {
+                        "action": "replaced",
+                        "name": name,
+                        "old_size": len(by_name[name].get("content", "")),
+                        "new_size": len(art.get("content", "")),
+                    }
+                )
             else:
-                merge_log.append({
-                    "action": "added",
-                    "name": name,
-                    "size": len(art.get("content", "")),
-                })
+                merge_log.append(
+                    {
+                        "action": "added",
+                        "name": name,
+                        "size": len(art.get("content", "")),
+                    }
+                )
             by_name[name] = art
 
         evidence.setdefault("self_eval_merge_log", []).extend(merge_log)
@@ -569,13 +571,13 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         "  - task_index: 0\n"
         "    task_type: development.develop  # or qa.test\n"
         "    role: dev  # or qa\n"
-        "    focus: \"Short description of this subtask\"\n"
+        '    focus: "Short description of this subtask"\n'
         "    description: |\n"
         "      Detailed description of what to build.\n"
         "    expected_artifacts:\n"
-        "      - \"path/to/file.py\"\n"
+        '      - "path/to/file.py"\n'
         "    acceptance_criteria:\n"
-        "      - \"Criterion 1\"\n"
+        '      - "Criterion 1"\n'
         "    depends_on: []  # list of task_index values\n"
         "summary:\n"
         "  total_dev_tasks: N\n"
@@ -610,8 +612,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             user_prompt = rendered.content + self._MANIFEST_PROMPT_EXTENSION
         else:
             user_prompt = (
-                self._build_user_prompt(prd, prior_outputs)
-                + self._MANIFEST_PROMPT_EXTENSION
+                self._build_user_prompt(prd, prior_outputs) + self._MANIFEST_PROMPT_EXTENSION
             )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
@@ -625,9 +626,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         chat_kwargs = self._build_chat_kwargs(inputs)
 
         try:
-            response = await context.ports.llm.chat_stream_with_usage(
-                messages, **chat_kwargs
-            )
+            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             return self._fail_result(start_time, inputs, str(exc))
@@ -691,9 +690,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         from squadops.cycles.implementation_plan import ImplementationPlan
 
         extracted = extract_fenced_files(content)
-        manifest_files = [
-            f for f in extracted if f["filename"] == "implementation_plan.yaml"
-        ]
+        manifest_files = [f for f in extracted if f["filename"] == "implementation_plan.yaml"]
 
         if manifest_files:
             yaml_content = manifest_files[0]["content"]
@@ -718,8 +715,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             manifest = ImplementationPlan.from_yaml(yaml_content)
         except ValueError as exc:
             logger.warning(
-                "%s: manifest validation failed (%s), "
-                "falling back to static task steps",
+                "%s: manifest validation failed (%s), falling back to static task steps",
                 self._handler_name,
                 exc,
             )
@@ -746,8 +742,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
 
         if len(manifest.tasks) < min_subtasks:
             logger.warning(
-                "%s: manifest has %d subtasks (min %d), "
-                "falling back to static task steps",
+                "%s: manifest has %d subtasks (min %d), falling back to static task steps",
                 self._handler_name,
                 len(manifest.tasks),
                 min_subtasks,
@@ -756,8 +751,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
 
         if len(manifest.tasks) > max_subtasks:
             logger.warning(
-                "%s: manifest has %d subtasks (max %d), "
-                "falling back to static task steps",
+                "%s: manifest has %d subtasks (max %d), falling back to static task steps",
                 self._handler_name,
                 len(manifest.tasks),
                 max_subtasks,
@@ -822,16 +816,12 @@ class GovernanceReviewHandler(_CycleTaskHandler):
                 prompt_layer_set_id=f"{self._role}-cycle",
                 layers=(
                     PromptLayer(layer_type="system", layer_id=f"{self._role}-system"),
-                    PromptLayer(
-                        layer_type="user", layer_id=f"cycle-{self._capability_id}"
-                    ),
+                    PromptLayer(layer_type="user", layer_id=f"cycle-{self._capability_id}"),
                 ),
             )
             llm_obs.record_generation(context.correlation_context, gen_record, layers)
 
-    def _build_provenance(
-        self, assembled: Any, renderer: Any, rendered: Any
-    ) -> dict[str, Any]:
+    def _build_provenance(self, assembled: Any, renderer: Any, rendered: Any) -> dict[str, Any]:
         """Build prompt provenance dict for artifact traceability (SIP-0084)."""
         provenance: dict[str, Any] = {
             "system_prompt_bundle_hash": assembled.assembly_hash,
@@ -972,23 +962,27 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         # FC1: Expected artifacts present (required gate)
         expected = inputs.get("expected_artifacts", [])
         missing_files = [f for f in expected if f not in artifact_names]
-        checks.append({
-            "check": "expected_artifacts",
-            "expected": expected,
-            "present": [f for f in expected if f in artifact_names],
-            "missing": missing_files,
-            "passed": len(missing_files) == 0,
-        })
+        checks.append(
+            {
+                "check": "expected_artifacts",
+                "expected": expected,
+                "present": [f for f in expected if f in artifact_names],
+                "missing": missing_files,
+                "passed": len(missing_files) == 0,
+            }
+        )
         if missing_files:
             missing.extend(f"file:{f}" for f in missing_files)
 
         # FC2: Non-stub files (required gate)
         stubs = _detect_stubs(artifacts)
-        checks.append({
-            "check": "non_stub_files",
-            "stubs_found": stubs,
-            "passed": len(stubs) == 0,
-        })
+        checks.append(
+            {
+                "check": "non_stub_files",
+                "stubs_found": stubs,
+                "passed": len(stubs) == 0,
+            }
+        )
 
         # FC3 (SIP-0092 M1.3): Typed acceptance criteria evaluation.
         await self._evaluate_typed_acceptance(
@@ -1005,8 +999,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         if stubs:
             summary_parts.append(f"Stub files: {', '.join(stubs)}")
         typed_failed = [
-            c for c in checks
-            if c.get("check", "").startswith("acceptance:") and c.get("status") in {"failed", "error"}
+            c
+            for c in checks
+            if c.get("check", "").startswith("acceptance:")
+            and c.get("status") in {"failed", "error"}
         ]
         if typed_failed:
             summary_parts.append(
@@ -1059,12 +1055,14 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         # Prose strings stay informational, evidence-only — same as Rev 1's
         # included_in_evidence behavior. They never block.
         if prose_criteria:
-            checks.append({
-                "check": "acceptance_criteria_prose",
-                "criteria": prose_criteria,
-                "evaluation": "included_in_evidence",
-                "passed": True,
-            })
+            checks.append(
+                {
+                    "check": "acceptance_criteria_prose",
+                    "criteria": prose_criteria,
+                    "evaluation": "included_in_evidence",
+                    "passed": True,
+                }
+            )
 
         if not typed_criteria:
             return
@@ -1098,18 +1096,14 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                     # all-checks-pass aggregator: only severity=error AND
                     # blocking status counts as not-passed.
                     "passed": not (
-                        criterion.severity == "error"
-                        and outcome.status in {"failed", "error"}
+                        criterion.severity == "error" and outcome.status in {"failed", "error"}
                     ),
                 }
                 checks.append(check_record)
 
                 # Issue #83: per-check observability. Without these the M1.3
                 # path is invisible to operators — see issue body for context.
-                blocking = (
-                    criterion.severity == "error"
-                    and outcome.status in {"failed", "error"}
-                )
+                blocking = criterion.severity == "error" and outcome.status in {"failed", "error"}
                 log_fn = logger.info if blocking else logger.debug
                 log_fn(
                     "typed_acceptance_check subtask=%s check=%s severity=%s status=%s blocking=%s reason=%s",
@@ -1133,9 +1127,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                     prior = typed_error_counts.get(fp, 0)
                     if prior < 2:
                         # RC-9a: evaluator-error wording, distinct from app-incomplete.
-                        missing.append(
-                            f"evaluator-error:{criterion.check}: {outcome.reason}"
-                        )
+                        missing.append(f"evaluator-error:{criterion.check}: {outcome.reason}")
                     else:
                         self._escalate_persistent_evaluator_error(criterion, outcome)
                     typed_error_counts[fp] = prior + 1
@@ -1189,14 +1181,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             # Should not happen — parser already enforces vocabulary — but
             # treat as evaluator-error rather than crashing the cycle.
             return CheckOutcome.error(reason="no_evaluator_registered")
-        return await evaluator.evaluate(
-            criterion.params, workspace_root, stack=stack
-        )
+        return await evaluator.evaluate(criterion.params, workspace_root, stack=stack)
 
     @staticmethod
-    def _escalate_persistent_evaluator_error(
-        criterion: TypedCheck, outcome: CheckOutcome
-    ) -> None:
+    def _escalate_persistent_evaluator_error(criterion: TypedCheck, outcome: CheckOutcome) -> None:
         """RC-9b: surface a persistent evaluator error outside the self-eval feedback loop.
 
         Logged at WARNING with structured fields; the correction protocol
@@ -1242,30 +1230,36 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         missing_layers = set(expected_layers.keys()) - present_layers
         if missing_layers:
             missing.extend(f"stack_layer:{layer}" for layer in missing_layers)
-        checks.append({
-            "check": "stack_coverage_heuristic",
-            "expected": list(expected_layers.keys()),
-            "present": list(present_layers),
-            "missing": list(missing_layers),
-            "passed": len(missing_layers) == 0,
-        })
+        checks.append(
+            {
+                "check": "stack_coverage_heuristic",
+                "expected": list(expected_layers.keys()),
+                "present": list(present_layers),
+                "missing": list(missing_layers),
+                "passed": len(missing_layers) == 0,
+            }
+        )
 
         # C2: Artifact count heuristic
         min_artifacts = _estimate_min_artifacts(prd)
-        checks.append({
-            "check": "artifact_count_heuristic",
-            "expected_min": min_artifacts,
-            "actual": len(artifacts),
-            "passed": len(artifacts) >= min_artifacts,
-        })
+        checks.append(
+            {
+                "check": "artifact_count_heuristic",
+                "expected_min": min_artifacts,
+                "actual": len(artifacts),
+                "passed": len(artifacts) >= min_artifacts,
+            }
+        )
 
         # C3: Non-stub files
         stubs = _detect_stubs(artifacts)
-        checks.append({
-            "check": "non_stub_files",
-            "stubs_found": stubs,
-            "passed": len(stubs) == 0,
-        })
+        checks.append(
+            {
+                "check": "non_stub_files",
+                "stubs_found": stubs,
+                "passed": len(stubs) == 0,
+            }
+        )
 
         passed = all(c["passed"] for c in checks)
         passed_count = sum(1 for c in checks if c["passed"])
@@ -1275,9 +1269,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         if missing_layers:
             summary_parts.append(f"Missing stack layers: {', '.join(missing_layers)}")
         if len(artifacts) < min_artifacts:
-            summary_parts.append(
-                f"Only {len(artifacts)} artifacts, expected >= {min_artifacts}"
-            )
+            summary_parts.append(f"Only {len(artifacts)} artifacts, expected >= {min_artifacts}")
         if stubs:
             summary_parts.append(f"Stub files: {', '.join(stubs)}")
 
@@ -1598,9 +1590,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                         }
                         for f in new_extracted
                     ]
-                    artifacts = self._merge_artifacts(
-                        artifacts, new_artifacts, evidence_extra
-                    )
+                    artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
 
                     # RC-7: validate merged artifact set
                     validation = await self._validate_output(
@@ -1802,37 +1792,44 @@ class QATestHandler(_CycleTaskHandler):
             expected = inputs.get("expected_artifacts", [])
             artifact_names = [a.get("name", "") for a in artifacts]
             missing_files = [f for f in expected if f not in artifact_names]
-            checks.append({
-                "check": "expected_artifacts",
-                "expected": expected,
-                "present": [f for f in expected if f in artifact_names],
-                "missing": missing_files,
-                "passed": len(missing_files) == 0,
-            })
+            checks.append(
+                {
+                    "check": "expected_artifacts",
+                    "expected": expected,
+                    "present": [f for f in expected if f in artifact_names],
+                    "missing": missing_files,
+                    "passed": len(missing_files) == 0,
+                }
+            )
             if missing_files:
                 missing.extend(f"file:{f}" for f in missing_files)
         else:
             # Legacy mode: at least one test file with content
             test_files = [
-                a for a in artifacts
+                a
+                for a in artifacts
                 if "test" in a.get("name", "").lower()
                 and len(a.get("content", "")) > _STUB_THRESHOLD_BYTES
             ]
-            checks.append({
-                "check": "test_file_presence",
-                "test_files_found": len(test_files),
-                "passed": len(test_files) > 0,
-            })
+            checks.append(
+                {
+                    "check": "test_file_presence",
+                    "test_files_found": len(test_files),
+                    "passed": len(test_files) > 0,
+                }
+            )
             if not test_files:
                 missing.append("test_files")
 
         # Non-stub check (both modes)
         stubs = _detect_stubs(artifacts)
-        checks.append({
-            "check": "non_stub_files",
-            "stubs_found": stubs,
-            "passed": len(stubs) == 0,
-        })
+        checks.append(
+            {
+                "check": "non_stub_files",
+                "stubs_found": stubs,
+                "passed": len(stubs) == 0,
+            }
+        )
 
         passed = all(c["passed"] for c in checks)
         passed_count = sum(1 for c in checks if c["passed"])
@@ -2224,9 +2221,7 @@ class QATestHandler(_CycleTaskHandler):
                         }
                         for f in new_extracted
                     ]
-                    artifacts = self._merge_artifacts(
-                        artifacts, new_artifacts, evidence_extra
-                    )
+                    artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
                     validation = await self._validate_output(inputs, artifacts)
 
                 evidence_extra["self_eval_passes"] = self_eval_count
@@ -2245,9 +2240,7 @@ class QATestHandler(_CycleTaskHandler):
         # passing test file count with exit_code != 0 (e.g., import errors
         # causing pytest to collect 0 tests) must surface as SEMANTIC_FAILURE
         # so the correction protocol activates.
-        if output_validation_enabled and not (
-            test_result.executed and test_result.tests_passed
-        ):
+        if output_validation_enabled and not (test_result.executed and test_result.tests_passed):
             if test_result.executed:
                 detail = f"tests_failed:exit_{test_result.exit_code}"
                 fail_note = f"Tests failed (exit {test_result.exit_code})"
@@ -2610,6 +2603,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             parts.append("\n\n## Builder Tags\n")
             for tag_key, tag_value in sorted(task_tags.items()):
                 parts.append(f"- **{tag_key}**: {tag_value}")
+        # Issue #92: do NOT enumerate filenames here. The build profile's
+        # `full_system_prompt` (composed from required_files/optional_files)
+        # is the single source of truth for what Bob must produce. This
+        # fallback only carries the format/path rules that are universal.
         parts.append(
             "\n\nYou are ASSEMBLING the source code above into a deployable package. "
             "Do NOT rewrite or regenerate the source code — it is already written. "
@@ -2618,20 +2615,12 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             "separated by a colon, for example:\n"
             "```dockerfile:Dockerfile\n<content>\n```\n"
             "```markdown:qa_handoff.md\n<content>\n```\n\n"
-            "Produce the following deployment artifacts:\n"
-            "- __main__.py entrypoint (if not already present)\n"
-            "- Dockerfile for containerized deployment\n"
-            "- requirements.txt (if not already present)\n"
-            "- Any startup scripts or config files needed for deployment\n\n"
-            "IMPORTANT: You MUST also include a `qa_handoff.md` file with these "
-            "required sections:\n"
-            "- ## How to Run\n"
-            "- ## How to Test\n"
-            "- ## Expected Behavior\n\n"
             "File path rules:\n"
             "- File paths must use forward slashes, no colons, no spaces.\n"
             "- Do NOT re-emit source files that the developer already wrote.\n"
-            "- Only emit NEW files needed for packaging and deployment."
+            "- Only emit NEW files needed for packaging and deployment.\n"
+            "- The required and optional file list, plus qa_handoff.md required "
+            "sections, is given in the system prompt — produce exactly that set."
         )
         return None, "\n".join(parts)
 
@@ -2761,7 +2750,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
-        system_prompt = assembled.content + "\n\n" + profile.system_prompt_template
+        system_prompt = assembled.content + "\n\n" + profile.full_system_prompt
 
         messages = [
             ChatMessage(role="system", content=system_prompt),
