@@ -191,6 +191,82 @@ class TestAnalyzeFailure:
         assert result.success is False
         assert result.outputs["outcome_class"] == TaskOutcome.NEEDS_REPLAN
 
+    async def test_enriched_failure_evidence_appears_in_user_prompt(self, mock_context):
+        # Issue #84 follow-up: when the executor passes in validation_result
+        # + rejected_artifacts + preliminary_failure_classification, the
+        # handler must surface them to the LLM (currently via JSON-dumped
+        # failure_evidence under the "## Failure Evidence" heading). Without
+        # this the LLM sees only the bare error string and downstream
+        # correction-decision picks rewind on patchable content failures.
+        captured: dict[str, str] = {}
+
+        async def _capture(messages, **_kwargs):
+            captured["user_prompt"] = messages[-1].content
+            return ChatMessage(
+                role="assistant",
+                content=json.dumps(
+                    {
+                        "classification": FailureClassification.WORK_PRODUCT,
+                        "analysis_summary": (
+                            "qa_handoff regex check 'how to run backend' failed; "
+                            "Bob emitted manifest content but missed required section"
+                        ),
+                        "contributing_factors": [
+                            "build profile required qa_handoff in non-handoff task"
+                        ],
+                    }
+                ),
+            )
+
+        mock_context.ports.llm.chat = _capture
+        mock_context.ports.llm.chat_stream_with_usage = _capture
+
+        enriched_evidence = {
+            "failed_task_id": "t-7",
+            "failed_task_type": "builder.assemble",
+            "error": "validation failed",
+            "outcome_class": "semantic_failure",
+            "preliminary_failure_classification": FailureClassification.WORK_PRODUCT,
+            "validation_result": {
+                "passed": False,
+                "summary": "1 typed check failed",
+                "missing_components": ["qa_handoff.md::## How to run backend"],
+                "checks": [
+                    {
+                        "name": "regex_match:how to run backend",
+                        "status": "failed",
+                        "actual": {"match_count": 0},
+                    }
+                ],
+            },
+            "rejected_artifacts": [
+                {
+                    "name": "qa_handoff.md",
+                    "type": "document",
+                    "size": 4200,
+                    "content_snippet": "## Implemented Scope\n\nFastAPI backend...",
+                }
+            ],
+            "prior_plan_deltas_count": 0,
+        }
+
+        h = DataAnalyzeFailureHandler()
+        result = await h.handle(
+            mock_context,
+            {"prd": "test PRD", "failure_evidence": enriched_evidence},
+        )
+
+        assert result.success is True
+        prompt = captured["user_prompt"]
+        # Each enriched field must reach the LLM as identifiable text — not
+        # buried under a generic "error" string.
+        assert "validation_result" in prompt
+        assert "regex_match:how to run backend" in prompt
+        assert "qa_handoff.md" in prompt
+        assert "missing_components" in prompt
+        assert "rejected_artifacts" in prompt
+        assert "Implemented Scope" in prompt  # snippet content reaches LLM
+
     async def test_unknown_classification_rejected(self, mock_context):
         analysis = {
             "classification": "weird-made-up-bucket",
