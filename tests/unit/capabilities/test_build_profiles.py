@@ -322,3 +322,62 @@ class TestProfileSourceOfTruthInvariants:
         assert "```markdown:qa_handoff.md" in prompt, (
             f"{name}: prompt missing the worked qa_handoff.md skeleton example"
         )
+
+
+class TestSystemPromptForFiles:
+    """Issue #107: when framing decomposes builder work, the active task's
+    expected_artifacts is the source of truth for what must be emitted.
+    `system_prompt_for_files(scope)` produces a prompt scoped to that
+    subset; `full_system_prompt` (no scope) preserves the legacy
+    profile-wide behavior for tasks framing didn't decompose."""
+
+    def _profile(self):
+        from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
+
+        return BUILD_PROFILES["fullstack_fastapi_react"]
+
+    def test_full_system_prompt_unchanged_by_default(self):
+        # Legacy callers that read full_system_prompt should still get the
+        # profile-wide prompt with every required file + qa_handoff block.
+        profile = self._profile()
+        prompt = profile.full_system_prompt
+        for required in profile.required_files:
+            assert f"`{required}`" in prompt
+        assert "qa_handoff.md required sections (NON-NEGOTIABLE)" in prompt
+
+    def test_scoped_prompt_lists_only_task_required_files(self):
+        # Cycle 3 task 8 scope: manifests + scripts, NO qa_handoff.
+        profile = self._profile()
+        scope = ("package.json", "vite.config.js", "Dockerfile")
+        prompt = profile.system_prompt_for_files(scope)
+
+        for name in scope:
+            assert f"`{name}`" in prompt
+        # Profile-required qa_handoff is intentionally absent — task 9 owns it.
+        assert "`qa_handoff.md`" not in prompt
+        assert "qa_handoff.md required sections" not in prompt
+        assert "```markdown:qa_handoff.md" not in prompt
+
+    def test_scoped_prompt_includes_qa_handoff_block_when_in_scope(self):
+        # Cycle 3 task 9 scope: qa_handoff documentation only.
+        profile = self._profile()
+        prompt = profile.system_prompt_for_files(("qa_handoff.md",))
+
+        assert "`qa_handoff.md`" in prompt
+        assert "qa_handoff.md required sections (NON-NEGOTIABLE)" in prompt
+        assert "```markdown:qa_handoff.md" in prompt
+        # And the OTHER profile-required files are NOT listed when not in scope.
+        assert "`Dockerfile`" not in prompt
+
+    def test_none_scope_falls_back_to_profile_required(self):
+        # Tasks framing didn't decompose pass through with no scope.
+        profile = self._profile()
+        prompt_none = profile.system_prompt_for_files(None)
+        prompt_full = profile.full_system_prompt
+        assert prompt_none == prompt_full
+
+    def test_empty_scope_falls_back_to_profile_required(self):
+        profile = self._profile()
+        prompt_empty = profile.system_prompt_for_files(())
+        prompt_full = profile.full_system_prompt
+        assert prompt_empty == prompt_full
