@@ -1,0 +1,42 @@
+name: validation
+description: >
+  SIP-0092 M1 → M2 gate evidence collection profile. Plan-then-build like
+  `build`, but at implementation depth so typed-check signal and
+  correction-decision diagnostics accumulate at the rate the gate criteria
+  require. M2 and M3 stay disabled (their flags default off in the schema and
+  are not enabled here). After M2/M3 ship, the same profile shape with those
+  flags flipped on becomes the M2 → M3 measurement profile.
+defaults:
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_plan_review
+        description: Review planning artifacts and build manifest before implementation begins.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  workload_sequence:
+    - type: framing
+      gate: progress_plan_review
+    - type: implementation
+      gate: null
+  build_tasks: true
+  implementation_plan: true
+  output_validation: true
+  # Implementation-profile depth — exercises typed checks meaningfully and
+  # gives correction enough budget to surface structural-change candidates.
+  max_self_eval_passes: 2
+  max_correction_attempts: 3
+  max_build_subtasks: 15
+  # SIP-0092 M1 active.
+  typed_acceptance: true
+  command_acceptance_checks: true
+  # Long-cycle budget — gate sample requires ≥2h wall-clock or natural termination.
+  time_budget_seconds: 7200
+  experiment_context: {}
+  notes: "SIP-0092 M1 → M2 gate evidence profile (issue #97 B4)"
