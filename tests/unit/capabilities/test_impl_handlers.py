@@ -22,6 +22,7 @@ from squadops.capabilities.handlers.impl.establish_contract import (
     GovernanceEstablishContractHandler,
 )
 from squadops.capabilities.handlers.impl.repair_handlers import (
+    BuilderAssembleRepairHandler,
     DevelopmentCorrectionRepairHandler,
     QAValidateRepairHandler,
 )
@@ -335,3 +336,82 @@ class TestRepairHandlers:
 
         assert result.success is True
         assert result.outputs["role"] == "qa"
+
+    async def test_dev_repair_extracts_fenced_code_into_per_file_artifacts(
+        self, mock_context
+    ):
+        # Regression: previously this whole response was wrapped as a single
+        # repair_output.md document and the source files never landed.
+        response = (
+            "Here is the patched code.\n\n"
+            "```python:backend/main.py\n"
+            "from fastapi import FastAPI\n"
+            "app = FastAPI()\n"
+            "```\n\n"
+            "And the helper:\n\n"
+            "```python:backend/util.py\n"
+            "def helper(): return 1\n"
+            "```\n"
+        )
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=response),
+        )
+
+        h = DevelopmentCorrectionRepairHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        artifacts = result.outputs["artifacts"]
+        names = [a["name"] for a in artifacts]
+        assert names == ["backend/main.py", "backend/util.py"]
+        assert all(a["type"] == "source" for a in artifacts)
+        assert artifacts[0]["content"].startswith("from fastapi")
+        assert artifacts[1]["content"].strip() == "def helper(): return 1"
+        # No leftover repair_output.md when extraction succeeds
+        assert "repair_output.md" not in names
+
+    async def test_dev_repair_falls_back_to_markdown_when_no_fenced_blocks(
+        self, mock_context
+    ):
+        # Without fenced files we still preserve the LLM output instead of
+        # silently dropping it — the fallback is what keeps narrative-only
+        # repairs (e.g. "no code change needed, root cause was X") visible.
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(
+                role="assistant",
+                content="No code change needed; the failure was a flaky test.",
+            ),
+        )
+
+        h = DevelopmentCorrectionRepairHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        artifacts = result.outputs["artifacts"]
+        assert len(artifacts) == 1
+        assert artifacts[0]["name"] == "repair_output.md"
+        assert artifacts[0]["type"] == "document"
+        assert "flaky test" in artifacts[0]["content"]
+
+    async def test_builder_assemble_repair_extracts_fenced_files(self, mock_context):
+        response = (
+            "```markdown:qa_handoff.md\n"
+            "## How to run backend\n\n`uvicorn main:app`\n"
+            "```\n\n"
+            "```text:backend/requirements.txt\n"
+            "fastapi==0.115.0\n"
+            "```\n"
+        )
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=response),
+        )
+
+        h = BuilderAssembleRepairHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        assert result.success is True
+        assert result.outputs["role"] == "builder"
+        assert h.capability_id == "builder.assemble_repair"
+        names = [a["name"] for a in result.outputs["artifacts"]]
+        assert names == ["qa_handoff.md", "backend/requirements.txt"]

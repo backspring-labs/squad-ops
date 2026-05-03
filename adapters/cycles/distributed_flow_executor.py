@@ -1929,7 +1929,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
         """
         from uuid import uuid4
 
-        from squadops.cycles.task_plan import CORRECTION_TASK_STEPS, REPAIR_TASK_STEPS
+        from squadops.cycles.task_plan import CORRECTION_TASK_STEPS, repair_steps_for
 
         # 1. Emit CORRECTION_INITIATED
         self._cycle_event_bus.emit(
@@ -2098,8 +2098,15 @@ class DistributedFlowExecutor(FlowExecutionPort):
         plan_delta_refs.append(delta_ref.artifact_id)
 
         # 7. Handle patch path: dispatch repair tasks
+        # Repair-step selection is keyed on the failed task's task_type
+        # (authoritative) rather than the LLM-emitted `affected_task_types`
+        # field, which is free-text and previously caused builder failures
+        # (`affected_task_types: ["QA Handoff"]`) to silently route to the
+        # dev repair handler.
         if correction_path == "patch":
-            for step_idx, (task_type, role) in enumerate(REPAIR_TASK_STEPS):
+            for step_idx, (task_type, role) in enumerate(
+                repair_steps_for(envelope.task_type)
+            ):
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
                 agent_id = self._resolve_agent_id(role, profile)
 
