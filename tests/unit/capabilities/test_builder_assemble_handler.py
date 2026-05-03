@@ -352,6 +352,96 @@ class TestRequiredFileValidation:
 
 
 # ---------------------------------------------------------------------------
+# Issue #107: task expected_artifacts overrides profile required_files
+# ---------------------------------------------------------------------------
+
+
+class TestTaskScopedRequiredFiles:
+    """When framing decomposes builder work into multiple tasks, the
+    active task's ``expected_artifacts`` is the source of truth for what
+    must be emitted; the profile's blanket ``required_files`` becomes the
+    fallback for tasks framing didn't decompose. Without this scoping,
+    every builder task in a decomposed plan was forced to redundantly
+    emit qa_handoff (cycle 3 cyc_d1c1a259c983 task 8 hit the 8K cap
+    trying to emit manifests + a full qa_handoff).
+    """
+
+    LLM_MANIFESTS_ONLY = (
+        "```dockerfile:Dockerfile\nFROM python:3.11-slim\n```\n\n"
+        "```text:requirements.txt\nfastapi\n```\n\n"
+        "```json:package.json\n{\"name\":\"frontend\"}\n```\n"
+    )
+
+    async def test_manifest_task_passes_without_qa_handoff(self, mock_context, builder_inputs):
+        # Task 8 in cycle 3's plan: manifests only, qa_handoff routed to task 9.
+        # Bob emits manifests, no qa_handoff — must succeed because the task
+        # scope doesn't include qa_handoff.
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=self.LLM_MANIFESTS_ONLY),
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=self.LLM_MANIFESTS_ONLY),
+        )
+        scoped_inputs = dict(builder_inputs)
+        scoped_inputs["expected_artifacts"] = [
+            "Dockerfile",
+            "requirements.txt",
+            "package.json",
+        ]
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, scoped_inputs)
+
+        assert result.success is True, f"task-scoped validation should pass: {result.error}"
+        artifact_names = {a["name"] for a in result.outputs["artifacts"]}
+        assert "qa_handoff.md" not in artifact_names
+
+    async def test_qa_handoff_task_still_required_when_in_scope(
+        self, mock_context, builder_inputs
+    ):
+        # Task 9 in cycle 3's plan: qa_handoff is the scope. The validator
+        # MUST still reject if Bob produces it without the required sections.
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant", content=LLM_QA_HANDOFF_MISSING_SECTION
+            ),
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant", content=LLM_QA_HANDOFF_MISSING_SECTION
+            ),
+        )
+        scoped_inputs = dict(builder_inputs)
+        scoped_inputs["expected_artifacts"] = ["qa_handoff.md"]
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, scoped_inputs)
+
+        assert result.success is False
+        # The section regex must still bite when qa_handoff is in scope.
+        assert "Expected Behavior" in result.error
+
+    async def test_empty_expected_artifacts_falls_back_to_profile(
+        self, mock_context, builder_inputs
+    ):
+        # Tasks framing didn't decompose pass through with no expected_artifacts;
+        # the existing profile-required validation must still apply (regression
+        # guard against breaking single-task builder flows).
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=self.LLM_MANIFESTS_ONLY),
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=self.LLM_MANIFESTS_ONLY),
+        )
+        scoped_inputs = dict(builder_inputs)
+        scoped_inputs["expected_artifacts"] = []
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, scoped_inputs)
+
+        # python_cli_builder profile requires qa_handoff.md — still missing.
+        assert result.success is False
+        assert "qa_handoff.md not found" in result.error
+
+
+# ---------------------------------------------------------------------------
 # Duplicate filename detection
 # ---------------------------------------------------------------------------
 

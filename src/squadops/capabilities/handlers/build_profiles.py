@@ -80,10 +80,20 @@ class BuildProfile:
 
     @property
     def full_system_prompt(self) -> str:
-        """Compose the narrative template with the canonical file list block.
+        """Profile-level prompt — every file the profile requires, qa_handoff section block always present.
 
-        The file list is derived from `required_files`/`optional_files` so
-        the prompt stays in lockstep with what the validator enforces.
+        Used when the executing task has no `expected_artifacts` to scope
+        the requirements down (legacy single-task builder flows). Prefer
+        :meth:`system_prompt_for_files` when the framing step decomposed
+        builder work and the active task only owns a subset of the
+        profile's required files.
+        """
+        return self.system_prompt_for_files(None)
+
+    def system_prompt_for_files(
+        self, task_required_files: tuple[str, ...] | list[str] | None
+    ) -> str:
+        """Compose the system prompt scoped to the active task's required files.
 
         Cycle-1 evidence (cyc_11367982fd06, 2026-05-03): the build profile
         validator and the plan author can disagree about which qa_handoff
@@ -95,36 +105,58 @@ class BuildProfile:
         "non-negotiable" with a worked skeleton so the user prompt's task
         description cannot quietly override it. Additional sections
         requested by the task are welcome on top of the required ones.
+
+        Issue #107 (cyc_d1c1a259c983, 2026-05-03): when framing decomposes
+        builder work into multiple tasks (one for manifests, one for
+        qa_handoff documentation), the profile-level required_files
+        forced every builder task to redundantly emit the full set —
+        which exceeded the per-call token budget and produced incomplete
+        outputs that failed the validator. When `task_required_files` is
+        provided and non-empty, the prompt scopes the required-files
+        list to only those files, and includes the qa_handoff skeleton
+        block only when `qa_handoff.md` is one of them. This makes the
+        framing decomposition load-bearing instead of overridden.
         """
-        required_lines = "\n".join(f"- `{name}`" for name in self.required_files)
+        scoped = (
+            tuple(task_required_files)
+            if task_required_files
+            else self.required_files
+        )
+        required_lines = "\n".join(f"- `{name}`" for name in scoped)
         optional_block = ""
         if self.optional_files:
             optional_lines = "\n".join(f"- `{name}`" for name in self.optional_files)
             optional_block = f"\n\n## Optional artifacts (emit only if needed)\n\n{optional_lines}"
-        qa_lines = "\n".join(f"- `{name}`" for name in self.qa_handoff_expectations)
-        skeleton_sections = "\n\n".join(
-            f"{heading}\n\n<content>" for heading in self.qa_handoff_expectations
-        )
+
+        qa_block = ""
+        if "qa_handoff.md" in scoped:
+            qa_lines = "\n".join(f"- `{name}`" for name in self.qa_handoff_expectations)
+            skeleton_sections = "\n\n".join(
+                f"{heading}\n\n<content>" for heading in self.qa_handoff_expectations
+            )
+            qa_block = (
+                "\n\n## qa_handoff.md required sections (NON-NEGOTIABLE)\n\n"
+                f"{qa_lines}\n\n"
+                "These section headings are **mandatory** and must appear in "
+                "`qa_handoff.md` **exactly as written above**, including the "
+                "leading `## ` and the exact casing. The validator does literal "
+                "substring matching with a small set of fallbacks; paraphrased "
+                "or reworded headings will be rejected. The user prompt's task "
+                "description may ask for additional sections — include those "
+                "after the required ones, but the required headings above must "
+                "always be present.\n\n"
+                "Skeleton (copy these headings exactly, then fill in content):\n\n"
+                "```markdown:qa_handoff.md\n"
+                f"{skeleton_sections}\n"
+                "```"
+            )
 
         return (
             f"{self.system_prompt_template}\n\n"
             "## Required artifacts (you MUST emit every file in this list)\n\n"
             f"{required_lines}"
-            f"{optional_block}\n\n"
-            "## qa_handoff.md required sections (NON-NEGOTIABLE)\n\n"
-            f"{qa_lines}\n\n"
-            "These section headings are **mandatory** and must appear in "
-            "`qa_handoff.md` **exactly as written above**, including the "
-            "leading `## ` and the exact casing. The validator does literal "
-            "substring matching with a small set of fallbacks; paraphrased "
-            "or reworded headings will be rejected. The user prompt's task "
-            "description may ask for additional sections — include those "
-            "after the required ones, but the required headings above must "
-            "always be present.\n\n"
-            "Skeleton (copy these headings exactly, then fill in content):\n\n"
-            "```markdown:qa_handoff.md\n"
-            f"{skeleton_sections}\n"
-            "```"
+            f"{optional_block}"
+            f"{qa_block}"
         )
 
 
