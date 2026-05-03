@@ -45,6 +45,7 @@ from squadops.capabilities.handlers.impl.establish_contract import (
     GovernanceEstablishContractHandler,
 )
 from squadops.capabilities.handlers.impl.repair_handlers import (
+    DevelopmentCorrectionRepairHandler,
     QAValidateRepairHandler,
 )
 from squadops.capabilities.handlers.planning_tasks import (
@@ -122,6 +123,10 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (GovernanceEstablishContractHandler, ("lead",)),
     (DataAnalyzeFailureHandler, ("data",)),
     (GovernanceCorrectionDecisionHandler, ("lead",)),
+    # Correction-loop repair pair (SIP-0079 §7.7).
+    # Distinct from the SIP-0070 `development.repair` registered above
+    # via handlers.repair_tasks.DevelopmentRepairHandler. See issue #100.
+    (DevelopmentCorrectionRepairHandler, ("dev",)),
     # Correction-loop repair validator (SIP-0079 §7.7).
     # NOTE: `development.repair` is registered above via the SIP-0070
     # pulse-check version (handlers.repair_tasks.DevelopmentRepairHandler)

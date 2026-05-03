@@ -115,8 +115,10 @@ class TestCorrectionAndRepairSteps:
         ]
 
     def test_repair_steps_defined(self):
+        # Issue #100: development.correction_repair, NOT development.repair
+        # (the latter belongs to the pulse-check chain in pulse_verification.py).
         assert REPAIR_TASK_STEPS == [
-            ("development.repair", "dev"),
+            ("development.correction_repair", "dev"),
             ("qa.validate_repair", "qa"),
         ]
 
