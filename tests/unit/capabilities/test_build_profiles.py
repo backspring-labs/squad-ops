@@ -291,3 +291,34 @@ class TestProfileSourceOfTruthInvariants:
             assert section in prompt, (
                 f"{name}: qa_handoff section {section!r} missing from full_system_prompt"
             )
+
+    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
+    def test_qa_handoff_sections_marked_non_negotiable(self, name, profile):
+        """Cycle-1 evidence (cyc_11367982fd06): when the plan task description
+        names different qa_handoff sections than the validator requires, Bob
+        follows the more specific user-prompt task and the validator rejects
+        on a missing canonical section.
+
+        The system prompt MUST frame the validator's required sections as
+        non-negotiable so the user prompt's task description cannot quietly
+        override them. We assert on the explicit framing language and on
+        the worked-skeleton example.
+        """
+        prompt = profile.full_system_prompt
+        # Headline framing: the section list is mandatory, not advisory.
+        assert "NON-NEGOTIABLE" in prompt, (
+            f"{name}: qa_handoff section header lost the NON-NEGOTIABLE marker"
+        )
+        assert "mandatory" in prompt.lower(), (
+            f"{name}: missing 'mandatory' framing for qa_handoff sections"
+        )
+        # Tells Bob extra task-requested sections are welcome ON TOP of required.
+        assert "additional sections" in prompt.lower(), (
+            f"{name}: prompt should explicitly allow additional sections "
+            "beyond the required set, otherwise Bob may drop task-specific "
+            "sections in favor of the required ones"
+        )
+        # Worked skeleton showing exact heading text in a fenced qa_handoff block.
+        assert "```markdown:qa_handoff.md" in prompt, (
+            f"{name}: prompt missing the worked qa_handoff.md skeleton example"
+        )
