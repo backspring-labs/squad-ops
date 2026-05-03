@@ -261,6 +261,41 @@ class TestHandlerBootstrap:
         qa_caps = registry.list_by_role("qa")
         assert "qa.test_execution" in qa_caps
 
+    def test_correction_protocol_capabilities_registered(self):
+        """Issue #93: every capability the executor's correction protocol
+        dispatches MUST be in the bootstrap registry. An unregistered
+        capability fails fast with HandlerNotFoundError (~13ms, no LLM
+        call), which masquerades as a queue/agent issue. Catch the
+        wiring gap at startup-test time, not in production cycles.
+        """
+        from squadops.cycles.task_plan import (
+            CORRECTION_TASK_STEPS,
+            REPAIR_TASK_STEPS,
+            WRAPUP_TASK_STEPS,
+        )
+
+        registry = create_handler_registry()
+        capabilities = set(registry.list_capabilities())
+
+        all_dispatched: list[tuple[str, str]] = (
+            CORRECTION_TASK_STEPS + REPAIR_TASK_STEPS + WRAPUP_TASK_STEPS
+        )
+        missing = [cap for cap, _role in all_dispatched if cap not in capabilities]
+        assert not missing, (
+            f"Capabilities dispatched by the executor are not registered "
+            f"in bootstrap.handlers: {missing}. Add them to HANDLER_CONFIGS "
+            f"or remove them from the corresponding *_TASK_STEPS list."
+        )
+
+    def test_qa_validate_repair_registered_for_qa_role(self):
+        """Issue #93 regression: qa.validate_repair must be available to
+        the qa role specifically. Adding it to the registry without the
+        right role would still 13ms-fail when dispatched to eve.
+        """
+        registry = create_handler_registry()
+        qa_caps = registry.list_by_role("qa")
+        assert "qa.validate_repair" in qa_caps
+
 
 class TestSystemBootstrap:
     """Tests for system bootstrap functions."""
