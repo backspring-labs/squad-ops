@@ -38,6 +38,23 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         context_window=131_072,
         default_max_completion=16_384,
     ),
+    # qwen3.6:27b is the uniform model used by the spark-squad-with-builder
+    # profile on DGX Spark. Without a registry entry, get_model_spec()
+    # returned None for spark cycles and the per-model completion clamp at
+    # cycle_tasks._resolve_model_budget never fired — capability defaults
+    # passed through unchecked, so the python_cli fallback (4000 tokens)
+    # silently capped React/fullstack work that should have run under
+    # higher per-capability budgets. 8192 here intentionally clamps the
+    # fullstack_fastapi_react capability (12000) downward: empirically
+    # qwen3.6:27b at ~10 t/s on Spark takes ~13 min for 8K tokens, and
+    # outputs longer than that drift in coherence. Fullstack work should
+    # decompose into smaller per-file dev tasks rather than rely on a
+    # higher single-call ceiling.
+    "qwen3.6:27b": ModelSpec(
+        name="qwen3.6:27b",
+        context_window=131_072,
+        default_max_completion=8_192,
+    ),
     "llama3:70b": ModelSpec(
         name="llama3:70b",
         context_window=131_072,
