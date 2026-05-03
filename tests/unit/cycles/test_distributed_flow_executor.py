@@ -193,6 +193,119 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, r
 # ---------------------------------------------------------------------------
 
 
+class TestBuildFailureEvidence:
+    """Issue #84 follow-up: the executor must hand data.analyze_failure
+    a structured payload that surfaces validation_result, the failed
+    handler's preliminary classification, and per-artifact content
+    snippets — without these, downstream correction-decision picks
+    rewind on patchable content failures (cyc_4178f25a0dff delta_2 →
+    cyc_d1c1a259c983 delta_0 had to guess the failure shape)."""
+
+    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+    def _envelope(self, task_type: str) -> TaskEnvelope:
+        return TaskEnvelope(
+            task_id="t-7",
+            agent_id="bob",
+            cycle_id="cyc_x",
+            pulse_id="pulse",
+            project_id="proj",
+            task_type=task_type,
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="trace",
+            span_id="span",
+            inputs={},
+            metadata={},
+        )
+
+    def _result(self, error: str | None, outputs: dict) -> TaskResult:
+        return TaskResult(
+            task_id="t-7",
+            status="FAILED" if error else "SUCCEEDED",
+            outputs=outputs,
+            error=error,
+        )
+
+    def test_includes_validation_result_when_present(self):
+        envelope = self._envelope("builder.assemble")
+        result = self._result(
+            "validation failed",
+            {
+                "outcome_class": "semantic_failure",
+                "failure_classification": "work_product",
+                "validation_result": {
+                    "passed": False,
+                    "summary": "1 typed check failed",
+                    "missing_components": ["qa_handoff.md::## How to run backend"],
+                    "checks": [
+                        {"name": "regex:how to run backend", "status": "failed"}
+                    ],
+                },
+                "artifacts": [],
+            },
+        )
+
+        evidence = self.DistributedFlowExecutor._build_failure_evidence(
+            envelope, result, prior_plan_deltas_count=0
+        )
+
+        assert evidence["validation_result"]["passed"] is False
+        assert evidence["validation_result"]["missing_components"] == [
+            "qa_handoff.md::## How to run backend"
+        ]
+        assert evidence["validation_result"]["checks"][0]["status"] == "failed"
+        assert evidence["preliminary_failure_classification"] == "work_product"
+
+    def test_truncates_artifact_content_snippets_to_1500_chars(self):
+        envelope = self._envelope("development.develop")
+        big = "x" * 5000
+        result = self._result(
+            "validation failed",
+            {
+                "artifacts": [
+                    {"name": "huge.py", "type": "source", "content": big},
+                    {"name": "small.py", "type": "source", "content": "ok"},
+                ]
+            },
+        )
+
+        evidence = self.DistributedFlowExecutor._build_failure_evidence(
+            envelope, result, prior_plan_deltas_count=2
+        )
+
+        rejected = evidence["rejected_artifacts"]
+        assert rejected[0]["name"] == "huge.py"
+        assert rejected[0]["size"] == 5000  # original size preserved
+        assert len(rejected[0]["content_snippet"]) == 1500  # snippet truncated
+        assert rejected[1]["content_snippet"] == "ok"
+        assert evidence["prior_plan_deltas_count"] == 2
+
+    def test_handles_empty_outputs_without_crashing(self):
+        # Failed handler that returned no outputs at all (e.g. crashed
+        # before assembling anything) — analyze_failure must still get a
+        # well-formed envelope, not a KeyError downstream.
+        envelope = self._envelope("development.develop")
+        result = TaskResult(
+            task_id="t-7", status="FAILED", outputs=None, error="connection reset"
+        )
+
+        evidence = self.DistributedFlowExecutor._build_failure_evidence(
+            envelope, result, prior_plan_deltas_count=0
+        )
+
+        assert evidence["error"] == "connection reset"
+        assert evidence["outcome_class"] == ""
+        assert evidence["preliminary_failure_classification"] == ""
+        assert evidence["validation_result"] == {
+            "passed": None,
+            "summary": "",
+            "missing_components": [],
+            "checks": [],
+        }
+        assert evidence["rejected_artifacts"] == []
+
+
 class TestBuildTaskName:
     """Gantt-friendly Prefect task names: focused-mode envelopes show the
     manifest focus and index instead of N identical role:task_type rows."""
