@@ -83,9 +83,11 @@ CORRECTION_TASK_STEPS: list[tuple[str, str]] = [
     ("governance.correction_decision", "lead"),
 ]
 
-# Repair task steps (SIP-0079 §7.7)
+# Repair task steps (SIP-0079 §7.7).
+# Issue #100: development.correction_repair (NOT development.repair) — the
+# latter belongs to the SIP-0070 pulse-check chain in pulse_verification.py.
 REPAIR_TASK_STEPS: list[tuple[str, str]] = [
-    ("development.repair", "dev"),
+    ("development.correction_repair", "dev"),
     ("qa.validate_repair", "qa"),
 ]
 
@@ -353,8 +355,7 @@ def _replace_build_steps_with_plan(
     errors = plan.validate_against_profile(profile)
     if errors:
         raise CycleError(
-            f"Plan validation failed against profile '{profile.profile_id}': "
-            + "; ".join(errors)
+            f"Plan validation failed against profile '{profile.profile_id}': " + "; ".join(errors)
         )
 
     # Remove static build steps, keep everything else (planning steps)

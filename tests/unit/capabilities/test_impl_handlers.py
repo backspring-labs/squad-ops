@@ -1,7 +1,7 @@
 """Tests for SIP-0079 implementation handlers.
 
 Covers GovernanceEstablishContractHandler, DataAnalyzeFailureHandler,
-GovernanceCorrectionDecisionHandler, DevelopmentRepairHandler,
+GovernanceCorrectionDecisionHandler, DevelopmentCorrectionRepairHandler,
 QAValidateRepairHandler.
 """
 
@@ -22,7 +22,7 @@ from squadops.capabilities.handlers.impl.establish_contract import (
     GovernanceEstablishContractHandler,
 )
 from squadops.capabilities.handlers.impl.repair_handlers import (
-    DevelopmentRepairHandler,
+    DevelopmentCorrectionRepairHandler,
     QAValidateRepairHandler,
 )
 from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
@@ -169,7 +169,9 @@ class TestAnalyzeFailure:
 
         assert result.success is False
         assert result.outputs["outcome_class"] == TaskOutcome.NEEDS_REPLAN
-        assert "rejected" in (result.error or "").lower() or "schema" in (result.error or "").lower()
+        assert (
+            "rejected" in (result.error or "").lower() or "schema" in (result.error or "").lower()
+        )
 
     async def test_empty_analysis_summary_rejected(self, mock_context):
         """Issue #84: ``analysis_summary: ""`` is the failure mode that
@@ -315,11 +317,12 @@ class TestRepairHandlers:
             return_value=ChatMessage(role="assistant", content="Repair applied"),
         )
 
-        h = DevelopmentRepairHandler()
+        h = DevelopmentCorrectionRepairHandler()
         result = await h.handle(mock_context, {"prd": "test"})
 
         assert result.success is True
         assert result.outputs["role"] == "dev"
+        assert h.capability_id == "development.correction_repair"
 
     async def test_validate_repair_produces_output(self, mock_context):
         _set_llm_mock(
