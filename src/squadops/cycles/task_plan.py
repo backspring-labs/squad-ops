@@ -86,10 +86,40 @@ CORRECTION_TASK_STEPS: list[tuple[str, str]] = [
 # Repair task steps (SIP-0079 §7.7).
 # Issue #100: development.correction_repair (NOT development.repair) — the
 # latter belongs to the SIP-0070 pulse-check chain in pulse_verification.py.
+#
+# Default sequence used when the failed task type has no specialized repair
+# pair registered below. Kept as a module constant for direct import in
+# tests and for use as the fallback inside `repair_steps_for`.
 REPAIR_TASK_STEPS: list[tuple[str, str]] = [
     ("development.correction_repair", "dev"),
     ("qa.validate_repair", "qa"),
 ]
+
+# Specialized repair sequences keyed by the failed task's task_type. The
+# correction loop dispatches the right pair instead of always running the
+# dev-flavored default — without this mapping a failed `builder.assemble`
+# task gets repaired by Neo (dev) who has no useful context, and Bob
+# (builder) is silently bypassed even though the failed work is his.
+_REPAIR_STEPS_BY_FAILED_TASK_TYPE: dict[str, list[tuple[str, str]]] = {
+    "development.develop": REPAIR_TASK_STEPS,
+    "builder.assemble": [
+        ("builder.assemble_repair", "builder"),
+        ("qa.validate_repair", "qa"),
+    ],
+}
+
+
+def repair_steps_for(failed_task_type: str) -> list[tuple[str, str]]:
+    """Return the repair (task_type, role) sequence for a failed task.
+
+    Looked up by the failed task's `task_type`, which is authoritative —
+    the LLM-emitted `affected_task_types` field on a PlanDelta is
+    free-text and was previously the only routing signal, so a builder
+    failure tagged `["QA Handoff"]` would mis-route to the dev repair
+    handler. Falls back to `REPAIR_TASK_STEPS` (dev + qa) for any task
+    type without a specialized pair.
+    """
+    return _REPAIR_STEPS_BY_FAILED_TASK_TYPE.get(failed_task_type, REPAIR_TASK_STEPS)
 
 # Wrap-up task steps (SIP-0080 §7.1)
 WRAPUP_TASK_STEPS: list[tuple[str, str]] = [

@@ -45,6 +45,7 @@ from squadops.capabilities.handlers.impl.establish_contract import (
     GovernanceEstablishContractHandler,
 )
 from squadops.capabilities.handlers.impl.repair_handlers import (
+    BuilderAssembleRepairHandler,
     DevelopmentCorrectionRepairHandler,
     QAValidateRepairHandler,
 )
@@ -128,6 +129,7 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     # handlers.repair_tasks.DevelopmentRepairHandler — see issue #100 for
     # the rationale behind the split into `development.correction_repair`.
     (DevelopmentCorrectionRepairHandler, ("dev",)),
+    (BuilderAssembleRepairHandler, ("builder",)),
     (QAValidateRepairHandler, ("qa",)),
     # Planning handlers (SIP-0078: Planning Workload Protocol)
     (DataResearchContextHandler, ("data",)),

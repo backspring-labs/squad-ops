@@ -21,6 +21,7 @@ from squadops.cycles.task_plan import (
     IMPLEMENTATION_TASK_STEPS,
     REPAIR_TASK_STEPS,
     generate_task_plan,
+    repair_steps_for,
 )
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -121,6 +122,26 @@ class TestCorrectionAndRepairSteps:
             ("development.correction_repair", "dev"),
             ("qa.validate_repair", "qa"),
         ]
+
+
+class TestRepairStepsFor:
+    def test_dev_develop_uses_dev_repair_pair(self):
+        assert repair_steps_for("development.develop") == [
+            ("development.correction_repair", "dev"),
+            ("qa.validate_repair", "qa"),
+        ]
+
+    def test_builder_assemble_routes_to_builder_repair_handler(self):
+        # Regression: previously a failed builder.assemble silently routed
+        # to development.correction_repair (Neo) because the executor
+        # always looped REPAIR_TASK_STEPS.
+        steps = repair_steps_for("builder.assemble")
+        assert steps[0] == ("builder.assemble_repair", "builder")
+        assert steps[-1] == ("qa.validate_repair", "qa")
+
+    def test_unknown_failed_task_type_falls_back_to_dev_pair(self):
+        assert repair_steps_for("strategy.frame_objective") == REPAIR_TASK_STEPS
+        assert repair_steps_for("") == REPAIR_TASK_STEPS
 
 
 class TestDeterministicTaskIds:

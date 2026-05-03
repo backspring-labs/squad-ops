@@ -193,6 +193,26 @@ class _CycleTaskHandler(CapabilityHandler):
             "prior_outputs": self._format_prior_outputs(prior_outputs),
         }
 
+    def _build_artifacts_from_content(self, content: str) -> list[dict[str, Any]]:
+        """Build artifact list from LLM response content.
+
+        Default wraps the full response as a single markdown document under
+        ``self._artifact_name``. Handlers whose LLM emits multi-file source
+        output (fenced code blocks, e.g. development.develop and
+        development.correction_repair) override this to extract per-file
+        artifacts via ``extract_fenced_files``. The default exists so the
+        majority of handlers (that produce narrative deliverables) keep
+        working without each one re-implementing the wrap.
+        """
+        return [
+            {
+                "name": self._artifact_name,
+                "content": content,
+                "media_type": "text/markdown",
+                "type": "document",
+            },
+        ]
+
     def _fail_result(
         self,
         start_time: float,
@@ -463,14 +483,7 @@ class _CycleTaskHandler(CapabilityHandler):
         outputs = {
             "summary": f"[{self._role}] {prd_summary}",
             "role": self._role,
-            "artifacts": [
-                {
-                    "name": self._artifact_name,
-                    "content": content,
-                    "media_type": "text/markdown",
-                    "type": "document",
-                },
-            ],
+            "artifacts": self._build_artifacts_from_content(content),
             "prompt_provenance": provenance,
         }
 
