@@ -123,18 +123,11 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (GovernanceEstablishContractHandler, ("lead",)),
     (DataAnalyzeFailureHandler, ("data",)),
     (GovernanceCorrectionDecisionHandler, ("lead",)),
-    # Correction-loop repair pair (SIP-0079 §7.7).
-    # Distinct from the SIP-0070 `development.repair` registered above
-    # via handlers.repair_tasks.DevelopmentRepairHandler. See issue #100.
+    # Correction-loop repair pair (SIP-0079 §7.7). Distinct from the
+    # SIP-0070 `development.repair` registered above via
+    # handlers.repair_tasks.DevelopmentRepairHandler — see issue #100 for
+    # the rationale behind the split into `development.correction_repair`.
     (DevelopmentCorrectionRepairHandler, ("dev",)),
-    # Correction-loop repair validator (SIP-0079 §7.7).
-    # NOTE: `development.repair` is registered above via the SIP-0070
-    # pulse-check version (handlers.repair_tasks.DevelopmentRepairHandler)
-    # rather than the cycle-task version in impl/repair_handlers.py.
-    # Both classes share `_capability_id = "development.repair"`; the
-    # pulse-check one wins because it is imported and registered above.
-    # Issue #93 follow-up: decide which implementation should own
-    # `development.repair` for the correction loop and remove the duplicate.
     (QAValidateRepairHandler, ("qa",)),
     # Planning handlers (SIP-0078: Planning Workload Protocol)
     (DataResearchContextHandler, ("data",)),
