@@ -84,6 +84,17 @@ class BuildProfile:
 
         The file list is derived from `required_files`/`optional_files` so
         the prompt stays in lockstep with what the validator enforces.
+
+        Cycle-1 evidence (cyc_11367982fd06, 2026-05-03): the build profile
+        validator and the plan author can disagree about which qa_handoff
+        sections are required. The plan task description named different
+        sections (e.g. "Implemented Scope", "Known Limitations") than the
+        validator's hard-coded set. Bob followed the more specific task
+        description and the validator rejected on a missing canonical
+        section. We surface the validator's section list as
+        "non-negotiable" with a worked skeleton so the user prompt's task
+        description cannot quietly override it. Additional sections
+        requested by the task are welcome on top of the required ones.
         """
         required_lines = "\n".join(f"- `{name}`" for name in self.required_files)
         optional_block = ""
@@ -91,14 +102,29 @@ class BuildProfile:
             optional_lines = "\n".join(f"- `{name}`" for name in self.optional_files)
             optional_block = f"\n\n## Optional artifacts (emit only if needed)\n\n{optional_lines}"
         qa_lines = "\n".join(f"- `{name}`" for name in self.qa_handoff_expectations)
+        skeleton_sections = "\n\n".join(
+            f"{heading}\n\n<content>" for heading in self.qa_handoff_expectations
+        )
 
         return (
             f"{self.system_prompt_template}\n\n"
             "## Required artifacts (you MUST emit every file in this list)\n\n"
             f"{required_lines}"
             f"{optional_block}\n\n"
-            "## qa_handoff.md required sections\n\n"
-            f"{qa_lines}"
+            "## qa_handoff.md required sections (NON-NEGOTIABLE)\n\n"
+            f"{qa_lines}\n\n"
+            "These section headings are **mandatory** and must appear in "
+            "`qa_handoff.md` **exactly as written above**, including the "
+            "leading `## ` and the exact casing. The validator does literal "
+            "substring matching with a small set of fallbacks; paraphrased "
+            "or reworded headings will be rejected. The user prompt's task "
+            "description may ask for additional sections — include those "
+            "after the required ones, but the required headings above must "
+            "always be present.\n\n"
+            "Skeleton (copy these headings exactly, then fill in content):\n\n"
+            "```markdown:qa_handoff.md\n"
+            f"{skeleton_sections}\n"
+            "```"
         )
 
 
