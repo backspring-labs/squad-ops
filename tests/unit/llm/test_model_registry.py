@@ -46,3 +46,13 @@ class TestGetModelSpec:
     def test_unknown_returns_none(self):
         """'unknown' (LLMPort.default_model default) returns None."""
         assert get_model_spec("unknown") is None
+
+    def test_spark_squad_model_registered(self):
+        # Regression: spark-squad-with-builder runs uniformly on
+        # qwen3.6:27b. Missing this entry caused the per-model completion
+        # clamp to no-op, so the python_cli fallback (4000 tokens) silently
+        # capped React/fullstack dev work in cyc_4178f25a0dff (cycle 2).
+        spec = get_model_spec("qwen3.6:27b")
+        assert spec is not None
+        assert spec.context_window == 131_072
+        assert spec.default_max_completion == 8_192
