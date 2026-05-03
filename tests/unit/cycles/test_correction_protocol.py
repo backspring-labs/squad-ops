@@ -511,31 +511,40 @@ class TestPlanDelta:
     async def test_plan_delta_stored(
         self, executor, mock_queue, mock_registry, mock_vault, mock_event_bus
     ):
-        """Correction protocol stores a plan_delta artifact."""
+        """Correction protocol stores a plan_delta artifact whose
+        classification/analysis_summary come from data.analyze_failure
+        and decision_rationale comes from governance.correction_decision.
+
+        Regression for issue #95: the lead's correction_decision handler does
+        not echo back classification/analysis_summary, so previously the
+        executor's reused `correction_outputs` variable lost those fields by
+        the time the PlanDelta was constructed. Each handler's outputs must be
+        sourced from the right step.
+        """
+        import json
+
         semantic_outputs = {
             "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
             "role": "strat",
         }
+        # Mirrors GovernanceCorrectionDecisionHandler outputs in prod:
+        # NO classification or analysis_summary keys.
         correction_decision = {
             "summary": "abort",
             "role": "lead",
             "correction_path": "abort",
             "decision_rationale": "Cannot fix",
             "affected_task_types": [],
-            "classification": "execution",
-            "analysis_summary": "Something broke",
+        }
+        analyze_failure = {
+            "classification": "work_product",
+            "analysis_summary": "Bob produced output without qa_handoff.md",
+            "contributing_factors": ["missing required deployment file"],
+            "role": "data",
         }
         script = [
             ("FAILED", semantic_outputs, "bad"),
-            (
-                "SUCCEEDED",
-                {
-                    "classification": "execution",
-                    "analysis_summary": "broke",
-                    "role": "data",
-                },
-                None,
-            ),
+            ("SUCCEEDED", analyze_failure, None),
             ("SUCCEEDED", correction_decision, None),
         ]
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
@@ -546,14 +555,18 @@ class TestPlanDelta:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # Check that a plan_delta artifact was stored
         store_calls = mock_vault.store.call_args_list
         delta_stores = [c for c in store_calls if c.args[0].artifact_type == "plan_delta"]
         assert len(delta_stores) == 1
 
-        delta_ref = delta_stores[0].args[0]
-        assert delta_ref.artifact_type == "plan_delta"
+        delta_ref, delta_content = delta_stores[0].args
         assert "plan_delta" in delta_ref.filename
+
+        delta = json.loads(delta_content.decode())
+        assert delta["failure_classification"] == "work_product"
+        assert delta["analysis_summary"] == "Bob produced output without qa_handoff.md"
+        assert delta["decision_rationale"] == "Cannot fix"
+        assert delta["correction_path"] == "abort"
 
 
 # ---------------------------------------------------------------------------

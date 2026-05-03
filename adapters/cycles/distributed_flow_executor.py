@@ -1952,7 +1952,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
             "outcome_class": (result.outputs or {}).get("outcome_class", ""),
         }
 
-        correction_outputs: dict[str, Any] = {}
+        # Issue #95: capture each correction step's outputs in its own variable
+        # so the analyzer's classification/analysis_summary survive past the
+        # subsequent governance.correction_decision step (which doesn't carry
+        # those fields forward). Reusing a single variable used to mask the
+        # analyzer's diagnosis with defaults at PlanDelta time.
+        analysis_outputs: dict[str, Any] = {}
+        decision_outputs: dict[str, Any] = {}
         corr_correlation_id = uuid4().hex
 
         for step_idx, (task_type, role) in enumerate(CORRECTION_TASK_STEPS):
@@ -1965,8 +1971,8 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 "prior_outputs": prior_outputs,
                 "artifact_refs": list(all_artifact_refs),
             }
-            if correction_outputs:
-                corr_inputs["failure_analysis"] = correction_outputs
+            if analysis_outputs:
+                corr_inputs["failure_analysis"] = analysis_outputs
 
             corr_envelope = TaskEnvelope(
                 task_id=corr_task_id,
@@ -2035,13 +2041,19 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     payload={"task_type": task_type, "error": corr_result.error or ""},
                 )
 
-            # Collect correction task outputs
-            correction_outputs = {
+            # Collect correction task outputs into the right named bucket so
+            # downstream PlanDelta construction reads each field from the
+            # handler that owns it (issue #95).
+            step_outputs = {
                 k: v for k, v in (corr_result.outputs or {}).items() if k != "artifacts"
             }
+            if task_type == "data.analyze_failure":
+                analysis_outputs = step_outputs
+            elif task_type == "governance.correction_decision":
+                decision_outputs = step_outputs
 
         # 4. Read correction_path
-        correction_path = correction_outputs.get("correction_path", "abort")
+        correction_path = decision_outputs.get("correction_path", "abort")
 
         # 5. Emit CORRECTION_DECIDED
         self._cycle_event_bus.emit(
@@ -2051,7 +2063,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
             context={"cycle_id": cycle.cycle_id, "run_id": run_id},
             payload={
                 "correction_path": correction_path,
-                "decision_rationale": correction_outputs.get("decision_rationale", ""),
+                "decision_rationale": decision_outputs.get("decision_rationale", ""),
             },
         )
 
@@ -2061,11 +2073,11 @@ class DistributedFlowExecutor(FlowExecutionPort):
             run_id=run_id,
             correction_path=correction_path,
             trigger=f"task_failure:{envelope.task_type}",
-            failure_classification=correction_outputs.get("classification", "unknown"),
-            analysis_summary=correction_outputs.get("analysis_summary", "N/A"),
-            decision_rationale=correction_outputs.get("decision_rationale", "N/A"),
-            changes=tuple(correction_outputs.get("affected_task_types", [])),
-            affected_task_types=tuple(correction_outputs.get("affected_task_types", [])),
+            failure_classification=analysis_outputs.get("classification", "unknown"),
+            analysis_summary=analysis_outputs.get("analysis_summary", "N/A"),
+            decision_rationale=decision_outputs.get("decision_rationale", "N/A"),
+            changes=tuple(decision_outputs.get("affected_task_types", [])),
+            affected_task_types=tuple(decision_outputs.get("affected_task_types", [])),
             created_at=datetime.now(UTC),
         )
         delta_content = json.dumps(delta.to_dict(), default=str).encode()
@@ -2094,7 +2106,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 repair_inputs: dict[str, Any] = {
                     "prd": cycle.prd_ref,
                     "failure_evidence": failure_evidence,
-                    "correction_decision": correction_outputs,
+                    "correction_decision": decision_outputs,
                     "prior_outputs": prior_outputs,
                     "artifact_refs": list(all_artifact_refs),
                 }
