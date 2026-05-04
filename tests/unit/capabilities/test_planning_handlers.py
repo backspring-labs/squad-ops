@@ -427,6 +427,128 @@ class TestLLMCallVerification:
 
 
 # ---------------------------------------------------------------------------
+# Issue #112 (real fix): PRD-coverage discipline must be wired into the
+# framing-time manifest prompt — the LLM call inside _produce_manifest,
+# which is the actual prompt that produces implementation_plan.yaml.
+# Cycle 5 (cyc_7febd710e565) proved that patching only
+# cycle_tasks.py:_MANIFEST_PROMPT_EXTENSION leaves this prompt untouched.
+# ---------------------------------------------------------------------------
+
+
+class TestPRDCoverageDisciplineReachesManifestPrompt:
+    _MANIFEST_BLOCK = (
+        "```yaml:implementation_plan.yaml\n"
+        "version: 1\n"
+        "project_id: test\n"
+        "cycle_id: cyc_test\n"
+        "prd_hash: abc\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: development.develop\n"
+        "    role: dev\n"
+        '    focus: "f"\n'
+        '    description: "d"\n'
+        '    expected_artifacts: ["x.py"]\n'
+        "    acceptance_criteria: []\n"
+        "    depends_on: []\n"
+        "  - task_index: 1\n"
+        "    task_type: development.develop\n"
+        "    role: dev\n"
+        '    focus: "f"\n'
+        '    description: "d"\n'
+        '    expected_artifacts: ["y.py"]\n'
+        "    acceptance_criteria: []\n"
+        "    depends_on: [0]\n"
+        "  - task_index: 2\n"
+        "    task_type: qa.test\n"
+        "    role: qa\n"
+        '    focus: "f"\n'
+        '    description: "d"\n'
+        '    expected_artifacts: ["z.py"]\n'
+        "    acceptance_criteria: []\n"
+        "    depends_on: [0, 1]\n"
+        "summary:\n"
+        "  total_dev_tasks: 2\n"
+        "  total_qa_tasks: 1\n"
+        "  total_tasks: 3\n"
+        "  estimated_layers: [a]\n"
+        "```\n"
+    )
+
+    def test_planning_tasks_imports_shared_constant(self):
+        """Defense against a future refactor that drops the import."""
+        from squadops.capabilities.handlers import planning_tasks
+
+        assert hasattr(planning_tasks, "_PRD_COVERAGE_DISCIPLINE_SECTION"), (
+            "planning_tasks must import _PRD_COVERAGE_DISCIPLINE_SECTION — without "
+            "it the framing-time manifest prompt loses PRD-coverage discipline and "
+            "regresses to the cycle-5 defect (cyc_7febd710e565)"
+        )
+
+    async def test_manifest_prompt_includes_coverage_discipline(self):
+        """End-to-end: when GovernanceAssessReadinessHandler runs with
+        implementation_plan enabled, the SECOND LLM call (the manifest
+        producer) must include the discipline text. The first call
+        (planning artifact) does not."""
+        ctx = _make_context()
+        # Two responses: first is planning artifact, second is the manifest.
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=VALID_PLANNING_ARTIFACT),
+            MagicMock(content=self._MANIFEST_BLOCK),
+        ]
+
+        h = GovernanceAssessReadinessHandler()
+        await h.handle(
+            ctx,
+            {
+                "prd": "Build app. qa_handoff.md must contain ## Expected Behavior.",
+                "resolved_config": {"implementation_plan": True},
+                "profile_roles": ["lead", "dev", "qa"],
+            },
+        )
+
+        calls = ctx.ports.llm.chat_stream_with_usage.call_args_list
+        assert len(calls) == 2, f"expected 2 LLM calls, got {len(calls)}"
+
+        # First call = planning artifact prompt; should NOT mention coverage discipline
+        first_user = calls[0][0][0][1].content
+        assert "PRD Coverage Discipline" not in first_user
+
+        # Second call = manifest prompt; MUST mention coverage discipline
+        second_user = calls[1][0][0][1].content
+        assert "PRD Coverage Discipline" in second_user, (
+            "manifest prompt missing PRD coverage discipline — issue #112 regression"
+        )
+        # And the worked example case the discipline cites — pinning the
+        # specific defect class so a future prompt rewrite that strips
+        # the qa_handoff example fails loudly.
+        assert "## Expected Behavior" in second_user
+        assert "qa_handoff.md" in second_user
+
+    async def test_manifest_prompt_omits_discipline_when_implementation_plan_disabled(self):
+        """Defensive: when implementation_plan is off, _produce_manifest
+        is not called — only one LLM call (planning artifact), and the
+        discipline text shouldn't appear (it would be misleading without
+        a manifest to author)."""
+        ctx = _make_context(llm_response=VALID_PLANNING_ARTIFACT)
+
+        h = GovernanceAssessReadinessHandler()
+        await h.handle(
+            ctx,
+            {
+                "prd": "Build app",
+                "resolved_config": {"implementation_plan": False},
+                "profile_roles": ["lead", "dev", "qa"],
+            },
+        )
+
+        calls = ctx.ports.llm.chat_stream_with_usage.call_args_list
+        assert len(calls) == 1
+        user_msg = calls[0][0][0][1].content
+        assert "PRD Coverage Discipline" not in user_msg
+
+
+# ---------------------------------------------------------------------------
 # 8. GovernanceIncorporateFeedbackHandler — custom prompt and dual artifacts
 # ---------------------------------------------------------------------------
 
@@ -861,13 +983,9 @@ class TestProduceManifestRetry:
     async def test_builder_guidance_added_when_builder_role_present(self):
         """When profile includes builder, prompt directs Max to use builder.assemble."""
         ctx = _make_context(_VALID_MANIFEST_YAML)
-        await self._call_produce(
-            ctx, profile_roles=["dev", "qa", "lead", "builder"]
-        )
+        await self._call_produce(ctx, profile_roles=["dev", "qa", "lead", "builder"])
 
-        user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][
-            1
-        ].content
+        user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content
         assert "`builder.assemble`" in user_prompt
         assert "AFTER all `development.develop`" in user_prompt
         assert "BEFORE any `qa.test`" in user_prompt
@@ -885,9 +1003,7 @@ class TestProduceManifestRetry:
         ctx = _make_context(_VALID_MANIFEST_YAML)
         await self._call_produce(ctx, profile_roles=["dev", "qa", "lead"])
 
-        user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][
-            1
-        ].content
+        user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content
         assert "task_type: builder.assemble" not in user_prompt
         assert "total_builder_tasks" not in user_prompt
         assert "total_tasks: N+M" in user_prompt
