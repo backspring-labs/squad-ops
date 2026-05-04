@@ -52,8 +52,8 @@ from squadops.capabilities.handlers.impl.repair_handlers import (
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
-    GovernanceAssessReadinessHandler,
     GovernanceIncorporateFeedbackHandler,
+    GovernanceReviewPlanHandler,
     QADefineTestStrategyHandler,
     QAValidateRefinementHandler,
     StrategyFrameObjectiveHandler,
@@ -136,7 +136,7 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (StrategyFrameObjectiveHandler, ("strat",)),
     (DevelopmentDesignPlanHandler, ("dev",)),
     (QADefineTestStrategyHandler, ("qa",)),
-    (GovernanceAssessReadinessHandler, ("lead",)),
+    (GovernanceReviewPlanHandler, ("lead",)),
     # Refinement handlers (SIP-0078: Planning Workload Protocol)
     (GovernanceIncorporateFeedbackHandler, ("lead",)),
     (QAValidateRefinementHandler, ("qa",)),

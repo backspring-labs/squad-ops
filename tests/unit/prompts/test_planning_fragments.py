@@ -46,8 +46,8 @@ PLANNING_FRAGMENTS = [
         "roles": ["qa"],
     },
     {
-        "fragment_id": "task_type.governance.assess_readiness",
-        "path": "shared/task_type/task_type.governance.assess_readiness.md",
+        "fragment_id": "task_type.governance.review_plan",
+        "path": "shared/task_type/task_type.governance.review_plan.md",
         "layer": "task_type",
         "roles": ["lead"],
     },
@@ -73,7 +73,7 @@ def _load_fragment(rel_path: str) -> tuple[dict, str]:
     m = HEADER_PATTERN.match(raw)
     assert m, f"No YAML frontmatter in {rel_path}"
     header = yaml.safe_load(m.group(1))
-    content = raw[m.end():].strip()
+    content = raw[m.end() :].strip()
     return header, content
 
 
@@ -132,9 +132,9 @@ class TestPlanningFragmentsManifest:
     def test_manifest_entry_exists(self, spec):
         manifest = _load_manifest()
         entries = [
-            f for f in manifest["fragments"]
-            if f["fragment_id"] == spec["fragment_id"]
-            and f["path"] == spec["path"]
+            f
+            for f in manifest["fragments"]
+            if f["fragment_id"] == spec["fragment_id"] and f["path"] == spec["path"]
         ]
         assert len(entries) == 1, (
             f"Expected exactly 1 manifest entry for {spec['fragment_id']}, found {len(entries)}"
@@ -152,9 +152,9 @@ class TestPlanningFragmentsManifest:
 
         manifest = _load_manifest()
         entry = next(
-            f for f in manifest["fragments"]
-            if f["fragment_id"] == spec["fragment_id"]
-            and f["path"] == spec["path"]
+            f
+            for f in manifest["fragments"]
+            if f["fragment_id"] == spec["fragment_id"] and f["path"] == spec["path"]
         )
         assert actual_hash == entry["sha256"], (
             f"Hash mismatch for {spec['fragment_id']}: "

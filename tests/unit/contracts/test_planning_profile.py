@@ -39,7 +39,7 @@ class TestPlanningProfileGate:
     def test_gate_fires_after_assess_readiness(self):
         profile = load_profile("framing")
         gate = profile.defaults["task_flow_policy"]["gates"][0]
-        assert "governance.assess_readiness" in gate["after_task_types"]
+        assert "governance.review_plan" in gate["after_task_types"]
 
 
 class TestPlanningProfileWorkloadSequence:

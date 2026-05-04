@@ -85,8 +85,8 @@ fragments:
   roles:
   - qa
   sha256: 51e353106e276a8486f9f01d1755830d7ad531cc891bc6f30525e08232286d5e
-- fragment_id: task_type.governance.assess_readiness
-  path: shared/task_type/task_type.governance.assess_readiness.md
+- fragment_id: task_type.governance.review_plan
+  path: shared/task_type/task_type.governance.review_plan.md
   layer: task_type
   roles:
   - lead
