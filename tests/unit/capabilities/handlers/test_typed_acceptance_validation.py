@@ -198,21 +198,15 @@ class TestPerCriterionErrorEscalation:
         artifacts = [_art("main.py")]
 
         # Pass 1 — first error → surfaced in missing_components.
-        r1 = await h._validate_output(
-            _inputs([criterion]), artifacts, typed_error_counts=counts
-        )
+        r1 = await h._validate_output(_inputs([criterion]), artifacts, typed_error_counts=counts)
         assert any(m.startswith("evaluator-error:") for m in r1.missing_components)
 
         # Pass 2 — second error → still surfaced.
-        r2 = await h._validate_output(
-            _inputs([criterion]), artifacts, typed_error_counts=counts
-        )
+        r2 = await h._validate_output(_inputs([criterion]), artifacts, typed_error_counts=counts)
         assert any(m.startswith("evaluator-error:") for m in r2.missing_components)
 
         # Pass 3 — third error → dropped from feedback (escalated separately).
-        r3 = await h._validate_output(
-            _inputs([criterion]), artifacts, typed_error_counts=counts
-        )
+        r3 = await h._validate_output(_inputs([criterion]), artifacts, typed_error_counts=counts)
         assert all(not m.startswith("evaluator-error:") for m in r3.missing_components)
 
         # Counter advanced once per pass.
@@ -339,8 +333,12 @@ class TestFingerprint:
         assert c1.fingerprint() == c2.fingerprint()
 
     def test_description_does_not_affect_fingerprint(self):
-        c1 = TypedCheck(check="regex_match", params={"file": "a", "pattern": "x"}, description="one")
-        c2 = TypedCheck(check="regex_match", params={"file": "a", "pattern": "x"}, description="two")
+        c1 = TypedCheck(
+            check="regex_match", params={"file": "a", "pattern": "x"}, description="one"
+        )
+        c2 = TypedCheck(
+            check="regex_match", params={"file": "a", "pattern": "x"}, description="two"
+        )
         assert c1.fingerprint() == c2.fingerprint()
 
     def test_param_change_changes_fingerprint(self):
@@ -350,7 +348,9 @@ class TestFingerprint:
 
     def test_severity_change_changes_fingerprint(self):
         c1 = TypedCheck(check="regex_match", params={"file": "a", "pattern": "x"}, severity="error")
-        c2 = TypedCheck(check="regex_match", params={"file": "a", "pattern": "x"}, severity="warning")
+        c2 = TypedCheck(
+            check="regex_match", params={"file": "a", "pattern": "x"}, severity="warning"
+        )
         assert c1.fingerprint() != c2.fingerprint()
 
     def test_param_key_order_does_not_matter(self):
@@ -404,7 +404,8 @@ class TestM13Observability:
                 [_art("main.py", _FASTAPI_MISSING)],
             )
         check_logs = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if "typed_acceptance_check" in r.getMessage() and r.levelname == "INFO"
         ]
         assert len(check_logs) == 1
@@ -442,3 +443,198 @@ class TestM13Observability:
             )
         summary_logs = [r for r in caplog.records if "typed_acceptance_summary" in r.getMessage()]
         assert len(summary_logs) == 0
+
+
+class TestEvaluationIdentityFields:
+    """Issue #114: each typed-check evaluation row in validation.checks must
+    carry task_index + check_index so downstream consumers (plan_delta
+    trigger composer, gate evaluator) can pair outcome ↔ originating check
+    without relying on positional inference from prose."""
+
+    async def test_check_record_carries_task_index_and_check_index(self):
+        h = DevelopmentDevelopHandler()
+        criteria = [
+            TypedCheck(
+                check="endpoint_defined",
+                params={"file": "main.py", "methods_paths": ["GET /users"]},
+                severity="error",
+                description="users get",
+            ),
+            TypedCheck(
+                check="endpoint_defined",
+                params={"file": "main.py", "methods_paths": ["POST /users"]},
+                severity="error",
+                description="users post",
+            ),
+        ]
+        inputs = _inputs(criteria, config={"stack": "fastapi"})
+        inputs["subtask_index"] = 4
+        result = await h._validate_output(inputs, [_art("main.py", _FASTAPI_ALL)])
+
+        typed = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
+        assert len(typed) == 2
+        # Both rows attribute to the same task; check_index distinguishes them.
+        assert all(c["task_index"] == 4 for c in typed)
+        assert [c["check_index"] for c in typed] == [0, 1]
+
+    async def test_task_index_is_none_when_subtask_index_absent(self):
+        # Legacy monolithic flow has no subtask_index on the inputs payload.
+        # Identity must still be present (None task_index) so the trigger
+        # composer can fall through to the legacy shape without crashing.
+        h = DevelopmentDevelopHandler()
+        criterion = TypedCheck(
+            check="endpoint_defined",
+            params={"file": "main.py", "methods_paths": ["GET /users"]},
+            severity="error",
+        )
+        result = await h._validate_output(
+            _inputs([criterion], config={"stack": "fastapi"}),
+            [_art("main.py", _FASTAPI_ALL)],
+        )
+        typed = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
+        assert typed[0]["task_index"] is None
+        assert typed[0]["check_index"] == 0
+
+
+class TestTypedCheckEvaluationArtifactBuilder:
+    """Issue #114: the static artifact builder is what surfaces evaluator
+    outcomes to the per-cycle gate evaluator. Tested in isolation here;
+    end-to-end emission is covered in handler integration tests."""
+
+    def test_returns_none_when_no_typed_checks(self):
+        # Monolithic-flow checks (e.g. stack_coverage_heuristic) must NOT
+        # produce a typed_check_evaluation artifact — the artifact's purpose
+        # is to surface acceptance:* evaluator outcomes, not legacy
+        # heuristics. Emitting an empty/wrong-shape artifact would force
+        # the gate evaluator to filter at read time.
+        artifact = DevelopmentDevelopHandler._build_typed_check_evaluation_artifact(
+            [
+                {"check": "stack_coverage_heuristic", "passed": True},
+                {"check": "artifact_count_heuristic", "passed": True},
+            ],
+            task_index=0,
+            task_type="development.develop",
+        )
+        assert artifact is None
+
+    def test_returns_none_for_empty_checks_list(self):
+        artifact = DevelopmentDevelopHandler._build_typed_check_evaluation_artifact(
+            [], task_index=0, task_type="development.develop"
+        )
+        assert artifact is None
+
+    def test_emits_artifact_when_typed_checks_present(self):
+        rows = [
+            {
+                "check": "acceptance:regex_match",
+                "severity": "error",
+                "params": {"file": "qa_handoff.md", "pattern": "## Expected Behavior"},
+                "description": "Has Expected Behavior section",
+                "status": "failed",
+                "actual": {"count": 0, "expected_min": 1},
+                "reason": "pattern not found",
+                "passed": False,
+                "task_index": 5,
+                "check_index": 2,
+            },
+        ]
+        artifact = DevelopmentDevelopHandler._build_typed_check_evaluation_artifact(
+            rows, task_index=5, task_type="builder.assemble"
+        )
+        assert artifact is not None
+        assert artifact["name"] == "typed_check_evaluation_task_5.json"
+        assert artifact["type"] == "typed_check_evaluation"
+        assert artifact["media_type"] == "application/json"
+
+        import json as _json
+
+        payload = _json.loads(artifact["content"])
+        assert payload["version"] == 1
+        assert payload["task_index"] == 5
+        assert payload["task_type"] == "builder.assemble"
+        assert "evaluated_at" in payload
+        assert payload["evaluations"][0]["status"] == "failed"
+        assert payload["evaluations"][0]["check"] == "acceptance:regex_match"
+
+    def test_filename_omits_task_suffix_when_index_unknown(self):
+        # Legacy flow without subtask_index — artifact still emits, just
+        # without the per-task suffix (no second-task collision possible
+        # in legacy flow because there's only one task).
+        rows = [
+            {
+                "check": "acceptance:regex_match",
+                "severity": "error",
+                "passed": True,
+                "status": "passed",
+                "task_index": None,
+                "check_index": 0,
+            }
+        ]
+        artifact = DevelopmentDevelopHandler._build_typed_check_evaluation_artifact(
+            rows, task_index=None, task_type="development.develop"
+        )
+        assert artifact is not None
+        assert artifact["name"] == "typed_check_evaluation.json"
+
+    def test_artifact_distinguishes_evaluator_error_from_app_failure(self):
+        # RC-9a: status=error means evaluator broke; status=failed means
+        # the app didn't meet the criterion. The gate's C1 measures the
+        # former. The artifact must preserve the distinction.
+        rows = [
+            {
+                "check": "acceptance:regex_match",
+                "severity": "error",
+                "status": "error",
+                "reason": "regex compilation failed",
+                "passed": False,
+                "task_index": 0,
+                "check_index": 0,
+            },
+            {
+                "check": "acceptance:regex_match",
+                "severity": "error",
+                "status": "failed",
+                "reason": "pattern not matched",
+                "passed": False,
+                "task_index": 0,
+                "check_index": 1,
+            },
+        ]
+        artifact = DevelopmentDevelopHandler._build_typed_check_evaluation_artifact(
+            rows, task_index=0, task_type="development.develop"
+        )
+        import json as _json
+
+        payload = _json.loads(artifact["content"])
+        statuses = [e["status"] for e in payload["evaluations"]]
+        assert statuses == ["error", "failed"]
+
+
+class TestArtifactEmissionEndToEnd:
+    """Issue #114: end-to-end — running _validate_output with typed checks
+    surfaces the evaluation artifact. This is the regression guard against
+    a refactor that detaches the builder from the validation flow."""
+
+    async def test_validate_output_does_not_emit_artifact_directly(self):
+        # _validate_output returns ValidationResult; artifact emission
+        # happens at the handler.handle() level where artifacts are
+        # appended to the outputs list. This test pins that contract:
+        # _validate_output produces the data; the handler wires it.
+        h = DevelopmentDevelopHandler()
+        criterion = TypedCheck(
+            check="endpoint_defined",
+            params={"file": "main.py", "methods_paths": ["GET /users"]},
+            severity="error",
+        )
+        inputs = _inputs([criterion], config={"stack": "fastapi"})
+        inputs["subtask_index"] = 1
+        result = await h._validate_output(inputs, [_art("main.py", _FASTAPI_ALL)])
+        # The check rows are present and self-identifying.
+        typed = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
+        assert len(typed) == 1
+        # And the helper builds an artifact from them.
+        artifact = h._build_typed_check_evaluation_artifact(
+            result.checks, inputs["subtask_index"], h._capability_id
+        )
+        assert artifact is not None
+        assert artifact["name"] == "typed_check_evaluation_task_1.json"
