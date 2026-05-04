@@ -1,7 +1,7 @@
 """Framing task handlers — LLM-powered handlers for the framing workload pipeline.
 
 5 framing handlers and 2 refinement handlers whose capability_ids match
-the pinned task_type values from FRAMING_TASK_STEPS and REFINEMENT_TASK_STEPS
+the pinned task_type values from PLANNING_TASK_STEPS and REFINEMENT_TASK_STEPS
 (SIP-0078 §5.3, §5.10). The module filename remains ``planning_tasks.py`` as
 a legacy identifier; imports across the codebase pin to that name.
 
@@ -331,7 +331,7 @@ class QADefineTestStrategyHandler(_PlanningTaskHandler):
     _artifact_name = "test_strategy.md"
 
 
-class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
+class GovernanceReviewPlanHandler(_PlanningTaskHandler):
     """Planning handler: consolidate outputs, design sufficiency check, readiness.
 
     Produces the canonical ``planning_artifact.md`` — a reconstituted document
@@ -345,7 +345,7 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_assess_readiness_handler"
-    _capability_id = "governance.assess_readiness"
+    _capability_id = "governance.review_plan"
     _role = "lead"
     _artifact_name = "planning_artifact.md"
 
@@ -425,15 +425,13 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
         # The plan decomposes the upcoming build into focused subtasks.
         resolved_config = inputs.get("resolved_config", {})
         if resolved_config.get("implementation_plan", False):
-            manifest_artifact = await self._produce_manifest(
-                context, inputs, content, resolved_config
-            )
+            manifest_artifact = await self._produce_plan(context, inputs, content, resolved_config)
             if manifest_artifact is not None:
                 result.outputs["artifacts"].append(manifest_artifact)
 
         return result
 
-    async def _produce_manifest(
+    async def _produce_plan(
         self,
         context: ExecutionContext,
         inputs: dict[str, Any],

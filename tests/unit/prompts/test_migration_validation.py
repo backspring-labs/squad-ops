@@ -36,8 +36,8 @@ from squadops.capabilities.handlers.impl.establish_contract import (
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
-    GovernanceAssessReadinessHandler,
     GovernanceIncorporateFeedbackHandler,
+    GovernanceReviewPlanHandler,
     QADefineTestStrategyHandler,
     StrategyFrameObjectiveHandler,
 )
@@ -136,7 +136,7 @@ class TestBaseClassTemplateIdCoverage:
             (StrategyFrameObjectiveHandler, "request.planning_task_base"),
             (DevelopmentDesignPlanHandler, "request.planning_task_base"),
             (QADefineTestStrategyHandler, "request.planning_task_base"),
-            (GovernanceAssessReadinessHandler, "request.planning_task_base"),
+            (GovernanceReviewPlanHandler, "request.planning_task_base"),
             # _RepairTaskHandler base class handlers (4)
             (DataAnalyzeVerificationHandler, "request.repair_task_base"),
             (GovernanceRootCauseHandler, "request.repair_task_base"),
@@ -149,9 +149,7 @@ class TestBaseClassTemplateIdCoverage:
         ],
         ids=lambda x: x.__name__ if isinstance(x, type) else x,
     )
-    async def test_handler_uses_correct_template_id(
-        self, handler_cls, expected_template_id
-    ):
+    async def test_handler_uses_correct_template_id(self, handler_cls, expected_template_id):
         renderer = _mock_renderer()
         ctx = _mock_context(renderer=renderer)
         handler = handler_cls()
@@ -263,9 +261,7 @@ class TestWrapupCustomHandlerTemplateIds:
         ],
         ids=lambda x: x.__name__ if isinstance(x, type) else x,
     )
-    async def test_wrapup_custom_handler_template_id(
-        self, handler_cls, expected_template_id
-    ):
+    async def test_wrapup_custom_handler_template_id(self, handler_cls, expected_template_id):
         renderer = _mock_renderer()
         ctx = _mock_context(renderer=renderer)
         handler = handler_cls()
@@ -313,15 +309,12 @@ class TestPromptGuardPreservation:
             {
                 "prd": "Build a game",
                 "role": "strat",
-                "prior_outputs": (
-                    "## Prior Analysis from Upstream Roles\n\n### dev\ncode review"
-                ),
+                "prior_outputs": ("## Prior Analysis from Upstream Roles\n\n### dev\ncode review"),
             },
         )
 
         assert "## Prior Analysis from Upstream Roles" in rendered.content, (
-            "Rendered template must contain the exact heading that prompt_guard "
-            "uses for truncation"
+            "Rendered template must contain the exact heading that prompt_guard uses for truncation"
         )
 
     async def test_planning_task_rendered_output_has_prior_analysis_heading(self):
@@ -342,9 +335,7 @@ class TestPromptGuardPreservation:
             {
                 "prd": "Plan a game",
                 "role": "strat",
-                "prior_outputs": (
-                    "## Prior Analysis from Upstream Roles\n\n### dev\nanalysis"
-                ),
+                "prior_outputs": ("## Prior Analysis from Upstream Roles\n\n### dev\nanalysis"),
             },
         )
 
@@ -414,9 +405,7 @@ class TestCapabilitySupplementNotInTemplates:
 class TestTemplateContractCompleteness:
     """Every template must declare its contract in frontmatter."""
 
-    _FRONTMATTER_PATTERN = re.compile(
-        r"^---\s*\n(.*?)\n---\s*\n", re.MULTILINE | re.DOTALL
-    )
+    _FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.MULTILINE | re.DOTALL)
 
     @pytest.mark.parametrize(
         "template_file",

@@ -56,12 +56,12 @@ BUILDER_ASSEMBLY_TASK_STEPS: list[tuple[str, str]] = [
 ]
 
 # Framing task steps (SIP-0078 §5.3) — the pre-build sequence run during a framing workload
-FRAMING_TASK_STEPS: list[tuple[str, str]] = [
+PLANNING_TASK_STEPS: list[tuple[str, str]] = [
     ("data.research_context", "data"),
     ("strategy.frame_objective", "strat"),
     ("development.design_plan", "dev"),
     ("qa.define_test_strategy", "qa"),
-    ("governance.assess_readiness", "lead"),
+    ("governance.review_plan", "lead"),
 ]
 
 # Refinement task steps (SIP-0078 §5.10)
@@ -120,6 +120,7 @@ def repair_steps_for(failed_task_type: str) -> list[tuple[str, str]]:
     type without a specialized pair.
     """
     return _REPAIR_STEPS_BY_FAILED_TASK_TYPE.get(failed_task_type, REPAIR_TASK_STEPS)
+
 
 # Wrap-up task steps (SIP-0080 §7.1)
 WRAPUP_TASK_STEPS: list[tuple[str, str]] = [
@@ -192,7 +193,7 @@ def _resolve_workload_steps(
 
     if workload_type == WorkloadType.FRAMING:
         _check_required_roles(profile.profile_id, REQUIRED_PLAN_ROLES, profile_roles)
-        steps = list(FRAMING_TASK_STEPS)
+        steps = list(PLANNING_TASK_STEPS)
     elif workload_type == WorkloadType.REFINEMENT:
         _check_required_roles(
             profile.profile_id, REQUIRED_REFINEMENT_ROLES, profile_roles, "refinement"

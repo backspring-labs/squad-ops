@@ -125,7 +125,7 @@ def _estimate_min_artifacts(prd: str, impl_plan: str | None = None) -> int:
 # author on PRD-coverage discipline. Lives at module scope so BOTH
 # manifest-producing prompts use the same source-of-truth text:
 #   - GovernanceReviewHandler._MANIFEST_PROMPT_EXTENSION (this file)
-#   - GovernanceReviewAssessReadinessHandler._produce_manifest in
+#   - GovernanceReviewAssessReadinessHandler._produce_plan in
 #     planning_tasks.py — the one the framing flow actually invokes
 # Keeping the original PR #113 patch in cycle_tasks.py while ALSO wiring
 # planning_tasks.py is defense-in-depth: any present-or-future caller of

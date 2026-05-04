@@ -1,5 +1,5 @@
 ---
-fragment_id: task_type.governance.assess_readiness
+fragment_id: task_type.governance.review_plan
 layer: task_type
 version: "0.9.16"
 roles: ["lead"]

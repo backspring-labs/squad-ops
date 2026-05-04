@@ -5,7 +5,7 @@ Prefect task_runs and emit TASK_DISPATCHED/SUCCEEDED/FAILED with both
 Without this, correction tasks (SIP-0079) and pulse-repair tasks (SIP-0086)
 have no Prefect task pane and the bridge can't transition terminal state —
 acceptance criterion §7.5 ("manifest retry events appear in
-governance.assess_readiness task pane") is unreachable.
+governance.review_plan task pane") is unreachable.
 
 These tests drive ``_run_correction_protocol`` and ``_verify_with_repair``
 directly and pin the contract by inspecting the spied call args of
@@ -166,8 +166,7 @@ class TestCorrectionTaskRunPropagation:
         assert mock_prefect_reporter.create_task_run.await_count == len(captured)
         assert all(c["flow_run_id"] == "fr_main" for c in captured)
         assert all(
-            c["task_run_id"] is not None and c["task_run_id"].startswith("tr_")
-            for c in captured
+            c["task_run_id"] is not None and c["task_run_id"].startswith("tr_") for c in captured
         )
 
         # Every TASK_DISPATCHED / TASK_SUCCEEDED / TASK_FAILED for these
@@ -317,9 +316,7 @@ class TestPulseRepairTaskRunPropagation:
                 return PulseDecision.FAIL, [
                     MagicMock(suite_outcome=SuiteOutcome.FAIL) for _ in suites
                 ]
-            return PulseDecision.PASS, [
-                MagicMock(suite_outcome=SuiteOutcome.PASS) for _ in suites
-            ]
+            return PulseDecision.PASS, [MagicMock(suite_outcome=SuiteOutcome.PASS) for _ in suites]
 
         ex._run_boundary_verification = fake_verify
 

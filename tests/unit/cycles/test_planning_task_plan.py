@@ -22,7 +22,7 @@ from squadops.cycles.task_plan import (
     BUILDER_ASSEMBLY_TASK_STEPS,
     CYCLE_TASK_STEPS,
     IMPLEMENTATION_TASK_STEPS,
-    FRAMING_TASK_STEPS,
+    PLANNING_TASK_STEPS,
     REFINEMENT_TASK_STEPS,
     generate_task_plan,
 )
@@ -130,13 +130,13 @@ class TestPlanningWorkload:
     def test_task_types_match_planning_steps(self, cycle, full_profile):
         envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         actual = [e.task_type for e in envelopes]
-        expected = [s[0] for s in FRAMING_TASK_STEPS]
+        expected = [s[0] for s in PLANNING_TASK_STEPS]
         assert actual == expected
 
     def test_roles_match_planning_steps(self, cycle, full_profile):
         envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         actual = [e.metadata["role"] for e in envelopes]
-        expected = [s[1] for s in FRAMING_TASK_STEPS]
+        expected = [s[1] for s in PLANNING_TASK_STEPS]
         assert actual == expected
 
     def test_agent_ids_resolved_from_profile(self, cycle, full_profile):
@@ -286,5 +286,5 @@ class TestLegacyBackwardCompat:
         # Should produce 5 planning steps, NOT 5 plan + 2 build
         assert len(envelopes) == 5
         actual = [e.task_type for e in envelopes]
-        expected = [s[0] for s in FRAMING_TASK_STEPS]
+        expected = [s[0] for s in PLANNING_TASK_STEPS]
         assert actual == expected

@@ -20,8 +20,8 @@ from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
-    GovernanceAssessReadinessHandler,
     GovernanceIncorporateFeedbackHandler,
+    GovernanceReviewPlanHandler,
     QADefineTestStrategyHandler,
     QAValidateRefinementHandler,
     StrategyFrameObjectiveHandler,
@@ -44,8 +44,8 @@ PLANNING_HANDLER_SPECS = [
     (DevelopmentDesignPlanHandler, "development.design_plan", "dev", "technical_design.md"),
     (QADefineTestStrategyHandler, "qa.define_test_strategy", "qa", "test_strategy.md"),
     (
-        GovernanceAssessReadinessHandler,
-        "governance.assess_readiness",
+        GovernanceReviewPlanHandler,
+        "governance.review_plan",
         "lead",
         "planning_artifact.md",
     ),
@@ -65,9 +65,9 @@ ALL_HANDLER_SPECS = PLANNING_HANDLER_SPECS + REFINEMENT_HANDLER_SPECS
 ALL_HANDLER_CLASSES = [cls for cls, _, _, _ in ALL_HANDLER_SPECS]
 
 # Handlers that work with generic "LLM planning output" and no special prior_outputs.
-# GovernanceAssessReadinessHandler requires valid YAML frontmatter in LLM response.
+# GovernanceReviewPlanHandler requires valid YAML frontmatter in LLM response.
 # GovernanceIncorporateFeedbackHandler requires artifact_contents in prior_outputs (D17).
-_SPECIAL_HANDLERS = (GovernanceAssessReadinessHandler, GovernanceIncorporateFeedbackHandler)
+_SPECIAL_HANDLERS = (GovernanceReviewPlanHandler, GovernanceIncorporateFeedbackHandler)
 GENERIC_HANDLER_SPECS = [s for s in ALL_HANDLER_SPECS if s[0] not in _SPECIAL_HANDLERS]
 GENERIC_HANDLER_CLASSES = [cls for cls, _, _, _ in GENERIC_HANDLER_SPECS]
 # Handlers where LLM is always reached (GovernanceIncorporateFeedbackHandler may
@@ -300,11 +300,9 @@ class TestHandleSuccess:
 
     @pytest.mark.parametrize(
         "cls, _cap_id, _role, expected_artifact",
-        [s for s in PLANNING_HANDLER_SPECS if s[0] != GovernanceAssessReadinessHandler],
+        [s for s in PLANNING_HANDLER_SPECS if s[0] != GovernanceReviewPlanHandler],
         ids=[
-            c.__name__
-            for c, _, _, _ in PLANNING_HANDLER_SPECS
-            if c != GovernanceAssessReadinessHandler
+            c.__name__ for c, _, _, _ in PLANNING_HANDLER_SPECS if c != GovernanceReviewPlanHandler
         ],
     )
     async def test_planning_artifact_name(
@@ -428,7 +426,7 @@ class TestLLMCallVerification:
 
 # ---------------------------------------------------------------------------
 # Issue #112 (real fix): PRD-coverage discipline must be wired into the
-# framing-time manifest prompt — the LLM call inside _produce_manifest,
+# framing-time manifest prompt — the LLM call inside _produce_plan,
 # which is the actual prompt that produces implementation_plan.yaml.
 # Cycle 5 (cyc_7febd710e565) proved that patching only
 # cycle_tasks.py:_MANIFEST_PROMPT_EXTENSION leaves this prompt untouched.
@@ -486,7 +484,7 @@ class TestPRDCoverageDisciplineReachesManifestPrompt:
         )
 
     async def test_manifest_prompt_includes_coverage_discipline(self):
-        """End-to-end: when GovernanceAssessReadinessHandler runs with
+        """End-to-end: when GovernanceReviewPlanHandler runs with
         implementation_plan enabled, the SECOND LLM call (the manifest
         producer) must include the discipline text. The first call
         (planning artifact) does not."""
@@ -497,7 +495,7 @@ class TestPRDCoverageDisciplineReachesManifestPrompt:
             MagicMock(content=self._MANIFEST_BLOCK),
         ]
 
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         await h.handle(
             ctx,
             {
@@ -526,13 +524,13 @@ class TestPRDCoverageDisciplineReachesManifestPrompt:
         assert "qa_handoff.md" in second_user
 
     async def test_manifest_prompt_omits_discipline_when_implementation_plan_disabled(self):
-        """Defensive: when implementation_plan is off, _produce_manifest
+        """Defensive: when implementation_plan is off, _produce_plan
         is not called — only one LLM call (planning artifact), and the
         discipline text shouldn't appear (it would be misleading without
         a manifest to author)."""
         ctx = _make_context(llm_response=VALID_PLANNING_ARTIFACT)
 
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         await h.handle(
             ctx,
             {
@@ -665,7 +663,7 @@ class TestBootstrapRegistration:
 
 
 # ---------------------------------------------------------------------------
-# 10. GovernanceAssessReadinessHandler — structural validation (Fix B)
+# 10. GovernanceReviewPlanHandler — structural validation (Fix B)
 # ---------------------------------------------------------------------------
 
 
@@ -674,7 +672,7 @@ class TestGovernanceAssessReadinessValidation:
 
     async def test_valid_frontmatter_passes(self):
         ctx = _make_context(VALID_PLANNING_ARTIFACT)
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
@@ -682,7 +680,7 @@ class TestGovernanceAssessReadinessValidation:
 
     async def test_missing_frontmatter_synthesizes_default(self):
         ctx = _make_context("No frontmatter here, just plain text.")
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
@@ -692,7 +690,7 @@ class TestGovernanceAssessReadinessValidation:
 
     async def test_invalid_yaml_fails(self):
         ctx = _make_context("---\n[invalid: yaml: content\n---\n\nBody")
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is False
@@ -701,7 +699,7 @@ class TestGovernanceAssessReadinessValidation:
     async def test_missing_readiness_defaults_to_revise(self):
         content = "---\nsufficiency_score: 3\nblocker_unknowns: 0\n---\n\nBody"
         ctx = _make_context(content)
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
@@ -709,7 +707,7 @@ class TestGovernanceAssessReadinessValidation:
     async def test_invalid_readiness_value_defaults_to_revise(self):
         content = "---\nreadiness: maybe\nsufficiency_score: 3\n---\n\nBody"
         ctx = _make_context(content)
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
@@ -717,7 +715,7 @@ class TestGovernanceAssessReadinessValidation:
     async def test_missing_sufficiency_score_defaults_to_3(self):
         content = "---\nreadiness: go\nblocker_unknowns: 0\n---\n\nBody"
         ctx = _make_context(content)
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
@@ -725,7 +723,7 @@ class TestGovernanceAssessReadinessValidation:
     async def test_non_integer_sufficiency_score_defaults_to_3(self):
         content = "---\nreadiness: go\nsufficiency_score: high\n---\n\nBody"
         ctx = _make_context(content)
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
@@ -733,7 +731,7 @@ class TestGovernanceAssessReadinessValidation:
     async def test_sufficiency_score_out_of_range_defaults_to_3(self):
         content = "---\nreadiness: go\nsufficiency_score: 7\n---\n\nBody"
         ctx = _make_context(content)
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
@@ -741,7 +739,7 @@ class TestGovernanceAssessReadinessValidation:
     async def test_sufficiency_score_zero_valid(self):
         content = "---\nreadiness: no-go\nsufficiency_score: 0\n---\n\nBody"
         ctx = _make_context(content)
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
@@ -750,23 +748,23 @@ class TestGovernanceAssessReadinessValidation:
     async def test_all_valid_readiness_values(self, readiness):
         content = f"---\nreadiness: {readiness}\nsufficiency_score: 3\n---\n\nBody"
         ctx = _make_context(content)
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
 
     async def test_evidence_preserved_on_frontmatter_synthesis(self):
         ctx = _make_context("No frontmatter")
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
         assert result._evidence is not None
-        assert result._evidence.capability_id == "governance.assess_readiness"
+        assert result._evidence.capability_id == "governance.review_plan"
 
 
 # ---------------------------------------------------------------------------
-# 10b. _produce_manifest retry-on-error (SIP-0086 robustness)
+# 10b. _produce_plan retry-on-error (SIP-0086 robustness)
 # ---------------------------------------------------------------------------
 
 
@@ -852,11 +850,11 @@ class TestProduceManifestRetry:
         resolved_config: dict | None = None,
         profile_roles: list[str] | None = None,
     ) -> dict | None:
-        h = GovernanceAssessReadinessHandler()
+        h = GovernanceReviewPlanHandler()
         inputs: dict = {"prd": "Build a widget"}
         if profile_roles is not None:
             inputs["profile_roles"] = profile_roles
-        return await h._produce_manifest(
+        return await h._produce_plan(
             ctx,
             inputs=inputs,
             planning_content="plan",
