@@ -27,7 +27,10 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
-from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
+from squadops.capabilities.handlers.cycle_tasks import (
+    _PRD_COVERAGE_DISCIPLINE_SECTION,
+    _CycleTaskHandler,
+)
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 
@@ -523,50 +526,50 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             "# endpoint_defined — FastAPI route presence (stack: fastapi)\n"
             "- check: endpoint_defined\n"
             "  severity: error\n"
-            "  description: \"Backend exposes the user CRUD routes\"\n"
+            '  description: "Backend exposes the user CRUD routes"\n'
             "  file: backend/main.py\n"
-            "  methods_paths: [\"GET /users\", \"POST /users\", \"DELETE /users/{uid}\"]\n"
+            '  methods_paths: ["GET /users", "POST /users", "DELETE /users/{uid}"]\n'
             "\n"
             "# import_present — Python import (or .ts/.js with frontend flag)\n"
             "- check: import_present\n"
-            "  description: \"Pydantic is wired in for request models\"\n"
+            '  description: "Pydantic is wired in for request models"\n'
             "  file: backend/main.py\n"
             "  module: pydantic\n"
             "  symbol: BaseModel\n"
             "\n"
             "# field_present — class fields on a Python dataclass / Pydantic v2 model\n"
             "- check: field_present\n"
-            "  description: \"User model carries id and email\"\n"
+            '  description: "User model carries id and email"\n'
             "  file: backend/models.py\n"
             "  class_name: User\n"
             "  fields: [id, email]\n"
             "\n"
             "# regex_match — pattern present count_min times in a file (stack-agnostic)\n"
             "- check: regex_match\n"
-            "  description: \"At least three test functions exist\"\n"
+            '  description: "At least three test functions exist"\n'
             "  file: tests/test_users.py\n"
-            "  pattern: \"def test_\"\n"
+            '  pattern: "def test_"\n'
             "  count_min: 3\n"
             "\n"
             "# count_at_least — glob match count under workspace (stack-agnostic)\n"
             "- check: count_at_least\n"
-            "  description: \"Non-trivial component coverage on the frontend\"\n"
-            "  glob: \"frontend/src/components/**/*.tsx\"\n"
+            '  description: "Non-trivial component coverage on the frontend"\n'
+            '  glob: "frontend/src/components/**/*.tsx"\n'
             "  min_count: 3\n"
             "\n"
             "# command_exit_zero — argv-only safelist of static checkers; cannot run shell strings\n"
             "- check: command_exit_zero\n"
-            "  description: \"Backend file syntactically valid\"\n"
+            '  description: "Backend file syntactically valid"\n'
             "  argv: [python, -m, py_compile, backend/main.py]\n"
             "```\n\n"
             "**Safety rules for `command_exit_zero`:**\n"
-            "- `argv` MUST be a YAML list, not a string. `\"ruff check src/\"` is rejected.\n"
+            '- `argv` MUST be a YAML list, not a string. `"ruff check src/"` is rejected.\n'
             "- Only safelisted argv shapes run: `python -m py_compile <file>`, `python -m mypy <args>`, "
             "`node --check <file>`, `ruff check <args>`, `tsc --noEmit`, `eslint <args>`, `pyflakes <file>`. "
             "Anything else (notably `python -c`, `python -m pip`, shell strings) errors at evaluation time — "
             "treat the safelist as the universe.\n"
             "- Per-command timeout is bounded; do not author long-running builds as acceptance checks.\n\n"
-            "**When in doubt, prefer typed checks over prose.** Prose like \"User model exists\" "
+            '**When in doubt, prefer typed checks over prose.** Prose like "User model exists" '
             "is a good candidate to typed-encode as `field_present` against the actual class.\n"
         )
 
@@ -592,6 +595,12 @@ class GovernanceAssessReadinessHandler(_PlanningTaskHandler):
             f"{builder_guideline}"
             f"{qa_handoff_guideline}"
             f"{typed_acceptance_section}"
+            "\n"
+            # Issue #112 (real fix): wires the shared PRD-coverage discipline
+            # into the framing-time prompt that actually produces the
+            # implementation_plan.yaml. Same source-of-truth string as
+            # cycle_tasks.py:_MANIFEST_PROMPT_EXTENSION uses.
+            f"{_PRD_COVERAGE_DISCIPLINE_SECTION}"
             "\n"
             "Output ONLY the manifest as a YAML code block with filename tag:\n"
             "```yaml:implementation_plan.yaml\n"
