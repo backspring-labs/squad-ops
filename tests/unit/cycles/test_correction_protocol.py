@@ -758,3 +758,190 @@ class TestCorrectionEvents:
         assert len(decided_calls) == 1
         payload = decided_calls[0].kwargs.get("payload", {})
         assert payload["correction_path"] == "continue"
+
+
+# ---------------------------------------------------------------------------
+# Issue #110: correction & repair tasks must propagate squad-profile model
+# ---------------------------------------------------------------------------
+
+
+def _published_envelope(call) -> dict:
+    """Decode a mock_queue.publish call into the inner TaskEnvelope dict."""
+    return json.loads(call.args[1])["payload"]
+
+
+class TestCorrectionModelResolution:
+    """Issue #110: correction-loop envelopes carry profile-resolved model.
+
+    Without this, ``inputs["agent_model"]`` is absent and the agent falls
+    back to the container's instance default — silently bypassing the cycle's
+    squad profile. Observed in cyc_d1c1a259c983 where data.analyze_failure
+    ran on qwen2.5:3b-instruct under a profile that pinned all roles to
+    qwen3.6:27b.
+    """
+
+    @pytest.fixture
+    def model_diverse_profile(self):
+        """Profile where each role has a distinctive model string."""
+        from squadops.cycles.models import SquadProfile
+
+        return SquadProfile(
+            profile_id="diverse",
+            name="Diverse",
+            description="distinct per-role models",
+            version=1,
+            agents=(
+                AgentProfileEntry(
+                    agent_id="strat-a", role="strat", model="model-strat", enabled=True
+                ),
+                AgentProfileEntry(
+                    agent_id="dev-a",
+                    role="dev",
+                    model="model-dev",
+                    enabled=True,
+                    config_overrides={"temperature": 0.42},
+                ),
+                AgentProfileEntry(agent_id="qa-a", role="qa", model="model-qa", enabled=True),
+                AgentProfileEntry(agent_id="data-a", role="data", model="model-data", enabled=True),
+                AgentProfileEntry(agent_id="lead-a", role="lead", model="model-lead", enabled=True),
+            ),
+            created_at=NOW,
+        )
+
+    async def test_correction_envelopes_carry_profile_model(
+        self,
+        executor,
+        mock_queue,
+        mock_squad_profile,
+        model_diverse_profile,
+    ):
+        """data.analyze_failure + governance.correction_decision get role-specific model."""
+        mock_squad_profile.resolve_snapshot.return_value = (
+            model_diverse_profile,
+            "sha256:diverse",
+        )
+        semantic_outputs = {
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            "role": "strat",
+        }
+        decision = {
+            "summary": "abort",
+            "role": "lead",
+            "correction_path": "abort",
+            "decision_rationale": "halt",
+            "affected_task_types": [],
+            "classification": "execution",
+            "analysis_summary": "halt",
+        }
+        script = [
+            ("FAILED", semantic_outputs, "bad"),
+            (
+                "SUCCEEDED",
+                {"classification": "execution", "analysis_summary": "x", "role": "data"},
+                None,
+            ),
+            ("SUCCEEDED", decision, None),
+        ]
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        publishes = [_published_envelope(c) for c in mock_queue.publish.call_args_list]
+        analyze = next(p for p in publishes if p["task_type"] == "data.analyze_failure")
+        decide = next(p for p in publishes if p["task_type"] == "governance.correction_decision")
+
+        assert analyze["agent_id"] == "data-a"
+        assert analyze["inputs"]["agent_model"] == "model-data"
+        assert decide["agent_id"] == "lead-a"
+        assert decide["inputs"]["agent_model"] == "model-lead"
+
+    async def test_repair_envelopes_carry_profile_model_and_overrides(
+        self,
+        executor,
+        mock_queue,
+        mock_squad_profile,
+        model_diverse_profile,
+    ):
+        """Patch-path repair tasks get the repaired role's model + config_overrides."""
+        mock_squad_profile.resolve_snapshot.return_value = (
+            model_diverse_profile,
+            "sha256:diverse",
+        )
+        # Trigger correction on a development.develop task so the patch path
+        # routes repair to the dev role (which has config_overrides set).
+        dev_failure = {
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            "role": "dev",
+        }
+        decision = {
+            "summary": "patch",
+            "role": "lead",
+            "correction_path": "patch",
+            "decision_rationale": "localized fix",
+            "affected_task_types": ["development.develop"],
+            "classification": "work_product",
+            "analysis_summary": "code issue",
+        }
+        script = [
+            # Task 0 (strat) succeeds, task 1 (dev) fails.
+            ("SUCCEEDED", {"summary": "framed", "role": "strat"}, None),
+            ("FAILED", dev_failure, "bad code"),
+            (
+                "SUCCEEDED",
+                {"classification": "work_product", "analysis_summary": "x", "role": "data"},
+                None,
+            ),
+            ("SUCCEEDED", decision, None),
+            # Repair tasks + remaining task plan succeed.
+            ("SUCCEEDED", {"summary": "repaired", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
+        ]
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        publishes = [_published_envelope(c) for c in mock_queue.publish.call_args_list]
+        repair = next(
+            p for p in publishes if p["task_id"].startswith("repair-") and p["agent_id"] == "dev-a"
+        )
+
+        assert repair["inputs"]["agent_model"] == "model-dev"
+        assert repair["inputs"]["agent_config_overrides"] == {"temperature": 0.42}
+
+    def test_resolve_agent_config_falls_back_when_role_absent(self):
+        """Helper returns (role, None, {}) when profile has no enabled match.
+
+        Reachable only via direct calls (the run-level path validates required
+        roles upstream), but the fallback exists so a misconfigured profile
+        can't crash the correction loop.
+        """
+        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+        class _ProfileStub:
+            agents = (
+                AgentProfileEntry(agent_id="strat-a", role="strat", model="m", enabled=True),
+                AgentProfileEntry(
+                    agent_id="data-disabled",
+                    role="data",
+                    model="m-data",
+                    enabled=False,
+                ),
+            )
+
+        agent_id, model, overrides = DistributedFlowExecutor._resolve_agent_config(
+            "data", _ProfileStub()
+        )
+        assert agent_id == "data"
+        assert model is None
+        assert overrides == {}

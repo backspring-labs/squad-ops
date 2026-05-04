@@ -1860,13 +1860,23 @@ class DistributedFlowExecutor(FlowExecutionPort):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_agent_id(role: str, profile: Any) -> str:
-        """Resolve a role to an agent_id using the squad profile, or fall back to role."""
+    def _resolve_agent_config(role: str, profile: Any) -> tuple[str, str | None, dict[str, Any]]:
+        """Resolve a role to ``(agent_id, agent_model, agent_overrides)`` from the squad profile.
+
+        Mirrors ``squadops.cycles.task_plan._resolve_agent_config`` so correction
+        and repair envelopes propagate the cycle's profile-specified model and
+        config overrides into the handler. Without this, ``inputs["agent_model"]``
+        is absent and the handler falls back to the agent container's instance
+        default — silently diverging from the cycle's squad profile (issue #110).
+        Falls back to ``(role, None, {})`` when no enabled match exists.
+        """
         if profile:
             for agent in profile.agents:
                 if agent.role == role and agent.enabled:
-                    return agent.agent_id
-        return role
+                    model = agent.model if agent.model else None
+                    overrides = dict(agent.config_overrides or {})
+                    return agent.agent_id, model, overrides
+        return role, None, {}
 
     async def _checkpoint_correction_task(
         self,
@@ -1949,9 +1959,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
             "failed_task_type": envelope.task_type,
             "error": result.error or "",
             "outcome_class": result_outputs.get("outcome_class", ""),
-            "preliminary_failure_classification": result_outputs.get(
-                "failure_classification", ""
-            ),
+            "preliminary_failure_classification": result_outputs.get("failure_classification", ""),
             "validation_result": {
                 "passed": validation_result.get("passed"),
                 "summary": validation_result.get("summary", ""),
@@ -2016,13 +2024,19 @@ class DistributedFlowExecutor(FlowExecutionPort):
 
         for step_idx, (task_type, role) in enumerate(CORRECTION_TASK_STEPS):
             corr_task_id = f"corr-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-            agent_id = self._resolve_agent_id(role, profile)
+            agent_id, agent_model, agent_overrides = self._resolve_agent_config(role, profile)
 
+            # Issue #110: propagate squad-profile model + overrides so
+            # correction-loop reasoning runs on the cycle's specified model
+            # (e.g. spark-squad-with-builder pins data/lead to qwen3.6:27b)
+            # rather than the agent container's instance default.
             corr_inputs: dict[str, Any] = {
                 "prd": cycle.prd_ref,
                 "failure_evidence": failure_evidence,
                 "prior_outputs": prior_outputs,
                 "artifact_refs": list(all_artifact_refs),
+                "agent_model": agent_model,
+                "agent_config_overrides": agent_overrides,
             }
             if analysis_outputs:
                 corr_inputs["failure_analysis"] = analysis_outputs
@@ -2157,11 +2171,9 @@ class DistributedFlowExecutor(FlowExecutionPort):
         # (`affected_task_types: ["QA Handoff"]`) to silently route to the
         # dev repair handler.
         if correction_path == "patch":
-            for step_idx, (task_type, role) in enumerate(
-                repair_steps_for(envelope.task_type)
-            ):
+            for step_idx, (task_type, role) in enumerate(repair_steps_for(envelope.task_type)):
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-                agent_id = self._resolve_agent_id(role, profile)
+                agent_id, agent_model, agent_overrides = self._resolve_agent_config(role, profile)
 
                 repair_inputs: dict[str, Any] = {
                     "prd": cycle.prd_ref,
@@ -2169,6 +2181,8 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     "correction_decision": decision_outputs,
                     "prior_outputs": prior_outputs,
                     "artifact_refs": list(all_artifact_refs),
+                    "agent_model": agent_model,
+                    "agent_config_overrides": agent_overrides,
                 }
 
                 repair_envelope = TaskEnvelope(
