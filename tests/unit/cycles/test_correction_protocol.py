@@ -369,6 +369,214 @@ class TestCorrectionPatch:
 
 
 # ---------------------------------------------------------------------------
+# Correction/repair task artifact persistence (silent-drop fix)
+# ---------------------------------------------------------------------------
+
+
+class TestCorrectionTaskArtifactStorage:
+    """Until this fix landed, the correction-task and repair-task success
+    branches called `_checkpoint_correction_task` directly — which only
+    snapshots existing `all_artifact_refs` into a checkpoint and does NOT
+    persist new artifacts from the task's outputs. Cycles 4b and 6 both
+    showed the symptom: builder.assemble_repair runs, produces a
+    qa_handoff.md in its outputs, the executor checkpoints completion,
+    and the qa_handoff.md never reaches the artifact registry — the run
+    marks 'completed' while violating its own contract."""
+
+    async def test_helper_stores_each_artifact_via_vault(self, executor, mock_vault):
+        """Unit-level: the helper iterates outputs.artifacts and stores each."""
+        from squadops.cycles.models import Cycle, TaskFlowPolicy
+        from squadops.tasks.models import TaskEnvelope, TaskResult
+
+        cycle = Cycle(
+            cycle_id="cyc_x",
+            project_id="proj",
+            created_at=NOW,
+            created_by="system",
+            prd_ref="prd",
+            squad_profile_id="full-squad",
+            squad_profile_snapshot_ref="ref",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+        )
+        envelope = TaskEnvelope(
+            task_id="repair-1",
+            agent_id="bob",
+            cycle_id="cyc_x",
+            pulse_id="p",
+            project_id="proj",
+            task_type="builder.assemble_repair",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={},
+            metadata={"role": "builder"},
+        )
+        result = TaskResult(
+            task_id="repair-1",
+            status="SUCCEEDED",
+            outputs={
+                "artifacts": [
+                    {
+                        "name": "qa_handoff.md",
+                        "content": "## How to Run Backend\n...",
+                        "media_type": "text/markdown",
+                        "type": "document",
+                    },
+                    {
+                        "name": "requirements.txt",
+                        "content": "fastapi\nuvicorn\n",
+                        "media_type": "text/plain",
+                        "type": "config",
+                    },
+                ],
+            },
+        )
+
+        all_refs: list[str] = []
+        stored: list = []
+        await executor._store_correction_task_artifacts(
+            result, envelope, cycle, "run_x", all_refs, stored
+        )
+
+        # Both artifacts hit the vault.
+        assert mock_vault.store.call_count == 2
+        stored_filenames = {call.args[0].filename for call in mock_vault.store.call_args_list}
+        assert stored_filenames == {"qa_handoff.md", "requirements.txt"}
+
+        # all_artifact_refs and stored_artifacts both got the new refs.
+        assert len(all_refs) == 2
+        assert len(stored) == 2
+        # producing_task_type metadata pinned so triage can attribute the
+        # artifact to the repair pass, not the original failed task.
+        first_ref = mock_vault.store.call_args_list[0].args[0]
+        assert first_ref.metadata.get("producing_task_type") == "builder.assemble_repair"
+
+    async def test_helper_no_op_when_no_artifacts(self, executor, mock_vault):
+        """Repair tasks that fail or produce no artifacts must not crash
+        and must not call the vault. Defensive check on the absence
+        path."""
+        from squadops.cycles.models import Cycle, TaskFlowPolicy
+        from squadops.tasks.models import TaskEnvelope, TaskResult
+
+        cycle = Cycle(
+            cycle_id="cyc_x",
+            project_id="proj",
+            created_at=NOW,
+            created_by="system",
+            prd_ref="prd",
+            squad_profile_id="full-squad",
+            squad_profile_snapshot_ref="ref",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+        )
+        envelope = TaskEnvelope(
+            task_id="corr-1",
+            agent_id="data-agent",
+            cycle_id="cyc_x",
+            pulse_id="p",
+            project_id="proj",
+            task_type="data.analyze_failure",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={},
+            metadata={"role": "data"},
+        )
+        result = TaskResult(
+            task_id="corr-1",
+            status="SUCCEEDED",
+            outputs={"summary": "no artifacts"},  # no "artifacts" key
+        )
+
+        all_refs: list[str] = []
+        stored: list = []
+        await executor._store_correction_task_artifacts(
+            result, envelope, cycle, "run_x", all_refs, stored
+        )
+
+        assert mock_vault.store.call_count == 0
+        assert all_refs == []
+        assert stored == []
+
+    async def test_repair_artifacts_reach_vault_in_patch_flow(
+        self, executor, mock_queue, mock_registry, mock_vault, mock_event_bus
+    ):
+        """End-to-end through the patch path: a builder.assemble failure
+        triggers the correction protocol; the repair task's qa_handoff.md
+        artifact MUST land in the vault. Direct regression guard for the
+        cycle-4b / cycle-6 silent-drop pattern."""
+        semantic_outputs = {
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            "role": "builder",
+        }
+        correction_decision = {
+            "summary": "patch",
+            "role": "lead",
+            "correction_path": "patch",
+            "decision_rationale": "Missing section",
+            "affected_task_types": ["builder.assemble"],
+            "classification": "work_product",
+            "analysis_summary": "qa_handoff.md missing required sections",
+        }
+        # The repair output that previously got dropped.
+        repaired_qa_handoff = {
+            "summary": "repaired",
+            "role": "builder",
+            "artifacts": [
+                {
+                    "name": "qa_handoff.md",
+                    "content": "## How to Test\n...\n## Expected Behavior\n...\n",
+                    "media_type": "text/markdown",
+                    "type": "document",
+                },
+            ],
+        }
+        script = [
+            ("FAILED", semantic_outputs, "missing sections"),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "work_product",
+                    "analysis_summary": "qa_handoff incomplete",
+                    "role": "data",
+                },
+                None,
+            ),
+            ("SUCCEEDED", correction_decision, None),
+            ("SUCCEEDED", repaired_qa_handoff, None),
+            ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
+            # remaining tasks just succeed
+            ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
+        ]
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Look for qa_handoff.md among the stored artifacts. Plan_deltas
+        # also hit the vault (correctly) — filter to the artifact under test.
+        stored_filenames = [call.args[0].filename for call in mock_vault.store.call_args_list]
+        assert "qa_handoff.md" in stored_filenames, (
+            f"qa_handoff.md missing from vault stores; got: {stored_filenames}"
+        )
+
+        # And the run completed successfully (the storage doesn't break
+        # the existing checkpoint flow).
+        status_calls = mock_registry.update_run_status.call_args_list
+        terminal_statuses = [c.args[1] for c in status_calls]
+        assert RunStatus.COMPLETED in terminal_statuses
+
+
+# ---------------------------------------------------------------------------
 # Correction protocol: abort and rewind paths
 # ---------------------------------------------------------------------------
 

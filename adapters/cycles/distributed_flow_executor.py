@@ -1878,6 +1878,46 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     return agent.agent_id, model, overrides
         return role, None, {}
 
+    async def _store_correction_task_artifacts(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+    ) -> None:
+        """Persist a correction-task or repair-task's output artifacts.
+
+        Mirrors the artifact-storage loop in
+        ``_collect_artifacts_and_checkpoint`` but is split out so the
+        correction/repair success branches can call it before
+        ``_checkpoint_correction_task`` — which only snapshots existing
+        ``all_artifact_refs`` into a checkpoint and does not itself
+        persist new artifacts. Without this call, repaired deliverables
+        (e.g. the ``qa_handoff.md`` produced by ``builder.assemble_repair``
+        or the ``correction_decision.md`` from the correction protocol)
+        never reach the artifact registry, even though the cycle marks
+        completed and the run_report counts them as repaired. This was
+        observed across cycles 4b, 6, and prior gate-batch runs as the
+        recurring "silent artifact-drop" pattern.
+        """
+        new_refs: list[str] = []
+        for art in (result.outputs or {}).get("artifacts", []):
+            ref = await self._store_artifact(
+                art,
+                cycle,
+                run_id,
+                envelope,
+                producing_task_type=envelope.task_type,
+            )
+            new_refs.append(ref.artifact_id)
+            all_artifact_refs.append(ref.artifact_id)
+            stored_artifacts.append((ref.artifact_id, ref))
+
+        if new_refs:
+            await self._cycle_registry.append_artifact_refs(run_id, tuple(new_refs))
+
     async def _checkpoint_correction_task(
         self,
         task_id: str,
@@ -2132,6 +2172,17 @@ class DistributedFlowExecutor(FlowExecutionPort):
                     context=corr_task_context,
                     payload={"task_type": task_type},
                 )
+                # Persist the correction task's output artifacts BEFORE
+                # checkpointing — _checkpoint_correction_task only snapshots
+                # existing refs and would otherwise drop these silently.
+                await self._store_correction_task_artifacts(
+                    corr_result,
+                    corr_envelope,
+                    cycle,
+                    run_id,
+                    all_artifact_refs,
+                    stored_artifacts,
+                )
                 await self._checkpoint_correction_task(
                     corr_task_id,
                     run_id,
@@ -2276,6 +2327,17 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         entity_id=repair_task_id,
                         context=repair_task_context,
                         payload={"task_type": task_type},
+                    )
+                    # Persist the repair task's output artifacts (e.g.
+                    # the regenerated qa_handoff.md from
+                    # builder.assemble_repair) before checkpointing.
+                    await self._store_correction_task_artifacts(
+                        repair_result,
+                        repair_envelope,
+                        cycle,
+                        run_id,
+                        all_artifact_refs,
+                        stored_artifacts,
                     )
                     await self._checkpoint_correction_task(
                         repair_task_id,
