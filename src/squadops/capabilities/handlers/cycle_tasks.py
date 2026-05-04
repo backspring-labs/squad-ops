@@ -572,6 +572,61 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         "- Put integration config (CORS, proxy, requirements) in its own task\n"
         "- Put tests after the code they test\n"
         "- Put QA handoff last\n\n"
+        "## PRD Coverage Discipline (load-bearing)\n\n"
+        "Before emitting the manifest, perform an explicit PRD ↔ acceptance_criteria "
+        "coverage pass. This catches a recurring class of defect where the PRD mandates "
+        "structural sub-requirements for a deliverable (e.g. required markdown sections, "
+        "required model fields, required API endpoints, required config keys) but the "
+        "plan's acceptance_criteria check only a subset, letting downstream agents ship "
+        "files that pass the typed checks while violating the PRD.\n\n"
+        "Procedure:\n"
+        "1. List every deliverable file the PRD requires.\n"
+        "2. For each deliverable, scan the PRD for structural sub-requirements stated "
+        "about it. Common shapes:\n"
+        "   - Markdown documents (`qa_handoff.md`, `README.md`): required section headers, "
+        'e.g. "must contain ## How to Test and ## Expected Behavior sections".\n'
+        "   - Data models / schemas: required fields, required field types.\n"
+        "   - APIs / route maps: required endpoints (method + path), required status codes.\n"
+        "   - Config files: required keys, required env vars.\n"
+        "3. For every sub-requirement enumerated in step 2, ensure the manifest task that "
+        "produces that deliverable has at least one acceptance_criteria typed check "
+        "covering it. Pick the right check type for the shape:\n"
+        "   - Required markdown section → `regex_match` on the section header pattern "
+        '(e.g. `pattern: "## How to Test"`, `count_min: 1`).\n'
+        "   - Required model field → `field_present` with the class_name and fields list.\n"
+        "   - Required endpoint → `endpoint_defined` with methods_paths.\n"
+        "   - Required import/symbol → `import_present` with module and symbol.\n"
+        "   - Required config key → `regex_match` with the key pattern.\n"
+        "4. If a sub-requirement has no covering typed check, ADD one to the manifest "
+        "before emitting it. Do not emit a manifest with known coverage gaps.\n"
+        "5. In your governance review document above, include a brief 'PRD Coverage' "
+        "section that lists each deliverable, its enumerated sub-requirements, and the "
+        "typed check(s) covering each. This is the audit trail for the gate evaluator.\n\n"
+        "Concrete worked example. PRD says:\n"
+        "  > §10. The qa_handoff.md document must contain `## How to Test`, "
+        "`## Expected Behavior`, and `## Known Limitations` sections.\n\n"
+        "The manifest task producing `qa_handoff.md` must include three typed checks:\n"
+        "```yaml\n"
+        "acceptance_criteria:\n"
+        "  - check: regex_match\n"
+        '    description: "Contains How to Test section"\n'
+        "    file: qa_handoff.md\n"
+        '    pattern: "## How to Test"\n'
+        "    count_min: 1\n"
+        "  - check: regex_match\n"
+        '    description: "Contains Expected Behavior section"\n'
+        "    file: qa_handoff.md\n"
+        '    pattern: "## Expected Behavior"\n'
+        "    count_min: 1\n"
+        "  - check: regex_match\n"
+        '    description: "Contains Known Limitations section"\n'
+        "    file: qa_handoff.md\n"
+        '    pattern: "## Known Limitations"\n'
+        "    count_min: 1\n"
+        "```\n\n"
+        'A pattern-only check like `pattern: "how to test|how to run"` is NOT '
+        "sufficient — it can match running prose and lets the deliverable ship without "
+        "the actual section header.\n\n"
         "Output the manifest as a YAML code block with filename: "
         "implementation_plan.yaml\n\n"
         "Use this exact schema:\n"
@@ -2538,9 +2593,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         import os
 
         effective_required = (
-            tuple(task_required_files)
-            if task_required_files
-            else profile.required_files
+            tuple(task_required_files) if task_required_files else profile.required_files
         )
 
         extracted_basenames = {os.path.basename(f["filename"]) for f in extracted}

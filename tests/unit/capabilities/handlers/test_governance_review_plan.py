@@ -6,10 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from squadops.capabilities.handlers.cycle_tasks import GovernanceReviewHandler
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -107,12 +104,8 @@ class TestGovernanceReviewManifest:
     async def test_produces_governance_review_and_manifest(self):
         handler = GovernanceReviewHandler()
         ctx = _make_context()
-        response_content = (
-            "## Governance Review\nThe plan looks good.\n\n" + VALID_MANIFEST_BLOCK
-        )
-        ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
-            response_content
-        )
+        response_content = "## Governance Review\nThe plan looks good.\n\n" + VALID_MANIFEST_BLOCK
+        ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(response_content)
 
         result = await handler.handle(ctx, _make_inputs())
 
@@ -234,3 +227,84 @@ class TestGovernanceReviewManifest:
 
         assert not result.success
         assert "timeout" in result.error
+
+
+class TestPRDCoverageDiscipline:
+    """Issue #112: prompt extension must instruct Max to perform PRD ↔
+    acceptance_criteria coverage and pick the right typed-check shape per
+    sub-requirement, with the full procedure and a worked example."""
+
+    def test_extension_has_coverage_section_header(self):
+        ext = GovernanceReviewHandler._MANIFEST_PROMPT_EXTENSION
+        assert "PRD Coverage Discipline" in ext, (
+            "Coverage section header missing — Max won't know to perform the pass"
+        )
+        assert "load-bearing" in ext, (
+            "Section must signal load-bearing intent so the LLM doesn't skip it"
+        )
+
+    def test_extension_enumerates_subrequirement_shapes(self):
+        ext = GovernanceReviewHandler._MANIFEST_PROMPT_EXTENSION
+        for shape in (
+            "required markdown sections",
+            "required model fields",
+            "required API endpoints",
+            "required config keys",
+        ):
+            normalized = shape.lower()
+            assert normalized in ext.lower(), f"Sub-requirement shape missing: {shape}"
+
+    def test_extension_maps_shape_to_typed_check(self):
+        ext = GovernanceReviewHandler._MANIFEST_PROMPT_EXTENSION
+        # Each shape must point at the correct typed-check primitive so the
+        # LLM doesn't fall back to bare prose strings.
+        assert "regex_match" in ext
+        assert "field_present" in ext
+        assert "endpoint_defined" in ext
+        assert "import_present" in ext
+
+    def test_extension_includes_qa_handoff_worked_example(self):
+        """The recurring defect this fixes (4 of 5 SIP-0092 gate cycles) was
+        a missing `## Expected Behavior` section check. The worked example
+        must show that exact case so Max can pattern-match against it."""
+        ext = GovernanceReviewHandler._MANIFEST_PROMPT_EXTENSION
+        assert "## How to Test" in ext
+        assert "## Expected Behavior" in ext
+        assert "qa_handoff.md" in ext
+        # Show the typed-check syntax, not prose
+        assert 'pattern: "## How to Test"' in ext
+        assert "count_min: 1" in ext
+
+    def test_extension_warns_against_loose_pattern_matching(self):
+        """Pattern-only checks like `how to test|how to run` match running
+        prose and were the proximate cause of the qa_handoff defect.
+        The prompt must call this anti-pattern out explicitly."""
+        ext = GovernanceReviewHandler._MANIFEST_PROMPT_EXTENSION
+        assert "how to test|how to run" in ext
+        assert "NOT" in ext or "not sufficient" in ext.lower()
+
+    def test_extension_requires_audit_trail_in_review(self):
+        """Coverage decisions must be visible in the review document so the
+        gate evaluator can audit per-deliverable typed-check coverage without
+        diffing the manifest YAML against the PRD by hand."""
+        ext = GovernanceReviewHandler._MANIFEST_PROMPT_EXTENSION
+        assert "PRD Coverage" in ext
+        assert "audit trail" in ext.lower()
+
+    async def test_prompt_extension_reaches_llm_call(self):
+        """End-to-end: the coverage discipline text actually lands in the
+        user prompt sent to the LLM (regression guard against a refactor
+        that builds the prompt without including the extension)."""
+        handler = GovernanceReviewHandler()
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
+            "Review.\n\n" + VALID_MANIFEST_BLOCK
+        )
+
+        await handler.handle(ctx, _make_inputs())
+
+        call_args = ctx.ports.llm.chat_stream_with_usage.call_args
+        messages = call_args[0][0]
+        user_content = next(m.content for m in messages if m.role == "user")
+        assert "PRD Coverage Discipline" in user_content
+        assert "## Expected Behavior" in user_content
