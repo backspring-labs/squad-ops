@@ -1970,6 +1970,48 @@ class DistributedFlowExecutor(FlowExecutionPort):
             "prior_plan_deltas_count": prior_plan_deltas_count,
         }
 
+    @staticmethod
+    def _compose_failure_trigger(
+        envelope: TaskEnvelope,
+        failure_evidence: dict[str, Any],
+    ) -> str:
+        """Issue #114: compose the plan_delta `trigger` string.
+
+        When the failure traces to a blocking typed-acceptance check trip
+        (an evaluation row with check prefix ``acceptance:``, severity
+        ``error``, and ``passed: False``), emit the extended shape
+        ``typed_check_failed:<task_type>:<task_index>:<check_index>`` so
+        the SIP-0092 gate evaluator can attribute corrections to specific
+        check failures without re-deriving them from prose.
+
+        Otherwise returns the legacy shape ``task_failure:<task_type>``
+        (e.g. development.develop returned no valid code, RabbitMQ
+        timeout, JSON parse error — none of which are typed-check trips).
+        Both shapes coexist and consumers must handle both.
+        """
+        legacy = f"task_failure:{envelope.task_type}"
+        validation_result = failure_evidence.get("validation_result") or {}
+        checks = validation_result.get("checks") or []
+        for row in checks:
+            if not isinstance(row, dict):
+                continue
+            check_name = row.get("check", "")
+            if not isinstance(check_name, str) or not check_name.startswith("acceptance:"):
+                continue
+            if row.get("passed", True):
+                continue
+            if row.get("severity") != "error":
+                continue
+            task_index = row.get("task_index")
+            check_index = row.get("check_index")
+            if task_index is None or check_index is None:
+                # Identity fields missing (legacy data, monolithic flow).
+                # Fall back to legacy shape rather than emit a malformed
+                # trigger downstream consumers would have to special-case.
+                continue
+            return f"typed_check_failed:{envelope.task_type}:{task_index}:{check_index}"
+        return legacy
+
     async def _run_correction_protocol(
         self,
         run_id: str,
@@ -2139,7 +2181,7 @@ class DistributedFlowExecutor(FlowExecutionPort):
             delta_id=uuid4().hex,
             run_id=run_id,
             correction_path=correction_path,
-            trigger=f"task_failure:{envelope.task_type}",
+            trigger=self._compose_failure_trigger(envelope, failure_evidence),
             failure_classification=analysis_outputs.get("classification", "unknown"),
             analysis_summary=analysis_outputs.get("analysis_summary", "N/A"),
             decision_rationale=decision_outputs.get("decision_rationale", "N/A"),

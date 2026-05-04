@@ -238,9 +238,7 @@ class TestBuildFailureEvidence:
                     "passed": False,
                     "summary": "1 typed check failed",
                     "missing_components": ["qa_handoff.md::## How to run backend"],
-                    "checks": [
-                        {"name": "regex:how to run backend", "status": "failed"}
-                    ],
+                    "checks": [{"name": "regex:how to run backend", "status": "failed"}],
                 },
                 "artifacts": [],
             },
@@ -286,9 +284,7 @@ class TestBuildFailureEvidence:
         # before assembling anything) — analyze_failure must still get a
         # well-formed envelope, not a KeyError downstream.
         envelope = self._envelope("development.develop")
-        result = TaskResult(
-            task_id="t-7", status="FAILED", outputs=None, error="connection reset"
-        )
+        result = TaskResult(task_id="t-7", status="FAILED", outputs=None, error="connection reset")
 
         evidence = self.DistributedFlowExecutor._build_failure_evidence(
             envelope, result, prior_plan_deltas_count=0
@@ -306,12 +302,195 @@ class TestBuildFailureEvidence:
         assert evidence["rejected_artifacts"] == []
 
 
+class TestComposeFailureTrigger:
+    """Issue #114: plan_delta `trigger` must identify the specific typed-
+    check failure when one tripped, so the SIP-0092 gate evaluator can
+    attribute corrections to specific checks instead of inferring from
+    prose. Non-typed-check failures (LLM crash, RabbitMQ timeout) keep the
+    legacy `task_failure:<task_type>` shape so consumers handle both."""
+
+    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+
+    @staticmethod
+    def _envelope(task_type: str = "builder.assemble") -> TaskEnvelope:
+        return TaskEnvelope(
+            task_id="t-9",
+            agent_id="bob",
+            cycle_id="cyc_x",
+            pulse_id="pulse",
+            project_id="proj",
+            task_type=task_type,
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="trace",
+            span_id="span",
+            inputs={},
+            metadata={},
+        )
+
+    def _evidence(self, checks: list[dict]) -> dict:
+        return {
+            "validation_result": {
+                "passed": False,
+                "checks": checks,
+            }
+        }
+
+    def test_typed_check_failure_emits_extended_trigger(self):
+        evidence = self._evidence(
+            [
+                {
+                    "check": "acceptance:regex_match",
+                    "severity": "error",
+                    "status": "failed",
+                    "passed": False,
+                    "task_index": 5,
+                    "check_index": 2,
+                },
+            ]
+        )
+        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+            self._envelope("builder.assemble"), evidence
+        )
+        assert trigger == "typed_check_failed:builder.assemble:5:2"
+
+    def test_no_failed_checks_falls_back_to_legacy_shape(self):
+        # All typed checks passed but task still failed — e.g. tests_pass
+        # synthetic check tripped, or the task crashed after validation.
+        # Trigger must fall through to the legacy shape; no malformed
+        # extended trigger.
+        evidence = self._evidence(
+            [
+                {
+                    "check": "acceptance:regex_match",
+                    "severity": "error",
+                    "status": "passed",
+                    "passed": True,
+                    "task_index": 5,
+                    "check_index": 0,
+                },
+            ]
+        )
+        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+            self._envelope("development.develop"), evidence
+        )
+        assert trigger == "task_failure:development.develop"
+
+    def test_non_typed_check_failure_uses_legacy_shape(self):
+        # Validation_result.checks contains only non-acceptance entries
+        # (e.g. tests_pass, stack_coverage_heuristic). These never gate
+        # the extended trigger — only acceptance:* rows do.
+        evidence = self._evidence(
+            [
+                {"check": "tests_pass", "passed": False},
+                {"check": "stack_coverage_heuristic", "passed": False},
+            ]
+        )
+        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+            self._envelope("qa.test"), evidence
+        )
+        assert trigger == "task_failure:qa.test"
+
+    def test_warning_severity_failure_uses_legacy_shape(self):
+        # severity=warning is informational; even a status=failed warning
+        # must not promote to typed_check_failed: trigger, because the
+        # gate's C2 measures *blocking* typed-check trips.
+        evidence = self._evidence(
+            [
+                {
+                    "check": "acceptance:regex_match",
+                    "severity": "warning",
+                    "status": "failed",
+                    "passed": True,  # severity=warning never gates; passed flag stays True
+                    "task_index": 0,
+                    "check_index": 0,
+                },
+            ]
+        )
+        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+            self._envelope("builder.assemble"), evidence
+        )
+        assert trigger == "task_failure:builder.assemble"
+
+    def test_first_failing_check_wins_when_multiple(self):
+        evidence = self._evidence(
+            [
+                {
+                    "check": "acceptance:endpoint_defined",
+                    "severity": "error",
+                    "status": "passed",
+                    "passed": True,
+                    "task_index": 1,
+                    "check_index": 0,
+                },
+                {
+                    "check": "acceptance:regex_match",
+                    "severity": "error",
+                    "status": "failed",
+                    "passed": False,
+                    "task_index": 1,
+                    "check_index": 1,
+                },
+                {
+                    "check": "acceptance:regex_match",
+                    "severity": "error",
+                    "status": "failed",
+                    "passed": False,
+                    "task_index": 1,
+                    "check_index": 2,
+                },
+            ]
+        )
+        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+            self._envelope("builder.assemble"), evidence
+        )
+        assert trigger == "typed_check_failed:builder.assemble:1:1"
+
+    def test_missing_task_index_falls_back_to_legacy(self):
+        # Legacy data without identity fields (pre-#114 cycle reruns
+        # mid-rollout) — fall through to legacy rather than emit a
+        # `typed_check_failed:...:None:None` string downstream consumers
+        # would have to special-case.
+        evidence = self._evidence(
+            [
+                {
+                    "check": "acceptance:regex_match",
+                    "severity": "error",
+                    "status": "failed",
+                    "passed": False,
+                    # task_index/check_index intentionally absent
+                },
+            ]
+        )
+        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+            self._envelope("builder.assemble"), evidence
+        )
+        assert trigger == "task_failure:builder.assemble"
+
+    def test_empty_evidence_falls_back_to_legacy(self):
+        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+            self._envelope("development.develop"), {}
+        )
+        assert trigger == "task_failure:development.develop"
+
+    def test_malformed_check_row_skipped_safely(self):
+        # Defensive: a row that's not a dict (corrupt validation_result)
+        # must not crash the trigger composer. Fall through to legacy.
+        evidence = self._evidence(["not a dict", None, 42])  # type: ignore[list-item]
+        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+            self._envelope("qa.test"), evidence
+        )
+        assert trigger == "task_failure:qa.test"
+
+
 class TestBuildTaskName:
     """Gantt-friendly Prefect task names: focused-mode envelopes show the
     manifest focus and index instead of N identical role:task_type rows."""
 
     @staticmethod
-    def _envelope(task_type: str = "development.develop", inputs: dict | None = None) -> TaskEnvelope:
+    def _envelope(
+        task_type: str = "development.develop", inputs: dict | None = None
+    ) -> TaskEnvelope:
         return TaskEnvelope(
             task_id="task_abc",
             agent_id="neo",
@@ -330,10 +509,12 @@ class TestBuildTaskName:
     def test_focused_envelope_uses_focus_and_index(self) -> None:
         from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
 
-        env = self._envelope(inputs={
-            "subtask_focus": "Backend data models and in-memory repository",
-            "subtask_index": 0,
-        })
+        env = self._envelope(
+            inputs={
+                "subtask_focus": "Backend data models and in-memory repository",
+                "subtask_index": 0,
+            }
+        )
         assert DistributedFlowExecutor._build_task_name("dev", env) == (
             "dev[0]: Backend data models and in-memory repository"
         )
@@ -351,10 +532,7 @@ class TestBuildTaskName:
         from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
 
         env = self._envelope(task_type="development.develop", inputs={})
-        assert (
-            DistributedFlowExecutor._build_task_name("dev", env)
-            == "dev: development.develop"
-        )
+        assert DistributedFlowExecutor._build_task_name("dev", env) == "dev: development.develop"
 
     def test_long_focus_truncates_at_60_chars(self) -> None:
         from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
@@ -496,9 +674,7 @@ class TestDispatchTask:
         assert result.status == "FAILED"
         assert "Timed out" in result.error
 
-    async def test_recovers_from_transient_consume_error(
-        self, executor, mock_queue
-    ) -> None:
+    async def test_recovers_from_transient_consume_error(self, executor, mock_queue) -> None:
         """A transient QueueError must invalidate the cached queue handle and
         the loop must keep waiting until the deadline — not fail the task.
 
@@ -551,9 +727,7 @@ class TestDispatchTask:
         # channel rather than reusing the broken handle.
         mock_queue.invalidate_queue.assert_awaited_with("cycle_results_run_001")
 
-    async def test_uses_long_block_consume_not_short_poll(
-        self, executor, mock_queue
-    ) -> None:
+    async def test_uses_long_block_consume_not_short_poll(self, executor, mock_queue) -> None:
         """The wait must use ``consume_blocking`` (one consumer per chunk),
         not the legacy ``consume`` poll-and-sleep that churned consumer tags.
 
@@ -2953,13 +3127,9 @@ class TestDispatchTaskPrefectLifecycle:
         mock_reporter.create_task_run.assert_awaited_once_with(
             "fr_abc", "task_abc", "dev: development.design"
         )
-        mock_reporter.set_task_run_state.assert_awaited_once_with(
-            "tr_new", "RUNNING", "Running"
-        )
+        mock_reporter.set_task_run_state.assert_awaited_once_with("tr_new", "RUNNING", "Running")
 
-    async def test_no_prefect_calls_when_reporter_missing(
-        self, mock_queue, envelope
-    ):
+    async def test_no_prefect_calls_when_reporter_missing(self, mock_queue, envelope):
         self._wire_success_reply(mock_queue, envelope.task_id)
         executor = self._build_executor(mock_queue, mock_reporter=None)
 
@@ -2967,9 +3137,7 @@ class TestDispatchTaskPrefectLifecycle:
             "adapters.cycles.distributed_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
-            result = await executor._dispatch_task(
-                envelope, "run_001", flow_run_id="fr_abc"
-            )
+            result = await executor._dispatch_task(envelope, "run_001", flow_run_id="fr_abc")
 
         assert result.status == "SUCCEEDED"
 
@@ -3008,9 +3176,7 @@ class TestDispatchTaskPrefectLifecycle:
         mock_reporter.create_task_run.assert_not_awaited()
         mock_reporter.set_task_run_state.assert_not_awaited()
 
-    async def test_published_envelope_carries_run_ids(
-        self, mock_queue, mock_reporter, envelope
-    ):
+    async def test_published_envelope_carries_run_ids(self, mock_queue, mock_reporter, envelope):
         """SIP-0087 B1: dispatched envelope on the wire carries flow_run_id /
         task_run_id so the agent can scope its handler logs to the right
         Prefect task pane."""
@@ -3113,9 +3279,7 @@ class TestDispatchTaskPrefectLifecycle:
 
         async def capturing_sleep(_interval: float) -> None:
             ctx = get_correlation_context()
-            seen_ids.append(
-                (ctx.flow_run_id if ctx else None, ctx.task_run_id if ctx else None)
-            )
+            seen_ids.append((ctx.flow_run_id if ctx else None, ctx.task_run_id if ctx else None))
             # Let the event loop advance; real sleep avoids tight-looping.
             await real_sleep(0)
 
@@ -3124,12 +3288,11 @@ class TestDispatchTaskPrefectLifecycle:
             caplog.at_level(stdlog.INFO, logger=dfe.__name__),
         ):
             base = CorrelationContext(cycle_id="cyc_001")
-            with use_correlation_context(base), use_run_ids(
-                flow_run_id="fr_abc", task_run_id="tr_123"
+            with (
+                use_correlation_context(base),
+                use_run_ids(flow_run_id="fr_abc", task_run_id="tr_123"),
             ):
-                hb = asyncio.create_task(
-                    executor._task_heartbeat(envelope, interval=0.01)
-                )
+                hb = asyncio.create_task(executor._task_heartbeat(envelope, interval=0.01))
                 # Yield a few times so the heartbeat can iterate.
                 for _ in range(5):
                     await real_sleep(0)
@@ -3139,9 +3302,7 @@ class TestDispatchTaskPrefectLifecycle:
                 except asyncio.CancelledError:
                     pass
 
-        messages = [
-            r.getMessage() for r in caplog.records if "task_heartbeat" in r.getMessage()
-        ]
+        messages = [r.getMessage() for r in caplog.records if "task_heartbeat" in r.getMessage()]
         assert messages, "expected at least one task_heartbeat log line"
         first = messages[0]
         assert "capability_id=dev.design" in first
@@ -3172,4 +3333,3 @@ class TestDispatchTaskPrefectLifecycle:
             if t.get_name().startswith("prefect-heartbeat-") and not t.done()
         ]
         assert leftover == []
-

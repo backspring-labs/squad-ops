@@ -12,10 +12,12 @@ Part of SIP-0066.
 
 from __future__ import annotations
 
+import json
 import logging
 import tempfile
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -119,6 +121,44 @@ def _estimate_min_artifacts(prd: str, impl_plan: str | None = None) -> int:
     return max(3, len(layers) * 2)
 
 
+def _build_typed_check_evaluation_artifact(
+    validation_checks: list[dict],
+    task_index: Any,
+    task_type: str,
+) -> dict | None:
+    """Issue #114: serialize typed-acceptance evaluation rows for the gate evaluator.
+
+    Returns an artifact dict suitable for ``outputs["artifacts"]``, or
+    None when this task evaluated no typed checks (legacy monolithic
+    flow, typed_acceptance disabled in resolved config, or prose-only
+    acceptance criteria). Per the issue spec, absent is preferred over
+    an empty artifact so the gate evaluator can distinguish "no checks
+    ran" from "checks ran and all passed".
+    """
+    typed_rows = [
+        c
+        for c in validation_checks
+        if isinstance(c.get("check"), str) and c["check"].startswith("acceptance:")
+    ]
+    if not typed_rows:
+        return None
+
+    payload = {
+        "version": 1,
+        "task_index": task_index,
+        "task_type": task_type,
+        "evaluated_at": datetime.now(UTC).isoformat(),
+        "evaluations": typed_rows,
+    }
+    suffix = f"_task_{task_index}" if task_index is not None else ""
+    return {
+        "name": f"typed_check_evaluation{suffix}.json",
+        "content": json.dumps(payload, indent=2),
+        "media_type": "application/json",
+        "type": "typed_check_evaluation",
+    }
+
+
 class _CycleTaskHandler(CapabilityHandler):
     """Base class for cycle task handlers.
 
@@ -145,6 +185,19 @@ class _CycleTaskHandler(CapabilityHandler):
     @property
     def description(self) -> str:
         return f"Cycle task handler for {self._role} role ({self._capability_id})"
+
+    # Issue #114: thin instance binding so subclass handlers can call
+    # `self._build_typed_check_evaluation_artifact(...)` without importing
+    # the module-level function. Real implementation is module-scoped so
+    # handlers that don't extend this base (or future module-level
+    # callers) can use it directly.
+    @staticmethod
+    def _build_typed_check_evaluation_artifact(
+        validation_checks: list[dict],
+        task_index: Any,
+        task_type: str,
+    ) -> dict | None:
+        return _build_typed_check_evaluation_artifact(validation_checks, task_index, task_type)
 
     def validate_inputs(
         self,
@@ -1144,7 +1197,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             workspace_root = Path(tmpdir_str)
             self._materialize_artifacts(artifacts, workspace_root)
 
-            for criterion in typed_criteria:
+            for check_index, criterion in enumerate(typed_criteria):
                 outcome = await self._evaluate_typed_check(
                     criterion,
                     workspace_root,
@@ -1166,6 +1219,12 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                     "passed": not (
                         criterion.severity == "error" and outcome.status in {"failed", "error"}
                     ),
+                    # Issue #114: identity fields for downstream trigger
+                    # composition and per-cycle evaluation persistence.
+                    # task_index is None for tasks not driven by an
+                    # implementation_plan (legacy monolithic flow).
+                    "task_index": inputs.get("subtask_index"),
+                    "check_index": check_index,
                 }
                 checks.append(check_record)
 
@@ -1674,6 +1733,17 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 "coverage_ratio": validation.coverage_ratio,
                 "summary": validation.summary,
             }
+
+            # Issue #114: emit per-task typed-check evaluation artifact when
+            # any typed checks ran, so the SIP-0092 gate evaluator can
+            # measure C1 (evaluator-error rate) and C2 (typed-check trips).
+            tce_artifact = self._build_typed_check_evaluation_artifact(
+                validation.checks,
+                inputs.get("subtask_index"),
+                self._capability_id,
+            )
+            if tce_artifact is not None:
+                artifacts.append(tce_artifact)
         else:
             validation = ValidationResult(passed=True, summary="Validation disabled")
 
@@ -2345,6 +2415,16 @@ class QATestHandler(_CycleTaskHandler):
                 "coverage_ratio": validation.coverage_ratio,
                 "summary": validation.summary,
             }
+
+            # Issue #114: emit per-task typed-check evaluation artifact for
+            # the gate evaluator. Same shape/semantics as the dev handler.
+            tce_artifact = self._build_typed_check_evaluation_artifact(
+                validation.checks,
+                inputs.get("subtask_index"),
+                self._capability_id,
+            )
+            if tce_artifact is not None:
+                artifacts.append(tce_artifact)
 
         if test_result.tests_passed:
             test_suffix = ", all tests passed"
