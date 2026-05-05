@@ -381,6 +381,100 @@ class TestCorrectionDecision:
 
         assert result.outputs["correction_path"] == "abort"
 
+    # ------------------------------------------------------------------
+    # SIP-0092 M2 → M3 gate diagnostic field (structural_plan_change_candidate)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.parametrize("candidate", ["none", "add_task", "tighten_acceptance", "other"])
+    async def test_plan_change_candidate_passes_through(self, mock_context, candidate):
+        decision = {
+            "correction_path": "patch",
+            "decision_rationale": "Localized",
+            "affected_task_types": ["development.develop"],
+            "structural_plan_change_candidate": candidate,
+            "structural_plan_change_rationale": (
+                "Coverage gap on join/leave endpoints" if candidate != "none" else ""
+            ),
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
+        )
+
+        h = GovernanceCorrectionDecisionHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        assert result.outputs["structural_plan_change_candidate"] == candidate
+        assert (
+            result.outputs["structural_plan_change_rationale"]
+            == decision["structural_plan_change_rationale"]
+        )
+
+    async def test_plan_change_candidate_invalid_falls_back_to_none(self, mock_context):
+        """Invalid values shouldn't break the run — degrade to `none` so the
+        diagnostic field is always present and parseable for gate aggregation."""
+        decision = {
+            "correction_path": "patch",
+            "decision_rationale": "Localized",
+            "affected_task_types": [],
+            "structural_plan_change_candidate": "remove_task",  # not in Rev 1 scope
+            "structural_plan_change_rationale": "Should be dropped",
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
+        )
+
+        h = GovernanceCorrectionDecisionHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        assert result.outputs["structural_plan_change_candidate"] == "none"
+
+    async def test_plan_change_candidate_missing_defaults_to_none(self, mock_context):
+        """LLM may omit the field; the artifact must still carry the diagnostic
+        so gate-evidence aggregation can count `none` cycles separately from
+        cycles where the field never appeared."""
+        decision = {
+            "correction_path": "patch",
+            "decision_rationale": "Localized",
+            "affected_task_types": [],
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
+        )
+
+        h = GovernanceCorrectionDecisionHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        assert result.outputs["structural_plan_change_candidate"] == "none"
+        assert result.outputs["structural_plan_change_rationale"] == ""
+
+    async def test_plan_change_candidate_persists_in_artifact(self, mock_context):
+        """The persisted correction_decision.md JSON must contain both the
+        operative decision and the diagnostic so post-run analysis can pull
+        them off a single artifact."""
+        decision = {
+            "correction_path": "patch",
+            "decision_rationale": "Localized",
+            "affected_task_types": ["development.develop"],
+            "structural_plan_change_candidate": "add_task",
+            "structural_plan_change_rationale": "Need a separate join/leave test task",
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(decision)),
+        )
+
+        h = GovernanceCorrectionDecisionHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        artifact = result.outputs["artifacts"][0]
+        body = json.loads(artifact["content"])
+        assert body["correction_path"] == "patch"
+        assert body["structural_plan_change_candidate"] == "add_task"
+        assert "join/leave" in body["structural_plan_change_rationale"]
+
 
 # ---------------------------------------------------------------------------
 # Repair handlers (thin subclasses)

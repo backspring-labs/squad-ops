@@ -2240,6 +2240,13 @@ class DistributedFlowExecutor(FlowExecutionPort):
             changes=tuple(decision_outputs.get("affected_task_types", [])),
             affected_task_types=tuple(decision_outputs.get("affected_task_types", [])),
             created_at=datetime.now(UTC),
+            # SIP-0092 M2 → M3 gate diagnostic.
+            structural_plan_change_candidate=str(
+                decision_outputs.get("structural_plan_change_candidate", "none")
+            ),
+            structural_plan_change_rationale=str(
+                decision_outputs.get("structural_plan_change_rationale", "")
+            ),
         )
         delta_content = json.dumps(delta.to_dict(), default=str).encode()
         delta_ref = ArtifactRef(

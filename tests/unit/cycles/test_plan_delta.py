@@ -100,3 +100,41 @@ class TestPlanDelta:
     def test_abort_allows_empty_changes(self):
         pd = _make_delta(correction_path="abort", changes=())
         assert pd.changes == ()
+
+    # --- SIP-0092 M2 → M3 gate diagnostic ---
+
+    def test_plan_change_candidate_defaults_to_none(self):
+        """Old call sites that don't yet populate the diagnostic must
+        still build a valid PlanDelta — the diagnostic is additive."""
+        pd = _make_delta()
+        assert pd.structural_plan_change_candidate == "none"
+        assert pd.structural_plan_change_rationale == ""
+
+    def test_plan_change_candidate_round_trips(self):
+        pd = _make_delta(
+            structural_plan_change_candidate="add_task",
+            structural_plan_change_rationale="Coverage gap on join/leave endpoints",
+        )
+        restored = PlanDelta.from_dict(pd.to_dict())
+        assert restored.structural_plan_change_candidate == "add_task"
+        assert restored.structural_plan_change_rationale == "Coverage gap on join/leave endpoints"
+
+    def test_from_dict_tolerates_legacy_payload_without_diagnostic(self):
+        """Persisted plan_delta_*.json artifacts from cycles before this
+        PR must still load — the diagnostic fields are absent and
+        from_dict must default them rather than KeyError."""
+        legacy = {
+            "delta_id": "d1",
+            "run_id": "r1",
+            "correction_path": "continue",
+            "trigger": "failure",
+            "failure_classification": "execution",
+            "analysis_summary": "summary",
+            "decision_rationale": "rationale",
+            "changes": [],
+            "affected_task_types": [],
+            "created_at": NOW.isoformat(),
+        }
+        pd = PlanDelta.from_dict(legacy)
+        assert pd.structural_plan_change_candidate == "none"
+        assert pd.structural_plan_change_rationale == ""
