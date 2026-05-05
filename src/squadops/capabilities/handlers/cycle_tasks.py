@@ -2791,9 +2791,9 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         active task only owns a subset of the profile's defaults). When
         omitted/empty, falls back to `profile.required_files` to preserve
         single-task builder behavior. The qa_handoff section check is
-        skipped when `qa_handoff.md` is not in scope, otherwise Bob would
-        be forced to emit a full qa_handoff in every builder task even if
-        framing routed it to a different task.
+        skipped when `qa_handoff.md` is not in scope, otherwise the builder
+        role would be forced to emit a full qa_handoff in every builder
+        task even if framing routed it to a different task.
 
         Returns an error message string if validation fails, None if OK.
         """
@@ -2897,8 +2897,9 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 parts.append(f"- **{tag_key}**: {tag_value}")
         # Issue #92: do NOT enumerate filenames here. The build profile's
         # `full_system_prompt` (composed from required_files/optional_files)
-        # is the single source of truth for what Bob must produce. This
-        # fallback only carries the format/path rules that are universal.
+        # is the single source of truth for what the builder role must
+        # produce. This fallback only carries the format/path rules that
+        # are universal.
         parts.append(
             "\n\nYou are ASSEMBLING the source code above into a deployable package. "
             "Do NOT rewrite or regenerate the source code — it is already written. "
@@ -2968,8 +2969,8 @@ class BuilderAssembleHandler(_CycleTaskHandler):
     def _get_assembly_inputs(self, inputs: dict[str, Any]) -> dict[str, str]:
         """Get all source/config artifacts for assembly (D8 — static, not capability-driven).
 
-        Bob always needs to see all source files regardless of stack to produce
-        correct packaging.
+        The builder role always needs to see all source files regardless of
+        stack to produce correct packaging.
         """
         contents = inputs.get("artifact_contents", {})
         sources = {}

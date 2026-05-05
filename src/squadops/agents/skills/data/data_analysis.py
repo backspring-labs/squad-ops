@@ -1,6 +1,6 @@
 """Data Analysis skill - analyze data and generate insights.
 
-Data agent skill for analytics.
+Skill for the data role's analytics duties.
 Part of SIP-0.8.8 Phase 4.
 """
 from __future__ import annotations

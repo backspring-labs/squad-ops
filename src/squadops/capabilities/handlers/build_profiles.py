@@ -99,9 +99,9 @@ class BuildProfile:
         validator and the plan author can disagree about which qa_handoff
         sections are required. The plan task description named different
         sections (e.g. "Implemented Scope", "Known Limitations") than the
-        validator's hard-coded set. Bob followed the more specific task
-        description and the validator rejected on a missing canonical
-        section. We surface the validator's section list as
+        validator's hard-coded set. The builder role followed the more
+        specific task description and the validator rejected on a missing
+        canonical section. We surface the validator's section list as
         "non-negotiable" with a worked skeleton so the user prompt's task
         description cannot quietly override it. Additional sections
         requested by the task are welcome on top of the required ones.
@@ -117,11 +117,7 @@ class BuildProfile:
         block only when `qa_handoff.md` is one of them. This makes the
         framing decomposition load-bearing instead of overridden.
         """
-        scoped = (
-            tuple(task_required_files)
-            if task_required_files
-            else self.required_files
-        )
+        scoped = tuple(task_required_files) if task_required_files else self.required_files
         required_lines = "\n".join(f"- `{name}`" for name in scoped)
         optional_block = ""
         if self.optional_files:

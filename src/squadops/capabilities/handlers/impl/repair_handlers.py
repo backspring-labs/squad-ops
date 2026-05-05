@@ -127,10 +127,10 @@ def _fence_language_for(filename: str) -> str:
 def _format_repair_artifacts(artifacts: Any) -> str:
     """Render repair artifacts as fenced code blocks with filename headers.
 
-    Eve previously saw only the role-keyed one-line summary, so she would
-    return Verdict: FAIL on repairs whose artifacts were already in the
-    registry. Surfacing the full content here lets her cite specific
-    lines when checking acceptance criteria.
+    The qa role previously saw only the role-keyed one-line summary, so
+    it would return Verdict: FAIL on repairs whose artifacts were
+    already in the registry. Surfacing the full content here lets the
+    validator cite specific lines when checking acceptance criteria.
     """
     if not isinstance(artifacts, list) or not artifacts:
         return ""
@@ -164,10 +164,10 @@ class _RepairPromptMixin:
 
     The base `_CycleTaskHandler` user prompt is PRD + prior_outputs only —
     the repair handler never sees the failed task's expected_artifacts /
-    acceptance_criteria, so Bob/Neo emit generic content instead of
-    re-producing the named artifact that failed acceptance. This mixin
-    surfaces the failed task's contract and the failure context to the
-    LLM. Used by all three repair handlers below.
+    acceptance_criteria, so the dev/builder roles emit generic content
+    instead of re-producing the named artifact that failed acceptance.
+    This mixin surfaces the failed task's contract and the failure
+    context to the LLM. Used by all three repair handlers below.
     """
 
     _request_template_id = "request.cycle_repair_task"
@@ -277,9 +277,10 @@ class BuilderAssembleRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     Mirrors `DevelopmentCorrectionRepairHandler` but routed to the builder
     role so packaging/handoff failures (e.g. qa_handoff.md missing
     required sections, missing requirements.txt or package.json) get
-    repaired by Bob with the build-profile system prompt rather than by
-    Neo with the dev system prompt — Neo has no useful context for
-    builder.assemble outputs and simply ignores the assignment.
+    repaired by the builder role with the build-profile system prompt
+    rather than by the dev role with the dev system prompt — the dev
+    role has no useful context for builder.assemble outputs and simply
+    ignores the assignment.
     """
 
     _handler_name = "builder_assemble_repair_handler"
@@ -308,14 +309,15 @@ class QAValidateRepairHandler(_CycleTaskHandler):
 
     @staticmethod
     def _format_repair_summary(prior_outputs: dict[str, Any] | None) -> str:
-        """Render the upstream repair handler's artifacts for Eve's prompt.
+        """Render the upstream repair handler's artifacts for the qa prompt.
 
         The executor stores the repair task's outputs under its role key
         (e.g. `prior_outputs["builder"]` for builder.assemble_repair). For
         repair tasks the executor preserves the `artifacts` list (unlike
-        the regular fan-in path), so we surface filename + content here so
-        Eve can verify against the original acceptance criteria. Falls
-        back to the role-keyed summary when no artifacts are present.
+        the regular fan-in path), so we surface filename + content here
+        so the qa role can verify against the original acceptance
+        criteria. Falls back to the role-keyed summary when no artifacts
+        are present.
         """
         if not prior_outputs:
             return "(no repair output available)"
