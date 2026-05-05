@@ -1,10 +1,18 @@
+---
+title: Multi-Role Plan Authoring
+status: accepted
+author: SquadOps Architecture
+created_at: '2026-04-30T00:00:00Z'
+sip_number: 93
+updated_at: '2026-05-05T14:50:27.218672Z'
+---
 # SIP-0XXX: Multi-Role Plan Authoring
 
 **Status:** Proposed
 **Authors:** SquadOps Architecture
 **Created:** 2026-04-30
 **Revision:** 1
-**Relationship:** Competitor / successor to **SIP-0092 M2** (Separated Plan Authoring). Drafted while implementing SIP-0092 M1 on PR #72. Linked from the SIP-0092 plan doc's Milestone Gates → Gate M1 → M2 section as an alternative authoring model.
+**Relationship:** Replaces **SIP-0092 M2** (Separated Plan Authoring). Drafted while implementing SIP-0092 M1 on PR #72. Per the M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`) and the maintainer's 2026-05-05 path-forward decision, this SIP supplants M2-as-written: M2's deliverables (proposer/judge decoupling, structured concerns, revision loop, `structural_plan_change_candidate` diagnostic) are absorbed across a sub-sequence of PRs on this SIP's multi-author backbone instead of M2's sole-broker design.
 
 ## 1. Abstract
 
