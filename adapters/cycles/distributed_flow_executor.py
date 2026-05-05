@@ -2369,11 +2369,16 @@ class DistributedFlowExecutor(FlowExecutionPort):
                         payload={"task_type": task_type, "error": repair_result.error or ""},
                     )
 
-                # Collect repair outputs
+                # Collect repair outputs. Unlike the regular fan-in path
+                # (line ~1525), keep `artifacts` so the next step in this
+                # sequence — `qa.validate_repair` — can see the actual
+                # repaired files rather than only the role-keyed one-line
+                # summary. Without this Eve renders Verdict: FAIL on
+                # repairs whose artifacts are already in the registry,
+                # because the validate-repair prompt has no visibility
+                # into what the upstream repair handler produced.
                 role_key = repair_envelope.metadata.get("role", "unknown")
-                prior_outputs[role_key] = {
-                    k: v for k, v in (repair_result.outputs or {}).items() if k != "artifacts"
-                }
+                prior_outputs[role_key] = dict(repair_result.outputs or {})
 
         # 8. Emit CORRECTION_COMPLETED
         self._cycle_event_bus.emit(
