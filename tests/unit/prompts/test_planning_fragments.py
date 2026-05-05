@@ -173,7 +173,10 @@ class TestPlanningFragmentsContent:
         assert len(content) > 50, f"Fragment content too short: {len(content)} chars"
 
     def test_task_type_fragments_total(self):
-        """Exactly 12 task_type fragments exist (5 planning + 2 refinement + 5 wrap-up)."""
+        """Exactly 15 task_type fragments exist:
+        5 planning + 2 refinement + 5 wrap-up + 3 SIP-0079 impl
+        (analyze_failure, correction_decision, establish_contract —
+        moved out of hardcoded constants in impl/*.py)."""
         task_type_dir = FRAGMENTS_DIR / "shared" / "task_type"
         md_files = list(task_type_dir.glob("*.md"))
-        assert len(md_files) == 12
+        assert len(md_files) == 15

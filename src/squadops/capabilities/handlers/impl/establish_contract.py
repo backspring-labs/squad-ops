@@ -26,18 +26,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_CONTRACT_SYSTEM_PROMPT = """\
-You are the governance lead. Given the planning artifacts and PRD, produce a
-JSON run contract with these fields:
-- objective (string): one-sentence goal
-- acceptance_criteria (list[string]): measurable success criteria
-- non_goals (list[string]): explicitly out of scope
-- time_budget_seconds (int): maximum wall-clock seconds
-- stop_conditions (list[string]): conditions that should halt execution
-- required_artifacts (list[string]): artifact filenames that must be produced
-
-Return ONLY valid JSON, no markdown fences, no explanation."""
-
 
 class GovernanceEstablishContractHandler(_CycleTaskHandler):
     """Establish a run contract before implementation begins."""
@@ -67,8 +55,17 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
         else:
             user_prompt = self._build_user_prompt(prd, prior_outputs)
 
+        # System prompt assembled from role + task_type fragments
+        # (fragments/roles/lead + fragments/shared/task_type/
+        # task_type.governance.establish_contract.md). PromptService
+        # tracks the version and surfaces it to LangFuse.
+        assembled = context.ports.prompt_service.assemble(
+            role=self._role,
+            hook="agent_start",
+            task_type=self._capability_id,
+        )
         messages = [
-            ChatMessage(role="system", content=_CONTRACT_SYSTEM_PROMPT),
+            ChatMessage(role="system", content=assembled.content),
             ChatMessage(role="user", content=user_prompt),
         ]
 

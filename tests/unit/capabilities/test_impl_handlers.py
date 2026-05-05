@@ -55,7 +55,13 @@ def mock_context():
     ctx.ports.llm.chat_stream_with_usage = chat_mock
     assembled = MagicMock()
     assembled.content = "System prompt"
+    assembled.assembly_hash = "sha256:test"
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
+    # Externalized impl-handler system prompts (correction_decision /
+    # analyze_failure / establish_contract) now call assemble(role, hook,
+    # task_type) instead of using a hardcoded constant. Mock it here so
+    # the auto-attribute MagicMock doesn't return a non-string.
+    ctx.ports.prompt_service.assemble = MagicMock(return_value=assembled)
     ctx.ports.request_renderer = None
     ctx.correlation_context = None
     return ctx
@@ -308,6 +314,107 @@ class TestAnalyzeFailure:
         h = DataAnalyzeFailureHandler()
         result = await h.handle(mock_context, {"prd": "test"})
         assert result.success is False
+
+
+# ---------------------------------------------------------------------------
+# Externalized system prompts — pattern alignment with planning_tasks.py
+# ---------------------------------------------------------------------------
+
+
+class TestImplHandlerSystemPromptExternalization:
+    """The three SIP-0079 impl handlers (analyze_failure,
+    correction_decision, establish_contract) used to hardcode their
+    system prompts as Python string constants, bypassing PromptService
+    and missing LangFuse version tracking. Pinning the new contract:
+    each handler must call assemble(role, hook='agent_start',
+    task_type=capability_id) so role+task_type fragments compose the
+    system prompt the same way planning handlers do."""
+
+    @pytest.mark.parametrize(
+        "handler_cls,role,capability_id",
+        [
+            (
+                DataAnalyzeFailureHandler,
+                "data",
+                "data.analyze_failure",
+            ),
+            (
+                GovernanceCorrectionDecisionHandler,
+                "lead",
+                "governance.correction_decision",
+            ),
+            (
+                GovernanceEstablishContractHandler,
+                "lead",
+                "governance.establish_contract",
+            ),
+        ],
+        ids=lambda x: x.__name__ if isinstance(x, type) else x,
+    )
+    async def test_handler_assembles_system_prompt(
+        self, mock_context, handler_cls, role, capability_id
+    ):
+        # Drive the handler with a minimal-shaped LLM response so the
+        # success path runs and reaches the assemble() call before any
+        # parse-validation logic.
+        if handler_cls is DataAnalyzeFailureHandler:
+            payload = json.dumps(
+                {
+                    "classification": FailureClassification.EXECUTION,
+                    "analysis_summary": "Plenty long enough to pass the gate.",
+                    "contributing_factors": ["concrete factor"],
+                }
+            )
+        elif handler_cls is GovernanceCorrectionDecisionHandler:
+            payload = json.dumps(
+                {
+                    "correction_path": "patch",
+                    "decision_rationale": "Localized fix",
+                    "affected_task_types": [],
+                }
+            )
+        else:  # GovernanceEstablishContractHandler
+            payload = json.dumps(
+                {
+                    "objective": "Build a thing",
+                    "acceptance_criteria": ["passes tests"],
+                    "non_goals": [],
+                    "time_budget_seconds": 600,
+                    "stop_conditions": [],
+                    "required_artifacts": ["main.py"],
+                }
+            )
+        _set_llm_mock(mock_context, return_value=ChatMessage(role="assistant", content=payload))
+
+        h = handler_cls()
+        await h.handle(mock_context, {"prd": "test"})
+
+        mock_context.ports.prompt_service.assemble.assert_called_once_with(
+            role=role,
+            hook="agent_start",
+            task_type=capability_id,
+        )
+
+    async def test_decision_constant_removed(self):
+        """Defense against future drift back to a hardcoded string —
+        if someone re-introduces a `_DECISION_SYSTEM_PROMPT`-shaped
+        constant the import here will start succeeding and surface
+        the violation in CI."""
+        from squadops.capabilities.handlers.impl import correction_decision as _mod
+
+        assert not hasattr(_mod, "_DECISION_SYSTEM_PROMPT")
+        assert not hasattr(_mod, "_ANALYSIS_SYSTEM_PROMPT")
+        assert not hasattr(_mod, "_CONTRACT_SYSTEM_PROMPT")
+
+    async def test_analysis_constant_removed(self):
+        from squadops.capabilities.handlers.impl import analyze_failure as _mod
+
+        assert not hasattr(_mod, "_ANALYSIS_SYSTEM_PROMPT")
+
+    async def test_contract_constant_removed(self):
+        from squadops.capabilities.handlers.impl import establish_contract as _mod
+
+        assert not hasattr(_mod, "_CONTRACT_SYSTEM_PROMPT")
 
 
 # ---------------------------------------------------------------------------
