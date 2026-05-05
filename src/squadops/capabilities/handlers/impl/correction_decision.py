@@ -122,6 +122,22 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
             path = "abort"
             decision["correction_path"] = path
 
+        # SIP-0092 M2 → M3 gate diagnostic. Validate and surface the
+        # plan-change candidate; default to `none` when missing or
+        # invalid so the field is always present in the artifact for
+        # gate-evidence aggregation.
+        plan_change_candidate = decision.get("structural_plan_change_candidate", "none")
+        if plan_change_candidate not in _VALID_PLAN_CHANGE_CANDIDATES:
+            logger.warning(
+                "%s: invalid structural_plan_change_candidate %r — defaulting to 'none'",
+                self._handler_name,
+                plan_change_candidate,
+            )
+            plan_change_candidate = "none"
+        decision["structural_plan_change_candidate"] = plan_change_candidate
+        plan_change_rationale = str(decision.get("structural_plan_change_rationale", ""))
+        decision["structural_plan_change_rationale"] = plan_change_rationale
+
         duration_ms = (time.perf_counter() - start_time) * 1000
 
         # SIP-0084 §10: prompt provenance (Stage 2 only — no assembled prompt)
@@ -138,6 +154,8 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
             "correction_path": path,
             "decision_rationale": decision.get("decision_rationale", ""),
             "affected_task_types": decision.get("affected_task_types", []),
+            "structural_plan_change_candidate": plan_change_candidate,
+            "structural_plan_change_rationale": plan_change_rationale,
             "artifacts": [
                 {
                     "name": self._artifact_name,

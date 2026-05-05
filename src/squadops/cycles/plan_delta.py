@@ -29,6 +29,13 @@ class PlanDelta:
     changes: tuple[str, ...]
     affected_task_types: tuple[str, ...]
     created_at: datetime
+    # SIP-0092 M2 → M3 gate diagnostic (non-operative). Captures what
+    # structural plan change the lead would have chosen if M3's
+    # plan-mutation operations were available. The operative decision
+    # is `correction_path`; this field exists only to drive the M3
+    # justification gate.
+    structural_plan_change_candidate: str = "none"
+    structural_plan_change_rationale: str = ""
 
     def __post_init__(self) -> None:
         """Validate required fields are non-empty."""
@@ -54,6 +61,8 @@ class PlanDelta:
         """Deserialize from dict.
 
         Converts list fields to tuples and ISO string to datetime.
+        Tolerates payloads without the SIP-0092 diagnostic fields so
+        old persisted plan_delta artifacts still load.
         """
         coerced = dict(data)
         for field_name in ("changes", "affected_task_types"):
