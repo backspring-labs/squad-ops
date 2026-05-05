@@ -43,6 +43,7 @@ class _RepairTaskHandler(_CycleTaskHandler):
         self,
         prd: str,
         prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any] | None = None,
     ) -> str:
         """Assemble prompt with PRD, verification context, and upstream outputs."""
         parts = [f"## Product Requirements Document\n\n{prd}"]
