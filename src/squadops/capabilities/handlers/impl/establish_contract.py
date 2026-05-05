@@ -17,6 +17,10 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
+from squadops.capabilities.handlers.impl._json_extraction import (
+    JSONExtractionError,
+    extract_first_json_object,
+)
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -91,17 +95,21 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
 
         content = response.content
 
-        # Parse JSON contract from LLM response
+        # Parse JSON contract from LLM response. Tolerates <think>
+        # blocks, code fences, and prose preamble around the JSON —
+        # every impl handler is one model tantrum away from a "char 0"
+        # parse error otherwise. Logs a truncated raw response on
+        # failure so triage doesn't have to reconstruct what the LLM
+        # wrote from token counts alone.
         try:
-            # Strip markdown fences if present
-            cleaned = content.strip()
-            if cleaned.startswith("```"):
-                lines = cleaned.split("\n")
-                lines = [ln for ln in lines if not ln.strip().startswith("```")]
-                cleaned = "\n".join(lines)
-            contract_data = json.loads(cleaned)
-        except (json.JSONDecodeError, ValueError) as exc:
-            logger.warning("Failed to parse run contract JSON: %s", exc)
+            contract_data = extract_first_json_object(content)
+        except JSONExtractionError as exc:
+            logger.warning(
+                "%s: failed to parse run contract JSON: %s | raw[:500]=%r",
+                self._handler_name,
+                exc,
+                exc.raw_excerpt,
+            )
             duration_ms = (time.perf_counter() - start_time) * 1000
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
