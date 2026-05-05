@@ -130,6 +130,72 @@ def _estimate_min_artifacts(prd: str, impl_plan: str | None = None) -> int:
 # Keeping the original PR #113 patch in cycle_tasks.py while ALSO wiring
 # planning_tasks.py is defense-in-depth: any present-or-future caller of
 # either prompt path gets the discipline.
+def _rewrite_manifest_identifiers(
+    yaml_content: str,
+    project_id: str,
+    cycle_id: str,
+    prd_hash: str,
+    handler_name: str,
+) -> str:
+    """Overwrite the top-level identifier fields with authoritative values.
+
+    Issue #109: LLMs (especially small models) fabricate plausible-looking
+    project_id / cycle_id / prd_hash values when asked to fill them in.
+    These are facts the executor owns, so we rewrite them on the parsed
+    YAML before persisting. Logs a structured warning when the LLM-emitted
+    value disagreed so the rewrite stays observable.
+    """
+    import re
+
+    rewritten = yaml_content
+    fields = (
+        ("project_id", project_id),
+        ("cycle_id", cycle_id),
+        ("prd_hash", prd_hash),
+    )
+    version_line_re = re.compile(r"^version:[ \t]*.*$", re.MULTILINE)
+    for field_name, authoritative in fields:
+        if not authoritative:
+            continue
+        pattern = re.compile(
+            rf"^(?P<indent>[ \t]*){re.escape(field_name)}:[ \t]*(?P<value>.*)$",
+            re.MULTILINE,
+        )
+        match = pattern.search(rewritten)
+        if match is None:
+            # Field missing entirely — inject after the version line so
+            # the manifest validates downstream. Pre-pend if no version
+            # line exists; from_yaml will surface the structural error.
+            insertion = f"{field_name}: {authoritative}"
+            v_match = version_line_re.search(rewritten)
+            if v_match is None:
+                rewritten = insertion + "\n" + rewritten
+            else:
+                end = v_match.end()
+                rewritten = rewritten[:end] + "\n" + insertion + rewritten[end:]
+            logger.warning(
+                "%s: implementation_plan.yaml missing %s — injected authoritative value",
+                handler_name,
+                field_name,
+            )
+            continue
+        emitted = match.group("value").strip()
+        if emitted != authoritative:
+            logger.warning(
+                "%s: implementation_plan.yaml %s mismatch (LLM emitted %r, rewritten to %r)",
+                handler_name,
+                field_name,
+                emitted[:64],
+                authoritative,
+            )
+            rewritten = pattern.sub(
+                f"{match.group('indent')}{field_name}: {authoritative}",
+                rewritten,
+                count=1,
+            )
+    return rewritten
+
+
 _PRD_COVERAGE_DISCIPLINE_SECTION = (
     "## PRD Coverage Discipline (load-bearing)\n\n"
     "Before emitting the manifest, perform an explicit PRD ↔ acceptance_criteria "
@@ -684,6 +750,12 @@ class GovernanceReviewHandler(_CycleTaskHandler):
     _role = "lead"
     _artifact_name = "governance_review.md"
 
+    # Issue #109: project_id / cycle_id / prd_hash are facts the system
+    # owns, not values the LLM should invent. The braced placeholders
+    # below are substituted with authoritative values at render time
+    # (see _render_manifest_extension); the parsed manifest is also
+    # rewritten with these same values at extract time so the artifact
+    # is correct even if the LLM ignores the substituted prompt.
     _MANIFEST_PROMPT_EXTENSION = (
         "\n\n---\n\n"
         "## Build Task Manifest\n\n"
@@ -704,12 +776,14 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         "- Put QA handoff last\n\n" + _PRD_COVERAGE_DISCIPLINE_SECTION + "\n"
         "Output the manifest as a YAML code block with filename: "
         "implementation_plan.yaml\n\n"
-        "Use this exact schema:\n"
+        "Use this exact schema. The first three fields are pre-filled with "
+        "the cycle's authoritative values — copy them verbatim, do not invent "
+        "or modify them:\n"
         "```yaml:implementation_plan.yaml\n"
         "version: 1\n"
-        "project_id: <project_id>\n"
-        "cycle_id: <cycle_id>\n"
-        "prd_hash: <sha256 of PRD>\n"
+        "project_id: {project_id}\n"
+        "cycle_id: {cycle_id}\n"
+        "prd_hash: {prd_hash}\n"
         "tasks:\n"
         "  - task_index: 0\n"
         "    task_type: development.develop  # or qa.test\n"
@@ -730,6 +804,14 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         "```\n"
     )
 
+    @staticmethod
+    def _render_manifest_extension(project_id: str, cycle_id: str, prd_hash: str) -> str:
+        return GovernanceReviewHandler._MANIFEST_PROMPT_EXTENSION.format(
+            project_id=project_id or "(unknown)",
+            cycle_id=cycle_id or "(unknown)",
+            prd_hash=prd_hash or "(unknown)",
+        )
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -742,9 +824,22 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             return await super().handle(context, inputs)
 
         # Multi-artifact path: governance review + implementation plan
+        import hashlib
+
         start_time = time.perf_counter()
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
+
+        # Issue #109: substitute authoritative cycle identifiers into the
+        # manifest prompt so the LLM never has to invent project_id /
+        # cycle_id / prd_hash. Same values also overwrite the parsed
+        # manifest at extract time as a defense-in-depth measure.
+        prd_hash = hashlib.sha256(prd.encode()).hexdigest() if prd else ""
+        manifest_extension = self._render_manifest_extension(
+            project_id=context.project_id,
+            cycle_id=context.cycle_id,
+            prd_hash=prd_hash,
+        )
 
         # Build prompt with manifest extension
         renderer = getattr(context.ports, "request_renderer", None)
@@ -752,11 +847,9 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         if renderer is not None:
             variables = self._build_render_variables(prd, prior_outputs, inputs)
             rendered = await renderer.render(self._request_template_id, variables)
-            user_prompt = rendered.content + self._MANIFEST_PROMPT_EXTENSION
+            user_prompt = rendered.content + manifest_extension
         else:
-            user_prompt = (
-                self._build_user_prompt(prd, prior_outputs) + self._MANIFEST_PROMPT_EXTENSION
-            )
+            user_prompt = self._build_user_prompt(prd, prior_outputs) + manifest_extension
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
@@ -798,7 +891,14 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         ]
 
         # Extract and validate build task manifest
-        manifest_artifact = self._extract_manifest(content, resolved_config, prd)
+        manifest_artifact = self._extract_manifest(
+            content,
+            resolved_config,
+            prd,
+            project_id=context.project_id,
+            cycle_id=context.cycle_id,
+            prd_hash=prd_hash,
+        )
         if manifest_artifact is not None:
             artifacts.append(manifest_artifact)
 
@@ -821,14 +921,23 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
 
     def _extract_manifest(
-        self, content: str, resolved_config: dict[str, Any], prd: str = ""
+        self,
+        content: str,
+        resolved_config: dict[str, Any],
+        prd: str = "",
+        project_id: str = "",
+        cycle_id: str = "",
+        prd_hash: str = "",
     ) -> dict[str, Any] | None:
         """Extract and validate build task manifest from LLM response.
 
         Returns manifest artifact dict, or None on graceful fallback (RC-4).
+        Issue #109: overwrites project_id / cycle_id / prd_hash in the
+        emitted YAML with the authoritative values held by the executor —
+        these are facts the system owns, not values the LLM should
+        invent. We log when the LLM-emitted value disagreed so the
+        substitution remains observable.
         """
-        import hashlib
-
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
         from squadops.cycles.implementation_plan import ImplementationPlan
 
@@ -853,6 +962,17 @@ class GovernanceReviewHandler(_CycleTaskHandler):
                 self._handler_name,
             )
 
+        # Issue #109: substitute authoritative identifiers before
+        # parsing-validation so a structurally-fine manifest with
+        # fabricated identifiers can't poison downstream lookups.
+        yaml_content = _rewrite_manifest_identifiers(
+            yaml_content,
+            project_id=project_id,
+            cycle_id=cycle_id,
+            prd_hash=prd_hash,
+            handler_name=self._handler_name,
+        )
+
         # Structural validation
         try:
             manifest = ImplementationPlan.from_yaml(yaml_content)
@@ -863,21 +983,6 @@ class GovernanceReviewHandler(_CycleTaskHandler):
                 exc,
             )
             return None
-
-        # PRD hash integrity check
-        if prd and manifest.prd_hash:
-            expected_hash = hashlib.sha256(prd.encode()).hexdigest()
-            if manifest.prd_hash != expected_hash:
-                logger.warning(
-                    "%s: manifest prd_hash mismatch (got %s, expected %s), "
-                    "continuing with manifest (LLM-generated hash is best-effort)",
-                    self._handler_name,
-                    manifest.prd_hash[:12],
-                    expected_hash[:12],
-                )
-                # Note: this is a warning, not a fallback. The LLM generates
-                # the hash and may not produce an exact SHA-256. The hash is
-                # informational for audit, not a security gate.
 
         # Policy validation — subtask count bounds from resolved config
         min_subtasks = resolved_config.get("min_build_subtasks", 3)

@@ -70,6 +70,7 @@ class ExecutionContext:
         role_id: Role of the agent
         task_id: Current task ID
         cycle_id: Current cycle ID
+        project_id: Current project ID
         ports: PortsBundle for port access
         skill_registry: Registry for skill execution
     """
@@ -80,6 +81,7 @@ class ExecutionContext:
     cycle_id: str
     ports: PortsBundle
     skill_registry: SkillRegistry
+    project_id: str = ""
     correlation_context: CorrelationContext | None = None
     _skill_executions: list[SkillExecutionRecord] = field(default_factory=list)
 
@@ -92,6 +94,7 @@ class ExecutionContext:
         cycle_id: str,
         ports: PortsBundle,
         skill_registry: SkillRegistry,
+        project_id: str = "",
         correlation_context: CorrelationContext | None = None,
     ) -> ExecutionContext:
         """Factory method for creating execution context.
@@ -103,6 +106,10 @@ class ExecutionContext:
             cycle_id: Current cycle ID
             ports: PortsBundle from agent
             skill_registry: SkillRegistry with available skills
+            project_id: Current project ID (issue #109 — handlers that
+                emit implementation_plan.yaml need authoritative
+                project_id alongside cycle_id so they don't ask the LLM
+                to invent it)
             correlation_context: Optional LangFuse correlation context
 
         Returns:
@@ -115,6 +122,7 @@ class ExecutionContext:
             cycle_id=cycle_id,
             ports=ports,
             skill_registry=skill_registry,
+            project_id=project_id,
             correlation_context=correlation_context,
         )
 

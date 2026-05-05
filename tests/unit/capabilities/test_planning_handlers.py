@@ -74,6 +74,12 @@ GENERIC_HANDLER_CLASSES = [cls for cls, _, _, _ in GENERIC_HANDLER_SPECS]
 # short-circuit at D17 before calling LLM).
 LLM_REACHABLE_SPECS = [s for s in ALL_HANDLER_SPECS if s[0] != GovernanceIncorporateFeedbackHandler]
 LLM_REACHABLE_CLASSES = [cls for cls, _, _, _ in LLM_REACHABLE_SPECS]
+# Issue #109: GovernanceReviewPlanHandler now retries the LLM call once when
+# the response omits YAML frontmatter, so single-call assertions fail under
+# the generic mock content. Exclude it from those parametrized checks; it
+# has dedicated tests under TestGovernanceAssessReadinessValidation.
+LLM_SINGLE_CALL_SPECS = [s for s in LLM_REACHABLE_SPECS if s[0] is not GovernanceReviewPlanHandler]
+LLM_SINGLE_CALL_CLASSES = [cls for cls, _, _, _ in LLM_SINGLE_CALL_SPECS]
 
 VALID_PLANNING_ARTIFACT = """\
 ---
@@ -93,7 +99,11 @@ This is a valid planning artifact with proper YAML frontmatter.
 # ---------------------------------------------------------------------------
 
 
-def _make_context(llm_response="LLM planning output"):
+def _make_context(
+    llm_response="LLM planning output",
+    project_id: str = "test_proj",
+    cycle_id: str = "test_cyc",
+):
     """Build a minimal ExecutionContext mock for planning handler tests."""
     llm = AsyncMock()
     llm.chat.return_value = MagicMock(content=llm_response)
@@ -116,6 +126,11 @@ def _make_context(llm_response="LLM planning output"):
     ctx = MagicMock()
     ctx.ports = ports
     ctx.correlation_context = None
+    # Issue #109: cycle_id / project_id need to be real strings so the
+    # manifest identifier rewrite can substitute them; MagicMock auto-attrs
+    # would stringify to <MagicMock ...> and corrupt the YAML.
+    ctx.project_id = project_id
+    ctx.cycle_id = cycle_id
     return ctx
 
 
@@ -249,8 +264,8 @@ class TestHandleUsesAssemble:
 
     @pytest.mark.parametrize(
         "cls, expected_cap_id, expected_role, _artifact",
-        LLM_REACHABLE_SPECS,
-        ids=[c.__name__ for c, _, _, _ in LLM_REACHABLE_SPECS],
+        LLM_SINGLE_CALL_SPECS,
+        ids=[c.__name__ for c, _, _, _ in LLM_SINGLE_CALL_SPECS],
     )
     async def test_assemble_called_with_task_type(
         self, cls, expected_cap_id, expected_role, _artifact, mock_context
@@ -402,8 +417,8 @@ class TestHandlePriorOutputs:
 class TestLLMCallVerification:
     @pytest.mark.parametrize(
         "cls",
-        LLM_REACHABLE_CLASSES,
-        ids=[c.__name__ for c in LLM_REACHABLE_CLASSES],
+        LLM_SINGLE_CALL_CLASSES,
+        ids=[c.__name__ for c in LLM_SINGLE_CALL_CLASSES],
     )
     async def test_llm_chat_called_once(self, cls, mock_context):
         h = cls()
@@ -678,15 +693,57 @@ class TestGovernanceAssessReadinessValidation:
         assert result.success is True
         assert result.outputs["artifacts"][0]["name"] == "planning_artifact.md"
 
-    async def test_missing_frontmatter_synthesizes_default(self):
+    async def test_missing_frontmatter_retries_then_fails(self):
+        """Issue #109: silent default-synthesis used to mask Max's omission.
+
+        New contract: the handler retries Max once with a corrective
+        instruction; if the retry still omits frontmatter, the task fails
+        so the cycle's correction loop can fire instead of papering over
+        a defaulted readiness/sufficiency_score that Max never authored.
+        """
         ctx = _make_context("No frontmatter here, just plain text.")
+        h = GovernanceReviewPlanHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert "frontmatter" in result.error.lower()
+        # Both LLM call and retry call should have happened.
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 2
+
+    async def test_missing_frontmatter_retry_recovers_when_llm_complies(self):
+        """Retry succeeds → handler proceeds with the recovered content."""
+        recovered = "---\nreadiness: go\nsufficiency_score: 4\n---\n\n## Body\n"
+        ctx = _make_context()
+        # First call returns no-frontmatter; retry returns valid frontmatter.
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content="No frontmatter on first response"),
+            MagicMock(content=recovered),
+        ]
         h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
         assert result.success is True
         content = result.outputs["artifacts"][0]["content"]
         assert content.startswith("---\n")
-        assert "readiness: revise" in content
+        assert "readiness: go" in content
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 2
+
+    async def test_retry_corrective_message_targets_frontmatter(self):
+        """The retry's corrective message must call out the missing
+        frontmatter explicitly so Max can fix the specific gap rather
+        than re-running the whole prompt blind."""
+        ctx = _make_context("No frontmatter on first response either")
+        h = GovernanceReviewPlanHandler()
+        await h.handle(ctx, {"prd": "Build a widget"})
+
+        # Inspect the second LLM call's messages for the corrective text.
+        calls = ctx.ports.llm.chat_stream_with_usage.await_args_list
+        assert len(calls) == 2
+        retry_messages = calls[1].args[0]
+        assert any("YAML frontmatter" in m.content for m in retry_messages if m.role == "user")
+        # And it must include the prior failed assistant turn so Max sees
+        # what came back wrong.
+        assert any(m.role == "assistant" for m in retry_messages)
 
     async def test_invalid_yaml_fails(self):
         ctx = _make_context("---\n[invalid: yaml: content\n---\n\nBody")
@@ -753,12 +810,15 @@ class TestGovernanceAssessReadinessValidation:
 
         assert result.success is True
 
-    async def test_evidence_preserved_on_frontmatter_synthesis(self):
+    async def test_evidence_preserved_when_frontmatter_retry_fails(self):
+        """Issue #109: even when the retry can't recover, the evidence
+        from the first LLM call must travel with the failure result so
+        triage can attribute the failure to the right capability."""
         ctx = _make_context("No frontmatter")
         h = GovernanceReviewPlanHandler()
         result = await h.handle(ctx, {"prd": "Build a widget"})
 
-        assert result.success is True
+        assert result.success is False
         assert result._evidence is not None
         assert result._evidence.capability_id == "governance.review_plan"
 
@@ -839,6 +899,63 @@ summary:
   total_tasks: 1
 ```
 """
+
+
+class TestProduceManifestIdentifierRewrite:
+    """Issue #109: framing-time _produce_plan must overwrite fabricated
+    project_id / cycle_id / prd_hash with the cycle's authoritative
+    values, and pre-fill the prompt with the same so Max doesn't have
+    to invent them."""
+
+    async def _call(self, ctx, prd: str = "Build a widget") -> dict | None:
+        h = GovernanceReviewPlanHandler()
+        return await h._produce_plan(
+            ctx,
+            inputs={"prd": prd},
+            planning_content="plan",
+            resolved_config={},
+        )
+
+    async def test_rewrites_fabricated_identifiers(self):
+        import hashlib
+
+        fabricated = (
+            _VALID_MANIFEST_YAML.replace("project_id: test_proj", "project_id: group_run_mvp")
+            .replace("cycle_id: test_cyc", "cycle_id: cycle_v03")
+            .replace("prd_hash: abc", "prd_hash: a1b2c3d4e5f6")
+        )
+        ctx = _make_context(fabricated, project_id="group_run", cycle_id="cyc_real")
+
+        result = await self._call(ctx, prd="Build a widget")
+
+        assert result is not None
+        manifest_yaml = result["content"]
+        expected_hash = hashlib.sha256(b"Build a widget").hexdigest()
+        assert "project_id: group_run\n" in manifest_yaml
+        assert "cycle_id: cyc_real\n" in manifest_yaml
+        assert f"prd_hash: {expected_hash}\n" in manifest_yaml
+        assert "group_run_mvp" not in manifest_yaml
+        assert "cycle_v03" not in manifest_yaml
+
+    async def test_prompt_pre_fills_authoritative_identifiers(self):
+        """The manifest prompt sent to Max must contain real values, not
+        the literal `<project_id>` / `<cycle_id>` / `<hash>` placeholders
+        that triggered fabrication in the first place."""
+        import hashlib
+
+        ctx = _make_context(_VALID_MANIFEST_YAML, project_id="group_run", cycle_id="cyc_real")
+
+        await self._call(ctx, prd="Build a widget")
+
+        sent = ctx.ports.llm.chat_stream_with_usage.call_args.args[0]
+        user_prompt = next(m for m in sent if m.role == "user").content
+        expected_hash = hashlib.sha256(b"Build a widget").hexdigest()
+        assert "project_id: group_run\n" in user_prompt
+        assert "cycle_id: cyc_real\n" in user_prompt
+        assert f"prd_hash: {expected_hash}\n" in user_prompt
+        assert "<project_id>" not in user_prompt
+        assert "<cycle_id>" not in user_prompt
+        assert "<hash>" not in user_prompt
 
 
 class TestProduceManifestRetry:

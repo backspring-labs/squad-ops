@@ -121,6 +121,7 @@ class HandlerExecutor(CapabilityExecutor):
                 cycle_id=envelope.cycle_id,
                 ports=self._ports,
                 skill_registry=self._skill_registry,
+                project_id=envelope.project_id,
                 correlation_context=corr_ctx,
             )
 

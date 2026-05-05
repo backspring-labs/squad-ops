@@ -30,6 +30,7 @@ from squadops.capabilities.handlers.base import (
 from squadops.capabilities.handlers.cycle_tasks import (
     _PRD_COVERAGE_DISCIPLINE_SECTION,
     _CycleTaskHandler,
+    _rewrite_manifest_identifiers,
 )
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -349,17 +350,62 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
     _role = "lead"
     _artifact_name = "planning_artifact.md"
 
-    _DEFAULT_FRONTMATTER = (
-        "---\nreadiness: revise\nsufficiency_score: 3\nblocker_unknowns: 0\n---\n\n"
-    )
+    async def _retry_without_frontmatter(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        prior_content: str,
+    ) -> str | None:
+        """Re-prompt Max once with a corrective instruction.
 
-    def _synthesize_frontmatter(self, content: str) -> str:
-        """Prepend default frontmatter when LLM omits it."""
-        logger.warning(
-            "assess_readiness: LLM omitted YAML frontmatter — "
-            "synthesizing default (readiness=revise, score=3)"
+        Returns the new artifact content if the retry produced any
+        response, else ``None`` so the caller can fail the task. The
+        caller still validates frontmatter on the result, so a retry
+        that comes back empty or still missing frontmatter terminates
+        the task.
+        """
+        prd = inputs.get("prd", "")
+        prior_outputs = inputs.get("prior_outputs")
+        raw_budget = inputs.get("resolved_config", {}).get("time_budget_seconds")
+        time_budget_seconds = int(raw_budget) if raw_budget is not None else None
+
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables = self._build_render_variables(prd, prior_outputs, inputs)
+            rendered = await renderer.render(self._request_template_id, variables)
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(prd, prior_outputs, time_budget_seconds)
+
+        assembled = context.ports.prompt_service.assemble(
+            role=self._role,
+            hook="agent_start",
+            task_type=self._capability_id,
         )
-        return self._DEFAULT_FRONTMATTER + content
+
+        messages = [
+            ChatMessage(role="system", content=assembled.content),
+            ChatMessage(role="user", content=user_prompt),
+            ChatMessage(role="assistant", content=prior_content),
+            ChatMessage(role="user", content=self._FRONTMATTER_RETRY_INSTRUCTION),
+        ]
+        chat_kwargs = self._build_chat_kwargs(inputs)
+
+        try:
+            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+        except LLMError as exc:
+            logger.warning("assess_readiness: frontmatter-retry LLM call failed: %s", exc)
+            return None
+
+        return response.content if response and response.content else None
+
+    _FRONTMATTER_RETRY_INSTRUCTION = (
+        "Your previous response did not include the required YAML frontmatter. "
+        "The planning artifact MUST start with a `---` delimited block "
+        "containing `readiness` (one of `go`, `revise`, `no-go`) and "
+        "`sufficiency_score` (integer 0–5), followed by `---` and the body. "
+        "Re-emit the full planning artifact, starting with the frontmatter."
+    )
 
     async def handle(
         self,
@@ -372,15 +418,36 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
 
         content = result.outputs["artifacts"][0]["content"]
 
-        # Structural validation: YAML frontmatter
+        # Structural validation: YAML frontmatter must be authored by the
+        # LLM. Issue #109: we used to silently synthesize a default
+        # `readiness=revise / sufficiency_score=3` block when frontmatter
+        # was missing, which made it look like Max had reviewed the plan
+        # when in fact every downstream consumer was reading defaults.
+        # Now: retry once with a corrective prompt; if the retry still
+        # omits frontmatter, fail the task so the cycle's correction
+        # loop can fire instead of papering over it.
         m = _FRONTMATTER_RE.match(content)
         if not m:
-            # Graceful degradation: synthesize default frontmatter so the
-            # cycle can proceed.  The default readiness=revise ensures the
-            # plan is flagged for review rather than silently accepted.
-            content = self._synthesize_frontmatter(content)
-            result.outputs["artifacts"][0]["content"] = content
-            m = _FRONTMATTER_RE.match(content)
+            retry_content = await self._retry_without_frontmatter(context, inputs, content)
+            if retry_content is not None:
+                content = retry_content
+                result.outputs["artifacts"][0]["content"] = content
+                m = _FRONTMATTER_RE.match(content)
+
+            if not m:
+                logger.warning(
+                    "assess_readiness: LLM omitted YAML frontmatter on initial "
+                    "response and retry; failing task to surface the gap"
+                )
+                return HandlerResult(
+                    success=False,
+                    outputs={},
+                    _evidence=result._evidence,
+                    error=(
+                        "Planning artifact missing required YAML frontmatter "
+                        "(readiness, sufficiency_score) after one corrective retry"
+                    ),
+                )
 
         try:
             fm = yaml.safe_load(m.group(1))
@@ -443,6 +510,8 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
         Separate from the planning artifact generation to keep prompts focused.
         Returns manifest artifact dict or None on graceful fallback (RC-4).
         """
+
+        import hashlib
 
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
         from squadops.llm.models import ChatMessage
@@ -600,12 +669,19 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
             # cycle_tasks.py:_MANIFEST_PROMPT_EXTENSION uses.
             f"{_PRD_COVERAGE_DISCIPLINE_SECTION}"
             "\n"
-            "Output ONLY the manifest as a YAML code block with filename tag:\n"
+            # Issue #109: substitute authoritative identifiers so Max
+            # never has to invent project_id / cycle_id / prd_hash. The
+            # parsed manifest is also rewritten at extract time as
+            # defense in depth.
+            "Output ONLY the manifest as a YAML code block with filename tag. "
+            "The first three fields below are pre-filled with the cycle's "
+            "authoritative values — copy them verbatim, do not invent or "
+            "modify them:\n"
             "```yaml:implementation_plan.yaml\n"
             "version: 1\n"
-            "project_id: <project_id>\n"
-            "cycle_id: <cycle_id>\n"
-            "prd_hash: <hash>\n"
+            f"project_id: {context.project_id or '(unknown)'}\n"
+            f"cycle_id: {context.cycle_id or '(unknown)'}\n"
+            f"prd_hash: {hashlib.sha256(prd.encode()).hexdigest() if prd else '(unknown)'}\n"
             "tasks:\n"
             "  - task_index: 0\n"
             "    task_type: development.develop\n"
@@ -674,6 +750,17 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
                     "assess_readiness: produced build task manifest with %d subtasks on attempt %d",
                     len(manifest.tasks),
                     attempt,
+                )
+                # Issue #109: overwrite identifiers with authoritative
+                # values before persisting so a structurally-valid plan
+                # with fabricated project_id/cycle_id/prd_hash can't
+                # poison downstream lookups.
+                yaml_content = _rewrite_manifest_identifiers(
+                    yaml_content,
+                    project_id=context.project_id,
+                    cycle_id=context.cycle_id,
+                    prd_hash=hashlib.sha256(prd.encode()).hexdigest() if prd else "",
+                    handler_name=self._handler_name,
                 )
                 return {
                     "name": "implementation_plan.yaml",

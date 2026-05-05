@@ -69,13 +69,21 @@ class _FakeAssembled:
     assembly_hash: str = "hash123"
 
 
-def _make_context() -> MagicMock:
+def _make_context(
+    project_id: str = "group_run",
+    cycle_id: str = "cyc_test",
+) -> MagicMock:
     ctx = MagicMock()
     ctx.ports.prompt_service.get_system_prompt.return_value = _FakeAssembled()
     ctx.ports.llm.chat_stream_with_usage = AsyncMock()
     ctx.ports.llm.default_model = "test-model"
     ctx.ports.request_renderer = None
     ctx.correlation_context = None
+    # Issue #109: cycle_id / project_id need to be real strings for the
+    # manifest identifier rewrite step. MagicMock auto-attrs would
+    # stringify to <MagicMock ...> and break the YAML.
+    ctx.project_id = project_id
+    ctx.cycle_id = cycle_id
     return ctx
 
 
@@ -227,6 +235,117 @@ class TestGovernanceReviewManifest:
 
         assert not result.success
         assert "timeout" in result.error
+
+
+class TestManifestIdentifierRewrite:
+    """Issue #109: project_id / cycle_id / prd_hash must be authoritative.
+
+    Max (especially under small models) fabricates plausible-looking but
+    incorrect identifiers (`group_run_mvp`, `cycle_v03`, `a1b2c3d4e5f6`).
+    The handler must overwrite the LLM-emitted values with the cycle's
+    real identifiers before persisting the manifest, AND substitute
+    those values into the prompt so the LLM doesn't have to invent them.
+    """
+
+    async def test_rewrites_fabricated_project_id(self):
+        import hashlib
+
+        handler = GovernanceReviewHandler()
+        ctx = _make_context(project_id="group_run", cycle_id="cyc_real_001")
+        # LLM emits a fabricated project_id (the cyc_4cac11018af7 failure mode)
+        fabricated_block = (
+            VALID_MANIFEST_BLOCK.replace("project_id: group_run", "project_id: group_run_mvp")
+            .replace("cycle_id: cyc_test", "cycle_id: cycle_v03")
+            .replace("prd_hash: abc123", "prd_hash: a1b2c3d4e5f6")
+        )
+        ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
+            "Review.\n\n" + fabricated_block
+        )
+
+        result = await handler.handle(ctx, _make_inputs())
+
+        assert result.success
+        manifest_yaml = result.outputs["artifacts"][1]["content"]
+        prd = "Build a group run app with FastAPI and React."
+        expected_hash = hashlib.sha256(prd.encode()).hexdigest()
+        assert "project_id: group_run\n" in manifest_yaml
+        assert "cycle_id: cyc_real_001\n" in manifest_yaml
+        assert f"prd_hash: {expected_hash}\n" in manifest_yaml
+        # Fabricated values are gone.
+        assert "group_run_mvp" not in manifest_yaml
+        assert "cycle_v03" not in manifest_yaml
+        assert "a1b2c3d4e5f6" not in manifest_yaml
+
+    async def test_keeps_correct_identifiers_unchanged(self):
+        """When the LLM happens to emit the right values, the rewrite is a no-op
+        (no warnings about mismatch in the wild)."""
+        import hashlib
+
+        handler = GovernanceReviewHandler()
+        ctx = _make_context(project_id="group_run", cycle_id="cyc_real_001")
+        prd = "Build a group run app with FastAPI and React."
+        good_hash = hashlib.sha256(prd.encode()).hexdigest()
+        good_block = (
+            VALID_MANIFEST_BLOCK.replace("project_id: group_run", "project_id: group_run")
+            .replace("cycle_id: cyc_test", "cycle_id: cyc_real_001")
+            .replace("prd_hash: abc123", f"prd_hash: {good_hash}")
+        )
+        ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
+            "Review.\n\n" + good_block
+        )
+
+        result = await handler.handle(ctx, _make_inputs())
+
+        assert result.success
+        manifest_yaml = result.outputs["artifacts"][1]["content"]
+        assert "project_id: group_run\n" in manifest_yaml
+        assert "cycle_id: cyc_real_001\n" in manifest_yaml
+        assert f"prd_hash: {good_hash}\n" in manifest_yaml
+
+    async def test_prompt_substitutes_authoritative_identifiers(self):
+        """The prompt sent to the LLM must contain the real project_id /
+        cycle_id / prd_hash so Max doesn't fall back to fabricating them."""
+        import hashlib
+
+        handler = GovernanceReviewHandler()
+        ctx = _make_context(project_id="group_run", cycle_id="cyc_real_001")
+        ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
+            "Review.\n\n" + VALID_MANIFEST_BLOCK
+        )
+
+        await handler.handle(ctx, _make_inputs())
+
+        sent_messages = ctx.ports.llm.chat_stream_with_usage.call_args.args[0]
+        user_prompt = next(m for m in sent_messages if m.role == "user").content
+        prd = "Build a group run app with FastAPI and React."
+        expected_hash = hashlib.sha256(prd.encode()).hexdigest()
+        assert "project_id: group_run\n" in user_prompt
+        assert "cycle_id: cyc_real_001\n" in user_prompt
+        assert f"prd_hash: {expected_hash}\n" in user_prompt
+        # The literal `<placeholder>` strings are gone — that was the bug
+        # in #109 where the LLM saw `<project_id>` and invented values.
+        assert "<project_id>" not in user_prompt
+        assert "<cycle_id>" not in user_prompt
+        assert "<sha256 of PRD>" not in user_prompt
+
+    async def test_falls_back_when_context_identifiers_missing(self):
+        """Defensive: handler shouldn't crash if context has empty
+        project_id / cycle_id (e.g. a misconfigured test or an envelope
+        that lost its metadata). LLM-emitted values pass through and
+        the manifest is still parseable."""
+        handler = GovernanceReviewHandler()
+        ctx = _make_context(project_id="", cycle_id="")
+        ctx.ports.llm.chat_stream_with_usage.return_value = _make_llm_response(
+            "Review.\n\n" + VALID_MANIFEST_BLOCK
+        )
+
+        result = await handler.handle(ctx, _make_inputs())
+
+        assert result.success
+        manifest_yaml = result.outputs["artifacts"][1]["content"]
+        # Original LLM-emitted identifiers preserved (no rewrite).
+        assert "project_id: group_run\n" in manifest_yaml
+        assert "cycle_id: cyc_test\n" in manifest_yaml
 
 
 class TestPRDCoverageDiscipline:

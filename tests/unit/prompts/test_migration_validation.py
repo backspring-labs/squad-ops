@@ -152,6 +152,16 @@ class TestBaseClassTemplateIdCoverage:
     async def test_handler_uses_correct_template_id(self, handler_cls, expected_template_id):
         renderer = _mock_renderer()
         ctx = _mock_context(renderer=renderer)
+
+        # Issue #109: GovernanceReviewPlanHandler retries on missing
+        # frontmatter, which would call render() twice. Hand it a valid
+        # frontmatter-bearing response so the assertion stays single-call.
+        if handler_cls is GovernanceReviewPlanHandler:
+            valid_content = "---\nreadiness: go\nsufficiency_score: 4\n---\n\nbody\n"
+            ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+                return_value=ChatMessage(role="assistant", content=valid_content),
+            )
+
         handler = handler_cls()
 
         # Provide minimal inputs that satisfy all handlers
