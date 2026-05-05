@@ -16,6 +16,10 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
+from squadops.capabilities.handlers.impl._json_extraction import (
+    JSONExtractionError,
+    extract_first_json_object,
+)
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 
@@ -109,19 +113,23 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
 
         content = response.content
 
-        # Parse JSON decision
+        # Parse JSON decision. Tolerates <think> blocks, code fences,
+        # and prose preamble. Falls back to a structured `abort`
+        # decision if no balanced JSON object is found anywhere in
+        # the response, and logs a truncated raw response so triage
+        # has the actual model output.
         try:
-            cleaned = content.strip()
-            if cleaned.startswith("```"):
-                lines = cleaned.split("\n")
-                lines = [ln for ln in lines if not ln.strip().startswith("```")]
-                cleaned = "\n".join(lines)
-            decision = json.loads(cleaned)
-        except (json.JSONDecodeError, ValueError):
-            # Fallback: abort if unparseable
+            decision = extract_first_json_object(content)
+        except JSONExtractionError as exc:
+            logger.warning(
+                "%s: failed to parse correction decision JSON: %s | raw[:500]=%r",
+                self._handler_name,
+                exc,
+                exc.raw_excerpt,
+            )
             decision = {
                 "correction_path": "abort",
-                "decision_rationale": f"Unable to parse LLM response: {content[:200]}",
+                "decision_rationale": (f"Unable to parse LLM response: {exc.raw_excerpt[:200]}"),
                 "affected_task_types": [],
             }
 

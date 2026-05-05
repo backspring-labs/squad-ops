@@ -23,6 +23,10 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
+from squadops.capabilities.handlers.impl._json_extraction import (
+    JSONExtractionError,
+    extract_first_json_object,
+)
 from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -135,25 +139,24 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
 
         content = response.content
 
-        # Parse JSON, then validate against schema (issue #84). Validation
-        # failure routes to NEEDS_REPLAN with a clear log line — silent
-        # coercion to a useless default produced wrong corrections in the
-        # past (live evidence: cyc_4cac11018af7).
-        cleaned = content.strip()
-        if cleaned.startswith("```"):
-            lines = cleaned.split("\n")
-            lines = [ln for ln in lines if not ln.strip().startswith("```")]
-            cleaned = "\n".join(lines)
-
+        # Parse JSON, then validate against schema (issue #84).
+        # Tolerates <think> blocks, code fences, and prose preamble
+        # around the JSON. Validation failure routes to NEEDS_REPLAN
+        # with a clear log line — silent coercion to a useless default
+        # produced wrong corrections in the past (live evidence:
+        # cyc_4cac11018af7). Raw response is logged on parse failure
+        # for triage of new model behavior modes.
         try:
-            raw = json.loads(cleaned)
+            raw = extract_first_json_object(content)
             analysis_model = FailureAnalysis.model_validate(raw)
-        except (json.JSONDecodeError, ValidationError) as exc:
+        except (JSONExtractionError, ValidationError) as exc:
             duration_ms = (time.perf_counter() - start_time) * 1000
+            raw_excerpt = exc.raw_excerpt if isinstance(exc, JSONExtractionError) else content[:500]
             logger.warning(
-                "analyze_failure_handler rejected output: %s | raw=%s",
+                "%s: rejected output: %s | raw[:500]=%r",
+                self._handler_name,
                 exc,
-                content[:300],
+                raw_excerpt,
             )
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,

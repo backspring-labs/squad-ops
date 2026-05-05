@@ -135,6 +135,61 @@ class TestEstablishContract:
         assert result.success is True
         assert result.outputs["contract"]["objective"] == "Test"
 
+    async def test_handles_think_block_then_json(self, mock_context):
+        """Regression: cyc_a4e6dc3afe7a (2026-05-05) failed at this
+        handler with `Expecting value: line 1 column 1 (char 0)` on
+        what was likely a Qwen3 <think> block followed by valid JSON.
+        The strict-from-start parser couldn't see past the thinking
+        block. Tolerant extraction must recover."""
+        contract = {
+            "objective": "Build runs app",
+            "acceptance_criteria": ["passes pytest"],
+            "non_goals": [],
+            "time_budget_seconds": 1800,
+            "stop_conditions": [],
+            "required_artifacts": ["main.py"],
+        }
+        thinking_response = (
+            "<think>\n"
+            "The user wants a contract for a runs app. Let me consider...\n"
+            "Acceptance should cover the join/leave endpoints.\n"
+            "</think>\n\n"
+            f"{json.dumps(contract)}"
+        )
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=thinking_response),
+        )
+
+        h = GovernanceEstablishContractHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        assert result.success is True
+        assert result.outputs["contract"]["objective"] == "Build runs app"
+
+    async def test_handles_prose_preamble_before_fenced_json(self, mock_context):
+        """Same shape as the cyc_a4e6dc failure but with prose preamble
+        instead of a thinking block — plausible under the new
+        role-identity-prepended assembly path from PR #126."""
+        contract = {"objective": "Ship it", "acceptance_criteria": ["green CI"]}
+        response = (
+            "Here is the run contract you requested:\n\n"
+            "```json\n"
+            f"{json.dumps(contract)}\n"
+            "```\n"
+            "Let me know if any field needs adjustment."
+        )
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=response),
+        )
+
+        h = GovernanceEstablishContractHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        assert result.success is True
+        assert result.outputs["contract"]["objective"] == "Ship it"
+
 
 # ---------------------------------------------------------------------------
 # DataAnalyzeFailureHandler
