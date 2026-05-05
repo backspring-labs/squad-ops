@@ -1965,8 +1965,9 @@ class DistributedFlowExecutor(FlowExecutionPort):
     ) -> dict[str, Any]:
         """Assemble the failure-evidence payload handed to data.analyze_failure.
 
-        Issue #84 follow-up: Data was previously handed only `error` +
-        `outcome_class` and had to guess at the failure shape; downstream
+        Issue #84 follow-up: the data role was previously handed only
+        `error` + `outcome_class` and had to guess at the failure shape;
+        downstream
         correction-decision then picked rewind on content failures because
         it had no indication that a patch would suffice. Pull through the
         failed handler's structured `validation_result` + preliminary
@@ -2373,8 +2374,8 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 # (line ~1525), keep `artifacts` so the next step in this
                 # sequence — `qa.validate_repair` — can see the actual
                 # repaired files rather than only the role-keyed one-line
-                # summary. Without this Eve renders Verdict: FAIL on
-                # repairs whose artifacts are already in the registry,
+                # summary. Without this the qa role renders Verdict: FAIL
+                # on repairs whose artifacts are already in the registry,
                 # because the validate-repair prompt has no visibility
                 # into what the upstream repair handler produced.
                 role_key = repair_envelope.metadata.get("role", "unknown")

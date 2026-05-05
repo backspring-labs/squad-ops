@@ -1,4 +1,4 @@
-"""Data agent skills.
+"""Skills for the data role.
 
 Skills for analytics and data processing.
 Part of SIP-0.8.8 Phase 4.

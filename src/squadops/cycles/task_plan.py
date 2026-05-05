@@ -98,8 +98,9 @@ REPAIR_TASK_STEPS: list[tuple[str, str]] = [
 # Specialized repair sequences keyed by the failed task's task_type. The
 # correction loop dispatches the right pair instead of always running the
 # dev-flavored default — without this mapping a failed `builder.assemble`
-# task gets repaired by Neo (dev) who has no useful context, and Bob
-# (builder) is silently bypassed even though the failed work is his.
+# task gets repaired by the dev role (which has no useful context for
+# packaging output) and the builder role is silently bypassed even though
+# the failed work is the builder's.
 _REPAIR_STEPS_BY_FAILED_TASK_TYPE: dict[str, list[tuple[str, str]]] = {
     "development.develop": REPAIR_TASK_STEPS,
     "builder.assemble": [

@@ -29,7 +29,7 @@ class AgentHeartbeatReporter(ABC):
         Send an agent status update.
 
         Args:
-            agent_id: Logical agent name/id (e.g., \"Neo\") — health-check stores lowercase.
+            agent_id: Logical agent name/id — health-check stores lowercase.
             lifecycle_state: Canonical lifecycle state (STARTING/READY/WORKING/BLOCKED/CRASHED/STOPPING).
             current_task_id: Optional current task id.
             version: Optional agent/framework version string.

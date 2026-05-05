@@ -1,6 +1,6 @@
 """Metrics Collection skill - collect and aggregate metrics.
 
-Data agent skill for metrics.
+Skill for the data role's metrics duties.
 Part of SIP-0.8.8 Phase 4.
 """
 from __future__ import annotations
