@@ -25,7 +25,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _VALID_CORRECTION_PATHS = ("continue", "patch", "rewind", "abort")
+_VALID_PLAN_CHANGE_CANDIDATES = ("none", "add_task", "tighten_acceptance", "other")
 
+# SIP-0092 M2 → M3 gate diagnostic. The correction protocol can today
+# only choose continue/patch/rewind/abort — it cannot mutate the
+# implementation plan. M3 will add `decision: plan_change` with two
+# operations (add_task, tighten_acceptance). To know whether M3 is
+# worth shipping, we need to know how often the lead would have chosen
+# a structural plan change if it were available. This field captures
+# that intent without changing behavior.
 _DECISION_SYSTEM_PROMPT = """\
 You are the governance lead deciding how to respond to a failure during
 implementation. Given the failure analysis, select ONE correction path:
@@ -35,10 +43,33 @@ implementation. Given the failure analysis, select ONE correction path:
 - rewind: restore the last checkpoint and retry from that point
 - abort: the failure is unrecoverable; stop the run
 
+Then, separately, answer a diagnostic question: if you could ALSO modify
+the implementation plan itself (not yet available in this framework),
+which structural plan change would you choose?
+
+- none: the failure does not call for a plan change; continue/patch/rewind/abort suffices
+- add_task: a new task should be inserted into the plan to cover a gap the
+  original plan missed (e.g., a coverage gap for an endpoint, an integration
+  step the framing phase did not anticipate)
+- tighten_acceptance: an existing task's acceptance criteria should be
+  strengthened so this failure mode is caught next time (e.g., adding a
+  required regex_match or field_present check to an existing task)
+- other: a different structural change would be needed (remove/replace/reorder)
+
+This is a DIAGNOSTIC field. Your operative decision is the correction path
+above; the plan-change candidate does not run anything. Pick the answer
+that best describes what you would do if plan changes were available,
+even if you have to extrapolate.
+
 Return JSON with:
 - correction_path (string): one of continue/patch/rewind/abort
-- decision_rationale (string): 2-3 sentence justification
+- decision_rationale (string): 2-3 sentence justification of correction_path
 - affected_task_types (list[string]): task types affected by the decision
+- structural_plan_change_candidate (string): one of
+  none/add_task/tighten_acceptance/other
+- structural_plan_change_rationale (string): 1-2 sentence justification of
+  the plan-change candidate; explain what task would be added or what
+  acceptance would be tightened. Empty string if candidate is `none`.
 
 Return ONLY valid JSON, no markdown fences."""
 
@@ -127,6 +158,22 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
             path = "abort"
             decision["correction_path"] = path
 
+        # SIP-0092 M2 → M3 gate diagnostic. Validate and surface the
+        # plan-change candidate; default to `none` when missing or
+        # invalid so the field is always present in the artifact for
+        # gate-evidence aggregation.
+        plan_change_candidate = decision.get("structural_plan_change_candidate", "none")
+        if plan_change_candidate not in _VALID_PLAN_CHANGE_CANDIDATES:
+            logger.warning(
+                "%s: invalid structural_plan_change_candidate %r — defaulting to 'none'",
+                self._handler_name,
+                plan_change_candidate,
+            )
+            plan_change_candidate = "none"
+        decision["structural_plan_change_candidate"] = plan_change_candidate
+        plan_change_rationale = str(decision.get("structural_plan_change_rationale", ""))
+        decision["structural_plan_change_rationale"] = plan_change_rationale
+
         duration_ms = (time.perf_counter() - start_time) * 1000
 
         # SIP-0084 §10: prompt provenance (Stage 2 only — no assembled prompt)
@@ -143,6 +190,8 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
             "correction_path": path,
             "decision_rationale": decision.get("decision_rationale", ""),
             "affected_task_types": decision.get("affected_task_types", []),
+            "structural_plan_change_candidate": plan_change_candidate,
+            "structural_plan_change_rationale": plan_change_rationale,
             "artifacts": [
                 {
                     "name": self._artifact_name,

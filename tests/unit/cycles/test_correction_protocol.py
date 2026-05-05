@@ -858,6 +858,67 @@ class TestPlanDelta:
         assert delta["analysis_summary"] == "Bob produced output without qa_handoff.md"
         assert delta["decision_rationale"] == "Cannot fix"
         assert delta["correction_path"] == "abort"
+        # SIP-0092 M2 → M3 gate diagnostic — must default to "none" when
+        # the correction-decision handler doesn't surface a candidate.
+        assert delta["structural_plan_change_candidate"] == "none"
+        assert delta["structural_plan_change_rationale"] == ""
+
+    async def test_plan_delta_carries_structural_change_candidate(
+        self, executor, mock_queue, mock_registry, mock_vault, mock_event_bus
+    ):
+        """SIP-0092 M2 → M3 gate diagnostic: when the correction-decision
+        handler emits `structural_plan_change_candidate`, the field
+        must travel into the persisted plan_delta artifact so gate-evidence
+        aggregation can count cycles where the lead would have wanted a
+        plan change if M3 were available."""
+        import json
+
+        semantic_outputs = {
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            "role": "strat",
+        }
+        correction_decision = {
+            "summary": "patch",
+            "role": "lead",
+            "correction_path": "patch",
+            "decision_rationale": "Localized fix",
+            "affected_task_types": ["development.develop"],
+            "structural_plan_change_candidate": "add_task",
+            "structural_plan_change_rationale": "Need a separate join/leave test task",
+        }
+        analyze_failure = {
+            "classification": "work_product",
+            "analysis_summary": "Coverage gap on join/leave endpoints",
+            "role": "data",
+        }
+        script = [
+            ("FAILED", semantic_outputs, "bad"),
+            ("SUCCEEDED", analyze_failure, None),
+            ("SUCCEEDED", correction_decision, None),
+            # repair tasks (development.correction_repair, qa.validate_repair)
+            ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
+            # remaining tasks
+            ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
+        ]
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        delta_stores = [
+            c for c in mock_vault.store.call_args_list if c.args[0].artifact_type == "plan_delta"
+        ]
+        assert len(delta_stores) == 1
+        delta = json.loads(delta_stores[0].args[1].decode())
+        assert delta["structural_plan_change_candidate"] == "add_task"
+        assert "join/leave" in delta["structural_plan_change_rationale"]
 
 
 # ---------------------------------------------------------------------------
