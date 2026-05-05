@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 
 _VALID_CORRECTION_PATHS = ("continue", "patch", "rewind", "abort")
 
+# SIP-0092 M2 → M3 gate diagnostic. The correction protocol can today
+# only choose continue/patch/rewind/abort — it cannot mutate the
+# implementation plan. M3 will add `decision: plan_change` with two
+# operations (add_task, tighten_acceptance). To know whether M3 is
+# worth shipping, we capture which structural plan change the lead
+# would have chosen if it were available — the field is non-operative
+# and exists only to drive the M3 justification gate.
+_VALID_PLAN_CHANGE_CANDIDATES = ("none", "add_task", "tighten_acceptance", "other")
+
 
 class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
     """Decide the correction path after a failure analysis."""
