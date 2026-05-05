@@ -2268,14 +2268,26 @@ class DistributedFlowExecutor(FlowExecutionPort):
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
                 agent_id, agent_model, agent_overrides = self._resolve_agent_config(role, profile)
 
+                # Plumb the failed task's contract through to the repair
+                # envelope. Without this the repair handler only sees the
+                # PRD + failure evidence and produces a generic "repair_output.md"
+                # rather than re-emitting the named artifact (e.g. qa_handoff.md)
+                # that originally failed acceptance.
+                failed_inputs = envelope.inputs or {}
                 repair_inputs: dict[str, Any] = {
                     "prd": cycle.prd_ref,
+                    "failed_task_type": envelope.task_type,
                     "failure_evidence": failure_evidence,
+                    "failure_analysis": analysis_outputs,
                     "correction_decision": decision_outputs,
                     "prior_outputs": prior_outputs,
                     "artifact_refs": list(all_artifact_refs),
                     "agent_model": agent_model,
                     "agent_config_overrides": agent_overrides,
+                    "subtask_focus": failed_inputs.get("subtask_focus"),
+                    "subtask_description": failed_inputs.get("subtask_description"),
+                    "expected_artifacts": failed_inputs.get("expected_artifacts", []),
+                    "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
                 }
 
                 repair_envelope = TaskEnvelope(

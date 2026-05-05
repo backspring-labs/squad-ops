@@ -56,7 +56,151 @@ def _artifacts_from_fenced_blocks(content: str, fallback_name: str) -> list[dict
     return artifacts
 
 
-class DevelopmentCorrectionRepairHandler(_CycleTaskHandler):
+def _format_bullets(items: Any) -> str:
+    """Format list-of-strings inputs as a markdown bullet list, "(none)" if empty."""
+    if not items:
+        return "(none specified)"
+    if isinstance(items, str):
+        return items
+    try:
+        rendered = "\n".join(
+            f"- `{item}`" if "/" in str(item) or "." in str(item) else f"- {item}" for item in items
+        )
+        return rendered or "(none specified)"
+    except TypeError:
+        return str(items)
+
+
+def _format_failure_summary(failure_evidence: Any, failure_analysis: Any) -> str:
+    """Compose a compact failure description from evidence + analysis."""
+    parts: list[str] = []
+    if isinstance(failure_evidence, dict):
+        vr = failure_evidence.get("validation_result") or {}
+        summary = vr.get("summary") or failure_evidence.get("error") or ""
+        if summary:
+            parts.append(f"Validation summary: {summary}")
+        missing = vr.get("missing_components") or []
+        if missing:
+            parts.append("Missing components: " + ", ".join(str(m) for m in missing))
+        rejected = failure_evidence.get("rejected_artifacts") or []
+        if rejected:
+            names = ", ".join(str(r.get("name", "?")) for r in rejected)
+            parts.append(f"Rejected artifacts: {names}")
+    if isinstance(failure_analysis, dict):
+        analysis = failure_analysis.get("analysis_summary")
+        if analysis:
+            parts.append(f"Analyzer summary: {analysis}")
+        factors = failure_analysis.get("contributing_factors") or []
+        if factors:
+            parts.append("Contributing factors:\n" + "\n".join(f"- {f}" for f in factors))
+    return "\n\n".join(parts) if parts else "(no structured failure evidence available)"
+
+
+def _format_correction_decision(correction_decision: Any) -> str:
+    """Render the lead's correction decision rationale for the prompt."""
+    if isinstance(correction_decision, dict):
+        rationale = correction_decision.get("decision_rationale") or ""
+        path = correction_decision.get("correction_path") or ""
+        if rationale:
+            return f"Path: {path}\n\n{rationale}" if path else rationale
+        return str(correction_decision)
+    return str(correction_decision or "(no decision available)")
+
+
+class _RepairPromptMixin:
+    """Shared prompt-building for correction-loop repair handlers.
+
+    The base `_CycleTaskHandler` user prompt is PRD + prior_outputs only —
+    the repair handler never sees the failed task's expected_artifacts /
+    acceptance_criteria, so Bob/Neo emit generic content instead of
+    re-producing the named artifact that failed acceptance. This mixin
+    surfaces the failed task's contract and the failure context to the
+    LLM. Used by all three repair handlers below.
+    """
+
+    _request_template_id = "request.cycle_repair_task"
+
+    def _build_render_variables(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any],
+    ) -> dict[str, str]:
+        return {
+            "prd": prd,
+            "role": self._role,
+            "failed_task_type": str(inputs.get("failed_task_type", "")),
+            "failure_summary": _format_failure_summary(
+                inputs.get("failure_evidence"),
+                inputs.get("failure_analysis"),
+            ),
+            "correction_decision": _format_correction_decision(inputs.get("correction_decision")),
+            "subtask_focus": str(inputs.get("subtask_focus") or ""),
+            "subtask_description": str(inputs.get("subtask_description") or ""),
+            "expected_artifacts": _format_bullets(inputs.get("expected_artifacts")),
+            "acceptance_criteria": _format_bullets(inputs.get("acceptance_criteria")),
+            "prior_outputs": self._format_prior_outputs(prior_outputs),
+        }
+
+    def _build_user_prompt(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any] | None = None,
+    ) -> str:
+        inputs = inputs or {}
+        parts = ["## Repair Task"]
+        failed_type = inputs.get("failed_task_type")
+        if failed_type:
+            parts.append(
+                f"You are repairing a failed `{failed_type}` task. Re-produce the "
+                "named artifact(s) below so they satisfy the acceptance criteria. "
+                "Do not produce a generic narrative."
+            )
+
+        focus = inputs.get("subtask_focus")
+        if focus:
+            parts.append(f"### Focus\n{focus}")
+        desc = inputs.get("subtask_description")
+        if desc:
+            parts.append(f"### Description\n{desc}")
+
+        expected = inputs.get("expected_artifacts")
+        if expected:
+            parts.append(
+                "### Required Output Artifacts\n"
+                "Emit each file with a fenced code block in the format "
+                "` ```language:path/to/file `:\n" + _format_bullets(expected)
+            )
+
+        criteria = inputs.get("acceptance_criteria")
+        if criteria:
+            parts.append("### Acceptance Criteria\n" + _format_bullets(criteria))
+
+        failure_summary = _format_failure_summary(
+            inputs.get("failure_evidence"),
+            inputs.get("failure_analysis"),
+        )
+        parts.append("### Why the Prior Attempt Failed\n" + failure_summary)
+
+        decision = _format_correction_decision(inputs.get("correction_decision"))
+        parts.append("### Correction Decision\n" + decision)
+
+        parts.append(f"### Product Requirements Document\n\n{prd}")
+
+        if prior_outputs:
+            parts.append("### Prior Analysis from Upstream Roles")
+            for role, summary in prior_outputs.items():
+                parts.append(f"#### {role}\n{summary}")
+
+        parts.append(
+            "Produce the named artifacts now using fenced code blocks "
+            "(` ```language:path/to/file `). Do not emit unrelated files."
+        )
+        return "\n\n".join(parts)
+
+
+class DevelopmentCorrectionRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """Correction-loop repair handler.
 
     Reads `failure_evidence`, `failure_analysis`, and `correction_decision`
@@ -75,7 +219,7 @@ class DevelopmentCorrectionRepairHandler(_CycleTaskHandler):
         return _artifacts_from_fenced_blocks(content, self._artifact_name)
 
 
-class BuilderAssembleRepairHandler(_CycleTaskHandler):
+class BuilderAssembleRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """Correction-loop repair handler for failed builder.assemble tasks.
 
     Mirrors `DevelopmentCorrectionRepairHandler` but routed to the builder
@@ -96,9 +240,104 @@ class BuilderAssembleRepairHandler(_CycleTaskHandler):
 
 
 class QAValidateRepairHandler(_CycleTaskHandler):
-    """Validate repair handler: verifies the repair was successful."""
+    """Validate repair handler: verifies the repair was successful.
+
+    Receives the original failed task's contract (expected_artifacts,
+    acceptance_criteria) plus the upstream repair handler's outputs via
+    `prior_outputs`, and produces a structured PASS/FAIL `repair_validation.md`
+    against those criteria — not a fresh QA strategy document.
+    """
 
     _handler_name = "qa_validate_repair_handler"
     _capability_id = "qa.validate_repair"
     _role = "qa"
     _artifact_name = "repair_validation.md"
+    _request_template_id = "request.cycle_validate_repair"
+
+    @staticmethod
+    def _format_repair_summary(prior_outputs: dict[str, Any] | None) -> str:
+        """Pull the upstream repair handler's outputs out of prior_outputs.
+
+        The executor stores the repair task's outputs under its role key
+        (e.g. `prior_outputs["builder"]` for builder.assemble_repair).
+        Surface those so Eve checks the repair, not the original failed
+        attempt.
+        """
+        if not prior_outputs:
+            return "(no repair output available)"
+        repair_keys = [k for k in ("dev", "builder") if k in prior_outputs]
+        if not repair_keys:
+            return "(no repair output from dev or builder role)"
+        parts: list[str] = []
+        for key in repair_keys:
+            block = prior_outputs[key]
+            summary = block.get("summary") if isinstance(block, dict) else None
+            if summary:
+                parts.append(f"### {key} repair\n{summary}")
+            else:
+                parts.append(f"### {key} repair\n{block!r}")
+        return "\n\n".join(parts)
+
+    def _build_render_variables(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any],
+    ) -> dict[str, str]:
+        return {
+            "prd": prd,
+            "role": self._role,
+            "failed_task_type": str(inputs.get("failed_task_type", "")),
+            "expected_artifacts": _format_bullets(inputs.get("expected_artifacts")),
+            "acceptance_criteria": _format_bullets(inputs.get("acceptance_criteria")),
+            "failure_summary": _format_failure_summary(
+                inputs.get("failure_evidence"),
+                inputs.get("failure_analysis"),
+            ),
+            "repair_summary": self._format_repair_summary(prior_outputs),
+            "prior_outputs": self._format_prior_outputs(prior_outputs),
+        }
+
+    def _build_user_prompt(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any] | None = None,
+    ) -> str:
+        inputs = inputs or {}
+        parts = [
+            "## Validate Repair",
+            "Decide whether the repair output satisfies the original acceptance "
+            "criteria. Do NOT write a fresh QA strategy. Answer the specific "
+            "question: was the failure fixed?",
+        ]
+
+        failed_type = inputs.get("failed_task_type")
+        if failed_type:
+            parts.append(f"### Failed Task Type\n`{failed_type}`")
+
+        expected = inputs.get("expected_artifacts")
+        if expected:
+            parts.append("### Original Required Artifacts\n" + _format_bullets(expected))
+
+        criteria = inputs.get("acceptance_criteria")
+        if criteria:
+            parts.append("### Original Acceptance Criteria\n" + _format_bullets(criteria))
+
+        failure_summary = _format_failure_summary(
+            inputs.get("failure_evidence"),
+            inputs.get("failure_analysis"),
+        )
+        parts.append("### Original Failure\n" + failure_summary)
+
+        parts.append("### Repair Output\n" + self._format_repair_summary(prior_outputs))
+
+        parts.append(f"### Product Requirements Document\n\n{prd}")
+
+        parts.append(
+            "Produce a `repair_validation.md` with sections: Verdict (PASS|FAIL), "
+            "Per-Artifact Findings, Per-Criterion Findings, Recommendation. "
+            "Be concrete. Cite the criterion and the specific content (or absence) "
+            "that satisfies or violates it."
+        )
+        return "\n\n".join(parts)

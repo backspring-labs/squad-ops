@@ -1127,6 +1127,130 @@ class TestCorrectionModelResolution:
         assert repair["inputs"]["agent_model"] == "model-dev"
         assert repair["inputs"]["agent_config_overrides"] == {"temperature": 0.42}
 
+    async def test_repair_envelopes_carry_failed_task_contract(
+        self,
+        executor,
+        mock_queue,
+        mock_squad_profile,
+        model_diverse_profile,
+    ):
+        """Patch-path repair envelopes plumb the failed task's contract.
+
+        Cycle 7 (run_8b0805798d71) showed corrections firing but the repair
+        agents producing a generic ``repair_output.md`` instead of the
+        ``qa_handoff.md`` the original task was specced to produce. Root
+        cause: the repair envelope only carried PRD + failure_evidence,
+        not ``expected_artifacts`` or ``acceptance_criteria``. With those
+        plumbed through, downstream prompt-building can ground the LLM in
+        what to actually emit.
+        """
+        from squadops.tasks.models import TaskEnvelope
+
+        mock_squad_profile.resolve_snapshot.return_value = (
+            model_diverse_profile,
+            "sha256:diverse",
+        )
+
+        # Wrap generate_task_plan so the failed task carries a real plan
+        # contract. (The static plan generator only sets these when an
+        # ImplementationPlan is supplied — the path under test here.)
+        import adapters.cycles.distributed_flow_executor as exec_mod
+        from squadops.cycles.task_plan import generate_task_plan as real_gen
+
+        def _gen_with_contract(*args, **kwargs):
+            envelopes = real_gen(*args, **kwargs)
+            tagged = []
+            for env in envelopes:
+                # The default cycle plan uses development.design as the
+                # dev step (not development.develop, which is plan-driven).
+                if env.task_type == "development.design":
+                    new_inputs = {
+                        **env.inputs,
+                        "subtask_focus": "QA handoff packaging",
+                        "subtask_description": "Assemble qa_handoff.md",
+                        "expected_artifacts": ["qa_handoff.md", "backend/requirements.txt"],
+                        "acceptance_criteria": [
+                            "qa_handoff.md must contain '## How to Test'",
+                            "qa_handoff.md must contain '## Expected Behavior'",
+                        ],
+                    }
+                    tagged.append(
+                        TaskEnvelope(
+                            task_id=env.task_id,
+                            agent_id=env.agent_id,
+                            cycle_id=env.cycle_id,
+                            pulse_id=env.pulse_id,
+                            project_id=env.project_id,
+                            task_type=env.task_type,
+                            correlation_id=env.correlation_id,
+                            causation_id=env.causation_id,
+                            trace_id=env.trace_id,
+                            span_id=env.span_id,
+                            inputs=new_inputs,
+                            metadata=env.metadata,
+                        )
+                    )
+                else:
+                    tagged.append(env)
+            return tagged
+
+        dev_failure = {
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            "role": "dev",
+        }
+        decision = {
+            "summary": "patch",
+            "role": "lead",
+            "correction_path": "patch",
+            "decision_rationale": "localized fix",
+            "affected_task_types": ["development.design"],
+            "classification": "work_product",
+            "analysis_summary": "Missing required headings",
+        }
+        script = [
+            ("SUCCEEDED", {"summary": "framed", "role": "strat"}, None),
+            ("FAILED", dev_failure, "missing headings"),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "work_product",
+                    "analysis_summary": "Missing '## How to Test'",
+                    "role": "data",
+                },
+                None,
+            ),
+            ("SUCCEEDED", decision, None),
+            ("SUCCEEDED", {"summary": "repaired", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
+        ]
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+
+        with (
+            patch.object(exec_mod, "generate_task_plan", _gen_with_contract),
+            patch(
+                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        publishes = [_published_envelope(c) for c in mock_queue.publish.call_args_list]
+        repair = next(p for p in publishes if p["task_id"].startswith("repair-"))
+
+        inputs = repair["inputs"]
+        assert inputs["failed_task_type"] == "development.design"
+        assert inputs["expected_artifacts"] == [
+            "qa_handoff.md",
+            "backend/requirements.txt",
+        ]
+        assert any("How to Test" in c for c in inputs["acceptance_criteria"])
+        assert inputs["subtask_focus"] == "QA handoff packaging"
+        assert inputs["failure_analysis"]["analysis_summary"] == "Missing '## How to Test'"
+        assert inputs["correction_decision"]["correction_path"] == "patch"
+
     def test_resolve_agent_config_falls_back_when_role_absent(self):
         """Helper returns (role, None, {}) when profile has no enabled match.
 

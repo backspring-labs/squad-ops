@@ -282,8 +282,16 @@ class _CycleTaskHandler(CapabilityHandler):
         self,
         prd: str,
         prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any] | None = None,
     ) -> str:
-        """Assemble user prompt from PRD and upstream handler outputs."""
+        """Assemble user prompt from PRD and upstream handler outputs.
+
+        ``inputs`` is the full task inputs dict; the default implementation
+        ignores it but subclasses (notably the correction-loop repair
+        handlers) consume it to surface failure context, expected
+        artifacts, and acceptance criteria that aren't reachable from
+        ``prd`` or ``prior_outputs`` alone.
+        """
         parts = [f"## Product Requirements Document\n\n{prd}"]
         if prior_outputs:
             parts.append("\n\n## Prior Analysis from Upstream Roles\n")
@@ -507,7 +515,7 @@ class _CycleTaskHandler(CapabilityHandler):
             rendered = await renderer.render(self._request_template_id, variables)
             user_prompt = rendered.content
         else:
-            user_prompt = self._build_user_prompt(prd, prior_outputs)
+            user_prompt = self._build_user_prompt(prd, prior_outputs, inputs)
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content

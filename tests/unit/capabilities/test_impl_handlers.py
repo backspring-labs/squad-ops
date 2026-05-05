@@ -413,9 +413,7 @@ class TestRepairHandlers:
         assert result.success is True
         assert result.outputs["role"] == "qa"
 
-    async def test_dev_repair_extracts_fenced_code_into_per_file_artifacts(
-        self, mock_context
-    ):
+    async def test_dev_repair_extracts_fenced_code_into_per_file_artifacts(self, mock_context):
         # Regression: previously this whole response was wrapped as a single
         # repair_output.md document and the source files never landed.
         response = (
@@ -446,9 +444,7 @@ class TestRepairHandlers:
         # No leftover repair_output.md when extraction succeeds
         assert "repair_output.md" not in names
 
-    async def test_dev_repair_falls_back_to_markdown_when_no_fenced_blocks(
-        self, mock_context
-    ):
+    async def test_dev_repair_falls_back_to_markdown_when_no_fenced_blocks(self, mock_context):
         # Without fenced files we still preserve the LLM output instead of
         # silently dropping it — the fallback is what keeps narrative-only
         # repairs (e.g. "no code change needed, root cause was X") visible.
@@ -491,3 +487,116 @@ class TestRepairHandlers:
         assert h.capability_id == "builder.assemble_repair"
         names = [a["name"] for a in result.outputs["artifacts"]]
         assert names == ["qa_handoff.md", "backend/requirements.txt"]
+
+    async def test_repair_prompt_carries_failed_task_contract(self, mock_context):
+        """Repair handler must surface expected_artifacts + acceptance_criteria.
+
+        Without this plumbing the repair LLM sees only PRD + prior_outputs
+        and produces a generic narrative — the cyc_3d5d31717603 failure mode
+        where Bob emitted a "Joi communications status tracker" instead of
+        the qa_handoff.md the original task was specced to produce.
+        """
+        captured: dict = {}
+
+        async def _capture(messages, **_kw):
+            captured["user"] = messages[-1].content
+            return ChatMessage(role="assistant", content="```markdown:qa_handoff.md\nfixed\n```")
+
+        mock_context.ports.llm.chat_stream_with_usage = _capture
+
+        inputs = {
+            "prd": "Build a runs app",
+            "failed_task_type": "builder.assemble",
+            "subtask_focus": "QA handoff packaging",
+            "subtask_description": "Assemble the qa_handoff.md with run instructions",
+            "expected_artifacts": ["qa_handoff.md", "backend/requirements.txt"],
+            "acceptance_criteria": [
+                "qa_handoff.md must contain '## How to Test'",
+                "qa_handoff.md must contain '## Expected Behavior'",
+            ],
+            "failure_evidence": {
+                "validation_result": {
+                    "summary": "Missing required headings in qa_handoff.md",
+                    "missing_components": ["## How to Test", "## Expected Behavior"],
+                },
+                "rejected_artifacts": [{"name": "qa_handoff.md"}],
+            },
+            "failure_analysis": {
+                "analysis_summary": "Builder skipped two mandatory sections.",
+            },
+            "correction_decision": {
+                "correction_path": "patch",
+                "decision_rationale": "Append missing headings; do not rewind.",
+            },
+        }
+
+        h = BuilderAssembleRepairHandler()
+        result = await h.handle(mock_context, inputs)
+
+        assert result.success is True
+        prompt = captured["user"]
+        assert "qa_handoff.md" in prompt
+        assert "## How to Test" in prompt
+        assert "## Expected Behavior" in prompt
+        assert "Missing required headings" in prompt
+        assert "Append missing headings" in prompt
+        assert "builder.assemble" in prompt
+        assert "QA handoff packaging" in prompt
+
+    async def test_repair_prompt_works_without_failure_context(self, mock_context):
+        """Backwards compat: handler still works with bare {"prd": ...} inputs."""
+        captured: dict = {}
+
+        async def _capture(messages, **_kw):
+            captured["user"] = messages[-1].content
+            return ChatMessage(role="assistant", content="ok")
+
+        mock_context.ports.llm.chat_stream_with_usage = _capture
+
+        h = DevelopmentCorrectionRepairHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        assert result.success is True
+        prompt = captured["user"]
+        assert "test" in prompt
+        assert "Repair Task" in prompt
+
+    async def test_validate_repair_prompt_carries_criteria_and_repair_output(self, mock_context):
+        """Validate-repair must check the repair against the original criteria.
+
+        Otherwise Eve emits a generic QA-strategy doc (the cyc_3d5d31717603
+        failure mode) instead of a PASS/FAIL judgement on the named artifact.
+        """
+        captured: dict = {}
+
+        async def _capture(messages, **_kw):
+            captured["user"] = messages[-1].content
+            return ChatMessage(role="assistant", content="# Repair Validation\nVerdict: PASS")
+
+        mock_context.ports.llm.chat_stream_with_usage = _capture
+
+        inputs = {
+            "prd": "Build a runs app",
+            "failed_task_type": "builder.assemble",
+            "expected_artifacts": ["qa_handoff.md"],
+            "acceptance_criteria": [
+                "qa_handoff.md must contain '## How to Test'",
+            ],
+            "failure_evidence": {
+                "validation_result": {"summary": "Missing '## How to Test'"},
+            },
+            "prior_outputs": {
+                "builder": {"summary": "Repaired qa_handoff.md with new sections"},
+            },
+        }
+
+        h = QAValidateRepairHandler()
+        result = await h.handle(mock_context, inputs)
+
+        assert result.success is True
+        prompt = captured["user"]
+        assert "qa_handoff.md" in prompt
+        assert "## How to Test" in prompt
+        assert "Repaired qa_handoff.md with new sections" in prompt
+        assert "Validate Repair" in prompt
+        assert "PASS" in prompt or "FAIL" in prompt
