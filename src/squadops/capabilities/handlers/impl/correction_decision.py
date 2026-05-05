@@ -26,22 +26,6 @@ logger = logging.getLogger(__name__)
 
 _VALID_CORRECTION_PATHS = ("continue", "patch", "rewind", "abort")
 
-_DECISION_SYSTEM_PROMPT = """\
-You are the governance lead deciding how to respond to a failure during
-implementation. Given the failure analysis, select ONE correction path:
-
-- continue: the failure is non-critical; proceed with the remaining tasks
-- patch: inject repair tasks to fix the specific issue, then continue
-- rewind: restore the last checkpoint and retry from that point
-- abort: the failure is unrecoverable; stop the run
-
-Return JSON with:
-- correction_path (string): one of continue/patch/rewind/abort
-- decision_rationale (string): 2-3 sentence justification
-- affected_task_types (list[string]): task types affected by the decision
-
-Return ONLY valid JSON, no markdown fences."""
-
 
 class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
     """Decide the correction path after a failure analysis."""
@@ -83,8 +67,19 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                 )
             user_prompt = "\n".join(user_parts)
 
+        # System prompt assembled from role + task_type fragments
+        # (fragments/roles/lead + fragments/shared/task_type/
+        # task_type.governance.correction_decision.md). Aligns this
+        # handler with the planning_tasks.py pattern so prompt
+        # versions are tracked by PromptService and surfaced to
+        # LangFuse rather than living as a Python string.
+        assembled = context.ports.prompt_service.assemble(
+            role=self._role,
+            hook="agent_start",
+            task_type=self._capability_id,
+        )
         messages = [
-            ChatMessage(role="system", content=_DECISION_SYSTEM_PROMPT),
+            ChatMessage(role="system", content=assembled.content),
             ChatMessage(role="user", content=user_prompt),
         ]
 

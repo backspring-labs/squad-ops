@@ -58,68 +58,15 @@ class FailureAnalysis(BaseModel):
     @classmethod
     def classification_must_be_known(cls, v: str) -> str:
         if v not in _VALID_CLASSIFICATIONS:
-            raise ValueError(
-                f"classification {v!r} not in {sorted(_VALID_CLASSIFICATIONS)}"
-            )
+            raise ValueError(f"classification {v!r} not in {sorted(_VALID_CLASSIFICATIONS)}")
         return v
 
     @field_validator("contributing_factors")
     @classmethod
     def contributing_factors_must_be_substantive(cls, v: list[str]) -> list[str]:
         if not all(isinstance(s, str) and len(s.strip()) >= 5 for s in v):
-            raise ValueError(
-                "each contributing factor must be a string >=5 chars"
-            )
+            raise ValueError("each contributing factor must be a string >=5 chars")
         return v
-
-
-_ANALYSIS_SYSTEM_PROMPT = f"""\
-You are a data analyst performing root cause analysis on a task failure.
-
-The Failure Evidence block below carries structured signals from the failed
-handler. When present, USE THEM rather than restating the error string:
-
-- `validation_result.checks` — per-criterion typed-acceptance outcomes from
-  the failed handler. A `failed`-status check tells you the EXACT criterion
-  that rejected the work (regex pattern, missing field, missing endpoint).
-  Quote the failing check's name and `actual` field in your analysis.
-- `validation_result.missing_components` — specific files/sections the
-  validator expected but did not find. Name them in your analysis.
-- `rejected_artifacts[*].content_snippet` — the first ~1500 chars of what
-  the handler actually emitted. Compare against the failing checks to
-  identify whether it's a format issue, a missing-content issue, or a
-  scope-too-large issue.
-- `preliminary_failure_classification` — the failed handler's own classification.
-  Do not just echo it; corroborate or override it with evidence.
-
-Distinguish content-quality failures from structural failures explicitly,
-because downstream correction-decision uses your analysis to choose between
-patch (single-task content fix) and rewind (multi-task scope change). State
-which you observed.
-
-Classify the failure into one of these categories:
-- {FailureClassification.EXECUTION}: runtime error, timeout, infrastructure issue
-- {FailureClassification.WORK_PRODUCT}: output doesn't meet quality/correctness bar
-  (typed check failed on emitted artifact — usually patchable)
-- {FailureClassification.ALIGNMENT}: output doesn't match requirements/contract
-  (artifact correct in isolation but wrong against PRD/contract — may need rewind)
-- {FailureClassification.DECISION}: wrong approach or architectural choice
-- {FailureClassification.MODEL_LIMITATION}: LLM capability gap (e.g. completion
-  truncated at token cap, scope exceeds single-call budget)
-
-Return JSON with these REQUIRED fields:
-- classification (string): EXACTLY one of: {", ".join(sorted(_VALID_CLASSIFICATIONS))}
-- analysis_summary (string, >=20 chars): concrete 2-3 sentence root cause. State the
-  specific component, the specific symptom (cite the failing check name when
-  available), and (if knowable) the specific cause. Do NOT write "N/A", "unknown",
-  or empty strings — if you cannot determine the cause from the evidence, say SO
-  and name the missing evidence.
-- contributing_factors (list[string], >=1 item, each >=5 chars): factors that
-  contributed. Each factor must be a concrete observable, not a generic phrase.
-
-Empty fields, the literal "N/A", and the literal "unknown" will be rejected.
-
-Return ONLY valid JSON, no markdown fences, no explanation."""
 
 
 class DataAnalyzeFailureHandler(_CycleTaskHandler):
@@ -157,8 +104,17 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
                 user_parts.append(f"\n\n## Failure Evidence\n\n{evidence_json}")
             user_prompt = "\n".join(user_parts)
 
+        # System prompt assembled from role + task_type fragments
+        # (fragments/roles/data + fragments/shared/task_type/
+        # task_type.data.analyze_failure.md). PromptService tracks
+        # the version and surfaces it to LangFuse.
+        assembled = context.ports.prompt_service.assemble(
+            role=self._role,
+            hook="agent_start",
+            task_type=self._capability_id,
+        )
         messages = [
-            ChatMessage(role="system", content=_ANALYSIS_SYSTEM_PROMPT),
+            ChatMessage(role="system", content=assembled.content),
             ChatMessage(role="user", content=user_prompt),
         ]
 
