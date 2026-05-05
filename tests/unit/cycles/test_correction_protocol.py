@@ -575,6 +575,89 @@ class TestCorrectionTaskArtifactStorage:
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.COMPLETED in terminal_statuses
 
+    async def test_validate_repair_envelope_carries_repair_artifacts_in_prior_outputs(
+        self, executor, mock_queue, mock_registry, mock_vault, mock_event_bus
+    ):
+        """qa.validate_repair must see the upstream repair task's artifacts.
+
+        Cycle 8 regression: the executor previously stripped `artifacts`
+        from the repair task's outputs when collecting prior_outputs, so
+        Eve only saw the role-keyed one-line summary and rendered
+        Verdict: FAIL even when the repaired file was already in the
+        registry. This pins the executor side of the fix — the
+        downstream prompt formatting is covered by repair handler tests."""
+        semantic_outputs = {
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            "role": "strat",
+        }
+        correction_decision = {
+            "summary": "patch",
+            "role": "lead",
+            "correction_path": "patch",
+            "decision_rationale": "Localized fix",
+            "affected_task_types": ["development.develop"],
+            "classification": "work_product",
+            "analysis_summary": "Output quality issue",
+        }
+        repair_with_artifacts = {
+            "summary": "[dev] repaired",
+            "role": "dev",
+            "artifacts": [
+                {
+                    "name": "frontend/src/components/RunDetail.jsx",
+                    "content": "import React from 'react';\nexport default function RunDetail() {}\n",
+                    "media_type": "text/javascript",
+                    "type": "source",
+                },
+            ],
+        }
+        script = [
+            ("FAILED", semantic_outputs, "missing component"),
+            (
+                "SUCCEEDED",
+                {
+                    "classification": "work_product",
+                    "analysis_summary": "missing RunDetail.jsx",
+                    "role": "data",
+                },
+                None,
+            ),
+            ("SUCCEEDED", correction_decision, None),
+            ("SUCCEEDED", repair_with_artifacts, None),
+            ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
+            ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
+        ]
+        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+
+        with patch(
+            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        publishes = [_published_envelope(c) for c in mock_queue.publish.call_args_list]
+        validate = next(p for p in publishes if p["task_type"] == "qa.validate_repair")
+
+        prior = validate["inputs"]["prior_outputs"]
+        dev_block = prior.get("dev")
+        assert dev_block is not None, (
+            f"dev repair output missing from prior_outputs; got keys: {list(prior.keys())}"
+        )
+        artifacts = dev_block.get("artifacts")
+        assert artifacts, (
+            "validate_repair envelope must carry repair artifacts; "
+            "without this Eve cannot verify the repair against acceptance criteria"
+        )
+        names = [a.get("name") for a in artifacts]
+        assert "frontend/src/components/RunDetail.jsx" in names
+        # Content travels too — Eve needs to read it, not just see the filename.
+        assert any(
+            "export default function RunDetail" in (a.get("content") or "") for a in artifacts
+        )
+
 
 # ---------------------------------------------------------------------------
 # Correction protocol: abort and rewind paths

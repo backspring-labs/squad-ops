@@ -96,6 +96,58 @@ def _format_failure_summary(failure_evidence: Any, failure_analysis: Any) -> str
     return "\n\n".join(parts) if parts else "(no structured failure evidence available)"
 
 
+_FENCE_LANG_BY_EXT: dict[str, str] = {
+    ".py": "python",
+    ".js": "javascript",
+    ".jsx": "jsx",
+    ".ts": "typescript",
+    ".tsx": "tsx",
+    ".json": "json",
+    ".md": "markdown",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".sh": "bash",
+    ".sql": "sql",
+    ".html": "html",
+    ".css": "css",
+    ".toml": "toml",
+}
+
+
+def _fence_language_for(filename: str) -> str:
+    if not isinstance(filename, str):
+        return ""
+    lower = filename.lower()
+    for ext, lang in _FENCE_LANG_BY_EXT.items():
+        if lower.endswith(ext):
+            return lang
+    return ""
+
+
+def _format_repair_artifacts(artifacts: Any) -> str:
+    """Render repair artifacts as fenced code blocks with filename headers.
+
+    Eve previously saw only the role-keyed one-line summary, so she would
+    return Verdict: FAIL on repairs whose artifacts were already in the
+    registry. Surfacing the full content here lets her cite specific
+    lines when checking acceptance criteria.
+    """
+    if not isinstance(artifacts, list) or not artifacts:
+        return ""
+    rendered: list[str] = []
+    for art in artifacts:
+        if not isinstance(art, dict):
+            continue
+        name = art.get("name") or "(unnamed)"
+        content = art.get("content")
+        if content is None:
+            continue
+        lang = _fence_language_for(name)
+        fence_open = f"```{lang}" if lang else "```"
+        rendered.append(f"#### `{name}`\n{fence_open}\n{content}\n```")
+    return "\n\n".join(rendered)
+
+
 def _format_correction_decision(correction_decision: Any) -> str:
     """Render the lead's correction decision rationale for the prompt."""
     if isinstance(correction_decision, dict):
@@ -256,12 +308,14 @@ class QAValidateRepairHandler(_CycleTaskHandler):
 
     @staticmethod
     def _format_repair_summary(prior_outputs: dict[str, Any] | None) -> str:
-        """Pull the upstream repair handler's outputs out of prior_outputs.
+        """Render the upstream repair handler's artifacts for Eve's prompt.
 
         The executor stores the repair task's outputs under its role key
-        (e.g. `prior_outputs["builder"]` for builder.assemble_repair).
-        Surface those so Eve checks the repair, not the original failed
-        attempt.
+        (e.g. `prior_outputs["builder"]` for builder.assemble_repair). For
+        repair tasks the executor preserves the `artifacts` list (unlike
+        the regular fan-in path), so we surface filename + content here so
+        Eve can verify against the original acceptance criteria. Falls
+        back to the role-keyed summary when no artifacts are present.
         """
         if not prior_outputs:
             return "(no repair output available)"
@@ -271,11 +325,22 @@ class QAValidateRepairHandler(_CycleTaskHandler):
         parts: list[str] = []
         for key in repair_keys:
             block = prior_outputs[key]
-            summary = block.get("summary") if isinstance(block, dict) else None
-            if summary:
-                parts.append(f"### {key} repair\n{summary}")
-            else:
+            if not isinstance(block, dict):
                 parts.append(f"### {key} repair\n{block!r}")
+                continue
+
+            section = [f"### {key} repair"]
+            summary = block.get("summary")
+            if summary:
+                section.append(str(summary))
+
+            artifacts = block.get("artifacts") or []
+            rendered_artifacts = _format_repair_artifacts(artifacts)
+            if rendered_artifacts:
+                section.append(rendered_artifacts)
+            elif not summary:
+                section.append(repr(block))
+            parts.append("\n\n".join(section))
         return "\n\n".join(parts)
 
     def _build_render_variables(

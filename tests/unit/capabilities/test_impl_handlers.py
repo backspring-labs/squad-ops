@@ -600,3 +600,173 @@ class TestRepairHandlers:
         assert "Repaired qa_handoff.md with new sections" in prompt
         assert "Validate Repair" in prompt
         assert "PASS" in prompt or "FAIL" in prompt
+
+    async def test_validate_repair_prompt_includes_repaired_artifact_content(self, mock_context):
+        """Eve must see the actual repaired files, not just a one-line summary.
+
+        Cycle 8 regression: both repair_validation.md outputs returned
+        Verdict: FAIL because `_format_repair_summary` only rendered the
+        role-keyed summary string, so Eve had no way to verify the
+        artifact against the acceptance criteria. Surfacing the artifact
+        name + content lets her cite specific lines.
+        """
+        captured: dict = {}
+
+        async def _capture(messages, **_kw):
+            captured["user"] = messages[-1].content
+            return ChatMessage(role="assistant", content="# Repair Validation\nVerdict: PASS")
+
+        mock_context.ports.llm.chat_stream_with_usage = _capture
+
+        repaired_handoff = (
+            "# QA Handoff\n\n"
+            "## How to Test\n\nRun `pytest backend/tests`.\n\n"
+            "## Expected Behavior\n\nAll tests pass.\n"
+        )
+        inputs = {
+            "prd": "Build a runs app",
+            "failed_task_type": "builder.assemble",
+            "expected_artifacts": ["qa_handoff.md"],
+            "acceptance_criteria": [
+                "qa_handoff.md must contain '## How to Test'",
+                "qa_handoff.md must contain '## Expected Behavior'",
+            ],
+            "prior_outputs": {
+                "builder": {
+                    "summary": "[builder] Build a runs app",
+                    "artifacts": [
+                        {
+                            "name": "qa_handoff.md",
+                            "content": repaired_handoff,
+                            "media_type": "text/markdown",
+                            "type": "document",
+                        },
+                    ],
+                },
+            },
+        }
+
+        h = QAValidateRepairHandler()
+        result = await h.handle(mock_context, inputs)
+
+        assert result.success is True
+        prompt = captured["user"]
+        assert "qa_handoff.md" in prompt
+        assert "## How to Test" in prompt
+        assert "## Expected Behavior" in prompt
+        assert "Run `pytest backend/tests`." in prompt
+        assert "```markdown" in prompt
+
+    async def test_validate_repair_prompt_falls_back_to_summary_without_artifacts(
+        self, mock_context
+    ):
+        """Backwards compat: pre-fix executor checkpoints have no artifacts key."""
+        captured: dict = {}
+
+        async def _capture(messages, **_kw):
+            captured["user"] = messages[-1].content
+            return ChatMessage(role="assistant", content="Verdict: PASS")
+
+        mock_context.ports.llm.chat_stream_with_usage = _capture
+
+        inputs = {
+            "prd": "test",
+            "failed_task_type": "builder.assemble",
+            "prior_outputs": {
+                "builder": {"summary": "Repaired qa_handoff.md"},
+            },
+        }
+
+        h = QAValidateRepairHandler()
+        result = await h.handle(mock_context, inputs)
+
+        assert result.success is True
+        assert "Repaired qa_handoff.md" in captured["user"]
+
+
+# ---------------------------------------------------------------------------
+# _format_repair_summary unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestFormatRepairSummary:
+    @pytest.mark.parametrize(
+        "filename,expected_fence",
+        [
+            ("RunDetail.jsx", "```jsx"),
+            ("backend/main.py", "```python"),
+            ("qa_handoff.md", "```markdown"),
+            ("config.yaml", "```yaml"),
+            ("noext", "```"),
+        ],
+    )
+    def test_renders_artifacts_with_language_fenced_blocks(self, filename, expected_fence):
+        prior_outputs = {
+            "dev": {
+                "summary": "[dev] sample",
+                "artifacts": [
+                    {"name": filename, "content": "BODY", "type": "source"},
+                ],
+            },
+        }
+        rendered = QAValidateRepairHandler._format_repair_summary(prior_outputs)
+        assert f"#### `{filename}`" in rendered
+        assert expected_fence in rendered
+        assert "BODY" in rendered
+        assert "[dev] sample" in rendered
+
+    def test_renders_multiple_artifacts_across_roles(self):
+        prior_outputs = {
+            "builder": {
+                "summary": "[builder] s",
+                "artifacts": [
+                    {"name": "qa_handoff.md", "content": "## How to Test\nrun it"},
+                    {"name": "backend/requirements.txt", "content": "fastapi==0.115.0"},
+                ],
+            },
+        }
+        rendered = QAValidateRepairHandler._format_repair_summary(prior_outputs)
+        assert "qa_handoff.md" in rendered
+        assert "backend/requirements.txt" in rendered
+        assert "## How to Test" in rendered
+        assert "fastapi==0.115.0" in rendered
+
+    def test_returns_placeholder_when_no_prior_outputs(self):
+        assert (
+            QAValidateRepairHandler._format_repair_summary(None) == "(no repair output available)"
+        )
+        assert QAValidateRepairHandler._format_repair_summary({}) == "(no repair output available)"
+
+    def test_returns_placeholder_when_no_repair_role_keys(self):
+        # `qa` and `lead` are not repair roles — only dev/builder produce repairs.
+        result = QAValidateRepairHandler._format_repair_summary(
+            {"qa": {"summary": "noise"}, "lead": {"summary": "noise"}}
+        )
+        assert result == "(no repair output from dev or builder role)"
+
+    def test_skips_artifacts_with_no_content(self):
+        prior_outputs = {
+            "dev": {
+                "summary": "[dev] s",
+                "artifacts": [
+                    {"name": "ghost.py"},  # no content
+                    {"name": "real.py", "content": "x = 1"},
+                ],
+            },
+        }
+        rendered = QAValidateRepairHandler._format_repair_summary(prior_outputs)
+        assert "real.py" in rendered
+        assert "x = 1" in rendered
+        assert "ghost.py" not in rendered
+
+    def test_falls_back_to_summary_when_artifacts_empty(self):
+        prior_outputs = {"dev": {"summary": "narrative-only repair", "artifacts": []}}
+        rendered = QAValidateRepairHandler._format_repair_summary(prior_outputs)
+        assert "narrative-only repair" in rendered
+        assert "```" not in rendered
+
+    def test_handles_non_dict_block(self):
+        # Defensive: if the executor ever stores a string instead of a dict we
+        # surface it rather than crashing.
+        rendered = QAValidateRepairHandler._format_repair_summary({"dev": "raw string"})
+        assert "raw string" in rendered
