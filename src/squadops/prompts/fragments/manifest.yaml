@@ -1,5 +1,5 @@
-version: 0.9.18
-updated_at: '2026-03-13T14:40:23.887991Z'
+version: 0.9.19
+updated_at: '2026-05-06T13:45:00.000000Z'
 fragments:
 - fragment_id: identity
   path: roles/comms/identity.md
@@ -133,4 +133,22 @@ fragments:
   roles:
   - lead
   sha256: 91af4ac066ce276fb60d7a049321c9f2743e5e32da671de40c9c7476fab0d28a
-manifest_hash: 1468b9fca859dab1d46171f6e5e66236b785cfc4a43655c7e5f64c69506d3dde
+- fragment_id: task_type.governance.establish_contract
+  path: shared/task_type/task_type.governance.establish_contract.md
+  layer: task_type
+  roles:
+  - lead
+  sha256: 737da7b531599a8bedf7c811394af4cae50e3506512244b6309cd646111b8bcb
+- fragment_id: task_type.governance.correction_decision
+  path: shared/task_type/task_type.governance.correction_decision.md
+  layer: task_type
+  roles:
+  - lead
+  sha256: 5c265c612f8262a016392ec929ced75e7cbe576afa3c26e3d0d5de5bbe87a5e3
+- fragment_id: task_type.data.analyze_failure
+  path: shared/task_type/task_type.data.analyze_failure.md
+  layer: task_type
+  roles:
+  - data
+  sha256: fd44a28f65e449c6320b5ee5f1d8121013a03c7baa757965334c4e19c7904779
+manifest_hash: fa45dab78329e0882ec1e5a4b449d4b7b9926a1f7d27513ac7178a256c4b64bf
