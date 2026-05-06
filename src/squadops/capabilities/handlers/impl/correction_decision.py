@@ -80,15 +80,18 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                 )
             user_prompt = "\n".join(user_parts)
 
-        # System prompt assembled from role + task_type fragments
-        # (fragments/roles/lead + fragments/shared/task_type/
-        # task_type.governance.correction_decision.md). Aligns this
-        # handler with the planning_tasks.py pattern so prompt
-        # versions are tracked by PromptService and surfaced to
-        # LangFuse rather than living as a Python string.
-        assembled = context.ports.prompt_service.assemble(
+        # System prompt is the task_type fragment ALONE — no role
+        # identity prepend. Cycle cyc_a867cbf02205 (2026-05-05)
+        # captured raw output where Max (under the lead-identity
+        # prepend introduced by PR #126) wrote a "### Initialization
+        # Verification / Role Configuration: LeadAgent_SquadOps
+        # loaded ✅" markdown narrative instead of the JSON contract
+        # the prompt asked for. The role-identity fragment primes
+        # small models to enter role-play mode. Suppress it here
+        # while keeping the task_type fragment as the externalized
+        # source of truth.
+        assembled = context.ports.prompt_service.assemble_task_only(
             role=self._role,
-            hook="agent_start",
             task_type=self._capability_id,
         )
         messages = [

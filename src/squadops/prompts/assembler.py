@@ -233,6 +233,23 @@ class PromptAssembler(PromptService):
         """
         return self.assemble(role=role, hook="agent_start")
 
+    def assemble_task_only(self, role: str, task_type: str) -> AssembledPrompt:
+        """
+        Assemble system prompt from ONLY the task_type fragment.
+
+        Skips the identity / constraints / lifecycle layers that
+        :meth:`assemble` composes. See port docstring for the
+        cycle-evidenced motivation (lead/data identities priming
+        smaller models into "role-play initialization" responses
+        instead of doing the requested JSON task).
+        """
+        fragment = self._resolve_fragment("task_type", role=role, hook=None, task_type=task_type)
+        if fragment is None:
+            raise MandatoryLayerMissingError(layer="task_type", role=role)
+
+        self._verify_hash(fragment)
+        return self._compose([fragment], role=role, hook="agent_start")
+
     def get_version(self) -> str:
         """
         Get the current prompt system version.
