@@ -59,13 +59,14 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
         else:
             user_prompt = self._build_user_prompt(prd, prior_outputs)
 
-        # System prompt assembled from role + task_type fragments
-        # (fragments/roles/lead + fragments/shared/task_type/
-        # task_type.governance.establish_contract.md). PromptService
-        # tracks the version and surfaces it to LangFuse.
-        assembled = context.ports.prompt_service.assemble(
+        # System prompt is the task_type fragment ALONE — no role
+        # identity prepend. Same regression family as the other two
+        # SIP-0079 impl handlers; cycle cyc_a4e6dc3afe7a's "char 0"
+        # parse failure was the first symptom in this handler.
+        # Role-identity layer primes role-play responses; suppress
+        # it for this JSON-emitting handler.
+        assembled = context.ports.prompt_service.assemble_task_only(
             role=self._role,
-            hook="agent_start",
             task_type=self._capability_id,
         )
         messages = [

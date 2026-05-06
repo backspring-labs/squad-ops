@@ -108,13 +108,16 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
                 user_parts.append(f"\n\n## Failure Evidence\n\n{evidence_json}")
             user_prompt = "\n".join(user_parts)
 
-        # System prompt assembled from role + task_type fragments
-        # (fragments/roles/data + fragments/shared/task_type/
-        # task_type.data.analyze_failure.md). PromptService tracks
-        # the version and surfaces it to LangFuse.
-        assembled = context.ports.prompt_service.assemble(
+        # System prompt is the task_type fragment ALONE — no role
+        # identity prepend. Same regression as governance.correction_decision
+        # captured in cycle cyc_a867cbf02205 (2026-05-05): Data wrote
+        # "# Data Agent Initialization Cycle / Role: Data Agent
+        # (SquadOps) / ## 1. Initialization Check" instead of the
+        # required JSON FailureAnalysis schema. Role-identity layer
+        # primes the role-play response. Suppress it for this
+        # JSON-emitting handler.
+        assembled = context.ports.prompt_service.assemble_task_only(
             role=self._role,
-            hook="agent_start",
             task_type=self._capability_id,
         )
         messages = [

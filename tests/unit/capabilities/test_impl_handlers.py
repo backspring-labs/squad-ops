@@ -58,10 +58,12 @@ def mock_context():
     assembled.assembly_hash = "sha256:test"
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
     # Externalized impl-handler system prompts (correction_decision /
-    # analyze_failure / establish_contract) now call assemble(role, hook,
-    # task_type) instead of using a hardcoded constant. Mock it here so
-    # the auto-attribute MagicMock doesn't return a non-string.
+    # analyze_failure / establish_contract) call assemble_task_only(role,
+    # task_type) — the task_type fragment with NO role-identity prepend.
+    # Mock both forms so the auto-attribute MagicMock doesn't return a
+    # non-string.
     ctx.ports.prompt_service.assemble = MagicMock(return_value=assembled)
+    ctx.ports.prompt_service.assemble_task_only = MagicMock(return_value=assembled)
     ctx.ports.request_renderer = None
     ctx.correlation_context = None
     return ctx
@@ -380,10 +382,18 @@ class TestImplHandlerSystemPromptExternalization:
     """The three SIP-0079 impl handlers (analyze_failure,
     correction_decision, establish_contract) used to hardcode their
     system prompts as Python string constants, bypassing PromptService
-    and missing LangFuse version tracking. Pinning the new contract:
-    each handler must call assemble(role, hook='agent_start',
-    task_type=capability_id) so role+task_type fragments compose the
-    system prompt the same way planning handlers do."""
+    and missing LangFuse version tracking.
+
+    Cycle cyc_a867cbf02205 (2026-05-05) caught a regression in the
+    initial externalization: composing role identity + task_type
+    fragments via assemble() primed spark-squad models to write
+    role-play "Initialization Verification" markdown narratives
+    instead of the requested JSON. Updated contract: handlers call
+    assemble_task_only(role, task_type) — the task_type fragment
+    only, no identity / constraints / lifecycle prepend. The
+    externalized fragment remains the single source of truth for
+    prompt content; LangFuse versioning still applies; identity
+    no longer triggers role-play."""
 
     @pytest.mark.parametrize(
         "handler_cls,role,capability_id",
@@ -406,12 +416,12 @@ class TestImplHandlerSystemPromptExternalization:
         ],
         ids=lambda x: x.__name__ if isinstance(x, type) else x,
     )
-    async def test_handler_assembles_system_prompt(
+    async def test_handler_uses_task_only_assembly(
         self, mock_context, handler_cls, role, capability_id
     ):
         # Drive the handler with a minimal-shaped LLM response so the
-        # success path runs and reaches the assemble() call before any
-        # parse-validation logic.
+        # success path runs and reaches the assemble_task_only() call
+        # before any parse-validation logic.
         if handler_cls is DataAnalyzeFailureHandler:
             payload = json.dumps(
                 {
@@ -444,11 +454,15 @@ class TestImplHandlerSystemPromptExternalization:
         h = handler_cls()
         await h.handle(mock_context, {"prd": "test"})
 
-        mock_context.ports.prompt_service.assemble.assert_called_once_with(
+        # New contract: task_type fragment ONLY — no role identity
+        # prepend that primes role-play responses on small models.
+        mock_context.ports.prompt_service.assemble_task_only.assert_called_once_with(
             role=role,
-            hook="agent_start",
             task_type=capability_id,
         )
+        # And the legacy full-assembly path must NOT be called for
+        # these JSON-emitting handlers.
+        mock_context.ports.prompt_service.assemble.assert_not_called()
 
     async def test_decision_constant_removed(self):
         """Defense against future drift back to a hardcoded string —

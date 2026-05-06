@@ -290,3 +290,80 @@ class TestPromptAssembler:
         version = assembler.get_version()
 
         assert version == "0.8.5"
+
+    def test_assemble_task_only_returns_task_fragment_alone(self):
+        """assemble_task_only must NOT prepend identity / constraints /
+        lifecycle. Used by the SIP-0079 impl handlers whose system
+        prompt is JUST the task instructions — role-identity prepend
+        primed spark-squad models into role-play markdown narratives
+        instead of JSON output (cyc_a867cbf02205, 2026-05-05)."""
+        identity_text = "You are the Lead Agent in the SquadOps framework."
+        task_text = "## Correction Decision\n\nReturn JSON with correction_path and rationale."
+        fragments = {
+            "identity": create_mock_fragment("identity", "identity", identity_text),
+            "constraints.global": create_mock_fragment(
+                "constraints.global", "constraints", "Be safe."
+            ),
+            "task_type.governance.correction_decision": create_mock_fragment(
+                "task_type.governance.correction_decision",
+                "task_type",
+                task_text,
+            ),
+        }
+        repo = create_mock_repository(fragments)
+        assembler = PromptAssembler(repo)
+
+        result = assembler.assemble_task_only(
+            role="lead", task_type="governance.correction_decision"
+        )
+
+        # Only the task_type fragment content lands in the prompt.
+        assert task_text in result.content
+        # And identity / constraints content does NOT — that's the
+        # whole point of this method.
+        assert identity_text not in result.content
+        assert "Be safe." not in result.content
+        # Single fragment in the lineage chain.
+        assert len(result.fragment_hashes) == 1
+
+    def test_assemble_task_only_missing_fragment_raises(self):
+        """If the task_type fragment doesn't exist for the requested
+        role, raise MandatoryLayerMissingError so the caller can
+        surface a clear failure rather than silently produce an empty
+        system prompt."""
+        fragments = {
+            "identity": create_mock_fragment("identity", "identity", "I am."),
+        }
+        repo = create_mock_repository(fragments)
+        assembler = PromptAssembler(repo)
+
+        with pytest.raises(MandatoryLayerMissingError):
+            assembler.assemble_task_only(role="lead", task_type="nonexistent.task")
+
+    def test_assemble_task_only_role_specific_override(self):
+        """Role-specific task_type fragment wins over the shared
+        version, same precedence rule the regular assemble path uses."""
+        shared_text = "Shared task instructions."
+        role_text = "Role-specific override of the same task."
+        fragments = {
+            "task_type.governance.correction_decision": create_mock_fragment(
+                "task_type.governance.correction_decision",
+                "task_type",
+                shared_text,
+            ),
+            "task_type.governance.correction_decision:lead": create_mock_fragment(
+                "task_type.governance.correction_decision",
+                "task_type",
+                role_text,
+                roles=("lead",),
+            ),
+        }
+        repo = create_mock_repository(fragments)
+        assembler = PromptAssembler(repo)
+
+        result = assembler.assemble_task_only(
+            role="lead", task_type="governance.correction_decision"
+        )
+
+        assert role_text in result.content
+        assert shared_text not in result.content
