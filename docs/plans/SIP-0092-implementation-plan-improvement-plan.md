@@ -5,14 +5,14 @@
 SIP-0092 is a SIP-0086 follow-up that closes three deferred gaps in the implementation plan pipeline:
 
 - **M1 — Typed Acceptance Criteria.** Today `acceptance_criteria` is `list[str]` informational input only; FC3 in `_validate_output_focused` is `included_in_evidence`. M1 introduces typed checks, severity, a `CheckOutcome` status enum, untrusted-input safety, and validator integration.
-- **M2 — Separated Plan Authoring.** `_produce_plan` currently runs as a side-effect inside `GovernanceReviewPlanHandler.handle()` (`planning_tasks.py:424`). M2 splits authoring into a new `development.plan_implementation` task and turns `review_plan` into a structured reviewer that emits `plan_review.yaml`.
+- **M2 — Multi-Role Plan Authoring (implemented by SIP-0093).** `_produce_plan` currently runs as a side-effect inside `GovernanceReviewPlanHandler.handle()` (`planning_tasks.py:424`). The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged 2026-05-05) selected the multi-role authoring path. M2 introduces a shared `plan_authoring_brief.yaml`, parallel domain proposers (`development.propose_plan_tasks`, `qa.propose_plan_tasks`, `strategy.propose_plan_guidance`), and a `governance.merge_plan` handler that assembles the canonical plan + `merge_decisions.yaml`. Full design in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md`; per-PR scope in `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md` (to be drafted).
 - **M3 — Plan Changes.** SIP-0086 §6.1.6 specified plan changes as the immutability-preserving evolution path; nothing was implemented. M3 introduces a plan-change schema, a pure structural applier, an execution-aware validator, conservative producer-side restrictions on autonomous correction (`add_task` + `tighten_acceptance` only), and provenance metadata on change-created tasks.
 
 **SIP:** `sips/accepted/SIP-0092-Implementation-Plan-Improvement.md` (Rev 2)
 **Parent SIP:** `sips/implemented/SIP-0086-Build-Convergence-Loop-Dynamic.md`
 **Branch model:** This plan lands on `feature/sip-0092-implementation-plan-improvement` (off main, after SIP acceptance via PR #70). Implementation commits per phase build on this plan per the SIP workflow in `CLAUDE.md`.
 
-The three stages (M1/M2/M3) are independently shippable and can land in separate feature branches if scheduling demands it. The default sequence below ships them in order because M1 produces the typed-check substrate that M3's `tighten_acceptance` operation extends, and M2's reviewer emits `plan_review.yaml` entries that reference M1's typed checks.
+The three stages (M1/M2/M3) are independently shippable and can land in separate feature branches if scheduling demands it. The default sequence below ships them in order because M1 produces the typed-check substrate that M3's `tighten_acceptance` operation extends, and M2's role proposers and merger consume M1's typed checks throughout proposal authoring and conflict resolution.
 
 ---
 
@@ -59,7 +59,7 @@ This prevents pathological criteria from driving endless self-eval loops AND fro
 
 **RC-18 (Bounded plan change count):** Plan changes per run are bounded by `max_plan_changes` (default 5). After exhaustion, the correction protocol may not produce further plan changes — only patch or escalate. This is the runaway guardrail.
 
-**RC-19 (Backward compatibility per stage):** Each stage preserves prior behavior under its disable flags. M1 off → criteria stay informational. M2 off (`split_implementation_planning: false`) → plan authoring stays inside `review_plan`. M3 loader off (`plan_changes_enabled: false`) → working plan equals original; correction stays in patch-only mode regardless of `correction_plan_changes_enabled`. M3 producer off (`correction_plan_changes_enabled: false`) → correction protocol restricted to `patch` and `escalate` even if loader is on. Misconfiguration (`correction_plan_changes_enabled: true` while `plan_changes_enabled: false`) is rejected at startup as inconsistent — the producer would emit changes the executor would never load.
+**RC-19 (Backward compatibility per stage):** Each stage preserves prior behavior under its disable flags. M1 off → criteria stay informational. M2 off (`multi_role_plan_authoring: false`) → plan authoring stays inside `review_plan` via the M1-substrate path (extracted into the shared `PlanAuthoringService` so both paths share one implementation). M3 loader off (`plan_changes_enabled: false`) → working plan equals original; correction stays in patch-only mode regardless of `correction_plan_changes_enabled`. M3 producer off (`correction_plan_changes_enabled: false`) → correction protocol restricted to `patch` and `escalate` even if loader is on. Misconfiguration (`correction_plan_changes_enabled: true` while `plan_changes_enabled: false`) is rejected at startup as inconsistent — the producer would emit changes the executor would never load.
 
 **RC-20 (Plan change application timing + WorkingPlan as authoritative source at handler entry):** Plan changes land between executor build-plan expansion passes, not mid-task. The chosen mechanism: after a correction-protocol plan change is persisted *and* validated by both the structural applier and `validate_plan_change_for_run`, the executor performs a fresh build-plan expansion for the run — `working = apply_plan_changes(load_original_plan(run), load_plan_changes_for_run(run))` — and materializes envelopes for any newly active tasks (added by `add_task` or unmasked by tightened acceptance) at that boundary. In-flight task envelopes are not interrupted; already-completed checkpoints are not re-materialized.
 
@@ -298,88 +298,33 @@ Integration (`tests/integration/cycles/test_plan_acceptance.py`, new):
 
 ---
 
-## Stage M2 — Separated Plan Authoring
+## Stage M2 — Multi-Role Plan Authoring (delivered by SIP-0093)
 
-**Conditional on the M1 → M2 gate.** Do not start this stage until the gate evaluation doc (`docs/plans/SIP-0092-gate-M1-evaluation.md`) is committed showing the criteria are met. See the Milestone Gates section below.
+**Path forward:** The M1 → M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged 2026-05-05) selected multi-role authoring. M2 is implemented by **SIP-0093 (Multi-Role Plan Authoring)** in five PRs (PR 93.0–93.4). The original M2 design (proposer/reviewer split with `development.plan_implementation`, `plan_review.yaml`, `plan_implementation_revise`, `review_status`, `max_planning_revisions`) is not implemented and lives in git history.
 
-Two PRs. Default-off behind `split_implementation_planning: bool = false`. Default-flip is a small follow-up PR after metrics meet SIP §6.2.4 criteria — explicitly out of scope for this stage's first delivery.
+**Stage scope at the SIP-0092 plan level.** The full design lives in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md`; per-PR file changes, schemas, and tests live in the SIP-0093 implementation plan doc to be drafted at `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md`. This section keeps the SIP-0092 plan doc accurate at the cross-reference level — it does not duplicate SIP-0093 content.
 
-### Phase M2.1 — `development.plan_implementation` Handler
+### Stage commitments at the SIP-0092 level
 
-**Modified / new files:**
+- **Preserve M1 substrate behavior** under `multi_role_plan_authoring: false`. Every PR landed under SIP-0093 must keep the M1-substrate plan-authoring path working unchanged.
+- **Shared `PlanAuthoringService` extraction** is a SIP-0093 deliverable (PR 93.0 era) that benefits both paths: the M1-substrate path calls the service when `multi_role_plan_authoring: false`; SIP-0093's fallback path (§5.10) calls the same service when all role proposals fail. No legacy / new duplicate logic.
+- **Diagnostic field added during M2 tracking.** The non-operative `structural_plan_change_candidate` diagnostic on `governance.correction_decision` was added in the SIP-0093-prep cluster (commit `9657449`) so the M2→M3 gate has a measurable signal without requiring M3 to be implemented. Allowed values: `none | add_task | tighten_acceptance | other`. The field is non-operative — it does not execute a plan change and does not affect the actual `decision`. SIP-0093 leaves this handler intact (SIP-0093 §5.13).
 
-| File | Change |
-|------|--------|
-| `src/squadops/capabilities/handlers/_plan_authoring.py` (new) | **Shared `PlanAuthoringService`**: extracts the body of `_produce_plan` (`planning_tasks.py:432–620`) into a service with one entry point — `produce_plan(prompt_inputs, llm_client, run_state) -> ImplementationPlan`. The retry loop, prompt construction, role/task_type constraint logic, and YAML validation move here intact. Both legacy and split paths call this service. NO duplicated logic. |
-| `src/squadops/capabilities/handlers/planning_tasks.py` | `GovernanceReviewPlanHandler.handle()` calls `PlanAuthoringService.produce_plan(...)` when `split_implementation_planning: false` (replacing the inline call to `_produce_plan`). When `split_implementation_planning: true`, this handler does NOT call the service at all — it consumes the plan produced by the upstream `development.plan_implementation` step. |
-| `src/squadops/capabilities/handlers/planning_tasks.py` | New `DevelopmentPlanImplementationHandler.handle()` calls the same `PlanAuthoringService.produce_plan(...)` and returns the plan as its primary output artifact. |
-| `src/squadops/cycles/task_plan.py` | Add `development.plan_implementation` to `PLANNING_TASK_STEPS` immediately before `governance.review_plan`, gated on `split_implementation_planning`. |
-| Capability registry (where planning task types are registered) | Register `development.plan_implementation`. |
+### Cross-references for stage details
 
-**Why a service, not a verbatim move:** verbatim move would leave the legacy path with a near-duplicate of the new code, guaranteed to drift on the next prompt or retry-loop tweak. Extracting first means both paths share one implementation; the only difference is *which handler invokes it* and *whether the resulting plan is the `review_plan` primary output or its review input*. This also makes M2.2's revision loop (`development.plan_implementation_revise`) trivial: it's a third caller of the same service with concerns appended to `prompt_inputs`.
-
-**Backward compatibility (RC-19):** when `split_implementation_planning: false`, the legacy path calls `PlanAuthoringService.produce_plan(...)` with the same `prompt_inputs` as today's `_produce_plan` invocation, producing a byte-identical plan given identical seeded LLM responses. The verbatim-equivalence test below is the regression anchor.
-
-**Config keys:**
-
-| Key | Default |
+| Question | Source of truth |
 |---|---|
-| `split_implementation_planning` | `false` |
-
-**Tests:**
-
-- Unit: `DevelopmentPlanImplementationHandler` produces a `ImplementationPlan` artifact with the same content shape as today's `_produce_plan` for an identical seeded LLM response. (Baseline-equivalence test: same input, same output, different handler.)
-- Unit: with `split_implementation_planning: true`, `review_plan` does not call `_produce_plan` (assert via spy/mock-call-count *paired* with output assertion that the plan artifact carried forward is the upstream one).
-- Integration: planning phase end-to-end with the flag on produces the same final approved plan as the flag off, given identical seeded LLM responses for both plan authoring and review.
-
-### Phase M2.2 — Reviewer Logic, `plan_review.yaml`, Revision Loop
-
-**Modified files:**
-
-| File | Change |
-|------|--------|
-| `src/squadops/capabilities/handlers/planning_tasks.py` | `GovernanceReviewPlanHandler.handle()` (under `split_implementation_planning: true`) emits a `plan_review.yaml` artifact with the SIP §6.2.2 schema. Reviewer prompt is structured against the plan artifact. |
-| `src/squadops/cycles/plan_review.py` (new) | `PlanReview` frozen dataclass + `from_yaml()` parser. Enforces the rule: `review_status: revision_requested` requires at least one structured concern with `target_task_index` or `prd_requirement` set. Pure prose revision requests are normalized to `approved_with_concerns` (the SIP §6.2.2 rule). |
-| `src/squadops/capabilities/handlers/planning_tasks.py` | New `DevelopmentPlanImplementationReviseHandler`. Re-runs plan authoring with the structured concerns appended to the prompt. Triggered only when `review_status: revision_requested` and revision count < `max_planning_revisions`. |
-| `src/squadops/cycles/task_plan.py` | Conditional `development.plan_implementation_revise` step inserted after `review_plan` when revision is requested and the revision budget remains. After exhaustion, planning proceeds with the latest plan; unresolved concerns are documented in `operator_notes`. |
-| `governance.correction_decision` handler | Add the **non-operative `structural_plan_change_candidate` diagnostic field** to the correction-decision log artifact. Allowed values: `none | add_task | tighten_acceptance | other`. The correction LLM's prompt is extended to elicit this field even though M3.3's producer is not yet enabled. This is the diagnostic signal the M2 → M3 gate measures (see Milestone Gates section). The field is non-operative — it does not execute a plan change and does not affect the actual `decision`. |
-
-**`PlanReview` schema (matches SIP §6.2.2):**
-
-```python
-@dataclass(frozen=True)
-class PlanReview:
-    version: int
-    review_status: str       # approved | revision_requested | approved_with_concerns
-    reviewer_confidence: str
-    target_plan_id: str
-    coverage_concerns: list[CoverageConcern]
-    dependency_concerns: list[DependencyConcern]
-    role_concerns: list[RoleConcern]
-    acceptance_concerns: list[AcceptanceConcern]
-    revision_instructions: str = ""
-    operator_notes: str = ""
-```
-
-Each `*Concern` is a frozen dataclass with the fields listed in SIP §6.2.2.
-
-**Acceptance concern → typed-check link:** `AcceptanceConcern.suggested_check` is parsed as a `TypedCheck` (M1's dataclass). This is the integration point that lets the reviewer suggest concrete machine-evaluable criteria, not just prose.
-
-**Config keys:**
-
-| Key | Default |
-|---|---|
-| `max_planning_revisions` | `1` |
-
-**Tests:**
-
-- Unit: `PlanReview.from_yaml()` parses a fully-populated review; revision_requested without any structured concern returns `approved_with_concerns` and surfaces a normalization warning in evidence.
-- Unit: `revision_instructions` prose is preserved when concerns also exist.
-- Unit: `AcceptanceConcern.suggested_check` round-trips through `TypedCheck` parsing.
-- Integration: a planning run where the reviewer requests revision with one structured `acceptance_concern` produces a revised plan whose subtask matches `target_task_index` and now contains the suggested typed check.
-- Integration: revision budget exhaustion proceeds to gate with the latest plan and `operator_notes` populated; no infinite loop.
-
-**Default-flip work (out of scope for this stage):** the flip from `split_implementation_planning: false` to `true` is a separate small PR after the SIP §6.2.4 criteria are met across a tracking window. This plan does not commit to that PR's timing.
+| Brief schema and `governance.prepare_plan_authoring_brief` handler | SIP-0093 §5.1, PR 93.0 |
+| `proposed_plan_tasks.yaml` and `plan_guidance.yaml` schemas | SIP-0093 §5.4, PR 93.1 |
+| `merge_decisions.yaml` schema | SIP-0093 §5.7, PR 93.1 |
+| Per-role proposer handlers | SIP-0093 §5.3, PR 93.2 |
+| `governance.merge_plan` handler + deterministic merge policy | SIP-0093 §5.6, §5.8, PR 93.3 |
+| Fallback to single-author production | SIP-0093 §5.10, PR 93.4 |
+| Proposal completeness classification | SIP-0093 §5.9, PR 93.4 |
+| Cost analysis (N+2 critical-path LLM calls) | SIP-0093 §6 |
+| Config keys (two-flag model) | SIP-0093 §7 |
+| Acceptance criteria for the SIP itself | SIP-0093 §9 |
+| Tests | SIP-0093 §10 + SIP-0093 implementation plan doc |
 
 ---
 
@@ -617,7 +562,7 @@ Allowed values: `none | add_task | tighten_acceptance | other`.
 - `add_task` / `tighten_acceptance` — the LLM judged a structural plan change would be appropriate. These are the M3-relevant signal.
 - `other` — the LLM proposed `remove_task` / `replace_task` / `reorder`; recorded for visibility but does not contribute to the M2 → M3 gate criterion (those operations are out of Rev 1 scope per §6.3.2).
 
-The field is non-operative: it does not execute a plan change, does not gate the cycle, does not affect the actual `decision`. It exists only so the M2 → M3 gate can measure whether plan-change demand actually appears in production. The prompt that elicits it is added in M2.2 (so it's available throughout the M2 → M3 tracking window) and reused by M3.3's producer when that ships.
+The field is non-operative: it does not execute a plan change, does not gate the cycle, does not affect the actual `decision`. It exists only so the M2 → M3 gate can measure whether plan-change demand actually appears in production. The prompt that elicits it was added in the SIP-0093-prep cluster (commit `9657449`) so it's available throughout the M2 → M3 tracking window, and is reused by M3.3's producer when that ships. SIP-0093 leaves `governance.correction_decision` intact.
 
 ### Evaluation artifacts
 
@@ -640,8 +585,8 @@ Each evaluation doc contains:
 ### What gates do *not* govern
 
 - **Bug fixes within an already-shipped stage.** If M1 ships and we discover a typed-check evaluator bug, fix it in place — that's not a new stage.
-- **Stage-internal sequencing.** Each stage's PR sequence (M1.1/1.2/1.3, M2.1/2.2, M3.1/3.2/3.3) ships under one stage's gate, not three sub-gates.
-- **Default-flip of `split_implementation_planning`.** That's M2's own internal gate per SIP §6.2.4 — separate from the M2 → M3 gate. Default-flip can happen any time after M2 ships, independent of whether M3 proceeds.
+- **Stage-internal sequencing.** Each stage's PR sequence (M1.1/1.2/1.3, SIP-0093 PRs 93.0–93.4 for M2, M3.1/3.2/3.3) ships under one stage's gate, not three sub-gates.
+- **Default-flip of `multi_role_plan_authoring`.** Default-off behavior at SIP-0093 ship; default-flip is a separate small PR after stability criteria hold across a tracking window. Independent of whether M3 proceeds.
 
 ---
 
@@ -661,16 +606,16 @@ defaults:
   max_self_eval_passes: 1
   typed_acceptance: true               # M1 default-on
   command_acceptance_checks: true
-  split_implementation_planning: false      # M2 awaits gate
+  multi_role_plan_authoring: false          # M2 (SIP-0093) awaits implementation
   plan_changes_enabled: false               # M3 loader awaits gate
   correction_plan_changes_enabled: false    # M3 producer awaits gate
 
-# validation profile — gate-cycle target (long-cycle depth, M2/M3 still off)
-# Used to gather evidence for the M1 → M2 milestone gate. Distinct from
-# `build` (shallow self-eval) and `implementation` (post-gate target with
-# M2/M3 on). Runs M1 at implementation-profile depth so typed-check
-# signal and the structural_plan_change_candidate diagnostic field
-# (added in M2.2) accumulate at the rate the gates require.
+# validation profile — gate-cycle target (long-cycle depth, M2 on for gate measurement)
+# Distinct from `build` (shallow self-eval) and `implementation` (post-M3 target).
+# Runs M1 at implementation-profile depth with M2 (SIP-0093) on so typed-check
+# signal, multi-role contribution non-redundancy signal, sole-author fallback
+# rate, and the structural_plan_change_candidate diagnostic field accumulate
+# at the rate the M2→M3 gate requires.
 defaults:
   implementation_plan: true
   output_validation: true
@@ -678,24 +623,25 @@ defaults:
   max_correction_attempts: 3                # enough budget for correction to surface structural-change candidates (RC-9b / diagnostic field)
   typed_acceptance: true
   command_acceptance_checks: true
-  split_implementation_planning: false      # M2 stays off until its gate
-  plan_changes_enabled: false               # M3 loader stays off
+  multi_role_plan_authoring: true           # M2 (SIP-0093) on for gate measurement
+  plan_authoring_contributors: ["development", "qa", "strategy"]
+  plan_changes_enabled: false               # M3 loader stays off until M2→M3 gate
   correction_plan_changes_enabled: false    # M3 producer stays off
 
 # selftest profile — current rollout (smoke, minimal mechanical surface)
 defaults:
   typed_acceptance: true
   command_acceptance_checks: false
-  split_implementation_planning: false
+  multi_role_plan_authoring: false          # short cycles use M1 substrate (cost analysis: SIP-0093 §6)
   plan_changes_enabled: false
   correction_plan_changes_enabled: false
 ```
 
-**Use the `validation` profile for cycles that feed the milestone gate evaluation docs.** The `build` profile is for default operator-driven cycles where `max_self_eval_passes: 1` is the right tradeoff for routine work; the `validation` profile is specifically tuned to give M1 enough depth that the gate criteria can be met or disconfirmed in a reasonable cycle-count window.
+**Use the `validation` profile for cycles that feed the M2→M3 gate evaluation doc.** The `build` profile is for default operator-driven cycles where `max_self_eval_passes: 1` is the right tradeoff for routine work; the `validation` profile is specifically tuned to give M1 + M2 (SIP-0093) enough depth that the M2→M3 gate criteria (multi-role contribution non-redundancy rate, sole-author fallback rate, structural-change candidate rate, plan-quality regression check) can be met or disconfirmed in a reasonable cycle-count window.
 
-### Post-gate target profile (after M1 → M2 and M2 → M3 gates pass)
+### Post-gate target profile (after M2 → M3 gate passes)
 
-Do **not** enable these flags before the corresponding gate evaluation docs are committed. The implementation profile below is the long-cycle target once M2 and M3 ship.
+Do **not** enable M3 flags before the M2 → M3 gate evaluation doc is committed. M2 (SIP-0093) is on in the `validation` profile and may be on in the `implementation` profile once SIP-0093 ships. The implementation profile below is the long-cycle target once M3 also ships.
 
 ```yaml
 # implementation profile — post-gate target (long-cycle, all on, deeper)
@@ -705,8 +651,8 @@ defaults:
   max_self_eval_passes: 2
   typed_acceptance: true
   command_acceptance_checks: true
-  split_implementation_planning: true       # post-M2 gate
-  max_planning_revisions: 1
+  multi_role_plan_authoring: true           # M2 (SIP-0093) on
+  plan_authoring_contributors: ["development", "qa", "strategy"]
   plan_changes_enabled: true                # post-M3.2 ship
   correction_plan_changes_enabled: true     # post-M3.3 ship
   max_plan_changes: 8
@@ -734,7 +680,7 @@ These are explicitly NOT in this plan. Each is either named in SIP §5/§11 or a
 - Sandbox app execution (smoke pack — separate SIP).
 - UI/browser verification.
 - Cross-handler "did the test exercise the code" checks (SIP-0086 §10 future work).
-- Default flip of `split_implementation_planning` (separate small PR after SIP §6.2.4 criteria met).
+- Default flip of `multi_role_plan_authoring` (separate small PR after SIP-0093 ships and the M2→M3 gate's stability criteria are met across a tracking window).
 - Operator-driven plan changes via API (SIP §11 future work).
 - `governance.replan` task type (SIP §11 future work — would be the producer for `remove_task`/`replace_task`/`reorder`).
 - Adaptive thresholds learned from prior cycles.
@@ -769,7 +715,7 @@ These are *plan-execution* risks — distinct from SIP §9 design risks.
 | M3.1 hashing over canonical form drifts from M1.1 round-trip helper | M1.1 round-trip test extended in M3.1 to cover full-plan hashing; same canonical helper used in both. |
 | Producer emits unsupported op (M3.3) but execution-aware validator misses it | Defense in depth: producer-side restriction *and* validator rejection. M3.3 unit test seeds an unsupported-op LLM response and asserts both the producer-side drop and what would have been a validator reject. |
 | Loader regression when `plan_changes_enabled: true` ships with zero plan changes in the wild | M3.2 integration test "0 plan changes → working == original" is a permanent regression guard. Run on every PR. |
-| `split_implementation_planning` flag stays default-off forever | SIP §6.2.4 criteria + this plan's explicit "default-flip is a follow-up PR" — call it out in retro after each long cycle so it doesn't drift. |
+| `multi_role_plan_authoring` flag stays default-off forever | M2→M3 gate criteria measure SIP-0093's behavior directly; default-flip is a follow-up PR after stability criteria are met across a tracking window. Call it out in retro after each long cycle so it doesn't drift. |
 
 ---
 
@@ -789,6 +735,11 @@ Per Rev 3 the artifact, dataclass, and module names were renamed. To prevent the
 - `overlay` (as a noun for plan changes), `overlay_id`, `parent_overlay_id`, `apply_overlays`, `validate_overlay_for_run`
 - `delta` (as a noun for plan changes)
 - `decision: overlay`
+- `split_implementation_planning` (M2-as-originally-written config flag — superseded by `multi_role_plan_authoring`)
+- `development.plan_implementation` (M2-as-originally-written task type — never shipped; canonical author is now `governance.merge_plan`)
+- `development.plan_implementation_revise` (M2-as-originally-written revision-loop task — SIP-0093 has no revision loop)
+- `plan_review.yaml`, `PlanReview` (M2-as-originally-written reviewer artifact — SIP-0093 emits `merge_decisions.yaml` instead)
+- `max_planning_revisions`, `review_status: revision_requested`, `revision_instructions`
 
 **Canonical terms** that must be used instead:
 
@@ -798,15 +749,21 @@ Per Rev 3 the artifact, dataclass, and module names were renamed. To prevent the
 | Plan task element | `PlanTask` |
 | Plan-change dataclass | `PlanChange` |
 | Plan-change file | `plan_change.yaml`, `src/squadops/cycles/plan_change.py` |
-| Plan review dataclass | `PlanReview` |
-| Plan review file | `plan_review.yaml`, `src/squadops/cycles/plan_review.py` |
 | Working plan dataclass | `WorkingPlan` |
 | Plan artifact type | `control_implementation_plan` |
 | Plan-change artifact type | `control_implementation_plan_change` |
 | Correction decision value | `decision: plan_change` |
 | Plan loader | `_load_plan_for_run`, `apply_plan_changes`, `validate_plan_change_for_run`, `load_plan_changes_for_run`, `load_original_plan` |
-| Author handler | `DevelopmentPlanImplementationHandler` (`development.plan_implementation`) |
-| Reviewer handler | `GovernanceReviewPlanHandler` (`governance.review_plan`) |
+| Brief artifact (M2 / SIP-0093) | `plan_authoring_brief.yaml`, `PlanAuthoringBrief` |
+| Brief handler (M2 / SIP-0093) | `GovernancePreparePlanAuthoringBriefHandler` (`governance.prepare_plan_authoring_brief`) |
+| Role proposal artifact (M2 / SIP-0093) | `proposed_plan_tasks.yaml`, `ProposedPlanTasks` |
+| Strategy guidance artifact (M2 / SIP-0093) | `plan_guidance.yaml`, `PlanGuidance` |
+| Per-role proposer task types (M2 / SIP-0093) | `development.propose_plan_tasks`, `qa.propose_plan_tasks`, `strategy.propose_plan_guidance`, `build.propose_plan_tasks` (optional) |
+| Merger handler (M2 / SIP-0093) | `GovernanceMergePlanHandler` (`governance.merge_plan`) |
+| Merge audit artifact (M2 / SIP-0093) | `merge_decisions.yaml`, `MergeDecisions` |
+| Reviewer / sign-off handler | `GovernanceReviewPlanHandler` (`governance.review_plan`) — sign-off only under SIP-0093 |
+| M2 master flag | `multi_role_plan_authoring` |
+| M2 contributors flag | `plan_authoring_contributors` |
 
 **Implementation:** the simplest landing is a tiny `tests/unit/cycles/test_terminology_lock.py` that greps the SIP-0092 source files for banned terms and asserts none appear (allowing exceptions in `tests/unit/cycles/legacy_*.py` for migration tests). Run as part of the regression test suite; failure indicates a half-applied rename. Lower-cost alternative: a PR-template checkbox referencing this section. Either is fine; the goal is to catch drift before it ships.
 

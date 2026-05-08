@@ -30,7 +30,7 @@ Three follow-up gaps now bound how reliably a squad can build a non-trivial app 
 This SIP introduces three independently shippable capabilities that close those gaps:
 
 - **Capability M1 — Typed Acceptance Criteria.** Add a typed acceptance check schema embedded in plan tasks; evaluate them at handler validation time; surface results as first-class check entries in `ValidationResult.checks` alongside the existing FC1/FC2 checks. Checks carry severity (`error` / `warning` / `info`) and produce a typed `CheckOutcome` (`passed` / `failed` / `skipped` / `error`).
-- **Capability M2 — Separated Plan Authoring.** Introduce a dedicated `development.plan_implementation` planning task that authors the plan. `governance.review_plan` reviews and signs off, restoring the proposer/reviewer separation. Reviewer concerns are produced as a typed `plan_review.yaml` artifact that can be fed mechanically into a bounded revision loop.
+- **Capability M2 — Multi-Role Plan Authoring (implemented by SIP-0093).** Replace single-author plan production with a shared lead-authored brief, parallel domain proposals (`development.propose_plan_tasks`, `qa.propose_plan_tasks`, `strategy.propose_plan_guidance`), and a `governance.merge_plan` handler that assembles the canonical plan plus a structured `merge_decisions.yaml` audit. Final task indices are assigned only by the merger. Selected via the M1→M2 gate evaluation; full design in SIP-0093.
 - **Capability M3 — Plan Changes.** Define a `plan_change.yaml` change schema and a *pure structural applier* paired with an *execution-aware validator*. Wire the correction protocol to emit plan changes restricted to `add_task` and `tighten_acceptance` operations only — the broader operation set (`remove_task` / `replace_task` / `reorder`) is supported in the schema and applier but reserved for operator action or a future `governance.replan` task, not autonomous correction.
 
 Each capability is independently valuable. M1 alone makes today's plans far more discriminating. M2 alone improves planning-phase quality. M3 alone unlocks long-cycle adaptability. Together they turn the plan from "produced once, consumed once" into a living plan the squad can iterate against — without giving autonomous correction the keys to rewrite history.
@@ -131,9 +131,9 @@ Free-text criteria are operator-readable, model-readable, and validator-illegibl
 
 The plan is LLM-authored. Typed checks reference file paths, glob patterns, regexes, and command specs. Every one of those is a foot-gun if treated as trusted. The evaluator chroots paths to the workspace root, rejects shell strings, runs commands as argv arrays, and enforces a safelist.
 
-### 3.3 Separate the proposer from the reviewer
+### 3.3 Distribute proposing across roles; centralize merging
 
-Authoring the build plan and signing off on planning readiness are different cognitive tasks. They should be different handler calls — even if the same agent role (Max) performs both — so the second call has a chance to catch the first call's mistakes.
+Authoring the build plan from a single agent's perspective collapses cross-role expertise into one viewpoint. Each role should propose plan content for its own domain (dev components, qa coverage, strategy ordering); a designated merger assembles those contributions into the canonical plan. Sign-off on planning readiness remains a separate handler call from authorship — even when the same agent role (Max) performs both the brief, the merge, and the sign-off, splitting them across calls gives later steps a chance to catch earlier mistakes. SIP-0093 implements this principle.
 
 ### 3.4 Original plan is the source of truth; plan changes accumulate
 
@@ -383,85 +383,62 @@ The plan authoring prompt is extended to document the typed-check vocabulary, se
 
 > *Where possible, express acceptance criteria as typed checks rather than prose. Available checks: `endpoint_defined`, `import_present`, `field_present`, `regex_match`, `count_at_least`, `command_exit_zero`. Use flat YAML keys for the check-specific fields. Severity defaults to `error`; use `warning` for new or experimental checks. All paths must be inside the workspace root. Commands must be argv lists drawn from the safelist. Mixed prose+typed lists are fine; prose criteria are surfaced to the implementer but not auto-evaluated.*
 
-### 6.2 Capability M2 — Separated Plan Authoring
+### 6.2 Capability M2 — Multi-Role Plan Authoring (implemented by SIP-0093)
 
-#### 6.2.1 New planning task: `development.plan_implementation`
+> **Implementation path note:** The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged 2026-05-05) selected the multi-role authoring path. M2 is implemented by **SIP-0093 (Multi-Role Plan Authoring)** rather than the original Neo-authors / Max-reviews split. This section describes the resulting M2 design at the SIP-0092 level; the full design lives in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md`. The original M2 design (proposer/reviewer split with `development.plan_implementation`, `plan_review.yaml`, `plan_implementation_revise`, `review_status`, `max_planning_revisions`) is not implemented and lives in git history.
 
-Add a planning task that runs *before* `governance.review_plan`:
+#### 6.2.1 Framing sequence under M2
 
 ```
-CURRENT (post-SIP-0086):
+CURRENT (M1 substrate, post-SIP-0086):
   Planning: data.research → strategy.frame → development.design_plan
             → qa.define_test_strategy → governance.review_plan (sign-off + plan authoring)
             → [GATE]
 
-PROPOSED:
+POST-M2 (SIP-0093):
   Planning: data.research → strategy.frame → development.design_plan
-            → qa.define_test_strategy → development.plan_implementation (plan authoring)
-            → governance.review_plan (sign-off + plan review)
-            → [optional development.plan_implementation_revise loop, bounded by max_planning_revisions]
-            → [GATE]
+            → qa.define_test_strategy
+            → governance.prepare_plan_authoring_brief        (NEW — produces plan_authoring_brief.yaml)
+              → development.propose_plan_tasks    ┐
+              → qa.propose_plan_tasks             ├─ in parallel
+              → strategy.propose_plan_guidance    ┘
+                → governance.merge_plan                       (NEW — produces implementation_plan.yaml + merge_decisions.yaml)
+                  → governance.review_plan                    (sign-off only)
+                    → [GATE]
 ```
 
-Implementation: a new handler `DevelopmentPlanImplementationHandler` in `planning_tasks.py` that takes the existing `_produce_plan` logic (and its retry loop) verbatim, returns the plan as its primary output rather than a side-effect on the planning artifact.
+The shared brief frames stack/scope/constraints before fan-out so role proposers operate from the same worldview. Each proposer is domain-scoped and proposes only contributions for its own domain. The merger assembles canonical plan tasks from role proposals and applies strategy guidance, producing one `implementation_plan.yaml` (SIP-0092 M1 schema, no format change).
 
-`governance.review_plan` loses its plan-production responsibility and gains a plan-review responsibility.
+#### 6.2.2 Operator-visible artifacts
 
-#### 6.2.2 `plan_review.yaml` schema
+The gate package contains:
 
-The reviewer step produces a structured artifact. Prose-only review concerns are explicitly disallowed.
+- `implementation_plan.yaml` — canonical plan, M1 schema (unchanged).
+- `plan_authoring_brief.yaml` — the shared frame all proposers consumed.
+- `merge_decisions.yaml` — per-canonical-task provenance, brief-conflict dispositions, proposal completeness, missing roles, fallback markers.
 
-```yaml
-# plan_review.yaml
-version: 1
-review_status: approved | revision_requested | approved_with_concerns
-reviewer_confidence: low | medium | high
-target_plan_id: <plan artifact id>
+Per-role `proposed_plan_tasks.yaml` and `plan_guidance.yaml` artifacts are intermediate evidence available for inspection but are not primary gate artifacts.
 
-coverage_concerns:
-  - prd_requirement: "duplicate-join 409 handling"
-    target_task_index: null            # null = missing entirely from plan
-    note: "PRD requires 409 on duplicate join; no plan task references it."
+See SIP-0093 §5.1 (brief schema), §5.4 (proposal schemas), §5.7 (`merge_decisions.yaml` schema), and §5.8 (deterministic merge policy) for the full design.
 
-dependency_concerns:
-  - target_task_index: 4
-    note: "Frontend detail view depends on task 1 (API) but does not list it in depends_on."
+#### 6.2.3 Composition with M1 typed acceptance
 
-role_concerns:
-  - target_task_index: 6
-    note: "Test task assigned to dev role; should be qa."
+Each role's proposal carries SIP-0092 M1 typed acceptance criteria for the tasks it proposes:
 
-acceptance_concerns:
-  - target_task_index: 1
-    missing_check: "endpoint_defined for POST /runs/{id}/join"
-    suggested_check:
-      check: endpoint_defined
-      file: backend/routes.py
-      methods_paths: [[POST, /runs/{id}/join]]
+- Dev tasks carry dev-side typed checks (e.g., `endpoint_defined`, `import_present`).
+- QA tasks carry qa-side typed checks (e.g., `regex_match` over test files with `count_min`).
 
-revision_instructions: |
-  Free-text guidance for the next plan authoring attempt.
+Compatible criteria from different roles on the same canonical task survive merge (SIP-0093 §5.8 rule 2). The merger's canonical `implementation_plan.yaml` validates against the M1 `ImplementationPlan` schema unchanged.
 
-operator_notes: |
-  Anything the operator should see at gate, even on approval.
-```
+#### 6.2.4 Composition with M3 plan changes
 
-**Rule:** `governance.review_plan` may not return `review_status: revision_requested` unless it emits at least one structured concern with a `target_task_index` or `prd_requirement` reference where applicable. Pure prose revision requests are rejected and treated as `approved_with_concerns`.
+SIP-0093 changes who authors the *original* plan; M3 governs how that plan evolves in-cycle. The two are orthogonal — M3's autonomous-correction plan changes operate on whatever original plan landed at gate, regardless of authorship model.
 
-#### 6.2.3 Revision loop
+The non-operative `structural_plan_change_candidate` diagnostic on `governance.correction_decision` (introduced as M2-tracking infrastructure for the M2→M3 gate) continues to be elicited under SIP-0093 unchanged. See SIP-0093 §5.13.
 
-If `review_status: revision_requested`, dispatch `development.plan_implementation_revise` — a lightweight task that re-runs plan authoring with the structured concerns appended to the prompt. Bounded by `max_planning_revisions: int = 1` in resolved config. After exhaustion, planning proceeds with the latest plan and the unresolved concerns documented in `operator_notes` for the gate.
+#### 6.2.5 Fallback behavior
 
-#### 6.2.4 Default-flip criteria
-
-`split_implementation_planning: bool = false` in Revision 1. Flip to `true` once these conditions hold across a tracking window:
-
-- At least 5 successful long-cycle planning runs with the split enabled (no gate failures attributable to the new flow).
-- Plan YAML validity rate (parses on first attempt) is equal to or better than the colocated baseline.
-- Planning workload duration regression ≤ 20% relative to the colocated baseline.
-- Revision-loop activation rate is below 50% (otherwise the reviewer is requesting too many revisions, which usually means the prompt or rubric is wrong).
-
-These thresholds are intentionally low-bar; the goal is to prevent indefinite "after stabilization" drift, not to set perfectionist gates. Flipping the default is a small follow-up PR, not part of this SIP's first delivery.
+If all role proposals fail (LLM errors, timeouts, malformed YAML), the merger falls back to single-author plan production using the M1-substrate plan-authoring path (extracted into a shared `PlanAuthoringService` per the SIP-0092 plan doc). Fallback is explicitly marked (`authoring_mode: fallback_single_author`) and visible at gate. Fallback frequency is a tracked gate metric (M2→M3 gate criterion C2). See SIP-0093 §5.10.
 
 ### 6.3 Capability M3 — Plan Changes
 
@@ -652,8 +629,8 @@ Add to `_APPLIED_DEFAULTS_EXTRA_KEYS`:
 | `typed_acceptance` | `bool` | `true` | M1 — evaluate typed checks |
 | `command_acceptance_checks` | `bool` | `true` (false in `selftest`) | M1 — enable `command_exit_zero` |
 | `command_check_safelist` | `list[str]` | (built-in safelist, see §6.1.5) | M1 |
-| `split_implementation_planning` | `bool` | `false` | M2 — enable `development.plan_implementation` |
-| `max_planning_revisions` | `int` | `1` | M2 — bounded revision rounds |
+| `multi_role_plan_authoring` | `bool` | `false` | M2 (SIP-0093) — enable shared-brief / propose-merge flow |
+| `plan_authoring_contributors` | `list[str]` | `["development", "qa", "strategy"]` | M2 (SIP-0093) — which roles fan out as proposers |
 | `plan_changes_enabled` | `bool` | `false` | M3.2 — loader/applier reads and applies persisted plan-change artifacts |
 | `correction_plan_changes_enabled` | `bool` | `false` | M3.3 — autonomous correction protocol may emit plan changes |
 | `max_plan_changes` | `int` | `5` | M3 — plan change count ceiling per run |
@@ -672,14 +649,14 @@ defaults:
   max_self_eval_passes: 1
   typed_acceptance: true               # M1 default-on
   command_acceptance_checks: true
-  split_implementation_planning: false      # M2 awaits gate
+  multi_role_plan_authoring: false          # M2 (SIP-0093) awaits implementation
   plan_changes_enabled: false               # M3 loader awaits gate
   correction_plan_changes_enabled: false    # M3 producer awaits gate
 
-# validation profile (gate-cycle target — long-cycle depth with M2/M3 still off)
-# Used to gather evidence for the M1 → M2 milestone gate (and reusable for M2 → M3).
-# Intentionally distinct from `build` (which has shallow self-eval) and from
-# `implementation` (which is the post-gate target with M2/M3 on).
+# validation profile (gate-cycle target — long-cycle depth)
+# Used to gather evidence for the M2 → M3 milestone gate. Intentionally distinct
+# from `build` (which has shallow self-eval) and from `implementation` (which is
+# the post-M3 target with M3 on).
 defaults:
   implementation_plan: true
   output_validation: true
@@ -687,20 +664,21 @@ defaults:
   max_correction_attempts: 3                # gives correction enough budget to surface structural-change candidates (RC-9b / diagnostic field)
   typed_acceptance: true               # M1 active
   command_acceptance_checks: true
-  split_implementation_planning: false      # M2 stays off until its gate
-  plan_changes_enabled: false               # M3 loader stays off
+  multi_role_plan_authoring: true           # M2 (SIP-0093) on for gate measurement
+  plan_authoring_contributors: ["development", "qa", "strategy"]
+  plan_changes_enabled: false               # M3 loader stays off until M2→M3 gate
   correction_plan_changes_enabled: false    # M3 producer stays off
 
 # selftest profile (smoke — minimal mechanical surface, M2/M3 off)
 defaults:
   typed_acceptance: true
   command_acceptance_checks: false          # static checks only
-  split_implementation_planning: false
+  multi_role_plan_authoring: false          # short cycles use M1 substrate (cost analysis: SIP-0093 §6)
   plan_changes_enabled: false
   correction_plan_changes_enabled: false
 ```
 
-The `validation` profile fills the gap between the shallow rollout default (`build`) and the post-gate target (`implementation`). It runs M1 at implementation-profile depth so the typed-check signal and correction-decision diagnostics (the M2 → M3 `structural_plan_change_candidate` field) accumulate at the rate the gates require. After M2 → M3 ships, the same profile shape with M2/M3 flags flipped on becomes the M2 → M3 gate's measurement profile.
+The `validation` profile fills the gap between the shallow rollout default (`build`) and the post-gate target (`implementation`). With M1 at implementation-profile depth and M2 (SIP-0093) on, the typed-check signal, multi-role contribution non-redundancy signal, sole-author fallback rate, and correction-decision diagnostics (the M2 → M3 `structural_plan_change_candidate` field) all accumulate at the rate the M2→M3 gate requires. After M2 → M3 ships, the same profile shape with M3 flags flipped on becomes the post-M3 implementation profile.
 
 #### 6.4.2 Profile examples — post-gate target
 
@@ -714,8 +692,8 @@ defaults:
   max_self_eval_passes: 2
   typed_acceptance: true
   command_acceptance_checks: true
-  split_implementation_planning: true       # post-M2 gate
-  max_planning_revisions: 1
+  multi_role_plan_authoring: true           # M2 (SIP-0093) on
+  plan_authoring_contributors: ["development", "qa", "strategy"]
   plan_changes_enabled: true                # post-M3.2 ship
   correction_plan_changes_enabled: true     # post-M3.3 ship
   max_plan_changes: 8
@@ -728,15 +706,19 @@ defaults:
 
 Long-cycle group_run (4-hour budget) running `implementation` profile:
 
-**Planning phase (~12 minutes):**
+**Planning phase (~17 minutes):**
 1. `data.research` → context summary
 2. `strategy.frame` → objective frame
 3. `development.design_plan` → design plan
 4. `qa.define_test_strategy` → test strategy with concrete typed criteria suggestions
-5. **`development.plan_implementation`** (Max) → plan with 9 subtasks; typed acceptance with mixed `error` and `warning` severity on 5 of them
-6. **`governance.review_plan`** (Max) → reviews plan, emits `plan_review.yaml` with `review_status: revision_requested` and one structured `acceptance_concern` (subtask 6 has no acceptance check for join/leave 409 handling)
-7. `development.plan_implementation_revise` (Max) → tightens subtask 6 acceptance with a `regex_match` for the 409 status code
-8. **Gate** — operator sees the original plan, the structured review concerns, and the revised plan side-by-side; approves.
+5. **`governance.prepare_plan_authoring_brief`** (Max) → `plan_authoring_brief.yaml` pinning stack (FastAPI + in-memory repository), must-cover requirements (5 endpoints incl. duplicate-join 409), scope cuts, and risk areas (room state mutation safety)
+6. **In parallel:**
+   - `development.propose_plan_tasks` (Neo) → `proposed_plan_tasks.yaml` with 6 dev tasks covering models, repository, API routes, frontend; symbolic dependencies; dev-side typed acceptance (`endpoint_defined`, `import_present`)
+   - `qa.propose_plan_tasks` (Eve) → `proposed_plan_tasks.yaml` with 3 qa tasks; qa-side typed acceptance including `regex_match` over `tests/test_backend.py` for `client\.(get|post)\(['\"]/runs` with `count_min: 5`. Eve raises a `brief_conflicts` warning: brief stack lists `in_memory_repository` but PRD-derived test strategy implies persistence — Eve flags it `severity: warning` with affected proposal task IDs
+   - `strategy.propose_plan_guidance` (Nat) → `plan_guidance.yaml` with priority guidance (backend before frontend), risk callout (concurrent join/leave races), `must_not_skip: [duplicate_join_409]`
+7. **`governance.merge_plan`** (Max) → emits canonical `implementation_plan.yaml` (9 tasks: 6 dev + 3 qa, with merger-assigned indices, strategy ordering applied, qa task depending on dev API task via resolved symbolic dependency) + `merge_decisions.yaml` (`authoring_mode: multi_role`, `proposal_completeness: complete`, per-task provenance, brief-conflict disposition recorded as `accepted` with the merger noting the `in_memory_repository` decision stands but the qa task gains a `regex_match` for restart behavior)
+8. **`governance.review_plan`** (Max) → sign-off on canonical plan; merge_decisions visible in evidence
+9. **Gate** — operator sees `implementation_plan.yaml`, `plan_authoring_brief.yaml`, and `merge_decisions.yaml`; approves.
 
 **Build phase (~2.5 hours):**
 - Subtasks 0–4 run sequentially. Each validates against typed acceptance:
@@ -746,9 +728,9 @@ Long-cycle group_run (4-hour budget) running `implementation` profile:
 - Correction decision: `plan_change` (not `patch`). The autonomous producer is restricted to `add_task` and `tighten_acceptance`. It emits a plan change with one `add_task` operation (new subtask 9 "Add tests for join/leave endpoints") plus a `tighten_acceptance` on subtask 6 (raise `count_min` to enforce future runs see all 5). The execution-aware validator confirms neither operation touches completed work — subtask 6's existing checkpoint is preserved as `status: original_failed`; subtask 9 is appended. Working plan now has 10 active tasks.
 - Build resumes from subtask 9. The new task carries provenance metadata (`change_id: ovl_xyz`, `correction_decision_id: corr_abc`, `change_reason: "qa.test backend coverage failed regex_match count_min=5"`), so any operator looking at task `m009` can trace exactly why it exists.
 
-**Wrap-up (~5 minutes):** Standard. Closeout artifact references the original plan, the one plan change, the working plan, and the `plan_review.yaml`.
+**Wrap-up (~5 minutes):** Standard. Closeout artifact references the original plan, the one plan change, the working plan, the `plan_authoring_brief.yaml`, and the `merge_decisions.yaml`.
 
-**Net effect compared to today:** typed `regex_match` with explicit `count_min` catches the partial test coverage that today's filename-only validation misses; the autonomous correction plan change (limited to `add_task` + `tighten_acceptance`) lets the squad add a missing test subtask without re-gating; the separated authoring caught a planning gap before the gate; the structured `plan_review.yaml` made the revision loop mechanical rather than prose-driven.
+**Net effect compared to today:** typed `regex_match` with explicit `count_min` catches the partial test coverage that today's filename-only validation misses; the autonomous correction plan change (limited to `add_task` + `tighten_acceptance`) lets the squad add a missing test subtask without re-gating; the multi-role authoring (SIP-0093) brought Eve's persistence-restart concern into the plan as an explicit qa task that a sole author would have missed, and the `merge_decisions.yaml` makes the merger's decisions auditable at gate.
 
 ---
 
@@ -779,21 +761,17 @@ Three independently shippable stages mapped to the three capabilities. Each stag
 - Update authoring prompt to document the check vocabulary, severity, and safety rules.
 - Integration test: a plan with typed checks fails when generated code is incomplete; passes when complete; warning-severity check failure does not fail the task.
 
-### Stage M2 — Separated Authoring (2 PRs)
+### Stage M2 — Multi-Role Plan Authoring (5 PRs, implemented as SIP-0093)
 
-**PR 2.1:** New `development.plan_implementation` handler
-- Move `_produce_plan` body verbatim from `review_plan` to a new `DevelopmentPlanImplementationHandler`.
-- Register `development.plan_implementation` task type.
-- Add to planning step list when `split_implementation_planning: true`.
-- Backward-compat: keep `review_plan` plan production behind the flag.
+M2 is delivered by SIP-0093 in five PRs. Full design and per-PR scope live in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md` §8 and the SIP-0093 implementation plan doc (to be drafted at `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md`). Summary:
 
-**PR 2.2:** Reviewer logic + structured review schema + revision loop
-- Add `plan_review.yaml` schema (§6.2.2) and reviewer prompt.
-- Reject prose-only revision requests (§6.2.2 rule).
-- Add `development.plan_implementation_revise` task triggered on `review_status: revision_requested`.
-- Bound revisions by `max_planning_revisions`.
-- Document default-flip criteria (§6.2.4) in the SIP and surface a metric the operator can check.
-- Integration test: structured concern produces a revised plan that addresses the concern; bound exhaustion proceeds with annotations in `operator_notes`.
+- **PR 93.0** — `plan_authoring_brief.yaml` schema and `governance.prepare_plan_authoring_brief` handler.
+- **PR 93.1** — Proposal and merge schemas (`ProposedPlanTasks`, `PlanGuidance`, `MergeDecisions`); symbolic-dependency convention; brief-conflict model.
+- **PR 93.2** — Role proposer handlers (`development.propose_plan_tasks`, `qa.propose_plan_tasks`, `strategy.propose_plan_guidance`); config-gated parallel fan-out; proposal-failure handling.
+- **PR 93.3** — `governance.merge_plan` handler with deterministic merge policy and `merge_decisions.yaml` output.
+- **PR 93.4** — Single-author fallback path; proposal completeness classification; gate package; observability (authoring duration, completeness, fallback frequency, merge conflict metrics).
+
+Backward compatibility: every PR preserves M1-substrate behavior under `multi_role_plan_authoring: false`.
 
 ### Stage M3 — Plan Changes (3 PRs)
 
@@ -839,9 +817,10 @@ Every test must catch a specific bug per `docs/TEST_QUALITY_STANDARD.md`. No tau
 | `command_exit_zero` runs untrusted code | M1 | Hard safelist; commands run in ACI-executor sandbox; per-check timeout; `command_acceptance_checks: false` disable flag; future smoke pack provides full container isolation. |
 | Path/glob/regex injection from LLM-authored plans | M1 | Workspace chroot, argv-only, glob match cap, regex timeout, symlink rejection (§6.1.5). Plan is treated as untrusted input by design. |
 | Stack expansion creep in `endpoint_defined` etc. | M1 | Explicit `unsupported_stack_or_syntax` skip outcome; new stacks added only via separate scoped PR (§6.1.6). |
-| Reviewer rubber-stamps the proposer (M2) | M2 | Reviewer prompt is structured against named gaps; structured `plan_review.yaml` cannot be prose-only. Operator gate remains as final external check. |
-| Revision loop oscillates | M2 | `max_planning_revisions: 1` bound (Revision 1); future expansion only after metrics support it. |
-| `split_implementation_planning` flag stays default-off forever | M2 | Concrete flip criteria (§6.2.4) instead of "after stabilization." |
+| Multi-role authoring degrades to "merger rubber-stamps dev" (M2) | M2 (SIP-0093) | Merger emits `merge_decisions.yaml` with per-task provenance; M2→M3 gate criterion C1 measures non-redundancy rate (≥3/10 cycles must show non-dev contributions surviving merge). If criterion fails, the merger prompt or proposer prompts are wrong, not the architecture. |
+| All proposers fail silently; fallback masquerades as multi-role authoring | M2 (SIP-0093) | `authoring_mode: fallback_single_author` is required when fallback fires (SIP-0093 §5.10). Fallback frequency is a tracked gate metric (M2→M3 criterion C2: <20%). Fallback status is surfaced at gate. |
+| Brief becomes "the plan" — proposers have no real authoring discretion | M2 (SIP-0093) | Rev 1 brief limited to six required fields (objective, stack, requirements, scope, risk) — scope-framing only, no decomposition. Optional fields earn promotion only after evidence. Brief conflicts (SIP-0093 §5.5) let proposers push back when the brief is wrong. |
+| Multi-role authoring framing-tail cost is too high for short cycles | M2 (SIP-0093) | `multi_role_plan_authoring: false` default; `selftest`/`build` profiles stay on the M1 substrate. Validation/implementation profiles opt in. Cost analysis in SIP-0093 §6 quantifies the tradeoff. |
 | Plan change storms (correction repeatedly emits changes) | M3 | `max_plan_changes: 5` bound; after exhaustion, correction limited to patch or escalate. |
 | Autonomous correction makes plan incoherent via removal/replacement | M3 | Producer-side restriction: correction protocol may only emit `add_task` and `tighten_acceptance` (§6.3.10). Schema and applier support more operations, but only operator or future `governance.replan` may produce them. |
 | Working-plan divergence between runs | M3 | Pure deterministic applier; canonical-form hashing (not raw YAML); parent-change-id chain ordering; replay tests on every PR. |
