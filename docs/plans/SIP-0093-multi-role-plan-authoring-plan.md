@@ -24,6 +24,44 @@ The five PRs (per SIP-0093 §8):
 
 ---
 
+## Routing under `multi_role_plan_authoring`
+
+The flag is the single switch between two unambiguous routes through framing. There is no hybrid mode.
+
+**`multi_role_plan_authoring: false`** (M1 substrate path):
+
+```
+data.research → strategy.frame → development.design_plan → qa.define_test_strategy
+  → governance.review_plan
+      → calls PlanAuthoringService.produce_plan(...) inline
+      → emits canonical implementation_plan.yaml
+  → [GATE]
+```
+
+No `plan_authoring_brief.yaml`. No proposers. No `merge_decisions.yaml`. The route is byte-identical to today, with the only change being that `_produce_plan` now lives inside `PlanAuthoringService` (PR 93.0 extraction). Proven by the verbatim-equivalence test below.
+
+**`multi_role_plan_authoring: true`** (SIP-0093 path):
+
+```
+data.research → strategy.frame → development.design_plan → qa.define_test_strategy
+  → governance.prepare_plan_authoring_brief        (emits plan_authoring_brief.yaml)
+  → development.propose_plan_tasks  ┐
+  → qa.propose_plan_tasks           ├─ Rev 1: sequential; Rev 2: parallel fan-out
+  → strategy.propose_plan_guidance  ┘
+  → governance.merge_plan
+      → if any proposal succeeded: deterministic merge per SIP-0093 §5.8
+      → if all proposals failed: PlanAuthoringService.produce_plan(...) (RC-26 fallback)
+      → emits canonical implementation_plan.yaml + merge_decisions.yaml
+  → governance.review_plan          (sign-off only)
+  → [GATE]
+```
+
+`governance.review_plan` does not call `PlanAuthoringService` on this route — its body conditions on the flag and either authors (flag off) or signs off (flag on).
+
+This routing is the load-bearing simplification SIP-0093 makes possible: one flag, two complete routes, no hybrid behavior. Tests in PR 93.0 and PR 93.4 assert that the wrong route never fires for a given flag value.
+
+---
+
 ## Runtime Contracts
 
 These extend SIP-0092's RC-9..RC-21. New contracts are RC-22 through RC-26.
@@ -37,6 +75,10 @@ These extend SIP-0092's RC-9..RC-21. New contracts are RC-22 through RC-26.
 **RC-25 (`merge_decisions.yaml` audit completeness):** Every canonical task in `implementation_plan.yaml` MUST appear in `merge_decisions.yaml` with `task_index`, `source_proposal_task_keys`, `proposed_by`, and `merge_action ∈ {accepted, merged, modified, gap_filled}`. Tasks created by the merger to fill gaps (no proposal source) are marked `merge_action: gap_filled`. Test: full canonical-plan / merge-decisions correspondence asserted in PR 93.3.
 
 **RC-26 (Fallback marker authority):** When `multi_role_plan_authoring: true` and all role proposals fail, `merge_decisions.yaml` MUST set `authoring_mode: fallback_single_author` AND `proposal_completeness: fallback`. The canonical plan is produced by the shared `PlanAuthoringService.produce_plan(...)`. The system MUST NOT silently mark a fallback as `multi_role`; tests assert this property explicitly. Fallback frequency is a tracked gate metric (M2→M3 gate criterion C2).
+
+**RC-27 (Canonical plan is the sole executor input):** The build executor consumes only the canonical `implementation_plan.yaml`. `plan_authoring_brief.yaml`, `proposed_plan_tasks.yaml`, `plan_guidance.yaml`, and `merge_decisions.yaml` are planning/gate evidence artifacts only — they MUST NOT be required by build execution after gate approval. This preserves the SIP-0086/SIP-0092 execution boundary: multi-role authoring changes plan *production*, not task *execution* semantics. The forwarding layer (`api/routes/cycles/runs.py`) only adds these new artifact types as gate evidence; existing `control_implementation_plan` forwarding to the build workload is unchanged.
+
+**RC-28 (M3 independence from SIP-0093 internals):** When SIP-0092 Capability M3 (Plan Changes) ships, plan changes operate on the canonical `implementation_plan.yaml` regardless of whether that plan was produced by colocated authoring (M1 substrate), single-author fallback, or SIP-0093 multi-role merge. M3 MUST NOT couple to `merge_decisions.yaml`, per-role proposal artifacts, or proposal provenance. SIP-0093 changes the *origin* of the plan; M3 governs how it *evolves*. The two are orthogonal by construction.
 
 ---
 
@@ -101,6 +143,7 @@ class PlanAuthoringBrief:
 - Unit (`tests/unit/capabilities/test_plan_authoring_service.py`, new):
   - `PlanAuthoringService.produce_plan(...)` produces the same `ImplementationPlan` as `_produce_plan` for an identical seeded LLM response (verbatim-equivalence regression anchor).
   - Service surfaces parse failures the same way `_produce_plan` did (no wording regression).
+  - **M1-substrate side-effect-absence assertion** (added per Rev 2 review): when `multi_role_plan_authoring: false` and `GovernanceReviewPlanHandler.handle()` runs end-to-end through `PlanAuthoringService`, the run produces *no* `plan_authoring_brief.yaml`, *no* `proposed_plan_tasks.yaml`, *no* `plan_guidance.yaml`, and *no* `merge_decisions.yaml` artifacts. Hybrid behavior would silently leak SIP-0093 artifacts into the M1 path; this test pins the route boundary defined in §"Routing under `multi_role_plan_authoring`".
 - Unit (`tests/unit/capabilities/test_prepare_plan_authoring_brief.py`, new):
   - Handler produces a `PlanAuthoringBrief` artifact for a seeded LLM response.
   - Handler emits a structured failure when the LLM response cannot be parsed after `retry_yaml_call` exhaustion.
@@ -450,4 +493,5 @@ Extends the SIP-0092 plan doc Terminology Lock. The SIP-0093 canonical terms (al
 
 ## Plan Revision History
 
+- **Plan Rev 2 (2026-05-09):** Targeted tightening from review. Added explicit "Routing under `multi_role_plan_authoring`" section pinning flag-off vs flag-on routes (no hybrid mode). Added RC-27 (canonical plan is the sole executor input) and RC-28 (M3 independence from SIP-0093 internals). Extended PR 93.0's verbatim-equivalence test with an M1-substrate side-effect-absence assertion (no SIP-0093 artifacts produced when flag is off). No scope changes to the five-PR sequence.
 - **Plan Rev 1 (2026-05-08):** Initial plan. Five PRs (93.0 through 93.4). RC-22..RC-26 runtime contracts. Sequential proposers in Rev 1 (parallel fan-out deferred to Rev 2). PR 93.0 extracts `PlanAuthoringService` for both M1-substrate and SIP-0093 fallback paths.

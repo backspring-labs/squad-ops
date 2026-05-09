@@ -411,13 +411,22 @@ The shared brief frames stack/scope/constraints before fan-out so role proposers
 
 #### 6.2.2 Operator-visible artifacts
 
-The gate package contains:
+The gate package separates **primary** artifacts (must appear in the operator's first view) from **intermediate evidence** (available on drill-down, must not clutter the primary surface).
+
+**Primary gate artifacts:**
 
 - `implementation_plan.yaml` — canonical plan, M1 schema (unchanged).
 - `plan_authoring_brief.yaml` — the shared frame all proposers consumed.
 - `merge_decisions.yaml` — per-canonical-task provenance, brief-conflict dispositions, proposal completeness, missing roles, fallback markers.
+- Proposal completeness status (rolled up from `merge_decisions.yaml`).
+- Fallback status when applicable (see §6.2.5).
 
-Per-role `proposed_plan_tasks.yaml` and `plan_guidance.yaml` artifacts are intermediate evidence available for inspection but are not primary gate artifacts.
+**Intermediate evidence (available, not surfaced as primary):**
+
+- Per-role `proposed_plan_tasks.yaml` artifacts.
+- `plan_guidance.yaml`.
+
+The split keeps the primary operator review surface bounded while preserving full auditability. Per-role proposals must remain queryable for forensic review of the merger's decisions, but they should not be in the operator's default field of view at gate.
 
 See SIP-0093 §5.1 (brief schema), §5.4 (proposal schemas), §5.7 (`merge_decisions.yaml` schema), and §5.8 (deterministic merge policy) for the full design.
 
@@ -434,11 +443,30 @@ Compatible criteria from different roles on the same canonical task survive merg
 
 SIP-0093 changes who authors the *original* plan; M3 governs how that plan evolves in-cycle. The two are orthogonal — M3's autonomous-correction plan changes operate on whatever original plan landed at gate, regardless of authorship model.
 
+> **M3 independence invariant.** When M3 ships, plan changes consume the canonical `implementation_plan.yaml` and do not depend on whether that plan was produced by colocated authoring (M1 substrate), single-author fallback, or SIP-0093 multi-role merge. M3 must not couple to `merge_decisions.yaml`, per-role proposal artifacts, or proposal provenance.
+
 The non-operative `structural_plan_change_candidate` diagnostic on `governance.correction_decision` (introduced as M2-tracking infrastructure for the M2→M3 gate) continues to be elicited under SIP-0093 unchanged. See SIP-0093 §5.13.
 
 #### 6.2.5 Fallback behavior
 
-If all role proposals fail (LLM errors, timeouts, malformed YAML), the merger falls back to single-author plan production using the M1-substrate plan-authoring path (extracted into a shared `PlanAuthoringService` per the SIP-0092 plan doc). Fallback is explicitly marked (`authoring_mode: fallback_single_author`) and visible at gate. Fallback frequency is a tracked gate metric (M2→M3 gate criterion C2). See SIP-0093 §5.10.
+If all role proposals fail (LLM errors, timeouts, malformed YAML), the merger falls back to single-author plan production using the M1-substrate plan-authoring path (extracted into a shared `PlanAuthoringService` per the SIP-0092 plan doc). Fallback frequency is a tracked gate metric (M2→M3 gate criterion C2). See SIP-0093 §5.10.
+
+**SIP-0092-level fallback visibility commitment.** A silent fallback would let the operator believe a plan had multi-role coverage when it did not. Fallback MUST be explicit in `merge_decisions.yaml` and surfaced in gate metadata via the following fields:
+
+- `authoring_mode: fallback_single_author`
+- `proposal_completeness: fallback`
+- `missing_proposals` — list of role IDs whose proposals failed
+- `failure_reasons` — per-role failure summary (LLM error / timeout / malformed YAML / `source_brief_id` mismatch)
+- `fallback_producer` — identifier for the path that produced the canonical plan (`PlanAuthoringService` in Rev 1)
+- Operator warning rendered alongside the canonical plan at gate
+
+Tests in SIP-0093 PR 93.4 assert that the `multi_role` + `fallback` combination is impossible (RC-26 of the SIP-0093 plan doc) and that the visibility fields are populated on every fallback cycle.
+
+#### 6.2.6 Executor-input invariant
+
+The build executor consumes only the canonical `implementation_plan.yaml`. `plan_authoring_brief.yaml`, `proposed_plan_tasks.yaml`, `plan_guidance.yaml`, and `merge_decisions.yaml` are planning/gate evidence artifacts only — they MUST NOT be required by build execution after gate approval. SIP-0093 changes plan *production*; it does not change task *execution* semantics. The forwarding layer (`api/routes/cycles/runs.py`) carries the new artifact types as gate evidence; existing `control_implementation_plan` forwarding to the build workload is unchanged.
+
+This is the SIP-0086/SIP-0092 execution boundary, restated for SIP-0093. The plan doc enforces it as RC-27.
 
 ### 6.3 Capability M3 — Plan Changes
 
@@ -763,7 +791,7 @@ Three independently shippable stages mapped to the three capabilities. Each stag
 
 ### Stage M2 — Multi-Role Plan Authoring (5 PRs, implemented as SIP-0093)
 
-M2 is delivered by SIP-0093 in five PRs. Full design and per-PR scope live in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md` §8 and the SIP-0093 implementation plan doc (to be drafted at `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md`). Summary:
+M2 is delivered by SIP-0093 in five PRs. Full design and per-PR scope live in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md` §8 and the SIP-0093 implementation plan doc at `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md` (per-PR file changes, schemas, runtime contracts RC-22..RC-28, tests). Summary:
 
 - **PR 93.0** — `plan_authoring_brief.yaml` schema and `governance.prepare_plan_authoring_brief` handler.
 - **PR 93.1** — Proposal and merge schemas (`ProposedPlanTasks`, `PlanGuidance`, `MergeDecisions`); symbolic-dependency convention; brief-conflict model.
@@ -871,6 +899,12 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
 
 ## 12. Revision History
 
+- **Rev 5 (2026-05-09):** Targeted tightening of §6.2 (Capability M2) from review of the SIP-0093 implementation plan doc. No design changes; clarifications and explicit invariants:
+  - §6.2.2 split gate-package artifacts into **primary** vs **intermediate evidence**, named the rationale (bounded operator review surface, full auditability preserved on drill-down).
+  - §6.2.4 added an explicit **M3 independence invariant** — M3 plan changes operate on the canonical `implementation_plan.yaml` and must not couple to `merge_decisions.yaml`, per-role proposal artifacts, or proposal provenance.
+  - §6.2.5 added a **fallback visibility commitment** at SIP-0092 level (the structured fields silent fallback would otherwise allow to be missing): `authoring_mode`, `proposal_completeness`, `missing_proposals`, `failure_reasons`, `fallback_producer`, plus an operator warning at gate.
+  - Added §6.2.6 **executor-input invariant** restating the SIP-0086/SIP-0092 execution boundary for SIP-0093: the executor consumes only `implementation_plan.yaml`; brief / proposals / guidance / merge_decisions are planning evidence only.
+  - §8 dropped the stale "to be drafted" reference to the SIP-0093 implementation plan doc (the doc now exists at `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md`).
 - **Rev 4 (2026-04-30):** "Mechanical Acceptance" → "Typed Acceptance" rename throughout.
   - Title: "Implementation Plan Improvement — **Mechanical Acceptance**, Separated Authoring, and Plan Changes" → "Implementation Plan Improvement — **Typed Acceptance**, Separated Authoring, and Plan Changes."
   - Config flag: `mechanical_acceptance` → `typed_acceptance`. Status reason `mechanical_acceptance_disabled` → `typed_acceptance_disabled`.
