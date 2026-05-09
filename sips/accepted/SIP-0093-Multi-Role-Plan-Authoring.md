@@ -11,9 +11,9 @@ updated_at: '2026-05-07T00:00:00Z'
 **Status:** Accepted
 **Authors:** SquadOps Architecture
 **Created:** 2026-04-30
-**Revision:** 2
+**Revision:** 3
 
-**Relationship:** This SIP **is** the implementation path for SIP-0092 M2. The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged in PR #117 on 2026-05-05) selected the multi-role authoring path; SIP-0093 supplants M2-as-originally-written. The original single-author `development.plan_implementation → governance.review_plan` flow is retained only as the all-proposals-failed fallback (§5.10), not as the target architecture. SIP-0092 M1 (typed acceptance) and M3 (plan changes) are orthogonal to plan authorship and stand unchanged.
+**Relationship:** This SIP **is** the implementation path for SIP-0092 M2. The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged in PR #117 on 2026-05-05) selected the multi-role authoring path; SIP-0093 supplants M2-as-originally-written. The original single-author `_produce_plan` body is retained only as the implementation of `PlanAuthoringService` — the function the merger calls when there are no proposals to merge (either by config or by all-proposals-failed). It is not a separate runtime route. SIP-0092 M1 (typed acceptance) and M3 (plan changes) are orthogonal to plan authorship and stand unchanged.
 
 ## 1. Abstract
 
@@ -258,8 +258,9 @@ target_plan_id: <plan_id>
 brief_id: <brief_id>
 proposal_ids: [<dev_proposal_id>, <qa_proposal_id>, <build_proposal_id?>]
 guidance_ids: [<strategy_guidance_id>]
-authoring_mode: multi_role | fallback_single_author
-proposal_completeness: complete | partial | fallback     # see §5.9
+authoring_mode: multi_role | sole_author                 # see §5.9
+sole_author_reason: no_contributors_configured | all_proposals_failed | null  # required when authoring_mode == sole_author
+proposal_completeness: complete | partial | sole_author  # see §5.9
 missing_proposals: []                     # role IDs whose proposal was missing or failed
 canonical_tasks:
   - task_index: 0
@@ -327,39 +328,56 @@ Conflict resolution is not an open question. Rev 1 policy:
 > - `qa.backend.join_tests` becomes `task_index: 2` owned by `qa`. Acceptance carries Eve's `regex_match`. `depends_on: [1]` (resolved from `symbolic_depends_on: [dev.api.join]`).
 > - `merge_decisions.yaml` records both as `merge_action: accepted` with `proposed_by` set correctly.
 
-### 5.9 Proposal completeness classification
+### 5.9 Authoring mode and proposal completeness
 
-The merger emits a required field on `merge_decisions.yaml`:
+The merger emits two required fields on `merge_decisions.yaml`: `authoring_mode` (which path produced the canonical plan) and `proposal_completeness` (how the configured contributors performed).
 
-`proposal_completeness: complete | partial | fallback`
+**`authoring_mode: multi_role | sole_author`**
 
-- **`complete`** — every expected role's proposal/guidance artifact arrived and parsed.
-- **`partial`** — at least one expected proposal/guidance artifact was missing or failed to parse. The merger continues with surviving proposals.
-- **`fallback`** — all proposals failed; merger fell back to single-author plan production (§5.10).
+- **`multi_role`** — at least one role proposal arrived and parsed; the merger ran deterministic merge over the surviving proposals.
+- **`sole_author`** — no proposals were merged; the merger called `PlanAuthoringService.produce_plan(...)` directly to author the canonical plan from the brief and framing artifacts. Required sub-field:
+  - `sole_author_reason: no_contributors_configured` — `plan_authoring_contributors: []`. Intentional, e.g., selftest profiles where multi-role framing cost is unjustified.
+  - `sole_author_reason: all_proposals_failed` — contributors were configured but every proposal failed (LLM error, timeout, malformed YAML, mismatched `source_brief_id`). Unintentional; tracked as a stability signal (see M2→M3 gate criterion C2).
+
+**`proposal_completeness: complete | partial | sole_author`**
+
+- **`complete`** — every configured contributor produced a parseable proposal/guidance artifact.
+- **`partial`** — at least one configured contributor's artifact was missing or failed to parse, but at least one survived. Merger continues with surviving proposals (`authoring_mode: multi_role`).
+- **`sole_author`** — no proposals were merged (mirrors `authoring_mode: sole_author`).
 
 **Required warnings recorded in `merge_decisions.yaml` operator_notes:**
 - Missing QA proposal → "QA coverage warning: plan was authored without qa-domain input."
 - Missing dev proposal → "Implementation decomposition warning: plan was authored without dev-domain input."
 - Missing strategy guidance → "Ordering/priority warning: plan ordering was assigned without strategy guidance."
 - Missing build proposal (when builder enabled) → "Build/assembly warning: plan was authored without build-domain input."
+- `sole_author_reason: all_proposals_failed` → "Multi-role authoring degraded to sole-author: every configured proposer failed." (Operator-facing degradation signal.)
+- `sole_author_reason: no_contributors_configured` → no warning; this is the configured mode for the cycle.
 
-The gate evaluation slices on which roles were missing — those signals matter differently. The classification enum is intentionally three-state; richer breakdown lives in `missing_proposals` and operator notes.
+The gate evaluation slices on which roles were missing and on `sole_author_reason` — those signals matter differently. Richer breakdown lives in `missing_proposals` and operator notes.
 
-### 5.10 Fallback behavior (narrowed)
+### 5.10 Sole-author mode (configured) and degraded-to-sole-author (failure)
 
-A role that fails to produce a proposal (LLM error, timeout, malformed YAML) does not block the merger. The merger proceeds with whatever proposals succeeded and records the missing role(s) in `merge_decisions.yaml`. This is `proposal_completeness: partial`.
+The merger always emits a canonical `implementation_plan.yaml`; when no proposals are available to merge, it calls `PlanAuthoringService.produce_plan(...)` directly. Two cases produce this:
 
-**Fallback to single-author plan production is invoked only when *all* role proposals fail.** When fallback fires:
+**Configured (no contributors).** When `plan_authoring_contributors: []`, the framing sequence skips proposer steps entirely. The merger receives only the brief and framing artifacts, runs `PlanAuthoringService`, and emits `merge_decisions.yaml` with:
 
-- `authoring_mode: fallback_single_author`
-- `proposal_completeness: fallback`
-- `missing_proposals: [development, qa, strategy, ...]` listing every failed proposal with its failure reason.
-- The canonical plan is produced by Max running today's `_produce_plan` logic (the M1 substrate's plan-authoring path inside `governance.review_plan`, extracted into a shared `PlanAuthoringService` per the SIP-0092 plan doc M2.1).
-- `merge_decisions.yaml` is still emitted, recording the fallback explicitly.
-- Fallback status is surfaced at gate (operator must see when the cycle silently degraded to single-author).
-- Fallback frequency is a tracked gate metric (M2→M3 gate criterion C2: sole-author fallback rate must stay <20% per `docs/plans/SIP-0092-implementation-plan-improvement-plan.md` Gate M2→M3).
+- `authoring_mode: sole_author`
+- `sole_author_reason: no_contributors_configured`
+- `proposal_completeness: sole_author`
+- `missing_proposals: []`
 
-The system must not silently appear to use multi-role authoring when it actually fell back to one author.
+Selftest and other short-cycle profiles use this mode to skip the framing-tail cost of multi-role authoring (§6).
+
+**Degraded (all proposals failed).** When contributors are configured but every proposal fails, the merger emits:
+
+- `authoring_mode: sole_author`
+- `sole_author_reason: all_proposals_failed`
+- `proposal_completeness: sole_author`
+- `missing_proposals: [development, qa, strategy, ...]` — every configured role with its failure reason.
+
+This is a degradation signal, not a configured mode. Operators must see it at gate. Degraded-sole-author frequency is a tracked gate metric (M2→M3 gate criterion C2: rate must stay <20% per `docs/plans/SIP-0092-implementation-plan-improvement-plan.md` Gate M2→M3). Cycles configured as sole-author (`no_contributors_configured`) do **not** count toward C2.
+
+The system must not silently mark a degraded cycle as `multi_role`.
 
 ### 5.11 Framing sequence under this SIP
 
@@ -420,88 +438,99 @@ Where N is the number of contributing role proposers (3 in Rev 1: dev, qa, strat
 **Why this is acceptable:**
 - Long cycles (≥2h budgets per the validation profile) absorb a ~5-minute increase in framing tail without meaningfully shifting the build budget.
 - The cost is paid once per cycle, not per task.
-- The fallback (§5.10) reverts to M1-substrate cost when all proposals fail, so the worst case is "same as today."
+- Short cycles can opt into sole-author mode (`plan_authoring_contributors: []`) and pay only brief + sole-author cost (~3–5 min), reverting close to M1-substrate framing-tail cost.
 
 **Why not free:**
-- Short cycles (selftest, smoke) gain little from multi-role authoring and pay full overhead. Default `multi_role_plan_authoring: false` keeps these on the M1 substrate.
 - The brief author (Max at 32B) is a serial dependency before the parallel fan-out; if the brief takes longer than expected, the whole framing tail slows.
+- Even sole-author mode incurs a small cost increase over today (brief is always produced) — accepted as the price of one path.
 
-**Telemetry:** PR 93.5 ships authoring duration metrics so the cost model is observable, not hypothesized.
+**Telemetry:** PR 93.4 ships authoring duration metrics so the cost model is observable, not hypothesized.
 
 ## 7. Configuration
 
-**Two flags. No three-by-two routing matrix.** Per the no-dual-path-flags principle, `split_implementation_planning` (the original M2 flag) is removed; SIP-0093 is the single forward path with a master-switch flag.
+**One config knob. No master flag. No dual runtime path.** Per the no-dual-path-flags principle, the framing pipeline is unconditional; the `plan_authoring_contributors` list controls *who participates*, not *which path runs*. An empty list yields sole-author mode through the same handler chain.
 
 | Key | Type | Default | Purpose |
 |----|----|----|----|
-| `multi_role_plan_authoring` | `bool` | `false` | Master switch. False → M1 substrate (today's colocated authoring inside `governance.review_plan`). True → SIP-0093 flow. |
-| `plan_authoring_contributors` | `list[str]` | `["development", "qa", "strategy"]` | Which role proposers fan out. Omitting `qa` runs without QA proposals (`proposal_completeness: partial`). Adding `build` enables the builder hook (§5.12) when the squad has it. |
+| `plan_authoring_contributors` | `list[str]` | `["development", "qa", "strategy"]` | Which role proposers fan out. `[]` skips proposer steps and yields sole-author mode (§5.10). Omitting one role (e.g., qa) runs the others (`proposal_completeness: partial`). Adding `build` enables the builder hook (§5.12) when the squad has it. |
 
-**Removed flags** (no longer relevant once SIP-0093 lands as M2 path):
-- `split_implementation_planning` — superseded by `multi_role_plan_authoring`.
+**Removed flags** (no longer relevant):
+- `multi_role_plan_authoring` — never shipped; the propose/merge pipeline is unconditional and `plan_authoring_contributors: []` is the documented way to disable proposer fan-out.
+- `split_implementation_planning` — original M2 flag, never shipped.
 - `max_planning_revisions` — there is no revision loop in SIP-0093.
 
 **Always-true behavior** (not configurable, to prevent broken configurations):
-- Fallback-to-single-author when all proposals fail (§5.10) — must always be true; making it optional invites silent cycle-kill.
-- Merger emits `merge_decisions.yaml` — auditability is not optional.
+- The merger always emits a canonical `implementation_plan.yaml` and `merge_decisions.yaml`. When no proposals are available to merge (configured empty list, or all proposals failed), the merger calls `PlanAuthoringService.produce_plan(...)` directly. Auditability is not optional.
+- Brief production runs unconditionally so the gate package always contains the same artifact set.
 
 ## 8. Implementation PR sequence
 
-Five PRs. Independently reviewable. Each preserves prior behavior under `multi_role_plan_authoring: false`.
+Five PRs. Independently reviewable. **93.0–93.2 are inert additions** (new modules + handlers registered, not yet in `PLANNING_TASK_STEPS`); the inline `_produce_plan` body inside `governance.review_plan` keeps running unchanged. **93.3 is the cutover**: it adds the merger, rewires `PLANNING_TASK_STEPS` to the propose/merge pipeline, and removes inline plan authoring from `governance.review_plan` (now sign-off only). After 93.3 there is one runtime route. **93.4** delivers gate-package surfacing and observability.
 
-### PR 93.0 — Brief schema and `governance.prepare_plan_authoring_brief` handler
+### PR 93.0 — `PlanAuthoringService` extraction + brief schema and handler
 
-Land the brief schema and brief-producing handler before any proposer work. Lets the brief flow be validated end-to-end before scaling proposer parallelism.
+Pure refactor + dormant additions. No behavior change.
 
 **Deliver:**
+- Extract `_produce_plan` body from `planning_tasks.py:432` into `PlanAuthoringService.produce_plan(...)` (function-style module). The current `governance.review_plan` handler now calls the service inline; output is byte-identical to today.
 - `plan_authoring_brief.yaml` schema with the six required Rev 1 fields.
 - `PlanAuthoringBrief` frozen dataclass + `from_yaml()` parser.
-- `GovernancePreparePlanAuthoringBriefHandler` task type.
-- Integration test: handler produces a parseable brief from seeded framing inputs.
+- `GovernancePreparePlanAuthoringBriefHandler` task type — registered in the capability registry but **not** yet in `PLANNING_TASK_STEPS`.
+- Verbatim-equivalence regression test: `PlanAuthoringService.produce_plan(...)` produces the same `ImplementationPlan` as `_produce_plan` for identical seeded LLM responses.
+- Integration test: brief handler produces a parseable brief from seeded framing inputs (handler tested in isolation).
 
 ### PR 93.1 — Proposal and merge schemas
 
+Pure schema work. No new handlers, no behavior change.
+
 **Deliver:**
-- `ProposedPlanTasks` (already partially landed in `src/squadops/cycles/proposed_role_tasks.py` — extend to schema described in §5.4.1).
+- `ProposedPlanTasks` (extending `src/squadops/cycles/proposed_role_tasks.py` from PR #125 — schema per §5.4.1).
 - `PlanGuidance` for strategy artifacts (§5.4.2).
-- `MergeDecisions` for §5.7.
+- `MergeDecisions` for §5.7, with `authoring_mode` / `sole_author_reason` / `proposal_completeness` taxonomy from §5.9.
 - Symbolic-dependency convention enforced by parser (rejects final numeric indices in `symbolic_depends_on`).
 - `brief_conflicts` model (§5.5).
 - Per-canonical-task provenance model.
 
 ### PR 93.2 — Role proposer handlers
 
+Adds proposer handlers, registered but **not** yet in `PLANNING_TASK_STEPS`. No behavior change.
+
 **Deliver:**
 - `development.propose_plan_tasks` handler.
 - `qa.propose_plan_tasks` handler.
 - `strategy.propose_plan_guidance` handler.
-- Config-gated parallel fan-out from `task_plan.py`.
-- Proposal failure handling (§5.10 partial-completeness path).
-- Reuses `PlanAuthoringService` infrastructure from the SIP-0092 plan doc M2.1 extraction.
+- Proposal failure shape (structured failure record, not exception) per §5.10 partial-completeness path. Tested in isolation.
+- Brief-id validation: handlers reject proposals whose `source_brief_id` does not match the upstream brief.
 
-### PR 93.3 — Governance merge handler
+### PR 93.3 — `governance.merge_plan` + cutover
+
+The single PR where the runtime route changes. Lands the merger and rewires `PLANNING_TASK_STEPS` atomically. After 93.3, the pre-SIP-0093 inline-authoring path in `governance.review_plan` is gone.
 
 **Deliver:**
 - `governance.merge_plan` handler.
 - Deterministic merge policy (§5.8) including the worked-example test case.
 - Canonical `implementation_plan.yaml` output with merger-assigned indices.
-- `merge_decisions.yaml` output with per-canonical-task provenance.
+- `merge_decisions.yaml` output with per-canonical-task provenance and `authoring_mode` / `sole_author_reason` / `proposal_completeness` per §5.9.
+- Sole-author handling (§5.10): if `plan_authoring_contributors: []` or all proposals fail, merger calls `PlanAuthoringService.produce_plan(...)` directly.
 - Symbolic-to-numeric dependency resolution.
+- **`PLANNING_TASK_STEPS` rewired**: brief → (proposer steps from `plan_authoring_contributors`) → merger → review_plan(sign-off).
+- **`GovernanceReviewPlanHandler` cutover**: removes inline `_produce_plan` invocation; handler is now sign-off only, consuming the canonical plan from upstream merger.
+- **Eve-proposes-omitted-qa-task integration test** (the central regression anchor; see §10).
+- **Sole-author cycle integration test** with `plan_authoring_contributors: []` — produces canonical plan + `merge_decisions.yaml` with `sole_author_reason: no_contributors_configured`; no proposer steps in the cycle.
 
-### PR 93.4 — Fallback, gate integration, observability
+### PR 93.4 — Gate package, observability, degraded-sole-author surfacing
 
 **Deliver:**
-- Single-author fallback path (§5.10) reusing the extracted `PlanAuthoringService`.
-- Proposal completeness classification (§5.9).
-- Merge quality warnings populated from `merge_decisions.yaml`.
-- Gate package: canonical plan + `merge_decisions.yaml` + `plan_authoring_brief.yaml`.
-- Authoring duration, proposal completeness, merge conflict, and fallback frequency metrics.
+- Gate-package wiring: canonical plan + `merge_decisions.yaml` + `plan_authoring_brief.yaml` surfaced as primary; per-role proposals and `plan_guidance.yaml` remain available as intermediate evidence.
+- All-proposals-failed integration test: explicit `sole_author_reason: all_proposals_failed`; operator warning rendered at gate.
+- Authoring duration, proposal completeness, merge conflict, and degraded-sole-author frequency metrics.
+- Operator console hooks for the new gate artifacts.
 
 ## 9. Acceptance criteria (structural)
 
 These are the structural criteria for the SIP itself. Per-PR acceptance criteria and gate-evaluation criteria live in the implementation plan doc (`docs/plans/SIP-0093-multi-role-plan-authoring-plan.md`, to be drafted).
 
-1. Multi-role authoring is config-gated by a single master flag (`multi_role_plan_authoring`), default-off.
+1. The framing pipeline is unconditional (one runtime route); `plan_authoring_contributors` controls participation, not path selection. Empty list → sole-author mode through the same handler chain.
 2. A shared `plan_authoring_brief.yaml` is produced before proposal fan-out and consumed by every proposer.
 3. Proposals are domain-scoped; no proposer authors a complete plan; no proposer assigns final task indices.
 4. Strategy contributes guidance, not fake tasks (`plan_guidance.yaml`, not `proposed_plan_tasks.yaml`).
@@ -509,7 +538,7 @@ These are the structural criteria for the SIP itself. Per-PR acceptance criteria
 6. The merger produces one canonical `implementation_plan.yaml` validating against the SIP-0092 M1 schema.
 7. The merger emits `merge_decisions.yaml` recording per-canonical-task provenance and brief-conflict dispositions.
 8. Proposal failures degrade gracefully and are recorded; partial completeness is visible at gate.
-9. All-proposal failure falls back to single-author production and is explicitly marked (`authoring_mode: fallback_single_author`).
+9. Sole-author mode (no contributors configured, or all proposals failed) is explicitly marked in `merge_decisions.yaml` (`authoring_mode: sole_author` with `sole_author_reason: no_contributors_configured | all_proposals_failed`). The two reasons are operationally distinct: the first is a configured mode for short cycles, the second is a degradation signal that contributes to the M2→M3 gate's stability criterion.
 10. The `structural_plan_change_candidate` diagnostic on `governance.correction_decision` remains emitted.
 11. Final task indices are assigned only by the merger.
 12. Typed acceptance criteria from proposals survive merge.
@@ -528,7 +557,8 @@ The full test inventory lives in the implementation plan doc. Critical tests cal
 - Domain-owner conflict policy (§5.8 rule 1) behaves deterministically — same inputs produce same canonical plan.
 - Compatible acceptance criteria from dev and qa survive merge on the same canonical task.
 - Missing proposal is recorded in `merge_decisions.yaml` with `proposal_completeness: partial` and the specific role flagged.
-- All-proposals-failed triggers `authoring_mode: fallback_single_author` and emits a `merge_decisions.yaml` recording every failure reason.
+- All-proposals-failed triggers `authoring_mode: sole_author` with `sole_author_reason: all_proposals_failed` and emits a `merge_decisions.yaml` recording every failure reason.
+- Empty `plan_authoring_contributors` triggers `authoring_mode: sole_author` with `sole_author_reason: no_contributors_configured`; no proposer steps run; merger calls `PlanAuthoringService` directly.
 - Final canonical plan has valid contiguous task indices.
 - Brief conflicts (warning vs blocking) are accepted/rejected/escalated and recorded.
 - Gate package includes `implementation_plan.yaml`, `merge_decisions.yaml`, and `plan_authoring_brief.yaml` (operator-visible artifacts).
@@ -563,3 +593,15 @@ The SIP-0092 §6.2 spec was rewritten to describe the SIP-0093 design as the M2 
 - `docs/plans/SIP-0092-implementation-plan-improvement-plan.md` — Gate M2→M3 criteria (PR #135 amendment) measure SIP-0093's behavior directly.
 - `docs/plans/SIP-0092-gate-M1-evaluation.md` — the M1→M2 gate evaluation that selected the multi-role authoring path.
 - `examples/03_group_run/prd.md` — the canonical reference PRD this SIP would author plan tasks for.
+
+## 14. Revision History
+
+- **Rev 3 (2026-05-09):** Removed the `multi_role_plan_authoring` feature flag before any code shipped. Pre-implementation refactor to a single runtime route per the no-dual-path-flags principle.
+  - §5.9–§5.10: replaced "fallback" terminology with `authoring_mode: multi_role | sole_author` and a `sole_author_reason` sub-field (`no_contributors_configured` | `all_proposals_failed`). Sole-author is now a configured mode for short cycles, not just a failure recovery; degraded-sole-author remains a tracked stability signal.
+  - §6: cost analysis recomputed without the flag-default-off assumption. Short cycles opt out via `plan_authoring_contributors: []`.
+  - §7: dropped `multi_role_plan_authoring` from the config table; `plan_authoring_contributors` is the only knob. Empty list yields sole-author through the same handler chain.
+  - §8: restructured the five-PR sequence so 93.0–93.2 are inert additions and **93.3 is the cutover** that rewires `PLANNING_TASK_STEPS` and removes inline authoring from `governance.review_plan`. After 93.3 there is exactly one runtime route for plan production.
+  - §9: acceptance criterion #1 reframed from "config-gated by master flag" to "framing pipeline is unconditional; participation, not path, is configurable."
+  - §5.7 `merge_decisions.yaml` schema: `authoring_mode` enum updated and `sole_author_reason` field added.
+- **Rev 2 (2026-05-05):** Tightening before acceptance — domain-ownership invariants, brief immutability, parser invariants. Original review feedback bundle. (No flag changes.)
+- **Rev 1 (2026-04-30):** Initial proposal.
