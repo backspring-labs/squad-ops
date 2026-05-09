@@ -5,7 +5,7 @@
 SIP-0092 is a SIP-0086 follow-up that closes three deferred gaps in the implementation plan pipeline:
 
 - **M1 — Typed Acceptance Criteria.** Today `acceptance_criteria` is `list[str]` informational input only; FC3 in `_validate_output_focused` is `included_in_evidence`. M1 introduces typed checks, severity, a `CheckOutcome` status enum, untrusted-input safety, and validator integration.
-- **M2 — Multi-Role Plan Authoring (implemented by SIP-0093).** `_produce_plan` currently runs as a side-effect inside `GovernanceReviewPlanHandler.handle()` (`planning_tasks.py:424`). The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged 2026-05-05) selected the multi-role authoring path. M2 introduces a shared `plan_authoring_brief.yaml`, parallel domain proposers (`development.propose_plan_tasks`, `qa.propose_plan_tasks`, `strategy.propose_plan_guidance`), and a `governance.merge_plan` handler that assembles the canonical plan + `merge_decisions.yaml`. Full design in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md`; per-PR scope in `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md` (to be drafted).
+- **M2 — Multi-Role Plan Authoring (implemented by SIP-0093).** `_produce_plan` currently runs as a side-effect inside `GovernanceReviewPlanHandler.handle()` (`planning_tasks.py:424`). The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged 2026-05-05) selected the multi-role authoring path. M2 introduces a shared `plan_authoring_brief.yaml`, parallel domain proposers (`development.propose_plan_tasks`, `qa.propose_plan_tasks`, `strategy.propose_plan_guidance`), and a `governance.merge_plan` handler that assembles the canonical plan + `merge_decisions.yaml`. Full design in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md`; per-PR scope, runtime contracts, and tests in `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md`.
 - **M3 — Plan Changes.** SIP-0086 §6.1.6 specified plan changes as the immutability-preserving evolution path; nothing was implemented. M3 introduces a plan-change schema, a pure structural applier, an execution-aware validator, conservative producer-side restrictions on autonomous correction (`add_task` + `tighten_acceptance` only), and provenance metadata on change-created tasks.
 
 **SIP:** `sips/accepted/SIP-0092-Implementation-Plan-Improvement.md` (Rev 2)
@@ -302,7 +302,7 @@ Integration (`tests/integration/cycles/test_plan_acceptance.py`, new):
 
 **Path forward:** The M1 → M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged 2026-05-05) selected multi-role authoring. M2 is implemented by **SIP-0093 (Multi-Role Plan Authoring)** in five PRs (PR 93.0–93.4). The original M2 design (proposer/reviewer split with `development.plan_implementation`, `plan_review.yaml`, `plan_implementation_revise`, `review_status`, `max_planning_revisions`) is not implemented and lives in git history.
 
-**Stage scope at the SIP-0092 plan level.** The full design lives in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md`; per-PR file changes, schemas, and tests live in the SIP-0093 implementation plan doc to be drafted at `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md`. This section keeps the SIP-0092 plan doc accurate at the cross-reference level — it does not duplicate SIP-0093 content.
+**Stage scope at the SIP-0092 plan level.** The full design lives in `sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md`; per-PR file changes, schemas, runtime contracts (RC-22..RC-28), and tests live in the SIP-0093 implementation plan doc at `docs/plans/SIP-0093-multi-role-plan-authoring-plan.md`. This section keeps the SIP-0092 plan doc accurate at the cross-reference level — it does not duplicate SIP-0093 content.
 
 ### Stage commitments at the SIP-0092 level
 
@@ -507,7 +507,11 @@ M1 has concrete prod evidence forcing the issue (filename-only validation passin
 
 Gate samples are long-cycle group_run runs, defined as:
 
-- **Profile:** the `validation` profile (defined in §6.4.1 / Profile Config Examples). It runs M1 at implementation-profile depth (`max_self_eval_passes: 2`, `max_correction_attempts: 3`) with M2 and M3 still off, so the typed-check signal and correction-decision diagnostics accumulate without M2/M3 confounding the measurement. Materially longer execution budget than the historical 1-hour smoke cycles — ≥2 hours wall-clock or until natural termination, whichever comes first. The same profile shape with M2/M3 flags flipped on becomes the M2 → M3 gate's measurement profile after those stages ship.
+- **Profile:** the `validation` profile (defined in §6.4.1 / Profile Config Examples). The profile's flag values are **time-dependent** — what the profile measures changes as stages ship:
+  - **Before SIP-0093 ships (M1 → M2 gate window):** `multi_role_plan_authoring: false`, M3 flags `false`. Runs M1 at implementation-profile depth (`max_self_eval_passes: 2`, `max_correction_attempts: 3`) so the typed-check signal and correction-decision diagnostics accumulate without M2/M3 confounding the measurement. This is the form the M1 → M2 gate evaluation used.
+  - **After SIP-0093 ships (M2 → M3 gate window):** `multi_role_plan_authoring: true`, M3 flags still `false`. The same profile shape with M2 (SIP-0093) on becomes the measurement profile for the M2 → M3 gate criteria (multi-role contribution non-redundancy, sole-author fallback rate, plan-quality regression, structural-change candidate rate).
+  - **After M2 → M3 gate passes:** all flags on; the profile becomes the post-gate `implementation` target (§6.4.2).
+- **Execution budget:** materially longer than the historical 1-hour smoke cycles — ≥2 hours wall-clock or until natural termination, whichever comes first.
 - **Reaches plan-relevant execution:** the run reaches at least the planning-phase gate, exposing plan-authoring, plan-validation, plan-review (when M2 is on), or correction behavior. Runs that fail before planning completes due to **infrastructure-only failures unrelated to the plan artifact** (RabbitMQ outage, Postgres connection refused, OOM kill, cosmic-ray restart) are **excluded** from the sample.
 - **Inclusion when build-phase fails:** runs that reach planning or build and surface plan, validation, correction, or review behavior count toward the sample **even if they ultimately fail to produce a working app**. The gate is measuring whether SIP-0092's machinery is doing real work, not whether the squad is shipping perfect apps.
 
@@ -525,7 +529,7 @@ Proceed to Stage M2 only when **all** of the following hold across a tracking wi
 
 If any criterion fails, **M2 is spun out as a separate proposed SIP** (`SIP-Implementation-Plan-Reviewer-Separation`) that re-litigates the design with the evidence-in-hand.
 
-**Alternative authoring model on the table.** A sibling proposed SIP — [`SIP-Multi-Role-Plan-Authoring`](../../sips/proposed/SIP-Multi-Role-Plan-Authoring.md) — argues that both M1's combined-author/reviewer and M2's split (Neo authors, Max reviews) share a sole-broker structural property, and proposes a propose-merge model where each contributing role authors plan tasks for its domain and Max merges. The M1 → M2 gate evaluation should treat the gate's "is M2 needed?" question as "is *some* authoring change needed, and if so, which model?" — with three paths: ship M2 as written, ship the multi-role alternative, or ship neither and revisit. The evaluation doc must explicitly record which path was chosen and why; if a path other than M2-as-written wins, M2 is the spun-out SIP rather than the alternative.
+**M1 → M2 gate has completed (2026-05-05).** The selected path is **SIP-0093 (Multi-Role Plan Authoring)**, accepted on 2026-05-05 (`sips/accepted/SIP-0093-Multi-Role-Plan-Authoring.md`). The gate evaluation lives at `docs/plans/SIP-0092-gate-M1-evaluation.md`. The original SIP-0092 M2-as-written design (single proposer/reviewer split with `development.plan_implementation` / `plan_review.yaml` / revision loop) is no longer active and remains only in git history. The "three paths" framing that produced this decision is preserved here for context but should not be read as an open choice — the choice is made.
 
 ### Gate M2 → M3
 
@@ -541,6 +545,21 @@ Proceed to Stage M3 only when **all** of the following hold across ≥10 long-cy
 | Plan-quality regression check | Merged `implementation_plan.yaml` schema-validity rate ≥ baseline (per SIP §6.2.4); typed-acceptance evaluator-error rate stays under the 5% bar from the M1→M2 gate | Ensures the merge step didn't regress the artifact M1 is built on. Multi-role authoring multiplies the surface for malformed YAML; if the merger smooths that out, the rate holds. If not, fix the merger before M3. |
 
 If any criterion fails, **M3 is spun out as a separate proposed SIP** (`SIP-Implementation-Plan-Changes`) with the gate evidence appended to its motivation section.
+
+#### Required telemetry inputs to the M2 → M3 gate evaluation doc
+
+The criteria above are computed from per-cycle telemetry SIP-0093 PR 93.4 emits. The gate evaluation doc must cite these inputs (sourced from `merge_decisions.yaml` and the LangFuse traces) per cycle in scope:
+
+| Input | Source | Used by |
+|---|---|---|
+| Complete-proposal count | `merge_decisions.yaml` `proposal_completeness: complete` | C1 denominator, C2 numerator-complement |
+| Partial-proposal count | `merge_decisions.yaml` `proposal_completeness: partial` | C1 (must still show non-redundancy), gate health context |
+| Fallback count | `merge_decisions.yaml` `proposal_completeness: fallback` | C2 numerator |
+| Missing-role distribution | `merge_decisions.yaml` `missing_proposals: [...]` | Gate health context (which role is dropping out) |
+| Merge-conflict count | `merge_decisions.yaml` `brief_conflicts_disposition` rollup | Plan-quality signal beyond C4 |
+| Per-canonical-task `proposed_by` | `merge_decisions.yaml` `canonical_tasks[].proposed_by` | C1 measurement |
+
+Without these inputs visible in the evaluation doc, "the gate criteria are met" is unverifiable. The doc must list per-cycle measured values for at least the first three rows and aggregate values for the rest.
 
 #### Diagnostic field for measuring M3 demand (added during M2 tracking, before M3 ships)
 
