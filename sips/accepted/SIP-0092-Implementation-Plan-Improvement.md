@@ -417,7 +417,7 @@ The gate package separates **primary** artifacts (must appear in the operator's 
 
 - `implementation_plan.yaml` — canonical plan, M1 schema (unchanged).
 - `plan_authoring_brief.yaml` — the shared frame all proposers consumed.
-- `merge_decisions.yaml` — per-canonical-task provenance, brief-conflict dispositions, proposal completeness, missing roles, fallback markers.
+- `merge_decisions.yaml` — per-canonical-task provenance, brief-conflict dispositions, proposal completeness, missing roles, `authoring_mode` and `sole_author_reason` markers.
 - Proposal completeness status (rolled up from `merge_decisions.yaml`).
 - Fallback status when applicable (see §6.2.5).
 
@@ -443,24 +443,24 @@ Compatible criteria from different roles on the same canonical task survive merg
 
 SIP-0093 changes who authors the *original* plan; M3 governs how that plan evolves in-cycle. The two are orthogonal — M3's autonomous-correction plan changes operate on whatever original plan landed at gate, regardless of authorship model.
 
-> **M3 independence invariant.** When M3 ships, plan changes consume the canonical `implementation_plan.yaml` and do not depend on whether that plan was produced by colocated authoring (M1 substrate), single-author fallback, or SIP-0093 multi-role merge. M3 must not couple to `merge_decisions.yaml`, per-role proposal artifacts, or proposal provenance.
+> **M3 independence invariant.** When M3 ships, plan changes consume the canonical `implementation_plan.yaml` and do not depend on whether that plan was produced by sole-author mode (configured or degraded) or multi-role merge. M3 must not couple to `merge_decisions.yaml`, per-role proposal artifacts, or proposal provenance.
 
 The non-operative `structural_plan_change_candidate` diagnostic on `governance.correction_decision` (introduced as M2-tracking infrastructure for the M2→M3 gate) continues to be elicited under SIP-0093 unchanged. See SIP-0093 §5.13.
 
-#### 6.2.5 Fallback behavior
+#### 6.2.5 Sole-author mode (configured vs degraded)
 
-If all role proposals fail (LLM errors, timeouts, malformed YAML), the merger falls back to single-author plan production using the M1-substrate plan-authoring path (extracted into a shared `PlanAuthoringService` per the SIP-0092 plan doc). Fallback frequency is a tracked gate metric (M2→M3 gate criterion C2). See SIP-0093 §5.10.
+The merger always emits a canonical `implementation_plan.yaml`. When no proposals are available to merge — either because `plan_authoring_contributors` is empty (configured) or because every configured proposal failed (degraded) — the merger calls `PlanAuthoringService.produce_plan(...)` directly. Both cases use the same handler chain; there is no separate runtime route. See SIP-0093 §5.10.
 
-**SIP-0092-level fallback visibility commitment.** A silent fallback would let the operator believe a plan had multi-role coverage when it did not. Fallback MUST be explicit in `merge_decisions.yaml` and surfaced in gate metadata via the following fields:
+**SIP-0092-level sole-author visibility commitment.** A silent degradation would let the operator believe a plan had multi-role coverage when it did not. Sole-author mode MUST be explicit in `merge_decisions.yaml` and surfaced in gate metadata via:
 
-- `authoring_mode: fallback_single_author`
-- `proposal_completeness: fallback`
-- `missing_proposals` — list of role IDs whose proposals failed
-- `failure_reasons` — per-role failure summary (LLM error / timeout / malformed YAML / `source_brief_id` mismatch)
-- `fallback_producer` — identifier for the path that produced the canonical plan (`PlanAuthoringService` in Rev 1)
-- Operator warning rendered alongside the canonical plan at gate
+- `authoring_mode: sole_author`
+- `sole_author_reason: no_contributors_configured | all_proposals_failed`
+- `proposal_completeness: sole_author`
+- `missing_proposals` — list of role IDs whose proposals failed (populated on `all_proposals_failed`; empty on `no_contributors_configured`)
+- `failure_reasons` — per-role failure summary (LLM error / timeout / malformed YAML / `source_brief_id` mismatch); only populated on `all_proposals_failed`
+- Operator warning rendered alongside the canonical plan at gate **only when `sole_author_reason: all_proposals_failed`** — `no_contributors_configured` is the configured cycle mode and does not warrant a warning.
 
-Tests in SIP-0093 PR 93.4 assert that the `multi_role` + `fallback` combination is impossible (RC-26 of the SIP-0093 plan doc) and that the visibility fields are populated on every fallback cycle.
+Tests in SIP-0093 PR 93.4 assert that `multi_role` cannot coexist with `sole_author` and that the visibility fields are populated on every sole-author cycle. Degraded-sole-author frequency (`sole_author_reason: all_proposals_failed`) is a tracked gate metric (M2→M3 gate criterion C2); cycles configured as sole-author do not contribute to C2.
 
 #### 6.2.6 Executor-input invariant
 
@@ -657,8 +657,7 @@ Add to `_APPLIED_DEFAULTS_EXTRA_KEYS`:
 | `typed_acceptance` | `bool` | `true` | M1 — evaluate typed checks |
 | `command_acceptance_checks` | `bool` | `true` (false in `selftest`) | M1 — enable `command_exit_zero` |
 | `command_check_safelist` | `list[str]` | (built-in safelist, see §6.1.5) | M1 |
-| `multi_role_plan_authoring` | `bool` | `false` | M2 (SIP-0093) — enable shared-brief / propose-merge flow |
-| `plan_authoring_contributors` | `list[str]` | `["development", "qa", "strategy"]` | M2 (SIP-0093) — which roles fan out as proposers |
+| `plan_authoring_contributors` | `list[str]` | `["development", "qa", "strategy"]` | M2 (SIP-0093) — which roles fan out as proposers. `[]` skips proposer steps and yields sole-author mode through the same handler chain (no separate runtime route). |
 | `plan_changes_enabled` | `bool` | `false` | M3.2 — loader/applier reads and applies persisted plan-change artifacts |
 | `correction_plan_changes_enabled` | `bool` | `false` | M3.3 — autonomous correction protocol may emit plan changes |
 | `max_plan_changes` | `int` | `5` | M3 — plan change count ceiling per run |
@@ -667,17 +666,17 @@ The split between `plan_changes_enabled` (loader/applier) and `correction_plan_c
 
 #### 6.4.1 Profile examples — current rollout defaults
 
-The default profiles for the SIP-0092 rollout keep M2 and M3 off because their stages are conditional on milestone gates (see plan doc Milestone Gates section). M1 is enabled by default once shipped because it has prod evidence forcing the issue and is not gate-conditional.
+The default profiles for the SIP-0092 rollout keep M3 off because that stage is conditional on the M2 → M3 milestone gate (see plan doc Milestone Gates section). M1 is enabled by default once shipped because it has prod evidence forcing the issue and is not gate-conditional. M2 (SIP-0093) ships as a single runtime route after PR 93.3 cutover; profile-level participation is controlled by `plan_authoring_contributors` (empty list = sole-author mode through the same handler chain, no flag).
 
 ```yaml
-# build profile (current rollout — M1 on, M2 off, M3 off)
+# build profile (current rollout — M1 on, M2 active, M3 off)
 defaults:
   implementation_plan: true
   output_validation: true
   max_self_eval_passes: 1
   typed_acceptance: true               # M1 default-on
   command_acceptance_checks: true
-  multi_role_plan_authoring: false          # M2 (SIP-0093) awaits implementation
+  plan_authoring_contributors: ["development", "qa", "strategy"]   # M2 (SIP-0093) — full multi-role authoring
   plan_changes_enabled: false               # M3 loader awaits gate
   correction_plan_changes_enabled: false    # M3 producer awaits gate
 
@@ -692,25 +691,24 @@ defaults:
   max_correction_attempts: 3                # gives correction enough budget to surface structural-change candidates (RC-9b / diagnostic field)
   typed_acceptance: true               # M1 active
   command_acceptance_checks: true
-  multi_role_plan_authoring: true           # M2 (SIP-0093) on for gate measurement
-  plan_authoring_contributors: ["development", "qa", "strategy"]
+  plan_authoring_contributors: ["development", "qa", "strategy"]   # full multi-role for gate measurement
   plan_changes_enabled: false               # M3 loader stays off until M2→M3 gate
   correction_plan_changes_enabled: false    # M3 producer stays off
 
-# selftest profile (smoke — minimal mechanical surface, M2/M3 off)
+# selftest profile (smoke — minimal mechanical surface, sole-author authoring)
 defaults:
   typed_acceptance: true
   command_acceptance_checks: false          # static checks only
-  multi_role_plan_authoring: false          # short cycles use M1 substrate (cost analysis: SIP-0093 §6)
+  plan_authoring_contributors: []           # sole-author mode — skips proposer fan-out for short cycles (cost analysis: SIP-0093 §6)
   plan_changes_enabled: false
   correction_plan_changes_enabled: false
 ```
 
-The `validation` profile fills the gap between the shallow rollout default (`build`) and the post-gate target (`implementation`). With M1 at implementation-profile depth and M2 (SIP-0093) on, the typed-check signal, multi-role contribution non-redundancy signal, sole-author fallback rate, and correction-decision diagnostics (the M2 → M3 `structural_plan_change_candidate` field) all accumulate at the rate the M2→M3 gate requires. After M2 → M3 ships, the same profile shape with M3 flags flipped on becomes the post-M3 implementation profile.
+The `validation` profile fills the gap between the shallow rollout default (`build`) and the post-gate target (`implementation`). With M1 at implementation-profile depth and M2 (SIP-0093) running with the full contributor list, the typed-check signal, multi-role contribution non-redundancy signal, degraded-sole-author rate, and correction-decision diagnostics (the M2 → M3 `structural_plan_change_candidate` field) all accumulate at the rate the M2→M3 gate requires. After M2 → M3 ships, the same profile shape with M3 flags flipped on becomes the post-M3 implementation profile.
 
 #### 6.4.2 Profile examples — post-gate target
 
-These profiles show the **target state after the M1 → M2 and M2 → M3 milestone gates pass** and the corresponding stages ship. Do not enable these flags until the gate evaluation docs (`docs/plans/SIP-0092-gate-M{N}-evaluation.md`) are committed.
+This profile shows the **target state after the M2 → M3 milestone gate passes** and Stage M3 ships. Do not enable M3 flags until the gate evaluation doc (`docs/plans/SIP-0092-gate-M2-evaluation.md`) is committed.
 
 ```yaml
 # implementation profile (long-cycle — post-gate target, all on, deeper)
@@ -720,8 +718,7 @@ defaults:
   max_self_eval_passes: 2
   typed_acceptance: true
   command_acceptance_checks: true
-  multi_role_plan_authoring: true           # M2 (SIP-0093) on
-  plan_authoring_contributors: ["development", "qa", "strategy"]
+  plan_authoring_contributors: ["development", "qa", "strategy"]   # multi-role authoring
   plan_changes_enabled: true                # post-M3.2 ship
   correction_plan_changes_enabled: true     # post-M3.3 ship
   max_plan_changes: 8
@@ -797,9 +794,9 @@ M2 is delivered by SIP-0093 in five PRs. Full design and per-PR scope live in `s
 - **PR 93.1** — Proposal and merge schemas (`ProposedPlanTasks`, `PlanGuidance`, `MergeDecisions`); symbolic-dependency convention; brief-conflict model.
 - **PR 93.2** — Role proposer handlers (`development.propose_plan_tasks`, `qa.propose_plan_tasks`, `strategy.propose_plan_guidance`); config-gated parallel fan-out; proposal-failure handling.
 - **PR 93.3** — `governance.merge_plan` handler with deterministic merge policy and `merge_decisions.yaml` output.
-- **PR 93.4** — Single-author fallback path; proposal completeness classification; gate package; observability (authoring duration, completeness, fallback frequency, merge conflict metrics).
+- **PR 93.4** — Gate package, observability, degraded-sole-author surfacing (authoring duration, completeness, degraded-sole-author frequency, merge conflict metrics).
 
-Backward compatibility: every PR preserves M1-substrate behavior under `multi_role_plan_authoring: false`.
+Backward compatibility: PRs 93.0–93.2 are inert additions (new modules + handlers registered, not yet in `PLANNING_TASK_STEPS`); current `governance.review_plan` inline authoring keeps running unchanged. PR 93.3 is the cutover that rewires the planning pipeline and removes inline authoring atomically. After 93.3 there is one runtime route — `plan_authoring_contributors: []` opts a profile into sole-author mode through the same handler chain (no flag).
 
 ### Stage M3 — Plan Changes (3 PRs)
 
@@ -846,9 +843,9 @@ Every test must catch a specific bug per `docs/TEST_QUALITY_STANDARD.md`. No tau
 | Path/glob/regex injection from LLM-authored plans | M1 | Workspace chroot, argv-only, glob match cap, regex timeout, symlink rejection (§6.1.5). Plan is treated as untrusted input by design. |
 | Stack expansion creep in `endpoint_defined` etc. | M1 | Explicit `unsupported_stack_or_syntax` skip outcome; new stacks added only via separate scoped PR (§6.1.6). |
 | Multi-role authoring degrades to "merger rubber-stamps dev" (M2) | M2 (SIP-0093) | Merger emits `merge_decisions.yaml` with per-task provenance; M2→M3 gate criterion C1 measures non-redundancy rate (≥3/10 cycles must show non-dev contributions surviving merge). If criterion fails, the merger prompt or proposer prompts are wrong, not the architecture. |
-| All proposers fail silently; fallback masquerades as multi-role authoring | M2 (SIP-0093) | `authoring_mode: fallback_single_author` is required when fallback fires (SIP-0093 §5.10). Fallback frequency is a tracked gate metric (M2→M3 criterion C2: <20%). Fallback status is surfaced at gate. |
+| All proposers fail silently; degraded-sole-author masquerades as multi-role authoring | M2 (SIP-0093) | `authoring_mode: sole_author` with `sole_author_reason: all_proposals_failed` is required when this happens (SIP-0093 §5.10). Degraded-sole-author frequency is a tracked gate metric (M2→M3 criterion C2: <20%). Status is surfaced at gate as an explicit operator warning. Cycles configured as sole-author (`no_contributors_configured`) do not contribute to C2. |
 | Brief becomes "the plan" — proposers have no real authoring discretion | M2 (SIP-0093) | Rev 1 brief limited to six required fields (objective, stack, requirements, scope, risk) — scope-framing only, no decomposition. Optional fields earn promotion only after evidence. Brief conflicts (SIP-0093 §5.5) let proposers push back when the brief is wrong. |
-| Multi-role authoring framing-tail cost is too high for short cycles | M2 (SIP-0093) | `multi_role_plan_authoring: false` default; `selftest`/`build` profiles stay on the M1 substrate. Validation/implementation profiles opt in. Cost analysis in SIP-0093 §6 quantifies the tradeoff. |
+| Multi-role authoring framing-tail cost is too high for short cycles | M2 (SIP-0093) | Short-cycle profiles (e.g., `selftest`) set `plan_authoring_contributors: []` — the merger calls `PlanAuthoringService` directly through the same handler chain (sole-author mode, `sole_author_reason: no_contributors_configured`). One runtime route, no feature flag. Cost analysis in SIP-0093 §6 quantifies the tradeoff. |
 | Plan change storms (correction repeatedly emits changes) | M3 | `max_plan_changes: 5` bound; after exhaustion, correction limited to patch or escalate. |
 | Autonomous correction makes plan incoherent via removal/replacement | M3 | Producer-side restriction: correction protocol may only emit `add_task` and `tighten_acceptance` (§6.3.10). Schema and applier support more operations, but only operator or future `governance.replan` may produce them. |
 | Working-plan divergence between runs | M3 | Pure deterministic applier; canonical-form hashing (not raw YAML); parent-change-id chain ordering; replay tests on every PR. |
@@ -899,6 +896,13 @@ Raw-YAML hashing is the obvious approach but unstable across whitespace/key-orde
 
 ## 12. Revision History
 
+- **Rev 6 (2026-05-09):** Removed the `multi_role_plan_authoring` feature flag before any code shipped, in line with SIP-0093 Rev 3.
+  - §6.4 config keys table: dropped `multi_role_plan_authoring`. Only `plan_authoring_contributors` remains; empty list yields sole-author mode through the same handler chain.
+  - §6.4.1 / §6.4.2 profile examples rewritten without the flag. `selftest` uses `plan_authoring_contributors: []` for short-cycle cost. `build` / `validation` / `implementation` use the full contributor list.
+  - §6.2.5 reframed from "fallback behavior" to "sole-author mode (configured vs degraded)" with the new `authoring_mode: sole_author` + `sole_author_reason` taxonomy. Operator warning fires only on `all_proposals_failed`, not `no_contributors_configured`.
+  - §6.2.4 M3 independence invariant updated to reference the new sole-author terminology.
+  - §8 backward-compatibility statement rewritten: PRs 93.0–93.2 are inert additions; **PR 93.3 is the cutover** that rewires `PLANNING_TASK_STEPS` and removes inline authoring atomically; one runtime route after 93.3.
+  - §9 risk rows updated: short-cycle cost mitigation references `plan_authoring_contributors: []`, not the flag; "fallback masquerades as multi-role" risk reframed as "degraded-sole-author masquerades."
 - **Rev 5 (2026-05-09):** Targeted tightening of §6.2 (Capability M2) from review of the SIP-0093 implementation plan doc. No design changes; clarifications and explicit invariants:
   - §6.2.2 split gate-package artifacts into **primary** vs **intermediate evidence**, named the rationale (bounded operator review surface, full auditability preserved on drill-down).
   - §6.2.4 added an explicit **M3 independence invariant** — M3 plan changes operate on the canonical `implementation_plan.yaml` and must not couple to `merge_decisions.yaml`, per-role proposal artifacts, or proposal provenance.
