@@ -28,9 +28,7 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.cycle_tasks import (
-    _PRD_COVERAGE_DISCIPLINE_SECTION,
     _CycleTaskHandler,
-    _rewrite_manifest_identifiers,
 )
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -505,355 +503,78 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
         planning_content: str,
         resolved_config: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """Generate build task manifest via a dedicated LLM call.
+        """Thin shim over ``PlanAuthoringService.produce_plan`` (SIP-0093 PR 93.0).
 
-        Separate from the planning artifact generation to keep prompts focused.
-        Returns manifest artifact dict or None on graceful fallback (RC-4).
+        The body of the original ``_produce_plan`` was extracted into the
+        function-style service so SIP-0093's cutover (PR 93.3) can reuse one
+        implementation when the merger needs to author a plan directly
+        (sole-author mode). Behavior is byte-identical to the pre-extraction
+        method given the same inputs.
         """
+        from squadops.capabilities.handlers._plan_authoring_service import produce_plan
 
-        import hashlib
-
-        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-        from squadops.llm.models import ChatMessage
-
-        prd = inputs.get("prd", "")
-
-        # Constrain role choices to what the active squad profile actually has.
-        # Without this, small models invent plausible-sounding roles like
-        # 'backend_dev' that fail profile validation at impl-time.
-        profile_roles = inputs.get("profile_roles") or []
-        roles_section = (
-            f"Available roles (use ONLY these; do NOT invent new ones): "
-            f"{', '.join(profile_roles)}\n\n"
-            if profile_roles
-            else ""
+        return await produce_plan(
+            context,
+            inputs,
+            planning_content,
+            resolved_config,
+            role=self._role,
+            handler_name=self._handler_name,
+            chat_kwargs=self._build_chat_kwargs(inputs),
         )
 
-        # Constrain task_type to the known build task_types. Without this,
-        # models invent task_types like 'quality_assurance.validate' instead
-        # of the canonical 'qa.test'.
-        from squadops.cycles.implementation_plan import _KNOWN_BUILD_TASK_TYPES
 
-        allowed_task_types = sorted(_KNOWN_BUILD_TASK_TYPES)
-        task_types_section = (
-            f"Available task_types (use ONLY these; do NOT invent new ones): "
-            f"{', '.join(allowed_task_types)}\n\n"
-        )
+class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
+    """SIP-0093 PR 93.0: produce ``plan_authoring_brief.yaml``.
 
-        # SIP-0086 + SIP-0071: when the squad includes a dedicated builder,
-        # route assembly/packaging work to `builder.assemble` tasks so the
-        # builder role is actually exercised by the convergence loop.
-        has_builder = "builder" in profile_roles
-        if has_builder:
-            builder_guideline = (
-                "- Route packaging, entrypoints, requirements.txt/package.json, "
-                "Dockerfile/startup scripts, and qa_handoff.md to `builder.assemble` "
-                "tasks (role: builder). Place AFTER all `development.develop` tasks "
-                "and BEFORE any `qa.test` tasks.\n"
-            )
-            qa_handoff_guideline = ""
-            builder_example = (
-                "  - task_index: 1\n"
-                "    task_type: builder.assemble\n"
-                "    role: builder\n"
-                '    focus: "Package build output and produce qa_handoff.md"\n'
-                "    description: |\n"
-                "      Assemble packaging (entrypoints, requirements/manifest, "
-                "Dockerfile if applicable) and write qa_handoff.md summarizing "
-                "how to run and test the build.\n"
-                "    expected_artifacts:\n"
-                '      - "qa_handoff.md"\n'
-                "    acceptance_criteria:\n"
-                '      - "..."\n'
-                "    depends_on: [0]\n"
-            )
-            summary_builder_line = "  total_builder_tasks: P\n"
-            total_tasks_expr = "N+M+P"
-        else:
-            builder_guideline = ""
-            qa_handoff_guideline = "- Put QA handoff last\n"
-            builder_example = ""
-            summary_builder_line = ""
-            total_tasks_expr = "N+M"
+    The brief pins stack, scope, requirements, scope cuts, and risk areas
+    before plan-authoring fan-out so role proposers operate from one shared
+    frame. The merger consumes it (RC-22 immutability) regardless of whether
+    proposers ran or sole-author mode kicks in.
 
-        # SIP-0092 M1.3: typed-acceptance vocabulary section, examples-first.
-        # Authors may still emit prose strings — those stay informational —
-        # but typed entries are machine-evaluated and can fail the build.
-        typed_acceptance_section = (
-            "\n## Typed Acceptance Criteria (SIP-0092)\n\n"
-            "Acceptance criteria entries can be either:\n"
-            "- **Prose strings** — informational only, never block validation. Use for goals "
-            "that cannot be machine-checked.\n"
-            "- **Typed checks** — machine-evaluated against the produced artifacts. "
-            "A `severity: error` typed check that fails BLOCKS the build (triggers self-eval / correction).\n\n"
-            "Typed-check shape: a flat YAML map with `check`, optional `severity` (`error` "
-            "default | `warning` | `info`), optional `description`, plus check-specific keys.\n\n"
-            "**Vocabulary (one example each):**\n\n"
-            "```yaml\n"
-            "# endpoint_defined — FastAPI route presence (stack: fastapi)\n"
-            "- check: endpoint_defined\n"
-            "  severity: error\n"
-            '  description: "Backend exposes the user CRUD routes"\n'
-            "  file: backend/main.py\n"
-            '  methods_paths: ["GET /users", "POST /users", "DELETE /users/{uid}"]\n'
-            "\n"
-            "# import_present — Python import (or .ts/.js with frontend flag)\n"
-            "- check: import_present\n"
-            '  description: "Pydantic is wired in for request models"\n'
-            "  file: backend/main.py\n"
-            "  module: pydantic\n"
-            "  symbol: BaseModel\n"
-            "\n"
-            "# field_present — class fields on a Python dataclass / Pydantic v2 model\n"
-            "- check: field_present\n"
-            '  description: "User model carries id and email"\n'
-            "  file: backend/models.py\n"
-            "  class_name: User\n"
-            "  fields: [id, email]\n"
-            "\n"
-            "# regex_match — pattern present count_min times in a file (stack-agnostic)\n"
-            "- check: regex_match\n"
-            '  description: "At least three test functions exist"\n'
-            "  file: tests/test_users.py\n"
-            '  pattern: "def test_"\n'
-            "  count_min: 3\n"
-            "\n"
-            "# count_at_least — glob match count under workspace (stack-agnostic)\n"
-            "- check: count_at_least\n"
-            '  description: "Non-trivial component coverage on the frontend"\n'
-            '  glob: "frontend/src/components/**/*.tsx"\n'
-            "  min_count: 3\n"
-            "\n"
-            "# command_exit_zero — argv-only safelist of static checkers; cannot run shell strings\n"
-            "- check: command_exit_zero\n"
-            '  description: "Backend file syntactically valid"\n'
-            "  argv: [python, -m, py_compile, backend/main.py]\n"
-            "```\n\n"
-            "**Safety rules for `command_exit_zero`:**\n"
-            '- `argv` MUST be a YAML list, not a string. `"ruff check src/"` is rejected.\n'
-            "- Only safelisted argv shapes run: `python -m py_compile <file>`, `python -m mypy <args>`, "
-            "`node --check <file>`, `ruff check <args>`, `tsc --noEmit`, `eslint <args>`, `pyflakes <file>`. "
-            "Anything else (notably `python -c`, `python -m pip`, shell strings) errors at evaluation time — "
-            "treat the safelist as the universe.\n"
-            "- Per-command timeout is bounded; do not author long-running builds as acceptance checks.\n\n"
-            '**When in doubt, prefer typed checks over prose.** Prose like "User model exists" '
-            "is a good candidate to typed-encode as `field_present` against the actual class.\n"
-        )
+    Registered in this PR but **not** wired into ``PLANNING_TASK_STEPS`` —
+    that's the cutover PR (93.3). The handler is reachable in tests and via
+    direct invocation only.
+    """
 
-        manifest_prompt = (
-            "Based on the following PRD and planning artifact, produce a build task "
-            "manifest that decomposes the upcoming build into focused subtasks.\n\n"
-            f"{roles_section}"
-            f"{task_types_section}"
-            f"## PRD\n{prd}\n\n"
-            f"## Planning Artifact\n{planning_content}\n\n"
-            "Each subtask should:\n"
-            "1. Have a clear, narrow focus (e.g., 'Backend data models' not 'Build the app')\n"
-            "2. List the specific files it should produce\n"
-            "3. Declare dependencies on prior subtasks by task_index\n"
-            "4. Define acceptance criteria — prefer typed checks; see the section below\n"
-            "5. Be completable in a single focused LLM generation (~2-10 minutes)\n\n"
-            "Decomposition guidelines:\n"
-            "- Separate backend and frontend into distinct tasks\n"
-            "- Separate models/data from API endpoints/routes\n"
-            "- Separate UI shell/routing from individual view components\n"
-            "- Put integration config (CORS, proxy, requirements) in its own task\n"
-            "- Put tests after the code they test\n"
-            f"{builder_guideline}"
-            f"{qa_handoff_guideline}"
-            f"{typed_acceptance_section}"
-            "\n"
-            # Issue #112 (real fix): wires the shared PRD-coverage discipline
-            # into the framing-time prompt that actually produces the
-            # implementation_plan.yaml. Same source-of-truth string as
-            # cycle_tasks.py:_MANIFEST_PROMPT_EXTENSION uses.
-            f"{_PRD_COVERAGE_DISCIPLINE_SECTION}"
-            "\n"
-            # Issue #109: substitute authoritative identifiers so Max
-            # never has to invent project_id / cycle_id / prd_hash. The
-            # parsed manifest is also rewritten at extract time as
-            # defense in depth.
-            "Output ONLY the manifest as a YAML code block with filename tag. "
-            "The first three fields below are pre-filled with the cycle's "
-            "authoritative values — copy them verbatim, do not invent or "
-            "modify them:\n"
-            "```yaml:implementation_plan.yaml\n"
-            "version: 1\n"
-            f"project_id: {context.project_id or '(unknown)'}\n"
-            f"cycle_id: {context.cycle_id or '(unknown)'}\n"
-            f"prd_hash: {hashlib.sha256(prd.encode()).hexdigest() if prd else '(unknown)'}\n"
-            "tasks:\n"
-            "  - task_index: 0\n"
-            "    task_type: development.develop\n"
-            "    role: dev\n"
-            '    focus: "..."\n'
-            "    description: |\n"
-            "      ...\n"
-            "    expected_artifacts:\n"
-            '      - "path/to/file"\n'
-            "    acceptance_criteria:\n"
-            '      - "..."\n'
-            "    depends_on: []\n"
-            f"{builder_example}"
-            "summary:\n"
-            "  total_dev_tasks: N\n"
-            "  total_qa_tasks: M\n"
-            f"{summary_builder_line}"
-            f"  total_tasks: {total_tasks_expr}\n"
-            "  estimated_layers: [backend, frontend, test, config]\n"
-            "```\n"
-        )
+    _handler_name = "governance_prepare_plan_authoring_brief_handler"
+    _capability_id = "governance.prepare_plan_authoring_brief"
+    _role = "lead"
+    _artifact_name = "plan_authoring_brief.yaml"
 
-        assembled = context.ports.prompt_service.get_system_prompt(self._role)
-        chat_kwargs = self._build_chat_kwargs(inputs)
-        min_subtasks = resolved_config.get("min_build_subtasks", 3)
-        max_subtasks = resolved_config.get("max_build_subtasks", 15)
+    async def handle(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+    ) -> HandlerResult:
+        result = await super().handle(context, inputs)
+        if not result.success:
+            return result
 
-        # Retry loop: small models occasionally produce malformed YAML or
-        # off-bounds manifests. Re-prompt with the specific error so the
-        # model can correct itself before falling back to static steps.
-        max_attempts = int(resolved_config.get("manifest_max_attempts", 2))
-        messages = [
-            ChatMessage(role="system", content=assembled.content),
-            ChatMessage(role="user", content=manifest_prompt),
-        ]
+        # Override the artifact shape produced by the base — the brief is YAML,
+        # not markdown — and validate that the LLM emitted a parseable brief.
+        from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
 
-        for attempt in range(1, max_attempts + 1):
-            try:
-                response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
-            except Exception as exc:
-                logger.warning(
-                    "assess_readiness: manifest LLM call failed on attempt %d/%d (%s)",
-                    attempt,
-                    max_attempts,
-                    exc,
-                )
-                if attempt >= max_attempts:
-                    return None
-                messages = messages[:2]  # reset and try once more from scratch
-                continue
-
-            # Extract manifest YAML — prefer filename-tagged fence
-            extracted = extract_fenced_files(response.content)
-            manifest_files = [f for f in extracted if f["filename"] == "implementation_plan.yaml"]
-            if manifest_files:
-                yaml_content = manifest_files[0]["content"]
-            else:
-                yaml_content = self._find_manifest_yaml(response.content)
-
-            manifest, error_msg = self._validate_manifest_candidate(
-                yaml_content, min_subtasks, max_subtasks, profile_roles
-            )
-
-            if error_msg is None and manifest is not None:
-                logger.info(
-                    "assess_readiness: produced build task manifest with %d subtasks on attempt %d",
-                    len(manifest.tasks),
-                    attempt,
-                )
-                # Issue #109: overwrite identifiers with authoritative
-                # values before persisting so a structurally-valid plan
-                # with fabricated project_id/cycle_id/prd_hash can't
-                # poison downstream lookups.
-                yaml_content = _rewrite_manifest_identifiers(
-                    yaml_content,
-                    project_id=context.project_id,
-                    cycle_id=context.cycle_id,
-                    prd_hash=hashlib.sha256(prd.encode()).hexdigest() if prd else "",
-                    handler_name=self._handler_name,
-                )
-                return {
-                    "name": "implementation_plan.yaml",
-                    "content": yaml_content,
-                    "media_type": "text/yaml",
-                    "type": "control_implementation_plan",
-                }
-
-            logger.warning(
-                "assess_readiness: manifest attempt %d/%d failed (%s)",
-                attempt,
-                max_attempts,
-                error_msg,
-            )
-            if attempt >= max_attempts:
-                logger.warning(
-                    "assess_readiness: exhausted %d manifest attempts, "
-                    "falling back to static task steps",
-                    max_attempts,
-                )
-                return None
-
-            # Append corrective feedback for the next attempt.
-            messages = [
-                *messages,
-                ChatMessage(role="assistant", content=response.content),
-                ChatMessage(role="user", content=error_msg),
-            ]
-
-        return None
-
-    @staticmethod
-    def _validate_manifest_candidate(
-        yaml_content: str | None,
-        min_subtasks: int,
-        max_subtasks: int,
-        profile_roles: list[str],
-    ) -> tuple[Any | None, str | None]:
-        """Validate a candidate plan YAML. Returns (plan, error_msg).
-
-        error_msg is None iff the plan is valid; in that case the first return
-        is the parsed ImplementationPlan. The error_msg is the corrective
-        feedback appended to the next LLM attempt.
-        """
-        from squadops.cycles.implementation_plan import ImplementationPlan
-
-        if yaml_content is None:
-            return None, (
-                "Your response did not contain a fenced YAML block tagged "
-                "implementation_plan.yaml. Reply with ONLY the fenced block."
-            )
+        artifact = result.outputs["artifacts"][0]
+        artifact["media_type"] = "text/yaml"
+        artifact["type"] = "plan_authoring_brief"
 
         try:
-            manifest = ImplementationPlan.from_yaml(yaml_content)
+            PlanAuthoringBrief.from_yaml(artifact["content"])
         except ValueError as exc:
-            return None, (
-                f"The previous plan YAML failed validation: {exc}. "
-                "Produce a corrected implementation_plan.yaml. "
-                "Quote every file path; do not put parenthetical comments "
-                "after quoted strings on list items."
+            logger.warning(
+                "%s: LLM produced an unparseable brief: %s",
+                self._handler_name,
+                exc,
+            )
+            return HandlerResult(
+                success=False,
+                outputs={},
+                _evidence=result._evidence,
+                error=f"plan_authoring_brief.yaml failed to parse: {exc}",
             )
 
-        n = len(manifest.tasks)
-        if n < min_subtasks or n > max_subtasks:
-            return None, (
-                f"The previous manifest had {n} subtasks; bounds are "
-                f"{min_subtasks}-{max_subtasks}. Produce a corrected "
-                "implementation_plan.yaml within bounds."
-            )
-
-        if profile_roles:
-            allowed = set(profile_roles)
-            bad = sorted({t.role for t in manifest.tasks if t.role not in allowed})
-            if bad:
-                return None, (
-                    f"The previous manifest used role(s) not in the "
-                    f"squad profile: {', '.join(bad)}. "
-                    f"Use ONLY these roles: {', '.join(profile_roles)}. "
-                    "Produce a corrected implementation_plan.yaml."
-                )
-
-        return manifest, None
-
-    @staticmethod
-    def _find_manifest_yaml(content: str) -> str | None:
-        """Search for untagged ```yaml block with manifest content."""
-        import re
-
-        for match in re.finditer(r"```yaml\s*\n(.*?)```", content, re.DOTALL):
-            block = match.group(1).strip()
-            if "task_index" in block and "task_type" in block and "focus" in block:
-                return block
-        return None
+        return result
 
 
 # ---------------------------------------------------------------------------
