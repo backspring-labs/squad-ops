@@ -121,6 +121,13 @@ def _make_context(
     ports.llm = llm
     ports.prompt_service = prompt_service
     ports.llm_observability = None
+    # Matches the established SIP-0084 migration pattern across planning
+    # handler tests: leave renderer=None so handlers exercise their inline
+    # fallback path. Issue #140's renderer-path is asserted in
+    # tests/unit/capabilities/test_plan_authoring_service.py via an explicit
+    # renderer mock; injecting one here would short-circuit every planning
+    # handler's first-LLM-call assertions (which inspect prompt content
+    # produced by ``_build_user_prompt``).
     ports.request_renderer = None
 
     ctx = MagicMock()
