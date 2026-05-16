@@ -510,66 +510,38 @@ class TestPRDCoverageDisciplineReachesManifestPrompt:
         )
 
     async def test_manifest_prompt_includes_coverage_discipline(self):
-        """End-to-end: when GovernanceReviewPlanHandler runs with
-        implementation_plan enabled, the SECOND LLM call (the manifest
-        producer) must include the discipline text. The first call
-        (planning artifact) does not."""
-        ctx = _make_context()
-        # Two responses: first is planning artifact, second is the manifest.
-        ctx.ports.llm.chat_stream_with_usage.side_effect = [
-            MagicMock(content=VALID_PLANNING_ARTIFACT),
-            MagicMock(content=self._MANIFEST_BLOCK),
-        ]
+        """Issue #112 regression anchor migrated to the service after the
+        SIP-0093 PR 93.3 cutover. Manifest authoring no longer lives in
+        the review_plan handler — it lives in
+        ``_plan_authoring_service.produce_plan``, invoked by the merger
+        for sole-author cycles. The coverage-discipline text MUST still
+        reach the LLM call's user prompt.
+        """
+        from squadops.capabilities.handlers._plan_authoring_service import produce_plan
 
-        h = GovernanceReviewPlanHandler()
-        await h.handle(
+        ctx = _make_context(self._MANIFEST_BLOCK)
+        # Run with renderer=None so the inline fallback path executes —
+        # that's the path the LLM-call-args assertion inspects. The
+        # renderer path is covered by test_plan_authoring_service.py's
+        # registry-integration tests.
+        await produce_plan(
             ctx,
-            {
-                "prd": "Build app. qa_handoff.md must contain ## Expected Behavior.",
-                "resolved_config": {"implementation_plan": True},
-                "profile_roles": ["lead", "dev", "qa"],
-            },
-        )
-
-        calls = ctx.ports.llm.chat_stream_with_usage.call_args_list
-        assert len(calls) == 2, f"expected 2 LLM calls, got {len(calls)}"
-
-        # First call = planning artifact prompt; should NOT mention coverage discipline
-        first_user = calls[0][0][0][1].content
-        assert "PRD Coverage Discipline" not in first_user
-
-        # Second call = manifest prompt; MUST mention coverage discipline
-        second_user = calls[1][0][0][1].content
-        assert "PRD Coverage Discipline" in second_user, (
-            "manifest prompt missing PRD coverage discipline — issue #112 regression"
-        )
-        # And the worked example case the discipline cites — pinning the
-        # specific defect class so a future prompt rewrite that strips
-        # the qa_handoff example fails loudly.
-        assert "## Expected Behavior" in second_user
-        assert "qa_handoff.md" in second_user
-
-    async def test_manifest_prompt_omits_discipline_when_implementation_plan_disabled(self):
-        """Defensive: when implementation_plan is off, _produce_plan
-        is not called — only one LLM call (planning artifact), and the
-        discipline text shouldn't appear (it would be misleading without
-        a manifest to author)."""
-        ctx = _make_context(llm_response=VALID_PLANNING_ARTIFACT)
-
-        h = GovernanceReviewPlanHandler()
-        await h.handle(
-            ctx,
-            {
-                "prd": "Build app",
-                "resolved_config": {"implementation_plan": False},
-                "profile_roles": ["lead", "dev", "qa"],
-            },
+            {"prd": "Build app. qa_handoff.md must contain ## Expected Behavior."},
+            planning_content="## Plan",
+            resolved_config={"profile_roles": ["lead", "dev", "qa"]},
+            role="lead",
+            handler_name="test_harness",
+            chat_kwargs={},
         )
 
         calls = ctx.ports.llm.chat_stream_with_usage.call_args_list
         assert len(calls) == 1
         user_msg = calls[0][0][0][1].content
-        assert "PRD Coverage Discipline" not in user_msg
+        assert "PRD Coverage Discipline" in user_msg, (
+            "manifest prompt missing PRD coverage discipline — issue #112 regression"
+        )
+        assert "## Expected Behavior" in user_msg
+        assert "qa_handoff.md" in user_msg
 
 
 # ---------------------------------------------------------------------------
@@ -919,12 +891,23 @@ class TestProduceManifestIdentifierRewrite:
     to invent them."""
 
     async def _call(self, ctx, prd: str = "Build a widget") -> dict | None:
-        h = GovernanceReviewPlanHandler()
-        return await h._produce_plan(
+        """Service-direct invocation after SIP-0093 PR 93.3 cutover.
+
+        ``GovernanceReviewPlanHandler._produce_plan`` was removed; the
+        identifier-rewrite invariant lives in the service path that the
+        merger's sole-author fallback uses. The test continues to pin
+        the behavior at its new home.
+        """
+        from squadops.capabilities.handlers._plan_authoring_service import produce_plan
+
+        return await produce_plan(
             ctx,
-            inputs={"prd": prd},
+            {"prd": prd},
             planning_content="plan",
             resolved_config={},
+            role="lead",
+            handler_name="test_harness",
+            chat_kwargs={},
         )
 
     async def test_rewrites_fabricated_identifiers(self):
@@ -978,15 +961,26 @@ class TestProduceManifestRetry:
         resolved_config: dict | None = None,
         profile_roles: list[str] | None = None,
     ) -> dict | None:
-        h = GovernanceReviewPlanHandler()
+        """Service-direct invocation after SIP-0093 PR 93.3 cutover.
+
+        ``GovernanceReviewPlanHandler._produce_plan`` was removed; the
+        retry-with-corrective-feedback behavior lives in the service the
+        merger's sole-author fallback calls. The retry-shape coverage
+        these tests provide stays valuable at the service boundary.
+        """
+        from squadops.capabilities.handlers._plan_authoring_service import produce_plan
+
         inputs: dict = {"prd": "Build a widget"}
         if profile_roles is not None:
             inputs["profile_roles"] = profile_roles
-        return await h._produce_plan(
+        return await produce_plan(
             ctx,
-            inputs=inputs,
+            inputs,
             planning_content="plan",
             resolved_config=resolved_config or {},
+            role="lead",
+            handler_name="test_harness",
+            chat_kwargs={},
         )
 
     async def test_valid_manifest_on_first_attempt_no_retry(self):

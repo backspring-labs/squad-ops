@@ -54,6 +54,7 @@ from squadops.capabilities.handlers.planning_tasks import (
     DevelopmentDesignPlanHandler,
     DevelopmentProposePlanTasksHandler,
     GovernanceIncorporateFeedbackHandler,
+    GovernanceMergePlanHandler,
     GovernancePreparePlanAuthoringBriefHandler,
     GovernanceReviewPlanHandler,
     QADefineTestStrategyHandler,
@@ -144,12 +145,15 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     # SIP-0093 PR 93.0: brief handler registered but not yet wired into
     # PLANNING_TASK_STEPS (cutover happens in PR 93.3).
     (GovernancePreparePlanAuthoringBriefHandler, ("lead",)),
-    # SIP-0093 PR 93.2: proposer handlers registered but not yet wired into
-    # PLANNING_TASK_STEPS (cutover happens in PR 93.3). Each is
-    # invocable via direct dispatch / tests.
+    # SIP-0093 PR 93.2: proposer handlers — now wired into PLANNING_TASK_STEPS
+    # via build_planning_steps() per plan_authoring_contributors config.
     (DevelopmentProposePlanTasksHandler, ("dev",)),
     (QaProposePlanTasksHandler, ("qa",)),
     (StrategyProposePlanGuidanceHandler, ("strat",)),
+    # SIP-0093 PR 93.3 cutover: deterministic merger. Runs after the
+    # proposer fan-out (or directly after the brief in sole-author mode);
+    # produces canonical implementation_plan.yaml + merge_decisions.yaml.
+    (GovernanceMergePlanHandler, ("lead",)),
     # Refinement handlers (SIP-0078: Planning Workload Protocol)
     (GovernanceIncorporateFeedbackHandler, ("lead",)),
     (QAValidateRefinementHandler, ("qa",)),

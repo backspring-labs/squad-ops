@@ -123,9 +123,12 @@ def _run(workload_type=None):
 
 
 class TestPlanningWorkload:
-    def test_produces_5_planning_envelopes(self, cycle, full_profile):
+    def test_produces_7_planning_envelopes_in_sole_author_mode(self, cycle, full_profile):
+        """SIP-0093 PR 93.3 cutover: framing sequence is
+        4 framing + brief + merger + review_plan = 7 in sole-author mode
+        (no plan_authoring_contributors configured)."""
         envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
-        assert len(envelopes) == 5
+        assert len(envelopes) == 7
 
     def test_task_types_match_planning_steps(self, cycle, full_profile):
         envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
@@ -141,7 +144,9 @@ class TestPlanningWorkload:
 
     def test_agent_ids_resolved_from_profile(self, cycle, full_profile):
         envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
-        expected = ["data-agent", "nat", "neo", "eve", "max"]
+        # SIP-0093 PR 93.3: brief + merger + review_plan are all the lead role,
+        # so 3 'max' entries close out the sequence.
+        expected = ["data-agent", "nat", "neo", "eve", "max", "max", "max"]
         assert [e.agent_id for e in envelopes] == expected
 
     def test_shared_correlation_and_trace_ids(self, cycle, full_profile):
@@ -283,8 +288,9 @@ class TestLegacyBackwardCompat:
             applied_defaults={"plan_tasks": True, "build_tasks": True},
         )
         envelopes = generate_task_plan(cycle_with_flags, _run("framing"), full_profile)
-        # Should produce 5 planning steps, NOT 5 plan + 2 build
-        assert len(envelopes) == 5
+        # SIP-0093 PR 93.3 cutover: framing produces 7 envelopes
+        # (4 framing + brief + merger + review_plan), NOT 5 + 2 build.
+        assert len(envelopes) == 7
         actual = [e.task_type for e in envelopes]
         expected = [s[0] for s in PLANNING_TASK_STEPS]
         assert actual == expected

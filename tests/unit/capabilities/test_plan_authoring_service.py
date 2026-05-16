@@ -256,23 +256,31 @@ async def test_produce_plan_returns_none_when_llm_call_raises(seeded_inputs):
 
 
 # ---------------------------------------------------------------------------
-# PR 93.0 side-effect absence — the still-active governance.review_plan path
-# must NOT silently emit SIP-0093 artifacts
+# Cutover anchor (SIP-0093 PR 93.3) — review_plan no longer authors the plan
 # ---------------------------------------------------------------------------
 
 
-async def test_governance_review_plan_emits_only_planning_and_manifest_artifacts():
-    """``GovernanceReviewPlanHandler.handle()`` produces exactly two
-    artifacts: ``planning_artifact.md`` and ``implementation_plan.yaml``.
-    No SIP-0093 brief / proposals / guidance / merge_decisions leak into
-    the pre-cutover route."""
+async def test_governance_review_plan_emits_only_planning_artifact_post_cutover():
+    """``GovernanceReviewPlanHandler.handle()`` emits **only** the planning
+    artifact after the SIP-0093 PR 93.3 cutover.
+
+    Before 93.3: the handler emitted both ``planning_artifact.md`` and
+    ``implementation_plan.yaml`` (the latter via the inline
+    ``_produce_plan`` method, since removed).
+
+    After 93.3: the merger (``governance.merge_plan``) runs upstream of
+    review_plan and emits both ``implementation_plan.yaml`` and
+    ``merge_decisions.yaml``. The review handler is sign-off only — its
+    artifact is just the consolidated planning narrative with frontmatter.
+
+    This test was the PR-93.0 side-effect-absence anchor; in 93.3 it
+    becomes the cutover regression anchor. If a future PR reintroduces
+    implementation_plan.yaml here, the cutover broke.
+    """
     planning_artifact = "---\nreadiness: go\nsufficiency_score: 4\n---\n\n## Plan\n\nLooks good.\n"
-    # Two LLM calls happen: first returns the planning artifact, second
-    # returns the manifest. Use side_effect to script them in order.
     ctx = _make_context()
     ctx.ports.llm.chat_stream_with_usage.side_effect = [
         MagicMock(content=planning_artifact),
-        MagicMock(content=_SEEDED_LLM_RESPONSE),
     ]
 
     handler = GovernanceReviewPlanHandler()
@@ -283,26 +291,35 @@ async def test_governance_review_plan_emits_only_planning_and_manifest_artifacts
             "profile_roles": ["lead", "dev", "qa"],
             "prior_outputs": {"data": "...", "strat": "..."},
             "resolved_config": {
+                # implementation_plan flag is now ignored — the merger
+                # always runs. Setting it does NOT cause this handler to
+                # author a plan.
                 "implementation_plan": True,
-                "min_build_subtasks": 3,
-                "max_build_subtasks": 15,
             },
         },
     )
 
     assert result.success is True
     artifact_names = [a["name"] for a in result.outputs["artifacts"]]
-    assert artifact_names == ["planning_artifact.md", "implementation_plan.yaml"]
-    # Explicit absence assertion — none of the SIP-0093 artifacts should leak.
-    forbidden_in_pr_93_0 = {
+    assert artifact_names == ["planning_artifact.md"], (
+        f"Cutover regression: review_plan emitted {artifact_names!r}. "
+        "After SIP-0093 PR 93.3 it must emit only planning_artifact.md; "
+        "implementation_plan.yaml comes from governance.merge_plan upstream."
+    )
+    # Only one LLM call (the planning-artifact synthesis). The pre-93.3
+    # path made a second call for manifest authoring.
+    assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+    # The merger's artifacts come from upstream — never from this handler.
+    upstream_only = {
         "plan_authoring_brief.yaml",
         "proposed_plan_tasks.yaml",
         "plan_guidance.yaml",
         "merge_decisions.yaml",
+        "implementation_plan.yaml",  # now upstream too
     }
-    assert forbidden_in_pr_93_0.isdisjoint(artifact_names), (
-        f"Pre-cutover governance.review_plan must not emit SIP-0093 artifacts; "
-        f"found: {set(artifact_names) & forbidden_in_pr_93_0}"
+    assert upstream_only.isdisjoint(artifact_names), (
+        f"Cutover regression: review_plan emitted an upstream artifact; "
+        f"found: {set(artifact_names) & upstream_only}"
     )
 
 
