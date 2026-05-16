@@ -52,12 +52,15 @@ from squadops.capabilities.handlers.impl.repair_handlers import (
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
+    DevelopmentProposePlanTasksHandler,
     GovernanceIncorporateFeedbackHandler,
     GovernancePreparePlanAuthoringBriefHandler,
     GovernanceReviewPlanHandler,
     QADefineTestStrategyHandler,
+    QaProposePlanTasksHandler,
     QAValidateRefinementHandler,
     StrategyFrameObjectiveHandler,
+    StrategyProposePlanGuidanceHandler,
 )
 from squadops.capabilities.handlers.qa import (
     TestExecutionHandler,
@@ -141,6 +144,12 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     # SIP-0093 PR 93.0: brief handler registered but not yet wired into
     # PLANNING_TASK_STEPS (cutover happens in PR 93.3).
     (GovernancePreparePlanAuthoringBriefHandler, ("lead",)),
+    # SIP-0093 PR 93.2: proposer handlers registered but not yet wired into
+    # PLANNING_TASK_STEPS (cutover happens in PR 93.3). Each is
+    # invocable via direct dispatch / tests.
+    (DevelopmentProposePlanTasksHandler, ("dev",)),
+    (QaProposePlanTasksHandler, ("qa",)),
+    (StrategyProposePlanGuidanceHandler, ("strat",)),
     # Refinement handlers (SIP-0078: Planning Workload Protocol)
     (GovernanceIncorporateFeedbackHandler, ("lead",)),
     (QAValidateRefinementHandler, ("qa",)),

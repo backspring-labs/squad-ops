@@ -58,6 +58,24 @@ PLANNING_FRAGMENTS = [
         "roles": ["lead"],
     },
     {
+        "fragment_id": "task_type.development.propose_plan_tasks",
+        "path": "shared/task_type/task_type.development.propose_plan_tasks.md",
+        "layer": "task_type",
+        "roles": ["dev"],
+    },
+    {
+        "fragment_id": "task_type.qa.propose_plan_tasks",
+        "path": "shared/task_type/task_type.qa.propose_plan_tasks.md",
+        "layer": "task_type",
+        "roles": ["qa"],
+    },
+    {
+        "fragment_id": "task_type.strategy.propose_plan_guidance",
+        "path": "shared/task_type/task_type.strategy.propose_plan_guidance.md",
+        "layer": "task_type",
+        "roles": ["strat"],
+    },
+    {
         "fragment_id": "task_type.governance.incorporate_feedback",
         "path": "shared/task_type/task_type.governance.incorporate_feedback.md",
         "layer": "task_type",
@@ -179,11 +197,13 @@ class TestPlanningFragmentsContent:
         assert len(content) > 50, f"Fragment content too short: {len(content)} chars"
 
     def test_task_type_fragments_total(self):
-        """Exactly 17 task_type fragments exist:
+        """Exactly 20 task_type fragments exist:
         5 planning + 2 refinement + 5 wrap-up + 3 SIP-0079 impl
         (analyze_failure, correction_decision, establish_contract —
         moved out of hardcoded constants in impl/*.py) +
-        2 SIP-0093 (prepare_plan_authoring_brief, review_plan_manifest)."""
+        5 SIP-0093 (prepare_plan_authoring_brief, review_plan_manifest,
+        development.propose_plan_tasks, qa.propose_plan_tasks,
+        strategy.propose_plan_guidance)."""
         task_type_dir = FRAGMENTS_DIR / "shared" / "task_type"
         md_files = list(task_type_dir.glob("*.md"))
-        assert len(md_files) == 17
+        assert len(md_files) == 20
