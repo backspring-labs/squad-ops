@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Union
 
 import yaml
 
@@ -32,7 +31,6 @@ from squadops.cycles.implementation_plan import (
     TypedCheck,
     _parse_acceptance_criteria,
 )
-
 
 _FOCUS_NORMALIZE_RE = re.compile(r"\s+")
 
@@ -79,17 +77,78 @@ class ProposedTask:
     focus: str
     description: str
     expected_artifacts: list[str] = field(default_factory=list)
-    acceptance_criteria: list[Union[str, TypedCheck]] = field(default_factory=list)
+    acceptance_criteria: list[str | TypedCheck] = field(default_factory=list)
     depends_on_focus: list[str] = field(default_factory=list)
+
+
+_VALID_BRIEF_CONFLICT_SEVERITIES = frozenset({"warning", "blocking"})
+
+
+@dataclass(frozen=True)
+class BriefConflict:
+    """A proposer's structured disagreement with the shared brief (SIP-0093 §5.5).
+
+    Raised in a proposal's ``brief_conflicts`` list when a role believes the
+    brief contradicts the PRD, omits a requirement, or pins a stack/scope
+    choice the role can't honor. The merger resolves each conflict per its
+    severity:
+
+    - ``warning``: merger may resolve unilaterally; disposition recorded.
+    - ``blocking``: merger escalates to operator at gate; canonical plan
+      still emits, blocking conflict surfaces in ``operator_notes``.
+
+    Attributes:
+        brief_field: which brief field the conflict targets (e.g.,
+            ``accepted_stack``, ``must_cover_requirements``, ``scope_cuts``).
+        proposed_change: what the proposer wants done instead.
+        reason: why — typically a citation to the upstream PRD or a
+            correctness argument.
+        severity: ``warning`` or ``blocking``.
+        affected_proposal_task_keys: focus_keys of tasks in this proposal
+            that depend on the conflict's resolution. Empty if the conflict
+            is informational.
+    """
+
+    brief_field: str
+    proposed_change: str
+    reason: str
+    severity: str
+    affected_proposal_task_keys: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class ProposedRoleTasks:
-    """A single role's plan-task proposal."""
+    """A single role's plan-task proposal (SIP-0093 §5.4.1).
+
+    Required fields (Rev 1):
+        version, proposal_id, source_brief_id, proposing_role, scope_statement.
+
+    The ``source_brief_id`` ties the proposal to an immutable
+    ``plan_authoring_brief.yaml`` (RC-22); the merger rejects proposals that
+    cite a brief other than the one it received.
+
+    ``brief_conflicts`` defaults empty — most proposals will have none.
+
+    Recommended optional fields (parsed if present, no validation beyond
+    YAML shape): ``source_artifact_refs``, ``assumptions``, ``risks``,
+    ``gaps_not_covered``, ``confidence``. These are LLM-output fields that
+    populate inconsistently even when required (per SIP-0093 §5.4.1) — kept
+    optional so a proposer that fails to surface its assumptions doesn't
+    invalidate an otherwise good proposal.
+    """
 
     version: int
+    proposal_id: str
+    source_brief_id: str
     proposing_role: str
+    scope_statement: str
     tasks: list[ProposedTask] = field(default_factory=list)
+    brief_conflicts: list[BriefConflict] = field(default_factory=list)
+    source_artifact_refs: list[str] = field(default_factory=list)
+    assumptions: list[str] = field(default_factory=list)
+    risks: list[str] = field(default_factory=list)
+    gaps_not_covered: list[str] = field(default_factory=list)
+    confidence: str = ""
 
     @classmethod
     def from_yaml(cls, content: str) -> ProposedRoleTasks:
@@ -113,7 +172,16 @@ class ProposedRoleTasks:
         if not isinstance(data, dict):
             raise ValueError("Proposal must be a YAML mapping at the top level")
 
-        for key in ("version", "proposing_role"):
+        # Order matters for error-test stability: version + proposing_role first,
+        # then SIP-0093 PR 93.1 requireds. Each test asserting on a specific
+        # missing-field message expects its target to be checked first.
+        for key in (
+            "version",
+            "proposing_role",
+            "proposal_id",
+            "source_brief_id",
+            "scope_statement",
+        ):
             if key not in data:
                 raise ValueError(f"Proposal missing required field: {key}")
 
@@ -125,6 +193,18 @@ class ProposedRoleTasks:
         if not proposing_role:
             raise ValueError("Proposal proposing_role must be non-empty")
 
+        proposal_id = str(data["proposal_id"]).strip()
+        if not proposal_id:
+            raise ValueError("Proposal proposal_id must be non-empty")
+
+        source_brief_id = str(data["source_brief_id"]).strip()
+        if not source_brief_id:
+            raise ValueError("Proposal source_brief_id must be non-empty")
+
+        scope_statement = str(data["scope_statement"]).strip()
+        if not scope_statement:
+            raise ValueError("Proposal scope_statement must be non-empty")
+
         raw_tasks = data.get("tasks", [])
         if not isinstance(raw_tasks, list):
             raise ValueError("Proposal tasks must be a list")
@@ -132,55 +212,146 @@ class ProposedRoleTasks:
         seen_keys: set[str] = set()
         parsed: list[ProposedTask] = []
         for i, td in enumerate(raw_tasks):
-            if not isinstance(td, dict):
-                raise ValueError(f"Proposal task {i} must be a mapping")
+            parsed.append(_parse_proposed_task(td, i, seen_keys))
 
-            for req in ("task_type", "role", "focus", "description"):
-                if req not in td:
-                    raise ValueError(f"Proposal task {i} missing required field: {req}")
+        brief_conflicts = _parse_brief_conflicts(data.get("brief_conflicts", []))
 
-            role = str(td["role"]).strip()
-            focus = str(td["focus"]).strip()
-            if not focus:
-                raise ValueError(f"Proposal task {i} focus must be non-empty")
-
-            key = focus_key(role, focus)
-            if key in seen_keys:
-                raise ValueError(
-                    f"Proposal task {i} focus collides with an earlier task: {key!r}. "
-                    "Proposers must use distinct focus values within a single proposal."
-                )
-            seen_keys.add(key)
-
-            depends_on_focus = td.get("depends_on_focus", [])
-            if not isinstance(depends_on_focus, list):
-                raise ValueError(f"Proposal task {i} depends_on_focus must be a list")
-            depends_on_focus = [str(x).strip() for x in depends_on_focus if str(x).strip()]
-
-            raw_criteria = td.get("acceptance_criteria", [])
-            if not isinstance(raw_criteria, list):
-                raise ValueError(f"Proposal task {i} acceptance_criteria must be a list")
-            criteria = _parse_acceptance_criteria(raw_criteria, i)
-
-            expected_artifacts = td.get("expected_artifacts", [])
-            if not isinstance(expected_artifacts, list):
-                raise ValueError(f"Proposal task {i} expected_artifacts must be a list")
-
-            parsed.append(
-                ProposedTask(
-                    task_type=str(td["task_type"]).strip(),
-                    role=role,
-                    focus=focus,
-                    description=str(td["description"]).strip(),
-                    expected_artifacts=[str(a) for a in expected_artifacts],
-                    acceptance_criteria=criteria,
-                    depends_on_focus=depends_on_focus,
-                )
-            )
-
-        return cls(version=version, proposing_role=proposing_role, tasks=parsed)
+        return cls(
+            version=version,
+            proposal_id=proposal_id,
+            source_brief_id=source_brief_id,
+            proposing_role=proposing_role,
+            scope_statement=scope_statement,
+            tasks=parsed,
+            brief_conflicts=brief_conflicts,
+            source_artifact_refs=_parse_str_list(data.get("source_artifact_refs", [])),
+            assumptions=_parse_str_list(data.get("assumptions", [])),
+            risks=_parse_str_list(data.get("risks", [])),
+            gaps_not_covered=_parse_str_list(data.get("gaps_not_covered", [])),
+            confidence=str(data.get("confidence", "")).strip(),
+        )
 
     def task_keys(self) -> list[str]:
         """Canonical keys for this proposal's tasks — used by the merger
         to resolve ``depends_on_focus`` references across proposals."""
         return [focus_key(t.role, t.focus) for t in self.tasks]
+
+
+def _parse_proposed_task(td: object, i: int, seen_keys: set[str]) -> ProposedTask:
+    """Parse a single ``ProposedTask`` entry, enforcing required fields,
+    focus_key uniqueness, and RC-24 (no integer ``depends_on_focus``).
+
+    Pulled out of ``ProposedRoleTasks.from_yaml`` so the parent parser
+    stays under ruff's C901 complexity bound.
+    """
+    if not isinstance(td, dict):
+        raise ValueError(f"Proposal task {i} must be a mapping")
+
+    for req in ("task_type", "role", "focus", "description"):
+        if req not in td:
+            raise ValueError(f"Proposal task {i} missing required field: {req}")
+
+    role = str(td["role"]).strip()
+    focus = str(td["focus"]).strip()
+    if not focus:
+        raise ValueError(f"Proposal task {i} focus must be non-empty")
+
+    key = focus_key(role, focus)
+    if key in seen_keys:
+        raise ValueError(
+            f"Proposal task {i} focus collides with an earlier task: {key!r}. "
+            "Proposers must use distinct focus values within a single proposal."
+        )
+    seen_keys.add(key)
+
+    depends_on_focus = td.get("depends_on_focus", [])
+    if not isinstance(depends_on_focus, list):
+        raise ValueError(f"Proposal task {i} depends_on_focus must be a list")
+    # RC-24: reject integer entries. Proposers don't know their numeric
+    # task_index — only the merger assigns those. An int here means the
+    # proposer leaked a numbering assumption from somewhere.
+    for j, entry in enumerate(depends_on_focus):
+        if isinstance(entry, bool) or isinstance(entry, int):
+            raise ValueError(
+                f"Proposal task {i} depends_on_focus[{j}] must be a "
+                f"focus_key string, not an integer (RC-24): {entry!r}"
+            )
+    depends_on_focus = [str(x).strip() for x in depends_on_focus if str(x).strip()]
+
+    raw_criteria = td.get("acceptance_criteria", [])
+    if not isinstance(raw_criteria, list):
+        raise ValueError(f"Proposal task {i} acceptance_criteria must be a list")
+    criteria = _parse_acceptance_criteria(raw_criteria, i)
+
+    expected_artifacts = td.get("expected_artifacts", [])
+    if not isinstance(expected_artifacts, list):
+        raise ValueError(f"Proposal task {i} expected_artifacts must be a list")
+
+    return ProposedTask(
+        task_type=str(td["task_type"]).strip(),
+        role=role,
+        focus=focus,
+        description=str(td["description"]).strip(),
+        expected_artifacts=[str(a) for a in expected_artifacts],
+        acceptance_criteria=criteria,
+        depends_on_focus=depends_on_focus,
+    )
+
+
+def _parse_str_list(raw: object) -> list[str]:
+    """Coerce an optional YAML scalar/list field to a list of strings.
+
+    Best-effort: scalar becomes single-element list; list elements get
+    stringified; anything else surfaces as a parse error so the merger
+    can drop the proposal cleanly.
+    """
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    raise ValueError(
+        f"Optional list field must be a YAML list or null, got {type(raw).__name__}"
+    )
+
+
+def _parse_brief_conflicts(raw: object) -> list[BriefConflict]:
+    """Parse the optional ``brief_conflicts`` list (SIP-0093 §5.5)."""
+    if raw is None or raw == "":
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(
+            f"brief_conflicts must be a YAML list, got {type(raw).__name__}"
+        )
+
+    parsed: list[BriefConflict] = []
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            raise ValueError(f"brief_conflicts[{i}] must be a mapping")
+
+        for req in ("brief_field", "proposed_change", "reason", "severity"):
+            if req not in entry:
+                raise ValueError(f"brief_conflicts[{i}] missing required field: {req}")
+
+        severity = str(entry["severity"]).strip().lower()
+        if severity not in _VALID_BRIEF_CONFLICT_SEVERITIES:
+            raise ValueError(
+                f"brief_conflicts[{i}] severity must be one of "
+                f"{sorted(_VALID_BRIEF_CONFLICT_SEVERITIES)}, got {entry['severity']!r}"
+            )
+
+        affected = entry.get("affected_proposal_task_keys", [])
+        if not isinstance(affected, list):
+            raise ValueError(
+                f"brief_conflicts[{i}] affected_proposal_task_keys must be a list"
+            )
+
+        parsed.append(
+            BriefConflict(
+                brief_field=str(entry["brief_field"]).strip(),
+                proposed_change=str(entry["proposed_change"]).strip(),
+                reason=str(entry["reason"]).strip(),
+                severity=severity,
+                affected_proposal_task_keys=[str(k).strip() for k in affected if str(k).strip()],
+            )
+        )
+    return parsed
