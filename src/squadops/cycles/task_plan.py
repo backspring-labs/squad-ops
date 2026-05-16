@@ -55,14 +55,88 @@ BUILDER_ASSEMBLY_TASK_STEPS: list[tuple[str, str]] = [
     ("qa.test", "qa"),
 ]
 
-# Framing task steps (SIP-0078 §5.3) — the pre-build sequence run during a framing workload
+# Framing task steps — pre-SIP-0093 backbone. The four upstream framing
+# tasks (data → strategy → dev → qa) are stable. The post-framing tail
+# changes after SIP-0093 PR 93.3 cutover: brief → proposers → merger →
+# review_plan. The full sequence is built by ``build_planning_steps``
+# below, which threads in the proposer steps per ``plan_authoring_contributors``.
 PLANNING_TASK_STEPS: list[tuple[str, str]] = [
     ("data.research_context", "data"),
     ("strategy.frame_objective", "strat"),
     ("development.design_plan", "dev"),
     ("qa.define_test_strategy", "qa"),
+    ("governance.prepare_plan_authoring_brief", "lead"),
+    ("governance.merge_plan", "lead"),
     ("governance.review_plan", "lead"),
 ]
+
+
+# Per SIP-0093 §5.3: role → (task_type, role_id) mapping for the proposer
+# steps the framing sequence inserts between brief and merger when that
+# role is in ``plan_authoring_contributors``.
+_PLAN_AUTHORING_PROPOSER_STEPS: dict[str, tuple[str, str]] = {
+    "development": ("development.propose_plan_tasks", "dev"),
+    "qa": ("qa.propose_plan_tasks", "qa"),
+    "strategy": ("strategy.propose_plan_guidance", "strat"),
+}
+
+# Rev 1 contributor vocabulary. ``build`` is reserved for Rev 2 (SIP-0093
+# §5.12 — builder-role proposer). Reject early so a typo or premature
+# config doesn't silently drop a proposer.
+_VALID_PLAN_AUTHORING_CONTRIBUTORS = frozenset({"development", "qa", "strategy"})
+
+
+def build_planning_steps(
+    plan_authoring_contributors: list[str] | None,
+) -> list[tuple[str, str]]:
+    """Return the framing task sequence per SIP-0093 PR 93.3 cutover.
+
+    The sequence is:
+    1. Framing tail (data → strategy → dev → qa) — always.
+    2. ``governance.prepare_plan_authoring_brief`` — always.
+    3. Proposer steps for each role in ``plan_authoring_contributors``,
+       in canonical order (development, qa, strategy). Sequential per
+       Rev 1 (parallel fan-out deferred — see plan-doc amendment).
+    4. ``governance.merge_plan`` — always.
+    5. ``governance.review_plan`` (sign-off only) — always.
+
+    Empty contributors list → no proposer steps; the merger runs in
+    sole-author mode (``no_contributors_configured``).
+
+    Raises:
+        CycleError: if any contributor in the list isn't in
+            ``_VALID_PLAN_AUTHORING_CONTRIBUTORS``. Rejecting at sequence-
+            build time fails the cycle early rather than running a partial
+            pipeline that drops the misconfigured proposer.
+    """
+    contributors = list(plan_authoring_contributors or [])
+    unknown = set(contributors) - _VALID_PLAN_AUTHORING_CONTRIBUTORS
+    if unknown:
+        raise CycleError(
+            "plan_authoring_contributors contains unsupported roles: "
+            f"{sorted(unknown)}. Rev 1 supports "
+            f"{sorted(_VALID_PLAN_AUTHORING_CONTRIBUTORS)}."
+        )
+
+    steps: list[tuple[str, str]] = [
+        ("data.research_context", "data"),
+        ("strategy.frame_objective", "strat"),
+        ("development.design_plan", "dev"),
+        ("qa.define_test_strategy", "qa"),
+        ("governance.prepare_plan_authoring_brief", "lead"),
+    ]
+    # Canonical order: development first (largest contribution surface),
+    # then qa (gap-catching pen), then strategy (overlay).
+    for role in ("development", "qa", "strategy"):
+        if role in contributors:
+            steps.append(_PLAN_AUTHORING_PROPOSER_STEPS[role])
+    steps.extend(
+        [
+            ("governance.merge_plan", "lead"),
+            ("governance.review_plan", "lead"),
+        ]
+    )
+    return steps
 
 # Refinement task steps (SIP-0078 §5.10)
 REFINEMENT_TASK_STEPS: list[tuple[str, str]] = [
@@ -181,7 +255,10 @@ def _check_required_roles(
 
 
 def _resolve_workload_steps(
-    workload_type: str, profile: SquadProfile, profile_roles: set[str]
+    workload_type: str,
+    profile: SquadProfile,
+    profile_roles: set[str],
+    resolved_config: dict | None = None,
 ) -> tuple[list, bool]:
     """Select task steps and builder flag based on workload type (SIP-0078)."""
     if workload_type not in _KNOWN_WORKLOAD_TYPES:
@@ -194,7 +271,11 @@ def _resolve_workload_steps(
 
     if workload_type == WorkloadType.FRAMING:
         _check_required_roles(profile.profile_id, REQUIRED_PLAN_ROLES, profile_roles)
-        steps = list(PLANNING_TASK_STEPS)
+        # SIP-0093 PR 93.3: framing sequence is dynamic per
+        # plan_authoring_contributors config. Empty/missing contributors
+        # → sole-author route through the merger.
+        contributors = (resolved_config or {}).get("plan_authoring_contributors")
+        steps = build_planning_steps(contributors)
     elif workload_type == WorkloadType.REFINEMENT:
         _check_required_roles(
             profile.profile_id, REQUIRED_REFINEMENT_ROLES, profile_roles, "refinement"
@@ -269,8 +350,15 @@ def generate_task_plan(
     """
     profile_roles = {a.role for a in profile.agents if a.enabled}
 
+    # SIP-0093 PR 93.3: framing workload threads plan_authoring_contributors
+    # through resolved_config so the proposer steps are added/skipped per
+    # cycle config. Other workload types ignore the extra argument.
+    resolved_config = {**cycle.applied_defaults, **cycle.execution_overrides}
+
     if run.workload_type is not None:
-        steps, builder_used = _resolve_workload_steps(run.workload_type, profile, profile_roles)
+        steps, builder_used = _resolve_workload_steps(
+            run.workload_type, profile, profile_roles, resolved_config
+        )
     else:
         steps, builder_used = _resolve_legacy_steps(cycle, profile, profile_roles)
 
@@ -283,9 +371,6 @@ def generate_task_plan(
     # Shared lineage IDs for the entire plan
     correlation_id = uuid4().hex
     trace_id = uuid4().hex
-
-    # Resolved config = applied_defaults merged with execution_overrides
-    resolved_config = {**cycle.applied_defaults, **cycle.execution_overrides}
 
     # Routing reason for build step metadata (D14)
     routing_reason = ROUTING_BUILDER_PRESENT if builder_used else ROUTING_FALLBACK_NO_BUILDER
