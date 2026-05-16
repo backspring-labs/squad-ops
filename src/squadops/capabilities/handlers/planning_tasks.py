@@ -578,6 +578,431 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
 
 
 # ---------------------------------------------------------------------------
+# 3 Proposer handlers (SIP-0093 PR 93.2)
+#
+# Three handlers that contribute domain-scoped plan-authoring artifacts:
+# development.propose_plan_tasks, qa.propose_plan_tasks, and
+# strategy.propose_plan_guidance. Registered but NOT wired into
+# PLANNING_TASK_STEPS — cutover happens in PR 93.3. The handlers are
+# reachable via direct dispatch and in tests until then.
+#
+# Each handler:
+#   1. Reads plan_authoring_brief.yaml from prior_outputs["artifact_contents"]
+#      (RC-22: brief is immutable upstream context).
+#   2. Renders its user prompt from a registered template that surfaces the
+#      brief content, planning_content, proposal_id, source_brief_id.
+#   3. Assembles its system prompt via prompt_service.assemble(..., task_type=
+#      self._capability_id) — task-type fragments live in
+#      src/squadops/prompts/fragments/shared/task_type/.
+#   4. Runs retry_yaml_call (SIP-0093 _plan_authoring helper) for up to
+#      manifest_max_attempts attempts with corrective feedback on each
+#      parse failure.
+#   5. Enforces source_brief_id matching the upstream brief's brief_id.
+#   6. On success: emits the parseable artifact (proposed_plan_tasks.yaml or
+#      plan_guidance.yaml).
+#   7. On exhausted failure: emits a ProposalFailure artifact (RC-23) rather
+#      than an exception that kills the cycle. The merger (PR 93.3) reads
+#      these as "this role's proposal is missing."
+# ---------------------------------------------------------------------------
+
+
+_PROPOSAL_MAX_ATTEMPTS_DEFAULT = 2
+
+
+def _extract_brief_id_from_prior_outputs(prior_outputs: dict[str, Any] | None) -> str | None:
+    """Pull the upstream brief_id out of a pre-resolved artifact-contents map.
+
+    The pipeline pre-resolver (wired by PR 93.3 cutover) puts the brief's
+    YAML content into ``prior_outputs["artifact_contents"]["plan_authoring_brief.yaml"]``.
+    Returns ``None`` if the brief isn't in prior_outputs (caller decides
+    whether that's a hard failure or an empty-context proposer call).
+    """
+    if not prior_outputs:
+        return None
+    contents = prior_outputs.get("artifact_contents")
+    if not isinstance(contents, dict):
+        return None
+    brief_yaml = contents.get("plan_authoring_brief.yaml")
+    if not brief_yaml:
+        return None
+    try:
+        from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
+
+        return PlanAuthoringBrief.from_yaml(brief_yaml).brief_id
+    except ValueError:
+        return None
+
+
+def _format_planning_content(prior_outputs: dict[str, Any] | None) -> str:
+    """Concatenate non-brief planning artifacts for the user-prompt context.
+
+    Filters out the brief itself (surfaced separately as ``brief_content``)
+    and the artifact_contents key. Renders remaining role outputs as
+    Markdown sections so the proposer sees the framing artifacts as a
+    single narrative.
+    """
+    if not prior_outputs:
+        return "(no upstream framing artifacts)"
+    parts: list[str] = []
+
+    contents = prior_outputs.get("artifact_contents")
+    if isinstance(contents, dict):
+        for name, content in contents.items():
+            if name == "plan_authoring_brief.yaml":
+                continue
+            parts.append(f"### {name}\n{content}")
+
+    for key, value in prior_outputs.items():
+        if key in ("artifact_contents",):
+            continue
+        if isinstance(value, dict) and "summary" in value:
+            parts.append(f"### {key}\n{value['summary']}")
+
+    return "\n\n".join(parts) if parts else "(no upstream framing artifacts)"
+
+
+class _ProposeBaseHandler(_PlanningTaskHandler):
+    """Shared shape for the three SIP-0093 proposer handlers.
+
+    Subclasses pin ``_capability_id``, ``_role``, ``_request_template_id``,
+    ``_proposer_role`` (the value that appears in ``proposing_role`` of the
+    parsed artifact), and implement ``_parse_and_validate``. The base
+    drives the retry loop, surfaces the parsed artifact on success, and
+    emits a ``ProposalFailure`` artifact on exhaustion (RC-23).
+    """
+
+    _success_artifact_name: str = ""  # subclasses override
+    _success_artifact_type: str = ""  # subclasses override
+    _proposer_role: str = ""  # subclasses override — appears as proposing_role in YAML
+
+    def _failure_artifact_name(self) -> str:
+        # capability_id with dots → underscores, plus _failure.yaml — a
+        # filename the merger can pattern-match without parsing.
+        return self._capability_id.replace(".", "_") + "_failure.yaml"
+
+    def _parse_and_validate(
+        self,
+        yaml_content: str | None,
+        expected_brief_id: str | None,
+    ) -> tuple[Any | None, str | None]:
+        """Subclass-specific parse + validate.
+
+        Returns ``(parsed_obj, error_msg)``. ``error_msg is None`` means
+        accept; otherwise the message becomes corrective feedback for the
+        next retry attempt.
+        """
+        raise NotImplementedError
+
+    def _build_render_variables(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any],
+    ) -> dict[str, str]:
+        import uuid
+
+        brief_content = "(brief not yet provided — direct-invocation context)"
+        if prior_outputs:
+            contents = prior_outputs.get("artifact_contents")
+            if isinstance(contents, dict):
+                brief_content = contents.get("plan_authoring_brief.yaml", brief_content)
+
+        brief_id = _extract_brief_id_from_prior_outputs(prior_outputs) or "(unknown)"
+        proposal_id = inputs.get("proposal_id") or f"prop-{uuid.uuid4().hex[:8]}"
+
+        profile_roles = inputs.get("profile_roles") or []
+        roles_section = ""
+        if profile_roles:
+            roles_section = (
+                "## Available roles in this squad\n\n"
+                f"{', '.join(profile_roles)}\n\n"
+            )
+
+        builder_section = ""
+        if "builder" in profile_roles and self._role != "builder":
+            builder_section = (
+                "## Builder role present\n\n"
+                "This squad includes a dedicated builder role. Do NOT propose "
+                "packaging, requirements files, Dockerfile, startup scripts, "
+                "or qa_handoff.md tasks — those are the builder's domain. "
+                "Reference builder tasks via ``depends_on_focus`` if your "
+                "tasks need their outputs.\n\n"
+            )
+
+        return {
+            "brief_content": brief_content,
+            "planning_content": _format_planning_content(prior_outputs),
+            "proposal_id": proposal_id,
+            "source_brief_id": brief_id,
+            "prd": prd,
+            "roles_section": roles_section,
+            "builder_section": builder_section,
+            "typed_acceptance_vocabulary": "",  # task-type fragment carries the vocabulary
+        }
+
+    async def handle(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+    ) -> HandlerResult:
+        from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
+
+        start_time = time.perf_counter()
+
+        prd = inputs.get("prd", "")
+        prior_outputs = inputs.get("prior_outputs")
+        resolved_config = inputs.get("resolved_config", {})
+        expected_brief_id = _extract_brief_id_from_prior_outputs(prior_outputs)
+
+        # Render user prompt via the registered template (SIP-0084).
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            # No renderer in test contexts: emit a structured failure rather
+            # than constructing an inline duplicate. This handler family is
+            # new (PR 93.2) — tests inject a renderer mock, no migration
+            # baggage to accommodate.
+            return self._build_failure_result(
+                start_time,
+                inputs,
+                "llm_error",
+                f"{self._handler_name} requires request_renderer port",
+            )
+
+        variables = self._build_render_variables(prd, prior_outputs, inputs)
+        rendered = await renderer.render(self._request_template_id, variables)
+        user_prompt = rendered.content
+
+        assembled = context.ports.prompt_service.assemble(
+            role=self._role,
+            hook="agent_start",
+            task_type=self._capability_id,
+        )
+        system_prompt = assembled.content
+
+        max_attempts = int(
+            resolved_config.get("proposal_max_attempts", _PROPOSAL_MAX_ATTEMPTS_DEFAULT)
+        )
+        chat_kwargs = self._build_chat_kwargs(inputs)
+
+        def parse_and_validate(yaml_or_none: str | None) -> tuple[Any | None, str | None]:
+            return self._parse_and_validate(yaml_or_none, expected_brief_id)
+
+        parsed, last_yaml, last_error = await retry_yaml_call(
+            llm=context.ports.llm,
+            chat_kwargs=chat_kwargs,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            parse_and_validate=parse_and_validate,
+            max_attempts=max_attempts,
+            handler_name=self._handler_name,
+        )
+
+        if parsed is None:
+            failure_reason = self._classify_failure(last_error, last_yaml)
+            return self._build_failure_result(
+                start_time,
+                inputs,
+                failure_reason,
+                last_error or "exhausted retry budget without parseable output",
+            )
+
+        return self._build_success_result(start_time, inputs, last_yaml or "")
+
+    def _classify_failure(self, last_error: str | None, last_yaml: str | None) -> str:
+        """Map the retry loop's last error to a ProposalFailure failure_reason."""
+        if not last_error:
+            return "malformed_yaml" if not last_yaml else "schema_validation_error"
+        lowered = last_error.lower()
+        if "brief" in lowered and "mismatch" in lowered:
+            return "mismatched_brief_id"
+        if "malformed" in lowered or "yaml" in lowered:
+            return "malformed_yaml"
+        if last_yaml is None:
+            return "malformed_yaml"
+        return "schema_validation_error"
+
+    def _build_success_result(
+        self,
+        start_time: float,
+        inputs: dict[str, Any],
+        yaml_content: str,
+    ) -> HandlerResult:
+        outputs = {
+            "summary": f"[{self._role}] proposal produced for {self._capability_id}",
+            "role": self._role,
+            "artifacts": [
+                {
+                    "name": self._success_artifact_name,
+                    "content": yaml_content,
+                    "media_type": "text/yaml",
+                    "type": self._success_artifact_type,
+                },
+            ],
+        }
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+        )
+        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+
+    def _build_failure_result(
+        self,
+        start_time: float,
+        inputs: dict[str, Any],
+        failure_reason: str,
+        details: str,
+    ) -> HandlerResult:
+        """Emit a ProposalFailure artifact (RC-23) — the cycle continues.
+
+        Returns ``HandlerResult(success=True, ...)`` so the cycle pipeline
+        keeps moving and the merger gets a chance to read this artifact.
+        The "failure" is captured inside the artifact, not at the
+        HandlerResult layer.
+        """
+        from squadops.cycles.proposal_failure import ProposalFailure
+
+        failure = ProposalFailure(
+            proposer_role=self._proposer_role,
+            failure_reason=failure_reason,
+            details=details,
+        )
+        outputs = {
+            "summary": (
+                f"[{self._role}] proposal failed ({failure_reason}) — "
+                f"failure record emitted for merger"
+            ),
+            "role": self._role,
+            "artifacts": [
+                {
+                    "name": self._failure_artifact_name(),
+                    "content": failure.to_yaml(),
+                    "media_type": "text/yaml",
+                    "type": "proposal_failure",
+                },
+            ],
+        }
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+        )
+        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
+
+
+class DevelopmentProposePlanTasksHandler(_ProposeBaseHandler):
+    """SIP-0093 PR 93.2: development-domain plan-task proposer."""
+
+    _handler_name = "development_propose_plan_tasks_handler"
+    _capability_id = "development.propose_plan_tasks"
+    _role = "dev"
+    _request_template_id = "request.development_propose_plan_tasks"
+    _success_artifact_name = "proposed_plan_tasks.yaml"
+    _success_artifact_type = "proposed_plan_tasks"
+    _proposer_role = "development"
+
+    def _parse_and_validate(
+        self,
+        yaml_content: str | None,
+        expected_brief_id: str | None,
+    ) -> tuple[Any | None, str | None]:
+        from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
+
+        if yaml_content is None:
+            return None, "No fenced YAML block found. Emit your proposal in a ```yaml:proposed_plan_tasks.yaml``` block."
+        try:
+            proposal = ProposedRoleTasks.from_yaml(yaml_content)
+        except ValueError as exc:
+            return None, f"proposed_plan_tasks.yaml failed to parse: {exc}"
+        if expected_brief_id and proposal.source_brief_id != expected_brief_id:
+            return None, (
+                f"brief_id mismatch: proposal cites {proposal.source_brief_id!r}, "
+                f"upstream brief is {expected_brief_id!r}. Use the upstream brief_id verbatim."
+            )
+        if proposal.proposing_role not in ("development", "dev"):
+            return None, (
+                f"proposing_role must be 'development' for this handler, "
+                f"got {proposal.proposing_role!r}"
+            )
+        return proposal, None
+
+
+class QaProposePlanTasksHandler(_ProposeBaseHandler):
+    """SIP-0093 PR 93.2: qa-domain plan-task proposer."""
+
+    _handler_name = "qa_propose_plan_tasks_handler"
+    _capability_id = "qa.propose_plan_tasks"
+    _role = "qa"
+    _request_template_id = "request.qa_propose_plan_tasks"
+    _success_artifact_name = "proposed_plan_tasks.yaml"
+    _success_artifact_type = "proposed_plan_tasks"
+    _proposer_role = "qa"
+
+    def _parse_and_validate(
+        self,
+        yaml_content: str | None,
+        expected_brief_id: str | None,
+    ) -> tuple[Any | None, str | None]:
+        from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
+
+        if yaml_content is None:
+            return None, "No fenced YAML block found. Emit your proposal in a ```yaml:proposed_plan_tasks.yaml``` block."
+        try:
+            proposal = ProposedRoleTasks.from_yaml(yaml_content)
+        except ValueError as exc:
+            return None, f"proposed_plan_tasks.yaml failed to parse: {exc}"
+        if expected_brief_id and proposal.source_brief_id != expected_brief_id:
+            return None, (
+                f"brief_id mismatch: proposal cites {proposal.source_brief_id!r}, "
+                f"upstream brief is {expected_brief_id!r}. Use the upstream brief_id verbatim."
+            )
+        if proposal.proposing_role != "qa":
+            return None, (
+                f"proposing_role must be 'qa' for this handler, "
+                f"got {proposal.proposing_role!r}"
+            )
+        return proposal, None
+
+
+class StrategyProposePlanGuidanceHandler(_ProposeBaseHandler):
+    """SIP-0093 PR 93.2: strategy plan-authoring guidance proposer."""
+
+    _handler_name = "strategy_propose_plan_guidance_handler"
+    _capability_id = "strategy.propose_plan_guidance"
+    _role = "strat"
+    _request_template_id = "request.strategy_propose_plan_guidance"
+    _success_artifact_name = "plan_guidance.yaml"
+    _success_artifact_type = "plan_guidance"
+    _proposer_role = "strategy"
+
+    def _parse_and_validate(
+        self,
+        yaml_content: str | None,
+        expected_brief_id: str | None,
+    ) -> tuple[Any | None, str | None]:
+        from squadops.cycles.plan_guidance import PlanGuidance
+
+        if yaml_content is None:
+            return None, "No fenced YAML block found. Emit your guidance in a ```yaml:plan_guidance.yaml``` block."
+        try:
+            guidance = PlanGuidance.from_yaml(yaml_content)
+        except ValueError as exc:
+            return None, f"plan_guidance.yaml failed to parse: {exc}"
+        if expected_brief_id and guidance.source_brief_id != expected_brief_id:
+            return None, (
+                f"brief_id mismatch: guidance cites {guidance.source_brief_id!r}, "
+                f"upstream brief is {expected_brief_id!r}. Use the upstream brief_id verbatim."
+            )
+        return guidance, None
+
+
+# ---------------------------------------------------------------------------
 # 2 Refinement handlers (SIP-0078 §5.10)
 # ---------------------------------------------------------------------------
 
