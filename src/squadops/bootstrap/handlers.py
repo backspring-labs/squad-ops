@@ -53,6 +53,7 @@ from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
     GovernanceIncorporateFeedbackHandler,
+    GovernancePreparePlanAuthoringBriefHandler,
     GovernanceReviewPlanHandler,
     QADefineTestStrategyHandler,
     QAValidateRefinementHandler,
@@ -137,6 +138,9 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (DevelopmentDesignPlanHandler, ("dev",)),
     (QADefineTestStrategyHandler, ("qa",)),
     (GovernanceReviewPlanHandler, ("lead",)),
+    # SIP-0093 PR 93.0: brief handler registered but not yet wired into
+    # PLANNING_TASK_STEPS (cutover happens in PR 93.3).
+    (GovernancePreparePlanAuthoringBriefHandler, ("lead",)),
     # Refinement handlers (SIP-0078: Planning Workload Protocol)
     (GovernanceIncorporateFeedbackHandler, ("lead",)),
     (QAValidateRefinementHandler, ("qa",)),

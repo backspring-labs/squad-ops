@@ -488,14 +488,18 @@ class TestPRDCoverageDisciplineReachesManifestPrompt:
         "```\n"
     )
 
-    def test_planning_tasks_imports_shared_constant(self):
-        """Defense against a future refactor that drops the import."""
-        from squadops.capabilities.handlers import planning_tasks
+    def test_plan_authoring_service_imports_shared_constant(self):
+        """Defense against a future refactor that drops the import.
 
-        assert hasattr(planning_tasks, "_PRD_COVERAGE_DISCIPLINE_SECTION"), (
-            "planning_tasks must import _PRD_COVERAGE_DISCIPLINE_SECTION — without "
-            "it the framing-time manifest prompt loses PRD-coverage discipline and "
-            "regresses to the cycle-5 defect (cyc_7febd710e565)"
+        The manifest prompt lives in the plan-authoring service module after
+        SIP-0093 PR 93.0 extraction — that's the path the constant must reach.
+        """
+        from squadops.capabilities.handlers import _plan_authoring_service
+
+        assert hasattr(_plan_authoring_service, "_PRD_COVERAGE_DISCIPLINE_SECTION"), (
+            "_plan_authoring_service must import _PRD_COVERAGE_DISCIPLINE_SECTION — "
+            "without it the framing-time manifest prompt loses PRD-coverage "
+            "discipline and regresses to the cycle-5 defect (cyc_7febd710e565)"
         )
 
     async def test_manifest_prompt_includes_coverage_discipline(self):
