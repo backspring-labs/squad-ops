@@ -168,63 +168,43 @@ async def produce_plan(
         "is a good candidate to typed-encode as `field_present` against the actual class.\n"
     )
 
-    manifest_prompt = (
-        "Based on the following PRD and planning artifact, produce a build task "
-        "manifest that decomposes the upcoming build into focused subtasks.\n\n"
-        f"{roles_section}"
-        f"{task_types_section}"
-        f"## PRD\n{prd}\n\n"
-        f"## Planning Artifact\n{planning_content}\n\n"
-        "Each subtask should:\n"
-        "1. Have a clear, narrow focus (e.g., 'Backend data models' not 'Build the app')\n"
-        "2. List the specific files it should produce\n"
-        "3. Declare dependencies on prior subtasks by task_index\n"
-        "4. Define acceptance criteria — prefer typed checks; see the section below\n"
-        "5. Be completable in a single focused LLM generation (~2-10 minutes)\n\n"
-        "Decomposition guidelines:\n"
-        "- Separate backend and frontend into distinct tasks\n"
-        "- Separate models/data from API endpoints/routes\n"
-        "- Separate UI shell/routing from individual view components\n"
-        "- Put integration config (CORS, proxy, requirements) in its own task\n"
-        "- Put tests after the code they test\n"
-        f"{builder_guideline}"
-        f"{qa_handoff_guideline}"
-        f"{typed_acceptance_section}"
-        "\n"
-        f"{_PRD_COVERAGE_DISCIPLINE_SECTION}"
-        "\n"
-        "Output ONLY the manifest as a YAML code block with filename tag. "
-        "The first three fields below are pre-filled with the cycle's "
-        "authoritative values — copy them verbatim, do not invent or "
-        "modify them:\n"
-        "```yaml:implementation_plan.yaml\n"
-        "version: 1\n"
-        f"project_id: {context.project_id or '(unknown)'}\n"
-        f"cycle_id: {context.cycle_id or '(unknown)'}\n"
-        f"prd_hash: {hashlib.sha256(prd.encode()).hexdigest() if prd else '(unknown)'}\n"
-        "tasks:\n"
-        "  - task_index: 0\n"
-        "    task_type: development.develop\n"
-        "    role: dev\n"
-        '    focus: "..."\n'
-        "    description: |\n"
-        "      ...\n"
-        "    expected_artifacts:\n"
-        '      - "path/to/file"\n'
-        "    acceptance_criteria:\n"
-        '      - "..."\n'
-        "    depends_on: []\n"
-        f"{builder_example}"
-        "summary:\n"
-        "  total_dev_tasks: N\n"
-        "  total_qa_tasks: M\n"
-        f"{summary_builder_line}"
-        f"  total_tasks: {total_tasks_expr}\n"
-        "  estimated_layers: [backend, frontend, test, config]\n"
-        "```\n"
-    )
+    template_variables = {
+        "prd": prd,
+        "planning_content": planning_content,
+        "typed_acceptance_section": typed_acceptance_section,
+        "prd_coverage_discipline": _PRD_COVERAGE_DISCIPLINE_SECTION,
+        "project_id": context.project_id or "(unknown)",
+        "cycle_id": context.cycle_id or "(unknown)",
+        "prd_hash": hashlib.sha256(prd.encode()).hexdigest() if prd else "(unknown)",
+        "total_tasks_expr": total_tasks_expr,
+        "roles_section": roles_section,
+        "task_types_section": task_types_section,
+        "builder_guideline": builder_guideline,
+        "qa_handoff_guideline": qa_handoff_guideline,
+        "builder_example": builder_example,
+        "summary_builder_line": summary_builder_line,
+    }
 
-    assembled = context.ports.prompt_service.get_system_prompt(role)
+    # Issue #140 / SIP-0084: the registered template is the authoritative
+    # source in production. The inline fallback below matches the surrounding
+    # planning_tasks.py pattern — test contexts that don't inject a renderer
+    # exercise the fallback. When the broader SIP-0084 migration retires
+    # renderer=None test contexts, this fallback goes away.
+    renderer = getattr(context.ports, "request_renderer", None)
+    if renderer is not None:
+        rendered = await renderer.render(
+            "request.governance_review_plan_manifest",
+            template_variables,
+        )
+        manifest_prompt = rendered.content
+    else:
+        manifest_prompt = _build_manifest_user_prompt_inline(template_variables)
+
+    assembled = context.ports.prompt_service.assemble(
+        role=role,
+        hook="agent_start",
+        task_type="governance.review_plan_manifest",
+    )
     min_subtasks = resolved_config.get("min_build_subtasks", 3)
     max_subtasks = resolved_config.get("max_build_subtasks", 15)
 
@@ -304,6 +284,73 @@ async def produce_plan(
         ]
 
     return None
+
+
+def _build_manifest_user_prompt_inline(v: dict[str, str]) -> str:
+    """Inline reproduction of ``request.governance_review_plan_manifest``.
+
+    Kept in sync with the registered template at
+    ``src/squadops/prompts/request_templates/request.governance_review_plan_manifest.md``.
+    Used only when ``context.ports.request_renderer`` is unavailable — see the
+    SIP-0084 migration note at the call site. Production cycles always have
+    a renderer injected; tests that exercise this path are exercising the
+    fallback contract, not production behavior.
+    """
+    return (
+        "Based on the following PRD and planning artifact, produce a build task "
+        "manifest that decomposes the upcoming build into focused subtasks.\n\n"
+        f"{v['roles_section']}"
+        f"{v['task_types_section']}"
+        f"## PRD\n{v['prd']}\n\n"
+        f"## Planning Artifact\n{v['planning_content']}\n\n"
+        "Each subtask should:\n"
+        "1. Have a clear, narrow focus (e.g., 'Backend data models' not 'Build the app')\n"
+        "2. List the specific files it should produce\n"
+        "3. Declare dependencies on prior subtasks by task_index\n"
+        "4. Define acceptance criteria — prefer typed checks; see the section below\n"
+        "5. Be completable in a single focused LLM generation (~2-10 minutes)\n\n"
+        "Decomposition guidelines:\n"
+        "- Separate backend and frontend into distinct tasks\n"
+        "- Separate models/data from API endpoints/routes\n"
+        "- Separate UI shell/routing from individual view components\n"
+        "- Put integration config (CORS, proxy, requirements) in its own task\n"
+        "- Put tests after the code they test\n"
+        f"{v['builder_guideline']}"
+        f"{v['qa_handoff_guideline']}"
+        f"{v['typed_acceptance_section']}"
+        "\n"
+        f"{v['prd_coverage_discipline']}"
+        "\n"
+        "Output ONLY the manifest as a YAML code block with filename tag. "
+        "The first three fields below are pre-filled with the cycle's "
+        "authoritative values — copy them verbatim, do not invent or "
+        "modify them:\n"
+        "```yaml:implementation_plan.yaml\n"
+        "version: 1\n"
+        f"project_id: {v['project_id']}\n"
+        f"cycle_id: {v['cycle_id']}\n"
+        f"prd_hash: {v['prd_hash']}\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: development.develop\n"
+        "    role: dev\n"
+        '    focus: "..."\n'
+        "    description: |\n"
+        "      ...\n"
+        "    expected_artifacts:\n"
+        '      - "path/to/file"\n'
+        "    acceptance_criteria:\n"
+        '      - "..."\n'
+        "    depends_on: []\n"
+        f"{v['builder_example']}"
+        "summary:\n"
+        "  total_dev_tasks: N\n"
+        "  total_qa_tasks: M\n"
+        f"{v['summary_builder_line']}"
+        f"  total_tasks: {v['total_tasks_expr']}\n"
+        "  estimated_layers: [backend, frontend, test, config]\n"
+        "```\n"
+    )
 
 
 def _validate_manifest_candidate(

@@ -1,5 +1,5 @@
-version: 0.9.19
-updated_at: '2026-05-06T13:45:00.000000Z'
+version: 0.9.20
+updated_at: '2026-05-16T00:00:00.000000Z'
 fragments:
 - fragment_id: identity
   path: roles/comms/identity.md
@@ -91,6 +91,18 @@ fragments:
   roles:
   - lead
   sha256: 561a7f5a11532a9dd9d4197c94cda4904d33662c0a8101b7364243458d9c8331
+- fragment_id: task_type.governance.review_plan_manifest
+  path: shared/task_type/task_type.governance.review_plan_manifest.md
+  layer: task_type
+  roles:
+  - lead
+  sha256: f48c8ccf5dcbfd79be59d65b3311d627619ce424ec29760923b15e9b40cabc0b
+- fragment_id: task_type.governance.prepare_plan_authoring_brief
+  path: shared/task_type/task_type.governance.prepare_plan_authoring_brief.md
+  layer: task_type
+  roles:
+  - lead
+  sha256: b1ca45853d1622504a029ae787be8beec7a51334e785c052b05d340c4956f6a3
 - fragment_id: task_type.governance.incorporate_feedback
   path: shared/task_type/task_type.governance.incorporate_feedback.md
   layer: task_type

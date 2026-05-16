@@ -85,7 +85,14 @@ _SEEDED_LLM_RESPONSE = (
 
 
 def _make_context(llm_response: str = _SEEDED_LLM_RESPONSE):
-    """Build a minimal ExecutionContext mock matching the planning-handler tests' shape."""
+    """Build a minimal ExecutionContext mock matching the planning-handler tests' shape.
+
+    The renderer mock returns a ``RenderedRequest`` whose content is a
+    deterministic stand-in for the registered manifest template. The actual
+    rendered bytes don't matter for these tests — the LLM mock returns the
+    seeded response regardless of user prompt — but the call must succeed
+    and surface ``template_id`` for downstream observability.
+    """
     llm = AsyncMock()
     llm.chat_stream_with_usage.return_value = MagicMock(content=llm_response)
     llm.default_model = "test-model"
@@ -96,11 +103,18 @@ def _make_context(llm_response: str = _SEEDED_LLM_RESPONSE):
     prompt_service.assemble.return_value = assembled
     prompt_service.get_system_prompt.return_value = assembled
 
+    renderer = AsyncMock()
+    rendered = MagicMock()
+    rendered.content = "user prompt (rendered from request.governance_review_plan_manifest)"
+    rendered.template_id = "request.governance_review_plan_manifest"
+    rendered.template_version = "1"
+    renderer.render.return_value = rendered
+
     ports = MagicMock()
     ports.llm = llm
     ports.prompt_service = prompt_service
     ports.llm_observability = None
-    ports.request_renderer = None
+    ports.request_renderer = renderer
 
     ctx = MagicMock()
     ctx.ports = ports
@@ -124,13 +138,24 @@ def seeded_inputs():
 
 
 # ---------------------------------------------------------------------------
-# Verbatim-equivalence regression anchor
+# Parsed-equivalence regression anchor (issue #140)
+#
+# PR 93.0 originally claimed verbatim equivalence on the assembled prompt
+# bytes. Issue #140 / SIP-0084 cleanup externalized the manifest user prompt
+# to a registered template and switched the system prompt to a
+# ``task_type.governance.review_plan_manifest`` fragment — so the assembled
+# bytes intentionally changed. The regression anchor shifts from
+# *verbatim* (same bytes in/out) to *parsed* (same seeded LLM response
+# yields the same parsed ``ImplementationPlan`` shape).
 # ---------------------------------------------------------------------------
 
 
 async def test_produce_plan_returns_parseable_manifest_artifact(seeded_inputs):
     """The service produces an ``implementation_plan.yaml`` artifact whose
-    content parses back to the seeded ``ImplementationPlan`` shape."""
+    content parses back to the seeded ``ImplementationPlan`` shape.
+
+    Parsed-equivalence anchor: seeded LLM response → identical parsed plan.
+    The assembled prompt bytes are no longer the regression surface."""
     ctx = _make_context()
 
     artifact = await produce_plan(
@@ -279,3 +304,119 @@ async def test_governance_review_plan_emits_only_planning_and_manifest_artifacts
         f"Pre-cutover governance.review_plan must not emit SIP-0093 artifacts; "
         f"found: {set(artifact_names) & forbidden_in_pr_93_0}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #140 — SIP-0084 prompt-registry integration assertions
+# ---------------------------------------------------------------------------
+
+
+async def test_produce_plan_renders_manifest_template(seeded_inputs):
+    """Regression anchor for issue #140 F1: the manifest user prompt MUST be
+    sourced from the registered ``request.governance_review_plan_manifest``
+    template. If a future refactor reintroduces an inline f-string, the
+    renderer mock is never called and this test fails loudly."""
+    ctx = _make_context()
+
+    artifact = await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="## Plan",
+        resolved_config=seeded_inputs["resolved_config"],
+        role="lead",
+        handler_name="test_harness",
+        chat_kwargs={},
+    )
+
+    assert artifact is not None
+    ctx.ports.request_renderer.render.assert_called_once()
+    call_args = ctx.ports.request_renderer.render.call_args
+    assert call_args.args[0] == "request.governance_review_plan_manifest"
+
+    variables = call_args.args[1]
+    # Required variables surface from the call-site, not from the renderer's
+    # template parsing — this guards against silent drops if the template
+    # changes its required surface.
+    for required in (
+        "prd",
+        "planning_content",
+        "typed_acceptance_section",
+        "prd_coverage_discipline",
+        "project_id",
+        "cycle_id",
+        "prd_hash",
+        "total_tasks_expr",
+    ):
+        assert required in variables, f"renderer call missing required variable: {required}"
+
+    # Identifiers must flow through verbatim — issue #109 invariant preserved
+    # through the registry path.
+    assert variables["project_id"] == "test_proj"
+    assert variables["cycle_id"] == "cyc_test"
+
+
+async def test_produce_plan_assembles_system_prompt_with_task_type(seeded_inputs):
+    """Regression anchor for issue #140 F2: the manifest LLM call's system
+    prompt MUST go through ``prompt_service.assemble(...)`` with the
+    ``governance.review_plan_manifest`` task_type fragment, not
+    ``get_system_prompt(role)`` which strips the task-type layer."""
+    ctx = _make_context()
+
+    artifact = await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="## Plan",
+        resolved_config=seeded_inputs["resolved_config"],
+        role="lead",
+        handler_name="test_harness",
+        chat_kwargs={},
+    )
+
+    assert artifact is not None
+    ctx.ports.prompt_service.assemble.assert_called_once_with(
+        role="lead",
+        hook="agent_start",
+        task_type="governance.review_plan_manifest",
+    )
+    ctx.ports.prompt_service.get_system_prompt.assert_not_called()
+
+
+async def test_produce_plan_inline_fallback_when_renderer_absent(seeded_inputs):
+    """SIP-0084 migration accommodation: when ``request_renderer`` is not
+    injected on the context, the service falls back to constructing the
+    user prompt inline. The fallback's content is kept in sync with the
+    registered template at
+    ``src/squadops/prompts/request_templates/request.governance_review_plan_manifest.md``.
+
+    The fallback exists only because the broader planning-handler test
+    suite uses ``request_renderer = None``. Production cycles always inject
+    a renderer; when those test contexts migrate to renderer mocks, the
+    fallback can be removed.
+    """
+    ctx = _make_context()
+    ctx.ports.request_renderer = None  # exercise the fallback path
+
+    artifact = await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="## Plan",
+        resolved_config=seeded_inputs["resolved_config"],
+        role="lead",
+        handler_name="test_harness",
+        chat_kwargs={},
+    )
+
+    # The fallback still produces a parseable manifest. This is the contract
+    # the broader test suite relies on.
+    assert artifact is not None
+    assert artifact["name"] == "implementation_plan.yaml"
+    parsed = ImplementationPlan.from_yaml(artifact["content"])
+    assert len(parsed.tasks) == 3
+
+    # The inline path must still inspect the user prompt for content that
+    # downstream tests depend on (PRD coverage discipline section).
+    call_args = ctx.ports.llm.chat_stream_with_usage.call_args
+    messages = call_args.args[0]
+    user_prompt = next(m.content for m in messages if m.role == "user")
+    assert "## PRD" in user_prompt
+    assert "implementation_plan.yaml" in user_prompt
