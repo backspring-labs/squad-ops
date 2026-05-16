@@ -50,6 +50,10 @@ class TestFocusKey:
 _VALID_PROPOSAL = """\
 version: 1
 proposing_role: qa
+proposal_id: prop-qa-001
+source_brief_id: brief-test-001
+scope_statement: |
+  QA coverage for backend endpoints.
 tasks:
   - task_type: qa.test
     role: qa
@@ -91,7 +95,14 @@ class TestFromYAMLHappy:
         """A role that fails to find anything to propose returns an
         empty list. The merger absorbs the empty proposal (per
         SIP-0093 §5.4 fall-back) — the parser shouldn't reject it."""
-        proposal = ProposedRoleTasks.from_yaml("version: 1\nproposing_role: strat\ntasks: []\n")
+        proposal = ProposedRoleTasks.from_yaml(
+            "version: 1\n"
+            "proposing_role: strat\n"
+            "proposal_id: prop-strat-001\n"
+            "source_brief_id: brief-test-001\n"
+            "scope_statement: 'Strategy proposal — no tasks'\n"
+            "tasks: []\n"
+        )
         assert proposal.tasks == []
 
     def test_task_keys_round_trip(self):
@@ -120,11 +131,25 @@ class TestFromYAMLErrors:
 
     def test_empty_proposing_role_rejected(self):
         with pytest.raises(ValueError, match="proposing_role"):
-            ProposedRoleTasks.from_yaml('version: 1\nproposing_role: ""\ntasks: []\n')
+            ProposedRoleTasks.from_yaml(
+                'version: 1\n'
+                'proposing_role: ""\n'
+                'proposal_id: prop-1\n'
+                'source_brief_id: brief-1\n'
+                "scope_statement: 'x'\n"
+                'tasks: []\n'
+            )
 
     def test_non_int_version_rejected(self):
         with pytest.raises(ValueError, match="version"):
-            ProposedRoleTasks.from_yaml('version: "1"\nproposing_role: qa\ntasks: []\n')
+            ProposedRoleTasks.from_yaml(
+                'version: "1"\n'
+                'proposing_role: qa\n'
+                'proposal_id: prop-1\n'
+                'source_brief_id: brief-1\n'
+                "scope_statement: 'x'\n"
+                'tasks: []\n'
+            )
 
     def test_malformed_yaml_rejected(self):
         with pytest.raises(ValueError, match="Malformed proposal YAML"):
@@ -138,6 +163,9 @@ class TestFromYAMLErrors:
         bad = """\
 version: 1
 proposing_role: qa
+proposal_id: prop-1
+source_brief_id: brief-1
+scope_statement: x
 tasks:
   - task_type: qa.test
     role: qa
@@ -153,6 +181,9 @@ tasks:
         bad = """\
 version: 1
 proposing_role: dev
+proposal_id: prop-1
+source_brief_id: brief-1
+scope_statement: x
 tasks:
   - task_type: development.develop
     role: dev
@@ -170,6 +201,9 @@ tasks:
         bad = """\
 version: 1
 proposing_role: qa
+proposal_id: prop-1
+source_brief_id: brief-1
+scope_statement: x
 tasks:
   - task_type: qa.test
     role: qa
@@ -184,6 +218,9 @@ tasks:
         bad = """\
 version: 1
 proposing_role: qa
+proposal_id: prop-1
+source_brief_id: brief-1
+scope_statement: x
 tasks:
   - task_type: qa.test
     role: qa
