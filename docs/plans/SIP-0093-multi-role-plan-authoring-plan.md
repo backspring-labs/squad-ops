@@ -207,9 +207,23 @@ SIP-0093 §5.11 specifies parallel fan-out. The current executor (`task_plan.py`
 - Extending step-list shape to `list[tuple[str, str] | list[tuple[str, str]]]` and updating every consumer in `task_plan.py` and `planning_tasks.py`, OR
 - A new "fan-out group" marker the dispatcher recognizes.
 
-Both are non-trivial executor changes that broaden Rev 1's blast radius. **Rev 1 ships sequential.** Cost impact: framing tail extends from ~5–9 min (parallel target per SIP-0093 §6) to ~12–17 min (sequential). Still fits the validation profile's ≥2h cycle budget. Parallel fan-out becomes a Rev 2 follow-up after the propose-merge architecture has shown stability.
+Both are non-trivial executor changes that broaden Rev 1's blast radius. **Rev 1 ships sequential.** Still fits the validation profile's ≥2h cycle budget regardless of fan-out shape. Parallel fan-out becomes a Rev 2 follow-up after the propose-merge architecture has shown stability.
 
 The plan doc surfaces this trade-off explicitly so future-us doesn't think parallelism was forgotten.
+
+#### Amendment 2026-05-16: parallel fan-out doesn't speed up Spark cycles
+
+The original wording above cited SIP-0093 §6's "~5–9 min parallel target vs ~12–17 min sequential" as the cost impact of staying sequential. That ~2× speedup estimate assumed hardware with parallel inference headroom. On DGX Spark (the 1.0.x validation lane) it almost certainly doesn't materialize:
+
+- Spark is a single-GPU bandwidth-bound platform (NVIDIA GB10, LPDDR5X-9400 @ ~273 GB/s, ~16 tps ceiling on 27B at Q4, ~68 tps theoretical on 7B). The ceiling is **per-chip**, not per-request.
+- Three concurrent ~1500-token proposer calls against the same 27B model take roughly the same wall-clock as the same three calls run sequentially: combined output ≈ 4500 tokens ÷ ~16 tps ≈ 280 s either way. Ollama's `OLLAMA_NUM_PARALLEL` improves throughput modestly via kernel batching (~10–20%), not multiplicatively.
+- Where parallelism does help: (1) overlapping LLM with non-LLM work (<10% of agent wall-time on this surface), (2) routing some roles' inference to non-Spark silicon (Mac M-series, cloud endpoint), (3) mixed-model topologies where one branch is small enough that its bandwidth pressure is negligible.
+
+**Implication for Rev 2:** the unlock that justifies the executor refactor isn't "enable parallelism on Spark"; it's "enable multi-host inference routing so different proposers actually run on different silicon." Without that, Rev 2's complexity costs (parallel-group executor, fan-out coordination, partial-failure handling) buy back ~0 wall-clock on Spark cycles.
+
+Defer Rev 2 until either (a) a non-Spark inference host is wired into the role-to-host routing, or (b) the v1.1 Mac lane (per `project_two_session_split.md`) is the primary validation target and parallel-vs-sequential gets benchmarked on M-series silicon. Until then, Rev 2 is a complexity tax without speedup.
+
+This amendment is a prediction from bandwidth math, not a benchmark. If parallel-vs-sequential gets measured on a real cycle and the result differs, revise this section with the measurement.
 
 ### Failure handling per RC-23
 
