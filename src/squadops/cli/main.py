@@ -20,6 +20,7 @@ if "pytest" not in sys.modules:
     _repo_root = Path(__file__).resolve().parents[3]
     load_dotenv(_repo_root / ".env", override=False)
 
+from squadops.cli.commands.agent import app as agent_app
 from squadops.cli.commands.artifacts import artifacts_app, baseline_app
 from squadops.cli.commands.auth import auth_app, login, logout
 from squadops.cli.commands.bootstrap import bootstrap
@@ -99,3 +100,4 @@ app.add_typer(baseline_app, name="baseline")
 app.add_typer(auth_app, name="auth")
 app.add_typer(request_profiles_app, name="request-profiles")  # SIP-0074
 app.add_typer(models_app, name="models")  # SIP-0074
+app.add_typer(agent_app, name="agent")  # SIP-0089
