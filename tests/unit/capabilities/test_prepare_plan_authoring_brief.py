@@ -1,9 +1,9 @@
 """Tests for ``GovernancePreparePlanAuthoringBriefHandler`` (SIP-0093 PR 93.0).
 
-The handler is registered in this PR but not yet wired into
-``PLANNING_TASK_STEPS`` (cutover happens in 93.3). These tests exercise it
-in isolation: brief production from seeded LLM responses, parse-failure
-handling, and the artifact's YAML media-type / type.
+The handler runs an LLM call with ``retry_yaml_call`` (mirroring the proposer
+handlers): each attempt is fence-stripped before ``PlanAuthoringBrief.from_yaml``
+validates it. These tests exercise the success path, the fence-stripping that
+production LLMs require, retry-then-succeed, and exhaustion failure modes.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
 pytestmark = [pytest.mark.domain_capabilities]
 
 
-_VALID_BRIEF_LLM_RESPONSE = """\
+_VALID_BRIEF_YAML = """\
 version: 1
 brief_id: br_seeded_001
 objective_summary: |
@@ -39,10 +39,30 @@ risk_areas:
   - "Concurrent create/delete races"
 """
 
+# Production-shape LLM response: YAML inside a typed fence. This is the form
+# qwen3:27b actually emits (and the form that broke the cycle before the
+# retry/fence-strip wiring).
+_VALID_BRIEF_FENCED_RESPONSE = (
+    "Here's the brief.\n\n"
+    "```yaml:plan_authoring_brief.yaml\n"
+    f"{_VALID_BRIEF_YAML}"
+    "```\n"
+)
 
-def _make_context(llm_response: str = _VALID_BRIEF_LLM_RESPONSE):
+
+def _make_context(llm_response: str | list[str] = _VALID_BRIEF_FENCED_RESPONSE):
+    """Build a stub ExecutionContext.
+
+    ``llm_response`` accepts a string (returned every call) or a list of
+    strings (consumed one per call, for retry tests).
+    """
     llm = AsyncMock()
-    llm.chat_stream_with_usage.return_value = MagicMock(content=llm_response)
+    if isinstance(llm_response, list):
+        llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content=r) for r in llm_response
+        ]
+    else:
+        llm.chat_stream_with_usage.return_value = MagicMock(content=llm_response)
     llm.default_model = "test-model"
 
     prompt_service = MagicMock()
@@ -80,11 +100,6 @@ def seeded_inputs():
     }
 
 
-# ---------------------------------------------------------------------------
-# Class attributes (kept tight per CLAUDE.md guidance — paired with behavior tests)
-# ---------------------------------------------------------------------------
-
-
 def test_handler_registered_in_bootstrap():
     """Without registration the cutover PR (93.3) couldn't dispatch the
     handler. Confirms the import + HANDLER_CONFIGS entry both landed."""
@@ -93,24 +108,25 @@ def test_handler_registered_in_bootstrap():
 
 
 # ---------------------------------------------------------------------------
-# Behavior
+# Success: fenced output is the production shape; bare YAML inside a typed
+# fence (``yaml:plan_authoring_brief.yaml``) is what real LLMs emit and what
+# broke the cycle pre-fix.
 # ---------------------------------------------------------------------------
 
 
-async def test_handler_produces_parseable_brief_artifact(seeded_inputs):
-    """A seeded LLM response produces an artifact that parses round-trip
-    via ``PlanAuthoringBrief.from_yaml``."""
+async def test_handler_extracts_yaml_from_typed_fence(seeded_inputs):
+    """The LLM wraps YAML in ```yaml:plan_authoring_brief.yaml``` — the
+    artifact's stored content must be the unwrapped YAML (no leading fence
+    line) so downstream callers can ``from_yaml`` it directly."""
     handler = GovernancePreparePlanAuthoringBriefHandler()
     result = await handler.handle(_make_context(), seeded_inputs)
 
     assert result.success is True
-    artifacts = result.outputs["artifacts"]
-    assert len(artifacts) == 1
-
-    artifact = artifacts[0]
+    artifact = result.outputs["artifacts"][0]
     assert artifact["name"] == "plan_authoring_brief.yaml"
     assert artifact["media_type"] == "text/yaml"
     assert artifact["type"] == "plan_authoring_brief"
+    assert not artifact["content"].startswith("```")
 
     brief = PlanAuthoringBrief.from_yaml(artifact["content"])
     assert brief.brief_id == "br_seeded_001"
@@ -120,28 +136,84 @@ async def test_handler_produces_parseable_brief_artifact(seeded_inputs):
     ]
     assert brief.accepted_stack["framework"] == "fastapi"
 
+    # brief_outcome carries the same unwrapped content for the merger.
+    assert result.outputs["brief_outcome"]["status"] == "success"
+    assert result.outputs["brief_outcome"]["yaml_content"] == artifact["content"]
 
-async def test_handler_returns_failure_on_unparseable_llm_response(seeded_inputs):
-    """When the LLM emits something that can't parse as a brief, the
-    handler returns a structured failure naming ``plan_authoring_brief.yaml``
-    so the cycle's correction loop has a specific signal — not a silent
-    pass with garbage content."""
-    bad_response = "This isn't a YAML brief — just prose.\n"
+
+async def test_handler_extracts_yaml_from_bare_yaml_fence(seeded_inputs):
+    """LLMs sometimes drop the filename slot and emit just ```yaml``` —
+    the handler must still extract the body."""
+    bare_fenced = f"```yaml\n{_VALID_BRIEF_YAML}```\n"
     handler = GovernancePreparePlanAuthoringBriefHandler()
-    result = await handler.handle(_make_context(llm_response=bad_response), seeded_inputs)
+    result = await handler.handle(_make_context(llm_response=bare_fenced), seeded_inputs)
+
+    assert result.success is True
+    brief = PlanAuthoringBrief.from_yaml(result.outputs["artifacts"][0]["content"])
+    assert brief.brief_id == "br_seeded_001"
+
+
+# ---------------------------------------------------------------------------
+# Retry: a malformed first attempt followed by a valid second attempt should
+# succeed without the cycle seeing the failure.
+# ---------------------------------------------------------------------------
+
+
+async def test_handler_retries_after_unparseable_first_attempt(seeded_inputs):
+    """First attempt: prose, no fenced YAML → retry. Second attempt: valid
+    fenced brief → success. Confirms retry budget actually buys recovery."""
+    responses = [
+        "I forgot to fence the YAML, sorry.",
+        _VALID_BRIEF_FENCED_RESPONSE,
+    ]
+    ctx = _make_context(llm_response=responses)
+    handler = GovernancePreparePlanAuthoringBriefHandler()
+    result = await handler.handle(ctx, seeded_inputs)
+
+    assert result.success is True
+    assert ctx.ports.llm.chat_stream_with_usage.call_count == 2
+    brief = PlanAuthoringBrief.from_yaml(result.outputs["artifacts"][0]["content"])
+    assert brief.brief_id == "br_seeded_001"
+
+
+async def test_handler_respects_configured_max_attempts(seeded_inputs):
+    """``brief_max_attempts`` from resolved_config caps retries. Setting it
+    to 1 means a single bad emission is terminal."""
+    seeded_inputs["resolved_config"]["brief_max_attempts"] = 1
+    ctx = _make_context(llm_response="not yaml at all")
+    handler = GovernancePreparePlanAuthoringBriefHandler()
+    result = await handler.handle(ctx, seeded_inputs)
+
+    assert result.success is False
+    assert ctx.ports.llm.chat_stream_with_usage.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Hard failures: the retry budget runs out, or the LLM call itself fails.
+# ---------------------------------------------------------------------------
+
+
+async def test_handler_returns_failure_when_no_fenced_yaml_in_any_attempt(seeded_inputs):
+    """When every attempt emits prose with no fenced YAML, the handler
+    returns ``success=False`` naming the artifact so the cycle's
+    correction loop has a specific signal (not silent garbage)."""
+    handler = GovernancePreparePlanAuthoringBriefHandler()
+    result = await handler.handle(
+        _make_context(llm_response="This isn't a YAML brief — just prose.\n"),
+        seeded_inputs,
+    )
 
     assert result.success is False
     assert result.outputs == {}
     assert "plan_authoring_brief.yaml" in (result.error or "")
 
 
-async def test_handler_returns_failure_on_missing_required_field(seeded_inputs):
-    """A YAML response missing a required brief field surfaces the field
-    name in the failure error, not just a generic 'parse error'."""
+async def test_handler_returns_failure_when_brief_missing_required_field(seeded_inputs):
+    """YAML parses but omits a required field. The error surfaces the
+    field name (``risk_areas``) so the corrective feedback is actionable."""
     missing_risk_areas = "\n".join(
-        line for line in _VALID_BRIEF_LLM_RESPONSE.splitlines() if not line.startswith("risk_areas")
+        line for line in _VALID_BRIEF_YAML.splitlines() if not line.startswith("risk_areas")
     )
-    # Drop the bullet list under risk_areas too.
     missing_risk_areas = (
         "\n".join(
             line
@@ -150,18 +222,22 @@ async def test_handler_returns_failure_on_missing_required_field(seeded_inputs):
         )
         + "\n"
     )
-
+    fenced_response = f"```yaml:plan_authoring_brief.yaml\n{missing_risk_areas}```\n"
     handler = GovernancePreparePlanAuthoringBriefHandler()
-    result = await handler.handle(_make_context(llm_response=missing_risk_areas), seeded_inputs)
+    result = await handler.handle(
+        _make_context(llm_response=fenced_response), seeded_inputs
+    )
 
     assert result.success is False
     assert "risk_areas" in (result.error or "")
 
 
-async def test_handler_propagates_llm_failure_without_attempting_parse(seeded_inputs):
-    """If the underlying LLM call fails (network/timeout), the base
-    handler's failure surfaces unchanged — the brief-parse step never
-    runs and doesn't mask the real error."""
+async def test_handler_returns_failure_on_llm_error(seeded_inputs):
+    """If the LLM call itself raises (network/timeout), the handler
+    returns a structured failure. The retry loop swallows the LLMError
+    on each attempt, so the surfaced error is the retry-exhausted form
+    rather than the raw exception — but the artifact name is still in it
+    so the cycle can route correctly."""
     from squadops.llm.exceptions import LLMError
 
     ctx = _make_context()
@@ -171,6 +247,5 @@ async def test_handler_propagates_llm_failure_without_attempting_parse(seeded_in
     result = await handler.handle(ctx, seeded_inputs)
 
     assert result.success is False
-    # Surfaced as the LLM error, not a brief-parse error.
+    assert "plan_authoring_brief.yaml" in (result.error or "")
     assert "network timeout" in (result.error or "")
-    assert "plan_authoring_brief.yaml" not in (result.error or "")

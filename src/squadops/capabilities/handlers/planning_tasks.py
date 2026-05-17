@@ -502,6 +502,9 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
         return result
 
 
+_BRIEF_MAX_ATTEMPTS_DEFAULT = 2
+
+
 class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
     """SIP-0093 PR 93.0: produce ``plan_authoring_brief.yaml``.
 
@@ -510,9 +513,10 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
     frame. The merger consumes it (RC-22 immutability) regardless of whether
     proposers ran or sole-author mode kicks in.
 
-    Registered in this PR but **not** wired into ``PLANNING_TASK_STEPS`` —
-    that's the cutover PR (93.3). The handler is reachable in tests and via
-    direct invocation only.
+    Runs an LLM call with up to ``brief_max_attempts`` retries; each attempt's
+    raw response is fence-stripped via ``retry_yaml_call`` before
+    ``PlanAuthoringBrief.from_yaml`` validates it. Mirrors the proposer
+    handlers in this module.
     """
 
     _handler_name = "governance_prepare_plan_authoring_brief_handler"
@@ -525,42 +529,112 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        result = await super().handle(context, inputs)
-        if not result.success:
-            return result
-
-        # Override the artifact shape produced by the base — the brief is YAML,
-        # not markdown — and validate that the LLM emitted a parseable brief.
+        from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
         from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
 
-        artifact = result.outputs["artifacts"][0]
-        artifact["media_type"] = "text/yaml"
-        artifact["type"] = "plan_authoring_brief"
+        start_time = time.perf_counter()
 
-        try:
-            PlanAuthoringBrief.from_yaml(artifact["content"])
-        except ValueError as exc:
-            logger.warning(
-                "%s: LLM produced an unparseable brief: %s",
-                self._handler_name,
-                exc,
+        prd = inputs.get("prd", "")
+        prior_outputs = inputs.get("prior_outputs")
+        resolved_config = inputs.get("resolved_config", {})
+        raw_budget = resolved_config.get("time_budget_seconds")
+        time_budget_seconds = int(raw_budget) if raw_budget is not None else None
+
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is not None:
+            variables = self._build_render_variables(prd, prior_outputs, inputs)
+            rendered = await renderer.render(self._request_template_id, variables)
+            user_prompt = rendered.content
+        else:
+            user_prompt = self._build_user_prompt(prd, prior_outputs, time_budget_seconds)
+
+        assembled = context.ports.prompt_service.assemble(
+            role=self._role,
+            hook="agent_start",
+            task_type=self._capability_id,
+        )
+        system_prompt = assembled.content
+
+        max_attempts = int(
+            resolved_config.get("brief_max_attempts", _BRIEF_MAX_ATTEMPTS_DEFAULT)
+        )
+        chat_kwargs = self._build_chat_kwargs(inputs)
+
+        def parse_and_validate(
+            yaml_or_none: str | None,
+        ) -> tuple[Any | None, str | None]:
+            if yaml_or_none is None:
+                return None, (
+                    "No YAML brief found. Emit your output as a fenced block: "
+                    "```yaml:plan_authoring_brief.yaml ... ``` (or ```yaml ... ```)."
+                )
+            try:
+                brief = PlanAuthoringBrief.from_yaml(yaml_or_none)
+            except ValueError as exc:
+                return None, f"plan_authoring_brief.yaml failed to parse: {exc}"
+            return brief, None
+
+        parsed, last_yaml, last_error = await retry_yaml_call(
+            llm=context.ports.llm,
+            chat_kwargs=chat_kwargs,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            parse_and_validate=parse_and_validate,
+            max_attempts=max_attempts,
+            handler_name=self._handler_name,
+        )
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        if parsed is None:
+            evidence = HandlerEvidence.create(
+                handler_name=self._handler_name,
+                capability_id=self._capability_id,
+                duration_ms=duration_ms,
+                inputs_hash=self._hash_dict(inputs),
             )
             return HandlerResult(
                 success=False,
                 outputs={},
-                _evidence=result._evidence,
-                error=f"plan_authoring_brief.yaml failed to parse: {exc}",
+                _evidence=evidence,
+                error=(
+                    f"plan_authoring_brief.yaml failed to parse: "
+                    f"{last_error or 'exhausted retry budget without parseable output'}"
+                ),
             )
 
-        # PR 93.3 wire: surface the brief YAML in a non-artifacts key so the
-        # merger can consume it from prior_outputs["lead"]["brief_outcome"].
-        # The executor's prior_outputs builder strips "artifacts" by design.
-        result.outputs["brief_outcome"] = {
-            "status": "success",
-            "yaml_content": artifact["content"],
-            "artifact_name": "plan_authoring_brief.yaml",
+        # ``last_yaml`` is the fence-extracted body; persist that as the
+        # artifact content so downstream callers (merger, gate package) get
+        # raw YAML without code-fence wrappers.
+        assert last_yaml is not None  # invariant: parsed is not None → yaml was extracted
+        outputs = {
+            "summary": f"[{self._role}] plan_authoring_brief produced",
+            "role": self._role,
+            "artifacts": [
+                {
+                    "name": self._artifact_name,
+                    "content": last_yaml,
+                    "media_type": "text/yaml",
+                    "type": "plan_authoring_brief",
+                },
+            ],
+            # PR 93.3 wire: surface the brief YAML in a non-artifacts key so
+            # the merger can consume it from prior_outputs["lead"]["brief_outcome"].
+            # The executor's prior_outputs builder strips "artifacts" by design.
+            "brief_outcome": {
+                "status": "success",
+                "yaml_content": last_yaml,
+                "artifact_name": self._artifact_name,
+            },
         }
-        return result
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+        )
+        return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
 
 
 # ---------------------------------------------------------------------------
