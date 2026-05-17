@@ -4,33 +4,41 @@ Working artifact for plan §1.0. Two spikes required before any code; output get
 
 ---
 
-## Spike 1 — Entrypoint integration (D8)
+## Spike 1 — Heartbeat integration (D8) — revised
 
-**Question:** Where is the narrowest place to enrich heartbeat payloads with runtime-state without changing agent lifecycle semantics?
+**Question:** Where is the narrowest place to enrich the heartbeat path with runtime-state without changing agent lifecycle semantics?
 
-**Findings** (`src/squadops/agents/entrypoint.py`, 833 lines, last touched by SIP-0087 cleanup):
+**Initial finding (incorrect):** The first read of `agents/entrypoint.py` suggested injecting `RuntimeStatePort` into `HealthCheckHttpReporter` agent-side, then reordering `AgentRunner.start()` to construct the reporter after the system.
 
-- `HealthCheckHttpReporter` is constructed in `AgentRunner.start()` at line 156, *before* `_create_system()` builds the ports bundle. It currently takes no constructor arguments and reports only `agent_id`, `lifecycle_state`, and `version` (line 770).
-- `_send_heartbeat()` (line 763) is a thin wrapper around `reporter.send_status(...)`. It has no access to `self.system.ports` because the call signature is fixed and the reporter is owned by the runner, not the system.
-- `_heartbeat_loop()` (line 738) does not start until line 172 — *after* `_create_system()`. So the reporter is constructed before ports exist, but it does not actually run until after they do.
+**Why that was wrong:** Agents have no direct Postgres dependency today. `HealthCheckHttpReporter` POSTs to `{SQUADOPS_RUNTIME_API_URL}/health/agents/status` over HTTP; only the runtime-api service owns the asyncpg pool. Wiring `RuntimeStatePort` into the agent would have added a brand-new postgres dependency to every agent container — a much larger architectural change than D8 implies.
 
-**Decision:**
+**Revised decision:**
 
-Reorder construction in `start()` so the heartbeat reporter is created **after** `_create_system()`, then pass `RuntimeStatePort` to its constructor:
+The integration point is **server-side**, at `POST /agents/status` in `src/squadops/api/routes/platform_health.py` (line 121). The handler already calls `hc.update_agent_status_in_db(...)`; we add a parallel call to `RuntimeStatePort.update_heartbeat(agent_id, runtime_status=...)` against the existing asyncpg pool already held by `HealthChecker`.
 
-```python
-self.system = await self._create_system()
-# NEW: pass runtime_state port to the reporter
-self._heartbeat_reporter = HealthCheckHttpReporter(
-    runtime_state=self.system.ports.runtime_state,
-)
-```
+Concretely:
 
-`HealthCheckHttpReporter.send_status()` then calls `ensure_state(agent_id)` on first heartbeat (idempotent per D17) and `update_heartbeat(agent_id, runtime_status=..., last_heartbeat_at=now)` on every subsequent tick. **It never writes `mode`, `focus`, `current_assignment_ref`, or `current_runtime_activity_id`** — those are coordinator-owned (D16/D17).
+1. **No changes to the agent.** `HealthCheckHttpReporter.send_status()` keeps its current payload (agent_id, lifecycle_state, version, tps, memory_count). The reporter does not import or depend on `RuntimeStatePort`.
+2. **`HealthChecker` (`src/squadops/api/runtime/health_checker.py`) gains a `runtime_state: RuntimeStatePort` constructor argument.** Wired via the existing health-checker singleton in `api/runtime/deps.py`.
+3. **`update_agent_status_in_db` additionally calls `runtime_state.update_heartbeat(agent_id, runtime_status=mapped)`** where `mapped` is derived from `lifecycle_state` via a small helper.
+4. **Lifecycle → runtime_status mapping** (locked at end of §1.0):
 
-**Impact on lifecycle semantics:** none. The reporter still produces the same HTTP heartbeat to the dashboard; it just additionally upserts into `agent_runtime_state` via the new port. If the port is absent or returns an error, the HTTP heartbeat must still succeed (heartbeat is non-authoritative — D17).
+   | `lifecycle_state` | `runtime_status` |
+   |---|---|
+   | `STARTING` | `recovering` |
+   | `READY` | `online` |
+   | `WORKING` | `online` |
+   | `BLOCKED` | `degraded` |
+   | `CRASHED` | `offline` |
+   | `STOPPING` | `recovering` |
 
-**Risk:** the existing `HealthCheckHttpReporter` is in `adapters/observability/healthcheck_http.py`. The port must be an injected dependency, not imported in adapter code (D26 forbidden-import test will catch violations).
+   Server-side timeout detection (the agent has not heartbeated for N seconds) → `offline` is Phase-1 in-scope only if trivial to add to the existing reconciliation loop; otherwise deferred.
+
+5. **Coordinator-owned fields stay untouched** (D17). The heartbeat handler calls `update_heartbeat` which writes only `last_heartbeat_at` + `runtime_status`. `ensure_state` is called transparently inside `update_heartbeat`, so the first heartbeat from a new agent creates the row with defaults (`mode=ambient`, `interruptibility=high`).
+
+**Impact on lifecycle semantics:** none. The HTTP heartbeat behaves exactly as today; runtime-api just additionally upserts into `agent_runtime_state`. Failures in the runtime-state write must be isolated (logged, not raised) so they cannot break the existing health-status flow.
+
+**Forbidden-import implication:** `src/squadops/api/runtime/health_checker.py` may import `RuntimeStatePort` (a port). It must NOT import `adapters.persistence.runtime.state_postgres` directly — wiring happens in the bootstrap path, which is the only place adapter imports are permitted. The D26 forbidden-import test will codify this for `health_checker.py` once added.
 
 ---
 

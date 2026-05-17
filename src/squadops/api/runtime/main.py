@@ -336,6 +336,7 @@ async def _init_monitoring(config, pool) -> None:
     try:
         import redis.asyncio as aioredis
 
+        from adapters.persistence.runtime import PostgresRuntimeState
         from squadops.api.runtime.health_checker import HealthChecker
 
         redis_url = config.comms.redis.url
@@ -344,6 +345,7 @@ async def _init_monitoring(config, pool) -> None:
             pg_pool=pool,
             redis_client=_redis_client,
             config=config,
+            runtime_state=PostgresRuntimeState(pool),
         )
         await _health_checker_instance.init_connections()
         set_health_checker(_health_checker_instance)
