@@ -230,6 +230,30 @@ class HealthChecker:
         )
         return {"status": "updated", "agent_id": agent_status["agent_id"]}
 
+    async def get_runtime_state(self, agent_id: str) -> dict[str, Any] | None:
+        """Return the SIP-0089 AgentRuntimeState for an agent, or None.
+
+        Pure read; never mutates. Returns a JSON-serialisable dict so the
+        FastAPI route does not need to know about the dataclass.
+        """
+        if self._runtime_state is None:
+            return None
+        state = await self._runtime_state.get_state(agent_id)
+        if state is None:
+            return None
+        return {
+            "agent_id": state.agent_id,
+            "mode": state.mode,
+            "runtime_status": state.runtime_status,
+            "focus": state.focus,
+            "current_runtime_activity_id": state.current_runtime_activity_id,
+            "interruptibility": state.interruptibility,
+            "last_heartbeat_at": (
+                state.last_heartbeat_at.isoformat() if state.last_heartbeat_at else None
+            ),
+            "current_assignment_ref": state.current_assignment_ref,
+        }
+
     async def _update_runtime_state_heartbeat(self, agent_id: str, lifecycle_state: str) -> None:
         """Mirror the heartbeat into agent_runtime_state (SIP-0089 §1.4).
 
