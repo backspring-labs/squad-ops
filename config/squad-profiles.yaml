@@ -12,14 +12,14 @@ profiles:
 
   - profile_id: full-squad
     name: "Full Squad"
-    description: "All 5 agents with per-role models"
-    version: 1
+    description: "All 5 agents on qwen3.6:27b — uniform single-loaded-model on Spark, no swap overhead, max reasoning depth at 16 tps ceiling"
+    version: 2
     agents:
-      - { agent_id: max, role: lead, model: "qwen2.5:32b", enabled: true }
-      - { agent_id: neo, role: dev, model: "qwen2.5:7b", enabled: true }
-      - { agent_id: nat, role: strat, model: "qwen2.5:7b", enabled: true }
-      - { agent_id: eve, role: qa, model: "qwen2.5:3b-instruct", enabled: true }
-      - { agent_id: data, role: data, model: "qwen2.5:3b-instruct", enabled: true }
+      - { agent_id: max, role: lead, model: "qwen3.6:27b", enabled: true }
+      - { agent_id: neo, role: dev, model: "qwen3.6:27b", enabled: true }
+      - { agent_id: nat, role: strat, model: "qwen3.6:27b", enabled: true }
+      - { agent_id: eve, role: qa, model: "qwen3.6:27b", enabled: true }
+      - { agent_id: data, role: data, model: "qwen3.6:27b", enabled: true }
 
   - profile_id: full-squad-with-builder
     name: "Full Squad with Builder"
