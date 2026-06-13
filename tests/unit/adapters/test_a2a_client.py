@@ -255,10 +255,10 @@ class TestSendMessageStream:
 
 
 class TestBuildSendPayload:
-    """Tests for _build_send_payload static method."""
+    """Tests for _build_payload static method."""
 
     def test_basic_payload(self):
-        payload = A2AClientAdapter._build_send_payload("hello")
+        payload = A2AClientAdapter._build_payload("hello")
         assert payload["jsonrpc"] == "2.0"
         assert payload["method"] == "message/send"
         assert payload["params"]["message"]["role"] == "user"
@@ -267,7 +267,7 @@ class TestBuildSendPayload:
         ]
 
     def test_payload_with_context_and_task(self):
-        payload = A2AClientAdapter._build_send_payload(
+        payload = A2AClientAdapter._build_payload(
             "hello",
             context_id="ctx-1",
             task_id="task-1",
@@ -276,7 +276,7 @@ class TestBuildSendPayload:
         assert payload["params"]["message"]["taskId"] == "task-1"
 
     def test_payload_without_optional_ids(self):
-        payload = A2AClientAdapter._build_send_payload("hello")
+        payload = A2AClientAdapter._build_payload("hello")
         assert "contextId" not in payload["params"]["message"]
         assert "taskId" not in payload["params"]["message"]
 

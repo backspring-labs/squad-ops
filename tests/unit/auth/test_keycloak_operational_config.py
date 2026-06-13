@@ -363,11 +363,13 @@ class TestRealmLintFunction:
             "adminEventsEnabled": True,
             "bruteForceProtected": True,
             "authenticationFlows": [{"alias": "squadops-browser-with-mfa"}],
+            "loginTheme": "squadops",
             "clients": [
                 {
                     "clientId": "squadops-console",
                     "redirectUris": ["https://console.local.example/*"],
                     "webOrigins": ["https://console.local.example"],
+                    "attributes": {"post.logout.redirect.uris": "https://console.local.example/*"},
                 }
             ],
         }
