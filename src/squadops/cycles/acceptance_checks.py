@@ -110,19 +110,22 @@ def _safe_resolve(path_str: str, workspace_root: Path) -> Path:
     except ValueError as exc:
         raise _SafetyError("path_escapes_workspace") from exc
 
-    # Symlink escape: any symlink in the chain pointing outside the workspace.
+    # Symlink escape: any symlink WITHIN the user-supplied path (at or below
+    # workspace_root) whose target lies outside the workspace. Strict ancestors
+    # of workspace_root are trusted and skipped — they are frequently symlinked
+    # (e.g. /var -> /private/var on macOS, symlinked mount points on Linux) and
+    # are not attacker-controlled, so walking into them produces false escapes.
     cur = workspace_root / path_str
-    walked = []
-    while cur != cur.parent:
-        walked.append(cur)
-        cur = cur.parent
-    for node in walked:
-        if node.is_symlink():
-            target = node.resolve()
+    while True:
+        if cur.is_symlink():
+            target = cur.resolve()
             try:
                 target.relative_to(root_resolved)
             except ValueError as exc:
                 raise _SafetyError("path_escapes_workspace") from exc
+        if cur == workspace_root or cur == cur.parent:
+            break
+        cur = cur.parent
     return candidate
 
 
@@ -162,10 +165,7 @@ def _exact_then_one_path(*prefix: str) -> Callable[[list[str]], bool]:
     prefix_list = list(prefix)
 
     def matcher(argv: list[str]) -> bool:
-        return (
-            len(argv) == len(prefix_list) + 1
-            and list(argv[: len(prefix_list)]) == prefix_list
-        )
+        return len(argv) == len(prefix_list) + 1 and list(argv[: len(prefix_list)]) == prefix_list
 
     return matcher
 
@@ -188,7 +188,9 @@ def _argv0_with_args(name: str) -> Callable[[list[str]], bool]:
 
 # Order matters only for human readability; the matcher is `any(...)`.
 _COMMAND_SAFELIST: tuple[_CommandPattern, ...] = (
-    _CommandPattern("python -m py_compile <file>", _exact_then_one_path("python", "-m", "py_compile")),
+    _CommandPattern(
+        "python -m py_compile <file>", _exact_then_one_path("python", "-m", "py_compile")
+    ),
     _CommandPattern("python -m mypy <args...>", _prefix_with_args("python", "-m", "mypy")),
     _CommandPattern("node --check <file>", _exact_then_one_path("node", "--check")),
     _CommandPattern("ruff check <args...>", _prefix_with_args("ruff", "check")),
@@ -335,9 +337,7 @@ class EndpointDefinedCheck(BaseCheck):
         except _SafetyError as exc:
             return CheckOutcome.error(reason=exc.reason)
         if not file_path.is_file():
-            return CheckOutcome.failed(
-                reason="file_not_found", file=str(params["file"])
-            )
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
         try:
             source = file_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -364,9 +364,7 @@ class EndpointDefinedCheck(BaseCheck):
             else:
                 expected.append(parsed)
         if malformed:
-            return CheckOutcome.error(
-                reason="malformed_methods_paths", malformed=malformed
-            )
+            return CheckOutcome.error(reason="malformed_methods_paths", malformed=malformed)
 
         missing = [f"{m} {p}" for (m, p) in expected if (m, p) not in found]
         found_strs = sorted(f"{m} {p}" for (m, p) in found)
@@ -600,9 +598,7 @@ class CountAtLeastCheck(BaseCheck):
         count = len(matches)
         if count >= min_count:
             return CheckOutcome.passed(count=count, min_count=min_count)
-        return CheckOutcome.failed(
-            reason="count_below_minimum", count=count, min_count=min_count
-        )
+        return CheckOutcome.failed(reason="count_below_minimum", count=count, min_count=min_count)
 
 
 def _tail(text: str, max_chars: int = 1024) -> str:
@@ -658,9 +654,7 @@ class CommandExitZeroCheck(BaseCheck):
             return CheckOutcome.error(reason="command_spawn_failed", detail=str(exc))
 
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout_s
-            )
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
         except asyncio.TimeoutError:
             proc.kill()
             try:
