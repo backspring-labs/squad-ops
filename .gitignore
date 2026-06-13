@@ -74,3 +74,4 @@ data/
 # Bootstrap state (written by squadops CLI)
 .squadops/
 .claude/scheduled_tasks.lock
+.claude/worktrees/
