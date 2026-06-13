@@ -220,7 +220,7 @@ class TestNoOpLLMObservabilityAdapter:
         import asyncio
 
         adapter = NoOpLLMObservabilityAdapter()
-        result = asyncio.get_event_loop().run_until_complete(adapter.health())
+        result = asyncio.run(adapter.health())
         assert result["status"] == "ok"
         assert result["backend"] == "noop"
         assert result["details"] == {}
@@ -231,6 +231,6 @@ class TestNoOpLLMObservabilityAdapter:
         adapter = NoOpLLMObservabilityAdapter(
             health_status="degraded", health_reason="langfuse SDK not installed"
         )
-        result = asyncio.get_event_loop().run_until_complete(adapter.health())
+        result = asyncio.run(adapter.health())
         assert result["status"] == "degraded"
         assert result["details"]["reason"] == "langfuse SDK not installed"
