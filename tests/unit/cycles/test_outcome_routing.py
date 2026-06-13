@@ -1,4 +1,4 @@
-"""Tests for SIP-0079 outcome routing in DistributedFlowExecutor.
+"""Tests for SIP-0079 outcome routing in DispatchedFlowExecutor.
 
 Covers TaskOutcome-based routing: RETRYABLE_FAILURE retries, SEMANTIC_FAILURE
 triggers correction, BLOCKED pauses, SUCCESS resets and checkpoints,
@@ -165,11 +165,11 @@ def run():
 
 @pytest.fixture
 def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, run):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
     mock_registry.get_run.return_value = run
-    return DistributedFlowExecutor(
+    return DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=mock_vault,
         queue=mock_queue,
@@ -238,7 +238,7 @@ class TestRetryableFailure:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -265,7 +265,7 @@ class TestRetryableFailure:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -300,7 +300,7 @@ class TestSemanticFailure:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -329,7 +329,7 @@ class TestBlockedOutcome:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -351,7 +351,7 @@ class TestSuccessOutcome:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, {})
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -367,7 +367,7 @@ class TestSuccessOutcome:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -399,7 +399,7 @@ class TestNeedReplanFromContract:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -424,7 +424,7 @@ class TestFallbackTable:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -441,7 +441,7 @@ class TestFallbackTable:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -472,7 +472,7 @@ class TestNeedsRepairOutcome:
         mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")

@@ -125,7 +125,7 @@ def _consume_factory(mock_queue):
 
 
 def _make_executor(registry, cycle):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_vault = AsyncMock()
     mock_queue = AsyncMock()
@@ -138,7 +138,7 @@ def _make_executor(registry, cycle):
     mock_squad_profile = AsyncMock()
     mock_squad_profile.get_profile.return_value = squad_profile
 
-    executor = DistributedFlowExecutor(
+    executor = DispatchedFlowExecutor(
         cycle_registry=registry,
         artifact_vault=mock_vault,
         queue=mock_queue,
@@ -161,7 +161,7 @@ class TestPulseCheckE2E:
         executor, mock_queue = _make_executor(registry, cycle)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_e2e", run_id="run_e2e")
@@ -201,11 +201,11 @@ class TestPulseCheckE2E:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=all_pass,
             ),
         ):
@@ -250,11 +250,11 @@ class TestPulseCheckE2E:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=fail_then_pass,
             ),
         ):
@@ -295,11 +295,11 @@ class TestPulseCheckE2E:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -340,11 +340,11 @@ class TestPulseCheckE2E:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=all_pass,
             ),
         ):

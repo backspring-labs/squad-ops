@@ -102,11 +102,11 @@ def mock_event_bus():
 
 @pytest.fixture
 def executor(mock_registry, mock_event_bus):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     vault = AsyncMock()
     vault.list_artifacts.return_value = []  # Default: no promoted artifacts
-    exec_ = DistributedFlowExecutor(
+    exec_ = DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=vault,
         queue=AsyncMock(),
@@ -662,7 +662,7 @@ class TestPollInterWorkloadGate:
 
     async def test_cancellation_during_poll_raises(self, executor, mock_registry):
         """Cancellation check during polling raises _CancellationError."""
-        from adapters.cycles.distributed_flow_executor import _CancellationError
+        from adapters.cycles.dispatched_flow_executor import _CancellationError
 
         cycle = _make_cycle()
         # _is_cancelled returns True

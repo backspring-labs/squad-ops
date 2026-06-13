@@ -293,7 +293,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
         set_cycle_event_bus(event_bus)
 
         flow_executor = create_flow_executor(
-            "distributed",
+            "dispatched",
             cycle_registry=cycle_registry,
             artifact_vault=artifact_vault,
             squad_profile=squad_profile,

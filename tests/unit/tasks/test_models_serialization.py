@@ -1,7 +1,7 @@
 """Tests for TaskEnvelope / TaskResult JSON serialization round-trip.
 
 Verifies to_dict() and from_dict() preserve all fields across
-JSON transport (used by DistributedFlowExecutor).
+JSON transport (used by DispatchedFlowExecutor).
 """
 
 from __future__ import annotations

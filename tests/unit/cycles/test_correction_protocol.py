@@ -1,4 +1,4 @@
-"""Tests for SIP-0079 correction protocol in DistributedFlowExecutor.
+"""Tests for SIP-0079 correction protocol in DispatchedFlowExecutor.
 
 Covers all 4 correction paths (continue, patch, rewind, abort),
 plan delta storage, max_correction_attempts, correction task checkpointing,
@@ -184,11 +184,11 @@ def executor(
     cycle,
     run,
 ):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
     mock_registry.get_run.return_value = run
-    ex = DistributedFlowExecutor(
+    ex = DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=mock_vault,
         queue=mock_queue,
@@ -289,7 +289,7 @@ class TestCorrectionContinue:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -355,7 +355,7 @@ class TestCorrectionPatch:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -557,7 +557,7 @@ class TestCorrectionTaskArtifactStorage:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -633,7 +633,7 @@ class TestCorrectionTaskArtifactStorage:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -713,7 +713,7 @@ class TestCorrectionTerminalPaths:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -778,7 +778,7 @@ class TestMaxCorrectionAttempts:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -841,7 +841,7 @@ class TestPlanDelta:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -907,7 +907,7 @@ class TestPlanDelta:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -964,7 +964,7 @@ class TestCorrectionCheckpoints:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -990,7 +990,7 @@ class TestCorrectionCheckpoints:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1040,7 +1040,7 @@ class TestCorrectionEvents:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1096,7 +1096,7 @@ class TestCorrectionEvents:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1197,7 +1197,7 @@ class TestCorrectionModelResolution:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1258,7 +1258,7 @@ class TestCorrectionModelResolution:
         mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1298,7 +1298,7 @@ class TestCorrectionModelResolution:
         # Wrap generate_task_plan so the failed task carries a real plan
         # contract. (The static plan generator only sets these when an
         # ImplementationPlan is supplied — the path under test here.)
-        import adapters.cycles.distributed_flow_executor as exec_mod
+        import adapters.cycles.dispatched_flow_executor as exec_mod
         from squadops.cycles.task_plan import generate_task_plan as real_gen
 
         def _gen_with_contract(*args, **kwargs):
@@ -1375,7 +1375,7 @@ class TestCorrectionModelResolution:
         with (
             patch.object(exec_mod, "generate_task_plan", _gen_with_contract),
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1402,7 +1402,7 @@ class TestCorrectionModelResolution:
         roles upstream), but the fallback exists so a misconfigured profile
         can't crash the correction loop.
         """
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         class _ProfileStub:
             agents = (
@@ -1415,7 +1415,7 @@ class TestCorrectionModelResolution:
                 ),
             )
 
-        agent_id, model, overrides = DistributedFlowExecutor._resolve_agent_config(
+        agent_id, model, overrides = DispatchedFlowExecutor._resolve_agent_config(
             "data", _ProfileStub()
         )
         assert agent_id == "data"

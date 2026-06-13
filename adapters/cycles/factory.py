@@ -90,8 +90,8 @@ def create_flow_executor(
             squad_profile=squad_profile,
             project_registry=project_registry,
         )
-    elif provider == "distributed":
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    elif provider == "dispatched":
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         workflow_tracker = kwargs.get("workflow_tracker")
         if not workflow_tracker and kwargs.get("prefect_api_url"):
@@ -99,7 +99,7 @@ def create_flow_executor(
 
             workflow_tracker = PrefectReporter(api_url=kwargs["prefect_api_url"])
 
-        return DistributedFlowExecutor(
+        return DispatchedFlowExecutor(
             cycle_registry=cycle_registry,
             artifact_vault=artifact_vault,
             queue=kwargs.get("queue"),

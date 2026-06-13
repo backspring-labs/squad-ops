@@ -9,7 +9,7 @@ deterministic-merge code path.
 
 Each test runs handlers directly with seeded prior_outputs rather than
 the full executor — that keeps the test independent of the
-distributed_flow_executor's pre-resolver wiring (which lives in a
+dispatched_flow_executor's pre-resolver wiring (which lives in a
 separate adapter and would broaden this PR's blast radius). PR 93.4
 covers the gate-package end-to-end with the real executor wiring.
 """

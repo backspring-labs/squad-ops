@@ -49,7 +49,7 @@ def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
 
 
 # Source files that contain emit() calls
-_EXECUTOR_PATH = Path("adapters/cycles/distributed_flow_executor.py")
+_EXECUTOR_PATH = Path("adapters/cycles/dispatched_flow_executor.py")
 _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
 _RUNS_ROUTE = Path("src/squadops/api/routes/cycles/runs.py")
 _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")

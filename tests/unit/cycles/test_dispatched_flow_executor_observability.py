@@ -1,4 +1,4 @@
-"""Tests for observability wiring in DistributedFlowExecutor.
+"""Tests for observability wiring in DispatchedFlowExecutor.
 
 Covers LangFuse cycle lifecycle events and Prefect flow/task run
 creation in execute_run().
@@ -202,10 +202,10 @@ def executor(
     mock_llm_obs,
     mock_prefect,
 ):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
-    return DistributedFlowExecutor(
+    return DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=mock_vault,
         queue=mock_queue,
@@ -218,10 +218,10 @@ def executor(
 
 @pytest.fixture
 def executor_no_obs(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
-    return DistributedFlowExecutor(
+    return DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=mock_vault,
         queue=mock_queue,
@@ -242,7 +242,7 @@ class TestLangFuseCycleEvents:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -261,7 +261,7 @@ class TestLangFuseCycleEvents:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -281,7 +281,7 @@ class TestWithoutObservability:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor_no_obs.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -326,7 +326,7 @@ class TestFlowLevelCorrelationScope:
 
         try:
             with patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ):
                 await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -359,7 +359,7 @@ class TestPrefectFlowRun:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -386,7 +386,7 @@ class TestPrefectTaskRuns:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -424,7 +424,7 @@ class TestPrefectTaskRuns:
         executor._cycle_event_bus.emit = capture_emit
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")

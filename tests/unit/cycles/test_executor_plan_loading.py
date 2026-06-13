@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
 
 # ---------------------------------------------------------------------------
@@ -84,8 +84,8 @@ class _FakeDocArtifactRef:
 
 
 class TestLoadManifestForRun:
-    def _make_executor(self) -> DistributedFlowExecutor:
-        executor = DistributedFlowExecutor.__new__(DistributedFlowExecutor)
+    def _make_executor(self) -> DispatchedFlowExecutor:
+        executor = DispatchedFlowExecutor.__new__(DispatchedFlowExecutor)
         executor._artifact_vault = MagicMock()
         executor._artifact_vault.retrieve = AsyncMock()
         return executor
@@ -205,31 +205,31 @@ class TestLoadManifestForRun:
 class TestBuildArtifactFilterChaining:
     def test_dev_develop_filter_includes_prior_dev_develop(self):
         """development.develop must see artifacts from prior development.develop tasks."""
-        filt = DistributedFlowExecutor._BUILD_ARTIFACT_FILTER["development.develop"]
+        filt = DispatchedFlowExecutor._BUILD_ARTIFACT_FILTER["development.develop"]
         assert "development.develop" in filt["by_producing_task"]
 
     def test_dev_develop_filter_includes_planning_artifacts(self):
         """development.develop must also see strategy and design artifacts."""
-        filt = DistributedFlowExecutor._BUILD_ARTIFACT_FILTER["development.develop"]
+        filt = DispatchedFlowExecutor._BUILD_ARTIFACT_FILTER["development.develop"]
         assert "strategy.analyze_prd" in filt["by_producing_task"]
         assert "development.design" in filt["by_producing_task"]
 
     def test_qa_test_filter_includes_dev_develop(self):
         """qa.test must see artifacts from development.develop subtasks."""
-        filt = DistributedFlowExecutor._BUILD_ARTIFACT_FILTER["qa.test"]
+        filt = DispatchedFlowExecutor._BUILD_ARTIFACT_FILTER["qa.test"]
         assert "development.develop" in filt["by_producing_task"]
 
     def test_builder_assemble_unchanged(self):
         """builder.assemble filter should still work as before."""
-        filt = DistributedFlowExecutor._BUILD_ARTIFACT_FILTER["builder.assemble"]
+        filt = DispatchedFlowExecutor._BUILD_ARTIFACT_FILTER["builder.assemble"]
         assert "development.develop" in filt["by_producing_task"]
 
 
 class TestResolveArtifactContentsChaining:
     """Verify _resolve_artifact_contents chains dev→dev artifacts."""
 
-    def _make_executor(self) -> DistributedFlowExecutor:
-        executor = DistributedFlowExecutor.__new__(DistributedFlowExecutor)
+    def _make_executor(self) -> DispatchedFlowExecutor:
+        executor = DispatchedFlowExecutor.__new__(DispatchedFlowExecutor)
         executor._artifact_vault = MagicMock()
         executor._artifact_vault.retrieve = AsyncMock()
         return executor

@@ -1,7 +1,7 @@
 """Tests for executor build task wiring (SIP-Enhanced-Agent-Build-Capabilities).
 
 Tests artifact content pre-resolution, build-only validation, and
-producing_task_type metadata tracking in DistributedFlowExecutor.
+producing_task_type metadata tracking in DispatchedFlowExecutor.
 
 Part of Phase 2.
 """
@@ -50,8 +50,8 @@ def _make_artifact_ref(
 
 @pytest.fixture
 def executor():
-    """Create a DistributedFlowExecutor with mocked ports."""
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    """Create a DispatchedFlowExecutor with mocked ports."""
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     vault = AsyncMock()
     registry = AsyncMock()
@@ -62,7 +62,7 @@ def executor():
     registry.get_latest_checkpoint.return_value = None
     registry.save_checkpoint.return_value = None
 
-    ex = DistributedFlowExecutor(
+    ex = DispatchedFlowExecutor(
         cycle_registry=registry,
         artifact_vault=vault,
         queue=queue,
@@ -256,8 +256,8 @@ class TestProducingTaskTypeMetadata:
 class TestBuildOnlyValidation:
     async def test_build_only_missing_refs_fails(self):
         """Build-only cycle without plan_artifact_refs raises _ExecutionError."""
-        from adapters.cycles.distributed_flow_executor import (
-            DistributedFlowExecutor,
+        from adapters.cycles.dispatched_flow_executor import (
+            DispatchedFlowExecutor,
         )
 
         cycle = Cycle(
@@ -313,7 +313,7 @@ class TestBuildOnlyValidation:
             )
         )
 
-        ex = DistributedFlowExecutor(
+        ex = DispatchedFlowExecutor(
             cycle_registry=registry,
             artifact_vault=AsyncMock(),
             queue=AsyncMock(),
@@ -369,7 +369,7 @@ class TestBuildOnlySeeding:
 
     async def test_build_only_with_valid_refs_passes_validation(self):
         """Build-only cycle with plan_artifact_refs does not raise."""
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         ref_plan = _make_artifact_ref("art_plan_001", "implementation_plan.md", "document")
 
@@ -433,7 +433,7 @@ class TestBuildOnlySeeding:
             )
         )
 
-        ex = DistributedFlowExecutor(
+        ex = DispatchedFlowExecutor(
             cycle_registry=registry,
             artifact_vault=vault,
             queue=AsyncMock(),
@@ -478,7 +478,7 @@ class TestPlanOnlyCyclesUnaffected:
 
     async def test_plan_only_cycle_no_build_validation(self):
         """Plan-only cycle doesn't trigger build-only validation."""
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         cycle = Cycle(
             cycle_id="cyc_001",
@@ -553,7 +553,7 @@ class TestPlanOnlyCyclesUnaffected:
             )
         )
 
-        ex = DistributedFlowExecutor(
+        ex = DispatchedFlowExecutor(
             cycle_registry=registry,
             artifact_vault=vault,
             queue=queue,

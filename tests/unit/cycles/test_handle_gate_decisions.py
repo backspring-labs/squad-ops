@@ -72,9 +72,9 @@ def mock_event_bus():
 
 @pytest.fixture
 def executor(mock_registry, mock_event_bus):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
-    exec_ = DistributedFlowExecutor(
+    exec_ = DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=AsyncMock(),
         queue=AsyncMock(),
@@ -153,7 +153,7 @@ class TestHandleGateDecisions:
         self, executor, mock_registry, cycle
     ):
         """rejected → raises _ExecutionError."""
-        from adapters.cycles.distributed_flow_executor import _ExecutionError
+        from adapters.cycles.dispatched_flow_executor import _ExecutionError
 
         mock_registry.get_run.return_value = _run_with_gate_decision(
             GateDecisionValue.REJECTED, notes="not ready"
@@ -166,7 +166,7 @@ class TestHandleGateDecisions:
         self, executor, mock_registry, cycle
     ):
         """returned_for_revision → raises _ExecutionError explaining manual retry is needed."""
-        from adapters.cycles.distributed_flow_executor import _ExecutionError
+        from adapters.cycles.dispatched_flow_executor import _ExecutionError
 
         mock_registry.get_run.return_value = _run_with_gate_decision(
             GateDecisionValue.RETURNED_FOR_REVISION, notes="needs more detail"
