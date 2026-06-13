@@ -77,7 +77,7 @@ class _PausedError(Exception):
     """Internal: run paused due to BLOCKED outcome."""
 
 
-class DistributedFlowExecutor(FlowExecutionPort):
+class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
     Uses a request/reply pattern: publishes a ``comms.task`` message to

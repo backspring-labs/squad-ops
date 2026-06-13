@@ -188,10 +188,10 @@ def mock_event_bus():
 
 @pytest.fixture
 def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, impl_cycle, mock_event_bus):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = impl_cycle
-    return DistributedFlowExecutor(
+    return DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=mock_vault,
         queue=mock_queue,
@@ -214,7 +214,7 @@ class TestCheckpointOnSuccess:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -226,7 +226,7 @@ class TestCheckpointOnSuccess:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -242,7 +242,7 @@ class TestCheckpointOnSuccess:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -286,7 +286,7 @@ class TestCheckpointOnSuccess:
         mock_queue.consume.side_effect = fail_second
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -307,7 +307,7 @@ class TestCheckpointEvents:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -323,7 +323,7 @@ class TestCheckpointEvents:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -364,7 +364,7 @@ class TestResumeFromCheckpoint:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -387,7 +387,7 @@ class TestResumeFromCheckpoint:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -425,7 +425,7 @@ class TestResumeFromCheckpoint:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -455,7 +455,7 @@ class TestResumeFromCheckpoint:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -484,7 +484,7 @@ class TestResumeFromCheckpoint:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -500,7 +500,7 @@ class TestResumeFromCheckpoint:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -529,7 +529,7 @@ class TestTimeBudget:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -544,7 +544,7 @@ class TestTimeBudget:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -564,7 +564,7 @@ class TestTimeBudget:
         mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
@@ -589,12 +589,12 @@ class TestPausedHandler:
         self, executor, mock_registry, mock_queue, mock_event_bus
     ) -> None:
         """_PausedError in _execute_sequential → run PAUSED."""
-        from adapters.cycles.distributed_flow_executor import _PausedError
+        from adapters.cycles.dispatched_flow_executor import _PausedError
 
         with (
             patch.object(executor, "_execute_sequential", side_effect=_PausedError("blocked")),
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
         ):
@@ -609,12 +609,12 @@ class TestPausedHandler:
     async def test_paused_emits_run_paused_event(
         self, executor, mock_registry, mock_queue, mock_event_bus
     ) -> None:
-        from adapters.cycles.distributed_flow_executor import _PausedError
+        from adapters.cycles.dispatched_flow_executor import _PausedError
 
         with (
             patch.object(executor, "_execute_sequential", side_effect=_PausedError("blocked")),
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
         ):

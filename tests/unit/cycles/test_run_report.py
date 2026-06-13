@@ -90,14 +90,14 @@ def _make_plan(count: int = 3) -> list[TaskEnvelope]:
 
 @pytest.fixture
 def executor():
-    """Create a DistributedFlowExecutor with mocked ports."""
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    """Create a DispatchedFlowExecutor with mocked ports."""
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     vault = AsyncMock()
     vault.store = AsyncMock(side_effect=lambda ref, content: ref)
     registry = AsyncMock()
 
-    ex = DistributedFlowExecutor(
+    ex = DispatchedFlowExecutor(
         cycle_registry=registry,
         artifact_vault=vault,
         queue=AsyncMock(),

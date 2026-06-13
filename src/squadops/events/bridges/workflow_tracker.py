@@ -2,7 +2,7 @@
 
 Maps run lifecycle events to flow-run state changes. As of SIP-0087,
 task-run lifecycle (creation + state transitions) lives in
-``DistributedFlowExecutor._dispatch_task`` where the ``task_run_id`` is
+``DispatchedFlowExecutor._dispatch_task`` where the ``task_run_id`` is
 available for correlation-context scoping and the long-task heartbeat.
 The bridge still forwards terminal task-state transitions when a
 ``task_run_id`` is carried in the event context, but it no longer creates

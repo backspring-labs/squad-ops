@@ -1,4 +1,4 @@
-"""Tests for DistributedFlowExecutor (adapters/cycles/distributed_flow_executor.py).
+"""Tests for DispatchedFlowExecutor (adapters/cycles/dispatched_flow_executor.py).
 
 Covers dispatch via RabbitMQ publish/consume, sequential happy path,
 fail-fast, cancellation, artifact storage, output chaining, and timeout.
@@ -175,11 +175,11 @@ def run():
 
 @pytest.fixture
 def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, run):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
     mock_registry.get_run.return_value = run
-    return DistributedFlowExecutor(
+    return DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=mock_vault,
         queue=mock_queue,
@@ -201,7 +201,7 @@ class TestBuildFailureEvidence:
     rewind on patchable content failures (cyc_4178f25a0dff delta_2 →
     cyc_d1c1a259c983 delta_0 had to guess the failure shape)."""
 
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     def _envelope(self, task_type: str) -> TaskEnvelope:
         return TaskEnvelope(
@@ -244,7 +244,7 @@ class TestBuildFailureEvidence:
             },
         )
 
-        evidence = self.DistributedFlowExecutor._build_failure_evidence(
+        evidence = self.DispatchedFlowExecutor._build_failure_evidence(
             envelope, result, prior_plan_deltas_count=0
         )
 
@@ -268,7 +268,7 @@ class TestBuildFailureEvidence:
             },
         )
 
-        evidence = self.DistributedFlowExecutor._build_failure_evidence(
+        evidence = self.DispatchedFlowExecutor._build_failure_evidence(
             envelope, result, prior_plan_deltas_count=2
         )
 
@@ -286,7 +286,7 @@ class TestBuildFailureEvidence:
         envelope = self._envelope("development.develop")
         result = TaskResult(task_id="t-7", status="FAILED", outputs=None, error="connection reset")
 
-        evidence = self.DistributedFlowExecutor._build_failure_evidence(
+        evidence = self.DispatchedFlowExecutor._build_failure_evidence(
             envelope, result, prior_plan_deltas_count=0
         )
 
@@ -309,7 +309,7 @@ class TestComposeFailureTrigger:
     prose. Non-typed-check failures (LLM crash, RabbitMQ timeout) keep the
     legacy `task_failure:<task_type>` shape so consumers handle both."""
 
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     @staticmethod
     def _envelope(task_type: str = "builder.assemble") -> TaskEnvelope:
@@ -349,7 +349,7 @@ class TestComposeFailureTrigger:
                 },
             ]
         )
-        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+        trigger = self.DispatchedFlowExecutor._compose_failure_trigger(
             self._envelope("builder.assemble"), evidence
         )
         assert trigger == "typed_check_failed:builder.assemble:5:2"
@@ -371,7 +371,7 @@ class TestComposeFailureTrigger:
                 },
             ]
         )
-        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+        trigger = self.DispatchedFlowExecutor._compose_failure_trigger(
             self._envelope("development.develop"), evidence
         )
         assert trigger == "task_failure:development.develop"
@@ -386,7 +386,7 @@ class TestComposeFailureTrigger:
                 {"check": "stack_coverage_heuristic", "passed": False},
             ]
         )
-        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+        trigger = self.DispatchedFlowExecutor._compose_failure_trigger(
             self._envelope("qa.test"), evidence
         )
         assert trigger == "task_failure:qa.test"
@@ -407,7 +407,7 @@ class TestComposeFailureTrigger:
                 },
             ]
         )
-        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+        trigger = self.DispatchedFlowExecutor._compose_failure_trigger(
             self._envelope("builder.assemble"), evidence
         )
         assert trigger == "task_failure:builder.assemble"
@@ -441,7 +441,7 @@ class TestComposeFailureTrigger:
                 },
             ]
         )
-        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+        trigger = self.DispatchedFlowExecutor._compose_failure_trigger(
             self._envelope("builder.assemble"), evidence
         )
         assert trigger == "typed_check_failed:builder.assemble:1:1"
@@ -462,13 +462,13 @@ class TestComposeFailureTrigger:
                 },
             ]
         )
-        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+        trigger = self.DispatchedFlowExecutor._compose_failure_trigger(
             self._envelope("builder.assemble"), evidence
         )
         assert trigger == "task_failure:builder.assemble"
 
     def test_empty_evidence_falls_back_to_legacy(self):
-        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+        trigger = self.DispatchedFlowExecutor._compose_failure_trigger(
             self._envelope("development.develop"), {}
         )
         assert trigger == "task_failure:development.develop"
@@ -477,7 +477,7 @@ class TestComposeFailureTrigger:
         # Defensive: a row that's not a dict (corrupt validation_result)
         # must not crash the trigger composer. Fall through to legacy.
         evidence = self._evidence(["not a dict", None, 42])  # type: ignore[list-item]
-        trigger = self.DistributedFlowExecutor._compose_failure_trigger(
+        trigger = self.DispatchedFlowExecutor._compose_failure_trigger(
             self._envelope("qa.test"), evidence
         )
         assert trigger == "task_failure:qa.test"
@@ -507,7 +507,7 @@ class TestBuildTaskName:
         )
 
     def test_focused_envelope_uses_focus_and_index(self) -> None:
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         env = self._envelope(
             inputs={
@@ -515,40 +515,40 @@ class TestBuildTaskName:
                 "subtask_index": 0,
             }
         )
-        assert DistributedFlowExecutor._build_task_name("dev", env) == (
+        assert DispatchedFlowExecutor._build_task_name("dev", env) == (
             "dev[0]: Backend data models and in-memory repository"
         )
 
     def test_focused_envelope_without_index_omits_brackets(self) -> None:
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         env = self._envelope(inputs={"subtask_focus": "FastAPI endpoints and validation"})
         assert (
-            DistributedFlowExecutor._build_task_name("dev", env)
+            DispatchedFlowExecutor._build_task_name("dev", env)
             == "dev: FastAPI endpoints and validation"
         )
 
     def test_non_focused_envelope_falls_back_to_task_type(self) -> None:
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         env = self._envelope(task_type="development.develop", inputs={})
-        assert DistributedFlowExecutor._build_task_name("dev", env) == "dev: development.develop"
+        assert DispatchedFlowExecutor._build_task_name("dev", env) == "dev: development.develop"
 
     def test_long_focus_truncates_at_60_chars(self) -> None:
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         long_focus = "X" * 100
         env = self._envelope(inputs={"subtask_focus": long_focus, "subtask_index": 3})
-        name = DistributedFlowExecutor._build_task_name("dev", env)
+        name = DispatchedFlowExecutor._build_task_name("dev", env)
         assert name == f"dev[3]: {'X' * 60}"
         assert len(name.split(": ", 1)[1]) == 60
 
     def test_index_zero_renders_as_zero_not_omitted(self) -> None:
         """Subtask index 0 must render as ``[0]`` — falsy but valid."""
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         env = self._envelope(inputs={"subtask_focus": "first", "subtask_index": 0})
-        assert DistributedFlowExecutor._build_task_name("dev", env) == "dev[0]: first"
+        assert DispatchedFlowExecutor._build_task_name("dev", env) == "dev[0]: first"
 
 
 # ---------------------------------------------------------------------------
@@ -601,7 +601,7 @@ class TestDispatchTask:
         )
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor._dispatch_task(envelope, "run_001")
@@ -666,7 +666,7 @@ class TestDispatchTask:
         )
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             result = await executor._dispatch_task(envelope, "run_001")
@@ -716,7 +716,7 @@ class TestDispatchTask:
         mock_queue.consume_blocking.side_effect = flaky_consume_blocking
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             result = await executor._dispatch_task(envelope, "run_001")
@@ -819,7 +819,7 @@ class TestSequentialHappyPath:
         mock_queue.consume.side_effect = self._make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -834,7 +834,7 @@ class TestSequentialHappyPath:
         mock_queue.consume.side_effect = self._make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -846,7 +846,7 @@ class TestSequentialHappyPath:
         mock_queue.consume.side_effect = self._make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -865,7 +865,7 @@ class TestSequentialHappyPath:
         mock_queue.consume.side_effect = self._make_queue_side_effects(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -915,7 +915,7 @@ class TestFailFast:
         mock_queue.consume.side_effect = consume_side_effect
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1000,7 +1000,7 @@ class TestArtifactStorage:
         mock_queue.consume.side_effect = consume_side_effect
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1068,7 +1068,7 @@ class TestPulseVerificationBackwardCompat:
         mock_queue.consume.side_effect = consume_side_effect
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1088,11 +1088,11 @@ class TestPulseVerificationMilestone:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
-        return DistributedFlowExecutor(
+        return DispatchedFlowExecutor(
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
@@ -1146,11 +1146,11 @@ class TestPulseVerificationMilestone:
         # Mock the engine to return PASS
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1214,11 +1214,11 @@ class TestPulseVerificationMilestone:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1249,11 +1249,11 @@ class TestPulseVerificationCadence:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
-        return DistributedFlowExecutor(
+        return DispatchedFlowExecutor(
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
@@ -1306,11 +1306,11 @@ class TestPulseVerificationCadence:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1376,11 +1376,11 @@ class TestPulseVerificationCadence:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1455,11 +1455,11 @@ class TestPulseVerificationCadence:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.time.monotonic",
+                "adapters.cycles.dispatched_flow_executor.time.monotonic",
                 side_effect=fake_monotonic,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1494,12 +1494,12 @@ class TestPulseVerificationTelemetry:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
         obs = MagicMock()
-        return DistributedFlowExecutor(
+        return DispatchedFlowExecutor(
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
@@ -1553,11 +1553,11 @@ class TestPulseVerificationTelemetry:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1626,11 +1626,11 @@ class TestPulseVerificationTelemetry:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1695,11 +1695,11 @@ class TestPulseVerificationTelemetry:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1762,7 +1762,7 @@ class TestPulseVerificationTelemetry:
         mock_queue.consume.side_effect = consume_side_effect
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -1782,11 +1782,11 @@ class TestPulseVerificationCombined:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
-        return DistributedFlowExecutor(
+        return DispatchedFlowExecutor(
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
@@ -1848,11 +1848,11 @@ class TestPulseVerificationCombined:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1890,11 +1890,11 @@ class TestPulseVerificationRecordPersistence:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
-        return DistributedFlowExecutor(
+        return DispatchedFlowExecutor(
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
@@ -1947,11 +1947,11 @@ class TestPulseVerificationRecordPersistence:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
             ) as mock_run_pv,
         ):
             from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -1990,11 +1990,11 @@ class TestPulseRepairLoop:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
-        return DistributedFlowExecutor(
+        return DispatchedFlowExecutor(
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
@@ -2072,10 +2072,10 @@ class TestPulseRepairLoop:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=run_pv_side_effect,
             ),
         ):
@@ -2130,10 +2130,10 @@ class TestPulseRepairLoop:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -2189,10 +2189,10 @@ class TestPulseRepairLoop:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -2264,10 +2264,10 @@ class TestPulseRepairLoop:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=mixed_pv,
             ),
         ):
@@ -2328,10 +2328,10 @@ class TestPulseRepairLoop:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -2387,10 +2387,10 @@ class TestPulseRepairLoop:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side_effect,
             ),
         ):
@@ -2446,10 +2446,10 @@ class TestPulseRepairLoop:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -2518,10 +2518,10 @@ class TestPulseRepairLoop:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -2582,10 +2582,10 @@ class TestPulseRepairLoop:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -2612,13 +2612,13 @@ class TestPulseRepairTelemetry:
         mock_squad_profile,
         cycle,
     ):
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
         mock_registry.get_cycle.return_value = cycle
         mock_registry.record_pulse_verification.return_value = mock_registry.get_run.return_value
 
         obs = MagicMock()
-        return DistributedFlowExecutor(
+        return DispatchedFlowExecutor(
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
@@ -2694,10 +2694,10 @@ class TestPulseRepairTelemetry:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -2749,10 +2749,10 @@ class TestPulseRepairTelemetry:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -2814,10 +2814,10 @@ class TestPulseRepairTelemetry:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -2884,10 +2884,10 @@ class TestPulseRepairTelemetry:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -2953,10 +2953,10 @@ class TestPulseRepairTelemetry:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -3027,10 +3027,10 @@ class TestPulseRepairTelemetry:
 
         with (
             patch(
-                "adapters.cycles.distributed_flow_executor.asyncio.sleep", new_callable=AsyncMock
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
             ),
             patch(
-                "adapters.cycles.distributed_flow_executor.run_pulse_verification",
+                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
             ),
         ):
@@ -3086,9 +3086,9 @@ class TestDispatchTaskPrefectLifecycle:
         return reporter
 
     def _build_executor(self, mock_queue, mock_reporter=None):
-        from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
-        return DistributedFlowExecutor(
+        return DispatchedFlowExecutor(
             queue=mock_queue,
             task_timeout=5.0,
             workflow_tracker=mock_reporter,
@@ -3119,7 +3119,7 @@ class TestDispatchTaskPrefectLifecycle:
         executor = self._build_executor(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor._dispatch_task(envelope, "run_001", flow_run_id="fr_abc")
@@ -3134,7 +3134,7 @@ class TestDispatchTaskPrefectLifecycle:
         executor = self._build_executor(mock_queue, mock_reporter=None)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             result = await executor._dispatch_task(envelope, "run_001", flow_run_id="fr_abc")
@@ -3148,7 +3148,7 @@ class TestDispatchTaskPrefectLifecycle:
         executor = self._build_executor(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor._dispatch_task(envelope, "run_001", flow_run_id=None)
@@ -3166,7 +3166,7 @@ class TestDispatchTaskPrefectLifecycle:
         executor = self._build_executor(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor._dispatch_task(
@@ -3190,7 +3190,7 @@ class TestDispatchTaskPrefectLifecycle:
         executor = self._build_executor(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor._dispatch_task(
@@ -3214,7 +3214,7 @@ class TestDispatchTaskPrefectLifecycle:
         executor = self._build_executor(mock_queue, mock_reporter=None)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor._dispatch_task(envelope, "run_001")
@@ -3242,7 +3242,7 @@ class TestDispatchTaskPrefectLifecycle:
         executor = self._build_executor(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor._dispatch_task(
@@ -3264,7 +3264,7 @@ class TestDispatchTaskPrefectLifecycle:
         the live correlation context so records are tagged for Prefect."""
         import logging as stdlog
 
-        import adapters.cycles.distributed_flow_executor as dfe
+        import adapters.cycles.dispatched_flow_executor as dfe
         from squadops.telemetry.context import (
             get_correlation_context,
             use_correlation_context,
@@ -3320,7 +3320,7 @@ class TestDispatchTaskPrefectLifecycle:
         executor = self._build_executor(mock_queue, mock_reporter)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor._dispatch_task(

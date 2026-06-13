@@ -197,11 +197,11 @@ def cycle():
 def executor(
     mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, event_bus, collector
 ):
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     event_bus.subscribe(collector)
     mock_registry.get_cycle.return_value = cycle
-    return DistributedFlowExecutor(
+    return DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=mock_vault,
         queue=mock_queue,
@@ -228,7 +228,7 @@ class TestHappyPathDrift:
         mock_queue.consume.side_effect = _make_queue_consume(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -260,7 +260,7 @@ class TestHappyPathDrift:
         mock_queue.consume.side_effect = _make_queue_consume(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -293,7 +293,7 @@ class TestTaskFailureDrift:
         mock_queue.consume.side_effect = _make_queue_consume(mock_queue, result_status="FAILED")
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -310,7 +310,7 @@ class TestTaskFailureDrift:
         mock_queue.consume.side_effect = _make_queue_consume(mock_queue, result_status="FAILED")
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
@@ -331,7 +331,7 @@ class TestTaskEventsMatchDispatches:
         mock_queue.consume.side_effect = _make_queue_consume(mock_queue)
 
         with patch(
-            "adapters.cycles.distributed_flow_executor.asyncio.sleep",
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")

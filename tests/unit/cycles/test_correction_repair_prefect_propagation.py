@@ -81,14 +81,14 @@ def mock_prefect_reporter() -> AsyncMock:
 
 def _make_executor(mock_prefect_reporter):
     """Build a minimally-wired executor for direct method calls."""
-    from adapters.cycles.distributed_flow_executor import DistributedFlowExecutor
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     registry = AsyncMock()
     vault = AsyncMock()
     vault.store.side_effect = lambda ref, _content: ref
     queue = AsyncMock()
     squad = AsyncMock()
-    ex = DistributedFlowExecutor(
+    ex = DispatchedFlowExecutor(
         cycle_registry=registry,
         artifact_vault=vault,
         queue=queue,
