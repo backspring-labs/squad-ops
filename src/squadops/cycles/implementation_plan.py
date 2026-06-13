@@ -19,7 +19,6 @@ import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Union
 
 import yaml
 
@@ -28,7 +27,6 @@ from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
     reserved_keys_for,
 )
-
 
 # Known task types that may appear in plan tasks.
 _KNOWN_BUILD_TASK_TYPES = {
@@ -92,7 +90,7 @@ class PlanTask:
     # Mixed list: prose strings stay informational; TypedCheck instances are
     # machine-evaluated by the M1.2 framework. The parser normalizes flat-YAML
     # typed entries into TypedCheck (see ImplementationPlan.from_yaml).
-    acceptance_criteria: list[Union[str, TypedCheck]] = field(default_factory=list)
+    acceptance_criteria: list[str | TypedCheck] = field(default_factory=list)
     depends_on: list[int] = field(default_factory=list)
 
 
@@ -260,7 +258,7 @@ class ImplementationPlan:
         canonical-hashing helper SIP-0092 M3 introduces.
         """
         result = dataclasses.asdict(self)
-        for task_dict, task in zip(result["tasks"], self.tasks):
+        for task_dict, task in zip(result["tasks"], self.tasks, strict=True):
             task_dict["acceptance_criteria"] = [
                 _serialize_acceptance_criterion(c) for c in task.acceptance_criteria
             ]
@@ -293,7 +291,7 @@ def _check_dependency_dag(tasks: list[PlanTask]) -> None:
         _visit(task.task_index)
 
 
-def _serialize_acceptance_criterion(c: Union[str, TypedCheck]) -> Union[str, dict]:
+def _serialize_acceptance_criterion(c: str | TypedCheck) -> str | dict:
     """Inverse of the parser's flat-YAML normalization.
 
     str entries pass through unchanged. TypedCheck entries become flat dicts
@@ -312,7 +310,7 @@ def _serialize_acceptance_criterion(c: Union[str, TypedCheck]) -> Union[str, dic
 
 def _parse_acceptance_criteria(
     raw: list, task_index: int
-) -> list[Union[str, TypedCheck]]:
+) -> list[str | TypedCheck]:
     """Parse a mixed acceptance_criteria list per SIP-0092 M1.
 
     Accepts:
@@ -333,7 +331,7 @@ def _parse_acceptance_criteria(
     Returns:
         Mixed list of str and TypedCheck instances, preserving authored order.
     """
-    parsed: list[Union[str, TypedCheck]] = []
+    parsed: list[str | TypedCheck] = []
     for j, item in enumerate(raw):
         if isinstance(item, str):
             parsed.append(item)

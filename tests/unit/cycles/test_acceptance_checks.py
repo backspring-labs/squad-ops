@@ -9,7 +9,6 @@ Coverage:
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -501,7 +500,6 @@ class TestCommandExitZero:
 
     async def test_timeout_clamped_below_max(self, tmp_path, monkeypatch):
         # Verify the clamp logic works without invoking a real long process.
-        from squadops.cycles import acceptance_checks as ac
 
         captured: dict = {}
 
