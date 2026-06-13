@@ -154,7 +154,7 @@ class TestBufferOverflow:
         for _ in range(12):
             adapter.start_cycle_trace(ctx)
 
-        result = asyncio.get_event_loop().run_until_complete(adapter.health())
+        result = asyncio.run(adapter.health())
         assert result["details"]["dropped_events"] == 2
 
     def test_health_includes_buffer_size(self, adapter):
@@ -164,7 +164,7 @@ class TestBufferOverflow:
         for _ in range(5):
             adapter.start_cycle_trace(ctx)
 
-        result = asyncio.get_event_loop().run_until_complete(adapter.health())
+        result = asyncio.run(adapter.health())
         assert result["details"]["buffer_size"] == 5
 
 
@@ -334,7 +334,7 @@ class TestHealthStatus:
     def test_health_ok_when_reachable(self, adapter):
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(adapter.health())
+        result = asyncio.run(adapter.health())
         assert result["status"] == "ok"
         assert result["backend"] == "langfuse"
         assert "buffer_size" in result["details"]
@@ -353,7 +353,7 @@ class TestHealthStatus:
 
             a = LangFuseAdapter(_make_config())
             try:
-                result = asyncio.get_event_loop().run_until_complete(a.health())
+                result = asyncio.run(a.health())
                 assert result["status"] == "down"
                 assert "error" in result["details"]
             finally:

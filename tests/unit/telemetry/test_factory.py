@@ -120,7 +120,7 @@ class TestCreateLlmObservabilityProvider:
         import asyncio
 
         adapter = create_llm_observability_provider(config=None)
-        result = asyncio.get_event_loop().run_until_complete(adapter.health())
+        result = asyncio.run(adapter.health())
         assert result["status"] == "ok"
 
     def test_returns_langfuse_adapter_when_enabled(self):
@@ -176,7 +176,7 @@ class TestCreateLlmObservabilityProvider:
             sys.modules.pop("adapters.telemetry.langfuse.adapter", None)
             adapter = create_llm_observability_provider(config=config)
             assert isinstance(adapter, NoOpLLMObservabilityAdapter)
-            result = asyncio.get_event_loop().run_until_complete(adapter.health())
+            result = asyncio.run(adapter.health())
             assert result["status"] == "degraded"
             assert "SDK not installed" in result["details"]["reason"]
         finally:
