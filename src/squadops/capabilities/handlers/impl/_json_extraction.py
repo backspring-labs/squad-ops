@@ -33,7 +33,6 @@ import json
 import re
 from typing import Any
 
-
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 

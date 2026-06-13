@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
-
 
 # ---------------------------------------------------------------------------
 # Lightweight fakes
