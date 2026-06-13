@@ -126,6 +126,8 @@ markers = [
     "domain_pulse_checks: Pulse check verification domain tests",
     # Cycle Event System (SIP-0077)
     "domain_events: Cycle lifecycle event system tests",
+    # Runtime Modes (SIP-0089)
+    "domain_runtime: Agent runtime state, modes, and coordinator tests",
 ]
 
 ###########################

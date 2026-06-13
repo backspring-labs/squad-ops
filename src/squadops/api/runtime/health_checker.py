@@ -19,6 +19,8 @@ import httpx
 import yaml
 
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.ports.runtime.state import RuntimeStatePort
+from squadops.runtime.lifecycle_status import runtime_status_from_lifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +34,12 @@ class HealthChecker:
         pg_pool: asyncpg.Pool,
         redis_client: Any | None = None,
         config: Any,
+        runtime_state: RuntimeStatePort | None = None,
     ) -> None:
         self.pg_pool = pg_pool
         self.redis_client = redis_client
         self._config = config
+        self._runtime_state = runtime_state
         self._instances_cache: dict[str, dict[str, Any]] | None = None
         self._instances_cache_mtime: float | None = None
         self._reconciliation_running = True
@@ -221,7 +225,53 @@ class HealthChecker:
                 agent_status.get("memory_count", 0) or 0,
                 now,
             )
+        await self._update_runtime_state_heartbeat(
+            agent_status["agent_id"], agent_status["lifecycle_state"]
+        )
         return {"status": "updated", "agent_id": agent_status["agent_id"]}
+
+    async def get_runtime_state(self, agent_id: str) -> dict[str, Any] | None:
+        """Return the SIP-0089 AgentRuntimeState for an agent, or None.
+
+        Pure read; never mutates. Returns a JSON-serialisable dict so the
+        FastAPI route does not need to know about the dataclass.
+        """
+        if self._runtime_state is None:
+            return None
+        state = await self._runtime_state.get_state(agent_id)
+        if state is None:
+            return None
+        return {
+            "agent_id": state.agent_id,
+            "mode": state.mode,
+            "runtime_status": state.runtime_status,
+            "focus": state.focus,
+            "current_runtime_activity_id": state.current_runtime_activity_id,
+            "interruptibility": state.interruptibility,
+            "last_heartbeat_at": (
+                state.last_heartbeat_at.isoformat() if state.last_heartbeat_at else None
+            ),
+            "current_assignment_ref": state.current_assignment_ref,
+        }
+
+    async def _update_runtime_state_heartbeat(self, agent_id: str, lifecycle_state: str) -> None:
+        """Mirror the heartbeat into agent_runtime_state (SIP-0089 §1.4).
+
+        Failures are isolated — runtime-state writes must not break the
+        existing agent_status heartbeat flow (D17 non-authoritative).
+        """
+        if self._runtime_state is None:
+            return
+        runtime_status = runtime_status_from_lifecycle(lifecycle_state)
+        if runtime_status is None:
+            return
+        try:
+            await self._runtime_state.update_heartbeat(agent_id, runtime_status=runtime_status)
+        except Exception as exc:
+            logger.warning(
+                "runtime_state_heartbeat_failed",
+                extra={"agent_id": agent_id, "error": str(exc)},
+            )
 
     # ── Reconciliation loop ─────────────────────────────────────────────
 

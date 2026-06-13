@@ -118,6 +118,28 @@ async def get_agent_status_by_id(agent_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to get agent status: {e}") from e
 
 
+@router.get("/agents/{agent_id}/runtime-state")
+async def get_agent_runtime_state(agent_id: str):
+    """Return the SIP-0089 AgentRuntimeState for an agent.
+
+    Returns 404 if no row exists yet (agent has not heartbeated since the
+    runtime-state migration applied).
+    """
+    hc = _get_health_checker()
+    try:
+        # Normalize case to match the sibling /agents/status/{agent_id} route,
+        # which lower-cases agent_id; rows are stored lower-cased.
+        state = await hc.get_runtime_state(agent_id.lower())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read runtime state: {e}") from e
+    if state is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No runtime state for agent_id={agent_id}",
+        )
+    return state
+
+
 @router.post("/agents/status")
 async def create_or_update_agent_status(agent_status: AgentStatusCreate):
     """Create or update agent status (heartbeat endpoint)."""
