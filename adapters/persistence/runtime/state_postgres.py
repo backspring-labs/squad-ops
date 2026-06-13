@@ -96,33 +96,37 @@ class PostgresRuntimeState(RuntimeStatePort):
         *,
         runtime_status: str | None = None,
     ) -> AgentRuntimeState:
-        await self.ensure_state(agent_id)
+        """Mirror a heartbeat in a single upsert: create the row if absent, then
+        bump ``last_heartbeat_at`` (and ``runtime_status`` when provided).
+
+        D17: the ON CONFLICT branch only writes the heartbeat-owned columns
+        (``last_heartbeat_at``, ``runtime_status``) — never the coordinator-owned
+        fields — so a heartbeat can never clobber a coordinator transition. The
+        ``COALESCE`` keeps the stored ``runtime_status`` when no status is given.
+        """
         now = datetime.now(UTC)
+        insert_status = runtime_status if runtime_status is not None else _DEFAULT_RUNTIME_STATUS
         async with self._pool.acquire() as conn:
-            if runtime_status is not None:
-                row = await conn.fetchrow(
-                    "UPDATE agent_runtime_state "
-                    "SET last_heartbeat_at = $2, runtime_status = $3, "
-                    "updated_at = now() "
-                    "WHERE agent_id = $1 "
-                    "RETURNING agent_id, mode, runtime_status, focus, "
-                    "current_runtime_activity_id, interruptibility, "
-                    "last_heartbeat_at, current_assignment_ref",
-                    agent_id,
-                    now,
-                    runtime_status,
-                )
-            else:
-                row = await conn.fetchrow(
-                    "UPDATE agent_runtime_state "
-                    "SET last_heartbeat_at = $2, updated_at = now() "
-                    "WHERE agent_id = $1 "
-                    "RETURNING agent_id, mode, runtime_status, focus, "
-                    "current_runtime_activity_id, interruptibility, "
-                    "last_heartbeat_at, current_assignment_ref",
-                    agent_id,
-                    now,
-                )
+            row = await conn.fetchrow(
+                "INSERT INTO agent_runtime_state ("
+                "agent_id, mode, runtime_status, focus, interruptibility, "
+                "last_heartbeat_at"
+                ") VALUES ($1,$2,$3,$4,$5,$6) "
+                "ON CONFLICT (agent_id) DO UPDATE SET "
+                "last_heartbeat_at = EXCLUDED.last_heartbeat_at, "
+                "runtime_status = COALESCE($7, agent_runtime_state.runtime_status), "
+                "updated_at = now() "
+                "RETURNING agent_id, mode, runtime_status, focus, "
+                "current_runtime_activity_id, interruptibility, "
+                "last_heartbeat_at, current_assignment_ref",
+                agent_id,
+                _DEFAULT_MODE,
+                insert_status,
+                _DEFAULT_FOCUS,
+                _DEFAULT_INTERRUPTIBILITY,
+                now,
+                runtime_status,
+            )
         return _row_to_state(row)
 
 

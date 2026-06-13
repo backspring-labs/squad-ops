@@ -132,43 +132,40 @@ async def test_get_state_maps_row_to_dataclass():
     )
 
 
-async def test_update_heartbeat_without_status_sends_only_last_heartbeat_at():
-    """Bug class (D17): if update_heartbeat's no-status branch slipped a status default
-    into the UPDATE, every heartbeat would overwrite the coordinator's runtime_status.
-    The query string must contain `last_heartbeat_at` but not `runtime_status`."""
+async def test_update_heartbeat_without_status_preserves_stored_runtime_status():
+    """Bug class (D16/D17): a heartbeat with no explicit status must not overwrite
+    the stored runtime_status. The single upsert COALESCEs the (NULL) status bind
+    param against the stored value, so the existing status wins."""
     conn = AsyncMock()
-    # First call (inside ensure_state) returns a row; second call (UPDATE) returns row.
-    conn.fetchrow.side_effect = [_state_row(), _state_row()]
+    conn.fetchrow.return_value = _state_row()
     adapter = PostgresRuntimeState(_make_pool(conn))
 
     await adapter.update_heartbeat("max")
 
-    update_call = conn.fetchrow.call_args_list[1]
-    query = update_call.args[0]
-    # Split on RETURNING so the column list it specifies (read-side) isn't
-    # confused with the SET clause (write-side).
-    set_clause = query.split("RETURNING", 1)[0]
-    assert "last_heartbeat_at = $2" in set_clause
-    assert "runtime_status" not in set_clause, (
-        "Heartbeat without explicit status must not write runtime_status (D17)"
-    )
-    # Two positional args after the query: agent_id, now
-    assert len(update_call.args) == 3
+    call = conn.fetchrow.call_args_list[0]
+    # Isolate the ON CONFLICT SET clause from the RETURNING column list.
+    set_clause = call.args[0].split("DO UPDATE SET", 1)[1].split("RETURNING", 1)[0]
+    assert "last_heartbeat_at = EXCLUDED.last_heartbeat_at" in set_clause
+    # runtime_status is COALESCEd against the stored value, never force-written.
+    assert "runtime_status = COALESCE(" in set_clause
+    # The COALESCE status bind param (last positional arg) is None for a
+    # no-status heartbeat, so the stored value is preserved.
+    assert call.args[-1] is None
 
 
-async def test_update_heartbeat_with_status_does_not_touch_coordinator_fields():
+async def test_update_heartbeat_does_not_touch_coordinator_fields():
     """Bug class (D17 — the load-bearing one): if anyone adds mode/focus/
-    current_assignment_ref/current_runtime_activity_id to the UPDATE, heartbeat
-    can race the coordinator and corrupt state. This is the regression test."""
+    current_assignment_ref/current_runtime_activity_id to the ON CONFLICT SET,
+    a heartbeat can race the coordinator and corrupt state. This is the
+    regression test."""
     conn = AsyncMock()
-    conn.fetchrow.side_effect = [_state_row(), _state_row(runtime_status="degraded")]
+    conn.fetchrow.return_value = _state_row(runtime_status="degraded")
     adapter = PostgresRuntimeState(_make_pool(conn))
 
     await adapter.update_heartbeat("max", runtime_status="degraded")
 
-    update_call = conn.fetchrow.call_args_list[1]
-    query = update_call.args[0]
-    set_clause = query.split("RETURNING", 1)[0]
+    call = conn.fetchrow.call_args_list[0]
+    set_clause = call.args[0].split("DO UPDATE SET", 1)[1].split("RETURNING", 1)[0]
     # Each forbidden column listed as `column =` (the SET-clause assignment
     # form) — bare names appear in the RETURNING list and are legitimate.
     forbidden = (
@@ -178,23 +175,24 @@ async def test_update_heartbeat_with_status_does_not_touch_coordinator_fields():
         "current_runtime_activity_id =",
     )
     for tok in forbidden:
-        assert tok not in set_clause, f"Heartbeat UPDATE must not write {tok!r} (D17)"
+        assert tok not in set_clause, f"Heartbeat upsert must not write {tok!r} (D17)"
+    # An explicit status flows through as the COALESCE bind param.
+    assert call.args[-1] == "degraded"
 
 
-async def test_update_heartbeat_calls_ensure_state_first():
-    """Bug class: removing the ensure_state call would mean an agent that never
-    had a row simply never gets one — heartbeats would no-op silently and
-    `squadops agent state` would 404 forever."""
+async def test_update_heartbeat_creates_row_when_absent():
+    """Bug class: an agent that never had a row must still get one from a heartbeat,
+    else `squadops agent state` 404s forever. The single statement is an
+    INSERT...ON CONFLICT, so it inserts when absent and updates when present."""
     conn = AsyncMock()
-    conn.fetchrow.side_effect = [_state_row(), _state_row()]
+    conn.fetchrow.return_value = _state_row()
     adapter = PostgresRuntimeState(_make_pool(conn))
 
     await adapter.update_heartbeat("max")
 
-    # Two fetchrow calls: first is the ensure_state INSERT...ON CONFLICT,
-    # second is the heartbeat UPDATE. The INSERT must come first.
-    first_query = conn.fetchrow.call_args_list[0].args[0]
-    assert "INSERT INTO agent_runtime_state" in first_query
+    query = conn.fetchrow.call_args_list[0].args[0]
+    assert "INSERT INTO agent_runtime_state" in query
+    assert "ON CONFLICT (agent_id) DO UPDATE" in query
 
 
 async def test_ensure_state_returns_existing_row_unchanged():

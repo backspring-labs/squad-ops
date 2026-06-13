@@ -127,7 +127,9 @@ async def get_agent_runtime_state(agent_id: str):
     """
     hc = _get_health_checker()
     try:
-        state = await hc.get_runtime_state(agent_id)
+        # Normalize case to match the sibling /agents/status/{agent_id} route,
+        # which lower-cases agent_id; rows are stored lower-cased.
+        state = await hc.get_runtime_state(agent_id.lower())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read runtime state: {e}") from e
     if state is None:

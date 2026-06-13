@@ -40,8 +40,10 @@ def state(
 
     try:
         client = _get_client(ctx)
-        data = client.get(f"/health/agents/{agent_id}/runtime-state")
-        client.close()
+        try:
+            data = client.get(f"/health/agents/{agent_id}/runtime-state")
+        finally:
+            client.close()
     except CLIError as e:
         print_error(str(e))
         raise typer.Exit(code=e.exit_code) from e
