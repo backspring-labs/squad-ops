@@ -437,3 +437,49 @@ async def test_produce_plan_inline_fallback_when_renderer_absent(seeded_inputs):
     user_prompt = next(m.content for m in messages if m.role == "user")
     assert "## PRD" in user_prompt
     assert "implementation_plan.yaml" in user_prompt
+
+
+async def test_produce_plan_filters_builder_assemble_by_squad_capability():
+    """End-to-end guard for the capability filter (cyc_0024e1a0b6b5 failure).
+
+    The plan-authoring prompt must NOT offer ``builder.assemble`` when the
+    squad has no builder role — otherwise the LLM authors a builder.assemble
+    task that aborts at dispatch with 'No handler for capability:
+    builder.assemble', as happened on full-squad. A builder-equipped squad
+    must still be offered it. The rendered template variables (which carry
+    the available-task-types list and builder example) are the surface.
+    """
+    base = {
+        "prd": "Build a simple user-CRUD API",
+        "resolved_config": {
+            "implementation_plan": True,
+            "min_build_subtasks": 3,
+            "max_build_subtasks": 15,
+        },
+    }
+
+    ctx_no_builder = _make_context()
+    await produce_plan(
+        ctx_no_builder,
+        {**base, "profile_roles": ["lead", "dev", "qa"]},
+        planning_content="## Plan",
+        resolved_config=base["resolved_config"],
+        role="lead",
+        handler_name="test_harness",
+        chat_kwargs={},
+    )
+    no_builder_render = str(ctx_no_builder.ports.request_renderer.render.call_args)
+    assert "builder.assemble" not in no_builder_render
+
+    ctx_builder = _make_context()
+    await produce_plan(
+        ctx_builder,
+        {**base, "profile_roles": ["lead", "dev", "builder", "qa"]},
+        planning_content="## Plan",
+        resolved_config=base["resolved_config"],
+        role="lead",
+        handler_name="test_harness",
+        chat_kwargs={},
+    )
+    builder_render = str(ctx_builder.ports.request_renderer.render.call_args)
+    assert "builder.assemble" in builder_render

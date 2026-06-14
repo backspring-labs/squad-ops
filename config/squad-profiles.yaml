@@ -45,4 +45,16 @@ profiles:
       - { agent_id: eve, role: qa, model: "qwen3.6:27b", enabled: true }
       - { agent_id: data, role: data, model: "qwen3.6:27b", enabled: true }
 
+  - profile_id: lite
+    name: "Lite Squad"
+    description: "All 6 roles incl. builder on qwen2.5:7b — lightweight end-to-end framework validation. Exercises the full build path (incl. builder.assemble) cheaply; small but structured-output-capable. For plumbing/clean-framework checks, NOT reasoning-quality signal."
+    version: 1
+    agents:
+      - { agent_id: max, role: lead, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: neo, role: dev, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: nat, role: strat, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: bob, role: builder, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: eve, role: qa, model: "qwen2.5:7b", enabled: true }
+      - { agent_id: data, role: data, model: "qwen2.5:7b", enabled: true }
+
 active_profile: full-squad

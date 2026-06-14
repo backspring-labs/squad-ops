@@ -7,7 +7,11 @@ from dataclasses import dataclass
 import pytest
 
 from squadops.cycles.acceptance_check_spec import CHECK_SPECS
-from squadops.cycles.implementation_plan import ImplementationPlan, TypedCheck
+from squadops.cycles.implementation_plan import (
+    ImplementationPlan,
+    TypedCheck,
+    planner_build_task_types,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -282,9 +286,7 @@ class TestValidateAgainstProfile:
 
     def test_disabled_agent_treated_as_missing(self):
         manifest = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
-        profile = _FakeProfile(
-            agents=[_FakeAgent("dev"), _FakeAgent("qa", enabled=False)]
-        )
+        profile = _FakeProfile(agents=[_FakeAgent("dev"), _FakeAgent("qa", enabled=False)])
 
         errors = manifest.validate_against_profile(profile)
 
@@ -537,3 +539,34 @@ class TestTypedCheckRegistryCoverage:
                 f"CHECK_SPECS[{name!r}].path_params declares "
                 f"{stragglers} which are not in required ∪ optional params"
             )
+
+
+class TestPlannerBuildTaskTypes:
+    """Bug this guards: the plan author offering ``builder.assemble`` to a
+    builder-less squad. In production (cyc_0024e1a0b6b5) that produced a plan
+    whose first task aborted at dispatch with 'No handler for capability:
+    builder.assemble', failing the whole implementation run 9 minutes in. The
+    planner must only offer task types the squad can actually execute.
+    """
+
+    def test_builder_squad_gets_full_known_set(self):
+        assert planner_build_task_types(has_builder=True) == {
+            "development.develop",
+            "qa.test",
+            "builder.assemble",
+        }
+
+    def test_builderless_squad_drops_builder_assemble_but_keeps_build_path(self):
+        offered = planner_build_task_types(has_builder=False)
+        # The offending capability is gone...
+        assert "builder.assemble" not in offered
+        # ...but the dev/qa build path remains, so builder-less squads still build.
+        assert offered == {"development.develop", "qa.test"}
+
+    def test_result_is_a_fresh_set_callers_cannot_corrupt_constants(self):
+        """Returning the module constant itself would let one caller's mutation
+        leak into the next cycle's offered task types."""
+        result = planner_build_task_types(has_builder=True)
+        result.add("bogus.capability")
+        assert "bogus.capability" not in planner_build_task_types(has_builder=True)
+        assert "bogus.capability" not in planner_build_task_types(has_builder=False)

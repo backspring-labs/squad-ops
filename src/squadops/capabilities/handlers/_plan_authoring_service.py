@@ -27,8 +27,8 @@ from squadops.capabilities.handlers.cycle_tasks import (
 )
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.cycles.implementation_plan import (
-    _KNOWN_BUILD_TASK_TYPES,
     ImplementationPlan,
+    planner_build_task_types,
 )
 from squadops.llm.models import ChatMessage
 
@@ -62,19 +62,23 @@ async def produce_plan(
     prd = inputs.get("prd", "")
 
     profile_roles = inputs.get("profile_roles") or []
+    has_builder = "builder" in profile_roles
     roles_section = (
         f"Available roles (use ONLY these; do NOT invent new ones): {', '.join(profile_roles)}\n\n"
         if profile_roles
         else ""
     )
 
-    allowed_task_types = sorted(_KNOWN_BUILD_TASK_TYPES)
+    # Only offer task types the squad can actually execute: builder.assemble
+    # needs the builder role, so a builder-less squad must not be offered it
+    # (else the LLM authors a task that aborts at dispatch with
+    # "No handler for capability: builder.assemble").
+    allowed_task_types = sorted(planner_build_task_types(has_builder=has_builder))
     task_types_section = (
         f"Available task_types (use ONLY these; do NOT invent new ones): "
         f"{', '.join(allowed_task_types)}\n\n"
     )
 
-    has_builder = "builder" in profile_roles
     if has_builder:
         builder_guideline = (
             "- Route packaging, entrypoints, requirements.txt/package.json, "

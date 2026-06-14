@@ -35,6 +35,26 @@ _KNOWN_BUILD_TASK_TYPES = {
     "builder.assemble",
 }
 
+# Build task types only the builder role (bob) can execute. The plan author
+# must not offer these to a squad without a builder, or the LLM can author a
+# task that aborts at dispatch with "No handler for capability: builder.assemble".
+# The plan *validator* still accepts the full set above — it validates plans
+# regardless of the authoring squad.
+_BUILDER_ROLE_BUILD_TASK_TYPES = {"builder.assemble"}
+
+
+def planner_build_task_types(*, has_builder: bool) -> set[str]:
+    """Build task types the plan-authoring prompt may offer for a given squad.
+
+    Returns the full known set when the squad has a builder role; otherwise
+    drops builder-only task types so packaging/scaffolding is routed to a role
+    the squad actually has (e.g. ``development.develop``) instead of producing a
+    ``builder.assemble`` task no agent can handle.
+    """
+    if has_builder:
+        return set(_KNOWN_BUILD_TASK_TYPES)
+    return _KNOWN_BUILD_TASK_TYPES - _BUILDER_ROLE_BUILD_TASK_TYPES
+
 
 @dataclass(frozen=True)
 class TypedCheck:
@@ -178,9 +198,7 @@ class ImplementationPlan:
 
             raw_criteria = td.get("acceptance_criteria", [])
             if not isinstance(raw_criteria, list):
-                raise ValueError(
-                    f"Task {task_index}: acceptance_criteria must be a list"
-                )
+                raise ValueError(f"Task {task_index}: acceptance_criteria must be a list")
             criteria = _parse_acceptance_criteria(raw_criteria, task_index)
 
             tasks.append(
@@ -242,9 +260,7 @@ class ImplementationPlan:
         errors: list[str] = []
         for task in self.tasks:
             if task.role not in available_roles:
-                errors.append(
-                    f"Task {task.task_index}: role '{task.role}' not in profile"
-                )
+                errors.append(f"Task {task.task_index}: role '{task.role}' not in profile")
         return errors
 
     def to_dict(self) -> dict:
@@ -308,9 +324,7 @@ def _serialize_acceptance_criterion(c: str | TypedCheck) -> str | dict:
     return flat
 
 
-def _parse_acceptance_criteria(
-    raw: list, task_index: int
-) -> list[str | TypedCheck]:
+def _parse_acceptance_criteria(raw: list, task_index: int) -> list[str | TypedCheck]:
     """Parse a mixed acceptance_criteria list per SIP-0092 M1.
 
     Accepts:
@@ -352,8 +366,7 @@ def _parse_acceptance_criteria(
         check_name = item["check"]
         if not isinstance(check_name, str):
             raise ValueError(
-                f"Task {task_index}.acceptance_criteria[{j}]: "
-                f"'check' must be a string"
+                f"Task {task_index}.acceptance_criteria[{j}]: 'check' must be a string"
             )
         if check_name not in CHECK_SPECS:
             raise ValueError(
@@ -425,9 +438,7 @@ def _parse_acceptance_criteria(
         # Path-traversal pre-eval rejection
         for path_key in spec.path_params:
             if path_key in params:
-                _reject_unsafe_path(
-                    params[path_key], path_key, task_index, j, check_name
-                )
+                _reject_unsafe_path(params[path_key], path_key, task_index, j, check_name)
 
         parsed.append(
             TypedCheck(

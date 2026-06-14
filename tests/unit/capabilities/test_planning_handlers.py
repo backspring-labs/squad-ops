@@ -1065,16 +1065,24 @@ class TestProduceManifestRetry:
         assert "dev" in user_prompt and "qa" in user_prompt and "lead" in user_prompt
 
     async def test_allowed_task_types_injected_into_prompt(self):
-        """Known build task_types appear in the prompt so the LLM doesn't invent them."""
+        """Known build task_types appear in the prompt so the LLM doesn't invent
+        them. builder.assemble is gated on the squad having a builder role, so it
+        is NOT offered here (no builder present) — otherwise the LLM can author a
+        builder.assemble task that aborts at dispatch with 'No handler for
+        capability: builder.assemble' (the cyc_0024e1a0b6b5 failure). See
+        test_builder_guidance_* for the with/without-builder split."""
         ctx = _make_context(_VALID_MANIFEST_YAML)
-        await self._call_produce(ctx)
+        await self._call_produce(ctx)  # no profile_roles -> builder-less squad
 
         messages = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0]
         user_prompt = messages[1].content
         assert "Available task_types" in user_prompt
         assert "development.develop" in user_prompt
         assert "qa.test" in user_prompt
-        assert "builder.assemble" in user_prompt
+        # Builder-only capability is filtered out of the offered list for a
+        # builder-less squad (complements the example-row check in
+        # test_builder_guidance_absent_when_builder_role_missing).
+        assert "builder.assemble" not in user_prompt
 
     async def test_invented_role_triggers_retry_with_role_list(self):
         """Manifest with role outside profile_roles must retry with a specific error."""
