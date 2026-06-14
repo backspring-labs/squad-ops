@@ -111,7 +111,7 @@ squadops artifacts list <run-id>           # List artifacts for run
   - `secrets/` - env, file, docker_secret providers
   - `comms/` - RabbitMQ adapter
   - `persistence/` - PostgreSQL runtime with connection pooling
-  - `cycles/` - DistributedFlowExecutor, MemoryCycleRegistry, PostgresCycleRegistry, factory
+  - `cycles/` - DispatchedFlowExecutor, MemoryCycleRegistry, PostgresCycleRegistry, factory
   - `telemetry/` - LangFuse adapter (buffered, with redaction) and factory
   - `auth/` - Keycloak adapter, JWT middleware
   - `llm/` - Ollama adapter

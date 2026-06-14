@@ -1,5 +1,5 @@
 """
-Distributed flow executor adapter.
+Dispatched flow executor adapter.
 
 Dispatches cycle tasks to agent containers via RabbitMQ instead of
 executing them in-process.  Each agent handles its own task using

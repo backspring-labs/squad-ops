@@ -105,7 +105,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── secrets/          # env, file, docker_secret providers
 ├── comms/            # RabbitMQ adapter
 ├── persistence/      # PostgreSQL runtime
-├── cycles/           # DistributedFlowExecutor, MemoryCycleRegistry, PostgresCycleRegistry
+├── cycles/           # DispatchedFlowExecutor, MemoryCycleRegistry, PostgresCycleRegistry
 ├── telemetry/        # LangFuse adapter with buffering, flush, redaction
 ├── auth/             # Keycloak adapter, JWT middleware
 ├── capabilities/     # Filesystem repository, ACI executor
