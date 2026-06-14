@@ -1,7 +1,7 @@
 # 1.0.x Build Reliability Hardening Plan
 
 **Created:** 2026-04-27
-**Updated:** 2026-05-02 (rev 4 — S1 reshaped to per-agent reply queues)
+**Updated:** 2026-06-14 (added Framework smoke integration test section → issue #176; rev 4 2026-05-02 — S1 reshaped to per-agent reply queues)
 **Status:** Active — #1 drafted, #2 next; substrate SIP S1 proposed
 **Scope:** SquadOps 1.0.x patch series (Spark lane); orthogonal to v1.1 work (SIP-0088+)
 
@@ -47,6 +47,14 @@ To keep these SIPs from accumulating responsibility creep:
 - **#7 — Technical idempotency only.** Resume restores known state; it does not interpret what's worth resuming. That's #6's responsibility.
 - **#8 — Composes, doesn't reinvent.** Stage A = smoke only. Stage B = smoke + endpoint + basic UI. Stage C = deeper acceptance + repair loop + evidence pack. Each stage is a profile composed from #2's primitives.
 - **#10 — Registry tightens primitives by stack.** Each capability entry declares its run/build/probe/smoke-test contract; #2 calls into them rather than reimplementing per stack.
+
+## Framework smoke integration test (pipeline plumbing check — distinct from #2)
+
+A separate, cheap, repeatable smoke that validates the **orchestration pipeline itself** (create → dispatch → multi-role framing → gate → develop→assemble handoff → correction loop → artifact persistence), runnable on small models so it can gate merges without a multi-hour 27b cycle. **Tracked in issue #176.**
+
+Key decision: **assert on framework invariants, not on the run reaching `completed`.** Small models exercise the plumbing reliably but cannot clear content-quality gates (e.g. the `builder.assemble` output validator), so a smoke keyed on terminal status is a false-negative generator. Validated empirically by `cyc_02682aa4efa2` (lite/7b, builder-assemble, 2026-06-14): every pipeline invariant held; the run only ended `FAILED` because a 7b builder under-produced and the validator correctly rejected it. Consistent with the "plumbing smoke OK on small models; quality signal needs uniform-27b" rule.
+
+**Do not conflate with #2 (Smoke & Acceptance Capability Pack):** #2 provides QA primitives that test whether the *built app* works; this tests whether the *squad pipeline* works. Opposite sides of the framework/product boundary.
 
 ## Parallel 1.0.x track (orthogonal to build reliability)
 
