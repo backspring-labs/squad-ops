@@ -1,7 +1,7 @@
 # 1.0.x Build Reliability Hardening Plan
 
 **Created:** 2026-04-27
-**Updated:** 2026-06-14 (added Framework smoke integration test section → issue #176; rev 4 2026-05-02 — S1 reshaped to per-agent reply queues)
+**Updated:** 2026-06-14 (added GitHub-issue column to priority tables → issue #170; added Framework smoke integration test section → issue #176; rev 4 2026-05-02 — S1 reshaped to per-agent reply queues)
 **Status:** Active — #1 drafted, #2 next; substrate SIP S1 proposed
 **Scope:** SquadOps 1.0.x patch series (Spark lane); orthogonal to v1.1 work (SIP-0088+)
 
@@ -13,26 +13,26 @@ The 1.0.x series targets **autonomous cycles long enough to build the best possi
 
 These are not part of the "stay coherent over time" axis below — they are the dispatch/transport layer the axis runs on. Listed separately so they don't compete with planning/QA/continuation items for slot ordering, but called out as preconditions because every item below assumes the orchestrator reliably receives an agent reply on a long task. That assumption broke on `cyc_c9ca088599c0` (2026-05-02): a 9-minute dev[3] reply was lost because the reply-queue poll loop churned ~3600 short-lived consumer subscriptions over a 30-min wait, then wedged the channel.
 
-| # | SIP | Status | Where |
-|---|-----|--------|-------|
-| S1 | **Per-Agent Reply Queues + Long-Lived Subscription Model** — replace per-run `cycle_results_{run_id}` queues with per-agent `{agent_id}_results` queues (parallel to existing `{agent_id}_comms`), and replace `_publish_and_await` poll loop with a single orchestrator-startup subscription per agent feeding an in-process reply router. Eliminates orphan-queue leakage and consumer-tag-churn failure classes in one structural step. Tactical patch (PR #89, merged 2026-05-02) contains the bleeding. | proposed rev 2 (2026-05-02); tactical patch merged via PR #89 | `sips/proposed/SIP-Reply-Channel-Subscription-Model.md` |
+| # | SIP | Status | Where | GitHub issue |
+|---|-----|--------|-------|--------------|
+| S1 | **Per-Agent Reply Queues + Long-Lived Subscription Model** — replace per-run `cycle_results_{run_id}` queues with per-agent `{agent_id}_results` queues (parallel to existing `{agent_id}_comms`), and replace `_publish_and_await` poll loop with a single orchestrator-startup subscription per agent feeding an in-process reply router. Eliminates orphan-queue leakage and consumer-tag-churn failure classes in one structural step. Tactical patch (PR #89, merged 2026-05-02) contains the bleeding. | proposed rev 2 (2026-05-02); tactical patch merged via PR #89 | `sips/proposed/SIP-Reply-Channel-Subscription-Model.md` | #146 |
 
 ## Build-reliability axis (priority order)
 
-| # | SIP | Status | Where |
-|---|-----|--------|-------|
-| 1 | **SIP-0092 Implementation Plan Improvement** — typed acceptance criteria + separated authoring + plan changes (SIP-0086 follow-up) | accepted 2026-04-29; plan on `feature/sip-0092-implementation-plan-improvement` | `sips/accepted/SIP-0092-Implementation-Plan-Improvement.md` |
-| 2 | **Smoke & Acceptance Capability Pack** — `qa.start_app` / `qa.probe_endpoint` / `qa.capture_evidence`, cadence-bound for long cycles | net new — to write | — |
-| 3 | **Cycle Evaluation Scorecard — phases 1+2 only** — evaluation contract + evidence capture; defer console UI to post-1.0 | proposed, needs scope cut | `sips/proposed/SIP-Cycle-Evaluation-Scorecard.md` |
-| 4 | **Cross-Run Memory & Context Handoff** — typed `cycle_handoff.json` ledgers (decisions/defects/open-questions/artifact pointers/known failing checks) + run-startup primer + within-run summarization | net new — to write | — |
-| 5a | **Minimal LLM Budget Breakers** *(precondition for #5)* — wall-clock cap, max continuation count, max LLM spend, max repeated-failure count, emergency-stop reason code, operator-visible termination summary | partial — SIP-0073 minimal follow-up, pulled forward | needs new SIP (small) |
-| 5 | **Run Trajectory & Continuation Protocol** — Strategy declares trajectory hypothesis; Lead emits typed evidence-gated continuation decision per run; default-terminate bias. Depends on #2/#3/#4 evidence and #5a's hard breakers. | net new — to write | — |
-| 6 | **Structured Defect Report & Targeted Repair** — machine-actionable `defect_report.json` schema (failing check / expected / observed / suspected component / evidence ref / repair recommendation / confidence / retest needed) + `qa.localize_defect` step feeding `development.repair` | net new — to write | — |
-| 7 | **Cycle Resume Contract** *(technical idempotency only)* — idempotent task re-entry, partial-output preservation, RabbitMQ dedup on restart. NOT defect-aware "smart resume" — that's #6's job at the planning level. | net new — to write | — |
-| 8 | **QA Maturity Ladder** — composes #2's primitives into Stage A/B/C profiles. Stages map to cycle duration AND risk profile, not just "more tests." | rewrite + rename existing IDEA | `sips/proposed/IDEA-QA-First-Test-Strategy-1h-Cycles-group_run.md` → `SIP-QA-Maturity-Ladder.md` |
-| 9 | **LLM Budget Operator Surface** — live per-role spend, projected burn, dashboards, configuration UI/CLI. (Enforcement breakers split into #5a above.) | partial — SIP-0073 follow-up | needs new SIP |
-| 10 | **Stack Capability Registry concretization** — concrete `DevelopmentCapability` registry where each entry declares its acceptance capabilities (React+Vite knows how to run/build/smoke-test itself; FastAPI knows how to start, expose OpenAPI, probe endpoints). Tightens #2's primitives by stack. | partial — SIP-0072 follow-up | needs new SIP |
-| 11 | **Planning-Sequence-Strategy-First** — flip `PLANNING_TASK_STEPS` order so Strategy frames before Data researches. Treat as empirical tweak: ship with before/after run evidence; revert if it doesn't measurably improve manifest quality or reduce re-litigation. | proposed (stub) | `sips/proposed/SIP-Planning-Sequence-Strategy-First.md` — flesh out before acceptance |
+| # | SIP | Status | Where | GitHub issue |
+|---|-----|--------|-------|--------------|
+| 1 | **SIP-0092 Implementation Plan Improvement** — typed acceptance criteria + separated authoring + plan changes (SIP-0086 follow-up) | accepted 2026-04-29; plan on `feature/sip-0092-implementation-plan-improvement` | `sips/accepted/SIP-0092-Implementation-Plan-Improvement.md` | #114 |
+| 2 | **Smoke & Acceptance Capability Pack** — `qa.start_app` / `qa.probe_endpoint` / `qa.capture_evidence`, cadence-bound for long cycles | net new — to write | — | — |
+| 3 | **Cycle Evaluation Scorecard — phases 1+2 only** — evaluation contract + evidence capture; defer console UI to post-1.0 | proposed, needs scope cut | `sips/proposed/SIP-Cycle-Evaluation-Scorecard.md` | — |
+| 4 | **Cross-Run Memory & Context Handoff** — typed `cycle_handoff.json` ledgers (decisions/defects/open-questions/artifact pointers/known failing checks) + run-startup primer + within-run summarization | net new — to write | — | — |
+| 5a | **Minimal LLM Budget Breakers** *(precondition for #5)* — wall-clock cap, max continuation count, max LLM spend, max repeated-failure count, emergency-stop reason code, operator-visible termination summary | partial — SIP-0073 minimal follow-up, pulled forward | needs new SIP (small) | — |
+| 5 | **Run Trajectory & Continuation Protocol** — Strategy declares trajectory hypothesis; Lead emits typed evidence-gated continuation decision per run; default-terminate bias. Depends on #2/#3/#4 evidence and #5a's hard breakers. | net new — to write | — | — |
+| 6 | **Structured Defect Report & Targeted Repair** — machine-actionable `defect_report.json` schema (failing check / expected / observed / suspected component / evidence ref / repair recommendation / confidence / retest needed) + `qa.localize_defect` step feeding `development.repair` | net new — to write | — | — |
+| 7 | **Cycle Resume Contract** *(technical idempotency only)* — idempotent task re-entry, partial-output preservation, RabbitMQ dedup on restart. NOT defect-aware "smart resume" — that's #6's job at the planning level. | net new — to write | — | — |
+| 8 | **QA Maturity Ladder** — composes #2's primitives into Stage A/B/C profiles. Stages map to cycle duration AND risk profile, not just "more tests." | rewrite + rename existing IDEA | `sips/proposed/IDEA-QA-First-Test-Strategy-1h-Cycles-group_run.md` → `SIP-QA-Maturity-Ladder.md` | — |
+| 9 | **LLM Budget Operator Surface** — live per-role spend, projected burn, dashboards, configuration UI/CLI. (Enforcement breakers split into #5a above.) | partial — SIP-0073 follow-up | needs new SIP | — |
+| 10 | **Stack Capability Registry concretization** — concrete `DevelopmentCapability` registry where each entry declares its acceptance capabilities (React+Vite knows how to run/build/smoke-test itself; FastAPI knows how to start, expose OpenAPI, probe endpoints). Tightens #2's primitives by stack. | partial — SIP-0072 follow-up | needs new SIP | — |
+| 11 | **Planning-Sequence-Strategy-First** — flip `PLANNING_TASK_STEPS` order so Strategy frames before Data researches. Treat as empirical tweak: ship with before/after run evidence; revert if it doesn't measurably improve manifest quality or reduce re-litigation. | proposed (stub) | `sips/proposed/SIP-Planning-Sequence-Strategy-First.md` — flesh out before acceptance | — |
 
 ## Capability/policy boundaries (explicit)
 
@@ -60,10 +60,10 @@ Key decision: **assert on framework invariants, not on the run reaching `complet
 
 These ship on the 1.0.x patch lane but do not contribute to build-reliability. Listed for completeness so the program isn't fragmented across multiple plans.
 
-| SIP | Status | File |
-|-----|--------|------|
-| Version-Bump-Hardening | proposed | `sips/proposed/SIP-Version-Bump-Hardening.md` |
-| API-Contract-Hardening | proposed | `sips/proposed/SIP-API-Contract-Hardening.md` |
+| SIP | Status | File | GitHub issue |
+|-----|--------|------|--------------|
+| Version-Bump-Hardening | proposed | `sips/proposed/SIP-Version-Bump-Hardening.md` | — |
+| API-Contract-Hardening | proposed | `sips/proposed/SIP-API-Contract-Hardening.md` | #132, #150 |
 
 ## Triage / skip for 1.0.x
 
