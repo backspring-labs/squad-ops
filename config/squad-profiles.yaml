@@ -21,18 +21,6 @@ profiles:
       - { agent_id: eve, role: qa, model: "qwen3.6:27b", enabled: true }
       - { agent_id: data, role: data, model: "qwen3.6:27b", enabled: true }
 
-  - profile_id: full-squad-with-builder
-    name: "Full Squad with Builder"
-    description: "6 agents including dedicated builder"
-    version: 1
-    agents:
-      - { agent_id: max, role: lead, model: "qwen2.5:32b", enabled: true }
-      - { agent_id: neo, role: dev, model: "qwen2.5:7b", enabled: true }
-      - { agent_id: nat, role: strat, model: "qwen2.5:7b", enabled: true }
-      - { agent_id: bob, role: builder, model: "qwen2.5:7b", enabled: true }
-      - { agent_id: eve, role: qa, model: "qwen2.5:3b-instruct", enabled: true }
-      - { agent_id: data, role: data, model: "qwen2.5:3b-instruct", enabled: true }
-
   - profile_id: spark-squad-with-builder
     name: "Spark Squad with Builder"
     description: "6 agents on DGX Spark — all roles on qwen3.6:27b (uniform, single loaded model, max reasoning depth)"
