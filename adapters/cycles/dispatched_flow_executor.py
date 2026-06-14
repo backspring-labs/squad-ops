@@ -209,7 +209,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             flow_ctx = CorrelationContext(cycle_id=cycle_id, flow_run_id=flow_run_id)
             with use_correlation_context(flow_ctx):
                 logger.info(
-                    "Executing run %s for cycle %s (%d tasks, mode=%s, dispatch=distributed)",
+                    "Executing run %s for cycle %s (%d tasks, mode=%s, dispatch=dispatched)",
                     run_id,
                     cycle_id,
                     len(plan),
@@ -1711,7 +1711,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 obs_ctx,
                 StructuredEvent(
                     name="cycle.started",
-                    message=f"Cycle {cycle_id} started ({len(plan)} tasks, distributed)",
+                    message=f"Cycle {cycle_id} started ({len(plan)} tasks, dispatched)",
                 ),
             )
 
