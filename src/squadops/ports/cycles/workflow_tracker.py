@@ -1,6 +1,6 @@
 """WorkflowTrackerPort — per-task workflow tracking abstraction.
 
-Used by the distributed flow executor and the cycle event bridges to record
+Used by the dispatched flow executor and the cycle event bridges to record
 flow runs, task runs, and their state transitions on an external workflow UI
 (today: Prefect; tomorrow: anything else with a comparable concept).
 

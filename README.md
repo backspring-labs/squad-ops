@@ -32,7 +32,7 @@
 ### Cycle Execution Pipeline (SIP-0064/0066/0068/0076–0080/0083)
 - **Cycle API** – Create, monitor, and manage execution cycles via REST API
 - **Task Planning** – Automatic task plan generation from PRD references
-- **Distributed Flow Executor** – Sequential task dispatch to agent containers via RabbitMQ
+- **Dispatched Flow Executor** – Sequential task dispatch to agent containers via RabbitMQ
 - **Gate Decisions** – Human-in-the-loop approval gates between pipeline stages
 - **Artifact Management** – Typed artifact ingestion and retrieval per run with promotion model
 - **Build Capabilities** – Agents produce executable source code, tests, and config from plans (SIP-0068)
@@ -105,7 +105,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── secrets/          # env, file, docker_secret providers
 ├── comms/            # RabbitMQ adapter
 ├── persistence/      # PostgreSQL runtime
-├── cycles/           # DistributedFlowExecutor, MemoryCycleRegistry, PostgresCycleRegistry
+├── cycles/           # DispatchedFlowExecutor, MemoryCycleRegistry, PostgresCycleRegistry
 ├── telemetry/        # LangFuse adapter with buffering, flush, redaction
 ├── auth/             # Keycloak adapter, JWT middleware
 ├── capabilities/     # Filesystem repository, ACI executor
