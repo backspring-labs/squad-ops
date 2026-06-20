@@ -22,6 +22,7 @@ fails, the merger falls back to sole-broker authoring per SIP-0093 §5.4.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 
@@ -31,6 +32,8 @@ from squadops.cycles.implementation_plan import (
     TypedCheck,
     _parse_acceptance_criteria,
 )
+
+logger = logging.getLogger(__name__)
 
 _FOCUS_NORMALIZE_RE = re.compile(r"\s+")
 
@@ -135,6 +138,12 @@ class ProposedRoleTasks:
     populate inconsistently even when required (per SIP-0093 §5.4.1) — kept
     optional so a proposer that fails to surface its assumptions doesn't
     invalidate an otherwise good proposal.
+
+    Optional sections degrade gracefully (issue #187): a malformed
+    ``brief_conflicts`` entry or wrong-typed advisory list is dropped (warn +
+    recorded in ``degraded_sections``) instead of discarding the proposal's
+    load-bearing ``tasks``. ``tasks`` and the required header fields stay
+    strict — a problem there still raises and the merger drops the proposal.
     """
 
     version: int
@@ -149,6 +158,10 @@ class ProposedRoleTasks:
     risks: list[str] = field(default_factory=list)
     gaps_not_covered: list[str] = field(default_factory=list)
     confidence: str = ""
+    # Optional sections dropped during tolerant parsing (issue #187). Empty for
+    # a clean proposal; e.g. ``["brief_conflicts[0]"]`` when one conflict entry
+    # was skipped. The merger can surface these without re-deriving them.
+    degraded_sections: list[str] = field(default_factory=list)
 
     @classmethod
     def from_yaml(cls, content: str) -> ProposedRoleTasks:
@@ -159,10 +172,17 @@ class ProposedRoleTasks:
         proceeds with the survivors), so we surface the specific
         failure rather than abort the whole framing phase.
 
+        Optional/advisory sections (``brief_conflicts`` and the str-list
+        fields) degrade rather than raise (issue #187): a malformed entry is
+        dropped and noted in ``degraded_sections`` so one fumbled annotation
+        can't discard the load-bearing ``tasks``. Only the required header
+        fields and the ``tasks`` list still raise.
+
         Raises:
-            ValueError: if the YAML is malformed or required fields
-                are missing. Caller decides whether to absorb the
-                failure (merger does) or escalate.
+            ValueError: if the YAML is malformed, required header fields
+                are missing, or a ``tasks`` entry is malformed. Caller
+                decides whether to absorb the failure (merger does) or
+                escalate.
         """
         try:
             data = yaml.safe_load(content)
@@ -214,7 +234,11 @@ class ProposedRoleTasks:
         for i, td in enumerate(raw_tasks):
             parsed.append(_parse_proposed_task(td, i, seen_keys))
 
-        brief_conflicts = _parse_brief_conflicts(data.get("brief_conflicts", []))
+        # Optional sections degrade rather than raise (issue #187): each helper
+        # appends the names of dropped sections to ``degraded`` instead of
+        # failing the whole proposal.
+        degraded: list[str] = []
+        brief_conflicts = _parse_brief_conflicts(data.get("brief_conflicts", []), degraded)
 
         return cls(
             version=version,
@@ -224,11 +248,16 @@ class ProposedRoleTasks:
             scope_statement=scope_statement,
             tasks=parsed,
             brief_conflicts=brief_conflicts,
-            source_artifact_refs=_parse_str_list(data.get("source_artifact_refs", [])),
-            assumptions=_parse_str_list(data.get("assumptions", [])),
-            risks=_parse_str_list(data.get("risks", [])),
-            gaps_not_covered=_parse_str_list(data.get("gaps_not_covered", [])),
+            source_artifact_refs=_parse_str_list(
+                data.get("source_artifact_refs", []), "source_artifact_refs", degraded
+            ),
+            assumptions=_parse_str_list(data.get("assumptions", []), "assumptions", degraded),
+            risks=_parse_str_list(data.get("risks", []), "risks", degraded),
+            gaps_not_covered=_parse_str_list(
+                data.get("gaps_not_covered", []), "gaps_not_covered", degraded
+            ),
             confidence=str(data.get("confidence", "")).strip(),
+            degraded_sections=degraded,
         )
 
     def task_keys(self) -> list[str]:
@@ -298,60 +327,85 @@ def _parse_proposed_task(td: object, i: int, seen_keys: set[str]) -> ProposedTas
     )
 
 
-def _parse_str_list(raw: object) -> list[str]:
-    """Coerce an optional YAML scalar/list field to a list of strings.
+def _parse_str_list(raw: object, section: str, degraded: list[str]) -> list[str]:
+    """Coerce an optional YAML list field to a list of strings.
 
-    Best-effort: scalar becomes single-element list; list elements get
-    stringified; anything else surfaces as a parse error so the merger
-    can drop the proposal cleanly.
+    Tolerant (issue #187): a wrong-typed advisory section is an LLM-output
+    annotation, not load-bearing — so it's dropped (warn + recorded in
+    ``degraded``) rather than failing the whole proposal. ``None``/empty →
+    ``[]``; a list gets stringified element-wise.
     """
     if raw is None or raw == "":
         return []
     if isinstance(raw, list):
         return [str(x).strip() for x in raw if str(x).strip()]
-    raise ValueError(
-        f"Optional list field must be a YAML list or null, got {type(raw).__name__}"
+    logger.warning(
+        "Proposal: dropping malformed optional section %r — expected a YAML list, got %s",
+        section,
+        type(raw).__name__,
     )
+    degraded.append(section)
+    return []
 
 
-def _parse_brief_conflicts(raw: object) -> list[BriefConflict]:
-    """Parse the optional ``brief_conflicts`` list (SIP-0093 §5.5)."""
+def _parse_brief_conflicts(raw: object, degraded: list[str]) -> list[BriefConflict]:
+    """Parse the optional ``brief_conflicts`` list (SIP-0093 §5.5).
+
+    Tolerant per-entry (issue #187): a malformed conflict entry is skipped
+    (warn + recorded in ``degraded`` as ``brief_conflicts[i]``), preserving the
+    valid entries and the proposal's load-bearing ``tasks``. A wrong-typed
+    section is dropped whole. This is an *advisory* section — the dev proposer
+    repeatedly fumbled a single sub-field here and lost its entire proposal
+    (cyc_ee7a5dfcdb16); one bad annotation must no longer discard real work.
+    """
     if raw is None or raw == "":
         return []
     if not isinstance(raw, list):
-        raise ValueError(
-            f"brief_conflicts must be a YAML list, got {type(raw).__name__}"
+        logger.warning(
+            "Proposal: dropping malformed 'brief_conflicts' — expected a YAML list, got %s",
+            type(raw).__name__,
         )
+        degraded.append("brief_conflicts")
+        return []
 
     parsed: list[BriefConflict] = []
     for i, entry in enumerate(raw):
-        if not isinstance(entry, dict):
-            raise ValueError(f"brief_conflicts[{i}] must be a mapping")
-
-        for req in ("brief_field", "proposed_change", "reason", "severity"):
-            if req not in entry:
-                raise ValueError(f"brief_conflicts[{i}] missing required field: {req}")
-
-        severity = str(entry["severity"]).strip().lower()
-        if severity not in _VALID_BRIEF_CONFLICT_SEVERITIES:
-            raise ValueError(
-                f"brief_conflicts[{i}] severity must be one of "
-                f"{sorted(_VALID_BRIEF_CONFLICT_SEVERITIES)}, got {entry['severity']!r}"
-            )
-
-        affected = entry.get("affected_proposal_task_keys", [])
-        if not isinstance(affected, list):
-            raise ValueError(
-                f"brief_conflicts[{i}] affected_proposal_task_keys must be a list"
-            )
-
-        parsed.append(
-            BriefConflict(
-                brief_field=str(entry["brief_field"]).strip(),
-                proposed_change=str(entry["proposed_change"]).strip(),
-                reason=str(entry["reason"]).strip(),
-                severity=severity,
-                affected_proposal_task_keys=[str(k).strip() for k in affected if str(k).strip()],
-            )
-        )
+        try:
+            parsed.append(_parse_one_brief_conflict(entry, i))
+        except ValueError as exc:
+            logger.warning("Proposal: skipping malformed brief_conflicts[%d] — %s", i, exc)
+            degraded.append(f"brief_conflicts[{i}]")
     return parsed
+
+
+def _parse_one_brief_conflict(entry: object, i: int) -> BriefConflict:
+    """Parse + validate a single ``brief_conflicts`` entry (strict).
+
+    Raises ``ValueError`` on any shape problem; the caller decides whether to
+    skip (it does) or propagate.
+    """
+    if not isinstance(entry, dict):
+        raise ValueError(f"brief_conflicts[{i}] must be a mapping")
+
+    for req in ("brief_field", "proposed_change", "reason", "severity"):
+        if req not in entry:
+            raise ValueError(f"brief_conflicts[{i}] missing required field: {req}")
+
+    severity = str(entry["severity"]).strip().lower()
+    if severity not in _VALID_BRIEF_CONFLICT_SEVERITIES:
+        raise ValueError(
+            f"brief_conflicts[{i}] severity must be one of "
+            f"{sorted(_VALID_BRIEF_CONFLICT_SEVERITIES)}, got {entry['severity']!r}"
+        )
+
+    affected = entry.get("affected_proposal_task_keys", [])
+    if not isinstance(affected, list):
+        raise ValueError(f"brief_conflicts[{i}] affected_proposal_task_keys must be a list")
+
+    return BriefConflict(
+        brief_field=str(entry["brief_field"]).strip(),
+        proposed_change=str(entry["proposed_change"]).strip(),
+        reason=str(entry["reason"]).strip(),
+        severity=severity,
+        affected_proposal_task_keys=[str(k).strip() for k in affected if str(k).strip()],
+    )
