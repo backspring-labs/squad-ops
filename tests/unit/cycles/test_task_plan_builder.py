@@ -33,8 +33,8 @@ NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 @pytest.fixture
 def profile_with_builder():
     return SquadProfile(
-        profile_id="full-squad-with-builder",
-        name="Full Squad with Builder",
+        profile_id="spark-squad-with-builder",
+        name="Spark Squad with Builder",
         description="6 agents",
         version=1,
         agents=(

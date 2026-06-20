@@ -41,7 +41,7 @@ CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "squad-profiles.y
 @pytest.fixture
 def builder_profile():
     return SquadProfile(
-        profile_id="full-squad-with-builder",
+        profile_id="spark-squad-with-builder",
         name="Full Squad with Builder",
         description="6 agents",
         version=1,
@@ -76,7 +76,7 @@ def run():
 
 def _make_cycle(
     applied_defaults: dict,
-    squad_profile_id: str = "full-squad-with-builder",
+    squad_profile_id: str = "spark-squad-with-builder",
 ) -> Cycle:
     return Cycle(
         cycle_id="cyc_e2e_001",
@@ -280,21 +280,21 @@ class TestYAMLProfileBuilderIntegration:
         return ConfigSquadProfile(yaml_path=CONFIG_PATH)
 
     async def test_builder_profile_has_six_agents(self, provider):
-        profile = await provider.get_profile("full-squad-with-builder")
+        profile = await provider.get_profile("spark-squad-with-builder")
         assert len(profile.agents) == 6
 
     async def test_builder_profile_has_builder_role(self, provider):
-        profile = await provider.get_profile("full-squad-with-builder")
+        profile = await provider.get_profile("spark-squad-with-builder")
         assert _has_builder_role(profile)
 
     async def test_builder_profile_bob_is_builder(self, provider):
-        profile = await provider.get_profile("full-squad-with-builder")
+        profile = await provider.get_profile("spark-squad-with-builder")
         bob = next(a for a in profile.agents if a.agent_id == "bob")
         assert bob.role == "builder"
         assert bob.enabled is True
 
     async def test_builder_profile_plan_emits_builder_assemble(self, provider, run):
-        profile = await provider.get_profile("full-squad-with-builder")
+        profile = await provider.get_profile("spark-squad-with-builder")
         cycle = _make_cycle(
             {
                 "build_tasks": ["builder.assemble", "qa.test"],
@@ -305,7 +305,7 @@ class TestYAMLProfileBuilderIntegration:
         assert "builder.assemble" in task_types
 
     async def test_builder_profile_routing_reason(self, provider, run):
-        profile = await provider.get_profile("full-squad-with-builder")
+        profile = await provider.get_profile("spark-squad-with-builder")
         cycle = _make_cycle(
             {
                 "build_tasks": ["builder.assemble", "qa.test"],
