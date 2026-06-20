@@ -130,6 +130,50 @@ class TestPlanningWorkload:
         envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         assert len(envelopes) == 7
 
+    def test_contributors_configured_inserts_proposer_steps(self, cycle, full_profile):
+        """SIP-0093 activation: with plan_authoring_contributors set, the framing
+        sequence gains one proposer step per role between the brief and the
+        merger — 7 sole-author + 3 proposers = 10, in canonical
+        (development, qa, strategy) order. Guards the request → resolved_config
+        → build_planning_steps wiring that lets a request profile actually turn
+        multi-role authoring on (the path the validation-multirole profile and
+        the SIP-0093 schema allow-list entry exist to enable)."""
+        multirole = replace(
+            cycle,
+            applied_defaults={
+                "build_strategy": "fresh",
+                "plan_authoring_contributors": ["development", "qa", "strategy"],
+            },
+        )
+        envelopes = generate_task_plan(multirole, _run("framing"), full_profile)
+        assert [e.task_type for e in envelopes] == [
+            "data.research_context",
+            "strategy.frame_objective",
+            "development.design_plan",
+            "qa.define_test_strategy",
+            "governance.prepare_plan_authoring_brief",
+            "development.propose_plan_tasks",
+            "qa.propose_plan_tasks",
+            "strategy.propose_plan_guidance",
+            "governance.merge_plan",
+            "governance.review_plan",
+        ]
+
+    def test_unknown_contributor_raises_cycle_error(self, cycle, full_profile):
+        """A typo'd or premature contributor (e.g. `build`, reserved for Rev 2)
+        must fail the cycle at plan generation rather than silently dropping a
+        proposer. Without this, a misconfigured profile would run a partial
+        authoring pipeline and look like it succeeded."""
+        bad = replace(
+            cycle,
+            applied_defaults={
+                "build_strategy": "fresh",
+                "plan_authoring_contributors": ["development", "build"],
+            },
+        )
+        with pytest.raises(CycleError, match="unsupported roles"):
+            generate_task_plan(bad, _run("framing"), full_profile)
+
     def test_task_types_match_planning_steps(self, cycle, full_profile):
         envelopes = generate_task_plan(cycle, _run("framing"), full_profile)
         actual = [e.task_type for e in envelopes]

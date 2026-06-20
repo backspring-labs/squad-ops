@@ -40,10 +40,16 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "min_artifact_count",
     "stub_threshold_bytes",
     # SIP-0092 M1.3 typed acceptance
-    "typed_acceptance",            # master flag (default true)
-    "command_acceptance_checks",   # gate command_exit_zero independently
-    "command_check_safelist",      # operator-controlled extension to argv safelist
-    "stack",                       # resolved stack identity for typed-check evaluators
+    "typed_acceptance",  # master flag (default true)
+    "command_acceptance_checks",  # gate command_exit_zero independently
+    "command_check_safelist",  # operator-controlled extension to argv safelist
+    "stack",  # resolved stack identity for typed-check evaluators
+    # SIP-0093: multi-role plan authoring activation. Selects which roles emit
+    # ``*.propose_plan_tasks`` before ``governance.merge_plan``; empty/absent
+    # → the merger runs sole-author. Consumed by task_plan.build_planning_steps
+    # via resolved_config. Valid roles: development, qa, strategy (build reserved
+    # for Rev 2). Without this entry no request profile can turn the path on.
+    "plan_authoring_contributors",
 }
 
 _ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS

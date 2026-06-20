@@ -1,0 +1,49 @@
+name: validation-multirole
+description: >
+  SIP-0093 multi-role plan authoring validation. Same framing → gate →
+  implementation shape as `validation`, but turns ON the multi-role authoring
+  path by setting `plan_authoring_contributors`, so development, qa, and
+  strategy each emit `*.propose_plan_tasks` and `governance.merge_plan`
+  reconciles them into the canonical `implementation_plan.yaml` +
+  `merge_decisions.yaml`. Without contributors the merger runs sole-author and
+  the multi-role path is never exercised — this profile is the first one that
+  actually activates it. Pauses at the `progress_plan_review` gate after framing
+  so the merged plan + merge decisions can be inspected before (optionally)
+  proceeding to implementation.
+defaults:
+  build_strategy: fresh
+  # SIP-0093 activation — the whole point of this profile.
+  plan_authoring_contributors:
+    - development
+    - qa
+    - strategy
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_plan_review
+        description: Review the merged plan + merge_decisions before implementation begins.
+        after_task_types:
+          - governance.review_plan
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  workload_sequence:
+    - type: framing
+      gate: progress_plan_review
+    - type: implementation
+      gate: null
+  build_tasks: true
+  implementation_plan: true
+  output_validation: true
+  # Implementation-profile depth, matching `validation`.
+  max_self_eval_passes: 2
+  max_correction_attempts: 3
+  max_build_subtasks: 15
+  # SIP-0092 M1 active (typed acceptance), same as `validation`.
+  typed_acceptance: true
+  command_acceptance_checks: true
+  time_budget_seconds: 7200
+  experiment_context: {}
+  notes: "SIP-0093 multi-role plan authoring validation (B closure)"
