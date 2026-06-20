@@ -147,7 +147,9 @@ async def produce_plan(
         "- check: regex_match\n"
         '  description: "At least three test functions exist"\n'
         "  file: tests/test_users.py\n"
-        '  pattern: "def test_"\n'
+        # Single-quote regex patterns: double quotes interpret backslash escapes
+        # (\w, \.) and break yaml.safe_load. See acceptance_check_spec.CHECK_SPECS.
+        "  pattern: 'def test_\\w+'\n"
         "  count_min: 3\n"
         "\n"
         "# count_at_least — glob match count under workspace (stack-agnostic)\n"
