@@ -58,9 +58,11 @@ Each task you propose must:
   `"Test everything"`). The `focus` is your task's identity within this
   proposal AND the dependency reference key other proposers use.
 - Be `focus`-unique within your proposal.
-- Declare cross-role dependencies via `depends_on_focus: ["{role}:{focus}"]`
-  strings, never via integer indices. Example: a qa test that depends
-  on Development's user-CRUD endpoint uses `["dev:user crud routes"]`.
+- Declare cross-role dependencies via `depends_on_focus: ["{role_id}:{focus}"]`
+  strings, never via integer indices. The prefix MUST be the **role ID**
+  (`dev`, `qa`, `strat`, `builder`), NOT the display name — write `dev:`,
+  never `development:`. Example: a qa test that depends on Development's
+  user-CRUD endpoint uses `["dev:user crud routes"]`.
 
 ### Acceptance-criteria discipline
 

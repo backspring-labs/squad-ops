@@ -470,6 +470,119 @@ class TestDependencyResolution:
 
 
 # ---------------------------------------------------------------------------
+# Dependency-key normalization (issue #189): role display-name vs role-id
+# ---------------------------------------------------------------------------
+
+# Dev proposal with an INTRA-proposal dependency expressed via the role
+# DISPLAY name ("development:") rather than the role id ("dev:") — exactly the
+# shape the SIP-0093 dev proposer emitted in cyc_1bbe424095fc, which dropped
+# every dev->dev edge before the #189 fix.
+_DEV_PROPOSAL_DISPLAYNAME_DEP_YAML = """\
+version: 1
+proposal_id: prop-dev-189
+source_brief_id: brief-merge-001
+proposing_role: development
+scope_statement: |
+  Backend models + endpoint, endpoint depends on models.
+tasks:
+  - task_type: development.develop
+    role: dev
+    focus: "Backend models and schemas"
+    description: |
+      Pydantic models for the run domain.
+    expected_artifacts:
+      - "backend/models.py"
+    depends_on_focus: []
+  - task_type: development.develop
+    role: dev
+    focus: "FastAPI endpoints"
+    description: |
+      Wire endpoints; needs the models task.
+    expected_artifacts:
+      - "backend/main.py"
+    depends_on_focus:
+      - "development:Backend models and schemas"
+"""
+
+
+class TestDependencyKeyNormalization:
+    """#189: a ``depends_on_focus`` reference using the role DISPLAY name
+    (``development:``/``strategy:``) or a different case must still resolve
+    against the produced ``{role_id}:{focus.lower()}`` key. Only genuinely
+    absent focuses (hallucinated targets) stay gap_fill candidates."""
+
+    def test_intra_dev_display_name_self_reference_resolves(self, brief):
+        """The cyc_1bbe424095fc regression: dev's own endpoint task depends on
+        its own models task via ``development:Backend models and schemas``.
+        Before #189 this dropped to ``depends_on: []``; now it resolves."""
+        dev_proposal = ProposedRoleTasks.from_yaml(_DEV_PROPOSAL_DISPLAYNAME_DEP_YAML)
+        plan, decisions = merge_proposals(
+            brief=brief,
+            dev_proposal=dev_proposal,
+            qa_proposal=None,
+            strategy_guidance=None,
+            project_id="p",
+            cycle_id="c",
+            prd_hash="h",
+            configured_contributors=["development"],
+            missing_proposals=[],
+        )
+        assert plan.tasks[0].focus == "Backend models and schemas"
+        assert plan.tasks[1].focus == "FastAPI endpoints"
+        # Endpoint task resolves its display-name dependency to the models index.
+        assert plan.tasks[1].depends_on == [0]
+        assert "Unresolved cross-proposal dependency" not in decisions.operator_notes
+
+    def test_cross_role_display_name_prefix_resolves(self, brief, dev_proposal):
+        """qa references the dev task as ``development:api join`` (display name)
+        — must resolve to the dev task index, not drop to a gap_fill note."""
+        qa_proposal_yaml = _QA_PROPOSAL_YAML.replace(
+            'depends_on_focus:\n      - "dev:api join"',
+            'depends_on_focus:\n      - "development:api join"',
+        )
+        qa_proposal = ProposedRoleTasks.from_yaml(qa_proposal_yaml)
+        plan, decisions = merge_proposals(
+            brief=brief,
+            dev_proposal=dev_proposal,
+            qa_proposal=qa_proposal,
+            strategy_guidance=None,
+            project_id="p",
+            cycle_id="c",
+            prd_hash="h",
+            configured_contributors=["development", "qa"],
+            missing_proposals=[],
+        )
+        assert plan.tasks[1].depends_on == [0]
+        assert "Unresolved cross-proposal dependency" not in decisions.operator_notes
+
+    def test_hallucinated_focus_gap_fills_with_normalized_key(self, brief):
+        """A truly absent focus stays a gap_fill candidate even when the
+        reference used a display-name prefix — and the operator note reports
+        the NORMALIZED ``dev:`` key, not the raw ``development:`` form, so the
+        note reads in the same vocabulary as the produced keys."""
+        qa_proposal_yaml = _QA_PROPOSAL_YAML.replace(
+            'depends_on_focus:\n      - "dev:api join"',
+            'depends_on_focus:\n      - "development:nonexistent"',
+        )
+        qa_proposal = ProposedRoleTasks.from_yaml(qa_proposal_yaml)
+        plan, decisions = merge_proposals(
+            brief=brief,
+            dev_proposal=None,
+            qa_proposal=qa_proposal,
+            strategy_guidance=None,
+            project_id="p",
+            cycle_id="c",
+            prd_hash="h",
+            configured_contributors=["qa"],
+            missing_proposals=[],
+        )
+        assert plan.tasks[0].depends_on == []
+        assert "Unresolved cross-proposal dependency" in decisions.operator_notes
+        assert "dev:nonexistent" in decisions.operator_notes
+        assert "development:nonexistent" not in decisions.operator_notes
+
+
+# ---------------------------------------------------------------------------
 # Domain-owner rule (§5.8 rule 2)
 # ---------------------------------------------------------------------------
 

@@ -42,6 +42,7 @@ from squadops.cycles.plan_guidance import PlanGuidance
 from squadops.cycles.proposed_role_tasks import (
     ProposedRoleTasks,
     ProposedTask,
+    canonicalize_dep_ref,
     focus_key,
 )
 
@@ -53,6 +54,41 @@ logger = logging.getLogger(__name__)
 # lane); qa tasks proposed by dev are likewise dropped.
 _DEV_TASK_TYPES = frozenset({"development.develop", "builder.assemble"})
 _QA_TASK_TYPES = frozenset({"qa.test"})
+
+
+def _resolve_dependency_edges(
+    indexed_pairs: list[tuple[PlanTask, CanonicalTaskProvenance, ProposedTask]],
+    focus_to_index: dict[str, int],
+) -> tuple[list[tuple[PlanTask, CanonicalTaskProvenance]], list[tuple[int, str]]]:
+    """Resolve each task's ``depends_on_focus`` references to canonical
+    ``task_index`` edges (SIP-0093 rule 5).
+
+    References are normalized (#189) so a role display-name / case variant
+    (``development:Backend Models``) resolves against the produced role-id key
+    (``dev:backend models``). A reference that still misses after normalization
+    is a genuine gap (a focus no task produced) and is returned in
+    ``unresolved_deps`` keyed by its normalized form for the operator note.
+    """
+    resolved_pairs: list[tuple[PlanTask, CanonicalTaskProvenance]] = []
+    unresolved_deps: list[tuple[int, str]] = []  # (task_index, missing_key)
+    for task, prov, orig in indexed_pairs:
+        depends_on: list[int] = []
+        for dep_key in orig.depends_on_focus:
+            norm_key = canonicalize_dep_ref(dep_key)
+            if norm_key not in focus_to_index:
+                unresolved_deps.append((task.task_index, norm_key))
+                continue
+            if norm_key != dep_key:
+                logger.debug(
+                    "merge_plan: normalized cross-proposal dependency %r -> %r",
+                    dep_key,
+                    norm_key,
+                )
+            depends_on.append(focus_to_index[norm_key])
+        resolved_pairs.append(
+            (dataclasses.replace(task, depends_on=sorted(set(depends_on))), prov)
+        )
+    return resolved_pairs, unresolved_deps
 
 
 def merge_proposals(
@@ -138,18 +174,9 @@ def merge_proposals(
         for key in prov.source_proposal_task_keys:
             focus_to_index[key] = task.task_index
 
-    resolved_pairs: list[tuple[PlanTask, CanonicalTaskProvenance]] = []
-    unresolved_deps: list[tuple[int, str]] = []  # (task_index, missing_key)
-    for task, prov, orig in indexed_pairs:
-        depends_on: list[int] = []
-        for dep_key in orig.depends_on_focus:
-            if dep_key in focus_to_index:
-                depends_on.append(focus_to_index[dep_key])
-            else:
-                unresolved_deps.append((task.task_index, dep_key))
-        resolved_pairs.append(
-            (dataclasses.replace(task, depends_on=sorted(set(depends_on))), prov)
-        )
+    resolved_pairs, unresolved_deps = _resolve_dependency_edges(
+        indexed_pairs, focus_to_index
+    )
 
     canonical_tasks = [t for t, _ in resolved_pairs]
     provenance_entries = [p for _, p in resolved_pairs]

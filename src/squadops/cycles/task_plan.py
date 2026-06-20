@@ -31,6 +31,7 @@ from squadops.cycles.models import (
     SquadProfile,
     WorkloadType,
 )
+from squadops.cycles.proposed_role_tasks import role_to_id
 from squadops.tasks.models import TaskEnvelope
 
 # Pinned task_type → role mapping (SIP-0066 §5.4)
@@ -73,11 +74,13 @@ PLANNING_TASK_STEPS: list[tuple[str, str]] = [
 
 # Per SIP-0093 §5.3: role → (task_type, role_id) mapping for the proposer
 # steps the framing sequence inserts between brief and merger when that
-# role is in ``plan_authoring_contributors``.
+# role is in ``plan_authoring_contributors``. The role-id column is derived
+# from ``proposed_role_tasks.role_to_id`` so it can't drift from the merger's
+# dependency-key normalization (issue #189).
 _PLAN_AUTHORING_PROPOSER_STEPS: dict[str, tuple[str, str]] = {
-    "development": ("development.propose_plan_tasks", "dev"),
-    "qa": ("qa.propose_plan_tasks", "qa"),
-    "strategy": ("strategy.propose_plan_guidance", "strat"),
+    "development": ("development.propose_plan_tasks", role_to_id("development")),
+    "qa": ("qa.propose_plan_tasks", role_to_id("qa")),
+    "strategy": ("strategy.propose_plan_guidance", role_to_id("strategy")),
 }
 
 # Rev 1 contributor vocabulary. ``build`` is reserved for Rev 2 (SIP-0093
