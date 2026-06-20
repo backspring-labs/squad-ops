@@ -3,11 +3,13 @@
 **Status:** Proposed
 **Authors:** SquadOps Architecture
 **Created:** 2026-05-02
-**Revision:** 2
+**Revision:** 3
+
+**Rev 3 (2026-06-20):** Reply router subscribes **lazily** on first dispatch to each agent instead of enumerating a boot-time roster — squad profiles resolve per-run (`SquadProfilePort.resolve_snapshot(profile_id)`) and are overridable per run, so there is no fixed agent set at orchestrator startup. Touches §1, §5.1, §5.3, §5.4, §7. (Rev 2: tactical-patch split + per-agent-queue approach.)
 
 ## 1. Abstract
 
-The orchestrator's request/reply path between `runtime-api` and agents has two structural problems: (a) it polls a per-run RabbitMQ reply queue with thousands of short-lived consumer subscriptions per long task, losing replies in the gap between subscriptions, and (b) it scopes the reply queue by run instead of by agent, so every completed run leaves an orphaned `cycle_results_*` queue that nobody ever cleans up. This SIP fixes both by mirroring the existing dispatch-channel design — replace per-run reply queues with per-agent reply queues (`{agent_id}_results`, parallel to the existing `{agent_id}_comms`), and replace the polling loop with a single long-lived subscription per agent, established at orchestrator startup. The result eliminates the "agent succeeded but reply lost" failure class and the orphan-queue leakage class in one step. A tactical patch (PR #89, `fix/cycle-results-channel-recovery`, merged 2026-05-02) already lands cache-recovery and longer poll chunks that contain the bleeding; this SIP is the structural fix.
+The orchestrator's request/reply path between `runtime-api` and agents has two structural problems: (a) it polls a per-run RabbitMQ reply queue with thousands of short-lived consumer subscriptions per long task, losing replies in the gap between subscriptions, and (b) it scopes the reply queue by run instead of by agent, so every completed run leaves an orphaned `cycle_results_*` queue that nobody ever cleans up. This SIP fixes both by mirroring the existing dispatch-channel design — replace per-run reply queues with per-agent reply queues (`{agent_id}_results`, parallel to the existing `{agent_id}_comms`), and replace the polling loop with a single long-lived subscription per agent, established lazily on first dispatch to each agent. The result eliminates the "agent succeeded but reply lost" failure class and the orphan-queue leakage class in one step. A tactical patch (PR #89, `fix/cycle-results-channel-recovery`, merged 2026-05-02) already lands cache-recovery and longer poll chunks that contain the bleeding; this SIP is the structural fix.
 
 ## 2. Problem Statement
 
@@ -30,7 +32,7 @@ The tactical fix on PR #89 introduces `consume_blocking()` (one consumer per chu
 ## 3. Goals
 
 1. Replace per-run reply queues (`cycle_results_{run_id}`) with per-agent reply queues (`{agent_id}_results`). One declaration per agent at orchestrator startup; durable; never cleaned up because they are the agent's permanent reply address (parallel structure to the existing `{agent_id}_comms` dispatch queue). Eliminates the orphan-queue class.
-2. Replace `_publish_and_await`'s polling loop with a long-lived per-agent subscription established at orchestrator startup, plus an in-process router that resolves an `asyncio.Future` keyed by `task_id` when a matching reply arrives. Eliminates the consumer-tag-churn failure class.
+2. Replace `_publish_and_await`'s polling loop with a long-lived per-agent subscription established lazily on first dispatch to each agent (the squad roster isn't fixed at boot — profiles resolve per-run), plus an in-process router that resolves an `asyncio.Future` keyed by `task_id` when a matching reply arrives. Eliminates the consumer-tag-churn failure class.
 3. Define an explicit `subscribe()` primitive on `QueuePort` with callback/async-iterator semantics so reply consumption is no longer expressed as polling at any layer.
 
 ## 4. Non-Goals
@@ -53,8 +55,8 @@ Each agent gets a permanent reply queue named `{agent_id}_results`, declared dur
 | Reply (new) | `{agent_id}_results` | the named agent | runtime-api |
 
 Declaration happens in two places:
-- **Orchestrator startup**: declare reply queues for every agent listed in the active squad profile. Idempotent (broker no-ops on re-declare with same args).
-- **Agent startup**: also declares its own `{agent_id}_results` (defensive — if orchestrator hasn't booted yet, the agent shouldn't fail its first reply).
+- **Orchestrator, on first dispatch to an agent**: `ReplyRouter.ensure_subscribed(agent_id)` opens the subscription, which declares `{agent_id}_results` (idempotent — broker no-ops on re-declare with same args). There is no boot-time roster to enumerate; the squad profile is resolved per-run and can be overridden per run (see §5.3).
+- **Agent startup**: also declares its own `{agent_id}_results` (defensive — if the orchestrator hasn't dispatched to it yet, the agent shouldn't fail its first reply).
 
 The `reply_queue` field in dispatch metadata becomes `{envelope.agent_id}_results` instead of `cycle_results_{run_id}`. Agents see no semantic change — they still publish wherever metadata says to publish.
 
@@ -77,20 +79,23 @@ This shape is closer to "register a callback" than "wait for one message." It's 
 
 ### 5.3 Reply router
 
-A new `ReplyRouter` component in `adapters/cycles/`:
+A new `ReplyRouter` component in `adapters/cycles/`. It subscribes **lazily**: there is no fixed agent roster at orchestrator boot — squad profiles are resolved per-run via `SquadProfilePort.resolve_snapshot(profile_id)` and can be overridden per run, so the router cannot enumerate agents at startup. Instead the executor calls `ensure_subscribed(agent_id)` before each dispatch; the first call for a given agent opens that agent's `{agent_id}_results` subscription, and subsequent calls are no-ops. Once opened, a subscription lives for the process lifetime.
 
 ```python
 class ReplyRouter:
-    def __init__(self, queue: QueuePort, agent_ids: list[str]):
+    def __init__(self, queue: QueuePort):
+        self._queue = queue
         self._futures: dict[str, asyncio.Future[TaskResult]] = {}
-        ...
+        self._subscriptions: dict[str, SubscriptionHandle] = {}
 
-    async def start(self) -> None:
-        for agent_id in self._agent_ids:
-            await self._queue.subscribe(
-                f"{agent_id}_results",
-                on_message=self._handle_reply,
-            )
+    async def ensure_subscribed(self, agent_id: str) -> None:
+        """Idempotent: open the agent's reply subscription on first use."""
+        if agent_id in self._subscriptions:
+            return
+        self._subscriptions[agent_id] = await self._queue.subscribe(
+            f"{agent_id}_results",
+            on_message=self._handle_reply,
+        )
 
     async def _handle_reply(self, msg: QueueMessage) -> None:
         data = json.loads(msg.payload)
@@ -103,18 +108,33 @@ class ReplyRouter:
         fut.set_result(TaskResult.from_dict(data["payload"]))
 
     def register(self, task_id: str) -> asyncio.Future[TaskResult]:
-        fut = asyncio.get_event_loop().create_future()
+        fut = asyncio.get_running_loop().create_future()
         self._futures[task_id] = fut
         return fut
+
+    def cancel(self, task_id: str) -> None:
+        """Drop a pending future (e.g. on dispatch timeout) to avoid leaks."""
+        self._futures.pop(task_id, None)
+
+    async def stop(self) -> None:
+        """Shutdown: cancel all subscriptions and fail any pending futures."""
+        for handle in self._subscriptions.values():
+            await handle.cancel()
+        self._subscriptions.clear()
+        for fut in self._futures.values():
+            if not fut.done():
+                fut.set_exception(ReplyRouterStopped())
+        self._futures.clear()
 ```
 
-Lifecycle: started at runtime-api boot (after squad profile is resolved), stopped at shutdown. One subscription per agent, never torn down within a process lifetime.
+Lifecycle: constructed at runtime-api boot, `stop()` at shutdown. No boot-time subscription — the first dispatch to each agent opens that agent's subscription, which then persists for the process lifetime. This stays correct under per-run profile overrides: an agent that only appears in one run's profile is subscribed the moment it is first dispatched to, and never needs a pre-registered roster.
 
 ### 5.4 Executor wiring
 
 `_publish_and_await` becomes:
 
 ```python
+await self._reply_router.ensure_subscribed(envelope.agent_id)
 fut = self._reply_router.register(envelope.task_id)
 reply_queue = f"{envelope.agent_id}_results"
 message = {
@@ -134,7 +154,7 @@ except asyncio.TimeoutError:
     )
 ```
 
-No while loop, no asyncio.sleep, no error-recovery branch (the long-lived consumer's channel-close events are handled inside `subscribe()` via RobustChannel + our own resubscribe-on-channel-swap logic). Drain-before-retry is unnecessary: a reply that arrives after timeout still hits the always-on consumer, finds no awaiting future, and is logged-and-dropped — no orphan messages.
+`ensure_subscribed` runs before `register`/`publish`, so the agent's consumer is live before any reply can arrive — there is no first-dispatch race. No while loop, no asyncio.sleep, no error-recovery branch (the long-lived consumer's channel-close events are handled inside `subscribe()` via RobustChannel + our own resubscribe-on-channel-swap logic). Drain-before-retry is unnecessary: a reply that arrives after timeout still hits the always-on consumer, finds no awaiting future, and is logged-and-dropped — no orphan messages.
 
 ### 5.5 Migration
 
@@ -157,7 +177,7 @@ The dispatch-side change (use `{agent_id}_results` as `reply_queue`) is invisibl
 - **Long-lived consumer channel death**: if a `_results` consumer's channel closes (network blip, broker restart), in-flight waits are silently stranded until either the channel reconnects or the dispatch times out. Mitigation: `subscribe()` implementation must register channel-close callbacks, re-declare its queue on the new channel, and re-establish the consumer. Existing `_get_queue` channel-swap detection (already in tactical patch) covers re-declaration; subscription resumption is new code.
 - **Cross-run task_id collision**: per-agent queues are shared across runs, so task_id must be globally unique (not just per-run). Audit `TaskEnvelope.task_id` generation — currently UUID-based (`task-{run_short}-{m_idx}-{capability}`), which encodes the run prefix, so collision is unlikely but worth a deliberate test.
 - **Late-reply leakage**: if an agent's reply arrives after the orchestrator has timed out and given up on a task, the reply lands in `_results`, gets ack'd by the router, and is dropped with a warning log. Cost: zero broker-side leakage but a small observability gap. Mitigation: counter metric for late-drop events so we can detect a regression.
-- **Agent-orchestrator startup ordering**: if runtime-api boots before any agent has declared its `_results` queue, the orchestrator's `subscribe()` calls fail. Mitigation: declare the `_results` queues from runtime-api too (idempotent re-declare). Both sides own their queue declarations; first-mover wins.
+- **Agent-orchestrator startup ordering**: largely dissolved by lazy subscription (§5.3). The orchestrator's `subscribe()` now happens on first dispatch, not at boot, and itself declares `{agent_id}_results` (idempotent), so it no longer depends on the agent having booted first. Both sides own their queue declarations; first-mover wins. Residual requirement: `subscribe()` must tolerate being the declarer (not assume the queue already exists).
 
 ## 8. Test Plan
 
