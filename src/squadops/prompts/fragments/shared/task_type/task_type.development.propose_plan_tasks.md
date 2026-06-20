@@ -51,10 +51,12 @@ Each task you propose must:
 - Be `focus`-unique within your proposal — duplicate focus values collide
   in the merger.
 - Be completable in roughly 2–10 minutes of focused LLM generation.
-- Declare cross-role dependencies via `depends_on_focus: ["{role}:{focus}"]`
+- Declare cross-role dependencies via `depends_on_focus: ["{role_id}:{focus}"]`
   strings — never via integer indices (you don't know your final
-  `task_index`; only the merger assigns those). Example: a dev task that
-  depends on builder packaging uses `["builder:package startup"]`.
+  `task_index`; only the merger assigns those). The prefix MUST be the
+  **role ID** (`dev`, `qa`, `strat`, `builder`), NOT the display name —
+  write `dev:`, never `development:`. Example: a dev endpoint task that
+  depends on your own data-model task uses `["dev:backend user model"]`.
 
 ### Acceptance-criteria discipline
 

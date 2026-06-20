@@ -46,9 +46,46 @@ def _normalize_focus(text: str) -> str:
     return _FOCUS_NORMALIZE_RE.sub(" ", text.strip().lower())
 
 
+# Role display-name → role-id. The proposer vocabulary uses display names
+# (``proposing_role: development``) while produced tasks carry role-ids
+# (``role: dev``). Dependency keys must collapse to the role-id form so a
+# ``development:`` reference resolves against the produced ``dev:`` task
+# (issue #189). Single source of truth: ``task_plan._PLAN_AUTHORING_PROPOSER_STEPS``
+# derives its role-id column from this map via :func:`role_to_id`.
+ROLE_NAME_TO_ID: dict[str, str] = {"development": "dev", "strategy": "strat"}
+
+
+def role_to_id(role: str) -> str:
+    """Collapse a role token (display-name or id) to its canonical role-id.
+
+    Unknown tokens pass through unchanged — ``qa``/``builder``/``data`` are
+    identical in both vocabularies, so only ``development`` and ``strategy``
+    are aliased."""
+    token = role.strip().lower()
+    return ROLE_NAME_TO_ID.get(token, token)
+
+
 def focus_key(role: str, focus: str) -> str:
-    """Canonical lookup key for cross-role dependencies."""
-    return f"{role.strip().lower()}:{_normalize_focus(focus)}"
+    """Canonical lookup key for cross-proposal dependencies.
+
+    Tolerant of role display-name vs role-id prefixes (issue #189):
+    ``development``/``strategy`` collapse to ``dev``/``strat`` so a proposer
+    that references ``development:Backend models`` resolves against the
+    produced ``dev:backend models`` task. Focus is whitespace-collapsed and
+    lowercased via :func:`_normalize_focus`."""
+    return f"{role_to_id(role)}:{_normalize_focus(focus)}"
+
+
+def canonicalize_dep_ref(dep_ref: str) -> str:
+    """Normalize a ``depends_on_focus`` ``"role:focus"`` reference the same
+    way :func:`focus_key` normalizes a produced task's key, so the resolve
+    side (raw reference string) and the produce side cannot drift (#189).
+
+    A bare string with no ``":"`` is treated as a focus with no role prefix."""
+    role, sep, focus = dep_ref.partition(":")
+    if not sep:
+        return _normalize_focus(dep_ref)
+    return focus_key(role, focus)
 
 
 @dataclass(frozen=True)

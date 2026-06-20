@@ -8,7 +8,9 @@ from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.proposed_role_tasks import (
     ProposedRoleTasks,
     ProposedTask,
+    canonicalize_dep_ref,
     focus_key,
+    role_to_id,
 )
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -40,6 +42,40 @@ class TestFocusKey:
 
     def test_distinct_roles_produce_distinct_keys(self):
         assert focus_key("dev", "tests") != focus_key("qa", "tests")
+
+    @pytest.mark.parametrize(
+        "display,role_id",
+        [("development", "dev"), ("strategy", "strat"), ("Development", "dev")],
+    )
+    def test_display_name_prefix_collapses_to_role_id(self, display, role_id):
+        # #189: a proposer that writes the role DISPLAY name must produce the
+        # same key as one that writes the role id, or dependency edges drop.
+        assert focus_key(display, "Backend Models") == focus_key(role_id, "Backend Models")
+
+    def test_role_id_and_unknown_role_pass_through(self):
+        # qa/builder/data are identical in both vocabularies — no aliasing.
+        assert role_to_id("qa") == "qa"
+        assert role_to_id("builder") == "builder"
+        assert role_to_id("development") == "dev"
+        assert role_to_id("strategy") == "strat"
+
+
+class TestCanonicalizeDepRef:
+    """#189: a raw ``depends_on_focus`` reference string must normalize the
+    same way :func:`focus_key` normalizes a produced task's key, so the
+    resolve side and produce side can't drift."""
+
+    def test_display_name_ref_matches_produced_key(self):
+        assert canonicalize_dep_ref("development:Backend Models") == focus_key(
+            "dev", "backend  models"
+        )
+
+    def test_already_canonical_ref_is_idempotent(self):
+        assert canonicalize_dep_ref("dev:backend api") == "dev:backend api"
+
+    def test_bare_string_without_colon_treated_as_focus(self):
+        # No role prefix → the whole string is a (normalized) focus.
+        assert canonicalize_dep_ref("Backend  Models") == "backend models"
 
 
 # ---------------------------------------------------------------------------
