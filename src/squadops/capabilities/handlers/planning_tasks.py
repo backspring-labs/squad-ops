@@ -30,6 +30,7 @@ from squadops.capabilities.handlers.base import (
 from squadops.capabilities.handlers.cycle_tasks import (
     _CycleTaskHandler,
 )
+from squadops.cycles.acceptance_check_spec import render_typed_acceptance_vocabulary
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 
@@ -797,7 +798,10 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             "prd": prd,
             "roles_section": roles_section,
             "builder_section": builder_section,
-            "typed_acceptance_vocabulary": "",  # task-type fragment carries the vocabulary
+            # Generated from CHECK_SPECS so the proposer sees exact param names
+            # + a parser-valid example per check (issue #182 — was "", which let
+            # models guess param names and fail count_at_least validation).
+            "typed_acceptance_vocabulary": render_typed_acceptance_vocabulary(),
         }
 
     async def handle(
