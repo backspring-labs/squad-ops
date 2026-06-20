@@ -120,7 +120,10 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         supported_stacks=frozenset(),
         requires_stack_context=False,
         path_params=frozenset({"file"}),
-        example={"file": "tests/test_runs.py", "pattern": "def test_", "count_min": 5},
+        # pattern carries a backslash escape on purpose: the rendered example
+        # must teach proposers the single-quote style for real regexes, since
+        # double-quoting \w / \. is exactly what broke YAML parsing in #182's wake.
+        example={"file": "tests/test_runs.py", "pattern": r"def test_\w+", "count_min": 5},
     ),
     "count_at_least": CheckSpec(
         name="count_at_least",
@@ -174,9 +177,18 @@ def _type_label(spec: CheckSpec, param: str) -> str:
 
 
 def _format_example_value(value: object) -> str:
-    """Render an example param value as inline YAML (strings quoted)."""
+    """Render an example param value as inline YAML, strings SINGLE-quoted.
+
+    The quote style is load-bearing: proposers copy whatever style the example
+    uses, and single-quoted YAML scalars do not process backslash escapes — a
+    regex like ``\\.length`` round-trips literally. Double quotes would read
+    ``\\.`` as an escape sequence and ``yaml.safe_load`` raises "unknown escape
+    character", which drops the entire proposal (observed in cyc_82c9b3f5a2c1,
+    the #182 follow-up regression). Embedded single quotes are escaped as ``''``
+    per the YAML single-quoted scalar rule.
+    """
     if isinstance(value, str):
-        return f'"{value}"'
+        return "'" + value.replace("'", "''") + "'"
     if isinstance(value, list):
         return "[" + ", ".join(_format_example_value(v) for v in value) + "]"
     return str(value)

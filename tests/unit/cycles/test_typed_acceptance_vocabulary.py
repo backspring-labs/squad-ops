@@ -13,9 +13,11 @@ that it can never silently regress to the empty/under-specified state.
 """
 
 import pytest
+import yaml
 
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
+    _format_example_value,
     render_typed_acceptance_vocabulary,
 )
 from squadops.cycles.implementation_plan import TypedCheck, _parse_acceptance_criteria
@@ -67,3 +69,61 @@ def test_rendered_vocabulary_is_not_empty():
     assert rendered.strip()
     # Sanity: every check is represented, so length scales with the registry.
     assert rendered.count("- check:") == len(CHECK_SPECS)
+
+
+def _yaml_example_blocks(rendered: str) -> list[str]:
+    """Pull the fenced ```yaml example blocks out of the rendered vocabulary."""
+    blocks: list[str] = []
+    current: list[str] = []
+    inside = False
+    for line in rendered.splitlines():
+        if line.strip() == "```yaml":
+            inside, current = True, []
+        elif inside and line.strip() == "```":
+            blocks.append("\n".join(current))
+            inside = False
+        elif inside:
+            current.append(line)
+    return blocks
+
+
+def test_format_example_value_backslash_regex_round_trips():
+    """The #182-follow-up dev-proposer failure (cyc_82c9b3f5a2c1): a regex value
+    with a backslash escape must survive yaml.safe_load to the SAME string.
+    Double-quoting made YAML read \\. / \\w as escape sequences and raise
+    'unknown escape character', which dropped the entire proposal. Single-quoted
+    scalars don't process backslashes, so they round-trip."""
+    pattern = r"participant|participants?.*length|\.length"
+    loaded = yaml.safe_load(f"value: {_format_example_value(pattern)}")
+    assert loaded["value"] == pattern
+
+
+def test_format_example_value_escapes_embedded_single_quote():
+    """A value containing a single quote must stay parseable — YAML single-quoted
+    scalars escape ' by doubling it. Without the escaping the scalar terminates
+    early and the loaded value is corrupted."""
+    value = "can't stop"
+    loaded = yaml.safe_load(f"value: {_format_example_value(value)}")
+    assert loaded["value"] == value
+
+
+def test_rendered_vocabulary_examples_all_parse_as_yaml():
+    """Integration guard: every fenced example we hand proposers must round-trip
+    through the same yaml.safe_load the merger runs on proposals. The regex_match
+    example now carries a backslash escape, so a regression to double-quoting
+    fails here with the exact error that dropped the dev proposal."""
+    blocks = _yaml_example_blocks(render_typed_acceptance_vocabulary())
+    assert len(blocks) == len(CHECK_SPECS)
+    for block in blocks:
+        loaded = yaml.safe_load(block)
+        assert isinstance(loaded, list) and len(loaded) == 1
+        assert "check" in loaded[0]
+
+
+def test_regex_example_demonstrates_a_backslash_in_single_quotes():
+    """The regex_match exemplar must show a real backslash escape in single
+    quotes — that is what teaches proposers the safe style. A backslash-free or
+    double-quoted exemplar would silently re-teach the broken pattern."""
+    rendered = render_typed_acceptance_vocabulary()
+    assert r"pattern: 'def test_\w+'" in rendered
+    assert r'pattern: "def test_\w+"' not in rendered
