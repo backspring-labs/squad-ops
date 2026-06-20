@@ -56,11 +56,7 @@ class TestNewRequiredFields:
 
     def test_missing_source_brief_id_rejected(self):
         bad = (
-            "version: 1\n"
-            "proposing_role: dev\n"
-            "proposal_id: prop-1\n"
-            "scope_statement: x\n"
-            "tasks: []\n"
+            "version: 1\nproposing_role: dev\nproposal_id: prop-1\nscope_statement: x\ntasks: []\n"
         )
         with pytest.raises(ValueError, match="source_brief_id"):
             ProposedRoleTasks.from_yaml(bad)
@@ -90,7 +86,11 @@ class TestNewRequiredFields:
         lines = _BASE_VALID.splitlines(keepends=True)
         out_lines = []
         for line in lines:
-            if line.startswith(f"{field}:") or line.startswith(f"{field} ") or line.startswith(f"{field}\n"):
+            if (
+                line.startswith(f"{field}:")
+                or line.startswith(f"{field} ")
+                or line.startswith(f"{field}\n")
+            ):
                 continue
             out_lines.append(line)
         bad = "".join(out_lines) + f"{field}: {bad_value}\n"
@@ -103,14 +103,33 @@ class TestNewRequiredFields:
 # ---------------------------------------------------------------------------
 
 
+_BASE_VALID_WITH_TASK = """\
+version: 1
+proposing_role: dev
+proposal_id: prop-dev-001
+source_brief_id: brief-test-001
+scope_statement: |
+  Dev contributions for the user CRUD feature.
+tasks:
+  - task_type: development.develop
+    role: dev
+    focus: Backend repository
+    description: In-memory repo + Pydantic models
+"""
+
+
 class TestBriefConflicts:
     """Brief conflicts are how proposers escalate spec disagreements with the
-    shared brief (SIP-0093 §5.5). They must parse with both severities and
-    reject unknown severities — the merger's escalation behavior branches on
-    severity, so a typo there would silently downgrade a blocking conflict."""
+    shared brief (SIP-0093 §5.5). Valid entries parse with both severities. A
+    *malformed* entry is an advisory annotation, not load-bearing: per issue
+    #187 it's skipped and recorded in ``degraded_sections`` rather than failing
+    the whole proposal — the dev proposer kept losing its entire task set over a
+    single fumbled sub-field here (cyc_ee7a5dfcdb16)."""
 
     def test_parses_warning_and_blocking(self):
-        yaml_doc = _BASE_VALID + """
+        yaml_doc = (
+            _BASE_VALID
+            + """
 brief_conflicts:
   - brief_field: accepted_stack
     proposed_change: Use SQLite instead of in-memory
@@ -122,8 +141,10 @@ brief_conflicts:
     reason: Out of scope for MVP
     severity: warning
 """
+        )
         proposal = ProposedRoleTasks.from_yaml(yaml_doc)
         assert len(proposal.brief_conflicts) == 2
+        assert proposal.degraded_sections == []
 
         blocking = proposal.brief_conflicts[0]
         assert isinstance(blocking, BriefConflict)
@@ -138,30 +159,105 @@ brief_conflicts:
         assert warning.severity == "warning"
         assert warning.affected_proposal_task_keys == []
 
-    def test_unknown_severity_rejected(self):
-        yaml_doc = _BASE_VALID + """
+    def test_unknown_severity_entry_skipped_not_fatal(self):
+        yaml_doc = (
+            _BASE_VALID
+            + """
 brief_conflicts:
   - brief_field: accepted_stack
     proposed_change: foo
     reason: bar
     severity: critical
 """
-        with pytest.raises(ValueError, match="severity"):
-            ProposedRoleTasks.from_yaml(yaml_doc)
+        )
+        proposal = ProposedRoleTasks.from_yaml(yaml_doc)
+        # Bad-severity entry dropped, not raised; recorded for visibility.
+        assert proposal.brief_conflicts == []
+        assert proposal.degraded_sections == ["brief_conflicts[0]"]
 
-    def test_missing_brief_field_rejected(self):
-        yaml_doc = _BASE_VALID + """
+    def test_missing_required_field_entry_skipped(self):
+        # The exact cyc_ee7a5dfcdb16 failure: a brief_conflict missing
+        # proposed_change used to drop the whole proposal. Now it's skipped.
+        yaml_doc = (
+            _BASE_VALID
+            + """
 brief_conflicts:
-  - proposed_change: foo
+  - brief_field: accepted_stack
     reason: bar
     severity: warning
 """
-        with pytest.raises(ValueError, match="brief_field"):
-            ProposedRoleTasks.from_yaml(yaml_doc)
+        )
+        proposal = ProposedRoleTasks.from_yaml(yaml_doc)
+        assert proposal.brief_conflicts == []
+        assert proposal.degraded_sections == ["brief_conflicts[0]"]
+
+    def test_malformed_entry_preserves_valid_siblings_and_tasks(self):
+        # Per-entry tolerance is the load-bearing #187 guarantee: a single bad
+        # conflict must not take down the valid sibling conflict OR the real
+        # task. Entry 0 is missing proposed_change; entry 1 is well-formed.
+        yaml_doc = (
+            _BASE_VALID_WITH_TASK
+            + """
+brief_conflicts:
+  - brief_field: accepted_stack
+    reason: missing proposed_change here
+    severity: blocking
+  - brief_field: scope_cuts
+    proposed_change: Drop typeahead
+    reason: Out of scope for MVP
+    severity: warning
+"""
+        )
+        proposal = ProposedRoleTasks.from_yaml(yaml_doc)
+        # The valid sibling survives; the malformed one is dropped + recorded.
+        assert len(proposal.brief_conflicts) == 1
+        assert proposal.brief_conflicts[0].brief_field == "scope_cuts"
+        assert proposal.degraded_sections == ["brief_conflicts[0]"]
+        # And the load-bearing task is untouched.
+        assert len(proposal.tasks) == 1
+        assert proposal.tasks[0].focus == "Backend repository"
 
     def test_default_empty_list(self):
         proposal = ProposedRoleTasks.from_yaml(_BASE_VALID)
         assert proposal.brief_conflicts == []
+        assert proposal.degraded_sections == []
+
+
+class TestAdvisoryListTolerance:
+    """The advisory str-list sections (assumptions/risks/gaps_not_covered/
+    source_artifact_refs) are LLM-output annotations. A wrong-typed section is
+    dropped and recorded (issue #187), never fatal — same rationale as
+    brief_conflicts."""
+
+    def test_wrong_typed_section_dropped_and_recorded(self):
+        # A mapping where a list is expected used to raise and drop the whole
+        # proposal. Now the section is dropped, the rest survives.
+        yaml_doc = (
+            _BASE_VALID_WITH_TASK
+            + """
+assumptions:
+  not: a list
+"""
+        )
+        proposal = ProposedRoleTasks.from_yaml(yaml_doc)
+        assert proposal.assumptions == []
+        assert proposal.degraded_sections == ["assumptions"]
+        assert len(proposal.tasks) == 1
+
+    def test_only_offending_section_is_dropped(self):
+        # risks is malformed; assumptions is a valid list and must be kept.
+        yaml_doc = (
+            _BASE_VALID_WITH_TASK
+            + """
+assumptions:
+  - pytest is the backend runner
+risks: 42
+"""
+        )
+        proposal = ProposedRoleTasks.from_yaml(yaml_doc)
+        assert proposal.assumptions == ["pytest is the backend runner"]
+        assert proposal.risks == []
+        assert proposal.degraded_sections == ["risks"]
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +335,9 @@ class TestOptionalFieldsRoundTrip:
         assert proposal.confidence == ""
 
     def test_optional_fields_parse_when_present(self):
-        yaml_doc = _BASE_VALID + """
+        yaml_doc = (
+            _BASE_VALID
+            + """
 source_artifact_refs:
   - planning_artifact.md
   - design.md
@@ -251,6 +349,7 @@ gaps_not_covered:
   - Frontend smoke tests deferred to qa.
 confidence: medium
 """
+        )
         proposal = ProposedRoleTasks.from_yaml(yaml_doc)
         assert proposal.source_artifact_refs == ["planning_artifact.md", "design.md"]
         assert proposal.assumptions == ["Auth provider is Keycloak per the brief."]
