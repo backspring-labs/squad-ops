@@ -27,7 +27,12 @@ psycopg-binary>=3.0.0  # Binary PostgreSQL adapter (includes libpq, no system de
 aiofiles>=23.0.0  # Async file I/O (used by base_agent)
 aio-pika>=9.3.0  # RabbitMQ async client
 asyncpg>=0.29.0  # PostgreSQL async driver
-fastapi>=0.104.0  # API framework
+# Upper bound pins the test env to the FastAPI the project actually runs (0.135.x).
+# Starlette >=0.136 newly rejects including a router instance into more than one
+# app, which the console unit tests do via module-level singleton routers +
+# sys.modules re-imports. The production app is unaffected (single import/include);
+# this is a test-harness incompatibility. Lift the cap once #198 reworks those tests.
+fastapi>=0.104.0,<0.136  # API framework (see #198 before raising the cap)
 python-multipart>=0.0.6  # Required by FastAPI for form/file uploads
 uvicorn>=0.24.0  # ASGI server
 aiohttp>=3.9.0  # HTTP client
