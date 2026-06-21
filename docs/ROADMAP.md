@@ -4,7 +4,22 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
-### v1.0.3 (2026-04) — Current
+### v1.0.6 (2026-06-21) — Current — Per-Agent Reply Queues
+- **SIP-0094** Per-Agent Reply Queues + Long-Lived Subscription Model
+  - Replaces the leaky per-run `cycle_results_{run_id}` reply queues — which lost replies in the consumer-tag churn window and leaked one orphan queue per run — with durable per-agent `{agent_id}_replies` queues
+  - `ReplyRouter` holds one long-lived subscription per agent and resolves replies by `task_id`; new `QueuePort.subscribe()` primitive backed by a reconnecting RabbitMQ iterator (resubscribe surfaced in `health()`)
+  - `TaskResult.from_dict` hardened to drop unknown keys (forward-compat across rolling agent deploys)
+  - Substrate precondition for the 1.0.x build-reliability hardening line
+
+### v1.0.5 (2026-04-24) — Prefect Task Log Streaming
+- **SIP-0087** Prefect Task-Scoped Log Streaming
+  - Per-task log forwarding to the Prefect UI with heartbeats
+
+### v1.0.4 (2026-04-19) — Build Convergence Loop
+- **SIP-0086** Build Convergence Loop
+  - Dynamic task decomposition, output validation, and correction activation
+
+### v1.0.3 (2026-04) — Post-1.0 Hardening
 Post-1.0 patch line. Docs hygiene, complexity tightening (C901 threshold 15→12), streaming LLM chat path (`chat_stream_with_usage()`).
 
 ### v1.0.2 (2026-03-15) — Console Messaging
@@ -341,9 +356,14 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Accepted (Next Up)
 
-| SIP | Title | Accepted |
-|-----|-------|----------|
-| **SIP-0086** | Build Convergence Loop — Dynamic Task Decomposition, Output Validation & Correction Activation | 2026-04 |
+| SIP | Title |
+|-----|-------|
+| **SIP-0088** | Agent Runtime Modes |
+| **SIP-0089** | Agent Runtime State |
+| **SIP-0090** | Agent Embodiment Substrate |
+| **SIP-0091** | Duty Durability via Temporal |
+| **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes |
+| **SIP-0093** | Multi-Role Plan Authoring |
 
 ## Proposals (Backlog)
 
@@ -373,8 +393,8 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-- **Framework version**: 1.0.3
-- **SIPs**: 54 implemented, 1 accepted (SIP-0086), 13 proposed, 20 deprecated (~88 total)
+- **Framework version**: 1.0.6
+- **SIPs**: 57 implemented, 6 accepted (SIP-0088–0093), 8 proposed, 20 deprecated (~91 total)
 - **Tests**: 3,030+ passing in the regression suite
 - **Python source**: ~39,000 lines (~51,000 test lines, ~84,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

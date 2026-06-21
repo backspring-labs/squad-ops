@@ -2,7 +2,9 @@
 """
 SquadOps Version Management CLI
 
-Manages framework version across pyproject.toml and src/squadops/__init__.py.
+Manages the single-sourced framework version in pyproject.toml. The package
+exposes it at runtime via ``squadops.__version__`` (derived from
+``importlib.metadata``), so there is nothing else to stamp.
 Agent configurations are managed via agents/instances/instances.yaml.
 
 Usage:
@@ -21,7 +23,6 @@ import yaml
 # Resolve paths relative to repo root
 REPO_ROOT = Path(__file__).parent.parent.parent
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
-INIT_PATH = REPO_ROOT / "src" / "squadops" / "__init__.py"
 INSTANCES_PATH = REPO_ROOT / "agents" / "instances" / "instances.yaml"
 
 
@@ -106,7 +107,11 @@ def show_agent_details(agent_id: str):
 
 
 def bump_version(new_version: str):
-    """Bump framework version in pyproject.toml and __init__.py."""
+    """Bump the single-sourced framework version in pyproject.toml.
+
+    ``squadops.__version__`` derives from package metadata at runtime, so
+    pyproject.toml is the only place the version is written.
+    """
     old_version = get_framework_version()
 
     # Validate version format
@@ -136,24 +141,6 @@ def bump_version(new_version: str):
     else:
         errors.append("pyproject.toml: file not found")
 
-    # Update src/squadops/__init__.py
-    if INIT_PATH.exists():
-        content = INIT_PATH.read_text()
-
-        # Update __version__
-        new_content = re.sub(r'(__version__\s*=\s*")[^"]+(")', rf"\g<1>{new_version}\g<2>", content)
-
-        # Update docstring version
-        new_content = re.sub(r"(Framework Version:\s*)\S+", rf"\g<1>{new_version}", new_content)
-
-        if new_content != content:
-            INIT_PATH.write_text(new_content)
-            print("  Updated: src/squadops/__init__.py")
-        else:
-            errors.append("__init__.py: version pattern not found")
-    else:
-        errors.append("src/squadops/__init__.py: file not found")
-
     if errors:
         print()
         print("Warnings:")
@@ -164,7 +151,7 @@ def bump_version(new_version: str):
     print(f"Version bumped: {old_version} -> {new_version}")
     print()
     print("Next steps:")
-    print("  git add pyproject.toml src/squadops/__init__.py")
+    print("  git add pyproject.toml")
     print(f"  git commit -m 'chore: bump framework version to {new_version}'")
 
     return True
