@@ -7,13 +7,11 @@ NEEDS_REPLAN from contract aborts immediately, and the D5 fallback table.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from squadops.comms.queue_message import QueueMessage
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -28,40 +26,6 @@ from squadops.tasks.models import TaskResult
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 pytestmark = [pytest.mark.domain_orchestration]
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_result_message(
-    task_id: str,
-    status: str = "SUCCEEDED",
-    outputs: dict | None = None,
-    error: str | None = None,
-    queue_name: str = "cycle_results_run_001",
-) -> QueueMessage:
-    result = TaskResult(
-        task_id=task_id,
-        status=status,
-        outputs=outputs,
-        error=error,
-    )
-    payload = json.dumps(
-        {
-            "action": "comms.task.result",
-            "metadata": {"correlation_id": "corr"},
-            "payload": result.to_dict(),
-        }
-    )
-    return QueueMessage(
-        message_id=f"msg_{task_id}",
-        queue_name=queue_name,
-        payload=payload,
-        receipt_handle=f"rh_{task_id}",
-        attributes={},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -101,18 +65,13 @@ def mock_vault():
 
 
 @pytest.fixture
-def mock_queue():
+def mock_queue(reply_router):
+    """Mock QueuePort bound to the reply router: publishing a ``comms.task``
+    auto-delivers the agent's reply (SIP-0094)."""
     mock = AsyncMock()
-    mock.publish.return_value = None
     mock.ack.return_value = None
     mock.invalidate_queue.return_value = None
-    mock.consume.return_value = []
-
-    async def _consume_blocking(queue_name, timeout, max_messages=1):
-        return await mock.consume(queue_name, max_messages=max_messages)
-
-    mock.consume_blocking.side_effect = _consume_blocking
-    return mock
+    return reply_router.bind(mock)
 
 
 @pytest.fixture
@@ -175,48 +134,41 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, r
         queue=mock_queue,
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
+        reply_router=mock_queue.reply_router,
     )
 
 
 # ---------------------------------------------------------------------------
-# Helpers for side-effects
+# Helpers for scripted agent replies
 # ---------------------------------------------------------------------------
 
 
-def _build_consume_side_effect(mock_queue, responses):
-    """Build a consume side_effect that returns different results per publish.
+def _scripted_responder(responses):
+    """Build a reply-router responder that returns a different result per
+    dispatch (SIP-0094 equivalent of the old per-publish consume side_effect).
 
-    ``responses`` maps publish call index (0-based) to (status, outputs, error).
-    Missing indices get status="SUCCEEDED".
+    ``responses`` maps dispatch index (0-based, in publish order) to
+    (status, outputs, error). Missing indices get status="SUCCEEDED". The
+    responder is invoked once per ``comms.task`` publish, so the index advances
+    in lockstep with the executor's dispatch sequence — exactly as the old
+    consume side_effect's call counter did.
     """
     call_idx = {"n": 0}
 
-    async def consume_side_effect(queue_name, max_messages=1):
-        if not queue_name.startswith("cycle_results_"):
-            return []
-        last_call = mock_queue.publish.call_args
-        if not last_call:
-            return []
-        msg_data = json.loads(last_call.args[1])
-        task_id = msg_data["payload"]["task_id"]
-
+    def responder(env):
         idx = call_idx["n"]
         call_idx["n"] += 1
-
         status, outputs, error = responses.get(
             idx, ("SUCCEEDED", {"summary": "ok", "role": "strat"}, None)
         )
-        return [
-            _make_result_message(
-                task_id=task_id,
-                status=status,
-                outputs=outputs,
-                error=error,
-                queue_name=queue_name,
-            )
-        ]
+        return TaskResult(
+            task_id=env["task_id"],
+            status=status,
+            outputs=outputs,
+            error=error,
+        )
 
-    return consume_side_effect
+    return responder
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +187,7 @@ class TestRetryableFailure:
         responses = {
             0: ("FAILED", None, "transient"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
+        mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -262,7 +214,7 @@ class TestRetryableFailure:
 
         # All dispatches fail → attempt 1,2 = RETRYABLE, attempt 3 = SEMANTIC
         responses = {i: ("FAILED", None, "boom") for i in range(10)}
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
+        mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -297,7 +249,7 @@ class TestSemanticFailure:
             1: ("FAILED", None, "correction failed"),
             2: ("FAILED", None, "correction failed"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
+        mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -326,7 +278,7 @@ class TestBlockedOutcome:
         responses = {
             0: ("FAILED", outputs_blocked, "blocked"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
+        mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -348,7 +300,7 @@ class TestSuccessOutcome:
     async def test_success_checkpoints(self, executor, mock_queue, mock_registry):
         """Each successful task triggers a checkpoint save."""
         # All 5 tasks succeed
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, {})
+        mock_queue.reply_router.responder = _scripted_responder({})
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -364,7 +316,7 @@ class TestSuccessOutcome:
         responses = {
             0: ("FAILED", None, "transient"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
+        mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -396,7 +348,7 @@ class TestNeedReplanFromContract:
         responses = {
             0: ("FAILED", outputs_replan, "parse error"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
+        mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -421,7 +373,7 @@ class TestFallbackTable:
         responses = {
             0: ("FAILED", None, "transient"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
+        mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -438,7 +390,7 @@ class TestFallbackTable:
     async def test_exhausted_retries_becomes_semantic(self, executor, mock_queue, mock_registry):
         """All retries exhausted → SEMANTIC_FAILURE → correction → abort."""
         responses = {i: ("FAILED", None, "boom") for i in range(10)}
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
+        mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -469,7 +421,7 @@ class TestNeedsRepairOutcome:
             1: ("FAILED", None, "corr"),
             2: ("FAILED", None, "corr"),
         }
-        mock_queue.consume.side_effect = _build_consume_side_effect(mock_queue, responses)
+        mock_queue.reply_router.responder = _scripted_responder(responses)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",

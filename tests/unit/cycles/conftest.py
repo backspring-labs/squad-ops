@@ -18,6 +18,9 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 
+# NOTE: FakeReplyRouter + the `reply_router` fixture live in tests/unit/conftest.py
+# (shared by all executor tests, including tests/unit/events/).
+
 _NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 

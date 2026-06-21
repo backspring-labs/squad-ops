@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from squadops.comms.queue_message import QueueMessage
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -34,35 +33,6 @@ pytestmark = [pytest.mark.domain_orchestration]
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_result_message(
-    task_id: str,
-    status: str = "SUCCEEDED",
-    outputs: dict | None = None,
-    error: str | None = None,
-    queue_name: str = "cycle_results_run_001",
-) -> QueueMessage:
-    result = TaskResult(
-        task_id=task_id,
-        status=status,
-        outputs=outputs,
-        error=error,
-    )
-    payload = json.dumps(
-        {
-            "action": "comms.task.result",
-            "metadata": {"correlation_id": "corr"},
-            "payload": result.to_dict(),
-        }
-    )
-    return QueueMessage(
-        message_id=f"msg_{task_id}",
-        queue_name=queue_name,
-        payload=payload,
-        receipt_handle=f"rh_{task_id}",
-        attributes={},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -102,18 +72,14 @@ def mock_vault():
 
 
 @pytest.fixture
-def mock_queue():
+def mock_queue(reply_router):
     mock = AsyncMock()
-    mock.publish.return_value = None
     mock.ack.return_value = None
     mock.invalidate_queue.return_value = None
     mock.consume.return_value = []
-
-    async def _consume_blocking(queue_name, timeout, max_messages=1):
-        return await mock.consume(queue_name, max_messages=max_messages)
-
-    mock.consume_blocking.side_effect = _consume_blocking
-    return mock
+    # SIP-0094: publishing a comms.task auto-delivers the agent reply via the
+    # reply router (the executor no longer polls a reply queue).
+    return reply_router.bind(mock)
 
 
 @pytest.fixture
@@ -194,50 +160,36 @@ def executor(
         queue=mock_queue,
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
+        reply_router=mock_queue.reply_router,
     )
     ex._cycle_event_bus = mock_event_bus
     return ex
 
 
-def _build_scripted_consume(mock_queue, script):
-    """Build consume side_effect from a list of (status, outputs, error) tuples.
+def _script_replies(reply_router, script):
+    """Drive the reply router from a list of (status, outputs, error) tuples.
 
-    Each publish gets the next response from the script. After the script
-    is exhausted, returns SUCCEEDED with default outputs.
+    Each dispatch (in order) gets the next scripted reply, exactly as the old
+    scripted consume side_effect did. After the script is exhausted, replies
+    default to SUCCEEDED — same fallback as before.
     """
     idx = {"n": 0}
 
-    async def consume_side_effect(queue_name, max_messages=1):
-        if not queue_name.startswith("cycle_results_"):
-            return []
-        last_call = mock_queue.publish.call_args
-        if not last_call:
-            return []
-        msg_data = json.loads(last_call.args[1])
-        task_id = msg_data["payload"]["task_id"]
-
+    def responder(env):
         i = idx["n"]
         idx["n"] += 1
-
         if i < len(script):
             status, outputs, error = script[i]
         else:
-            status, outputs, error = (
-                "SUCCEEDED",
-                {"summary": "ok", "role": "strat"},
-                None,
-            )
-        return [
-            _make_result_message(
-                task_id=task_id,
-                status=status,
-                outputs=outputs,
-                error=error,
-                queue_name=queue_name,
-            )
-        ]
+            status, outputs, error = ("SUCCEEDED", {"summary": "ok", "role": "strat"}, None)
+        return TaskResult(
+            task_id=env["task_id"],
+            status=status,
+            outputs=outputs,
+            error=error,
+        )
 
-    return consume_side_effect
+    reply_router.responder = responder
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +238,7 @@ class TestCorrectionContinue:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -352,7 +304,7 @@ class TestCorrectionPatch:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -554,7 +506,7 @@ class TestCorrectionTaskArtifactStorage:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -630,7 +582,7 @@ class TestCorrectionTaskArtifactStorage:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -710,7 +662,7 @@ class TestCorrectionTerminalPaths:
             ),
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -775,7 +727,7 @@ class TestMaxCorrectionAttempts:
             ("FAILED", semantic_outputs_2, "bad again"),
             # max_correction_attempts=1 exhausted -> abort
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -838,7 +790,7 @@ class TestPlanDelta:
             ("SUCCEEDED", analyze_failure, None),
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -904,7 +856,7 @@ class TestPlanDelta:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -961,7 +913,7 @@ class TestCorrectionCheckpoints:
             # correction_decision succeeds -> checkpoint
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -987,7 +939,7 @@ class TestCorrectionCheckpoints:
             # correction_decision fails
             ("FAILED", None, "corr fail"),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -1037,7 +989,7 @@ class TestCorrectionEvents:
             ),
             ("SUCCEEDED", correction_decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -1093,7 +1045,7 @@ class TestCorrectionEvents:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -1194,7 +1146,7 @@ class TestCorrectionModelResolution:
             ),
             ("SUCCEEDED", decision, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -1255,7 +1207,7 @@ class TestCorrectionModelResolution:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -1370,7 +1322,7 @@ class TestCorrectionModelResolution:
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
         ]
-        mock_queue.consume.side_effect = _build_scripted_consume(mock_queue, script)
+        _script_replies(mock_queue.reply_router, script)
 
         with (
             patch.object(exec_mod, "generate_task_plan", _gen_with_contract),

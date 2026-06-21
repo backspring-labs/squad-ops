@@ -71,7 +71,7 @@ def mock_event_bus():
 
 
 @pytest.fixture
-def executor(mock_registry, mock_event_bus):
+def executor(mock_registry, mock_event_bus, reply_router):
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     exec_ = DispatchedFlowExecutor(
@@ -80,6 +80,7 @@ def executor(mock_registry, mock_event_bus):
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
         task_timeout=5.0,
+        reply_router=reply_router,
     )
     exec_._cycle_event_bus = mock_event_bus
     return exec_
@@ -116,9 +117,7 @@ class TestHandleGateDecisions:
 
     async def test_approved_resumes_run(self, executor, mock_registry, mock_event_bus, cycle):
         """approved → update status to RUNNING, emit RUN_RESUMED."""
-        mock_registry.get_run.return_value = _run_with_gate_decision(
-            GateDecisionValue.APPROVED
-        )
+        mock_registry.get_run.return_value = _run_with_gate_decision(GateDecisionValue.APPROVED)
         mock_registry.update_run_status.return_value = None
 
         await executor._handle_gate("run_001", cycle, "plan_tasks")
@@ -149,9 +148,7 @@ class TestHandleGateDecisions:
         emit_types = [c[0][0] for c in emit_calls]
         assert EventType.RUN_RESUMED in emit_types
 
-    async def test_rejected_raises_execution_error(
-        self, executor, mock_registry, cycle
-    ):
+    async def test_rejected_raises_execution_error(self, executor, mock_registry, cycle):
         """rejected → raises _ExecutionError."""
         from adapters.cycles.dispatched_flow_executor import _ExecutionError
 

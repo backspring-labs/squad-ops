@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from squadops.comms.queue_message import QueueMessage
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import (
     AgentProfileEntry,
@@ -36,57 +35,6 @@ from squadops.tasks.models import TaskResult
 NOW = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
 
 pytestmark = [pytest.mark.domain_orchestration]
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_result_message(
-    task_id: str,
-    status: str = "SUCCEEDED",
-    outputs: dict | None = None,
-    error: str | None = None,
-    queue_name: str = "cycle_results_run_impl",
-) -> QueueMessage:
-    result = TaskResult(task_id=task_id, status=status, outputs=outputs, error=error)
-    payload = json.dumps(
-        {
-            "action": "comms.task.result",
-            "metadata": {"correlation_id": "corr"},
-            "payload": result.to_dict(),
-        }
-    )
-    return QueueMessage(
-        message_id=f"msg_{task_id}",
-        queue_name=queue_name,
-        payload=payload,
-        receipt_handle=f"rh_{task_id}",
-        attributes={},
-    )
-
-
-def _make_queue_side_effects(mock_queue, queue_name="cycle_results_run_impl"):
-    """Build consume side_effect that returns matching results."""
-
-    async def consume_side_effect(qn, max_messages=1):
-        if not qn.startswith("cycle_results_"):
-            return []
-        last_call = mock_queue.publish.call_args
-        if last_call:
-            msg_data = json.loads(last_call.args[1])
-            task_id = msg_data["payload"]["task_id"]
-            return [
-                _make_result_message(
-                    task_id=task_id,
-                    outputs={"summary": "ok", "artifacts": []},
-                    queue_name=qn,
-                )
-            ]
-        return []
-
-    return consume_side_effect
 
 
 # ---------------------------------------------------------------------------
@@ -129,17 +77,15 @@ def mock_vault():
 
 
 @pytest.fixture
-def mock_queue():
+def mock_queue(reply_router):
     mock = AsyncMock()
     mock.publish.return_value = None
     mock.ack.return_value = None
     mock.invalidate_queue.return_value = None
-    mock.consume.return_value = []
-
-    async def _consume_blocking(queue_name, timeout, max_messages=1):
-        return await mock.consume(queue_name, max_messages=max_messages)
-
-    mock.consume_blocking.side_effect = _consume_blocking
+    # SIP-0094: the executor dispatches over {agent_id}_comms and awaits the
+    # reply via the router instead of polling. bind() wires publish so each
+    # dispatched comms.task auto-delivers the agent's reply.
+    reply_router.bind(mock)
     return mock
 
 
@@ -198,6 +144,7 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, impl_cyc
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
         event_bus=mock_event_bus,
+        reply_router=mock_queue.reply_router,
     )
 
 
@@ -211,8 +158,6 @@ class TestCheckpointOnSuccess:
 
     async def test_checkpoint_saved_per_task(self, executor, mock_registry, mock_queue) -> None:
         """save_checkpoint called once per successful task (3 for implementation)."""
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -223,8 +168,6 @@ class TestCheckpointOnSuccess:
 
     async def test_checkpoint_indices_increment(self, executor, mock_registry, mock_queue) -> None:
         """Each checkpoint has sequential checkpoint_index."""
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -239,8 +182,6 @@ class TestCheckpointOnSuccess:
         self, executor, mock_registry, mock_queue
     ) -> None:
         """Each checkpoint records all completed tasks so far."""
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -255,35 +196,26 @@ class TestCheckpointOnSuccess:
         self, executor, mock_registry, mock_queue
     ) -> None:
         """No checkpoint saved when a task fails."""
+        dispatch_count = 0
 
-        async def fail_second(qn, max_messages=1):
-            if not qn.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                # First task succeeds, second fails
-                if mock_queue.publish.call_count <= 1:
-                    return [
-                        _make_result_message(
-                            task_id=task_id,
-                            outputs={"summary": "ok", "artifacts": []},
-                            queue_name=qn,
-                        )
-                    ]
-                else:
-                    return [
-                        _make_result_message(
-                            task_id=task_id,
-                            status="FAILED",
-                            error="build error",
-                            queue_name=qn,
-                        )
-                    ]
-            return []
+        def fail_second(env):
+            nonlocal dispatch_count
+            dispatch_count += 1
+            # First task succeeds, every subsequent dispatch (including
+            # retries of the failing task) fails.
+            if dispatch_count == 1:
+                return TaskResult(
+                    task_id=env["task_id"],
+                    status="SUCCEEDED",
+                    outputs={"summary": "ok", "artifacts": []},
+                )
+            return TaskResult(
+                task_id=env["task_id"],
+                status="FAILED",
+                error="build error",
+            )
 
-        mock_queue.consume.side_effect = fail_second
+        mock_queue.reply_router.responder = fail_second
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -304,8 +236,6 @@ class TestCheckpointEvents:
     """CHECKPOINT_CREATED event emitted after each save."""
 
     async def test_checkpoint_created_event(self, executor, mock_event_bus, mock_queue) -> None:
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -320,8 +250,6 @@ class TestCheckpointEvents:
         assert len(checkpoint_events) == 3
 
     async def test_checkpoint_created_payload(self, executor, mock_event_bus, mock_queue) -> None:
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -361,8 +289,6 @@ class TestResumeFromCheckpoint:
             plan_delta_refs=(),
             created_at=NOW,
         )
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -384,8 +310,6 @@ class TestResumeFromCheckpoint:
             plan_delta_refs=(),
             created_at=NOW,
         )
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -422,8 +346,6 @@ class TestResumeFromCheckpoint:
             plan_delta_refs=(),
             created_at=NOW,
         )
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -452,8 +374,6 @@ class TestResumeFromCheckpoint:
             plan_delta_refs=(),
             created_at=NOW,
         )
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -481,8 +401,6 @@ class TestResumeFromCheckpoint:
             plan_delta_refs=(),
             created_at=NOW,
         )
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -497,8 +415,6 @@ class TestResumeFromCheckpoint:
         self, executor, mock_registry, mock_queue, mock_event_bus
     ) -> None:
         """Fresh run (no checkpoint) emits RUN_STARTED, not RUN_RESUMED."""
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -526,8 +442,6 @@ class TestTimeBudget:
 
         budget_cycle = dataclasses.replace(impl_cycle, applied_defaults={"time_budget_seconds": 0})
         mock_registry.get_cycle.return_value = budget_cycle
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -541,8 +455,6 @@ class TestTimeBudget:
 
     async def test_no_time_budget_no_enforcement(self, executor, mock_registry, mock_queue) -> None:
         """When time_budget_seconds is not set, no enforcement."""
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -561,8 +473,6 @@ class TestTimeBudget:
 
         budget_cycle = dataclasses.replace(impl_cycle, applied_defaults={"time_budget_seconds": 0})
         mock_registry.get_cycle.return_value = budget_cycle
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,

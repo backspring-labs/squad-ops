@@ -79,7 +79,7 @@ def mock_prefect_reporter() -> AsyncMock:
     return reporter
 
 
-def _make_executor(mock_prefect_reporter):
+def _make_executor(mock_prefect_reporter, reply_router):
     """Build a minimally-wired executor for direct method calls."""
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
@@ -95,6 +95,7 @@ def _make_executor(mock_prefect_reporter):
         squad_profile=squad,
         task_timeout=5.0,
         workflow_tracker=mock_prefect_reporter,
+        reply_router=reply_router,
     )
     ex._cycle_event_bus = MagicMock()
     return ex
@@ -110,9 +111,9 @@ class TestCorrectionTaskRunPropagation:
     correction step and tag every emitted task event with both run IDs."""
 
     async def test_correction_steps_create_task_runs_and_emit_full_context(
-        self, mock_prefect_reporter, cycle, failed_envelope
+        self, mock_prefect_reporter, cycle, failed_envelope, reply_router
     ):
-        ex = _make_executor(mock_prefect_reporter)
+        ex = _make_executor(mock_prefect_reporter, reply_router)
 
         # Stub _dispatch_task: capture kwargs and return a "continue"
         # correction decision so the protocol terminates without entering
@@ -185,11 +186,11 @@ class TestCorrectionTaskRunPropagation:
             assert ctx["task_run_id"].startswith("tr_")
 
     async def test_correction_skips_task_run_creation_when_flow_run_id_missing(
-        self, mock_prefect_reporter, cycle, failed_envelope
+        self, mock_prefect_reporter, cycle, failed_envelope, reply_router
     ):
         """No Prefect flow context → no task_runs created (consistent with
         main path); event contexts carry empty-string IDs (not None)."""
-        ex = _make_executor(mock_prefect_reporter)
+        ex = _make_executor(mock_prefect_reporter, reply_router)
 
         async def succeed(envelope, *_a, **_k):
             if envelope.task_type == "governance.correction_decision":
@@ -236,9 +237,9 @@ class TestCorrectionPatchRepairTaskRunPropagation:
     correction protocol must also create per-step task_runs."""
 
     async def test_patch_repairs_create_task_runs_and_carry_full_context(
-        self, mock_prefect_reporter, cycle, failed_envelope
+        self, mock_prefect_reporter, cycle, failed_envelope, reply_router
     ):
-        ex = _make_executor(mock_prefect_reporter)
+        ex = _make_executor(mock_prefect_reporter, reply_router)
 
         seen_repair_dispatches: list[dict] = []
 
@@ -297,14 +298,14 @@ class TestPulseRepairTaskRunPropagation:
     """
 
     async def test_pulse_repair_dispatches_carry_run_ids(
-        self, mock_prefect_reporter, cycle, failed_envelope
+        self, mock_prefect_reporter, cycle, failed_envelope, reply_router
     ):
         from squadops.cycles.pulse_models import (
             PulseDecision,
             SuiteOutcome,
         )
 
-        ex = _make_executor(mock_prefect_reporter)
+        ex = _make_executor(mock_prefect_reporter, reply_router)
 
         # Stub the boundary verification: report FAIL on the first pass and
         # PASS on the second so the loop runs exactly one repair attempt.

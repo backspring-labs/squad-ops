@@ -109,5 +109,6 @@ def create_flow_executor(
             llm_observability=kwargs.get("llm_observability"),
             workflow_tracker=workflow_tracker,
             event_bus=kwargs.get("event_bus"),
+            reply_router=kwargs.get("reply_router"),
         )
     raise ValueError(f"Unknown flow executor provider: {provider}")

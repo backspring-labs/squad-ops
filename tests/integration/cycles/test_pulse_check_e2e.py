@@ -14,7 +14,7 @@ Covers:
 
 from __future__ import annotations
 
-import json
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -27,7 +27,6 @@ try:
 except ImportError:
     _has_runtime_deps = False
 
-from squadops.comms.queue_message import QueueMessage
 from squadops.cycles.models import (
     Cycle,
     RunStatus,
@@ -76,8 +75,6 @@ def _make_registry(cycle):
 
     registry = MemoryCycleRegistry()
     # Seed cycle and run synchronously via internals
-    import asyncio
-
     loop = asyncio.get_event_loop()
 
     async def _seed():
@@ -98,30 +95,34 @@ def _make_registry(cycle):
     return registry
 
 
-def _make_result_message(task_id, queue_name="cycle_results_run_e2e"):
-    result = TaskResult(
-        task_id=task_id,
-        status="SUCCEEDED",
-        outputs={"summary": "ok", "artifacts": []},
-    )
-    return QueueMessage(
-        queue_name=queue_name,
-        body=json.dumps(result.to_dict()).encode(),
-    )
+class _E2EReplyRouter:
+    """Minimal SIP-0094 ReplyRouter double for this file.
 
+    The shared ``FakeReplyRouter`` lives in ``tests/unit/conftest.py`` and isn't
+    importable from the integration tree, so this self-contained shim mirrors
+    the old always-succeed consume stub: every dispatched task resolves to a
+    SUCCEEDED reply.
+    """
 
-def _consume_factory(mock_queue):
-    async def _consume(queue_name, max_messages=1):
-        if not queue_name.startswith("cycle_results_"):
-            return []
-        last_call = mock_queue.publish.call_args
-        if last_call:
-            msg_data = json.loads(last_call.args[1])
-            task_id = msg_data["payload"]["task_id"]
-            return [_make_result_message(task_id, queue_name)]
-        return []
+    async def ensure_subscribed(self, agent_id):
+        pass
 
-    return _consume
+    def register(self, task_id):
+        fut = asyncio.get_running_loop().create_future()
+        fut.set_result(
+            TaskResult(
+                task_id=task_id,
+                status="SUCCEEDED",
+                outputs={"summary": "ok", "artifacts": []},
+            )
+        )
+        return fut
+
+    def cancel(self, task_id):
+        pass
+
+    async def stop(self):
+        pass
 
 
 def _make_executor(registry, cycle):
@@ -129,7 +130,6 @@ def _make_executor(registry, cycle):
 
     mock_vault = AsyncMock()
     mock_queue = AsyncMock()
-    mock_queue.consume.side_effect = _consume_factory(mock_queue)
 
     squad_profile = SquadProfile(
         profile_id="full-squad",
@@ -144,6 +144,7 @@ def _make_executor(registry, cycle):
         queue=mock_queue,
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
+        reply_router=_E2EReplyRouter(),
     )
     return executor, mock_queue
 

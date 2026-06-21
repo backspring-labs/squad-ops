@@ -9,7 +9,7 @@ Part of Phase 2.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -49,13 +49,13 @@ def _make_artifact_ref(
 
 
 @pytest.fixture
-def executor():
+def executor(reply_router):
     """Create a DispatchedFlowExecutor with mocked ports."""
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     vault = AsyncMock()
     registry = AsyncMock()
-    queue = AsyncMock()
+    queue = reply_router.bind(AsyncMock())
     squad = AsyncMock()
     project = AsyncMock()
 
@@ -68,6 +68,7 @@ def executor():
         queue=queue,
         squad_profile=squad,
         project_registry=project,
+        reply_router=reply_router,
     )
     return ex
 
@@ -254,7 +255,7 @@ class TestProducingTaskTypeMetadata:
 
 
 class TestBuildOnlyValidation:
-    async def test_build_only_missing_refs_fails(self):
+    async def test_build_only_missing_refs_fails(self, reply_router):
         """Build-only cycle without plan_artifact_refs raises _ExecutionError."""
         from adapters.cycles.dispatched_flow_executor import (
             DispatchedFlowExecutor,
@@ -316,8 +317,9 @@ class TestBuildOnlyValidation:
         ex = DispatchedFlowExecutor(
             cycle_registry=registry,
             artifact_vault=AsyncMock(),
-            queue=AsyncMock(),
+            queue=reply_router.bind(AsyncMock()),
             squad_profile=squad,
+            reply_router=reply_router,
         )
 
         await ex.execute_run("cyc_001", "run_001")
@@ -367,7 +369,7 @@ class TestBuildOnlySeeding:
         assert "implementation_plan.md" in contents
         assert contents["implementation_plan.md"] == "Plan content here"
 
-    async def test_build_only_with_valid_refs_passes_validation(self):
+    async def test_build_only_with_valid_refs_passes_validation(self, reply_router):
         """Build-only cycle with plan_artifact_refs does not raise."""
         from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
@@ -433,35 +435,32 @@ class TestBuildOnlySeeding:
             )
         )
 
+        from squadops.tasks.models import TaskResult
+
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"],
+            status="SUCCEEDED",
+            outputs={
+                "summary": "done",
+                "role": env["metadata"].get("role"),
+                "artifacts": [
+                    {
+                        "name": "src/main.py",
+                        "content": "print(1)",
+                        "type": "source",
+                        "media_type": "text/x-python",
+                    },
+                ],
+            },
+        )
+
         ex = DispatchedFlowExecutor(
             cycle_registry=registry,
             artifact_vault=vault,
-            queue=AsyncMock(),
+            queue=reply_router.bind(AsyncMock()),
             squad_profile=squad,
+            reply_router=reply_router,
         )
-
-        # Mock dispatch to succeed
-        async def fake_dispatch(envelope, rid, **_kwargs):
-            from squadops.tasks.models import TaskResult
-
-            return TaskResult(
-                task_id=envelope.task_id,
-                status="SUCCEEDED",
-                outputs={
-                    "summary": "done",
-                    "role": envelope.metadata.get("role"),
-                    "artifacts": [
-                        {
-                            "name": "src/main.py",
-                            "content": "print(1)",
-                            "type": "source",
-                            "media_type": "text/x-python",
-                        },
-                    ],
-                },
-            )
-
-        ex._dispatch_task = fake_dispatch
 
         await ex.execute_run("cyc_001", "run_001")
 
@@ -476,7 +475,7 @@ class TestBuildOnlySeeding:
 class TestPlanOnlyCyclesUnaffected:
     """Regression: plan-only cycles still work as before."""
 
-    async def test_plan_only_cycle_no_build_validation(self):
+    async def test_plan_only_cycle_no_build_validation(self, reply_router):
         """Plan-only cycle doesn't trigger build-only validation."""
         from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
@@ -510,23 +509,6 @@ class TestPlanOnlyCyclesUnaffected:
         registry.get_latest_checkpoint = AsyncMock(return_value=None)
         registry.save_checkpoint = AsyncMock(return_value=None)
 
-        queue = AsyncMock()
-        # Simulate task results
-        msg = MagicMock()
-        import json
-
-        msg.payload = json.dumps(
-            {
-                "payload": {
-                    "task_id": "placeholder",
-                    "status": "SUCCEEDED",
-                    "outputs": {"summary": "done", "role": "strat"},
-                }
-            }
-        )
-        queue.consume = AsyncMock(return_value=[msg])
-        queue.ack = AsyncMock()
-
         vault = AsyncMock()
         vault.store = AsyncMock(side_effect=lambda ref, content: ref)
 
@@ -553,24 +535,21 @@ class TestPlanOnlyCyclesUnaffected:
             )
         )
 
+        from squadops.tasks.models import TaskResult
+
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"],
+            status="SUCCEEDED",
+            outputs={"summary": "done", "role": env["metadata"].get("role")},
+        )
+
         ex = DispatchedFlowExecutor(
             cycle_registry=registry,
             artifact_vault=vault,
-            queue=queue,
+            queue=reply_router.bind(AsyncMock()),
             squad_profile=squad,
+            reply_router=reply_router,
         )
-
-        # Mock _dispatch_task to return success for any task
-        async def fake_dispatch(envelope, rid, **_kwargs):
-            from squadops.tasks.models import TaskResult
-
-            return TaskResult(
-                task_id=envelope.task_id,
-                status="SUCCEEDED",
-                outputs={"summary": "done", "role": envelope.metadata.get("role")},
-            )
-
-        ex._dispatch_task = fake_dispatch
 
         await ex.execute_run("cyc_001", "run_001")
 

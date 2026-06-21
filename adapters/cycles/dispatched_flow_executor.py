@@ -50,6 +50,7 @@ from squadops.telemetry.context import use_correlation_context, use_run_ids
 from squadops.telemetry.models import CorrelationContext
 
 if TYPE_CHECKING:
+    from adapters.cycles.reply_router import ReplyRouter
     from squadops.capabilities.acceptance import AcceptanceCheckEngine
     from squadops.capabilities.models import AcceptanceContext
     from squadops.cycles.models import GateDecision, SquadProfile
@@ -82,8 +83,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
     Uses a request/reply pattern: publishes a ``comms.task`` message to
-    ``{agent_id}_comms``, then consumes the ``TaskResult`` from a per-run
-    reply queue (``cycle_results_{run_id}``).
+    ``{agent_id}_comms``, then awaits the ``TaskResult`` via the
+    :class:`ReplyRouter`, which holds a long-lived subscription on the agent's
+    per-agent reply queue (``{agent_id}_replies``) and resolves a future keyed
+    by ``task_id`` (SIP-0094).
     """
 
     def __init__(
@@ -97,10 +100,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         llm_observability: LLMObservabilityPort | None = None,
         workflow_tracker: WorkflowTrackerPort | None = None,
         event_bus: CycleEventBusPort | None = None,
+        reply_router: ReplyRouter | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
         self._queue = queue
+        self._reply_router = reply_router
         self._squad_profile = squad_profile
         self._project_registry = project_registry
         self._task_timeout = task_timeout
@@ -671,8 +676,32 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         envelope: TaskEnvelope,
         run_id: str,
     ) -> TaskResult:
-        """Dispatch over the queue and poll the reply queue for a result."""
-        reply_queue = f"cycle_results_{run_id}"
+        """Dispatch over ``{agent_id}_comms`` and await the reply via the router.
+
+        SIP-0094: replaces the per-run ``cycle_results_{run_id}`` polling loop
+        with a long-lived per-agent subscription. The reply for ``task_id`` is
+        delivered through :class:`ReplyRouter`, which resolves the future this
+        method awaits.
+
+        Invariants:
+        - **Ordering (D14/#2):** ``ensure_subscribed → register → publish`` — the
+          consumer is live before any reply can arrive (no first-dispatch race).
+        - **No pending-future leak (#9):** every exit path — success, timeout,
+          publish failure, router/await failure, cancellation — removes
+          ``task_id`` from the router so it never lingers.
+        """
+        if self._reply_router is None:
+            raise RuntimeError(
+                "DispatchedFlowExecutor requires a ReplyRouter to dispatch (SIP-0094)"
+            )
+
+        reply_queue = f"{envelope.agent_id}_replies"
+        queue_name = f"{envelope.agent_id}_comms"
+
+        # Open the agent's reply subscription and register our future BEFORE
+        # publishing, so a fast reply can't arrive before we're listening.
+        await self._reply_router.ensure_subscribed(envelope.agent_id)
+        fut = self._reply_router.register(envelope.task_id)
 
         message = {
             "action": "comms.task",
@@ -683,8 +712,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             "payload": envelope.to_dict(),
         }
 
-        queue_name = f"{envelope.agent_id}_comms"
-        await self._queue.publish(queue_name, json.dumps(message))
+        # #10: if publish fails after register(), the agent never got the task —
+        # drop the pending future so it doesn't leak.
+        try:
+            await self._queue.publish(queue_name, json.dumps(message))
+        except Exception:
+            self._reply_router.cancel(envelope.task_id)
+            raise
 
         logger.info(
             "Dispatched task %s (%s) to %s, awaiting reply on %s",
@@ -694,53 +728,28 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             reply_queue,
         )
 
-        deadline = time.monotonic() + self._task_timeout
-        # Block on the reply queue in long chunks so a single consumer
-        # registration covers each chunk — avoids the consumer-tag churn
-        # of poll-and-sleep that previously raced with arriving replies.
-        # Cap each chunk well below typical broker idle-disconnect windows.
-        chunk_seconds = 30.0
-
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            wait = min(chunk_seconds, remaining)
-
-            try:
-                messages = await self._queue.consume_blocking(
-                    reply_queue, timeout=wait, max_messages=1
-                )
-            except Exception as exc:
-                # Channel went stale or broker hiccup. Drop the cached
-                # queue handle and back off briefly before retrying so
-                # the next call re-declares against a fresh channel.
-                logger.warning(
-                    "consume_blocking on %s failed (%s); invalidating cache and retrying",
-                    reply_queue,
-                    exc,
-                )
-                try:
-                    await self._queue.invalidate_queue(reply_queue)
-                except Exception:
-                    logger.debug("invalidate_queue raised; continuing", exc_info=True)
-                await asyncio.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
-                continue
-
-            for msg in messages:
-                data = json.loads(msg.payload)
-                result_data = data.get("payload", {})
-                if result_data.get("task_id") == envelope.task_id:
-                    await self._queue.ack(msg)
-                    return TaskResult.from_dict(result_data)
-                # Not our message — ack to avoid blocking
-                await self._queue.ack(msg)
-
-        return TaskResult(
-            task_id=envelope.task_id,
-            status="FAILED",
-            error=f"Timed out waiting for agent {envelope.agent_id} after {self._task_timeout}s",
-        )
+        try:
+            return await asyncio.wait_for(fut, timeout=self._task_timeout)
+        except asyncio.CancelledError:
+            self._reply_router.cancel(envelope.task_id)
+            raise
+        except TimeoutError:
+            self._reply_router.cancel(envelope.task_id)
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="FAILED",
+                error=f"Timed out waiting for agent {envelope.agent_id} after {self._task_timeout}s",
+            )
+        except Exception as exc:
+            # Router-side failure surfaced via the future (e.g. a malformed
+            # reply that failed TaskResult.from_dict, or ReplyRouterStopped on
+            # shutdown). The future is already settled; just guard the leak.
+            self._reply_router.cancel(envelope.task_id)
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="FAILED",
+                error=f"Reply wait for agent {envelope.agent_id} failed: {exc}",
+            )
 
     # ------------------------------------------------------------------
     # Execution strategies
