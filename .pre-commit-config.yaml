@@ -9,3 +9,15 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # Keep the prompt-fragment manifest hashes in sync with the fragment bodies.
+  # Runs only when a fragment or the manifest changes; uses the active env's
+  # python (squadops must be `pip install -e .`). See issue #195.
+  - repo: local
+    hooks:
+      - id: fragment-manifest-check
+        name: prompt-fragment manifest hashes up to date
+        entry: python scripts/dev/regen_fragment_manifest.py --check
+        language: system
+        pass_filenames: false
+        files: ^src/squadops/prompts/fragments/
+
