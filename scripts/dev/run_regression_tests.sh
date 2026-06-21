@@ -20,6 +20,8 @@ REGRESSION_DIRS=(
     "tests/unit/prompts/"
     "tests/unit/tools/"
     "tests/unit/agent_foundation/"
+    "tests/unit/agents/"
+    "tests/unit/comms/"
     "tests/unit/capabilities/"
     "tests/unit/cycles/"
     "tests/unit/events/"
