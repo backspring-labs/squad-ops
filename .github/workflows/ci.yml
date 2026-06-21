@@ -30,13 +30,17 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: tests/requirements.txt
+          cache-dependency-path: |
+            tests/requirements.txt
+            ci-constraints.txt
 
       - name: Install
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install -r tests/requirements.txt
+          # ci-constraints.txt pins the exact resolved versions (#202) so an
+          # upstream release can't silently change what CI tests.
+          pip install -r tests/requirements.txt -c ci-constraints.txt
 
       - name: Prompt-fragment manifest is in sync
         run: python scripts/dev/regen_fragment_manifest.py --check
