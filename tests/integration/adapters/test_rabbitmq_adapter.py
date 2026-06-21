@@ -3,6 +3,7 @@ Integration tests for RabbitMQ adapter.
 Tests RabbitMQ roundtrip, namespace verification, and health checks.
 """
 
+import asyncio
 import json
 
 import pytest
@@ -230,3 +231,108 @@ class TestRabbitMQAdapter:
         # Acknowledge all messages
         for message in messages:
             await rabbitmq_adapter.ack(message)
+
+
+async def _drain(adapter: RabbitMQAdapter, name: str) -> None:
+    """Declare + purge so a rerun starts from an empty queue.
+
+    Uses purge (not delete) on purpose: deleting a queue on the shared channel
+    races RobustChannel's reopen and trips ``expected 'channel.open'``. Purge
+    leaves the durable queue in place and just clears residual messages.
+    """
+    try:
+        await adapter.ensure_queue(name)
+        queue = await adapter._get_queue(name)
+        await queue.purge()
+    except Exception:
+        pass
+
+
+@pytest.mark.integration
+class TestNativeSubscribeIntegration:
+    """SIP-0094 94.2b: native long-lived subscribe() against a real broker.
+
+    These are the zero-loss / no-cross-delivery guarantees the per-agent reply
+    queues rely on (SIP §8, #12) — the legacy per-call consume() poll path
+    could drop replies dispatched during consumer-tag churn.
+    """
+
+    @pytest_asyncio.fixture
+    async def adapter(self, rabbitmq_container):
+        a = RabbitMQAdapter(url=rabbitmq_container.get_connection_url(), namespace=None)
+        yield a
+        await a.close()
+
+    @pytest.mark.asyncio
+    async def test_held_subscription_loses_no_replies(self, adapter):
+        """Publish 100 replies to one reply queue with a single held
+        subscription -> all 100 are routed exactly once, none lost."""
+        queue_name = "sip0094_2b_soak_replies"
+        await _drain(adapter, queue_name)
+
+        total = 100
+        received: list[str] = []
+        all_in = asyncio.Event()
+
+        async def on_message(m):
+            received.append(m.payload)
+            if len(received) >= total:
+                all_in.set()
+
+        handle = await adapter.subscribe(queue_name, on_message=on_message)
+        try:
+            for i in range(total):
+                await adapter.publish(queue_name, json.dumps({"i": i}))
+            await asyncio.wait_for(all_in.wait(), timeout=30.0)
+        finally:
+            await handle.cancel()
+
+        assert len(received) == total, f"lost replies: only {len(received)}/{total} arrived"
+        # Exactly-once and complete: every published index shows up once.
+        assert sorted(json.loads(p)["i"] for p in received) == list(range(total))
+        assert adapter._resubscribe_total == 0  # stable channel -> no resubscribe
+
+    @pytest.mark.asyncio
+    async def test_two_reply_queues_no_cross_delivery(self, adapter):
+        """Two held subscriptions on distinct reply queues with interleaved
+        publishes -> each gets only its own messages, exactly once."""
+        q_alpha = "sip0094_2b_alpha_replies"
+        q_beta = "sip0094_2b_beta_replies"
+        per_queue = 15
+        for q in (q_alpha, q_beta):
+            await _drain(adapter, q)
+
+        alpha: list[str] = []
+        beta: list[str] = []
+        done = asyncio.Event()
+
+        def _check_done():
+            if len(alpha) >= per_queue and len(beta) >= per_queue:
+                done.set()
+
+        async def on_alpha(m):
+            alpha.append(m.payload)
+            _check_done()
+
+        async def on_beta(m):
+            beta.append(m.payload)
+            _check_done()
+
+        h_alpha = await adapter.subscribe(q_alpha, on_message=on_alpha)
+        h_beta = await adapter.subscribe(q_beta, on_message=on_beta)
+        try:
+            for i in range(per_queue):
+                await adapter.publish(q_alpha, json.dumps({"who": "alpha", "i": i}))
+                await adapter.publish(q_beta, json.dumps({"who": "beta", "i": i}))
+            await asyncio.wait_for(done.wait(), timeout=30.0)
+        finally:
+            await h_alpha.cancel()
+            await h_beta.cancel()
+
+        assert len(alpha) == per_queue and len(beta) == per_queue
+        # No cross-agent delivery: each queue only ever saw its own tag.
+        assert all(json.loads(p)["who"] == "alpha" for p in alpha)
+        assert all(json.loads(p)["who"] == "beta" for p in beta)
+        # Exactly-once within each queue.
+        assert sorted(json.loads(p)["i"] for p in alpha) == list(range(per_queue))
+        assert sorted(json.loads(p)["i"] for p in beta) == list(range(per_queue))

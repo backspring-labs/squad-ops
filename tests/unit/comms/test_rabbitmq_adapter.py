@@ -8,10 +8,12 @@ no broker is required.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import adapters.comms.rabbitmq as rabbitmq_mod
 from adapters.comms.rabbitmq import QueueError, RabbitMQAdapter
 from squadops.ports.comms.queue import REPLY_QUEUE_DECLARE_ARGS
 
@@ -193,3 +195,161 @@ class TestConsumeBlockingErrorWrapping:
             await adapter.consume_blocking("reply_q", timeout=0.05, max_messages=1)
 
         assert "Channel was not opened" in str(exc_info.value)
+
+
+class _FakeIncoming:
+    """Stand-in for an aio_pika incoming message with a trackable ack()."""
+
+    def __init__(self, tag: int, body: str):
+        self.delivery_tag = tag
+        self.body = body.encode("utf-8")
+        self.routing_key = "rk"
+        self.exchange = ""
+        self.redelivered = False
+        self.acked = False
+
+    async def ack(self) -> None:
+        self.acked = True
+
+
+class _FakeIterator:
+    """Async context-manager + async-iterator over a fixed message list.
+
+    After the list drains it either raises ``raise_exc`` (to simulate a
+    channel-close mid-subscription) or blocks until the task is cancelled
+    (to simulate a healthy, idle long-lived consumer). Records enter/exit so
+    tests can assert the consumer was torn down on cancel.
+    """
+
+    def __init__(self, messages, *, raise_exc: BaseException | None = None):
+        self._messages = list(messages)
+        self._raise_exc = raise_exc
+        self.entered = False
+        self.exited = False
+
+    async def __aenter__(self) -> _FakeIterator:
+        self.entered = True
+        return self
+
+    async def __aexit__(self, *_exc) -> bool:
+        self.exited = True
+        return False
+
+    def __aiter__(self) -> _FakeIterator:
+        return self
+
+    async def __anext__(self):
+        if self._messages:
+            return self._messages.pop(0)
+        if self._raise_exc is not None:
+            exc, self._raise_exc = self._raise_exc, None
+            raise exc
+        # Healthy idle consumer: block until cancelled by handle.cancel().
+        await asyncio.sleep(3600)
+        raise StopAsyncIteration
+
+
+def _subscribe_adapter(iterators: list[_FakeIterator]) -> RabbitMQAdapter:
+    """Adapter wired so subscribe()'s loop pulls successive fake iterators,
+    with connection/declare/invalidate stubbed out (no broker)."""
+    adapter = RabbitMQAdapter(url="amqp://test", namespace=None)
+    adapter._ensure_connection = AsyncMock()
+    adapter.ensure_queue = AsyncMock()
+    adapter.invalidate_queue = AsyncMock()
+
+    fake_queue = MagicMock()
+    fake_queue.iterator = MagicMock(side_effect=iterators)
+    adapter._get_queue = AsyncMock(return_value=fake_queue)
+    return adapter
+
+
+class TestNativeSubscribe:
+    """Native long-lived ``subscribe()`` — the SIP-0094 fix (D6/D9/D12, §7)."""
+
+    async def test_delivers_and_acks(self) -> None:
+        """A message on the queue reaches the callback and is acked via the
+        underlying aio_pika message — the happy-path long-lived consumer."""
+        msg = _FakeIncoming(1, '{"reply":"a"}')
+        adapter = _subscribe_adapter([_FakeIterator([msg])])
+        received: list = []
+        got = asyncio.Event()
+
+        async def on_message(m):
+            received.append(m)
+            got.set()
+
+        handle = await adapter.subscribe("neo_replies", on_message=on_message)
+        await asyncio.wait_for(got.wait(), timeout=2.0)
+        await handle.cancel()
+
+        assert [m.payload for m in received] == ['{"reply":"a"}']
+        assert received[0].queue_name == "neo_replies"
+        assert msg.acked is True
+        assert adapter._resubscribe_total == 0  # no drop -> no resubscribe
+
+    async def test_callback_exception_does_not_kill_consumer(self) -> None:
+        """D12: a raising callback is isolated — the next delivery still
+        arrives, both messages are acked, and the consumer never resubscribes."""
+        m1 = _FakeIncoming(1, "boom")
+        m2 = _FakeIncoming(2, "ok")
+        adapter = _subscribe_adapter([_FakeIterator([m1, m2])])
+        received: list = []
+        second = asyncio.Event()
+
+        async def on_message(m):
+            if m.message_id == "1":
+                raise RuntimeError("callback boom")
+            received.append(m)
+            second.set()
+
+        handle = await adapter.subscribe("neo_replies", on_message=on_message)
+        await asyncio.wait_for(second.wait(), timeout=2.0)
+        await handle.cancel()
+
+        assert [m.payload for m in received] == ["ok"]
+        assert m1.acked is True and m2.acked is True
+        assert adapter._resubscribe_total == 0
+
+    async def test_channel_close_triggers_transparent_resubscribe(self, monkeypatch) -> None:
+        """§7 core: when the iterator dies (channel close), the loop
+        re-declares + re-consumes and a post-reconnect message is delivered,
+        bumping the resubscribe metric and invalidating the stale handle."""
+        monkeypatch.setattr(rabbitmq_mod, "_SUBSCRIBE_RECONNECT_BACKOFF", 0.01)
+
+        dead = _FakeIterator([], raise_exc=RuntimeError("Channel was not opened"))
+        post = _FakeIncoming(9, "after-reconnect")
+        alive = _FakeIterator([post])
+        adapter = _subscribe_adapter([dead, alive])
+        received: list = []
+        got = asyncio.Event()
+
+        async def on_message(m):
+            received.append(m)
+            got.set()
+
+        handle = await adapter.subscribe("neo_replies", on_message=on_message)
+        await asyncio.wait_for(got.wait(), timeout=2.0)
+        await handle.cancel()
+
+        assert [m.payload for m in received] == ["after-reconnect"]
+        assert post.acked is True
+        assert adapter._resubscribe_total == 1
+        # Stale Queue handle dropped before re-declaring on the live channel.
+        adapter.invalidate_queue.assert_awaited_with("neo_replies")
+
+    async def test_cancel_tears_down_consumer(self) -> None:
+        """cancel() stops the loop and exits the iterator context so the
+        broker-side consumer is released; the handle reports inactive."""
+        it = _FakeIterator([])  # no messages -> blocks until cancelled
+        adapter = _subscribe_adapter([it])
+
+        handle = await adapter.subscribe("neo_replies", on_message=lambda m: None)
+        await asyncio.sleep(0.05)  # let the loop enter the iterator
+        assert it.entered is True
+        assert handle.active is True
+
+        await handle.cancel()
+
+        assert handle.active is False
+        assert it.exited is True  # consumer context torn down
+        assert adapter._resubscribe_total == 0
