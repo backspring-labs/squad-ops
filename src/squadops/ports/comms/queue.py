@@ -8,6 +8,14 @@ from typing import Any
 
 from squadops.comms.queue_message import QueueMessage
 
+# SIP-0094 D3: canonical declaration args for agent comms/reply queues
+# (`{agent_id}_comms`, `{agent_id}_results`). Every declaration of these queues
+# — agent startup `ensure_queue`, orchestrator `subscribe`, manual creation —
+# MUST use these exact args. A mismatch on a durable queue makes the broker
+# reject the redeclare with PRECONDITION_FAILED, so this is single-sourced here
+# to keep the args from drifting across call sites.
+REPLY_QUEUE_DECLARE_ARGS: dict[str, Any] = {"durable": True}
+
 
 class QueuePort(ABC):
     """Abstract base class for queue transport providers."""
@@ -93,6 +101,21 @@ class QueuePort(ABC):
         re-declares the queue rather than reusing a stale, channel-bound
         handle. Default implementation is a no-op for adapters that don't
         cache.
+        """
+        return None
+
+    async def ensure_queue(self, queue_name: str) -> None:
+        """Idempotently declare ``queue_name`` so it exists before any peer
+        addresses it.
+
+        Concrete default is a no-op: adapters that declare lazily on first
+        consume (or have no broker at all, e.g. NoOp) need do nothing here.
+        Broker-backed adapters override this to declare with
+        :data:`REPLY_QUEUE_DECLARE_ARGS` (SIP-0094 D3).
+
+        Agents call this at startup for their ``{agent_id}_results`` reply
+        queue, which they only ever publish to (never consume from), so the
+        lazy declaration that covers ``{agent_id}_comms`` never fires for it.
         """
         return None
 

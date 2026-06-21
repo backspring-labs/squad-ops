@@ -10,7 +10,7 @@ import aio_pika
 from aio_pika import Connection, Message, Queue
 
 from squadops.comms.queue_message import QueueMessage
-from squadops.ports.comms.queue import QueuePort
+from squadops.ports.comms.queue import REPLY_QUEUE_DECLARE_ARGS, QueuePort
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +79,22 @@ class RabbitMQAdapter(QueuePort):
         if cached is not None and getattr(cached, "channel", None) is self._channel:
             return cached
 
-        queue = await self._channel.declare_queue(full_name, durable=True)
+        queue = await self._channel.declare_queue(full_name, **REPLY_QUEUE_DECLARE_ARGS)
         self._queues[full_name] = queue
         logger.debug(f"Declared queue: {full_name}")
         return queue
+
+    async def ensure_queue(self, queue_name: str) -> None:
+        """Idempotently declare ``queue_name`` with the shared
+        :data:`REPLY_QUEUE_DECLARE_ARGS` (SIP-0094 D3).
+
+        Thin wrapper over :meth:`_get_queue`, so the reply queue is declared
+        with byte-identical args to the agent comms queue. Agents call this at
+        startup for their ``{agent_id}_results`` queue — which they only ever
+        publish to, never consume from — so the lazy declaration on
+        :meth:`consume` never creates it.
+        """
+        await self._get_queue(queue_name)
 
     async def invalidate_queue(self, queue_name: str) -> None:
         """Drop the cached Queue handle for ``queue_name``.
