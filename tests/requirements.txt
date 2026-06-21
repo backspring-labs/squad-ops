@@ -59,7 +59,10 @@ opentelemetry-semantic-conventions>=0.43b0
 prometheus-client>=0.19.0
 
 # Additional agent dependencies
-a2a-sdk[http-server]>=0.3.0  # A2A protocol (used by chat executor)
+# Cap to the 0.3.x line the project runs: chat_executor.py imports
+# `new_agent_text_message` from `a2a.utils`, which a2a-sdk >=0.4 removed/renamed.
+# (Same unpinned-dep drift class as the fastapi cap — see #198 re: pinning deps.)
+a2a-sdk[http-server]>=0.3.0,<0.4  # A2A protocol (used by chat executor)
 beautifulsoup4>=4.12.0  # HTML parsing (used by qa skills)
 psutil>=5.9.0  # System utilities (used by lead agent)
 
