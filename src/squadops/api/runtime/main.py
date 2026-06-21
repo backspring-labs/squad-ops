@@ -139,6 +139,9 @@ rabbitmq_channel: aio_pika.Channel | None = None
 # Workflow tracker port for shutdown cleanup
 _workflow_tracker = None
 
+# Reply router for per-agent reply queues (SIP-0094); stopped on shutdown (D13)
+_reply_router = None
+
 # Log forwarder port for shutdown cleanup (SIP-0087)
 _log_forwarder = None
 
@@ -235,7 +238,7 @@ async def _init_log_forwarding(config) -> None:
 
 async def _init_cycle_subsystem(config, pool) -> None:
     """Initialize SIP-0064 cycle ports + SIP-0066 orchestrator."""
-    global _workflow_tracker
+    global _workflow_tracker, _reply_router
     try:
         from adapters.cycles.factory import (
             create_artifact_vault,
@@ -275,6 +278,13 @@ async def _init_cycle_subsystem(config, pool) -> None:
         queue_adapter = RabbitMQAdapter(url=RABBITMQ_URL)
         llm_obs = create_llm_observability_provider(config=config.langfuse)
 
+        # SIP-0094: per-agent reply-queue router. Holds one long-lived
+        # subscription per agent (opened lazily on first dispatch) and resolves
+        # task futures. Stopped during shutdown (D13).
+        from adapters.cycles.reply_router import ReplyRouter
+
+        _reply_router = ReplyRouter(queue_adapter)
+
         _workflow_tracker = create_workflow_tracker(config.prefect)
 
         from adapters.events.factory import create_cycle_event_bus
@@ -303,6 +313,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             llm_observability=llm_obs,
             workflow_tracker=_workflow_tracker,
             event_bus=event_bus,
+            reply_router=_reply_router,
         )
 
         set_cycle_ports(
@@ -445,6 +456,11 @@ async def shutdown_event():
         await rabbitmq_connection.close()
     if _log_forwarder is not None:
         await _log_forwarder.aclose()
+    # SIP-0094 D13: stop the reply router — once stopped it rejects new
+    # registrations, cancels its subscriptions, and fails any pending reply
+    # futures with ReplyRouterStopped (in-flight waits resolve as FAILED).
+    if _reply_router is not None:
+        await _reply_router.stop()
     if _workflow_tracker is not None:
         await _workflow_tracker.close()
 

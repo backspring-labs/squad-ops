@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from squadops.comms.queue_message import QueueMessage
 from squadops.cycles.models import (
     AgentProfileEntry,
     ArtifactRef,
@@ -39,39 +38,11 @@ pytestmark = [pytest.mark.domain_orchestration]
 # ---------------------------------------------------------------------------
 
 
-def _make_result_message(
-    task_id: str,
-    status: str = "SUCCEEDED",
-    outputs: dict | None = None,
-    error: str | None = None,
-    queue_name: str = "cycle_results_run_001",
-) -> QueueMessage:
-    """Build a QueueMessage containing a TaskResult."""
-    result = TaskResult(
-        task_id=task_id,
-        status=status,
-        outputs=outputs,
-        error=error,
-    )
-    payload = json.dumps(
-        {
-            "action": "comms.task.result",
-            "metadata": {"correlation_id": "corr"},
-            "payload": result.to_dict(),
-        }
-    )
-    return QueueMessage(
-        message_id=f"msg_{task_id}",
-        queue_name=queue_name,
-        payload=payload,
-        receipt_handle=f"rh_{task_id}",
-        attributes={},
-    )
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+# FakeReplyRouter + the `reply_router` fixture live in conftest.py (shared by
+# all executor test files post-SIP-0094 cutover).
 
 
 @pytest.fixture
@@ -107,22 +78,14 @@ def mock_vault():
 
 
 @pytest.fixture
-def mock_queue():
-    """Mock QueuePort that succeeds on publish and returns results on consume."""
+def mock_queue(reply_router):
+    """Mock QueuePort bound to the reply router: publishing a ``comms.task``
+    auto-delivers the agent's reply (SIP-0094 cutover)."""
     mock = AsyncMock()
-    mock.publish.return_value = None
     mock.ack.return_value = None
     mock.invalidate_queue.return_value = None
-    # Default: consume returns empty (override per-test)
     mock.consume.return_value = []
-
-    # Route consume_blocking through consume so tests that set
-    # consume.side_effect continue to work without modification.
-    async def _consume_blocking(queue_name, timeout, max_messages=1):
-        return await mock.consume(queue_name, max_messages=max_messages)
-
-    mock.consume_blocking.side_effect = _consume_blocking
-    return mock
+    return reply_router.bind(mock)
 
 
 @pytest.fixture
@@ -174,7 +137,7 @@ def run():
 
 
 @pytest.fixture
-def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, run):
+def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, reply_router, cycle, run):
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
     mock_registry.get_cycle.return_value = cycle
@@ -185,6 +148,7 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, cycle, r
         queue=mock_queue,
         squad_profile=mock_squad_profile,
         task_timeout=5.0,  # Short timeout for tests
+        reply_router=reply_router,
     )
 
 
@@ -495,29 +459,7 @@ class TestDispatchTask:
         self, executor, mock_queue, mock_registry, cycle
     ) -> None:
         """Task is published to {agent_id}_comms with comms.task action."""
-        # Make consume return a result for the first task
-        call_count = 0
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1 and queue_name.startswith("cycle_results_"):
-                # Return result for whatever was last published
-                last_publish_call = mock_queue.publish.call_args
-                if last_publish_call:
-                    msg_data = json.loads(last_publish_call.args[1])
-                    task_id = msg_data["payload"]["task_id"]
-                    return [
-                        _make_result_message(
-                            task_id=task_id,
-                            outputs={"summary": "ok", "artifacts": []},
-                            queue_name=queue_name,
-                        )
-                    ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
-
+        # Default reply_router responder auto-succeeds the dispatched task.
         envelope = TaskEnvelope(
             task_id="task_abc",
             agent_id="neo",
@@ -545,17 +487,16 @@ class TestDispatchTask:
 
         published = json.loads(pub_args.args[1])
         assert published["action"] == "comms.task"
-        assert published["metadata"]["reply_queue"] == "cycle_results_run_001"
+        # SIP-0094: reply address is now the per-agent reply queue.
+        assert published["metadata"]["reply_queue"] == "neo_replies"
         assert published["payload"]["task_id"] == "task_abc"
 
-    async def test_consumes_result_from_reply_queue(self, executor, mock_queue) -> None:
-        """Result is consumed from cycle_results_{run_id}."""
-        result_msg = _make_result_message(
-            task_id="task_abc",
-            outputs={"summary": "implemented"},
-            queue_name="cycle_results_run_001",
+    async def test_returns_agent_result_from_router(self, executor, reply_router) -> None:
+        """The agent's TaskResult (delivered via the reply router) is returned
+        by _dispatch_task with its outputs intact (SIP-0094)."""
+        reply_router.results["task_abc"] = TaskResult(
+            task_id="task_abc", status="SUCCEEDED", outputs={"summary": "implemented"}
         )
-        mock_queue.consume.return_value = [result_msg]
 
         envelope = TaskEnvelope(
             task_id="task_abc",
@@ -576,11 +517,12 @@ class TestDispatchTask:
         assert result.task_id == "task_abc"
         assert result.status == "SUCCEEDED"
         assert result.outputs["summary"] == "implemented"
-        mock_queue.ack.assert_awaited_once_with(result_msg)
+        # The reply router/subscribe primitive owns ack now — not the executor
+        # (ack behavior is covered in test_reply_router.py).
 
-    async def test_timeout_returns_failed(self, executor, mock_queue) -> None:
-        """If no result arrives within timeout, returns FAILED TaskResult."""
-        mock_queue.consume.return_value = []  # Always empty
+    async def test_timeout_returns_failed(self, executor, reply_router) -> None:
+        """If the agent never replies within the timeout, returns FAILED."""
+        reply_router.suppress.add("task_abc")  # agent never replies
         executor._task_timeout = 0.1  # Very short
 
         envelope = TaskEnvelope(
@@ -597,111 +539,22 @@ class TestDispatchTask:
             metadata={"role": "dev"},
         )
 
-        with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            result = await executor._dispatch_task(envelope, "run_001")
+        # NOTE: do NOT patch asyncio.sleep here. The concurrent heartbeat loop
+        # (`while True: await asyncio.sleep(30)`) would then spin instantly and
+        # starve the event loop, so wait_for's 0.1s timer never fires. With real
+        # sleep the heartbeat parks for 30s and the timeout fires cleanly.
+        result = await executor._dispatch_task(envelope, "run_001")
 
         assert result.status == "FAILED"
         assert "Timed out" in result.error
 
-    async def test_recovers_from_transient_consume_error(self, executor, mock_queue) -> None:
-        """A transient QueueError must invalidate the cached queue handle and
-        the loop must keep waiting until the deadline — not fail the task.
-
-        Regression: prior to fix, a single ``Channel was not opened`` from
-        the broker would propagate out of ``_publish_and_await`` and fail an
-        otherwise-recoverable wait, even though the agent's reply was sitting
-        in the queue.
-        """
-        executor._task_timeout = 1.0
-
-        envelope = TaskEnvelope(
-            task_id="task_recover",
-            agent_id="neo",
-            cycle_id="cyc_001",
-            pulse_id="p1",
-            project_id="proj_001",
-            task_type="development.design",
-            correlation_id="corr",
-            causation_id="cause",
-            trace_id="trace",
-            span_id="span",
-            metadata={"role": "dev"},
-        )
-
-        # First consume_blocking raises (stale channel); second returns the
-        # reply that was waiting all along.
-        result_msg = _make_result_message(
-            task_id="task_recover",
-            outputs={"summary": "recovered", "artifacts": []},
-        )
-        call_count = {"n": 0}
-
-        async def flaky_consume_blocking(queue_name, timeout, max_messages=1):
-            call_count["n"] += 1
-            if call_count["n"] == 1:
-                raise RuntimeError("Channel was not opened")
-            return [result_msg]
-
-        mock_queue.consume_blocking.side_effect = flaky_consume_blocking
-
-        with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            result = await executor._dispatch_task(envelope, "run_001")
-
-        assert result.status == "SUCCEEDED"
-        assert result.outputs["summary"] == "recovered"
-        # Cache must be invalidated so the retry re-declares against a fresh
-        # channel rather than reusing the broken handle.
-        mock_queue.invalidate_queue.assert_awaited_with("cycle_results_run_001")
-
-    async def test_uses_long_block_consume_not_short_poll(self, executor, mock_queue) -> None:
-        """The wait must use ``consume_blocking`` (one consumer per chunk),
-        not the legacy ``consume`` poll-and-sleep that churned consumer tags.
-
-        Regression: the old loop opened ~3600 short-lived consumers per
-        30-min wait, racing with arriving messages. New loop must call
-        ``consume_blocking`` with a multi-second timeout.
-        """
-        executor._task_timeout = 0.05  # shortcut: single iteration
-
-        result_msg = _make_result_message(
-            task_id="task_blk",
-            outputs={"summary": "ok", "artifacts": []},
-        )
-        mock_queue.consume_blocking.side_effect = None
-        mock_queue.consume_blocking.return_value = [result_msg]
-
-        envelope = TaskEnvelope(
-            task_id="task_blk",
-            agent_id="neo",
-            cycle_id="cyc_001",
-            pulse_id="p1",
-            project_id="proj_001",
-            task_type="development.design",
-            correlation_id="corr",
-            causation_id="cause",
-            trace_id="trace",
-            span_id="span",
-            metadata={"role": "dev"},
-        )
-
-        result = await executor._dispatch_task(envelope, "run_001")
-
-        assert result.status == "SUCCEEDED"
-        # Must have called consume_blocking, not the short-poll consume.
-        assert mock_queue.consume_blocking.await_count >= 1
-        # Each call must request a meaningful blocking window so the
-        # consumer subscription is held long enough to receive a reply.
-        first_call = mock_queue.consume_blocking.await_args_list[0]
-        timeout_arg = first_call.kwargs.get("timeout")
-        if timeout_arg is None and len(first_call.args) >= 2:
-            timeout_arg = first_call.args[1]
-        assert timeout_arg is not None and timeout_arg > 0
+    # SIP-0094 removed the executor-side reply polling loop (consume_blocking +
+    # invalidate_queue recovery). Two tests that asserted that mechanism —
+    # transient-consume-error recovery and "uses long-block consume not short
+    # poll" — are deleted here; their coverage moved to the reply substrate:
+    # channel-close resubscribe is tested in tests/unit/comms/
+    # test_rabbitmq_adapter.py (94.2b) and the router resolve path in
+    # tests/unit/cycles/test_reply_router.py.
 
 
 # ---------------------------------------------------------------------------
@@ -713,42 +566,33 @@ class TestSequentialHappyPath:
     """Sequential mode: 5 tasks dispatched via queue, run completes."""
 
     @staticmethod
-    def _make_queue_side_effects(mock_queue):
-        """Build a consume side_effect that returns matching results."""
+    def _wire_canned_replies(mock_queue):
+        """Make every dispatched task reply SUCCEEDED with one artifact, so the
+        run progresses and artifacts get stored."""
 
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            # Return result matching the most recent publish
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={
-                            "summary": "stub output",
-                            "role": "strat",
-                            "artifacts": [
-                                {
-                                    "name": "output.md",
-                                    "content": "# Output",
-                                    "media_type": "text/markdown",
-                                    "type": "document",
-                                }
-                            ],
-                        },
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
+        def responder(env):
+            return TaskResult(
+                task_id=env["task_id"],
+                status="SUCCEEDED",
+                outputs={
+                    "summary": "stub output",
+                    "role": "strat",
+                    "artifacts": [
+                        {
+                            "name": "output.md",
+                            "content": "# Output",
+                            "media_type": "text/markdown",
+                            "type": "document",
+                        }
+                    ],
+                },
+            )
 
-        return consume_side_effect
+        mock_queue.reply_router.responder = responder
 
     async def test_run_completes(self, executor, mock_registry, mock_queue) -> None:
         """5 tasks dispatched; run transitions queued -> running -> completed."""
-        mock_queue.consume.side_effect = self._make_queue_side_effects(mock_queue)
+        self._wire_canned_replies(mock_queue)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -763,7 +607,7 @@ class TestSequentialHappyPath:
 
     async def test_publish_called_5_times(self, executor, mock_queue) -> None:
         """queue.publish called once per pipeline step (5 total)."""
-        mock_queue.consume.side_effect = self._make_queue_side_effects(mock_queue)
+        self._wire_canned_replies(mock_queue)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -775,7 +619,7 @@ class TestSequentialHappyPath:
 
     async def test_publishes_to_correct_agent_queues(self, executor, mock_queue) -> None:
         """Each task published to the correct agent's comms queue."""
-        mock_queue.consume.side_effect = self._make_queue_side_effects(mock_queue)
+        self._wire_canned_replies(mock_queue)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -794,7 +638,7 @@ class TestSequentialHappyPath:
 
     async def test_artifacts_stored(self, executor, mock_vault, mock_queue) -> None:
         """vault.store called for each task's artifacts."""
-        mock_queue.consume.side_effect = self._make_queue_side_effects(mock_queue)
+        self._wire_canned_replies(mock_queue)
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -815,7 +659,7 @@ class TestFailFast:
     """Outcome routing: persistent failures retry, trigger correction, then abort."""
 
     async def test_persistent_failure_retries_then_aborts(
-        self, executor, mock_queue, mock_registry
+        self, executor, mock_queue, mock_registry, reply_router
     ) -> None:
         """All dispatches FAILED → retry + correction protocol → run FAILED.
 
@@ -826,25 +670,10 @@ class TestFailFast:
         4. Both correction tasks also fail → correction_path defaults to "abort"
         Total publishes: 2 (task retries) + 2 (correction tasks) = 4
         """
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        status="FAILED",
-                        error="boom",
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
+        # Every agent reply is a failure -> drives the retry/correction path.
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"], status="FAILED", error="boom"
+        )
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -900,36 +729,25 @@ class TestCancellation:
 class TestArtifactStorage:
     """Artifact ref creation from distributed results."""
 
-    async def test_artifact_ref_has_metadata(self, executor, mock_vault, mock_queue) -> None:
+    async def test_artifact_ref_has_metadata(self, executor, mock_vault, reply_router) -> None:
         """ArtifactRef passed to vault.store has task_id and role in metadata."""
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={
-                            "summary": "ok",
-                            "artifacts": [
-                                {
-                                    "name": "output.md",
-                                    "content": "# Output",
-                                    "media_type": "text/markdown",
-                                    "type": "document",
-                                }
-                            ],
-                        },
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
+        # Every task replies with one artifact so vault.store is exercised with
+        # task artifacts (not just the run report).
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"],
+            status="SUCCEEDED",
+            outputs={
+                "summary": "ok",
+                "artifacts": [
+                    {
+                        "name": "output.md",
+                        "content": "# Output",
+                        "media_type": "text/markdown",
+                        "type": "document",
+                    }
+                ],
+            },
+        )
 
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -981,24 +799,6 @@ class TestPulseVerificationBackwardCompat:
     async def test_no_pulse_checks_completes_normally(self, executor, mock_queue, mock_registry):
         """Run with no pulse_checks in applied_defaults completes as before."""
 
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -1028,6 +828,7 @@ class TestPulseVerificationMilestone:
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
+            reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
         )
@@ -1056,24 +857,6 @@ class TestPulseVerificationMilestone:
             mock_squad_profile,
             cycle,
         )
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
 
         # Mock the engine to return PASS
         with (
@@ -1126,24 +909,6 @@ class TestPulseVerificationMilestone:
             cycle,
         )
 
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
-
         with (
             patch(
                 "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -1189,6 +954,7 @@ class TestPulseVerificationCadence:
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
+            reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
         )
@@ -1217,24 +983,6 @@ class TestPulseVerificationCadence:
             mock_squad_profile,
             cycle,
         )
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
 
         with (
             patch(
@@ -1287,24 +1035,6 @@ class TestPulseVerificationCadence:
             mock_squad_profile,
             cycle,
         )
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
 
         with (
             patch(
@@ -1435,6 +1165,7 @@ class TestPulseVerificationTelemetry:
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
+            reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
             llm_observability=obs,
@@ -1464,24 +1195,6 @@ class TestPulseVerificationTelemetry:
             mock_squad_profile,
             cycle,
         )
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
 
         with (
             patch(
@@ -1538,24 +1251,6 @@ class TestPulseVerificationTelemetry:
             cycle,
         )
 
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
-
         with (
             patch(
                 "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -1607,24 +1302,6 @@ class TestPulseVerificationTelemetry:
             cycle,
         )
 
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
-
         with (
             patch(
                 "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
@@ -1675,24 +1352,6 @@ class TestPulseVerificationTelemetry:
             cycle,
         )
 
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -1722,6 +1381,7 @@ class TestPulseVerificationCombined:
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
+            reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
         )
@@ -1759,24 +1419,6 @@ class TestPulseVerificationCombined:
             mock_squad_profile,
             cycle,
         )
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
 
         with (
             patch(
@@ -1830,6 +1472,7 @@ class TestPulseVerificationRecordPersistence:
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
+            reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
         )
@@ -1858,24 +1501,6 @@ class TestPulseVerificationRecordPersistence:
             mock_squad_profile,
             cycle,
         )
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
 
         with (
             patch(
@@ -1930,31 +1555,10 @@ class TestPulseRepairLoop:
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
+            reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
         )
-
-    @staticmethod
-    def _consume_side_effect(mock_queue):
-        """Return success for every dispatched task (plan + repair)."""
-
-        async def _side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        return _side_effect
 
     async def test_fail_repair_pass_continues(
         self,
@@ -1982,7 +1586,6 @@ class TestPulseRepairLoop:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         # First call: FAIL; second call (after repair): PASS
         call_count = {"n": 0}
@@ -2003,9 +1606,7 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=run_pv_side_effect,
@@ -2045,7 +1646,6 @@ class TestPulseRepairLoop:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2061,9 +1661,7 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
@@ -2104,7 +1702,6 @@ class TestPulseRepairLoop:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2120,9 +1717,7 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
@@ -2166,7 +1761,6 @@ class TestPulseRepairLoop:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2195,9 +1789,7 @@ class TestPulseRepairLoop:
             return records
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=mixed_pv,
@@ -2243,7 +1835,6 @@ class TestPulseRepairLoop:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2259,9 +1850,7 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
@@ -2298,7 +1887,6 @@ class TestPulseRepairLoop:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2318,9 +1906,7 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side_effect,
@@ -2357,7 +1943,6 @@ class TestPulseRepairLoop:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2377,9 +1962,7 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
@@ -2429,7 +2012,6 @@ class TestPulseRepairLoop:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2449,9 +2031,7 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
@@ -2493,7 +2073,6 @@ class TestPulseRepairLoop:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2513,9 +2092,7 @@ class TestPulseRepairLoop:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
@@ -2554,30 +2131,11 @@ class TestPulseRepairTelemetry:
             cycle_registry=mock_registry,
             artifact_vault=mock_vault,
             queue=mock_queue,
+            reply_router=mock_queue.reply_router,
             squad_profile=mock_squad_profile,
             task_timeout=5.0,
             llm_observability=obs,
         ), obs
-
-    @staticmethod
-    def _consume_side_effect(mock_queue):
-        async def _side_effect(queue_name, max_messages=1):
-            if not queue_name.startswith("cycle_results_"):
-                return []
-            last_call = mock_queue.publish.call_args
-            if last_call:
-                msg_data = json.loads(last_call.args[1])
-                task_id = msg_data["payload"]["task_id"]
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        return _side_effect
 
     async def test_repair_started_event(
         self,
@@ -2605,7 +2163,6 @@ class TestPulseRepairTelemetry:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2625,9 +2182,7 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
@@ -2664,7 +2219,6 @@ class TestPulseRepairTelemetry:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2680,9 +2234,7 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
@@ -2729,7 +2281,6 @@ class TestPulseRepairTelemetry:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2745,9 +2296,7 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=always_fail,
@@ -2795,7 +2344,6 @@ class TestPulseRepairTelemetry:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2815,9 +2363,7 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
@@ -2864,7 +2410,6 @@ class TestPulseRepairTelemetry:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2884,9 +2429,7 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
@@ -2938,7 +2481,6 @@ class TestPulseRepairTelemetry:
             mock_squad_profile,
             cycle,
         )
-        mock_queue.consume.side_effect = self._consume_side_effect(mock_queue)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
 
@@ -2958,9 +2500,7 @@ class TestPulseRepairTelemetry:
             ]
 
         with (
-            patch(
-                "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
-            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
             patch(
                 "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
                 side_effect=pv_side,
@@ -3022,27 +2562,16 @@ class TestDispatchTaskPrefectLifecycle:
 
         return DispatchedFlowExecutor(
             queue=mock_queue,
+            reply_router=mock_queue.reply_router,
             task_timeout=5.0,
             workflow_tracker=mock_reporter,
         )
 
     def _wire_success_reply(self, mock_queue, task_id: str):
-        call_count = 0
-
-        async def consume_side_effect(queue_name, max_messages=1):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return [
-                    _make_result_message(
-                        task_id=task_id,
-                        outputs={"summary": "ok", "artifacts": []},
-                        queue_name=queue_name,
-                    )
-                ]
-            return []
-
-        mock_queue.consume.side_effect = consume_side_effect
+        """Seed the reply router so the dispatched task gets a SUCCEEDED reply."""
+        mock_queue.reply_router.results[task_id] = TaskResult(
+            task_id=task_id, status="SUCCEEDED", outputs={"summary": "ok", "artifacts": []}
+        )
 
     async def test_creates_task_run_and_sets_running_when_prefect_enabled(
         self, mock_queue, mock_reporter, envelope
