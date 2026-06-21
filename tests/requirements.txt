@@ -40,7 +40,12 @@ pyyaml>=6.0  # YAML parsing
 # OpenTelemetry packages (for telemetry testing)
 opentelemetry-api>=1.22.0
 opentelemetry-sdk>=1.22.0
-opentelemetry-instrumentation-aiohttp>=0.43b0; platform_machine != "aarch64"
+# NB: `opentelemetry-instrumentation-aiohttp` does not exist on PyPI (the real
+# packages are `-aiohttp-client` / `-aiohttp-server`). It was masked locally by
+# a `platform_machine != "aarch64"` marker — our dev box (DGX Spark) is aarch64,
+# so it was skipped there but broke install on x86_64 CI. It is unused by the
+# code and the suite passes without it, so it is omitted. Add `-aiohttp-client`
+# if aiohttp client instrumentation is ever actually needed.
 opentelemetry-instrumentation-asyncpg>=0.43b0
 opentelemetry-instrumentation-aio-pika>=0.43b0
 opentelemetry-exporter-otlp-proto-grpc>=1.22.0
