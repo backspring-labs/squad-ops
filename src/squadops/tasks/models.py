@@ -107,5 +107,12 @@ class TaskResult:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TaskResult:
-        """Deserialize from dict."""
-        return cls(**data)
+        """Deserialize from dict.
+
+        Unknown keys are dropped (SIP-0094 D8) so a result produced by a newer
+        agent deserializes cleanly on an older orchestrator — matching
+        :meth:`TaskEnvelope.from_dict`. Without this, a forward-incompatible
+        reply payload would raise inside the reply router's ``_handle_reply``.
+        """
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})

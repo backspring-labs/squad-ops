@@ -137,3 +137,26 @@ class TestTaskResultSerialization:
         json_str = json.dumps(result.to_dict())
         rebuilt = TaskResult.from_dict(json.loads(json_str))
         assert rebuilt == result
+
+    def test_from_dict_drops_unknown_keys(self) -> None:
+        """SIP-0094 D8: a result from a newer agent carrying a field this
+        version doesn't know must deserialize (dropping the extra) instead of
+        raising ``TypeError`` inside the reply router's _handle_reply."""
+        payload = {
+            "task_id": "task_abc",
+            "status": "SUCCEEDED",
+            "outputs": {"summary": "ok"},
+            "future_field_we_dont_know": {"nested": 1},
+            "another_new_one": "x",
+        }
+        rebuilt = TaskResult.from_dict(payload)
+        assert rebuilt == TaskResult(
+            task_id="task_abc", status="SUCCEEDED", outputs={"summary": "ok"}
+        )
+
+    def test_from_dict_missing_required_field_raises(self) -> None:
+        """Edge: a payload missing the required ``status`` is a genuinely
+        malformed reply and must raise (caught + future-failed by the router),
+        not silently construct a bogus result."""
+        with pytest.raises(TypeError):
+            TaskResult.from_dict({"task_id": "task_abc"})
