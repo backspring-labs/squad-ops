@@ -17,7 +17,7 @@ updated_at: '2026-06-20T19:43:25.130339Z'
 
 ## 1. Abstract
 
-The orchestrator's request/reply path between `runtime-api` and agents has two structural problems: (a) it polls a per-run RabbitMQ reply queue with thousands of short-lived consumer subscriptions per long task, losing replies in the gap between subscriptions, and (b) it scopes the reply queue by run instead of by agent, so every completed run leaves an orphaned `cycle_results_*` queue that nobody ever cleans up. This SIP fixes both by mirroring the existing dispatch-channel design — replace per-run reply queues with per-agent reply queues (`{agent_id}_results`, parallel to the existing `{agent_id}_comms`), and replace the polling loop with a single long-lived subscription per agent, established lazily on first dispatch to each agent. The result eliminates the "agent succeeded but reply lost" failure class and the orphan-queue leakage class in one step. A tactical patch (PR #89, `fix/cycle-results-channel-recovery`, merged 2026-05-02) already lands cache-recovery and longer poll chunks that contain the bleeding; this SIP is the structural fix.
+The orchestrator's request/reply path between `runtime-api` and agents has two structural problems: (a) it polls a per-run RabbitMQ reply queue with thousands of short-lived consumer subscriptions per long task, losing replies in the gap between subscriptions, and (b) it scopes the reply queue by run instead of by agent, so every completed run leaves an orphaned `cycle_results_*` queue that nobody ever cleans up. This SIP fixes both by mirroring the existing dispatch-channel design — replace per-run reply queues with per-agent reply queues (`{agent_id}_replies`, parallel to the existing `{agent_id}_comms`), and replace the polling loop with a single long-lived subscription per agent, established lazily on first dispatch to each agent. The result eliminates the "agent succeeded but reply lost" failure class and the orphan-queue leakage class in one step. A tactical patch (PR #89, `fix/cycle-results-channel-recovery`, merged 2026-05-02) already lands cache-recovery and longer poll chunks that contain the bleeding; this SIP is the structural fix.
 
 ## 2. Problem Statement
 
@@ -39,7 +39,7 @@ The tactical fix on PR #89 introduces `consume_blocking()` (one consumer per chu
 
 ## 3. Goals
 
-1. Replace per-run reply queues (`cycle_results_{run_id}`) with per-agent reply queues (`{agent_id}_results`). One declaration per agent at orchestrator startup; durable; never cleaned up because they are the agent's permanent reply address (parallel structure to the existing `{agent_id}_comms` dispatch queue). Eliminates the orphan-queue class.
+1. Replace per-run reply queues (`cycle_results_{run_id}`) with per-agent reply queues (`{agent_id}_replies`). One declaration per agent at orchestrator startup; durable; never cleaned up because they are the agent's permanent reply address (parallel structure to the existing `{agent_id}_comms` dispatch queue). Eliminates the orphan-queue class.
 2. Replace `_publish_and_await`'s polling loop with a long-lived per-agent subscription established lazily on first dispatch to each agent (the squad roster isn't fixed at boot — profiles resolve per-run), plus an in-process router that resolves an `asyncio.Future` keyed by `task_id` when a matching reply arrives. Eliminates the consumer-tag-churn failure class.
 3. Define an explicit `subscribe()` primitive on `QueuePort` with callback/async-iterator semantics so reply consumption is no longer expressed as polling at any layer.
 
@@ -55,18 +55,18 @@ The tactical fix on PR #89 introduces `consume_blocking()` (one consumer per chu
 
 ### 5.1 Per-agent reply queue
 
-Each agent gets a permanent reply queue named `{agent_id}_results`, declared durable. Symmetric to the existing `{agent_id}_comms`:
+Each agent gets a permanent reply queue named `{agent_id}_replies`, declared durable. Symmetric to the existing `{agent_id}_comms`:
 
 | Direction | Queue | Writer | Reader |
 |---|---|---|---|
 | Dispatch | `{agent_id}_comms` | runtime-api | the named agent |
-| Reply (new) | `{agent_id}_results` | the named agent | runtime-api |
+| Reply (new) | `{agent_id}_replies` | the named agent | runtime-api |
 
 Declaration happens in two places:
-- **Orchestrator, on first dispatch to an agent**: `ReplyRouter.ensure_subscribed(agent_id)` opens the subscription, which declares `{agent_id}_results` (idempotent — broker no-ops on re-declare with same args). There is no boot-time roster to enumerate; the squad profile is resolved per-run and can be overridden per run (see §5.3).
-- **Agent startup**: also declares its own `{agent_id}_results` (defensive — if the orchestrator hasn't dispatched to it yet, the agent shouldn't fail its first reply).
+- **Orchestrator, on first dispatch to an agent**: `ReplyRouter.ensure_subscribed(agent_id)` opens the subscription, which declares `{agent_id}_replies` (idempotent — broker no-ops on re-declare with same args). There is no boot-time roster to enumerate; the squad profile is resolved per-run and can be overridden per run (see §5.3).
+- **Agent startup**: also declares its own `{agent_id}_replies` (defensive — if the orchestrator hasn't dispatched to it yet, the agent shouldn't fail its first reply).
 
-The `reply_queue` field in dispatch metadata becomes `{envelope.agent_id}_results` instead of `cycle_results_{run_id}`. Agents see no semantic change — they still publish wherever metadata says to publish.
+The `reply_queue` field in dispatch metadata becomes `{envelope.agent_id}_replies` instead of `cycle_results_{run_id}`. Agents see no semantic change — they still publish wherever metadata says to publish.
 
 ### 5.2 New port primitive
 
@@ -87,7 +87,7 @@ This shape is closer to "register a callback" than "wait for one message." It's 
 
 ### 5.3 Reply router
 
-A new `ReplyRouter` component in `adapters/cycles/`. It subscribes **lazily**: there is no fixed agent roster at orchestrator boot — squad profiles are resolved per-run via `SquadProfilePort.resolve_snapshot(profile_id)` and can be overridden per run, so the router cannot enumerate agents at startup. Instead the executor calls `ensure_subscribed(agent_id)` before each dispatch; the first call for a given agent opens that agent's `{agent_id}_results` subscription, and subsequent calls are no-ops. Once opened, a subscription lives for the process lifetime.
+A new `ReplyRouter` component in `adapters/cycles/`. It subscribes **lazily**: there is no fixed agent roster at orchestrator boot — squad profiles are resolved per-run via `SquadProfilePort.resolve_snapshot(profile_id)` and can be overridden per run, so the router cannot enumerate agents at startup. Instead the executor calls `ensure_subscribed(agent_id)` before each dispatch; the first call for a given agent opens that agent's `{agent_id}_replies` subscription, and subsequent calls are no-ops. Once opened, a subscription lives for the process lifetime.
 
 ```python
 class ReplyRouter:
@@ -101,7 +101,7 @@ class ReplyRouter:
         if agent_id in self._subscriptions:
             return
         self._subscriptions[agent_id] = await self._queue.subscribe(
-            f"{agent_id}_results",
+            f"{agent_id}_replies",
             on_message=self._handle_reply,
         )
 
@@ -144,7 +144,7 @@ Lifecycle: constructed at runtime-api boot, `stop()` at shutdown. No boot-time s
 ```python
 await self._reply_router.ensure_subscribed(envelope.agent_id)
 fut = self._reply_router.register(envelope.task_id)
-reply_queue = f"{envelope.agent_id}_results"
+reply_queue = f"{envelope.agent_id}_replies"
 message = {
     "action": "comms.task",
     "metadata": {"reply_queue": reply_queue, "correlation_id": envelope.correlation_id},
@@ -166,10 +166,10 @@ except asyncio.TimeoutError:
 
 ### 5.5 Migration
 
-The dispatch-side change (use `{agent_id}_results` as `reply_queue`) is invisible to agents because they read the address out of metadata. The cutover is therefore a runtime-api-only change once the agents have their `_results` queues declared. Order of operations:
+The dispatch-side change (use `{agent_id}_replies` as `reply_queue`) is invisible to agents because they read the address out of metadata. The cutover is therefore a runtime-api-only change once the agents have their `_replies` queues declared. Order of operations:
 
 1. Land tactical patch (PR #89, done).
-2. Add `_results` queue declaration to agent startup (`entrypoint.py`). Deploy agents first. Old runtime-api still uses `cycle_results_{run_id}`; agents now have an extra unused queue. No behavior change.
+2. Add `_replies` queue declaration to agent startup (`entrypoint.py`). Deploy agents first. Old runtime-api still uses `cycle_results_{run_id}`; agents now have an extra unused queue. No behavior change.
 3. Land `subscribe()` + `ReplyRouter` + executor wiring in runtime-api. Deploy.
 4. After one soak cycle, manually drop the historical `cycle_results_*` queues (one-shot rabbitmqctl command).
 
@@ -182,23 +182,23 @@ The dispatch-side change (use `{agent_id}_results` as `reply_queue`) is invisibl
 
 ## 7. Risks
 
-- **Long-lived consumer channel death**: if a `_results` consumer's channel closes (network blip, broker restart), in-flight waits are silently stranded until either the channel reconnects or the dispatch times out. Mitigation: `subscribe()` implementation must register channel-close callbacks, re-declare its queue on the new channel, and re-establish the consumer. Existing `_get_queue` channel-swap detection (already in tactical patch) covers re-declaration; subscription resumption is new code.
+- **Long-lived consumer channel death**: if a `_replies` consumer's channel closes (network blip, broker restart), in-flight waits are silently stranded until either the channel reconnects or the dispatch times out. Mitigation: `subscribe()` implementation must register channel-close callbacks, re-declare its queue on the new channel, and re-establish the consumer. Existing `_get_queue` channel-swap detection (already in tactical patch) covers re-declaration; subscription resumption is new code.
 - **Cross-run task_id collision**: per-agent queues are shared across runs, so task_id must be globally unique (not just per-run). Audit `TaskEnvelope.task_id` generation — currently UUID-based (`task-{run_short}-{m_idx}-{capability}`), which encodes the run prefix, so collision is unlikely but worth a deliberate test.
-- **Late-reply leakage**: if an agent's reply arrives after the orchestrator has timed out and given up on a task, the reply lands in `_results`, gets ack'd by the router, and is dropped with a warning log. Cost: zero broker-side leakage but a small observability gap. Mitigation: counter metric for late-drop events so we can detect a regression.
-- **Agent-orchestrator startup ordering**: largely dissolved by lazy subscription (§5.3). The orchestrator's `subscribe()` now happens on first dispatch, not at boot, and itself declares `{agent_id}_results` (idempotent), so it no longer depends on the agent having booted first. Both sides own their queue declarations; first-mover wins. Residual requirement: `subscribe()` must tolerate being the declarer (not assume the queue already exists).
+- **Late-reply leakage**: if an agent's reply arrives after the orchestrator has timed out and given up on a task, the reply lands in `_replies`, gets ack'd by the router, and is dropped with a warning log. Cost: zero broker-side leakage but a small observability gap. Mitigation: counter metric for late-drop events so we can detect a regression.
+- **Agent-orchestrator startup ordering**: largely dissolved by lazy subscription (§5.3). The orchestrator's `subscribe()` now happens on first dispatch, not at boot, and itself declares `{agent_id}_replies` (idempotent), so it no longer depends on the agent having booted first. Both sides own their queue declarations; first-mover wins. Residual requirement: `subscribe()` must tolerate being the declarer (not assume the queue already exists).
 
 ## 8. Test Plan
 
 - Unit: `ReplyRouter` registers/resolves futures by task_id; late replies (no awaiting future) are dropped with a warning; on shutdown, all pending futures are failed with a typed error.
 - Unit: `subscribe()` happy path; channel-close triggers re-subscribe transparently; cancel cleans up consumer tag.
 - Unit: `_publish_and_await` registers with router before publishing, resolves on reply, fails cleanly on timeout, and unregisters on timeout to avoid future-leak.
-- Integration (`tests/integration/adapters/test_rabbitmq_adapter.py`): publish 100 replies to one `{agent_id}_results` queue while a single subscriber is held — all 100 routed correctly to their futures, zero lost. Compare to the same load against the legacy `consume()` path to demonstrate the regression.
-- E2E: re-run the `group_run` cycle that surfaced this issue (`cyc_c9ca088599c0`) on a clean stack; verify dev[3] completes within the same wall time as dev[0–2]. Verify no `cycle_results_*` queues are created. Verify `{agent_id}_results` queues exist and have zero ready messages after the run completes.
+- Integration (`tests/integration/adapters/test_rabbitmq_adapter.py`): publish 100 replies to one `{agent_id}_replies` queue while a single subscriber is held — all 100 routed correctly to their futures, zero lost. Compare to the same load against the legacy `consume()` path to demonstrate the regression.
+- E2E: re-run the `group_run` cycle that surfaced this issue (`cyc_c9ca088599c0`) on a clean stack; verify dev[3] completes within the same wall time as dev[0–2]. Verify no `cycle_results_*` queues are created. Verify `{agent_id}_replies` queues exist and have zero ready messages after the run completes.
 
 ## 9. Rollout
 
 1. **Done**: tactical patch (`fix/cycle-results-channel-recovery`, PR #89, merged 2026-05-02). Contains the bleeding.
-2. Agent-side: declare `{agent_id}_results` queue at agent startup. Ship and deploy first so that when runtime-api starts using the new path, the queues exist. No behavior change in this step.
+2. Agent-side: declare `{agent_id}_replies` queue at agent startup. Ship and deploy first so that when runtime-api starts using the new path, the queues exist. No behavior change in this step.
 3. Runtime-api side: land `subscribe()` + `ReplyRouter` + dispatch-metadata change in one feature branch off main. Tests required per §8.
 4. Soak in Spark dev environment for one full long-cycle build.
 5. Drop historical `cycle_results_*` queues via one-shot rabbitmqctl command after soak.
@@ -208,4 +208,4 @@ The dispatch-side change (use `{agent_id}_results` as `reply_queue`) is invisibl
 
 - Should `subscribe()`'s `on_message` callback be sync or async? Async is required for the router (which calls `await queue.ack(msg)` inside it). Recommend async.
 - Should the router survive runtime-api restarts? If runtime-api restarts mid-task, in-process futures vanish and any reply already in flight will be ack'd-and-dropped on next boot. Out of scope for this SIP — that's the SIP-0079-style resume contract's job.
-- Should `{agent_id}_results` queues be declared with `auto_delete=False, exclusive=False` (current per-run default) or `exclusive=True` to enforce single-consumer semantics? Recommend non-exclusive — exclusive prevents the orchestrator from running multiple instances behind a load balancer. Single-consumer is enforced by convention, not broker.
+- Should `{agent_id}_replies` queues be declared with `auto_delete=False, exclusive=False` (current per-run default) or `exclusive=True` to enforce single-consumer semantics? Recommend non-exclusive — exclusive prevents the orchestrator from running multiple instances behind a load balancer. Single-consumer is enforced by convention, not broker.

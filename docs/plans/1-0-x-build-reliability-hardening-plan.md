@@ -15,7 +15,7 @@ These are not part of the "stay coherent over time" axis below — they are the 
 
 | # | SIP | Status | Where | GitHub issue |
 |---|-----|--------|-------|--------------|
-| S1 | **Per-Agent Reply Queues + Long-Lived Subscription Model** — replace per-run `cycle_results_{run_id}` queues with per-agent `{agent_id}_results` queues (parallel to existing `{agent_id}_comms`), and replace `_publish_and_await` poll loop with a single orchestrator-startup subscription per agent feeding an in-process reply router. Eliminates orphan-queue leakage and consumer-tag-churn failure classes in one structural step. Tactical patch (PR #89, merged 2026-05-02) contains the bleeding. | accepted 2026-06-20 as SIP-0094 (PR #193); plan rev 2 (2026-06-21); PR 94.1 in progress | `sips/accepted/SIP-0094-Per-Agent-Reply-Queues-Long-Lived.md` · plan `docs/plans/SIP-0094-per-agent-reply-queues-plan.md` | #146 |
+| S1 | **Per-Agent Reply Queues + Long-Lived Subscription Model** — replace per-run `cycle_results_{run_id}` queues with per-agent `{agent_id}_replies` queues (parallel to existing `{agent_id}_comms`), and replace `_publish_and_await` poll loop with a single orchestrator-startup subscription per agent feeding an in-process reply router. Eliminates orphan-queue leakage and consumer-tag-churn failure classes in one structural step. Tactical patch (PR #89, merged 2026-05-02) contains the bleeding. | accepted 2026-06-20 as SIP-0094 (PR #193); plan rev 2 (2026-06-21); PR 94.1 in progress | `sips/accepted/SIP-0094-Per-Agent-Reply-Queues-Long-Lived.md` · plan `docs/plans/SIP-0094-per-agent-reply-queues-plan.md` | #146 |
 
 ## Build-reliability axis (priority order)
 
@@ -103,6 +103,7 @@ Everything else is either already in `sips/proposed/`, a follow-up to an accepte
 
 ## Revision history
 
+- **rev 6 (2026-06-21):** Renamed the per-agent reply queue `{agent_id}_results` → `{agent_id}_replies` (after 94.1 merged + deployed, while still inert). The queue names a channel, not a payload type; `_replies` parallels `{agent_id}_comms`, matches the SIP's own "reply" vocabulary (`ReplyRouter`, `reply_queue`), and stays correct for non-task replies under the SIP-0088+ run modes. (Earlier rev entries below intentionally keep the `_results` name they shipped with.)
 - **rev 5 (2026-06-21):** S1 moved proposed → accepted as SIP-0094 (PR #193, 2026-06-20); implementation plan rev 2 landed; PR 94.1 (agent-side `{agent_id}_results` declaration) in progress on `feature/sip-0094-per-agent-reply-queues`. S1 row repointed to the accepted SIP + plan.
 - **rev 4 (2026-05-02):** S1 reshaped to per-agent reply queues (`{agent_id}_results`) replacing per-run `cycle_results_*` queues. Eliminates the orphan-queue leakage class entirely instead of mitigating it via TTL + run-completion cleanup. Drain-before-retry dropped (no longer needed — the always-on consumer never misses a reply window). SIP rev bumped to 2.
 - **rev 3 (2026-05-02):** Added Runtime Substrate section with S1 (Reply-Channel Subscription Model) as a precondition to the build-reliability axis. Triggered by `cyc_c9ca088599c0` lost-reply incident. Tactical patch on PR #89; structural SIP in `sips/proposed/`.

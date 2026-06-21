@@ -90,7 +90,7 @@ class RabbitMQAdapter(QueuePort):
 
         Thin wrapper over :meth:`_get_queue`, so the reply queue is declared
         with byte-identical args to the agent comms queue. Agents call this at
-        startup for their ``{agent_id}_results`` queue — which they only ever
+        startup for their ``{agent_id}_replies`` queue — which they only ever
         publish to, never consume from — so the lazy declaration on
         :meth:`consume` never creates it.
         """

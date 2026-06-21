@@ -152,7 +152,7 @@ class TestHandleTaskEnvelope:
 
 
 class TestConsumeTasksEnsuresReplyQueue:
-    """`_consume_tasks` must declare the agent's `{agent_id}_results` reply
+    """`_consume_tasks` must declare the agent's `{agent_id}_replies` reply
     queue at startup (SIP-0094 D9) so the orchestrator never publishes a reply
     to a queue the agent never created."""
 
@@ -167,8 +167,8 @@ class TestConsumeTasksEnsuresReplyQueue:
             r._shutdown_event = MagicMock()
             return r
 
-    async def test_declares_results_queue_before_consuming(self) -> None:
-        """ensure_queue("{agent_id}_results") is awaited exactly once, ahead of
+    async def test_declares_replies_queue_before_consuming(self) -> None:
+        """ensure_queue("{agent_id}_replies") is awaited exactly once, ahead of
         the consume loop. With the loop short-circuited, a call count of one
         proves the declaration sits *before* the loop, not inside it (which
         would yield zero calls here and N calls in steady state)."""
@@ -177,6 +177,6 @@ class TestConsumeTasksEnsuresReplyQueue:
 
         await r._consume_tasks()
 
-        r._queue.ensure_queue.assert_awaited_once_with("neo_results")
+        r._queue.ensure_queue.assert_awaited_once_with("neo_replies")
         # The loop body never ran, so nothing was consumed this pass.
         r._queue.consume.assert_not_awaited()

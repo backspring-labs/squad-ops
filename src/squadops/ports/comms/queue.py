@@ -9,7 +9,7 @@ from typing import Any
 from squadops.comms.queue_message import QueueMessage
 
 # SIP-0094 D3: canonical declaration args for agent comms/reply queues
-# (`{agent_id}_comms`, `{agent_id}_results`). Every declaration of these queues
+# (`{agent_id}_comms`, `{agent_id}_replies`). Every declaration of these queues
 # — agent startup `ensure_queue`, orchestrator `subscribe`, manual creation —
 # MUST use these exact args. A mismatch on a durable queue makes the broker
 # reject the redeclare with PRECONDITION_FAILED, so this is single-sourced here
@@ -113,7 +113,7 @@ class QueuePort(ABC):
         Broker-backed adapters override this to declare with
         :data:`REPLY_QUEUE_DECLARE_ARGS` (SIP-0094 D3).
 
-        Agents call this at startup for their ``{agent_id}_results`` reply
+        Agents call this at startup for their ``{agent_id}_replies`` reply
         queue, which they only ever publish to (never consume from), so the
         lazy declaration that covers ``{agent_id}_comms`` never fires for it.
         """
