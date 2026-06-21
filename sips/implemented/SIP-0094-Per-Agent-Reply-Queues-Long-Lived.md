@@ -1,14 +1,14 @@
 ---
 title: Per-Agent Reply Queues + Long-Lived Subscription Model
-status: accepted
+status: implemented
 author: SquadOps Architecture
 created_at: '2026-05-02T00:00:00Z'
 sip_number: 94
-updated_at: '2026-06-20T19:43:25.130339Z'
+updated_at: '2026-06-21T18:10:41.937582Z'
 ---
 # SIP-0094: Per-Agent Reply Queues + Long-Lived Subscription Model
 
-**Status:** Accepted
+**Status:** Implemented
 **Authors:** SquadOps Architecture
 **Created:** 2026-05-02
 **Revision:** 3

@@ -849,9 +849,9 @@ sips:
 - sip_uid: null
   sip_number: 94
   title: Per-Agent Reply Queues + Long-Lived Subscription Model
-  path: sips/accepted/SIP-0094-Per-Agent-Reply-Queues-Long-Lived.md
-  status: accepted
+  path: sips/implemented/SIP-0094-Per-Agent-Reply-Queues-Long-Lived.md
+  status: implemented
   author: SquadOps Architecture
   approver: jladd
   created_at: '2026-05-02T00:00:00Z'
-  updated_at: '2026-06-20T19:43:25.157766Z'
+  updated_at: '2026-06-21T18:10:41.938458Z'
