@@ -3,6 +3,7 @@ RabbitMQ adapter implementation for QueuePort.
 """
 
 import asyncio
+import inspect
 import logging
 from typing import Any
 
@@ -10,9 +11,18 @@ import aio_pika
 from aio_pika import Connection, Message, Queue
 
 from squadops.comms.queue_message import QueueMessage
-from squadops.ports.comms.queue import REPLY_QUEUE_DECLARE_ARGS, QueuePort
+from squadops.ports.comms.queue import (
+    REPLY_QUEUE_DECLARE_ARGS,
+    QueuePort,
+    SubscriptionCallback,
+    SubscriptionHandle,
+)
 
 logger = logging.getLogger(__name__)
+
+# SIP-0094 D6/§7: pause before re-establishing a dropped long-lived
+# subscription, so a flapping channel doesn't spin a tight reconnect loop.
+_SUBSCRIBE_RECONNECT_BACKOFF = 0.5
 
 
 class QueueError(Exception):
@@ -46,6 +56,10 @@ class RabbitMQAdapter(QueuePort):
         self._connection: Connection | None = None
         self._channel: aio_pika.Channel | None = None
         self._queues: dict[str, Queue] = {}
+        # SIP-0094 D7: count of times a long-lived subscription had to
+        # re-establish after its channel dropped. Surfaced via health() so a
+        # flapping reply channel is observable rather than silent.
+        self._resubscribe_total = 0
 
     async def _ensure_connection(self) -> None:
         """Ensure RabbitMQ connection and channel are established."""
@@ -153,6 +167,31 @@ class RabbitMQAdapter(QueuePort):
             logger.error(f"Failed to publish message to queue {queue_name}: {e}")
             raise QueueError(f"Failed to publish message: {e}") from e
 
+    @staticmethod
+    def _to_queue_message(
+        message: aio_pika.abc.AbstractIncomingMessage, queue_name: str
+    ) -> QueueMessage:
+        """Build a canonical :class:`QueueMessage` from an aio_pika delivery.
+
+        Single-sources the field/attribute mapping shared by :meth:`consume`,
+        :meth:`consume_blocking`, and :meth:`subscribe`. The raw aio_pika
+        message is stashed in ``attributes["message"]`` so :meth:`ack` /
+        :meth:`retry` can act on it later.
+        """
+        return QueueMessage(
+            message_id=str(message.delivery_tag),
+            queue_name=queue_name,
+            payload=message.body.decode("utf-8"),
+            receipt_handle=str(message.delivery_tag),
+            attributes={
+                "delivery_tag": message.delivery_tag,
+                "routing_key": message.routing_key,
+                "exchange": message.exchange,
+                "redelivered": message.redelivered,
+                "message": message,  # Store message object for ack
+            },
+        )
+
     async def consume(self, queue_name: str, max_messages: int = 1) -> list[QueueMessage]:
         """
         Consume messages from a queue.
@@ -178,28 +217,7 @@ class RabbitMQAdapter(QueuePort):
             async def collect_messages():
                 async with queue.iterator(no_ack=False) as queue_iter:
                     async for message in queue_iter:
-                        # Extract message data
-                        payload = message.body.decode("utf-8")
-                        receipt_handle = str(message.delivery_tag)
-
-                        # Store message reference for ack/retry
-                        message_attributes = {
-                            "delivery_tag": message.delivery_tag,
-                            "routing_key": message.routing_key,
-                            "exchange": message.exchange,
-                            "redelivered": message.redelivered,
-                            "message": message,  # Store message object for ack
-                        }
-
-                        queue_message = QueueMessage(
-                            message_id=str(message.delivery_tag),
-                            queue_name=queue_name,
-                            payload=payload,
-                            receipt_handle=receipt_handle,
-                            attributes=message_attributes,
-                        )
-
-                        messages.append(queue_message)
+                        messages.append(self._to_queue_message(message, queue_name))
 
                         # Break after getting max_messages
                         if len(messages) >= max_messages:
@@ -241,24 +259,7 @@ class RabbitMQAdapter(QueuePort):
             async def collect_messages():
                 async with queue.iterator(no_ack=False) as queue_iter:
                     async for message in queue_iter:
-                        payload = message.body.decode("utf-8")
-                        receipt_handle = str(message.delivery_tag)
-                        message_attributes = {
-                            "delivery_tag": message.delivery_tag,
-                            "routing_key": message.routing_key,
-                            "exchange": message.exchange,
-                            "redelivered": message.redelivered,
-                            "message": message,
-                        }
-                        messages.append(
-                            QueueMessage(
-                                message_id=str(message.delivery_tag),
-                                queue_name=queue_name,
-                                payload=payload,
-                                receipt_handle=receipt_handle,
-                                attributes=message_attributes,
-                            )
-                        )
+                        messages.append(self._to_queue_message(message, queue_name))
                         if len(messages) >= max_messages:
                             break
 
@@ -273,6 +274,114 @@ class RabbitMQAdapter(QueuePort):
         except Exception as e:
             logger.error(f"Failed to consume_blocking from queue {queue_name}: {e}")
             raise QueueError(f"Failed to consume_blocking: {e}") from e
+
+    async def subscribe(
+        self,
+        queue_name: str,
+        *,
+        on_message: SubscriptionCallback,
+    ) -> SubscriptionHandle:
+        """Native long-lived subscription on ``queue_name`` (SIP-0094 §7).
+
+        This is **the** SIP-0094 fix: instead of opening a fresh short-lived
+        consumer per reply wait (which races arriving messages against
+        consumer-tag teardown), it holds a single ``queue.iterator`` consumer
+        for the whole subscription and routes every delivery to ``on_message``.
+
+        **Channel-close resubscribe (the riskiest part).** The shared
+        RobustChannel can be replaced under us on reconnect, which strands a
+        long-lived consumer bound to the dead channel. The reconnect loop here
+        treats any termination of the iterator — an exception from a dropped
+        channel, or a clean end — as a signal to re-establish: it invalidates
+        the cached (stale) Queue handle, re-declares against the live channel
+        (the ``_get_queue`` channel-swap path), and re-opens the consumer,
+        bumping :attr:`_resubscribe_total` (D7) so flapping is observable. The
+        iterator surfacing the channel failure is what drives this, which is
+        why a separate ``add_close_callback`` re-consume isn't used — that would
+        race RobustChannel's own consumer restoration and double-subscribe.
+
+        Callback exceptions are isolated (D12): a raising ``on_message`` is
+        logged, the message is still acked (reply messages are never
+        redelivered), and the consumer keeps running. The queue is declared
+        before consuming (D9).
+
+        Args:
+            queue_name: Queue to subscribe to.
+            on_message: Sync or async callable invoked with each QueueMessage.
+
+        Returns:
+            A :class:`SubscriptionHandle`; ``await handle.cancel()`` cancels the
+            consumer and tears down the loop.
+        """
+        await self.ensure_queue(queue_name)
+
+        async def _run() -> None:
+            first_attempt = True
+            while True:
+                if not first_attempt:
+                    # Re-establishing after a drop or clean end: drop the stale
+                    # cached handle, back off, and count the resubscribe.
+                    self._resubscribe_total += 1
+                    await self.invalidate_queue(queue_name)
+                    logger.info(
+                        "subscribe: re-establishing subscription to %s (resubscribe #%d)",
+                        queue_name,
+                        self._resubscribe_total,
+                    )
+                    await asyncio.sleep(_SUBSCRIBE_RECONNECT_BACKOFF)
+                first_attempt = False
+
+                try:
+                    await self._ensure_connection()
+                    queue = await self._get_queue(queue_name)
+                    async with queue.iterator(no_ack=False) as queue_iter:
+                        async for message in queue_iter:
+                            await self._dispatch_subscription_delivery(
+                                message, on_message, queue_name
+                            )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        "subscribe: subscription to %s dropped (%s); will resubscribe",
+                        queue_name,
+                        exc,
+                    )
+                    continue
+                # Iterator ended without error (consumer cancelled server-side):
+                # loop back to re-establish rather than silently stop.
+                logger.info("subscribe: iterator on %s ended; will resubscribe", queue_name)
+
+        task = asyncio.create_task(_run(), name=f"rabbitmq-subscribe:{queue_name}")
+        return SubscriptionHandle(task, queue_name)
+
+    async def _dispatch_subscription_delivery(
+        self,
+        message: aio_pika.abc.AbstractIncomingMessage,
+        on_message: SubscriptionCallback,
+        queue_name: str,
+    ) -> None:
+        """Route one native delivery to the callback (D12 isolation), then ack.
+
+        Mirrors the default ``subscribe`` policy: callback failures are logged
+        and the message is acked anyway (reply messages are not redelivered),
+        so a single bad invocation never tears down the consumer.
+        """
+        queue_message = self._to_queue_message(message, queue_name)
+        try:
+            result = on_message(queue_message)
+            if inspect.isawaitable(result):
+                await result
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("subscribe: callback raised on %s; acking and continuing", queue_name)
+        try:
+            await message.ack()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("subscribe: ack failed on %s", queue_name)
 
     async def ack(self, message: QueueMessage) -> None:
         """
@@ -345,6 +454,7 @@ class RabbitMQAdapter(QueuePort):
                 "connected": is_connected,
                 "channel_ready": has_channel,
                 "provider": "rabbitmq",
+                "resubscribe_total": self._resubscribe_total,
             }
 
         except Exception as e:
