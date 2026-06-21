@@ -98,7 +98,7 @@ class TestQueueCacheInvalidation:
 
 class TestEnsureQueue:
     """``ensure_queue`` eagerly declares a queue the adapter would otherwise
-    only create lazily on first consume — needed for ``{agent_id}_results``
+    only create lazily on first consume — needed for ``{agent_id}_replies``
     reply queues, which agents publish to but never consume from (SIP-0094)."""
 
     async def test_declares_with_shared_args(self) -> None:
@@ -112,11 +112,11 @@ class TestEnsureQueue:
         ch.declare_queue = AsyncMock(return_value=declared)
 
         adapter = _make_adapter_with_channel(ch)
-        await adapter.ensure_queue("neo_results")
+        await adapter.ensure_queue("neo_replies")
 
-        ch.declare_queue.assert_awaited_once_with("neo_results", **REPLY_QUEUE_DECLARE_ARGS)
+        ch.declare_queue.assert_awaited_once_with("neo_replies", **REPLY_QUEUE_DECLARE_ARGS)
 
-    async def test_results_and_comms_declare_with_identical_args(self) -> None:
+    async def test_replies_and_comms_declare_with_identical_args(self) -> None:
         """D3 single-source invariant: the reply queue and the comms queue must
         be declared with byte-identical args. A drift between the two paths is
         exactly what causes the broker to reject a durable redeclare."""
@@ -132,11 +132,11 @@ class TestEnsureQueue:
         ch.declare_queue = AsyncMock(side_effect=_fresh_queue)
 
         adapter = _make_adapter_with_channel(ch)
-        await adapter.ensure_queue("neo_results")  # reply queue path
+        await adapter.ensure_queue("neo_replies")  # reply queue path
         await adapter._get_queue("neo_comms")  # comms queue path
 
         results_call, comms_call = ch.declare_queue.await_args_list
-        assert results_call.args == ("neo_results",)
+        assert results_call.args == ("neo_replies",)
         assert comms_call.args == ("neo_comms",)
         assert results_call.kwargs == comms_call.kwargs == REPLY_QUEUE_DECLARE_ARGS
 
@@ -151,7 +151,7 @@ class TestEnsureQueue:
         ch1.declare_queue = AsyncMock(return_value=q1)
 
         adapter = _make_adapter_with_channel(ch1)
-        await adapter.ensure_queue("neo_results")
+        await adapter.ensure_queue("neo_replies")
         ch1.declare_queue.assert_awaited_once()
 
         # RobustChannel reconnect: adapter now holds a fresh channel.
@@ -162,8 +162,8 @@ class TestEnsureQueue:
         ch2.declare_queue = AsyncMock(return_value=q2)
         adapter._channel = ch2
 
-        await adapter.ensure_queue("neo_results")
-        ch2.declare_queue.assert_awaited_once_with("neo_results", **REPLY_QUEUE_DECLARE_ARGS)
+        await adapter.ensure_queue("neo_replies")
+        ch2.declare_queue.assert_awaited_once_with("neo_replies", **REPLY_QUEUE_DECLARE_ARGS)
 
 
 class TestConsumeBlockingErrorWrapping:

@@ -6,7 +6,7 @@ SIP-0094 replaces the orchestrator↔agent reply path. Today `_publish_and_await
 polls a per-run reply queue (`cycle_results_{run_id}`) with short-lived consumer
 subscriptions, which (a) loses replies in the gap between subscriptions and (b)
 leaks an orphan `cycle_results_*` queue per run. The fix mirrors the existing
-dispatch-queue design: per-agent reply queues (`{agent_id}_results`, parallel to
+dispatch-queue design: per-agent reply queues (`{agent_id}_replies`, parallel to
 `{agent_id}_comms`) plus a single long-lived subscription per agent, opened
 **lazily on first dispatch**, with an in-process `ReplyRouter` that resolves an
 `asyncio.Future` keyed by `task_id`.
@@ -29,7 +29,7 @@ promotion.
 
 | PR | Scope | Inert? | Deploy |
 |----|-------|--------|--------|
-| **94.1** | Agent-side `{agent_id}_results` declaration at startup | yes (extra unused queue) | agents first |
+| **94.1** | Agent-side `{agent_id}_replies` declaration at startup | yes (extra unused queue) | agents first |
 | **94.2** | `QueuePort.subscribe()` + `SubscriptionHandle` + RabbitMQ native override (+ default polling impl) | yes (nothing subscribes yet) | runtime-api + agents |
 | **94.3** | `ReplyRouter` + `_publish_and_await` rewrite + DI wiring + `reply_queue` value flip | **no — behavior changes** | runtime-api |
 | **94.4** | Soak, drop orphan `cycle_results_*` queues, promote SIP→implemented | — | ops |
@@ -37,7 +37,7 @@ promotion.
 > **94.2 may split if the adapter code grows** (D6/§7 is the riskiest part): **94.2a** = port shape, default `subscribe()`, `SubscriptionHandle` lifecycle; **94.2b** = RabbitMQ native `subscribe()` + channel-close recovery + integration tests. Keeps the risky adapter code isolated and reviewable.
 
 **Deploy ordering is a safety preference, not a correctness dependency** (see D9):
-deploy agents (94.1) before the runtime-api cutover (94.3) so `{agent_id}_results`
+deploy agents (94.1) before the runtime-api cutover (94.3) so `{agent_id}_replies`
 already exists, but the cutover declares idempotently regardless.
 
 ## Binding decisions
@@ -47,18 +47,18 @@ robustness gaps that a polling loop never had to handle.
 
 - **D1 — `on_message` is async.** The router awaits `queue.ack(msg)` inside it. `subscribe(queue_name, *, on_message: Callable[[QueueMessage], Awaitable[None]])`.
 - **D2 — Router does NOT survive runtime-api restart.** In-process futures vanish on restart; an in-flight reply is ack'd-and-dropped on next boot. Durable resume is the SIP-0079 resume-contract's job, out of scope here.
-- **D3 — `{agent_id}_results` is durable, non-exclusive, `auto_delete=False`** (same args as `{agent_id}_comms`). Exclusive would block multiple runtime-api instances behind a load balancer; single-consumer is enforced by convention. **Declaration args MUST be identical everywhere** — agent `ensure_queue`, orchestrator `subscribe`, and any manual creation — via a single shared constant/helper (e.g. `REPLY_QUEUE_DECLARE_ARGS`), since a mismatch on a durable queue causes broker `PRECONDITION_FAILED`. A unit test asserts the helper is the only source of declare args.
+- **D3 — `{agent_id}_replies` is durable, non-exclusive, `auto_delete=False`** (same args as `{agent_id}_comms`). Exclusive would block multiple runtime-api instances behind a load balancer; single-consumer is enforced by convention. **Declaration args MUST be identical everywhere** — agent `ensure_queue`, orchestrator `subscribe`, and any manual creation — via a single shared constant/helper (e.g. `REPLY_QUEUE_DECLARE_ARGS`), since a mismatch on a durable queue causes broker `PRECONDITION_FAILED`. A unit test asserts the helper is the only source of declare args.
 - **D4 — `ensure_subscribed` is guarded by an `asyncio.Lock`.** Dispatch is sequential within a run, but `_execute_fan_out` (`dispatched_flow_executor.py:2402`) can dispatch concurrently; two concurrent first-dispatches to one agent must not open two subscriptions.
 - **D5 — `consume()`/`consume_blocking()`/`invalidate_queue()` STAY on `QueuePort`** (SIP §6). Only the executor's *use* of `consume_blocking`+`invalidate_queue` in the reply path is removed in 94.3. This is what "supersedes, not layers on" the PR #89 patch means concretely.
 - **D6 — Default `subscribe()` polls `consume_blocking()`; the native RabbitMQ override is THE structural fix.** The default exists only for non-RabbitMQ adapters and tests — it is explicitly NOT the SIP-0094 fix and must not be treated as satisfying it. `NoOpQueuePort` inherits the default and never fires a callback (its `consume()` returns `[]`) — fine for tests.
 - **D7 — Observability ships in 94.3** (see Observability section). At minimum a late-drop counter, plus the metrics needed to make the channel-close recovery (the riskiest path) observable during soak.
 - **D8 — Harden `TaskResult.from_dict` to ignore unknown keys.** It currently does `cls(**data)` (`tasks/models.py:109`), unlike `TaskEnvelope.from_dict` which filters. A forward-incompatible result payload would otherwise raise inside `_handle_reply` and (without D11) could strand the consumer.
-- **D9 — 94.1 is a rollout-safety + observability step, NOT a correctness dependency.** `ReplyRouter.ensure_subscribed()` / `QueuePort.subscribe()` MUST declare `{agent_id}_results` idempotently before publishing, so the cutover never assumes the agent pre-declared the queue. A future implementer must not bake in that assumption.
+- **D9 — 94.1 is a rollout-safety + observability step, NOT a correctness dependency.** `ReplyRouter.ensure_subscribed()` / `QueuePort.subscribe()` MUST declare `{agent_id}_replies` idempotently before publishing, so the cutover never assumes the agent pre-declared the queue. A future implementer must not bake in that assumption.
 - **D10 — `register(task_id)` raises a typed `DuplicateRegistration` error if a future is already pending for that `task_id`.** It must never silently overwrite an existing future — that would strand the first waiter on the shared per-agent queue.
 - **D11 — `_handle_reply` must never strand the consumer.** Parse `json.loads(msg.payload)["payload"]["task_id"]`. On malformed payload (bad JSON / missing `task_id`): log, increment a malformed-reply counter, ack/drop (or nack-without-requeue per adapter capability). On unknown/late `task_id` (no pending future): ack, increment the late-drop counter. If `TaskResult.from_dict` fails: log, fail the matching future if one exists, drop the bad message — do not let the exception kill the long-lived consumer task.
 - **D12 — `subscribe()` isolates callback exceptions.** Both the native and default impls catch exceptions from `on_message`, log, apply the ack/nack policy, and **continue consuming**. A single bad callback invocation must not terminate the durable subscription.
 - **D13 — Graceful shutdown ordering.** Runtime shutdown stops accepting new dispatches before calling `ReplyRouter.stop()`. The router carries a `stopped` state: once stopping, `ensure_subscribed()` and `register()` fail fast (typed error), so a late dispatch can't register a future while subscriptions are being cancelled. Document the lifespan ordering in `main.py` if it already guarantees this; otherwise enforce via the stopped state.
-- **D14 — `task_id` is the global correlation key.** Per-queue subscription already gives per-agent isolation: a reply on `{agent_id}_results` came, by construction, from a dispatch to that agent. Global uniqueness across normal / repair / correction task_ids is the only requirement (tested per SIP Risk 2). An explicit agent-identity match in the reply is **optional defense-in-depth** and is deferred — the reply envelope (`TaskResult` + `{correlation_id}`) carries no `agent_id` today, so it would require a payload addition.
+- **D14 — `task_id` is the global correlation key.** Per-queue subscription already gives per-agent isolation: a reply on `{agent_id}_replies` came, by construction, from a dispatch to that agent. Global uniqueness across normal / repair / correction task_ids is the only requirement (tested per SIP Risk 2). An explicit agent-identity match in the reply is **optional defense-in-depth** and is deferred — the reply envelope (`TaskResult` + `{correlation_id}`) carries no `agent_id` today, so it would require a payload addition.
 
 ## Cross-cutting requirements (every PR)
 
@@ -70,27 +70,27 @@ robustness gaps that a polling loop never had to handle.
 
 ---
 
-## PR 94.1 — Agent-side `{agent_id}_results` declaration (deploy-first, inert)
+## PR 94.1 — Agent-side `{agent_id}_replies` declaration (deploy-first, inert)
 
-**Goal:** ensure each agent's `{agent_id}_results` queue exists before runtime-api
+**Goal:** ensure each agent's `{agent_id}_replies` queue exists before runtime-api
 ever addresses it — a **defensive rollout step (D9)**, not a correctness source.
 
 **Finding that shapes this PR:** agents do **not** explicitly declare their
 `{agent_id}_comms` queue today — declaration is lazy inside
 `RabbitMQAdapter._get_queue()` (`adapters/comms/rabbitmq.py:82`) on the first
 `consume()`. There is no existing explicit-declare line to sit beside, and the
-agent only *publishes* to (never consumes from) its `_results` queue, so lazy
+agent only *publishes* to (never consumes from) its `_replies` queue, so lazy
 declaration won't cover it.
 
 ### Modified / new files
 - `src/squadops/ports/comms/queue.py` — add `ensure_queue(self, queue_name: str) -> None` (concrete default = no-op so NoOp works). Add the shared `REPLY_QUEUE_DECLARE_ARGS` constant (D3).
 - `adapters/comms/rabbitmq.py` — implement `ensure_queue` as a thin wrapper over `_get_queue(queue_name)` using `REPLY_QUEUE_DECLARE_ARGS`.
 - `src/squadops/ports/comms/noop.py` — inherits the no-op default.
-- `src/squadops/agents/entrypoint.py` — at startup (in `start()` after the adapter is built at `:351-352`, or top of `_consume_tasks` after `:438`): `await self._queue.ensure_queue(f"{self.agent_id}_results")`.
+- `src/squadops/agents/entrypoint.py` — at startup (in `start()` after the adapter is built at `:351-352`, or top of `_consume_tasks` after `:438`): `await self._queue.ensure_queue(f"{self.agent_id}_replies")`.
 
 ### Tests
 - `tests/unit/comms/test_rabbitmq_adapter.py` — `ensure_queue` declares with the shared args; idempotent across channel swap (extend `TestQueueCacheInvalidation` `:30`).
-- `tests/unit/agents/test_entrypoint_task.py` — agent startup calls `ensure_queue("{agent_id}_results")` exactly once.
+- `tests/unit/agents/test_entrypoint_task.py` — agent startup calls `ensure_queue("{agent_id}_replies")` exactly once.
 - Deploy: `rebuild_and_deploy.sh agents` before 94.3.
 
 ---
@@ -119,8 +119,8 @@ riskiest part of the SIP — emit resubscribe metrics (D7) and test it directly.
 ### Tests
 - `tests/unit/adapters/test_queue_port.py` — default `subscribe()`: published message reaches `on_message`; `cancel()` stops delivery; **a raising `on_message` does not stop the loop** (D12).
 - `tests/unit/comms/test_rabbitmq_adapter.py` — native `subscribe()`: happy path; **channel-close triggers transparent re-subscribe** (simulate close, assert a post-reconnect message is delivered); `cancel()` cleans up the consumer tag; raising `on_message` does not kill the consumer (D12).
-- `tests/integration/adapters/test_rabbitmq_adapter.py` — **new (SIP §8):** publish 100 replies to one `{agent_id}_results` queue with a single held subscriber → all 100 routed, zero lost; compare against the legacy `consume()` path.
-- `tests/integration/adapters/test_rabbitmq_adapter.py` — **new (multi-agent, #12):** subscribe to ≥2 `{agent_id}_results` queues, publish interleaved replies to both, assert each future resolves exactly once with **no cross-agent delivery**.
+- `tests/integration/adapters/test_rabbitmq_adapter.py` — **new (SIP §8):** publish 100 replies to one `{agent_id}_replies` queue with a single held subscriber → all 100 routed, zero lost; compare against the legacy `consume()` path.
+- `tests/integration/adapters/test_rabbitmq_adapter.py` — **new (multi-agent, #12):** subscribe to ≥2 `{agent_id}_replies` queues, publish interleaved replies to both, assert each future resolves exactly once with **no cross-agent delivery**.
 
 ---
 
@@ -141,7 +141,7 @@ Confirmed shapes: `QueueMessage.payload` is a raw JSON string (`comms/queue_mess
 ### Rewrite — `adapters/cycles/dispatched_flow_executor.py:669-743`
 `_publish_and_await` before → after:
 - **Remove** `reply_queue = f"cycle_results_{run_id}"` (`:675`) and the entire `while`/`consume_blocking`/`invalidate_queue`/`asyncio.sleep` recovery block (`:697-743`).
-- **Add:** `await self._reply_router.ensure_subscribed(envelope.agent_id)` → `fut = self._reply_router.register(envelope.task_id)` → set `reply_queue = f"{envelope.agent_id}_results"` in the message metadata (`:680`) → `publish(f"{envelope.agent_id}_comms", ...)` → `await asyncio.wait_for(fut, timeout=self._task_timeout)`.
+- **Add:** `await self._reply_router.ensure_subscribed(envelope.agent_id)` → `fut = self._reply_router.register(envelope.task_id)` → set `reply_queue = f"{envelope.agent_id}_replies"` in the message metadata (`:680`) → `publish(f"{envelope.agent_id}_comms", ...)` → `await asyncio.wait_for(fut, timeout=self._task_timeout)`.
 - **Ordering (D14/#2):** `ensure_subscribed → register → publish` — the consumer is live before any reply can arrive (no first-dispatch race). A pre-existing message for the same `task_id` would be dropped before registration, which is impossible given global `task_id` uniqueness (covered by the cross-run test).
 - **Publish-failure cleanup (#10):** wrap `publish` so that if it raises *after* `register()`, the future is cancelled/removed before returning/raising — no pending-future leak when the agent never received the task.
 - **Pending-future leak invariant (#9):** on EVERY exit path — success, timeout (`cancel(task_id)`), publish failure, router failure, cancellation — `task_id` must not remain pending. Asserted by tests.
@@ -170,12 +170,12 @@ controllable future. Three helpers gate the bulk:
 - `mock_queue` fixture (`:109`) → add a `reply_router` fixture.
 - `_make_result_message` (`:42`, default `cycle_results_run_001`) → router-result helper.
 - pulse `_consume_side_effect` keyed on `startswith("cycle_results_")` (`:2565`) → re-key on the router.
-- **Obsolete:** `test_recovers_from_transient_consume_error` (`:609`, asserts `invalidate_queue` `:660`), `test_uses_long_block_consume_not_short_poll` (`:662`). `test_publishes_to_agent_comms_queue` (`:494`) updates its `reply_queue` assertion (`:548`) → `{agent_id}_results`.
+- **Obsolete:** `test_recovers_from_transient_consume_error` (`:609`, asserts `invalidate_queue` `:660`), `test_uses_long_block_consume_not_short_poll` (`:662`). `test_publishes_to_agent_comms_queue` (`:494`) updates its `reply_queue` assertion (`:548`) → `{agent_id}_replies`.
 
 ### New tests
 - `tests/unit/cycles/test_reply_router.py`: register/resolve by `task_id`; **duplicate `register()` raises typed error (D10)**; late reply → drop + counter (D11); **malformed payload → log+count, consumer survives (D11)**; `from_dict` failure → fails the future, consumer survives (D11); `stop()` fails pending futures with the typed error; `ensure_subscribed` idempotent + **concurrency-safe (D4)**; `ensure_subscribed`/`register` fail fast once stopped (D13).
 - `_publish_and_await`: registers before publishing; resolves on reply; timeout → cancels future + FAILED; **publish failure after register removes the pending future (#10)**; **no path leaves `task_id` pending (#9)**.
-- **Concurrent first-dispatch at executor level (#13):** two concurrent `_publish_and_await` for the same `agent_id` → exactly one subscription opened, both futures resolve, both publish to the same `{agent_id}_results`.
+- **Concurrent first-dispatch at executor level (#13):** two concurrent `_publish_and_await` for the same `agent_id` → exactly one subscription opened, both futures resolve, both publish to the same `{agent_id}_replies`.
 - **Cross-run / global uniqueness (SIP Risk 2 / D14):** two runs' `task-{run_id[:12]}-...` ids don't collide on a shared queue; cover a correction/repair id (`dispatched_flow_executor.py:2092,2259`) too.
 
 ---
@@ -183,25 +183,25 @@ controllable future. Three helpers gate the bulk:
 ## PR 94.4 — Soak, orphan cleanup, promote
 
 1. **Soak** in Spark dev for one full long-cycle build (SIP E2E): re-run a `group_run`
-   cycle; verify no `cycle_results_*` queues are created, `{agent_id}_results` queues
+   cycle; verify no `cycle_results_*` queues are created, `{agent_id}_replies` queues
    exist and drain to zero after the run, a late dispatch completes in peer wall time,
    and the **late-drop / malformed counters are zero or understood**.
 2. **Guarded orphan cleanup (#15):** before deleting, list queues and confirm —
    no active runtime-api is still on the legacy path; target queues have **zero
    consumers**; target queues are **older than the cutover timestamp**; names match
-   the **exact prefix `cycle_results_`**. **Never touch any `{agent_id}_results`
+   the **exact prefix `cycle_results_`**. **Never touch any `{agent_id}_replies`
    queue.** One-shot `rabbitmqctl`, not code.
 3. **Promote only when (#17):** soak passed, no new `cycle_results_*` created, all
-   `{agent_id}_results` drain to zero, late-drop/malformed counters zero-or-understood,
+   `{agent_id}_replies` drain to zero, late-drop/malformed counters zero-or-understood,
    the rollback window has passed, and orphan cleanup is done (or explicitly deferred
    with an owner + date). Then: `SQUADOPS_MAINTAINER=1 python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0094-Per-Agent-Reply-Queues-Long-Lived.md implemented`.
 
 ## Rollback (#16)
 
 - **94.1 / 94.2 are inert** — leave them deployed; they're compatible with the legacy path.
-- **If 94.3 fails:** roll runtime-api back to the previous image. Agents carrying extra `{agent_id}_results` queues remain compatible with the old `cycle_results_{run_id}` path.
+- **If 94.3 fails:** roll runtime-api back to the previous image. Agents carrying extra `{agent_id}_replies` queues remain compatible with the old `cycle_results_{run_id}` path.
 - **Do not drop `cycle_results_*` queues until after soak AND the rollback window** — the legacy path needs them on rollback.
-- If rollback happens after some `{agent_id}_results` queues accumulated messages, inspect and purge **only after confirming no 94.3 runtime is active**.
+- If rollback happens after some `{agent_id}_replies` queues accumulated messages, inspect and purge **only after confirming no 94.3 runtime is active**.
 
 ## Risks & mitigations
 
@@ -221,7 +221,7 @@ controllable future. Three helpers gate the bulk:
 
 - **Unit/integration:** all new tests pass; the ~40 migrated executor tests pass against the router; the 100-reply single-subscriber and the multi-agent interleaved tests show zero loss / no cross-agent delivery; full regression green.
 - **Robustness invariants proven by test:** duplicate `task_id` registration fails fast (typed error); publish failure after registration removes the pending future; callback exceptions do not terminate the subscription; malformed reply payloads are logged, counted, and don't kill the subscription; concurrent first-dispatches to one agent create exactly one subscription; queue declare args are identical across agent startup and orchestrator subscribe; runtime shutdown prevents new future registration before router stop; no `_publish_and_await` exit path leaves a pending future.
-- **E2E (the original failure mode):** re-run the incident cycle on a clean stack — the previously-lost late reply is delivered within normal wall time; **no `cycle_results_*` queue is created**; `{agent_id}_results` queues exist and drain to zero after the run.
+- **E2E (the original failure mode):** re-run the incident cycle on a clean stack — the previously-lost late reply is delivered within normal wall time; **no `cycle_results_*` queue is created**; `{agent_id}_replies` queues exist and drain to zero after the run.
 - **Operational:** rollback from 94.3 to the legacy path is documented and validated; observability counters are emitted and checked during soak.
 - **No regression** to the per-task timeout, agent comms loop, or dispatch-message shape.
 
@@ -234,5 +234,6 @@ controllable future. Three helpers gate the bulk:
 
 ## Revision history
 
+- **2026-06-21 — Rev 3.** Renamed the per-agent reply queue `{agent_id}_results` → `{agent_id}_replies` (done after 94.1 merged + deployed, while still inert — empty queues, no consumers, no downstream code yet). The queue names a channel, not a payload type: `_replies` parallels `{agent_id}_comms`, matches this plan's own "reply" vocabulary (`ReplyRouter`, `reply_queue`, `_publish_and_await`), and stays correct for non-`TaskResult` replies under the SIP-0088+ run modes. Ops: redeploy agents to declare `_replies`; drop the orphan empty `_results` queues.
 - **2026-06-21 — Rev 2.** Incorporated review feedback: 94.1 reframed as defensive not load-bearing (D9); added duplicate-registration guard (D10), `_handle_reply` robustness (D11), callback exception isolation (D12), shutdown ordering/stopped-state (D13), global-key + per-queue isolation rationale (D14); shared declare-args helper (D3); native-is-the-fix caveat (D6); publish-failure cleanup + pending-future leak invariant in the rewrite; Observability, Rollback sections; multi-agent + concurrent-executor tests; guarded orphan cleanup + conditional promotion; optional 94.2 split.
 - **2026-06-20 — Rev 1.** Initial phased plan grounded in the current dispatch/reply code.
