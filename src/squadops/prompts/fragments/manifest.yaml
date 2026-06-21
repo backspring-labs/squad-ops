@@ -6,7 +6,7 @@ fragments:
   layer: identity
   roles:
   - comms
-  sha256: 4f2490b4bd0deedf2d00dea843e519601ee5582a200e98bc61ee64bb9030e654
+  sha256: 297f1a1be3bb46fa2a63335ef241a0588864f62872348447de4234302f8beaf1
 - fragment_id: identity
   path: roles/data/identity.md
   layer: identity
@@ -90,13 +90,13 @@ fragments:
   layer: task_type
   roles:
   - dev
-  sha256: 9cd6b929e7958f613eb976d96a411ddc3fb9e2bcb7df91b2321df7a6c134870c
+  sha256: 3a4b8b05523ab8680ff40beab23c285714d4df1f8bb07555c6d168b67238e44e
 - fragment_id: task_type.qa.propose_plan_tasks
   path: shared/task_type/task_type.qa.propose_plan_tasks.md
   layer: task_type
   roles:
   - qa
-  sha256: 3c6419ac1e93c159d3e665d0dfb0dd370849970f9c9fa485028597d74777cc9a
+  sha256: 41f1ebd5833c4bdbefa3166cc642839a7d64e2dccc944af52b55ab79f19759dd
 - fragment_id: task_type.strategy.propose_plan_guidance
   path: shared/task_type/task_type.strategy.propose_plan_guidance.md
   layer: task_type

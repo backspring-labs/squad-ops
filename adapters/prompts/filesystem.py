@@ -45,6 +45,28 @@ class FileSystemPromptRepository(PromptRepository):
         re.MULTILINE | re.DOTALL,
     )
 
+    @classmethod
+    def extract_content(cls, raw_content: str) -> str:
+        """Return a fragment's hashable body: everything after the YAML
+        frontmatter block, stripped (or the whole file, stripped, when there is
+        no frontmatter).
+
+        This is the single definition of "a fragment's content" — shared by the
+        runtime integrity check, the manifest regenerator, and the tests so the
+        manifest sha256 can't drift between them (see issue #195).
+        """
+        header_match = cls.HEADER_PATTERN.match(raw_content)
+        if header_match:
+            return raw_content[header_match.end() :].strip()
+        return raw_content.strip()
+
+    @classmethod
+    def hash_fragment_file(cls, path: Path) -> str:
+        """Compute the canonical SHA256 recorded in the manifest for a fragment
+        file on disk."""
+        raw = Path(path).read_text(encoding="utf-8")
+        return PromptFragment.compute_hash(cls.extract_content(raw))
+
     def __init__(self, base_path: Path, manifest_path: Path | None = None):
         """
         Initialize filesystem repository.
@@ -178,13 +200,11 @@ class FileSystemPromptRepository(PromptRepository):
                 header = yaml.safe_load(header_yaml)
             except yaml.YAMLError:
                 header = {}
-
-            # Content is everything after the header
-            content = raw_content[header_match.end() :].strip()
         else:
-            # No header - use entire file as content
             header = {}
-            content = raw_content.strip()
+
+        # Content (and its hash) come from the shared canonical extractor.
+        content = self.extract_content(raw_content)
 
         # Extract metadata (prefer file header, fall back to manifest)
         fragment_id = header.get("fragment_id") or (

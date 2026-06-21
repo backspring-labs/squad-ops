@@ -1,0 +1,49 @@
+name: CI
+
+# Runs the lint + regression gate on every PR and on pushes to main, so a red
+# change (stale manifest, lint break, failing test) can't reach main once this
+# check is marked Required in branch protection. Closes the enforcement gap that
+# let a stale prompt-fragment manifest merge (issue #195).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint + regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r tests/requirements.txt
+
+      - name: Prompt-fragment manifest is in sync
+        run: python scripts/dev/regen_fragment_manifest.py --check
+
+      # Runs `ruff check .` (lint, fail-stop) + the test-quality lint + the full
+      # unit regression suite. NOTE: a repo-wide `ruff format --check .` is NOT
+      # gated here yet — 43 pre-existing files need formatting first (tracked
+      # separately); add the format gate once that sweep lands.
+      - name: Regression suite (ruff check + test-quality lint + pytest)
+        run: bash scripts/dev/run_regression_tests.sh

@@ -27,7 +27,12 @@ psycopg-binary>=3.0.0  # Binary PostgreSQL adapter (includes libpq, no system de
 aiofiles>=23.0.0  # Async file I/O (used by base_agent)
 aio-pika>=9.3.0  # RabbitMQ async client
 asyncpg>=0.29.0  # PostgreSQL async driver
-fastapi>=0.104.0  # API framework
+# Upper bound pins the test env to the FastAPI the project actually runs (0.135.x).
+# Starlette >=0.136 newly rejects including a router instance into more than one
+# app, which the console unit tests do via module-level singleton routers +
+# sys.modules re-imports. The production app is unaffected (single import/include);
+# this is a test-harness incompatibility. Lift the cap once #198 reworks those tests.
+fastapi>=0.104.0,<0.136  # API framework (see #198 before raising the cap)
 python-multipart>=0.0.6  # Required by FastAPI for form/file uploads
 uvicorn>=0.24.0  # ASGI server
 aiohttp>=3.9.0  # HTTP client
@@ -40,7 +45,12 @@ pyyaml>=6.0  # YAML parsing
 # OpenTelemetry packages (for telemetry testing)
 opentelemetry-api>=1.22.0
 opentelemetry-sdk>=1.22.0
-opentelemetry-instrumentation-aiohttp>=0.43b0; platform_machine != "aarch64"
+# NB: `opentelemetry-instrumentation-aiohttp` does not exist on PyPI (the real
+# packages are `-aiohttp-client` / `-aiohttp-server`). It was masked locally by
+# a `platform_machine != "aarch64"` marker — our dev box (DGX Spark) is aarch64,
+# so it was skipped there but broke install on x86_64 CI. It is unused by the
+# code and the suite passes without it, so it is omitted. Add `-aiohttp-client`
+# if aiohttp client instrumentation is ever actually needed.
 opentelemetry-instrumentation-asyncpg>=0.43b0
 opentelemetry-instrumentation-aio-pika>=0.43b0
 opentelemetry-exporter-otlp-proto-grpc>=1.22.0
