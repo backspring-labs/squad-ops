@@ -436,11 +436,18 @@ class AgentRunner:
 
         # Queue name for this agent's communications
         comms_queue = f"{self.agent_id}_comms"
+        results_queue = f"{self.agent_id}_results"
 
         logger.info(
             "Starting task consumer",
             extra={"agent_id": self.agent_id, "role": self.role, "queue": comms_queue},
         )
+
+        # SIP-0094 (D9): declare this agent's reply queue before the orchestrator
+        # ever addresses it. The agent only publishes to `{agent_id}_results`
+        # (never consumes from it), so the lazy declaration that covers the comms
+        # queue won't create it. Idempotent — safe to call on every boot.
+        await self._queue.ensure_queue(results_queue)
 
         while not self._shutdown_event.is_set():
             try:
