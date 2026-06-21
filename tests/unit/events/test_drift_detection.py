@@ -11,14 +11,12 @@ CollectingSubscriber.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from adapters.events.in_process_cycle_event_bus import InProcessCycleEventBus
-from squadops.comms.queue_message import QueueMessage
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -49,50 +47,17 @@ _STATUS_TO_EVENT: dict[RunStatus, str] = {
 # ---------------------------------------------------------------------------
 
 
-def _make_result_message(
-    task_id: str,
-    status: str = "SUCCEEDED",
-    outputs: dict | None = None,
-    queue_name: str = "cycle_results_run_001",
-) -> QueueMessage:
-    result = TaskResult(task_id=task_id, status=status, outputs=outputs)
-    payload = json.dumps(
-        {
-            "action": "comms.task.result",
-            "metadata": {"correlation_id": "corr"},
-            "payload": result.to_dict(),
-        }
-    )
-    return QueueMessage(
-        message_id=f"msg_{task_id}",
-        queue_name=queue_name,
-        payload=payload,
-        receipt_handle=f"rh_{task_id}",
-        attributes={},
-    )
+def _responder(status: str = "SUCCEEDED"):
+    """Build a reply-router responder that replies with the given status."""
 
+    def reply(env: dict) -> TaskResult:
+        return TaskResult(
+            task_id=env["task_id"],
+            status=status,
+            outputs={"summary": "stub", "artifacts": []},
+        )
 
-def _make_queue_consume(mock_queue, result_status="SUCCEEDED"):
-    """Build a consume side_effect that returns matching results."""
-
-    async def consume_side_effect(queue_name, max_messages=1):
-        if not queue_name.startswith("cycle_results_"):
-            return []
-        last_call = mock_queue.publish.call_args
-        if last_call:
-            msg_data = json.loads(last_call.args[1])
-            task_id = msg_data["payload"]["task_id"]
-            return [
-                _make_result_message(
-                    task_id=task_id,
-                    status=result_status,
-                    outputs={"summary": "stub", "artifacts": []},
-                    queue_name=queue_name,
-                )
-            ]
-        return []
-
-    return consume_side_effect
+    return reply
 
 
 # ---------------------------------------------------------------------------
@@ -143,17 +108,11 @@ def mock_vault():
 
 
 @pytest.fixture
-def mock_queue():
+def mock_queue(reply_router):
     mock = AsyncMock()
-    mock.publish.return_value = None
     mock.ack.return_value = None
     mock.invalidate_queue.return_value = None
-    mock.consume.return_value = []
-
-    async def _consume_blocking(queue_name, timeout, max_messages=1):
-        return await mock.consume(queue_name, max_messages=max_messages)
-
-    mock.consume_blocking.side_effect = _consume_blocking
+    reply_router.bind(mock)
     return mock
 
 
@@ -208,6 +167,7 @@ def executor(
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
         event_bus=event_bus,
+        reply_router=mock_queue.reply_router,
     )
 
 
@@ -225,13 +185,9 @@ class TestHappyPathDrift:
     async def test_registry_transitions_match_events(
         self, executor, mock_registry, mock_queue, collector
     ) -> None:
-        mock_queue.consume.side_effect = _make_queue_consume(mock_queue)
+        mock_queue.reply_router.responder = _responder()
 
-        with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         # Extract registry transitions
         status_calls = mock_registry.update_run_status.call_args_list
@@ -257,13 +213,9 @@ class TestHappyPathDrift:
         self, executor, mock_registry, mock_queue, collector
     ) -> None:
         """Every run event has a corresponding registry transition."""
-        mock_queue.consume.side_effect = _make_queue_consume(mock_queue)
+        mock_queue.reply_router.responder = _responder()
 
-        with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         status_calls = mock_registry.update_run_status.call_args_list
         registry_statuses = {call.args[1] for call in status_calls}
@@ -290,13 +242,9 @@ class TestTaskFailureDrift:
     async def test_failure_transitions_match_events(
         self, executor, mock_registry, mock_queue, collector
     ) -> None:
-        mock_queue.consume.side_effect = _make_queue_consume(mock_queue, result_status="FAILED")
+        mock_queue.reply_router.responder = _responder(status="FAILED")
 
-        with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         run_events = [e for e in collector.events if e.entity_type == "run"]
         run_event_types = [e.event_type for e in run_events]
@@ -307,13 +255,9 @@ class TestTaskFailureDrift:
     async def test_task_failed_precedes_run_failed(
         self, executor, mock_registry, mock_queue, collector
     ) -> None:
-        mock_queue.consume.side_effect = _make_queue_consume(mock_queue, result_status="FAILED")
+        mock_queue.reply_router.responder = _responder(status="FAILED")
 
-        with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         all_types = [e.event_type for e in collector.events]
         task_failed_idx = all_types.index(EventType.TASK_FAILED)
@@ -328,13 +272,9 @@ class TestTaskEventsMatchDispatches:
     async def test_dispatch_count_matches_events(
         self, executor, mock_registry, mock_queue, collector
     ) -> None:
-        mock_queue.consume.side_effect = _make_queue_consume(mock_queue)
+        mock_queue.reply_router.responder = _responder()
 
-        with patch(
-            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
-            new_callable=AsyncMock,
-        ):
-            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         dispatched_events = [
             e for e in collector.events if e.event_type == EventType.TASK_DISPATCHED

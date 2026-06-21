@@ -2796,3 +2796,104 @@ class TestDispatchTaskPrefectLifecycle:
             if t.get_name().startswith("prefect-heartbeat-") and not t.done()
         ]
         assert leftover == []
+
+
+class TestPublishAndAwaitInvariants:
+    """SIP-0094 cutover invariants of _publish_and_await: ordering (D14/#2),
+    pending-future-leak safety on every exit path (#9/#10), concurrent
+    first-dispatch (#13), and global task_id uniqueness across runs (D14)."""
+
+    @staticmethod
+    def _env(task_id="t1", agent_id="neo"):
+        return TaskEnvelope(
+            task_id=task_id,
+            agent_id=agent_id,
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="development.design",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            metadata={"role": "dev"},
+        )
+
+    async def test_subscribes_and_registers_before_publish(
+        self, executor, mock_queue, reply_router
+    ):
+        """D14/#2: ensure_subscribed + register happen BEFORE publish, so a fast
+        reply can't arrive before the consumer is live."""
+        seen = {}
+
+        async def _publish(queue_name, payload, delay_seconds=None):
+            data = json.loads(payload)
+            seen["registered"] = data["payload"]["task_id"] in reply_router.registered
+            seen["subscribed"] = "neo" in reply_router.subscribed
+            reply_router._autorespond(data["payload"])
+
+        mock_queue.publish.side_effect = _publish
+
+        await executor._publish_and_await(self._env(), "run_001")
+
+        assert seen == {"registered": True, "subscribed": True}
+
+    async def test_publish_failure_removes_pending_future(self, executor, mock_queue, reply_router):
+        """#10: if publish raises after register(), the pending future is dropped
+        (no leak) and the error propagates."""
+        mock_queue.publish.side_effect = RuntimeError("broker down")
+
+        with pytest.raises(RuntimeError, match="broker down"):
+            await executor._publish_and_await(self._env("t_fail"), "run_001")
+
+        assert "t_fail" in reply_router.cancelled
+        assert "t_fail" not in reply_router._futures
+
+    async def test_timeout_leaves_no_pending_future(self, executor, reply_router):
+        """#9: a timed-out dispatch cancels its future (no leak) and returns FAILED."""
+        reply_router.suppress.add("t_to")
+        executor._task_timeout = 0.1
+
+        result = await executor._publish_and_await(self._env("t_to"), "run_001")
+
+        assert result.status == "FAILED"
+        assert "t_to" in reply_router.cancelled
+        assert "t_to" not in reply_router._futures
+
+    async def test_concurrent_dispatch_same_agent_both_resolve(
+        self, executor, mock_queue, reply_router
+    ):
+        """#13: two concurrent dispatches to one agent both resolve to their own
+        results and both publish to that agent's comms queue."""
+        reply_router.results["ta"] = TaskResult(
+            task_id="ta", status="SUCCEEDED", outputs={"n": "a"}
+        )
+        reply_router.results["tb"] = TaskResult(
+            task_id="tb", status="SUCCEEDED", outputs={"n": "b"}
+        )
+
+        ra, rb = await asyncio.gather(
+            executor._publish_and_await(self._env("ta"), "run_001"),
+            executor._publish_and_await(self._env("tb"), "run_001"),
+        )
+
+        assert ra.outputs["n"] == "a"
+        assert rb.outputs["n"] == "b"
+        pub_queues = [c.args[0] for c in mock_queue.publish.call_args_list]
+        assert pub_queues.count("neo_comms") == 2
+
+    async def test_cross_run_task_ids_dont_collide(self, executor, reply_router):
+        """D14: globally-unique task_ids from different runs resolve to their own
+        results on the shared per-agent reply queue (no cross-run mixup)."""
+        reply_router.results["task-run_aaaa-1"] = TaskResult(
+            task_id="task-run_aaaa-1", status="SUCCEEDED", outputs={"r": "a"}
+        )
+        reply_router.results["task-run_bbbb-1"] = TaskResult(
+            task_id="task-run_bbbb-1", status="SUCCEEDED", outputs={"r": "b"}
+        )
+
+        r1 = await executor._publish_and_await(self._env("task-run_aaaa-1"), "run_aaaa")
+        r2 = await executor._publish_and_await(self._env("task-run_bbbb-1"), "run_bbbb")
+
+        assert r1.outputs["r"] == "a"
+        assert r2.outputs["r"] == "b"

@@ -89,7 +89,7 @@ def _make_plan(count: int = 3) -> list[TaskEnvelope]:
 
 
 @pytest.fixture
-def executor():
+def executor(reply_router):
     """Create a DispatchedFlowExecutor with mocked ports."""
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
@@ -102,6 +102,7 @@ def executor():
         artifact_vault=vault,
         queue=AsyncMock(),
         squad_profile=AsyncMock(),
+        reply_router=reply_router,
     )
     return ex
 

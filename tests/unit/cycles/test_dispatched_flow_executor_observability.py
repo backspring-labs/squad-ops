@@ -6,14 +6,12 @@ creation in execute_run().
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from squadops.comms.queue_message import QueueMessage
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -22,72 +20,10 @@ from squadops.cycles.models import (
     SquadProfile,
     TaskFlowPolicy,
 )
-from squadops.tasks.models import TaskResult
 
 pytestmark = [pytest.mark.domain_orchestration]
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_result_message(
-    task_id: str,
-    status: str = "SUCCEEDED",
-    outputs: dict | None = None,
-    queue_name: str = "cycle_results_run_001",
-) -> QueueMessage:
-    result = TaskResult(task_id=task_id, status=status, outputs=outputs)
-    payload = json.dumps(
-        {
-            "action": "comms.task.result",
-            "metadata": {"correlation_id": "corr"},
-            "payload": result.to_dict(),
-        }
-    )
-    return QueueMessage(
-        message_id=f"msg_{task_id}",
-        queue_name=queue_name,
-        payload=payload,
-        receipt_handle=f"rh_{task_id}",
-        attributes={},
-    )
-
-
-def _make_queue_side_effects(mock_queue):
-    """Build a consume side_effect that returns matching results."""
-
-    async def consume_side_effect(queue_name, max_messages=1):
-        if not queue_name.startswith("cycle_results_"):
-            return []
-        last_call = mock_queue.publish.call_args
-        if last_call:
-            msg_data = json.loads(last_call.args[1])
-            task_id = msg_data["payload"]["task_id"]
-            return [
-                _make_result_message(
-                    task_id=task_id,
-                    outputs={
-                        "summary": "stub output",
-                        "role": "strat",
-                        "artifacts": [
-                            {
-                                "name": "output.md",
-                                "content": "# Output",
-                                "media_type": "text/markdown",
-                                "type": "document",
-                            }
-                        ],
-                    },
-                    queue_name=queue_name,
-                )
-            ]
-        return []
-
-    return consume_side_effect
 
 
 # ---------------------------------------------------------------------------
@@ -128,17 +64,14 @@ def mock_vault():
 
 
 @pytest.fixture
-def mock_queue():
+def mock_queue(reply_router):
     mock = AsyncMock()
     mock.publish.return_value = None
     mock.ack.return_value = None
     mock.invalidate_queue.return_value = None
-    mock.consume.return_value = []
-
-    async def _consume_blocking(queue_name, timeout, max_messages=1):
-        return await mock.consume(queue_name, max_messages=max_messages)
-
-    mock.consume_blocking.side_effect = _consume_blocking
+    # SIP-0094: wire the reply router so dispatching a comms.task auto-delivers
+    # the agent's reply (default: SUCCEEDED). Accessible as mock.reply_router.
+    reply_router.bind(mock)
     return mock
 
 
@@ -213,6 +146,7 @@ def executor(
         task_timeout=5.0,
         llm_observability=mock_llm_obs,
         workflow_tracker=mock_prefect,
+        reply_router=mock_queue.reply_router,
     )
 
 
@@ -227,6 +161,7 @@ def executor_no_obs(mock_registry, mock_vault, mock_queue, mock_squad_profile, c
         queue=mock_queue,
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
+        reply_router=mock_queue.reply_router,
     )
 
 
@@ -239,8 +174,6 @@ class TestLangFuseCycleEvents:
     """Verify start_cycle_trace + end_cycle_trace called around execute_run."""
 
     async def test_emits_langfuse_cycle_events(self, executor, mock_queue, mock_llm_obs):
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -258,8 +191,6 @@ class TestLangFuseCycleEvents:
         assert "cycle.completed" in event_names
 
     async def test_langfuse_context_has_trace_id(self, executor, mock_queue, mock_llm_obs):
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -278,8 +209,6 @@ class TestWithoutObservability:
     async def test_no_langfuse_no_prefect_no_error(
         self, executor_no_obs, mock_queue, mock_registry
     ):
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -313,12 +242,8 @@ class TestFlowLevelCorrelationScope:
             PrefectLogHandler,
         )
 
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         forwarder = MagicMock(enqueue=MagicMock())
-        handler = PrefectLogHandler(
-            forwarder, filters=LogHandlerFilters(min_level=logging.INFO)
-        )
+        handler = PrefectLogHandler(forwarder, filters=LogHandlerFilters(min_level=logging.INFO))
         logging.getLogger().addHandler(handler)
         prior_levels = {n: logging.getLogger(n).level for n in ("squadops", "adapters")}
         logging.getLogger("squadops").setLevel(logging.INFO)
@@ -356,8 +281,6 @@ class TestPrefectFlowRun:
     """Verify Prefect flow run created at start."""
 
     async def test_creates_prefect_flow_run(self, executor, mock_queue, mock_prefect):
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -383,8 +306,6 @@ class TestPrefectTaskRuns:
     ):
         """Executor creates task runs + transitions to RUNNING directly so the
         ``task_run_id`` is available for the per-task log forwarder."""
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
-
         with patch(
             "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
             new_callable=AsyncMock,
@@ -394,9 +315,7 @@ class TestPrefectTaskRuns:
         # 5 sequential tasks → 5 create_task_run + 5 set_task_run_state(RUNNING)
         assert mock_prefect.create_task_run.await_count == 5
         running_calls = [
-            c
-            for c in mock_prefect.set_task_run_state.await_args_list
-            if c.args[1] == "RUNNING"
+            c for c in mock_prefect.set_task_run_state.await_args_list if c.args[1] == "RUNNING"
         ]
         assert len(running_calls) == 5
         # Terminal task states come through PrefectBridge events, not direct
@@ -411,8 +330,6 @@ class TestPrefectTaskRuns:
     async def test_emits_task_dispatched_events(self, executor, mock_queue, mock_prefect):
         """Executor emits TASK_DISPATCHED for each of the 5 sequential tasks."""
         from squadops.events.types import EventType
-
-        mock_queue.consume.side_effect = _make_queue_side_effects(mock_queue)
 
         emitted: list[str] = []
         original_emit = executor._cycle_event_bus.emit
