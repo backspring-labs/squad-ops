@@ -6,6 +6,7 @@ Matches the namespace pattern of `squadops.ports.cycles` and
 """
 
 from squadops.ports.runtime.assignments import AssignmentPort
+from squadops.ports.runtime.event_publisher import RuntimeEventPublisher
 from squadops.ports.runtime.state import RuntimeStatePort
 
-__all__ = ["AssignmentPort", "RuntimeStatePort"]
+__all__ = ["AssignmentPort", "RuntimeEventPublisher", "RuntimeStatePort"]

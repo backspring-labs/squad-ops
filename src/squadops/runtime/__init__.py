@@ -7,6 +7,11 @@ Pure coordination layer for `RuntimeMode`, `RuntimeActivity`, `FocusLease`,
 per D26).
 """
 
+from squadops.runtime.coordinator import (
+    RequesterKind,
+    RuntimeCoordinator,
+    TransitionOutcome,
+)
 from squadops.runtime.models import (
     AgentRuntimeState,
     Assignment,
@@ -26,7 +31,10 @@ __all__ = [
     "DutyWindow",
     "MissedWindowPolicy",
     "RecallPolicy",
+    "RequesterKind",
+    "RuntimeCoordinator",
     "Strictness",
+    "TransitionOutcome",
     "WindowState",
     "window_state",
 ]

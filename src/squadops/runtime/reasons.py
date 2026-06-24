@@ -20,3 +20,8 @@ CYCLE_COMPLETED: Final[str] = "cycle_completed"
 
 # Heartbeat-recovery reasons (Phase 1)
 RUNTIME_STATUS_CHANGED_TO_ONLINE: Final[str] = "runtime_status_changed_to_online"
+
+# Transition-rejection reasons (Phase 2 §2.6 — coordinator)
+MISSING_REASON_CODE: Final[str] = "missing_reason_code"
+INVALID_MODE_TRANSITION: Final[str] = "invalid_mode_transition"
+OFFLINE_CANNOT_ENTER_DUTY: Final[str] = "offline_cannot_enter_duty"
