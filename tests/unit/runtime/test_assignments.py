@@ -32,6 +32,7 @@ def _assignment(
 ) -> Assignment:
     return Assignment(
         assignment_id="a-1",
+        agent_id="max",
         assignment_type="duty",
         assigned_role="support",
         priority=10,

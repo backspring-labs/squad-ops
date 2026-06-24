@@ -83,6 +83,11 @@ class Assignment:
     may hold multiple Assignments but exactly one current RuntimeMode (§10.2);
     conflicts are resolved by scheduling policy before a focus claim is attempted.
 
+    `agent_id` (the holder) is not in the §10.2 field sketch but is required by the
+    §2.2 table and the §2.3 port: `list_active_assignments(now)` returns rows across
+    agents, and the §2.5 reserve guard filters them to a run's participating agents,
+    so each Assignment must carry its holder.
+
     `reserve_before_window`/`reserve_after_window` are first-class v1.1 policy
     (§11.4): the pre-duty buffer during which cycle recruitment is rejected.
     Strictness-dependent defaults (15m hard / 0m soft) are applied at creation
@@ -90,6 +95,7 @@ class Assignment:
     """
 
     assignment_id: str
+    agent_id: str
     assignment_type: AssignmentType
     assigned_role: str
     priority: int
