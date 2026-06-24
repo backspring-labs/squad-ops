@@ -14,8 +14,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from squadops.runtime.models import Assignment
+if TYPE_CHECKING:
+    from squadops.runtime.models import Assignment
 
 
 class AssignmentPort(ABC):

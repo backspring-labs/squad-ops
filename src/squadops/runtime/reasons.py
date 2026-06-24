@@ -25,3 +25,8 @@ RUNTIME_STATUS_CHANGED_TO_ONLINE: Final[str] = "runtime_status_changed_to_online
 MISSING_REASON_CODE: Final[str] = "missing_reason_code"
 INVALID_MODE_TRANSITION: Final[str] = "invalid_mode_transition"
 OFFLINE_CANNOT_ENTER_DUTY: Final[str] = "offline_cannot_enter_duty"
+
+# Duty-window scheduling reasons (Phase 2 §2.4 — scheduler)
+DUTY_WINDOW_STARTED_LATE: Final[str] = "duty_window_started_late"
+DUTY_WINDOW_MISSED: Final[str] = "duty_window_missed"
+DUTY_WINDOW_MISSED_OPERATOR_REVIEW: Final[str] = "duty_window_missed_operator_review"

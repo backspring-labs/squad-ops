@@ -23,11 +23,13 @@ from squadops.runtime.models import (
     WindowState,
     window_state,
 )
+from squadops.runtime.scheduler import DutyScheduler
 
 __all__ = [
     "AgentRuntimeState",
     "Assignment",
     "AssignmentType",
+    "DutyScheduler",
     "DutyWindow",
     "MissedWindowPolicy",
     "RecallPolicy",

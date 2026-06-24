@@ -13,8 +13,10 @@ must not overwrite coordinator-owned fields (`mode`, `focus`,
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-from squadops.runtime.models import AgentRuntimeState
+if TYPE_CHECKING:
+    from squadops.runtime.models import AgentRuntimeState
 
 
 class RuntimeStatePort(ABC):
