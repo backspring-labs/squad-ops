@@ -302,6 +302,15 @@ async def _init_cycle_subsystem(config, pool) -> None:
         )
         set_cycle_event_bus(event_bus)
 
+        # SIP-0089 §2.5: wire the reserve-buffer guard live when a Postgres pool
+        # is available (the agent_assignments table lives there, migration 1110).
+        # Without a pool the guard stays unwired and recruitment is never gated.
+        assignment_port = None
+        if pool is not None:
+            from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
+
+            assignment_port = PostgresAssignment(pool)
+
         flow_executor = create_flow_executor(
             "dispatched",
             cycle_registry=cycle_registry,
@@ -314,6 +323,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             workflow_tracker=_workflow_tracker,
             event_bus=event_bus,
             reply_router=_reply_router,
+            assignment_port=assignment_port,
         )
 
         set_cycle_ports(

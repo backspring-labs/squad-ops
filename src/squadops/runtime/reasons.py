@@ -30,3 +30,6 @@ OFFLINE_CANNOT_ENTER_DUTY: Final[str] = "offline_cannot_enter_duty"
 DUTY_WINDOW_STARTED_LATE: Final[str] = "duty_window_started_late"
 DUTY_WINDOW_MISSED: Final[str] = "duty_window_missed"
 DUTY_WINDOW_MISSED_OPERATOR_REVIEW: Final[str] = "duty_window_missed_operator_review"
+
+# Cycle recruitment-guard reasons (Phase 2 §2.5 — reserve buffer)
+UPCOMING_HARD_DUTY_WINDOW: Final[str] = "upcoming_hard_duty_window"
