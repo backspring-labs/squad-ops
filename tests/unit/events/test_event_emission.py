@@ -221,8 +221,14 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 38
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 40 executor + 7 route = 47 total emit calls."""
+        """Sanity check: 41 executor + 7 route = 48 total emit calls.
+
+        The 41st executor emit is the SIP-0089 §2.5 reserve-buffer deferral —
+        `EventType.RUN_PAUSED` with payload reason `upcoming_hard_duty_window`,
+        raised from the `_RecruitmentRejectedError` handler. Reusing RUN_PAUSED
+        (rather than minting a new EventType) keeps the locked cycle taxonomy
+        intact, so this count — not the taxonomy size — is what moves."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 47
+        assert total == 48
