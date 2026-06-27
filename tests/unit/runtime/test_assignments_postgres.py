@@ -168,6 +168,27 @@ async def test_list_claimable_windows_filters_duty_and_ends_at_window_close():
     assert args == [NOW]
 
 
+async def test_list_assignments_to_close_joins_duty_state_and_filters_ended_windows():
+    """Bug class (#226): an agent in duty whose window fully ended (now >=
+    window_end + reserve_after) must be returned for closing even after it left
+    the active set — otherwise reserve_after=0 hard duty strands the agent in
+    duty. Assert the JOIN to agent_runtime_state, the duty-mode filter, the
+    ended-window predicate, and the sole `now` binding."""
+    conn = AsyncMock()
+    conn.fetch.return_value = [_row()]
+    adapter = PostgresAssignment(_make_pool(conn))
+
+    result = await adapter.list_assignments_to_close(NOW)
+
+    assert [a.assignment_id for a in result] == ["a-1"]
+    sql, *args = conn.fetch.call_args.args
+    assert "JOIN agent_runtime_state s ON s.current_assignment_ref = a.assignment_id" in sql
+    assert "s.mode = 'duty'" in sql
+    assert "a.assignment_type = 'duty'" in sql
+    assert "$1 >= a.window_end + a.reserve_after_window" in sql
+    assert args == [NOW]  # `now` is the sole bind param
+
+
 async def test_upsert_assignment_flattens_window_and_binds_array_as_list():
     """Bug class: the nested DutyWindow must flatten to the window_start/_end/
     timezone binds, and the tuple field must bind as a list — asyncpg array

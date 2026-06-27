@@ -155,6 +155,9 @@ _redis_client = None
 _health_checker_instance = None
 _reconciliation_task = None
 
+# SIP-0089 §2.4: in-process duty-transition scheduler (opt-in; stopped on shutdown)
+_duty_scheduler = None
+
 
 async def _init_auth_subsystem(config) -> None:
     """Initialize auth, audit, and service token adapters (SIP-0062)."""
@@ -430,6 +433,27 @@ async def _init_monitoring(config, pool) -> None:
         logger.error(f"Failed to initialize chat ports: {e}")
 
 
+async def _init_duty_scheduler(config, pool) -> None:
+    """Start the duty-transition scheduler when enabled (SIP-0089 §2.4).
+
+    The scheduler is the live driver of ambient↔duty transitions: it polls duty
+    assignments and requests window open/close through the coordinator (the sole
+    writer of mode, D16). Opt-in via `runtime.scheduler.enabled`; a clean
+    shutdown path is provided in `shutdown_event` (mirrors the reconciliation
+    loop). See `scheduler_bootstrap` for the single-writer constraint.
+    """
+    global _duty_scheduler
+    try:
+        from squadops.api.runtime.scheduler_bootstrap import create_duty_scheduler
+
+        _duty_scheduler = create_duty_scheduler(config, pool)
+        if _duty_scheduler is not None:
+            await _duty_scheduler.start()
+            logger.info("Duty scheduler started")
+    except Exception as e:
+        logger.error("Failed to start duty scheduler: %s", e)
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and message queue connections."""
@@ -454,12 +478,17 @@ async def startup_event():
     await _init_log_forwarding(config)
     await _init_cycle_subsystem(config, pool)
     await _init_monitoring(config, pool)
+    await _init_duty_scheduler(config, pool)
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up connections."""
     global pool, rabbitmq_connection
+    # SIP-0089 §2.4: stop the duty scheduler before the pool closes so its final
+    # tick can't race a closing connection.
+    if _duty_scheduler is not None:
+        await _duty_scheduler.stop()
     if _health_checker_instance:
         _health_checker_instance._reconciliation_running = False
     if _reconciliation_task:
