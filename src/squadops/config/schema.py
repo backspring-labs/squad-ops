@@ -411,6 +411,37 @@ class CyclesConfig(BaseModel):
     )
 
 
+class SchedulerConfig(BaseModel):
+    """Duty-transition scheduler configuration (SIP-0089 §2.4).
+
+    The in-process `DutyScheduler` opens/closes duty windows by requesting
+    transitions through the `RuntimeCoordinator`. It is **opt-in** (`enabled`
+    defaults false) so a deployment activates duty mode deliberately. The
+    scheduler is a single central writer of `mode`; running more than one
+    runtime-api instance with it enabled would create two writers (see the
+    single-writer note at the bootstrap call site).
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Activate the in-process duty-transition scheduler (SIP-0089 §2.4)",
+    )
+    poll_interval_seconds: int = Field(
+        default=30,
+        ge=1,
+        description="Seconds between duty-window scheduler ticks",
+    )
+
+
+class RuntimeConfig(BaseModel):
+    """Agent runtime-state configuration (SIP-0089)."""
+
+    scheduler: SchedulerConfig = Field(
+        default_factory=SchedulerConfig,
+        description="Duty-transition scheduler configuration (SIP-0089 §2.4)",
+    )
+
+
 class PrefectConfig(BaseModel):
     """Prefect orchestration configuration."""
 
@@ -644,6 +675,11 @@ class AppConfig(BaseModel):
     # Cycles
     cycles: CyclesConfig = Field(
         default_factory=CyclesConfig, description="Cycle registry configuration"
+    )
+
+    # Runtime (SIP-0089: agent runtime state, duty scheduler)
+    runtime: RuntimeConfig = Field(
+        default_factory=RuntimeConfig, description="Agent runtime-state configuration (SIP-0089)"
     )
 
     # Orchestration
