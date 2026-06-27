@@ -27,6 +27,11 @@ _COLUMNS = (
     "allowed_off_window_modes, active"
 )
 
+# Same columns qualified with the `a` alias, for the close-sweep JOIN. asyncpg
+# names result columns by the bare column (alias stripped), so `_row_to_assignment`
+# still indexes by name.
+_A_COLUMNS = ", ".join(f"a.{col.strip()}" for col in _COLUMNS.split(","))
+
 
 class PostgresAssignment(AssignmentPort):
     """Postgres-backed `AssignmentPort` implementation."""
@@ -72,6 +77,24 @@ class PostgresAssignment(AssignmentPort):
                 "AND $1 >= window_start - reserve_before_window "
                 "AND $1 <  window_end "
                 "ORDER BY window_start",
+                now,
+            )
+        return [_row_to_assignment(r) for r in rows]
+
+    async def list_assignments_to_close(self, now: datetime) -> list[Assignment]:
+        # Join to the agent's live state: a duty assignment whose serving agent is
+        # still in mode='duty' bound to it, and whose window has fully ended
+        # (now >= window_end + reserve_after_window). This is the close path for
+        # windows that left the active set before a tick observed in_reserve_after
+        # (notably reserve_after_window = 0; #226). Disjoint from the active set.
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_A_COLUMNS} FROM agent_assignments a "
+                "JOIN agent_runtime_state s ON s.current_assignment_ref = a.assignment_id "
+                "WHERE s.mode = 'duty' "
+                "AND a.assignment_type = 'duty' "
+                "AND $1 >= a.window_end + a.reserve_after_window "
+                "ORDER BY a.window_end",
                 now,
             )
         return [_row_to_assignment(r) for r in rows]

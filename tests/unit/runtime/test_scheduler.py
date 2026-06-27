@@ -61,19 +61,21 @@ def _duty(
 
 
 def _agent_state(mode="ambient", assignment_ref=None) -> AgentRuntimeState:
-    return AgentRuntimeState(
-        "max", mode, "online", "", None, "high", WIN_START, assignment_ref
-    )
+    return AgentRuntimeState("max", mode, "online", "", None, "high", WIN_START, assignment_ref)
 
 
 class _FakeAssignments:
-    def __init__(self, items: list[Assignment]) -> None:
+    def __init__(self, items: list[Assignment], to_close: list[Assignment] | None = None) -> None:
         self._items = items
+        self._to_close = to_close or []
         self.calls = 0
 
     async def list_active_assignments(self, now):
         self.calls += 1
         return list(self._items)
+
+    async def list_assignments_to_close(self, now):
+        return list(self._to_close)
 
 
 class _RecordingCoordinator:
@@ -81,10 +83,16 @@ class _RecordingCoordinator:
         self.requests: list[dict] = []
 
     async def request_transition(self, agent_id, target_mode, reason_code, **kwargs):
-        self.requests.append({"agent_id": agent_id, "target_mode": target_mode, "reason_code": reason_code, **kwargs})
+        self.requests.append(
+            {"agent_id": agent_id, "target_mode": target_mode, "reason_code": reason_code, **kwargs}
+        )
         return TransitionOutcome(
-            applied=True, agent_id=agent_id, from_mode=None,
-            to_mode=target_mode, reason_code=reason_code, event_name=events.MODE_TRANSITION,
+            applied=True,
+            agent_id=agent_id,
+            from_mode=None,
+            to_mode=target_mode,
+            reason_code=reason_code,
+            event_name=events.MODE_TRANSITION,
         )
 
 
@@ -143,6 +151,40 @@ async def test_window_close_fires_for_serving_agent_after_window():
     r = coord.requests[0]
     assert (r["target_mode"], r["reason_code"]) == ("ambient", reasons.DUTY_WINDOW_CLOSED)
     assert r["scheduled_at"] == WIN_END
+
+
+async def test_close_sweep_fires_after_assignment_leaves_active_set():
+    """Bug class (#226): with reserve_after=0 a served window leaves the active
+    set at window_end, so pass 1 never observes in_reserve_after and the agent
+    would stay stuck in duty. The close-sweep (pass 2) must still request the
+    duty->ambient close, scheduled at window_end, for an agent still in duty —
+    even when the active set is empty."""
+    coord = _RecordingCoordinator()
+    state = _FakeStatePort(_agent_state(mode="duty", assignment_ref="assign-1"))
+    # Active set empty (assignment dropped out at window_end); close-sweep returns it.
+    sched = DutyScheduler(_FakeAssignments([], to_close=[_duty()]), coord, state)
+
+    await sched.tick(now=_at(7, 0))  # well past window_end
+
+    assert len(coord.requests) == 1
+    r = coord.requests[0]
+    assert (r["target_mode"], r["reason_code"]) == ("ambient", reasons.DUTY_WINDOW_CLOSED)
+    assert r["scheduled_at"] == WIN_END
+    assert r["assignment_id"] == "assign-1"
+    assert state.upserts == []  # D21: requested via coordinator, never written directly
+
+
+async def test_close_sweep_empty_requests_no_transition():
+    """Bug class: the close-sweep must not invent closes. With nothing to close
+    (and no active assignments) the tick requests nothing, even though an agent
+    row exists in duty — closing is driven by the sweep query, not by state."""
+    coord = _RecordingCoordinator()
+    state = _FakeStatePort(_agent_state(mode="duty", assignment_ref="assign-1"))
+    sched = DutyScheduler(_FakeAssignments([], to_close=[]), coord, state)
+
+    outcomes = await sched.tick(now=_at(7, 0))
+
+    assert outcomes == [] and coord.requests == []
 
 
 async def test_scheduler_never_writes_state_directly():
@@ -214,7 +256,9 @@ async def test_skip_policy_does_not_open_late_window():
     coord = _RecordingCoordinator()
     pub = _RecordingPublisher()
     sched = DutyScheduler(
-        _FakeAssignments([_duty(policy="skip")]), coord, _FakeStatePort(None),
+        _FakeAssignments([_duty(policy="skip")]),
+        coord,
+        _FakeStatePort(None),
         events_publisher=pub,
     )
 
@@ -228,8 +272,10 @@ async def test_require_operator_review_flags_instead_of_transitioning():
     coord = _RecordingCoordinator()
     pub = _RecordingPublisher()
     sched = DutyScheduler(
-        _FakeAssignments([_duty(policy="require_operator_review")]), coord,
-        _FakeStatePort(None), events_publisher=pub,
+        _FakeAssignments([_duty(policy="require_operator_review")]),
+        coord,
+        _FakeStatePort(None),
+        events_publisher=pub,
     )
 
     await sched.tick(now=_at(1, 10))
@@ -243,7 +289,9 @@ async def test_missed_window_after_end_enacts_skip():
     coord = _RecordingCoordinator()
     pub = _RecordingPublisher()
     sched = DutyScheduler(
-        _FakeAssignments([_duty(policy="skip")]), coord, _FakeStatePort(None),
+        _FakeAssignments([_duty(policy="skip")]),
+        coord,
+        _FakeStatePort(None),
         events_publisher=pub,
     )
 

@@ -55,5 +55,19 @@ class AssignmentPort(ABC):
         """
 
     @abstractmethod
+    async def list_assignments_to_close(self, now: datetime) -> list[Assignment]:
+        """Return duty assignments whose serving agent should return to ambient.
+
+        A duty assignment where an agent is currently in `mode = 'duty'` bound to
+        it (`current_assignment_ref`) and whose window has fully ended:
+        `now >= window_end + reserve_after_window`. This is the close-sweep the
+        scheduler (§2.4) uses for windows that leave the active set before a tick
+        can observe `in_reserve_after` — notably hard duty with the default
+        `reserve_after_window = 0`, where the active-set upper bound and the close
+        instant coincide (#226). Disjoint from `list_active_assignments` at the
+        `window_end + reserve_after_window` boundary.
+        """
+
+    @abstractmethod
     async def upsert_assignment(self, assignment: Assignment) -> Assignment:
         """Insert or update `assignment` by `assignment_id`; return it."""

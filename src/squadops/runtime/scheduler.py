@@ -71,10 +71,20 @@ class DutyScheduler:
         """Evaluate all active duty assignments once. Returns transitions requested."""
         at = now if now is not None else self._clock()
         outcomes: list[TransitionOutcome] = []
+        # Pass 1: assignments currently in the active span — open, late-open per
+        # MissedWindowPolicy, or close (when reserve_after keeps them active past
+        # window_end so the tick sees in_reserve_after).
         for assignment in await self._assignments.list_active_assignments(at):
             if assignment.assignment_type != "duty":
                 continue  # reserve / cycle_eligibility don't drive mode transitions
             outcome = await self._evaluate(assignment, at)
+            if outcome is not None:
+                outcomes.append(outcome)
+        # Pass 2: close-sweep for windows that left the active set before a tick
+        # could observe in_reserve_after — an agent still in duty whose window has
+        # fully ended (notably reserve_after = 0; #226). Disjoint from pass 1.
+        for assignment in await self._assignments.list_assignments_to_close(at):
+            outcome = await self._close(assignment)
             if outcome is not None:
                 outcomes.append(outcome)
         return outcomes
