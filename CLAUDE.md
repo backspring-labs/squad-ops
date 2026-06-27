@@ -205,12 +205,19 @@ python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature
 **Proactive guidance**: If you observe a workflow or code best practice being bypassed, call it out early — don't wait to be asked. Examples:
 - Workflow: developing on main instead of a feature branch, skipping tests, hardcoding secrets
 - Code structure: copy-pasted logic that should be a shared helper, inconsistent patterns across similar modules, missing registry updates when adding new entries, constants duplicated across files instead of single-sourced
+- Cross-cutting surface drift: adding a new HTTP route prefix, API error shape, event type, or `SQUADOPS__*` config-var convention that diverges from the existing standard — flag it and conform; never justify a new variant by "it doesn't collide" or "it's easy" (this is exactly how the runtime-api drifted into 4 URL conventions — see API Conventions below, #218)
 
 ## Repository Rules
 
 **Read-Only Areas**:
 - Never modify `dist/` or generated metadata (`manifest.json`, `agent_info.json`)
 - Version bumps via `scripts/maintainer/version_cli.py` only
+
+**API Conventions** (runtime-api HTTP surface):
+- Before adding or moving any route, read the **whole** existing surface — do not reason only about the neighborhood. Conform to the lane standard; if no standard covers your case, surface the gap and propose it **before** adding (#218).
+- **Lanes:** authenticated, managed REST resources → `/api/v1/<resource>` (default home for anything new). `/health/*` = read-only, unauthenticated operational probes/heartbeats **only** — never a writable business resource (it's the only no-auth lane). `/auth/*` = identity. **Do not add `/api/v2`** — extend v1.
+- A new prefix/variant is a deliberate, justified decision, never a default. "It doesn't collide" is not a justification.
+- Known deviations under cleanup: unversioned `/api/chat`+`/api/agents` (#219); `/health`+`/auth` plain-string error bodies vs the standard `{"error": {...}}` envelope (#218). Don't add to these.
 
 **Structure**:
 - Permanent utilities: `scripts/dev/`
