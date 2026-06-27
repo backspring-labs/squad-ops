@@ -15,7 +15,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from squadops.runtime.models import Assignment, DutyWindow, window_state
+from squadops.runtime.models import (
+    Assignment,
+    DutyWindow,
+    default_reserve_before_window,
+    window_state,
+)
 
 pytestmark = [pytest.mark.domain_runtime]
 
@@ -118,3 +123,19 @@ def test_window_state_rejects_naive_now():
     timezone-blind classification, so a naive datetime must raise."""
     with pytest.raises(TypeError):
         window_state(_assignment(), datetime(2026, 6, 24, 3, 0))  # noqa: DTZ001 — intentional
+
+
+@pytest.mark.parametrize(
+    ("strictness", "expected"),
+    [
+        ("hard", timedelta(minutes=15)),
+        ("soft", timedelta(0)),
+    ],
+)
+def test_default_reserve_before_window(strictness, expected):
+    """Bug class (§2.7 create / §11.4 / D7): the reserve-buffer default is what
+    decides whether an upcoming hard duty gates cycle recruitment. If hard duty
+    defaulted to 0 (or soft to 15m), the §2.5 guard would either never fire or
+    fire spuriously — and the value must be an exact 15-minute timedelta, not
+    just 'truthy', since `window_state` does interval arithmetic with it."""
+    assert default_reserve_before_window(strictness) == expected  # type: ignore[arg-type]

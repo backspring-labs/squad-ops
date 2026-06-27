@@ -17,6 +17,7 @@ from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
 from squadops.ports.events.cycle_event_bus import CycleEventBusPort
 from squadops.ports.llm.provider import LLMPort
+from squadops.ports.runtime.assignments import AssignmentPort
 
 if TYPE_CHECKING:
     from squadops.api.runtime.health_checker import HealthChecker
@@ -40,6 +41,9 @@ _cycle_event_bus_warned: bool = False
 
 # SIP-0075: LLM port for model management endpoints
 _llm_port: LLMPort | None = None
+
+# SIP-0089 §2.7: Assignment port for the assignment REST surface
+_assignment_port: AssignmentPort | None = None
 
 
 def set_auth_ports(
@@ -205,6 +209,28 @@ def get_llm_port() -> LLMPort:
     if _llm_port is None:
         raise RuntimeError("LLMPort not configured")
     return _llm_port
+
+
+# =============================================================================
+# SIP-0089 §2.7: Assignment port
+# =============================================================================
+
+
+def set_assignment_port(port: AssignmentPort) -> None:
+    """Set the AssignmentPort instance for the assignment REST surface."""
+    global _assignment_port
+    _assignment_port = port
+
+
+def get_assignment_port() -> AssignmentPort:
+    """Return the AssignmentPort instance.
+
+    Raises RuntimeError if unconfigured — assignments require a Postgres pool,
+    so a missing port at a route call site is a wiring error, not a no-op.
+    """
+    if _assignment_port is None:
+        raise RuntimeError("AssignmentPort not configured")
+    return _assignment_port
 
 
 # =============================================================================

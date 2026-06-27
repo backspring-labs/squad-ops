@@ -110,6 +110,22 @@ class Assignment:
     active: bool = True
 
 
+def default_reserve_before_window(strictness: Strictness) -> timedelta:
+    """Return the strictness-dependent pre-duty reserve buffer (SIP-0089 §11.4 / D7).
+
+    Hard duty reserves the 15 minutes before its window (cycle recruitment is
+    rejected during that buffer so the agent is free when duty opens); soft duty
+    reserves nothing (the scheduler handles soft recall when the window opens, so
+    there is no pre-duty hold). The trailing `reserve_after_window` default is
+    always zero, so it has no helper — callers pass ``timedelta()``.
+
+    Applied at Assignment creation time (the API create route), never inside the
+    dataclass: per D7 every Assignment carries explicit reserve values, so this
+    only fills the gap when a caller omits them.
+    """
+    return timedelta(minutes=15) if strictness == "hard" else timedelta()
+
+
 def window_state(
     assignment: Assignment,
     now: datetime,

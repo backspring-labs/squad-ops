@@ -22,6 +22,7 @@ if "pytest" not in sys.modules:
 
 from squadops.cli.commands.agent import app as agent_app
 from squadops.cli.commands.artifacts import artifacts_app, baseline_app
+from squadops.cli.commands.assignment import app as assignment_app
 from squadops.cli.commands.auth import auth_app, login, logout
 from squadops.cli.commands.bootstrap import bootstrap
 from squadops.cli.commands.cycles import app as cycles_app
@@ -101,3 +102,4 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(request_profiles_app, name="request-profiles")  # SIP-0074
 app.add_typer(models_app, name="models")  # SIP-0074
 app.add_typer(agent_app, name="agent")  # SIP-0089
+app.add_typer(assignment_app, name="assignment")  # SIP-0089 §2.7
