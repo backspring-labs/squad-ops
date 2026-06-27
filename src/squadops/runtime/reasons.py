@@ -20,3 +20,16 @@ CYCLE_COMPLETED: Final[str] = "cycle_completed"
 
 # Heartbeat-recovery reasons (Phase 1)
 RUNTIME_STATUS_CHANGED_TO_ONLINE: Final[str] = "runtime_status_changed_to_online"
+
+# Transition-rejection reasons (Phase 2 §2.6 — coordinator)
+MISSING_REASON_CODE: Final[str] = "missing_reason_code"
+INVALID_MODE_TRANSITION: Final[str] = "invalid_mode_transition"
+OFFLINE_CANNOT_ENTER_DUTY: Final[str] = "offline_cannot_enter_duty"
+
+# Duty-window scheduling reasons (Phase 2 §2.4 — scheduler)
+DUTY_WINDOW_STARTED_LATE: Final[str] = "duty_window_started_late"
+DUTY_WINDOW_MISSED: Final[str] = "duty_window_missed"
+DUTY_WINDOW_MISSED_OPERATOR_REVIEW: Final[str] = "duty_window_missed_operator_review"
+
+# Cycle recruitment-guard reasons (Phase 2 §2.5 — reserve buffer)
+UPCOMING_HARD_DUTY_WINDOW: Final[str] = "upcoming_hard_duty_window"

@@ -19,3 +19,7 @@ MODE_TRANSITION: Final[str] = "runtime_state.mode_transition"
 # Heartbeat lifecycle (Phase 1)
 HEARTBEAT_INITIALIZED: Final[str] = "runtime_state.heartbeat_initialized"
 HEARTBEAT_RECOVERED: Final[str] = "runtime_state.heartbeat_recovered"
+
+# Assignment window lifecycle (Phase 2 §2.4 — scheduler-emitted, non-transition)
+ASSIGNMENT_WINDOW_SKIPPED: Final[str] = "assignment.window.skipped"
+ASSIGNMENT_WINDOW_REVIEW_REQUIRED: Final[str] = "assignment.window.review_required"

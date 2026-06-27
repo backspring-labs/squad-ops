@@ -337,6 +337,8 @@ No `--watch` flag in v1.1; defer to a follow-up if needed.
 
 Identify the exact cycle recruitment seam in `src/squadops/orchestration/` (or wherever it lives post-1.0.5). Document the file/function in the Phase 2 PR body before coding the reserve-buffer integration.
 
+> **Note (post-SIP-0094):** The reply transport was restructured by SIP-0094 (implemented 2026-06-21) — the per-run `cycle_results_{run_id}` poll loop is gone, replaced by the in-process `ReplyRouter` over per-agent `{agent_id}_replies` queues (`adapters/cycles/reply_router.py`, rewritten `_publish_and_await`). Map the recruitment seam against that current path; do **not** assume the old poll loop. A key thing for the spike to settle: whether recruitment is an explicit orchestration-layer step or implicit at task-dispatch time — that determines where the §2.5 reserve guard attaches.
+
 ### 2.1 Models
 
 In `src/squadops/runtime/models.py`:

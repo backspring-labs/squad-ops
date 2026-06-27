@@ -117,6 +117,11 @@ app.include_router(artifacts_router)
 app.include_router(cycle_request_profiles_router)  # SIP-0074
 app.include_router(models_router)  # SIP-0074
 
+# SIP-0089 §2.7: Assignment routes (versioned resource lane, /api/v1)
+from squadops.api.routes.assignments import router as assignments_router  # noqa: E402
+
+app.include_router(assignments_router)
+
 # Platform health routes (replaces legacy health-check service)
 from squadops.api.routes.platform_health import router as platform_health_router  # noqa: E402
 
@@ -302,6 +307,18 @@ async def _init_cycle_subsystem(config, pool) -> None:
         )
         set_cycle_event_bus(event_bus)
 
+        # SIP-0089 §2.5: wire the reserve-buffer guard live when a Postgres pool
+        # is available (the agent_assignments table lives there, migration 1110).
+        # Without a pool the guard stays unwired and recruitment is never gated.
+        assignment_port = None
+        if pool is not None:
+            from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
+            from squadops.api.runtime.deps import set_assignment_port
+
+            assignment_port = PostgresAssignment(pool)
+            # SIP-0089 §2.7: same adapter backs the assignment REST surface.
+            set_assignment_port(assignment_port)
+
         flow_executor = create_flow_executor(
             "dispatched",
             cycle_registry=cycle_registry,
@@ -314,6 +331,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             workflow_tracker=_workflow_tracker,
             event_bus=event_bus,
             reply_router=_reply_router,
+            assignment_port=assignment_port,
         )
 
         set_cycle_ports(

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,6 +26,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.cycles.pulse_models import CADENCE_BOUNDARY_ID, SuiteOutcome
+from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
@@ -719,6 +720,183 @@ class TestCancellation:
         status_calls = mock_registry.update_run_status.call_args_list
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.CANCELLED in terminal_statuses
+
+
+# ---------------------------------------------------------------------------
+# SIP-0089 §2.5 — reserve-buffer recruitment guard
+# ---------------------------------------------------------------------------
+
+
+class TestReserveBufferGuard:
+    """A participating agent's imminent/active hard duty window defers the run.
+
+    The guard fires after plan generation (the plan names every recruited agent)
+    and before dispatch: on conflict the run is PAUSED (a deferral, resumable via
+    ``squadops runs resume``), no task is published, and the RUN_PAUSED event
+    carries the duty-deferral reason so it is distinguishable from a BLOCKED
+    pause. The opposite bug — a wired guard false-positively blocking a clean
+    run — is guarded by the no-conflict case.
+    """
+
+    @staticmethod
+    def _assignment_port(assignments):
+        port = AsyncMock()
+        port.list_active_assignments.return_value = assignments
+        return port
+
+    @staticmethod
+    def _hard_duty(agent_id):
+        from squadops.runtime.models import Assignment, DutyWindow
+
+        # Window spans a wide range so window_state == "active" at wall-clock now
+        # (the guard reads datetime.now(UTC); this avoids coupling to real time).
+        return Assignment(
+            assignment_id=f"duty-{agent_id}",
+            agent_id=agent_id,
+            assignment_type="duty",
+            assigned_role="support",
+            priority=10,
+            strictness="hard",
+            active_window=DutyWindow(
+                start=datetime(2000, 1, 1, tzinfo=UTC),
+                end=datetime(2100, 1, 1, tzinfo=UTC),
+                timezone="UTC",
+            ),
+            reserve_before_window=timedelta(minutes=15),
+            reserve_after_window=timedelta(minutes=10),
+            recall_policy="graceful",
+            graceful_window=timedelta(minutes=5),
+            missed_window_policy="skip",
+            allowed_off_window_modes=("ambient", "cycle"),
+        )
+
+    def _build(
+        self,
+        *,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        reply_router,
+        cycle,
+        run,
+        event_bus,
+        assignment_port,
+    ):
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.get_run.return_value = run
+        return DispatchedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+            reply_router=reply_router,
+            event_bus=event_bus,
+            assignment_port=assignment_port,
+        )
+
+    async def test_imminent_hard_duty_pauses_run_before_dispatch(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        reply_router,
+        cycle,
+        run,
+    ) -> None:
+        event_bus = MagicMock()
+        # "neo" is a participating agent (development.design step).
+        port = self._assignment_port([self._hard_duty("neo")])
+        executor = self._build(
+            mock_registry=mock_registry,
+            mock_vault=mock_vault,
+            mock_queue=mock_queue,
+            mock_squad_profile=mock_squad_profile,
+            reply_router=reply_router,
+            cycle=cycle,
+            run=run,
+            event_bus=event_bus,
+            assignment_port=port,
+        )
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Deferred, not dispatched.
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[0] == RunStatus.RUNNING
+        assert statuses[-1] == RunStatus.PAUSED
+        assert mock_queue.publish.call_count == 0
+
+        # RUN_PAUSED carries the duty-deferral reason + the blocking agent.
+        paused = [
+            c for c in event_bus.emit.call_args_list if c.args and c.args[0] == EventType.RUN_PAUSED
+        ]
+        assert len(paused) == 1
+        payload = paused[0].kwargs["payload"]
+        assert payload["reason"] == "upcoming_hard_duty_window"
+        assert payload["deferred_for_agent"] == "neo"
+
+    async def test_no_conflicting_assignment_lets_run_proceed(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        reply_router,
+        cycle,
+        run,
+    ) -> None:
+        """Guard wired but the active set is empty → no false positive: the run
+        dispatches all 5 tasks and completes."""
+        event_bus = MagicMock()
+        port = self._assignment_port([])
+        executor = self._build(
+            mock_registry=mock_registry,
+            mock_vault=mock_vault,
+            mock_queue=mock_queue,
+            mock_squad_profile=mock_squad_profile,
+            reply_router=reply_router,
+            cycle=cycle,
+            run=run,
+            event_bus=event_bus,
+            assignment_port=port,
+        )
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"],
+            status="SUCCEEDED",
+            outputs={
+                "summary": "ok",
+                "role": "strat",
+                "artifacts": [
+                    {
+                        "name": "o.md",
+                        "content": "# o",
+                        "media_type": "text/markdown",
+                        "type": "document",
+                    }
+                ],
+            },
+        )
+
+        # NB: asyncio.sleep is intentionally NOT patched here. The per-task
+        # heartbeat is a `while True: await asyncio.sleep(...)` loop; patching
+        # sleep to a non-yielding AsyncMock turns it into a busy-spin that
+        # starves the event loop (the same reason TestSequentialHappyPath can
+        # hang locally). With real sleep, the heartbeat task is created and
+        # cancelled before its first 30s tick, and replies resolve synchronously.
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
+        assert mock_queue.publish.call_count == 5
 
 
 # ---------------------------------------------------------------------------

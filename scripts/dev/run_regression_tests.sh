@@ -28,6 +28,8 @@ REGRESSION_DIRS=(
     "tests/unit/cli/"
     "tests/unit/console/"
     "tests/unit/contracts/"
+    "tests/unit/runtime/"        # SIP-0089 runtime modes/assignments/scheduler (#220)
+    "tests/unit/architecture/"   # D26 forbidden-imports + future architecture guards (#220)
 )
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

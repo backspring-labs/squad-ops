@@ -45,6 +45,7 @@ from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
+from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult
 from squadops.telemetry.context import use_correlation_context, use_run_ids
 from squadops.telemetry.models import CorrelationContext
@@ -62,6 +63,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.squad_profile import SquadProfilePort
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
+    from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,20 @@ class _CancellationError(Exception):
 
 class _PausedError(Exception):
     """Internal: run paused due to BLOCKED outcome."""
+
+
+class _RecruitmentRejectedError(Exception):
+    """Internal: cycle recruitment deferred (SIP-0089 §2.5/§11.4).
+
+    A participating agent is committed to — or about to start — a hard duty
+    window, so the run is paused (a *deferral*, not a failure). Re-attempt via
+    ``squadops runs resume`` once the window closes.
+    """
+
+    def __init__(self, agent_id: str | None, reason: str | None) -> None:
+        super().__init__(f"recruitment rejected for agent {agent_id}: {reason}")
+        self.agent_id = agent_id
+        self.reason = reason
 
 
 class DispatchedFlowExecutor(FlowExecutionPort):
@@ -101,6 +117,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         workflow_tracker: WorkflowTrackerPort | None = None,
         event_bus: CycleEventBusPort | None = None,
         reply_router: ReplyRouter | None = None,
+        assignment_port: AssignmentPort | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
@@ -111,6 +128,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         self._task_timeout = task_timeout
         self._llm_observability = llm_observability
         self._workflow_tracker = workflow_tracker
+        # SIP-0089 §2.5: reserve-buffer guard dependency. Opt-in — when None,
+        # the guard is skipped entirely (safe no-op until an AssignmentPort is
+        # wired in the composition root).
+        self._assignment_port = assignment_port
         self._cancelled: set[str] = set()
 
         # SIP-0077: Cycle event bus (defaults to NoOp if not provided)
@@ -182,6 +203,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             implementation_plan = await self._load_plan_for_run(cycle, run)
 
             plan = generate_task_plan(cycle, run, profile, plan=implementation_plan)
+
+            # SIP-0089 §2.5: reserve-buffer guard. The plan now names every
+            # agent this run would recruit. If one is committed to — or about to
+            # start — a hard duty window (§11.4), defer the run rather than pull
+            # the agent into cycle work. Opt-in: skipped when no AssignmentPort
+            # is wired. Decision is pure (time-injected) and lives in the runtime
+            # domain; we only enforce it here.
+            if self._assignment_port is not None:
+                guard_now = datetime.now(UTC)
+                active_assignments = await self._assignment_port.list_active_assignments(guard_now)
+                decision = reserve_buffer_decision(
+                    active_assignments,
+                    {e.agent_id for e in plan},
+                    guard_now,
+                )
+                if not decision.allowed:
+                    raise _RecruitmentRejectedError(decision.blocking_agent_id, decision.reason)
 
             # Build-only validation (D6): require plan_artifact_refs
             include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
@@ -283,6 +321,27 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 context={"cycle_id": cycle_id, "run_id": run_id},
             )
             logger.info("Run %s cancelled", run_id)
+
+        except _RecruitmentRejectedError as exc:
+            # SIP-0089 §2.5: deferral, not failure. PAUSED has a first-class
+            # resume affordance (squadops runs resume → RUN_RESUMED); the reason
+            # rides in the payload so operators can distinguish a duty deferral
+            # from a BLOCKED-outcome pause.
+            terminal_status = "PAUSED"
+            await self._safe_transition(run_id, RunStatus.PAUSED)
+            self._cycle_event_bus.emit(
+                EventType.RUN_PAUSED,
+                entity_type="run",
+                entity_id=run_id,
+                context={"cycle_id": cycle_id, "run_id": run_id},
+                payload={"reason": exc.reason, "deferred_for_agent": exc.agent_id},
+            )
+            logger.info(
+                "Run %s paused — recruitment deferred (agent=%s, reason=%s)",
+                run_id,
+                exc.agent_id,
+                exc.reason,
+            )
 
         except _PausedError:
             terminal_status = "PAUSED"
