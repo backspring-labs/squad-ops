@@ -189,6 +189,11 @@ services:
       # LLM (SIP-0066: cycle task handlers)
       SQUADOPS__LLM__MODEL: "llama3.1:8b"
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      # Duty-transition scheduler (SIP-0089 §2.4). runtime-api is the single
+      # central writer of agent mode (D16) — keep this enabled on exactly one
+      # runtime-api instance (no leader election yet).
+      SQUADOPS__RUNTIME__SCHEDULER__ENABLED: "true"
+      SQUADOPS__RUNTIME__SCHEDULER__POLL_INTERVAL_SECONDS: "10"
     volumes:
       - ./data/artifacts:/app/data/artifacts
     networks:
