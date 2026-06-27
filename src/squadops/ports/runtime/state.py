@@ -57,3 +57,18 @@ class RuntimeStatePort(ABC):
 
         Calls `ensure_state` first if no row exists.
         """
+
+    @abstractmethod
+    async def mark_offline(self, agent_id: str) -> AgentRuntimeState | None:
+        """Mark a timed-out agent `offline` (health-only, non-authoritative per D17).
+
+        Sets `runtime_status = 'offline'` and nothing else: it must NOT touch
+        `last_heartbeat_at` (a dead agent's last heartbeat is meaningful) nor any
+        coordinator-owned field (`mode`, `focus`, `current_assignment_ref`,
+        `current_runtime_activity_id`). Unlike `update_heartbeat` it never creates
+        a row — an agent that never heartbeated has no runtime state to mark.
+
+        Returns the updated row, or `None` when no row exists or it was already
+        `offline` (idempotent no-op). Used by the reconciliation loop so the
+        coordinator's offline→duty rejection (§11.3) sees a crashed agent.
+        """

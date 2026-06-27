@@ -129,6 +129,23 @@ class PostgresRuntimeState(RuntimeStatePort):
             )
         return _row_to_state(row)
 
+    async def mark_offline(self, agent_id: str) -> AgentRuntimeState | None:
+        """Set runtime_status='offline' only — never bump last_heartbeat_at or
+        coordinator-owned fields (D17/D16), and never INSERT (an agent that never
+        heartbeated has no row). The `runtime_status != 'offline'` guard makes
+        repeated reconciliation ticks idempotent (already-offline → no row → None).
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "UPDATE agent_runtime_state SET runtime_status = 'offline', updated_at = now() "
+                "WHERE agent_id = $1 AND runtime_status != 'offline' "
+                "RETURNING agent_id, mode, runtime_status, focus, "
+                "current_runtime_activity_id, interruptibility, "
+                "last_heartbeat_at, current_assignment_ref",
+                agent_id,
+            )
+        return _row_to_state(row) if row else None
+
 
 def _row_to_state(row: asyncpg.Record) -> AgentRuntimeState:
     return AgentRuntimeState(
