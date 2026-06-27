@@ -108,6 +108,31 @@ async def test_get_assignment_returns_none_when_absent():
     assert await adapter.get_assignment("missing") is None
 
 
+async def test_list_assignments_for_agent_returns_all_of_an_agents_assignments():
+    """Bug class (§10.2 cardinality — an agent may hold MULTIPLE assignments): a
+    query that collapsed to one row per agent (e.g. fetchrow, DISTINCT ON
+    agent_id, or a stray LIMIT) would silently hide an agent's other commitments,
+    so the scheduler would never open the second window. Assert both rows survive,
+    keyed to the same agent, filtered by agent_id and ordered by window_start."""
+    later_start = WIN_START + timedelta(days=1)
+    conn = AsyncMock()
+    conn.fetch.return_value = [
+        _row(assignment_id="a-1"),
+        _row(assignment_id="a-2", window_start=later_start),
+    ]
+    adapter = PostgresAssignment(_make_pool(conn))
+
+    result = await adapter.list_assignments_for_agent("max")
+
+    assert [a.assignment_id for a in result] == ["a-1", "a-2"]
+    assert {a.agent_id for a in result} == {"max"}
+    sql, *args = conn.fetch.call_args.args
+    assert "WHERE agent_id = $1" in sql
+    assert "ORDER BY window_start" in sql
+    assert "LIMIT" not in sql.upper()  # never truncate an agent's commitments
+    assert args == ["max"]
+
+
 async def test_list_active_assignments_predicate_and_binding():
     """Bug class: the active set must be `active = TRUE` AND now inside the full
     reserve span [start - before, end + after). Dropping either buffer term would
