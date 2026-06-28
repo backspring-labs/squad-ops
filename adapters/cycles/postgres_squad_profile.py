@@ -11,6 +11,7 @@ import logging
 
 import asyncpg
 
+from adapters.jsonb import parse_jsonb
 from squadops.cycles.lifecycle import compute_profile_snapshot_hash
 from squadops.cycles.models import (
     ActiveProfileDeletionError,
@@ -210,13 +211,6 @@ class PostgresSquadProfile(SquadProfilePort):
     # --- Helpers ---
 
     @staticmethod
-    def _parse_jsonb(value):
-        """Decode a JSONB column value (asyncpg returns str by default)."""
-        if isinstance(value, str):
-            return json.loads(value)
-        return value
-
-    @staticmethod
     def _agents_to_dicts(agents: tuple[AgentProfileEntry, ...]) -> list[dict]:
         """Serialize AgentProfileEntry tuples to list of dicts for JSONB."""
         return [
@@ -232,7 +226,7 @@ class PostgresSquadProfile(SquadProfilePort):
 
     def _row_to_profile(self, row: asyncpg.Record) -> SquadProfile:
         """Reconstruct SquadProfile from asyncpg Record."""
-        agents_data = self._parse_jsonb(row["agents"])
+        agents_data = parse_jsonb(row["agents"])
         agents = tuple(
             AgentProfileEntry(
                 agent_id=a["agent_id"],

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import asyncpg
 
+from adapters.jsonb import parse_jsonb
 from squadops.comms.models import ChatMessage, ChatSession, SessionNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -150,15 +151,6 @@ class ChatRepository:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _parse_jsonb(value: Any) -> dict:
-        """Decode a JSONB column value (asyncpg returns strings)."""
-        if isinstance(value, str):
-            return json.loads(value)
-        if value is None:
-            return {}
-        return value
-
     def _assemble_session(self, row: Any) -> ChatSession:
         """Reconstruct a ChatSession from a database row."""
         return ChatSession(
@@ -167,7 +159,9 @@ class ChatRepository:
             user_id=row["user_id"],
             started_at=row["started_at"],
             ended_at=row["ended_at"],
-            metadata=self._parse_jsonb(row["metadata"]),
+            # `or {}`: a nullable metadata column decodes to None — coerce to {}
+            # (preserved from the old _parse_jsonb None branch).
+            metadata=parse_jsonb(row["metadata"]) or {},
         )
 
     def _assemble_message(self, row: Any) -> ChatMessage:
@@ -178,5 +172,5 @@ class ChatRepository:
             role=row["role"],
             content=row["content"],
             created_at=row["created_at"],
-            metadata=self._parse_jsonb(row["metadata"]),
+            metadata=parse_jsonb(row["metadata"]) or {},
         )
