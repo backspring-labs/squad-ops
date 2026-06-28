@@ -6,8 +6,9 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.dtos import (
     CheckpointSummaryResponse,
     GateDecisionRequest,
@@ -15,6 +16,7 @@ from squadops.api.routes.cycles.dtos import (
 )
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
+from squadops.auth.models import Scope
 from squadops.cycles.lifecycle import compute_config_hash, resolve_cycle_status
 from squadops.cycles.models import (
     CycleError,
@@ -32,7 +34,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles/{cycle_id}/runs", tags=["runs"])
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def create_run(project_id: str, cycle_id: str, workload_type: str | None = None):
     """Create a new Run (retry) for an existing Cycle."""
     from squadops.api.runtime.deps import get_cycle_registry
@@ -82,7 +84,7 @@ async def create_run(project_id: str, cycle_id: str, workload_type: str | None =
         raise handle_cycle_error(e) from e
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_runs(project_id: str, cycle_id: str, workload_type: str | None = None):
     from squadops.api.runtime.deps import get_cycle_registry
 
@@ -94,7 +96,7 @@ async def list_runs(project_id: str, cycle_id: str, workload_type: str | None = 
         raise handle_cycle_error(e) from e
 
 
-@router.get("/{run_id}")
+@router.get("/{run_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_run(project_id: str, cycle_id: str, run_id: str):
     from squadops.api.runtime.deps import get_cycle_registry
 
@@ -106,7 +108,7 @@ async def get_run(project_id: str, cycle_id: str, run_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.post("/{run_id}/cancel")
+@router.post("/{run_id}/cancel", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def cancel_run(project_id: str, cycle_id: str, run_id: str):
     from squadops.api.runtime.deps import get_cycle_registry
 
@@ -128,7 +130,9 @@ async def cancel_run(project_id: str, cycle_id: str, run_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.post("/{run_id}/gates/{gate_name}")
+@router.post(
+    "/{run_id}/gates/{gate_name}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))]
+)
 async def gate_decision(
     project_id: str,
     cycle_id: str,
@@ -182,7 +186,7 @@ async def gate_decision(
         raise handle_cycle_error(e) from e
 
 
-@router.post("/{run_id}/resume")
+@router.post("/{run_id}/resume", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def resume_run(
     project_id: str,
     cycle_id: str,
@@ -247,7 +251,7 @@ async def resume_run(
         raise handle_cycle_error(e) from e
 
 
-@router.get("/{run_id}/checkpoints")
+@router.get("/{run_id}/checkpoints", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_checkpoints(project_id: str, cycle_id: str, run_id: str):
     """List checkpoints for a run (SIP-0079)."""
     from squadops.api.runtime.deps import get_cycle_registry

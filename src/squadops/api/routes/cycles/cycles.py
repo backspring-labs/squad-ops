@@ -5,11 +5,13 @@ Cycle API routes (SIP-0064 §9.3).
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends
 
+from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.dtos import CycleCreateRequest, CycleCreateResponse
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import cycle_to_response
+from squadops.auth.models import Scope
 from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import (
     Cycle,
@@ -23,7 +25,7 @@ from squadops.cycles.models import (
 router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles", tags=["cycles"])
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def create_cycle(
     project_id: str, body: CycleCreateRequest, background_tasks: BackgroundTasks
 ):
@@ -144,7 +146,7 @@ async def create_cycle(
         raise handle_cycle_error(e) from e
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_cycles(project_id: str, status: CycleStatus | None = None):
     from squadops.api.runtime.deps import get_cycle_registry
 
@@ -160,7 +162,7 @@ async def list_cycles(project_id: str, status: CycleStatus | None = None):
         raise handle_cycle_error(e) from e
 
 
-@router.get("/{cycle_id}")
+@router.get("/{cycle_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_cycle(project_id: str, cycle_id: str):
     from squadops.api.runtime.deps import get_cycle_registry
 
@@ -173,7 +175,7 @@ async def get_cycle(project_id: str, cycle_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.post("/{cycle_id}/cancel")
+@router.post("/{cycle_id}/cancel", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def cancel_cycle(project_id: str, cycle_id: str):
     from squadops.api.runtime.deps import get_cycle_registry
 

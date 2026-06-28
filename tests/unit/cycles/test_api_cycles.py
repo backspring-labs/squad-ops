@@ -270,3 +270,77 @@ class TestCancelCycle:
         assert resp.status_code == 200
         assert resp.json()["status"] == "cancelled"
         assert resp.json()["prefect_flow_runs_cancelled"] == 0
+
+
+class TestCycleRouteScopeEnforcement:
+    """#150: with auth enabled, cycle routes enforce cycles:read/write.
+
+    Proves the require_scopes guards are actually wired onto the real routes
+    (not merely that require_scopes works in isolation) — a request with an
+    insufficient scope is rejected before the handler runs."""
+
+    def _auth_app(self, identity):
+        from datetime import timedelta
+
+        from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
+        from squadops.auth.models import TokenClaims
+
+        now = datetime.now(tz=UTC)
+        claims = TokenClaims(
+            subject=identity.user_id,
+            issuer="http://kc/realms/squadops",
+            audience="squadops-runtime",
+            expires_at=now + timedelta(hours=1),
+            issued_at=now,
+            roles=identity.roles,
+            scopes=identity.scopes,
+        )
+        auth_port = AsyncMock()
+        auth_port.validate_token = AsyncMock(return_value=claims)
+        auth_port.resolve_identity = AsyncMock(return_value=identity)
+
+        app = FastAPI()
+        app.add_middleware(
+            AuthMiddleware, auth_port=auth_port, provider="keycloak", expose_docs=False
+        )
+        app.add_middleware(RequestIDMiddleware)
+        app.include_router(router)
+        return app
+
+    def test_write_route_forbidden_without_write_scope(self):
+        """A read-only identity hitting a write route (cancel) gets 403."""
+        from unittest.mock import patch
+
+        from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+        from squadops.auth.models import Identity, Role, Scope
+
+        identity = Identity(
+            user_id="reader",
+            display_name="Reader",
+            roles=(Role.VIEWER,),
+            scopes=(Scope.CYCLES_READ,),
+        )
+        app = self._auth_app(identity)
+        with patch("squadops.api.runtime.deps.get_authz_port", return_value=KeycloakAuthzAdapter()):
+            client = TestClient(app)
+            resp = client.post(
+                "/api/v1/projects/hello_squad/cycles/cyc_001/cancel",
+                headers={"Authorization": "Bearer t"},
+            )
+        assert resp.status_code == 403
+
+    def test_read_route_requires_authentication_when_auth_on(self):
+        """Auth enabled but no token → 401 even on a read route."""
+        from unittest.mock import patch
+
+        from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+        from squadops.auth.models import Identity, Role, Scope
+
+        identity = Identity(
+            user_id="x", display_name="x", roles=(Role.VIEWER,), scopes=(Scope.CYCLES_READ,)
+        )
+        app = self._auth_app(identity)
+        with patch("squadops.api.runtime.deps.get_authz_port", return_value=KeycloakAuthzAdapter()):
+            client = TestClient(app)
+            resp = client.get("/api/v1/projects/hello_squad/cycles", headers={})
+        assert resp.status_code == 401
