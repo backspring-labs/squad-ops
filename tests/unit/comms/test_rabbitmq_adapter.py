@@ -197,6 +197,65 @@ class TestConsumeBlockingErrorWrapping:
         assert "Channel was not opened" in str(exc_info.value)
 
 
+class TestPublishRetry:
+    """#245: ``publish()`` must survive a connection/channel drop inside
+    ``connect_robust``'s reconnect window — bounded retry with backoff, dropping
+    the stale Queue handle between tries (mirrors the consume-side recovery) —
+    instead of failing the first attempt and losing the message."""
+
+    @staticmethod
+    def _publish_adapter(publish_side_effect) -> tuple[RabbitMQAdapter, MagicMock, MagicMock]:
+        """Adapter whose only live transport is ``default_exchange.publish``;
+        connection/declare/invalidate are stubbed so no broker is needed."""
+        ch = MagicMock()
+        ch.is_closed = False
+        ch.default_exchange.publish = AsyncMock(side_effect=publish_side_effect)
+        adapter = _make_adapter_with_channel(ch)
+
+        queue = MagicMock()
+        queue.name = "comms.work"
+        adapter._ensure_connection = AsyncMock()
+        adapter._get_queue = AsyncMock(return_value=queue)
+        adapter.invalidate_queue = AsyncMock()
+        return adapter, ch, queue
+
+    async def test_recovers_after_transient_channel_drop(self, monkeypatch) -> None:
+        """Regression: a publish that hit a dropped channel raised ``QueueError``
+        with no retry, losing the message. It must invalidate the stale queue,
+        reconnect, and re-publish — succeeding on the second attempt."""
+        monkeypatch.setattr(rabbitmq_mod.asyncio, "sleep", AsyncMock())
+        adapter, ch, _ = self._publish_adapter([RuntimeError("Channel was not opened"), None])
+
+        await adapter.publish("work", '{"x": 1}')
+
+        # Two transport sends: the dropped one, then the recovered one.
+        assert ch.default_exchange.publish.await_count == 2
+        # Stale handle dropped exactly once (after the failed attempt).
+        adapter.invalidate_queue.assert_awaited_once_with("work")
+
+    async def test_raises_queue_error_after_exhausting_retries(self, monkeypatch) -> None:
+        """A persistent broker failure is retried the bounded number of times,
+        then surfaced as a typed ``QueueError`` chaining the underlying cause —
+        never an infinite loop, never a leaky aio_pika exception."""
+        monkeypatch.setattr(rabbitmq_mod.asyncio, "sleep", AsyncMock())
+        adapter, ch, _ = self._publish_adapter(RuntimeError("broker down"))
+
+        with pytest.raises(QueueError, match="broker down"):
+            await adapter.publish("work", "{}")
+
+        assert ch.default_exchange.publish.await_count == rabbitmq_mod._PUBLISH_MAX_ATTEMPTS
+
+    async def test_first_attempt_success_does_not_retry(self) -> None:
+        """The happy path must publish exactly once and never invalidate the
+        queue — guards against a regression where the loop always retries."""
+        adapter, ch, _ = self._publish_adapter([None])
+
+        await adapter.publish("work", "{}")
+
+        ch.default_exchange.publish.assert_awaited_once()
+        adapter.invalidate_queue.assert_not_awaited()
+
+
 class _FakeIncoming:
     """Stand-in for an aio_pika incoming message with a trackable ack()."""
 
