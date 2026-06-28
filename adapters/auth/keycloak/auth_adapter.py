@@ -20,6 +20,7 @@ from squadops.auth.models import (
     IdentityType,
     TokenClaims,
     TokenValidationError,
+    scopes_for_roles,
 )
 from squadops.ports.auth.authentication import AuthPort
 
@@ -188,11 +189,17 @@ class KeycloakAuthAdapter(AuthPort):
             else IdentityType.HUMAN
         )
 
+        # #270: effective scopes = OAuth scopes on the token ∪ scopes implied by
+        # the realm roles. Keycloak issues roles, not the fine-grained cycles:*
+        # scopes #150 enforces; this bridges the two so a role-bearing token
+        # satisfies the scope-gated routes without a Keycloak change.
+        effective_scopes = tuple(sorted(set(claims.scopes) | scopes_for_roles(claims.roles)))
+
         return Identity(
             user_id=claims.subject,
             display_name=display_name,
             roles=claims.roles,
-            scopes=claims.scopes,
+            scopes=effective_scopes,
             identity_type=identity_type,
         )
 
