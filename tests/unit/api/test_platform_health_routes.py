@@ -198,3 +198,39 @@ class TestUpdateAgentStatus:
             },
         )
         assert resp.status_code == 404
+
+
+class TestAgentCurrentActivity:
+    """SIP-0089 §4.7: GET /health/agents/{id}/activity."""
+
+    def test_activity_found_returns_200(self, client, mock_health_checker):
+        """Bug class: a working agent's current activity must be served as 200 with
+        the activity body (the read the CLI/console render)."""
+        mock_health_checker.get_current_activity = AsyncMock(
+            return_value={"runtime_activity_id": "act-1", "state": "running", "mode": "cycle"}
+        )
+
+        resp = client.get("/health/agents/max/activity")
+
+        assert resp.status_code == 200
+        assert resp.json()["runtime_activity_id"] == "act-1"
+        # agent_id is lower-cased to match how rows are stored.
+        mock_health_checker.get_current_activity.assert_awaited_once_with("max")
+
+    def test_activity_absent_returns_404(self, client, mock_health_checker):
+        """Bug class: an idle agent (no active activity) must be a clean 404, which
+        the CLI maps to 'idle' — not a 200 with a null body or a 500."""
+        mock_health_checker.get_current_activity = AsyncMock(return_value=None)
+
+        resp = client.get("/health/agents/idle/activity")
+
+        assert resp.status_code == 404
+
+    def test_activity_id_is_lowercased(self, client, mock_health_checker):
+        """Bug class: rows are stored lower-cased; an upper-case path arg must be
+        normalized or it would 404 against a row that exists."""
+        mock_health_checker.get_current_activity = AsyncMock(return_value=None)
+
+        client.get("/health/agents/MAX/activity")
+
+        mock_health_checker.get_current_activity.assert_awaited_once_with("max")

@@ -21,9 +21,14 @@ Phase 3 (§3.4) wires FocusLease arbitration: entering a focus-bearing mode
 step 4 precedes step 6), and **lease ≠ mode** — a granted lease never changes
 `RuntimeMode`; the upsert is authoritative. Phase 3 uses best-effort compensation
 (a lease acquired for a transition is rolled back if the mode write fails — no
-stranded leases); D25's single-Postgres-transaction wrapping of the lease + mode
-writes lands in Phase 4 (§4.5) alongside RuntimeActivity. With `focus_lease=None`
-the coordinator behaves exactly as in Phase 2.
+stranded leases). With `focus_lease=None` the coordinator behaves as in Phase 2.
+
+Phase 4 (§4.5, thin v1.1 seam) wires a RuntimeActivity action: a mode change
+orphans any activity bound to the previous mode, so it is aborted best-effort
+*after* the mode write. The full §4.5 transition order (activity before mode) and
+D25's single-Postgres-transaction wrapping of lease+activity+mode are deferred to
+#244 (gated on recruitment #233) — in v1.1 the path is unexercised. With
+`activity=None` there is no activity bookkeeping.
 
 On apply, a canonical mode-transition event plus the relevant `focus_lease.*`
 events are emitted, each with a *separate* reason code (D14/D18) through the
@@ -33,10 +38,12 @@ injected `RuntimeEventPublisher`.
 from __future__ import annotations
 
 import dataclasses
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
+from squadops.ports.runtime.activity import RuntimeActivityPort
 from squadops.ports.runtime.event_publisher import RuntimeEventPublisher
 from squadops.ports.runtime.focus_lease import FocusLeasePort
 from squadops.ports.runtime.state import RuntimeStatePort
@@ -48,6 +55,8 @@ from squadops.runtime.models import (
     OwnerType,
     RuntimeMode,
 )
+
+logger = logging.getLogger(__name__)
 
 RequesterKind = Literal["scheduler", "coordinator", "cli", "external"]
 
@@ -123,11 +132,14 @@ class RuntimeCoordinator:
         *,
         events_publisher: RuntimeEventPublisher | None = None,
         focus_lease: FocusLeasePort | None = None,
+        activity: RuntimeActivityPort | None = None,
     ) -> None:
         self._state = state
         self._events = events_publisher
         # FocusLease arbitration (§3.4). None → Phase-2 behavior (no lease gate).
         self._focus_lease = focus_lease
+        # RuntimeActivity seam (§4.5, thin v1.1). None → no activity bookkeeping.
+        self._activity = activity
         # D12 idempotency ledger. In-process for v1.1 (single in-process scheduler);
         # durable persistence is a refinement for the SIP-0091 Temporal adapter.
         self._applied_keys: set[str] = set()
@@ -231,7 +243,7 @@ class RuntimeCoordinator:
 
         # (2/4 §4.5) FocusLease arbitration before the mode write. A rejected
         # lease blocks the transition (prior mode stays authoritative).
-        # (3) RuntimeActivity decision — Phase 4 wires pause/resume/abort here.
+        # (5 §4.5) the RuntimeActivity action runs post-write — see below.
         arb: _LeaseArbitration | None = None
         if self._focus_lease is not None:
             arb = await self._arbitrate_lease(agent_id, current, target_mode, owner_ref)
@@ -276,6 +288,13 @@ class RuntimeCoordinator:
             self._emit_arbitration_events(
                 arb, agent_id, from_mode=current, to_mode=target_mode, owner_ref=owner_ref
             )
+
+        # (5 §4.5, thin v1.1 seam) RuntimeActivity action: a mode change orphans any
+        # activity bound to the *previous* mode — abort it so it doesn't linger as
+        # the agent's "current work". Best-effort, post-write: an activity is
+        # observability, never a reason to fail an applied transition.
+        if self._activity is not None:
+            await self._abort_orphaned_activity(agent_id, target_mode)
 
         # (7 D14/D18) emit the canonical mode-transition event with its own reason.
         if self._events is not None:
@@ -441,6 +460,48 @@ class RuntimeCoordinator:
                 from_mode=from_mode,
                 to_mode=to_mode,
                 owner_ref=owner_ref,
+            )
+
+    async def _abort_orphaned_activity(self, agent_id: str, target_mode: str) -> None:
+        """Abort the agent's current activity if a mode change orphaned it (§4.5).
+
+        An activity belongs to a mode; once the agent leaves that mode the activity
+        can't continue, so it's aborted. An activity already in the target mode
+        (e.g. a handler started it for the mode we're entering) is left alone.
+        Wholly best-effort: any failure is logged, never propagated — observability
+        must not break an applied transition. `update_state`'s active-only guard
+        makes this race-safe against the owning handler terminalizing first.
+
+        NOTE (§4.5/D25): in v1.1 this path is effectively unexercised — scheduler
+        ambient↔duty transitions have no live activity, and cycle activities are
+        owned/terminated by their handler (§4.4). The §4.5 single-Postgres-transaction
+        wrapping of lease+activity+mode (D25) is therefore deferred to #244 (gated
+        on recruitment #233); v1.1 keeps the best-effort post-write abort here.
+        """
+        assert self._activity is not None  # guarded by the caller
+        try:
+            current = await self._activity.get_current_activity(agent_id)
+            if current is None or current.mode == target_mode:
+                return
+            aborted = await self._activity.abort_activity(
+                current.runtime_activity_id, reasons.ACTIVITY_PREEMPTED_BY_MODE_CHANGE
+            )
+            if aborted is not None and self._events is not None:
+                self._events.emit(
+                    events.RUNTIME_ACTIVITY_ABORTED,
+                    agent_id=agent_id,
+                    reason_code=reasons.ACTIVITY_PREEMPTED_BY_MODE_CHANGE,
+                    payload={
+                        "runtime_activity_id": current.runtime_activity_id,
+                        "from_mode": current.mode,
+                        "to_mode": target_mode,
+                    },
+                )
+        except Exception:
+            logger.warning(
+                "best-effort abort of orphaned activity failed for agent %s",
+                agent_id,
+                exc_info=True,
             )
 
 

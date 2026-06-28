@@ -313,3 +313,63 @@ class TestReconcileOnce:
         await checker._reconcile_once()
 
         runtime_state.mark_offline.assert_not_awaited()
+
+
+class TestGetCurrentActivity:
+    """SIP-0089 §4.7: HealthChecker.get_current_activity maps the dataclass to a
+    JSON-serialisable dict for the route, or None."""
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_activity_port(self, mock_config):
+        """Bug class: with no RuntimeActivityPort wired, the read must yield None
+        (→ 404 idle), not raise."""
+        checker = HealthChecker(pg_pool=MagicMock(), redis_client=None, config=mock_config)
+        assert await checker.get_current_activity("max") is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_agent_idle(self, mock_config):
+        """Bug class: an idle agent (port returns None) must surface as None."""
+        port = AsyncMock()
+        port.get_current_activity.return_value = None
+        checker = HealthChecker(
+            pg_pool=MagicMock(), redis_client=None, config=mock_config, activity=port
+        )
+        assert await checker.get_current_activity("max") is None
+
+    @pytest.mark.asyncio
+    async def test_maps_activity_with_iso_timestamps(self, mock_config):
+        """Bug class: a mapper that drops a field or emits a raw datetime would
+        break the JSON route. Assert key fields + ISO-formatted started_at."""
+        from squadops.runtime.models import RuntimeActivity
+
+        started = datetime(2026, 6, 28, 12, 0, 0)
+        port = AsyncMock()
+        port.get_current_activity.return_value = RuntimeActivity(
+            runtime_activity_id="act-9",
+            agent_id="max",
+            mode="cycle",
+            activity_type="strategy.analyze_prd",
+            goal="Analyze the PRD",
+            priority=0,
+            state="running",
+            source_kind="cycle_task",
+            source_ref="t1",
+            cycle_id="cyc-1",
+            workload_id=None,
+            task_id="t1",
+            can_pause=False,
+            can_resume=False,
+            can_abort=True,
+            started_at=started,
+        )
+        checker = HealthChecker(
+            pg_pool=MagicMock(), redis_client=None, config=mock_config, activity=port
+        )
+
+        result = await checker.get_current_activity("max")
+
+        assert result["runtime_activity_id"] == "act-9"
+        assert result["state"] == "running" and result["mode"] == "cycle"
+        assert result["task_id"] == "t1" and result["cycle_id"] == "cyc-1"
+        assert result["started_at"] == started.isoformat()
+        assert result["ended_at"] is None

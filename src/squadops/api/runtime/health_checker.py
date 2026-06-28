@@ -19,6 +19,7 @@ import httpx
 import yaml
 
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.ports.runtime.activity import RuntimeActivityPort
 from squadops.ports.runtime.state import RuntimeStatePort
 from squadops.runtime.lifecycle_status import runtime_status_from_lifecycle
 
@@ -35,11 +36,13 @@ class HealthChecker:
         redis_client: Any | None = None,
         config: Any,
         runtime_state: RuntimeStatePort | None = None,
+        activity: RuntimeActivityPort | None = None,
     ) -> None:
         self.pg_pool = pg_pool
         self.redis_client = redis_client
         self._config = config
         self._runtime_state = runtime_state
+        self._activity = activity
         self._instances_cache: dict[str, dict[str, Any]] | None = None
         self._instances_cache_mtime: float | None = None
         self._reconciliation_running = True
@@ -252,6 +255,39 @@ class HealthChecker:
                 state.last_heartbeat_at.isoformat() if state.last_heartbeat_at else None
             ),
             "current_assignment_ref": state.current_assignment_ref,
+        }
+
+    async def get_current_activity(self, agent_id: str) -> dict[str, Any] | None:
+        """Return the agent's current (active) RuntimeActivity as a dict, or None.
+
+        Pure read (SIP-0089 §4.7); never mutates. Returns a JSON-serialisable dict
+        so the FastAPI route stays dataclass-agnostic. `None` means either no
+        activity port is wired or the agent has no active activity.
+        """
+        if self._activity is None:
+            return None
+        activity = await self._activity.get_current_activity(agent_id)
+        if activity is None:
+            return None
+        return {
+            "runtime_activity_id": activity.runtime_activity_id,
+            "agent_id": activity.agent_id,
+            "mode": activity.mode,
+            "activity_type": activity.activity_type,
+            "goal": activity.goal,
+            "priority": activity.priority,
+            "state": activity.state,
+            "source_kind": activity.source_kind,
+            "source_ref": activity.source_ref,
+            "cycle_id": activity.cycle_id,
+            "workload_id": activity.workload_id,
+            "task_id": activity.task_id,
+            "can_pause": activity.can_pause,
+            "can_resume": activity.can_resume,
+            "can_abort": activity.can_abort,
+            "started_at": activity.started_at.isoformat() if activity.started_at else None,
+            "paused_at": activity.paused_at.isoformat() if activity.paused_at else None,
+            "ended_at": activity.ended_at.isoformat() if activity.ended_at else None,
         }
 
     async def _update_runtime_state_heartbeat(self, agent_id: str, lifecycle_state: str) -> None:

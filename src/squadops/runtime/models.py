@@ -8,6 +8,8 @@ reserve-buffer guard (§2.5).
 Phase 3 (§3.1): `FocusLease` mirrors §10.4, plus the `LeaseDecision` union
 (`LeaseGranted` / `LeaseRejected` / `LeasePreempting`) returned by the
 `FocusLeasePort`. Queueing (`LeaseQueued`) is deferred to v1.2+ (§3.0/D20).
+Phase 4 (§4.1): `RuntimeActivity` mirrors §10.6 — the observable unit of work an
+agent performs within a mode, with at most one *active* activity per agent (D9).
 
 All models are frozen dataclasses; mutate via `dataclasses.replace()`. `Literal`
 types in code mirror the DB `CHECK` constraints (D3).
@@ -267,3 +269,69 @@ class LeasePreempting:
 # Discriminated union of v1.1 lease outcomes. `LeaseQueued` is a recognized
 # v1.2+ outcome (§3.0/D20) and is deliberately absent here.
 LeaseDecision = LeaseGranted | LeaseRejected | LeasePreempting
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 (§4.1) — Runtime activities
+# ---------------------------------------------------------------------------
+
+ActivityState = Literal["pending", "running", "paused", "completed", "aborted", "failed"]
+ActivitySourceKind = Literal[
+    "cycle_task", "workload", "duty_handler", "ambient_observation", "embodied_action"
+]
+
+# An activity occupies the agent's single active slot (D9) while in one of these
+# states; the complement are terminal. The §4.2 partial unique index enforces at
+# most one active row per agent.
+_ACTIVE_ACTIVITY_STATES: frozenset[ActivityState] = frozenset({"pending", "running", "paused"})
+_TERMINAL_ACTIVITY_STATES: frozenset[ActivityState] = frozenset({"completed", "aborted", "failed"})
+
+
+def is_active_activity_state(state: ActivityState) -> bool:
+    """True while the activity holds the agent's single active slot (D9)."""
+    return state in _ACTIVE_ACTIVITY_STATES
+
+
+def is_terminal_activity_state(state: ActivityState) -> bool:
+    """True once the activity has ended (`completed`/`aborted`/`failed`)."""
+    return state in _TERMINAL_ACTIVITY_STATES
+
+
+@dataclass(frozen=True)
+class RuntimeActivity:
+    """An observable unit of work an agent performs within a mode (§10.6).
+
+    Makes current work visible without digging through prompt history. At most one
+    *active* (`pending`/`running`/`paused`) activity per agent (D9), enforced by the
+    §4.2 partial unique index. RuntimeActivities don't perform work — handlers and
+    workloads do, emitting these at task granularity (D19); `pending` is short-lived.
+
+    Source identity is explicit and queryable: `cycle_id` / `workload_id` /
+    `task_id` are first-class columns. `source_ref` is opaque adapter detail that
+    **core never parses** (§4.1) — history-by-X queries use the explicit columns.
+
+    Frozen; mutate via `dataclasses.replace()`. `completion_conditions` /
+    `evidence_requirements` carry decoded JSONB payloads (opaque in v1.1); they make
+    the instance unhashable, which is fine — runtime activities are never hashed.
+    """
+
+    runtime_activity_id: str
+    agent_id: str
+    mode: RuntimeMode
+    activity_type: str
+    goal: str
+    priority: int
+    state: ActivityState
+    source_kind: ActivitySourceKind
+    source_ref: str
+    cycle_id: str | None
+    workload_id: str | None
+    task_id: str | None
+    can_pause: bool
+    can_resume: bool
+    can_abort: bool
+    completion_conditions: tuple[dict, ...] = ()
+    evidence_requirements: tuple[dict, ...] = ()
+    started_at: datetime | None = None
+    paused_at: datetime | None = None
+    ended_at: datetime | None = None

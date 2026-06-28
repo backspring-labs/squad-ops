@@ -13,6 +13,8 @@ from squadops.runtime.coordinator import (
     TransitionOutcome,
 )
 from squadops.runtime.models import (
+    ActivitySourceKind,
+    ActivityState,
     AgentRuntimeState,
     Assignment,
     AssignmentType,
@@ -26,8 +28,11 @@ from squadops.runtime.models import (
     OwnerType,
     RecallPolicy,
     RenewalPolicy,
+    RuntimeActivity,
     Strictness,
     WindowState,
+    is_active_activity_state,
+    is_terminal_activity_state,
     owner_type_outranks,
     window_state,
 )
@@ -35,6 +40,8 @@ from squadops.runtime.recruitment import RecruitmentDecision, reserve_buffer_dec
 from squadops.runtime.scheduler import DutyScheduler
 
 __all__ = [
+    "ActivitySourceKind",
+    "ActivityState",
     "AgentRuntimeState",
     "Assignment",
     "AssignmentType",
@@ -51,10 +58,13 @@ __all__ = [
     "RecruitmentDecision",
     "RenewalPolicy",
     "RequesterKind",
+    "RuntimeActivity",
     "RuntimeCoordinator",
     "Strictness",
     "TransitionOutcome",
     "WindowState",
+    "is_active_activity_state",
+    "is_terminal_activity_state",
     "owner_type_outranks",
     "reserve_buffer_decision",
     "window_state",

@@ -140,6 +140,26 @@ async def get_agent_runtime_state(agent_id: str):
     return state
 
 
+@router.get("/agents/{agent_id}/activity")
+async def get_agent_current_activity(agent_id: str):
+    """Return the agent's current (active) RuntimeActivity (SIP-0089 §4.7).
+
+    Returns 404 when the agent has no active activity (idle), or when the
+    runtime-api has no RuntimeActivityPort wired.
+    """
+    hc = _get_health_checker()
+    try:
+        activity = await hc.get_current_activity(agent_id.lower())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read activity: {e}") from e
+    if activity is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No active activity for agent_id={agent_id}",
+        )
+    return activity
+
+
 @router.post("/agents/status")
 async def create_or_update_agent_status(agent_status: AgentStatusCreate):
     """Create or update agent status (heartbeat endpoint)."""

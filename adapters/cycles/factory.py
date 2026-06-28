@@ -111,5 +111,6 @@ def create_flow_executor(
             event_bus=kwargs.get("event_bus"),
             reply_router=kwargs.get("reply_router"),
             assignment_port=kwargs.get("assignment_port"),
+            activity_port=kwargs.get("activity_port"),
         )
     raise ValueError(f"Unknown flow executor provider: {provider}")

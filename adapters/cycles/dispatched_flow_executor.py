@@ -45,6 +45,7 @@ from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
+from squadops.runtime import reasons
 from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult
 from squadops.telemetry.context import use_correlation_context, use_run_ids
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.squad_profile import SquadProfilePort
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
+    from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
@@ -118,6 +120,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         event_bus: CycleEventBusPort | None = None,
         reply_router: ReplyRouter | None = None,
         assignment_port: AssignmentPort | None = None,
+        activity_port: RuntimeActivityPort | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
@@ -132,6 +135,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # the guard is skipped entirely (safe no-op until an AssignmentPort is
         # wired in the composition root).
         self._assignment_port = assignment_port
+        # SIP-0089 §4.4 (executor-side instrumentation): opt-in RuntimeActivityPort.
+        # When wired, each dispatched task opens a RuntimeActivity (start on
+        # dispatch, complete/fail on reply) so an agent's current task is
+        # observable. Best-effort — never breaks dispatch; None disables it.
+        self._activity_port = activity_port
         self._cancelled: set[str] = set()
 
         # SIP-0077: Cycle event bus (defaults to NoOp if not provided)
@@ -721,14 +729,72 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 self._task_heartbeat(envelope, interval=heartbeat_interval),
                 name=f"prefect-heartbeat-{envelope.task_id}",
             )
+            # SIP-0089 §4.4: open a RuntimeActivity for this task (best-effort).
+            activity_id = await self._start_task_activity(envelope)
             try:
-                return await self._publish_and_await(envelope, run_id)
+                result = await self._publish_and_await(envelope, run_id)
+            except BaseException:
+                # Reply wait raised (rare — _publish_and_await usually returns a
+                # FAILED TaskResult): record the task activity as failed.
+                await self._finish_task_activity(activity_id, None)
+                raise
+            else:
+                await self._finish_task_activity(activity_id, result)
+                return result
             finally:
                 heartbeat.cancel()
                 try:
                     await heartbeat
                 except asyncio.CancelledError:
                     pass
+
+    async def _start_task_activity(self, envelope: TaskEnvelope) -> str | None:
+        """Open a RuntimeActivity for a dispatched cycle task (§4.4, executor-side).
+
+        Best-effort: returns the activity id, or None when disabled/failed — it
+        must never raise, so observability can't break dispatch. D9 (one active
+        activity per agent) is enforced by the partial unique index; a leftover
+        active row from a prior crashed task makes this conflict, which we swallow.
+        """
+        if self._activity_port is None:
+            return None
+        try:
+            activity = await self._activity_port.start_activity(
+                envelope.agent_id,
+                mode="cycle",
+                activity_type=envelope.task_type,
+                goal=envelope.task_name or f"{envelope.task_type} ({envelope.cycle_id})",
+                source_kind="cycle_task",
+                source_ref=envelope.task_id,
+                cycle_id=envelope.cycle_id,
+                task_id=envelope.task_id,
+            )
+            return activity.runtime_activity_id
+        except Exception:
+            logger.warning(
+                "best-effort start_activity failed for task %s", envelope.task_id, exc_info=True
+            )
+            return None
+
+    async def _finish_task_activity(
+        self, activity_id: str | None, result: TaskResult | None
+    ) -> None:
+        """Terminate a task's RuntimeActivity (§4.4, executor-side, best-effort).
+
+        SUCCEEDED → complete; anything else (FAILED/CANCELED/raised/None) → fail.
+        Never raises. `update_state`'s active-only guard makes this safe even if
+        the activity was already terminalized elsewhere.
+        """
+        if self._activity_port is None or activity_id is None:
+            return
+        try:
+            if result is not None and result.status == "SUCCEEDED":
+                await self._activity_port.complete_activity(activity_id)
+            else:
+                reason = (result.error if result is not None else None) or reasons.ACTIVITY_FAILED
+                await self._activity_port.fail_activity(activity_id, reason)
+        except Exception:
+            logger.warning("best-effort finish_activity failed for %s", activity_id, exc_info=True)
 
     async def _publish_and_await(
         self,

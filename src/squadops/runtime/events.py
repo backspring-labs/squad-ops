@@ -31,3 +31,10 @@ FOCUS_LEASE_GRANTED: Final[str] = "focus_lease.granted"
 FOCUS_LEASE_REJECTED: Final[str] = "focus_lease.rejected"
 FOCUS_LEASE_PREEMPTED: Final[str] = "focus_lease.preempted"
 FOCUS_LEASE_RELEASED: Final[str] = "focus_lease.released"
+
+# Runtime-activity lifecycle (Phase 4 §4.4 handler-emitted, §4.5 coordinator-emitted).
+# Every activity transition emits a `runtime_activity.*` event (D14/D22).
+RUNTIME_ACTIVITY_STARTED: Final[str] = "runtime_activity.started"
+RUNTIME_ACTIVITY_COMPLETED: Final[str] = "runtime_activity.completed"
+RUNTIME_ACTIVITY_FAILED: Final[str] = "runtime_activity.failed"
+RUNTIME_ACTIVITY_ABORTED: Final[str] = "runtime_activity.aborted"
