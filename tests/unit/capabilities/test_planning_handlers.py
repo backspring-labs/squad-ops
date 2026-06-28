@@ -11,7 +11,7 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -28,6 +28,7 @@ from squadops.capabilities.handlers.planning_tasks import (
     _build_refinement_time_budget_section,
     _build_time_budget_section,
     _format_time_budget,
+    _PlanningTaskHandler,
 )
 from squadops.llm.exceptions import LLMError
 
@@ -710,6 +711,39 @@ class TestGovernanceAssessReadinessValidation:
         assert content.startswith("---\n")
         assert "readiness: go" in content
         assert ctx.ports.llm.chat_stream_with_usage.await_count == 2
+
+    async def test_retry_recovery_does_not_mutate_source_result(self):
+        """#155: the frontmatter retry must rebuild the result immutably, not
+        mutate the nested ``outputs`` dict of the frozen HandlerResult that
+        super().handle() returned (frozen does not freeze nested containers;
+        the original may be shared/cached/retried)."""
+        recovered = "---\nreadiness: go\nsufficiency_score: 4\n---\n\n## Body\n"
+        ctx = _make_context()
+        ctx.ports.llm.chat_stream_with_usage.side_effect = [
+            MagicMock(content="No frontmatter on first response"),
+            MagicMock(content=recovered),
+        ]
+        h = GovernanceReviewPlanHandler()
+
+        # Capture the frozen result (and its nested artifact dict) produced by
+        # super().handle(), so we can assert the retry leaves it untouched.
+        captured = {}
+        orig_handle = _PlanningTaskHandler.handle
+
+        async def _capturing_handle(self, context, inputs):
+            r = await orig_handle(self, context, inputs)
+            captured["artifact0"] = r.outputs["artifacts"][0]
+            return r
+
+        with patch.object(_PlanningTaskHandler, "handle", _capturing_handle):
+            result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        # Retry content reached the returned result...
+        assert result.success is True
+        assert "readiness: go" in result.outputs["artifacts"][0]["content"]
+        # ...but the source result's nested dict was NOT mutated in place
+        # (it would read `recovered` if the handler still mutated outputs in place).
+        assert captured["artifact0"]["content"] == "No frontmatter on first response"
 
     async def test_retry_corrective_message_targets_frontmatter(self):
         """The retry's corrective message must call out the missing
