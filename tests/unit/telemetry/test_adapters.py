@@ -1,6 +1,15 @@
 """Unit tests for telemetry adapters."""
 
+from contextlib import contextmanager
 from io import StringIO
+
+import pytest
+from opentelemetry import metrics, trace
+from opentelemetry.metrics import _internal as _otel_metrics_internal
+from opentelemetry.sdk import trace as _otel_sdk_trace
+from opentelemetry.sdk.metrics import _internal as _otel_sdk_metrics
+from opentelemetry.sdk.trace import TracerProvider as _SDKTracerProvider
+from opentelemetry.util._once import Once
 
 from adapters.telemetry.console import ConsoleAdapter
 from adapters.telemetry.null import NullAdapter
@@ -21,6 +30,71 @@ class BrokenExporter:
 
     def force_flush(self, *args, **kwargs):
         raise RuntimeError("Simulated flush failure")
+
+
+class _NoopAtexit:
+    """Stand-in for the ``atexit`` module that drops registrations.
+
+    ``register`` returns ``None`` (not ``func``) so the SDK stores a ``None``
+    ``_atexit_handler`` — making "no exit hook registered" observable.
+    """
+
+    @staticmethod
+    def register(func, *args, **kwargs):
+        return None
+
+    @staticmethod
+    def unregister(func):
+        return None
+
+
+@contextmanager
+def _isolate_otel_globals():
+    """Isolate the process-global OpenTelemetry providers for a test (#239).
+
+    ``OTelAdapter._ensure_initialized`` installs PROCESS-GLOBAL tracer/meter
+    providers (``otel.py``: ``trace.set_tracer_provider`` /
+    ``metrics.set_meter_provider``), and each SDK provider registers an
+    ``atexit`` shutdown hook in its constructor. A test that initializes the
+    adapter with a :class:`BrokenExporter` therefore leaves a provider whose
+    shutdown raises; that hook fires at interpreter exit and prints
+    ``Simulated shutdown failure`` on *every* regression run. (Calling
+    ``provider.shutdown()`` to clean up doesn't help — it raises on the broken
+    exporter *before* it reaches its own ``atexit.unregister`` line.)
+
+    So this context manager **suppresses atexit registration** for any provider
+    created in the body (scoped to the two SDK modules), resets OTel's set-once
+    guard so the body's ``set_*_provider`` calls take effect deterministically,
+    and restores every global on exit. Nothing the body installs survives to
+    interpreter exit.
+    """
+    saved_tracer = trace._TRACER_PROVIDER
+    saved_tracer_once = trace._TRACER_PROVIDER_SET_ONCE
+    saved_meter = _otel_metrics_internal._METER_PROVIDER
+    saved_meter_once = _otel_metrics_internal._METER_PROVIDER_SET_ONCE
+
+    # The SDK reaches atexit two different ways: sdk.trace via the `atexit`
+    # module attribute, sdk.metrics._internal via names imported from atexit.
+    saved_trace_atexit = _otel_sdk_trace.atexit
+    saved_metrics_register = _otel_sdk_metrics.register
+    saved_metrics_unregister = _otel_sdk_metrics.unregister
+
+    _otel_sdk_trace.atexit = _NoopAtexit
+    _otel_sdk_metrics.register = _NoopAtexit.register
+    _otel_sdk_metrics.unregister = _NoopAtexit.unregister
+    # Fresh set-once guards so set_*_provider in the body actually installs.
+    trace._TRACER_PROVIDER_SET_ONCE = Once()
+    _otel_metrics_internal._METER_PROVIDER_SET_ONCE = Once()
+    try:
+        yield
+    finally:
+        _otel_sdk_trace.atexit = saved_trace_atexit
+        _otel_sdk_metrics.register = saved_metrics_register
+        _otel_sdk_metrics.unregister = saved_metrics_unregister
+        trace._TRACER_PROVIDER = saved_tracer
+        trace._TRACER_PROVIDER_SET_ONCE = saved_tracer_once
+        _otel_metrics_internal._METER_PROVIDER = saved_meter
+        _otel_metrics_internal._METER_PROVIDER_SET_ONCE = saved_meter_once
 
 
 class BrokenWriter:
@@ -135,6 +209,13 @@ class TestConsoleAdapter:
 class TestOTelAdapter:
     """Tests for OTelAdapter."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_otel_globals(self):
+        """Every OTelAdapter test installs process-global providers; isolate them
+        so none leaks a broken provider whose atexit hook fires at exit (#239)."""
+        with _isolate_otel_globals():
+            yield
+
     def test_otel_adapter_does_not_raise_on_exporter_failure(self):
         """OTelAdapter must swallow exceptions from broken exporter."""
         adapter = OTelAdapter(span_exporter=BrokenExporter(), metric_exporter=BrokenExporter())
@@ -142,6 +223,33 @@ class TestOTelAdapter:
         adapter.gauge("test", 1)  # Must not raise
         adapter.histogram("test", 1)  # Must not raise
         adapter.emit(StructuredEvent(name="test", message="msg"))  # Must not raise
+
+    def test_broken_exporter_init_registers_no_atexit_hook(self):
+        """#239 regression: a BrokenExporter adapter installs a real global tracer
+        provider (init sets the tracer, then fails at the metric reader — so it's
+        the *tracer* provider that leaks, which is why the original traceback was
+        ``TracerProvider.shutdown``). Unguarded, that provider registers an atexit
+        shutdown hook that raises ``Simulated shutdown failure`` at interpreter
+        exit on every run. Under isolation the real tracer init still happens, but
+        no atexit hook is registered and the prior globals are restored."""
+        before_tracer = trace.get_tracer_provider()
+        before_meter = metrics.get_meter_provider()
+
+        with _isolate_otel_globals():
+            adapter = OTelAdapter(span_exporter=BrokenExporter(), metric_exporter=BrokenExporter())
+            adapter.counter("test", 1)
+
+            tracer_provider = trace.get_tracer_provider()
+            # The adapter really did install a real SDK tracer provider — the
+            # leak the issue is about (exercises the _ensure_initialized path).
+            assert isinstance(tracer_provider, _SDKTracerProvider)
+            # ... but with NO atexit hook (the crux of #239): nothing fires at
+            # interpreter exit.
+            assert tracer_provider._atexit_handler is None
+
+        # Globals restored to the pre-test providers.
+        assert trace.get_tracer_provider() is before_tracer
+        assert metrics.get_meter_provider() is before_meter
 
     def test_start_span_returns_span(self):
         adapter = OTelAdapter()
