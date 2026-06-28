@@ -124,6 +124,71 @@ def update_sip_file_metadata(file_path: Path, updates: dict[str, Any]) -> bool:
         return False
 
 
+# Status keywords that may appear in a SIP body status-declaration line. Used to
+# anchor the body rewrite so prose/code/table mentions of "status" are never touched.
+_STATUS_WORDS = (
+    "Proposed",
+    "Draft",
+    "Accepted",
+    "Approved",
+    "Implemented",
+    "Deprecated",
+    "Rejected",
+    "Withdrawn",
+)
+
+# Matches the canonical body status line, e.g. "**Status:** Accepted",
+# "**Status**: Draft", "- **Status:** Accepted", "*Status: Draft*". `prefix`
+# captures everything up to and including the colon + emphasis; `word` is the
+# status keyword. Only horizontal whitespace is allowed so the match cannot span
+# lines. Anything after `word` (trailing emphasis, "(umbrella / vision)") is left
+# untouched by the caller's count=1 substitution.
+_BODY_STATUS_RE = re.compile(
+    r"^(?P<prefix>[ \t]{0,3}(?:[-*>][ \t]+)?\*{0,2}[ \t]*Status[ \t]*\*{0,2}[ \t]*:[ \t]*\*{0,2}[ \t]*)"
+    r"(?P<word>" + "|".join(_STATUS_WORDS) + r")",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def update_sip_body_status(file_path: Path, new_status: str) -> bool:
+    """Rewrite the human-readable body ``**Status:**`` line to match new_status.
+
+    The frontmatter ``status:`` is handled by :func:`update_sip_file_metadata`;
+    this updates the *body* declaration so the document doesn't silently disagree
+    with its frontmatter/registry after a promotion. Only the first status line in
+    the body is rewritten, and only the status word — the line's markdown and any
+    trailing annotation (e.g. ``(umbrella / vision)``) are preserved.
+
+    Returns True if a body status line was found and rewritten, False otherwise
+    (caller should warn so the maintainer can update it by hand).
+    """
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        print(f"Warning: could not read {file_path} to update body status: {e}")
+        return False
+
+    # Isolate the frontmatter so the body regex can never touch it.
+    frontmatter_match = re.match(r"^---\s*\n.*?\n---\s*\n", content, re.DOTALL)
+    head = frontmatter_match.group(0) if frontmatter_match else ""
+    body = content[len(head) :]
+
+    canonical = new_status.capitalize()
+    new_body, count = _BODY_STATUS_RE.subn(lambda m: m.group("prefix") + canonical, body, count=1)
+    if count == 0:
+        return False
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(head + new_body)
+    except Exception as e:
+        print(f"Warning: could not write {file_path} to update body status: {e}")
+        return False
+
+    return True
+
+
 def normalize_filename(sip_number: int, title: str) -> str:
     """Generate normalized filename with maximum 4 words."""
     # Clean title for filename
@@ -422,6 +487,13 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         if not update_sip_file_metadata(sip_file, {"sip_number": sip_number, "status": new_status}):
             return False
 
+        # Update the human-readable body status line to match the frontmatter.
+        if not update_sip_body_status(sip_file, new_status):
+            print(
+                "Warning: no body **Status:** line found to update; "
+                "check the document body manually."
+            )
+
         # Generate new filename
         new_filename = normalize_filename(sip_number, title)
         target_dir = STATUS_TO_FOLDER[new_status]
@@ -605,6 +677,13 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         # Update file metadata
         if not update_sip_file_metadata(sip_file, {"status": new_status}):
             return False
+
+        # Update the human-readable body status line to match the frontmatter.
+        if not update_sip_body_status(sip_file, new_status):
+            print(
+                "Warning: no body **Status:** line found to update; "
+                "check the document body manually."
+            )
 
         # Move file to new lifecycle folder using explicit copy+delete for reliability
         target_dir = STATUS_TO_FOLDER[new_status]
