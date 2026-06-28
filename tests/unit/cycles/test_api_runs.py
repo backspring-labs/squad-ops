@@ -65,13 +65,19 @@ def mock_artifact_vault():
 
 
 @pytest.fixture
-def client(mock_cycle_registry, mock_artifact_vault, monkeypatch):
+def mock_flow_executor():
+    return AsyncMock()
+
+
+@pytest.fixture
+def client(mock_cycle_registry, mock_artifact_vault, mock_flow_executor, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     import squadops.api.runtime.deps as deps_mod
 
     monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
     monkeypatch.setattr(deps_mod, "_artifact_vault", mock_artifact_vault)
+    monkeypatch.setattr(deps_mod, "_flow_executor", mock_flow_executor)
     return TestClient(app)
 
 
@@ -83,6 +89,18 @@ class TestCreateRun:
         assert body["run_number"] == 2
         assert body["initiated_by"] == "retry"
         assert body["status"] == "queued"
+
+    def test_retry_run_is_dispatched_for_execution(self, client, mock_flow_executor):
+        """#133: a retry must actually run — the route enqueues execute_cycle for
+        the new run (not just create a queued record that never executes).
+        TestClient runs background tasks after the response."""
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
+        assert resp.status_code == 200
+        new_run_id = resp.json()["run_id"]
+
+        mock_flow_executor.execute_cycle.assert_awaited_once_with(
+            "cyc_001", new_run_id, "full-squad"
+        )
 
 
 class TestListRuns:

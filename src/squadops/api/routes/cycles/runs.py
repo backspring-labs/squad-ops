@@ -35,8 +35,17 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles/{cycle_id}/runs"
 
 
 @router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def create_run(project_id: str, cycle_id: str, workload_type: str | None = None):
-    """Create a new Run (retry) for an existing Cycle."""
+async def create_run(
+    project_id: str,
+    cycle_id: str,
+    background_tasks: BackgroundTasks,
+    workload_type: str | None = None,
+):
+    """Create a new Run (retry) for an existing Cycle and enqueue its execution.
+
+    Mirrors ``cycles create`` / ``resume_run``: the new run is dispatched
+    server-side (not just recorded), so a retry actually re-runs (#133).
+    """
     from squadops.api.runtime.deps import get_cycle_registry
 
     try:
@@ -77,6 +86,19 @@ async def create_run(project_id: str, cycle_id: str, workload_type: str | None =
                 "initiated_by": created.initiated_by,
                 "workload_type": created.workload_type,
             },
+        )
+
+        # Enqueue execution so the retry run actually proceeds (#133) — creating
+        # the run record alone never ran it (only cycle-create/resume dispatched).
+        # Mirrors resume_run; execute_cycle re-runs the §2.5 duty guard, so a
+        # still-active hard-duty window simply re-defers.
+        from squadops.api.runtime.deps import get_flow_executor
+
+        background_tasks.add_task(
+            get_flow_executor().execute_cycle,
+            cycle_id,
+            created.run_id,
+            cycle.squad_profile_id,
         )
 
         return run_to_response(created)

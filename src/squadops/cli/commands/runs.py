@@ -136,10 +136,10 @@ def retry_run(
     project_id: str = typer.Argument(...),
     cycle_id: str = typer.Argument(...),
 ):
-    """Create a new run (retry) for a cycle.
+    """Create a new run (retry) for a cycle and enqueue it for execution.
 
-    Creates an execution record. Does not trigger task execution
-    (deferred to a future release).
+    The new run is dispatched server-side — the same as `cycles create` and
+    `runs resume`.
     """
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
 
