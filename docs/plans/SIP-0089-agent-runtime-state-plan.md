@@ -130,7 +130,7 @@ git checkout -b feature/sip-0089-runtime-state-phase-N
 - Each phase must pass `./scripts/dev/run_regression_tests.sh -v` before merge
 - PR title format: `feat: SIP-0089 Phase N — <description>`
 - PR body references SIP-0089, SIP-0088, this plan, **and the boundary checklist below**
-- **No `pyproject.toml` version bump until Phase 4 acceptance.** `1.1.0` lands as a single coordinated commit on main when implementation is feature-complete.
+- **No `pyproject.toml` version bump during the runtime track.** The `1.1.0` bump is **gated on 1.0.x hardening-lane (Spark) completeness — not on Phase 4 landing** (decision 2026-06-28). Phase 4 (and the rest of SIP-0089) may merge to main with the version staying at `1.0.x`; `1.1.0` then lands as a single coordinated commit once the hardening lane is done.
 
 ### PR boundary checklist (paste into every phase PR body)
 
@@ -773,7 +773,7 @@ Across all four phases:
 5. Every transition and lease decision carries a canonical reason code, **distinct from the event name** (D18).
 6. Existing cycle execution remains intact — `run_regression_tests.sh` continues to pass at its current count (verify pre-implementation baseline; recent SIP-0087 added significant test surface).
 7. The end-to-end nightly-research walkthrough from SIP-0089 §16 executes correctly.
-8. No `pyproject.toml` version bump until this point. Then bump `1.0.x → 1.1.0` as a single coordinated commit on main.
+8. No `pyproject.toml` version bump tied to this point. The `1.0.x → 1.1.0` bump is gated on **1.0.x hardening-lane (Spark) completeness**, not on Phase 4 acceptance (decision 2026-06-28) — Phase 4 may land with the version still at `1.0.x`; bump as a single coordinated commit once hardening is done.
 9. **Heartbeat cannot overwrite coordinator-owned mode transitions** (D17 verified by regression test).
 10. **Scheduler ticks are idempotent** and do not duplicate window-open/window-close transitions (D21).
 11. **`RuntimeActivity` instrumentation does not create nested active activities** under the strict-one D9 rule (D19 enforced by integration test).
@@ -801,7 +801,7 @@ Per the agreed workflow:
   - `src/squadops/telemetry/context.py` — new in 1.0.5; D15 specifies optional usage
   - `src/squadops/ports/cycles/` and `src/squadops/ports/observability/` — established the namespace pattern matched by the new `ports/runtime/` (per Item-6 of revision 4 review)
   - `infra/migrations/` — v1.1 uses `1100–1199` range; Spark 1.0.x uses `1000–1099` (per D11). Migration registry note added in Phase 1 (§1.2)
-- **No `pyproject.toml` version bump on the Mac side** — Spark continues `1.0.5+`; v1.1 bump is one coordinated commit at end of Phase 4
+- **No `pyproject.toml` version bump on the Mac side** — Spark continues `1.0.5+`; the v1.1 bump is one coordinated commit gated on **1.0.x hardening-lane completeness, not the end of Phase 4** (decision 2026-06-28)
 
 If a 1.0.x PR on the Spark needs to touch one of the hot-zone files, sequence with the next v1.1 phase boundary so we don't merge-conflict mid-implementation.
 
