@@ -336,6 +336,47 @@ class TestResolveIdentity:
         assert identity.display_name == "Runtime Service"
 
 
+class TestRoleScopeBridge:
+    """#270: resolve_identity merges role-implied scopes into identity.scopes so
+    #150's scope-gated cycle routes accept the role-bearing tokens Keycloak issues
+    (the realm grants roles, not cycles:* scopes)."""
+
+    async def _resolve(self, **claim_kwargs):
+        adapter = KeycloakAuthAdapter(
+            issuer_url="http://keycloak:8080/realms/squadops",
+            audience="squadops-runtime",
+        )
+        adapter._jwks = FAKE_JWKS
+        adapter._jwks_fetched_at = time.monotonic()
+        claims = _make_claims(**claim_kwargs)
+        with patch("adapters.auth.keycloak.auth_adapter.jwt.decode", return_value=claims):
+            return await adapter.resolve_identity(await adapter.validate_token("token"))
+
+    async def test_operator_role_grants_cycles_write(self):
+        # The exact failure behind #270: scope claim empty, but the operator role
+        # must satisfy require_scopes(cycles:write).
+        identity = await self._resolve(roles=["operator"], scope="")
+        assert "cycles:read" in identity.scopes
+        assert "cycles:write" in identity.scopes
+
+    async def test_viewer_role_is_read_only(self):
+        identity = await self._resolve(roles=["viewer"], scope="")
+        assert "cycles:read" in identity.scopes
+        assert "cycles:write" not in identity.scopes
+
+    async def test_unmapped_role_grants_no_implied_scopes(self):
+        # No silent grant for an unrecognized role — still 403-able on cycle routes.
+        identity = await self._resolve(roles=["randorole"], scope="")
+        assert "cycles:read" not in identity.scopes
+        assert "cycles:write" not in identity.scopes
+
+    async def test_token_scopes_unioned_with_role_implied(self):
+        # Explicit OAuth scopes on the token are preserved alongside role-implied.
+        identity = await self._resolve(roles=["viewer"], scope="email profile")
+        assert "email" in identity.scopes and "profile" in identity.scopes
+        assert "cycles:read" in identity.scopes
+
+
 class TestClose:
     """Resource cleanup."""
 

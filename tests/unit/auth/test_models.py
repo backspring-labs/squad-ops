@@ -9,11 +9,38 @@ from squadops.auth.models import (
     Identity,
     IdentityResolutionError,
     IdentityType,
+    Role,
+    Scope,
     TokenClaims,
     TokenValidationError,
+    scopes_for_roles,
 )
 
 pytestmark = pytest.mark.auth
+
+
+class TestScopesForRoles:
+    """#270: role → implied scope mapping."""
+
+    def test_operator_implies_cycles_write(self):
+        scopes = scopes_for_roles((Role.OPERATOR,))
+        assert Scope.CYCLES_READ in scopes
+        assert Scope.CYCLES_WRITE in scopes
+
+    def test_viewer_is_read_only(self):
+        scopes = scopes_for_roles((Role.VIEWER,))
+        assert Scope.CYCLES_READ in scopes
+        assert Scope.CYCLES_WRITE not in scopes
+
+    def test_unknown_role_contributes_nothing(self):
+        assert scopes_for_roles(("nonexistent",)) == frozenset()
+
+    def test_union_across_roles(self):
+        # admin's write scope shows up when combined with a read-only viewer
+        combined = scopes_for_roles((Role.VIEWER, Role.ADMIN))
+        assert Scope.CYCLES_WRITE in combined
+        assert Scope.ADMIN_WRITE in combined
+        assert combined >= scopes_for_roles((Role.VIEWER,))
 
 
 class TestTokenClaims:

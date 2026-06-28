@@ -39,6 +39,53 @@ class Scope:
     ADMIN_WRITE = "admin:write"
 
 
+# Role → implied scopes (#270). Keycloak is role-centric — it issues realm roles
+# (admin/operator/viewer), not fine-grained OAuth scopes — so holding a role
+# grants its scopes. The effective scope set (token scopes ∪ role-implied) is
+# what `require_scopes` evaluates, which lets #150's scope-gated cycle routes
+# honor the realm's documented role model ("operator = start/stop cycles")
+# without a Keycloak change. Single-sourced here so route guards and the realm
+# stay reconcilable.
+ROLE_SCOPES: dict[str, frozenset[str]] = {
+    Role.ADMIN: frozenset(
+        {
+            Scope.CYCLES_READ,
+            Scope.CYCLES_WRITE,
+            Scope.AGENTS_READ,
+            Scope.AGENTS_WRITE,
+            Scope.TASKS_READ,
+            Scope.TASKS_WRITE,
+            Scope.ADMIN_WRITE,
+        }
+    ),
+    Role.OPERATOR: frozenset(
+        {
+            Scope.CYCLES_READ,
+            Scope.CYCLES_WRITE,
+            Scope.AGENTS_READ,
+            Scope.TASKS_READ,
+            Scope.TASKS_WRITE,
+        }
+    ),
+    Role.VIEWER: frozenset(
+        {
+            Scope.CYCLES_READ,
+            Scope.AGENTS_READ,
+            Scope.TASKS_READ,
+        }
+    ),
+}
+
+
+def scopes_for_roles(roles: tuple[str, ...]) -> frozenset[str]:
+    """Union of the scopes implied by ``roles`` (#270). Unknown roles contribute
+    nothing — a token with no mapped role gets no implied scopes."""
+    implied: set[str] = set()
+    for role in roles:
+        implied |= ROLE_SCOPES.get(role, frozenset())
+    return frozenset(implied)
+
+
 class IdentityType:
     """Identity type constants."""
 
