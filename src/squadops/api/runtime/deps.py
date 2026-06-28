@@ -15,6 +15,7 @@ from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.ports.cycles.squad_profile import SquadProfilePort
+from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
 from squadops.ports.events.cycle_event_bus import CycleEventBusPort
 from squadops.ports.llm.provider import LLMPort
 from squadops.ports.runtime.assignments import AssignmentPort
@@ -38,6 +39,9 @@ _flow_executor: FlowExecutionPort | None = None
 # SIP-0077: Cycle event bus
 _cycle_event_bus: CycleEventBusPort | None = None
 _cycle_event_bus_warned: bool = False
+
+_workflow_tracker: WorkflowTrackerPort | None = None
+_workflow_tracker_warned: bool = False
 
 # SIP-0075: LLM port for model management endpoints
 _llm_port: LLMPort | None = None
@@ -191,6 +195,42 @@ def get_cycle_event_bus() -> CycleEventBusPort:
     from adapters.events.noop_cycle_event_bus import NoOpCycleEventBus
 
     return NoOpCycleEventBus()
+
+
+# =============================================================================
+# #77: Workflow tracker (Prefect) — used by cancel routes to stop orphaned runs
+# =============================================================================
+
+
+def set_workflow_tracker(tracker: WorkflowTrackerPort) -> None:
+    """Set the WorkflowTrackerPort instance (#77: cancel propagation)."""
+    global _workflow_tracker
+    _workflow_tracker = tracker
+
+
+def get_workflow_tracker() -> WorkflowTrackerPort:
+    """Return the WorkflowTrackerPort instance.
+
+    Best-effort like the event bus: returns NoOpWorkflowTracker instead of
+    raising when unconfigured, so cancel routes never fail because workflow
+    tracking is off. Warns once per process on fallback.
+    """
+    global _workflow_tracker_warned
+    if _workflow_tracker is not None:
+        return _workflow_tracker
+
+    if not _workflow_tracker_warned:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "WorkflowTrackerPort not configured — using NoOpWorkflowTracker. "
+            "Cancellations will not propagate to Prefect."
+        )
+        _workflow_tracker_warned = True
+
+    from adapters.cycles.noop_workflow_tracker import NoOpWorkflowTracker
+
+    return NoOpWorkflowTracker()
 
 
 # =============================================================================

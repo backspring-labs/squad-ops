@@ -26,6 +26,7 @@ from uuid import uuid4
 from adapters.cycles.task_naming import build_task_name
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, Run, RunStatus
+from squadops.cycles.naming import flow_run_name
 from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.pulse_models import (
     CADENCE_BOUNDARY_ID,
@@ -1772,7 +1773,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 flow_id = await self._workflow_tracker.ensure_flow()
                 flow_run_id = await self._workflow_tracker.create_flow_run(
                     flow_id,
-                    run_name=f"{cycle.project_id}/{cycle_id[:12]}/{run_id[:12]}",
+                    run_name=flow_run_name(cycle.project_id, cycle_id, run_id),
                     parameters={
                         "cycle_id": cycle_id,
                         "run_id": run_id,

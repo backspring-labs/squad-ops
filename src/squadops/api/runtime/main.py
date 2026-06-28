@@ -294,6 +294,11 @@ async def _init_cycle_subsystem(config, pool) -> None:
         _reply_router = ReplyRouter(queue_adapter)
 
         _workflow_tracker = create_workflow_tracker(config.prefect)
+        # #77: expose the tracker to the cancel routes so cancelling a cycle/run
+        # propagates to Prefect (stops the orphaned flow run).
+        from squadops.api.runtime.deps import set_workflow_tracker
+
+        set_workflow_tracker(_workflow_tracker)
 
         from adapters.events.factory import create_cycle_event_bus
         from squadops.api.runtime.deps import set_cycle_event_bus

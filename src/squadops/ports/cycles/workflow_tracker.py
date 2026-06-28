@@ -53,6 +53,12 @@ class WorkflowTrackerPort(ABC):
         """Create a task run inside the given flow run. Returns ``task_run_id``."""
 
     @abstractmethod
+    async def find_active_flow_run_ids(self, run_names: list[str]) -> list[str]:
+        """Return the ids of flow runs with the given exact names that are still
+        in a non-terminal state (so they can be cancelled). Best-effort:
+        returns ``[]`` on transport failure or when nothing matches (#77)."""
+
+    @abstractmethod
     async def set_flow_run_state(
         self,
         flow_run_id: str,

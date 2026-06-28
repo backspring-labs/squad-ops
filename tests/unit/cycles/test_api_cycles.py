@@ -209,3 +209,64 @@ class TestCancelCycle:
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
         assert resp.status_code == 200
         assert resp.json()["status"] == "cancelled"
+
+    def test_cancel_propagates_to_prefect(self, client, mock_cycle_registry, monkeypatch):
+        """#77: cancelling a cycle transitions its still-running Prefect flow
+        run(s) to CANCELLED so workers stop executing the orphaned cycle."""
+        import squadops.api.runtime.deps as deps_mod
+        from squadops.cycles.models import Run
+
+        mock_cycle_registry.cancel_cycle.return_value = None
+        mock_cycle_registry.list_runs.return_value = [
+            Run(
+                run_id="run_001",
+                cycle_id="cyc_001",
+                run_number=1,
+                status="running",
+                initiated_by="api",
+                resolved_config_hash="x",
+            ),
+        ]
+        fake_tracker = AsyncMock()
+        fake_tracker.find_active_flow_run_ids.return_value = ["flowrun-xyz"]
+        monkeypatch.setattr(deps_mod, "_workflow_tracker", fake_tracker)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["prefect_flow_runs_cancelled"] == 1
+        # Found by the reconstructed flow-run name (single-sourced with the executor)
+        # and transitioned to CANCELLED.
+        fake_tracker.find_active_flow_run_ids.assert_awaited_once_with(
+            ["hello_squad/cyc_001/run_001"]
+        )
+        fake_tracker.set_flow_run_state.assert_awaited_once_with(
+            "flowrun-xyz", "CANCELLED", "Cancelled"
+        )
+
+    def test_cancel_survives_prefect_failure(self, client, mock_cycle_registry, monkeypatch):
+        """Registry cancellation is the source of truth: if Prefect propagation
+        fails, the cycle is still reported cancelled (best-effort, #77)."""
+        import squadops.api.runtime.deps as deps_mod
+        from squadops.cycles.models import Run
+
+        mock_cycle_registry.cancel_cycle.return_value = None
+        mock_cycle_registry.list_runs.return_value = [
+            Run(
+                run_id="run_001",
+                cycle_id="cyc_001",
+                run_number=1,
+                status="running",
+                initiated_by="api",
+                resolved_config_hash="x",
+            ),
+        ]
+        fake_tracker = AsyncMock()
+        fake_tracker.find_active_flow_run_ids.side_effect = RuntimeError("prefect down")
+        monkeypatch.setattr(deps_mod, "_workflow_tracker", fake_tracker)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "cancelled"
+        assert resp.json()["prefect_flow_runs_cancelled"] == 0
