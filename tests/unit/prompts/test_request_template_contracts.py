@@ -36,7 +36,7 @@ def _load_all_templates() -> list[tuple[str, dict, str]]:
         match = _FRONTMATTER_PATTERN.match(raw)
         if match:
             header = yaml.safe_load(match.group(1)) or {}
-            body = raw[match.end():]
+            body = raw[match.end() :]
         else:
             header = {}
             body = raw
@@ -119,9 +119,7 @@ class TestPriorAnalysisOrdering:
             return  # No headings, nothing to check
 
         # Check if any heading contains "Prior Analysis"
-        prior_indices = [
-            i for i, h in enumerate(headings) if "Prior Analysis" in h
-        ]
+        prior_indices = [i for i, h in enumerate(headings) if "Prior Analysis" in h]
         if not prior_indices:
             return  # Template doesn't have prior analysis section
 
@@ -130,8 +128,7 @@ class TestPriorAnalysisOrdering:
         # Allow only static instruction content after prior analysis, not other ## sections
         # The {{prior_outputs}} placeholder following the heading is fine
         remaining_headings = [
-            h for i, h in enumerate(headings)
-            if i > last_prior and "Prior Analysis" not in h
+            h for i, h in enumerate(headings) if i > last_prior and "Prior Analysis" not in h
         ]
 
         # Special case: builder template has static instructions after prior_outputs

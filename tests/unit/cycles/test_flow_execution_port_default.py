@@ -18,9 +18,7 @@ class ConcreteExecutor(FlowExecutionPort):
     def __init__(self):
         self.execute_run_calls: list[tuple] = []
 
-    async def execute_run(
-        self, cycle_id: str, run_id: str, profile_id: str | None = None
-    ) -> None:
+    async def execute_run(self, cycle_id: str, run_id: str, profile_id: str | None = None) -> None:
         self.execute_run_calls.append((cycle_id, run_id, profile_id))
 
     async def cancel_run(self, run_id: str) -> None:

@@ -190,7 +190,9 @@ class TestDevBuildParseFailure:
 
 class TestDevBuildLLMError:
     async def test_dev_build_llm_error(self, mock_context, build_inputs):
-        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(side_effect=LLMConnectionError("timeout"))
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            side_effect=LLMConnectionError("timeout")
+        )
         handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 

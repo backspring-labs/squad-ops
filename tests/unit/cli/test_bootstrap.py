@@ -59,7 +59,9 @@ class TestBootstrapCLI:
     @patch("subprocess.run")
     @patch("squadops.cli.commands.bootstrap._BOOTSTRAP_SCRIPT")
     @patch("squadops.cli.commands.bootstrap.load_bootstrap_profile")
-    def test_dry_run_no_state_written(self, mock_load, mock_script, mock_run, mock_checks, mock_write):
+    def test_dry_run_no_state_written(
+        self, mock_load, mock_script, mock_run, mock_checks, mock_write
+    ):
         """--dry-run doesn't write state file."""
         mock_load.return_value = _mock_profile()
         mock_script.is_file.return_value = True

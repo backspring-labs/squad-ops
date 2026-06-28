@@ -59,7 +59,6 @@ class TestArtifactRefProvenance:
         assert ref.system_prompt_bundle_hash is None
 
 
-
 # ---------------------------------------------------------------------------
 # Vault round-trip
 # ---------------------------------------------------------------------------

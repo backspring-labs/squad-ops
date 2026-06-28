@@ -186,9 +186,7 @@ class TestCreateRunWorkloadType:
         assert body["workload_type"] is None
 
     def test_create_run_with_workload_type(self, client):
-        resp = client.post(
-            "/api/v1/projects/hello_squad/cycles/cyc_001/runs?workload_type=framing"
-        )
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs?workload_type=framing")
         assert resp.status_code == 200
         body = resp.json()
         assert body["workload_type"] == "framing"

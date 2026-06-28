@@ -85,7 +85,10 @@ def fastapi_workspace(tmp_path: Path) -> Path:
 class TestEndpointDefined:
     async def test_all_present_passed(self, fastapi_workspace):
         result = await get_check("endpoint_defined").evaluate(
-            {"file": "main.py", "methods_paths": ["GET /users", "POST /items", "DELETE /users/{uid}"]},
+            {
+                "file": "main.py",
+                "methods_paths": ["GET /users", "POST /items", "DELETE /users/{uid}"],
+            },
             fastapi_workspace,
             stack="fastapi",
         )

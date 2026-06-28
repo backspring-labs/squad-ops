@@ -61,9 +61,7 @@ class _FakeSourceArtifactRef:
     artifact_id: str = "art_src"
     filename: str = "backend/models.py"
     artifact_type: str = "source"
-    metadata: dict = field(
-        default_factory=lambda: {"producing_task_type": "development.develop"}
-    )
+    metadata: dict = field(default_factory=lambda: {"producing_task_type": "development.develop"})
 
 
 @dataclass
@@ -71,9 +69,7 @@ class _FakeDocArtifactRef:
     artifact_id: str = "art_doc"
     filename: str = "strategy_analysis.md"
     artifact_type: str = "document"
-    metadata: dict = field(
-        default_factory=lambda: {"producing_task_type": "strategy.analyze_prd"}
-    )
+    metadata: dict = field(default_factory=lambda: {"producing_task_type": "strategy.analyze_prd"})
 
 
 # ---------------------------------------------------------------------------
@@ -247,9 +243,7 @@ class TestResolveArtifactContentsChaining:
             (dev_ref, b"models content"),
         ]
 
-        contents = await executor._resolve_artifact_contents(
-            "development.develop", stored
-        )
+        contents = await executor._resolve_artifact_contents("development.develop", stored)
 
         assert "strategy_analysis.md" in contents
         assert "backend/models.py" in contents

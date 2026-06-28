@@ -91,9 +91,7 @@ def installed_handler():
     handler = PrefectLogHandler(forwarder, filters=LogHandlerFilters(min_level=logging.INFO))
     logging.getLogger().addHandler(handler)
 
-    prior_levels = {
-        name: logging.getLogger(name).level for name in ("adapters", "squadops")
-    }
+    prior_levels = {name: logging.getLogger(name).level for name in ("adapters", "squadops")}
     logging.getLogger("adapters").setLevel(logging.INFO)
     logging.getLogger("squadops").setLevel(logging.INFO)
 

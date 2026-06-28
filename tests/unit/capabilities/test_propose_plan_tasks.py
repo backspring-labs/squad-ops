@@ -218,9 +218,7 @@ class TestRegistration:
         ],
     )
     def test_handler_registered_with_correct_role(self, handler_cls, expected_roles):
-        registered = {
-            entry[0].__name__: entry[1] for entry in get_all_handlers()
-        }
+        registered = {entry[0].__name__: entry[1] for entry in get_all_handlers()}
         assert handler_cls.__name__ in registered, (
             f"{handler_cls.__name__} not in bootstrap handler registry"
         )

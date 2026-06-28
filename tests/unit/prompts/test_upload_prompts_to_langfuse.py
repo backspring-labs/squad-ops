@@ -259,9 +259,7 @@ class TestUploadToLangfuse:
         mod = _import()
 
         def fake_urlopen(req):
-            raise urllib.error.HTTPError(
-                req.full_url, 500, "Internal Server Error", {}, None
-            )
+            raise urllib.error.HTTPError(req.full_url, 500, "Internal Server Error", {}, None)
 
         monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
@@ -413,14 +411,10 @@ class TestUploadResolveRoundTrip:
                 source_path="fragments/roles/dev/identity.md",
             ),
         ]
-        success, errors = mod.upload_to_langfuse(
-            entries, "http://fake", "pk", "sk", "production"
-        )
+        success, errors = mod.upload_to_langfuse(entries, "http://fake", "pk", "sk", "production")
         assert success == 1
 
-        adapter = LangfusePromptAssetAdapter(
-            public_key="pk", secret_key="sk", host="http://fake"
-        )
+        adapter = LangfusePromptAssetAdapter(public_key="pk", secret_key="sk", host="http://fake")
         resolved = await adapter.resolve_system_fragment("identity", role="dev")
 
         assert resolved.content == "You are Neo, the development agent."
@@ -446,14 +440,10 @@ class TestUploadResolveRoundTrip:
                 source_path="request_templates/request.cycle_task_base.md",
             ),
         ]
-        success, errors = mod.upload_to_langfuse(
-            entries, "http://fake", "pk", "sk", "staging"
-        )
+        success, errors = mod.upload_to_langfuse(entries, "http://fake", "pk", "sk", "staging")
         assert success == 1
 
-        adapter = LangfusePromptAssetAdapter(
-            public_key="pk", secret_key="sk", host="http://fake"
-        )
+        adapter = LangfusePromptAssetAdapter(public_key="pk", secret_key="sk", host="http://fake")
         resolved = await adapter.resolve_request_template(
             "request.cycle_task_base", environment="staging"
         )

@@ -224,7 +224,7 @@ class TestResumeRun:
         mock_cycle_registry.get_run.return_value = failed_run
         mock_cycle_registry.list_runs.return_value = [
             _COMPLETED_RUN,  # run_001: completed planning
-            failed_run,       # run_002: failed impl (wants resume)
+            failed_run,  # run_002: failed impl (wants resume)
         ]
         resp = client.post(f"{_URL_PREFIX}/run_002/resume")
         assert resp.status_code == 200

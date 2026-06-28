@@ -23,7 +23,9 @@ class TestPromptAssetSourcePortContract:
         """Partial implementation still raises TypeError."""
 
         class Incomplete(PromptAssetSourcePort):
-            async def resolve_system_fragment(self, fragment_id, role=None, environment="production"):
+            async def resolve_system_fragment(
+                self, fragment_id, role=None, environment="production"
+            ):
                 pass
 
         with pytest.raises(TypeError):
@@ -33,7 +35,9 @@ class TestPromptAssetSourcePortContract:
         """Fully implemented subclass can be constructed."""
 
         class Complete(PromptAssetSourcePort):
-            async def resolve_system_fragment(self, fragment_id, role=None, environment="production"):
+            async def resolve_system_fragment(
+                self, fragment_id, role=None, environment="production"
+            ):
                 return ResolvedAsset(
                     asset_id=fragment_id,
                     content="test",
@@ -61,7 +65,9 @@ class TestPromptAssetSourcePortContract:
         """Verify return type contract."""
 
         class Stub(PromptAssetSourcePort):
-            async def resolve_system_fragment(self, fragment_id, role=None, environment="production"):
+            async def resolve_system_fragment(
+                self, fragment_id, role=None, environment="production"
+            ):
                 return ResolvedAsset(
                     asset_id=fragment_id,
                     content="content",
@@ -72,8 +78,11 @@ class TestPromptAssetSourcePortContract:
 
             async def resolve_request_template(self, template_id, environment="production"):
                 return ResolvedAsset(
-                    asset_id=template_id, content="", version="1",
-                    environment=environment, content_hash=ResolvedAsset.compute_hash(""),
+                    asset_id=template_id,
+                    content="",
+                    version="1",
+                    environment=environment,
+                    content_hash=ResolvedAsset.compute_hash(""),
                 )
 
             async def get_asset_version(self, asset_id):
@@ -87,10 +96,15 @@ class TestPromptAssetSourcePortContract:
         """Verify return type contract for template resolution."""
 
         class Stub(PromptAssetSourcePort):
-            async def resolve_system_fragment(self, fragment_id, role=None, environment="production"):
+            async def resolve_system_fragment(
+                self, fragment_id, role=None, environment="production"
+            ):
                 return ResolvedAsset(
-                    asset_id=fragment_id, content="", version="1",
-                    environment=environment, content_hash=ResolvedAsset.compute_hash(""),
+                    asset_id=fragment_id,
+                    content="",
+                    version="1",
+                    environment=environment,
+                    content_hash=ResolvedAsset.compute_hash(""),
                 )
 
             async def resolve_request_template(self, template_id, environment="production"):
@@ -103,9 +117,7 @@ class TestPromptAssetSourcePortContract:
                 )
 
             async def get_asset_version(self, asset_id):
-                return AssetVersionInfo(
-                    asset_id=asset_id, version="2", environment="production"
-                )
+                return AssetVersionInfo(asset_id=asset_id, version="2", environment="production")
 
         stub = Stub()
         result = await stub.resolve_request_template("request.cycle_task_base")

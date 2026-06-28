@@ -69,12 +69,7 @@ class TestFromYAMLHappy:
         merger applies an empty overlay. Forcing optional fields to be
         populated would push too much format burden on strategy LLMs that
         legitimately have nothing to say in a given dimension."""
-        minimal = (
-            "version: 1\n"
-            "guidance_id: g-1\n"
-            "source_brief_id: b-1\n"
-            "proposing_role: strategy\n"
-        )
+        minimal = "version: 1\nguidance_id: g-1\nsource_brief_id: b-1\nproposing_role: strategy\n"
         g = PlanGuidance.from_yaml(minimal)
         assert g.priority_guidance == []
         assert g.ordering_guidance == []
@@ -116,31 +111,20 @@ class TestFromYAMLErrors:
         coming through with another role indicates pipeline corruption,
         not a recoverable malformation."""
         yaml_doc = (
-            "version: 1\n"
-            "guidance_id: g-1\n"
-            "source_brief_id: b-1\n"
-            f'proposing_role: "{bad_role}"\n'
+            f'version: 1\nguidance_id: g-1\nsource_brief_id: b-1\nproposing_role: "{bad_role}"\n'
         )
         with pytest.raises(ValueError, match="proposing_role"):
             PlanGuidance.from_yaml(yaml_doc)
 
     def test_strategy_role_case_normalized(self):
         """``Strategy`` and ``strategy`` must both parse — LLM casing varies."""
-        yaml_doc = (
-            "version: 1\n"
-            "guidance_id: g-1\n"
-            "source_brief_id: b-1\n"
-            "proposing_role: Strategy\n"
-        )
+        yaml_doc = "version: 1\nguidance_id: g-1\nsource_brief_id: b-1\nproposing_role: Strategy\n"
         g = PlanGuidance.from_yaml(yaml_doc)
         assert g.proposing_role == "strategy"
 
     def test_non_int_version_rejected(self):
         yaml_doc = (
-            'version: "1"\n'
-            "guidance_id: g-1\n"
-            "source_brief_id: b-1\n"
-            "proposing_role: strategy\n"
+            'version: "1"\nguidance_id: g-1\nsource_brief_id: b-1\nproposing_role: strategy\n'
         )
         with pytest.raises(ValueError, match="version"):
             PlanGuidance.from_yaml(yaml_doc)

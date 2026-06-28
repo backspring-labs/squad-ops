@@ -310,8 +310,7 @@ def test_review_plan_handler_no_longer_calls_plan_authoring_service():
         "in the merger; this handler is sign-off only."
     )
     assert "produce_plan(" not in handler_source, (
-        "GovernanceReviewPlanHandler reintroduced an inline produce_plan "
-        "call — cutover regression."
+        "GovernanceReviewPlanHandler reintroduced an inline produce_plan call — cutover regression."
     )
     # The handler's _produce_plan method itself must be gone (not just unused)
     assert not hasattr(GovernanceReviewPlanHandler, "_produce_plan"), (

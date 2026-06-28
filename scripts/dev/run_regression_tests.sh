@@ -34,8 +34,9 @@ REGRESSION_DIRS=(
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "Running ruff lint (fail-stop)..."
+echo "Running ruff lint + format check (fail-stop)..."
 ruff check .
+ruff format --check .
 echo ""
 
 echo "Running test quality lint..."

@@ -42,11 +42,7 @@ def mock_squad_profile():
         name="Full Squad",
         description="All agents",
         version=1,
-        agents=(
-            AgentProfileEntry(
-                agent_id="neo", role="dev", model="qwen2.5:7b", enabled=True
-            ),
-        ),
+        agents=(AgentProfileEntry(agent_id="neo", role="dev", model="qwen2.5:7b", enabled=True),),
         created_at=NOW,
     )
     return mock

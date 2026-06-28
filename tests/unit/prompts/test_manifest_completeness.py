@@ -47,8 +47,11 @@ def test_every_fragment_file_is_registered_in_manifest():
 def test_every_manifest_entry_points_to_existing_file():
     """Every manifest entry's `path` must resolve to an existing file."""
     manifest = _load_manifest()
-    missing = [entry["path"] for entry in manifest["fragments"]
-               if not (FRAGMENTS_DIR / entry["path"]).exists()]
+    missing = [
+        entry["path"]
+        for entry in manifest["fragments"]
+        if not (FRAGMENTS_DIR / entry["path"]).exists()
+    ]
     assert not missing, f"Manifest references missing files: {missing}"
 
 

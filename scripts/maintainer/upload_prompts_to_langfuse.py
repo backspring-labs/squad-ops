@@ -167,12 +167,14 @@ def upload_to_langfuse(
     errors = 0
 
     for entry in entries:
-        payload = json.dumps({
-            "name": entry.name,
-            "prompt": entry.content,
-            "labels": [environment],
-            "type": "text",
-        }).encode()
+        payload = json.dumps(
+            {
+                "name": entry.name,
+                "prompt": entry.content,
+                "labels": [environment],
+                "type": "text",
+            }
+        ).encode()
 
         req = urllib.request.Request(url, data=payload, method="POST")
         req.add_header("Content-Type", "application/json")
@@ -197,9 +199,9 @@ def upload_to_langfuse(
 
 def print_dry_run(entries: list[UploadEntry], environment: str) -> None:
     """Print what would be uploaded without making API calls."""
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"DRY RUN — {len(entries)} assets would be uploaded (environment: {environment})")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     fragments = [e for e in entries if e.asset_type == "fragment"]
     templates = [e for e in entries if e.asset_type == "template"]

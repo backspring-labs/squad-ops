@@ -136,8 +136,14 @@ class TestDevMonolithicValidation:
     async def test_fastapi_react_prd_expects_backend_and_frontend(self):
         h = self._handler()
         inputs = {"prd": "Build a FastAPI backend and React frontend app."}
-        artifacts = [_art("main.py"), _art("App.jsx"), _art("repo.py"),
-                     _art("index.html"), _art("package.json"), _art("routes.py")]
+        artifacts = [
+            _art("main.py"),
+            _art("App.jsx"),
+            _art("repo.py"),
+            _art("index.html"),
+            _art("package.json"),
+            _art("routes.py"),
+        ]
         result = await h._validate_output(inputs, artifacts)
 
         assert result.passed is True
@@ -275,7 +281,9 @@ class TestEstimateMinArtifacts:
 
     async def test_fullstack_higher_than_simple(self):
         simple = _estimate_min_artifacts("Build a CLI script")
-        fullstack = _estimate_min_artifacts("Build a FastAPI backend with React frontend and pytest tests")
+        fullstack = _estimate_min_artifacts(
+            "Build a FastAPI backend with React frontend and pytest tests"
+        )
         assert fullstack > simple
 
 
@@ -308,7 +316,7 @@ class TestOutcomeClassification:
         ctx = self._make_context()
 
         # LLM returns good artifacts matching expected
-        content = '```python:models.py\nclass RunEvent:\n    pass\n```'
+        content = "```python:models.py\nclass RunEvent:\n    pass\n```"
         resp = MagicMock()
         resp.content = content
         resp.tokens_per_second = None
@@ -338,7 +346,7 @@ class TestOutcomeClassification:
         ctx = self._make_context()
 
         # LLM returns wrong file (not matching expected)
-        content = '```python:wrong.py\nx = 1\n```'
+        content = "```python:wrong.py\nx = 1\n```"
         resp = MagicMock()
         resp.content = content
         resp.tokens_per_second = None
@@ -375,7 +383,8 @@ class TestOutcomeClassification:
 class TestBuildSelfEvalPrompt:
     async def test_includes_validation_summary(self):
         v = ValidationResult(
-            passed=False, summary="Missing files: models.py",
+            passed=False,
+            summary="Missing files: models.py",
             missing_components=["file:models.py"],
         )
         prompt = _CycleTaskHandler._build_self_eval_prompt(v, [_art("utils.py")])
@@ -384,7 +393,8 @@ class TestBuildSelfEvalPrompt:
 
     async def test_includes_missing_components(self):
         v = ValidationResult(
-            passed=False, summary="test",
+            passed=False,
+            summary="test",
             missing_components=["file:models.py", "file:routes.py"],
         )
         prompt = _CycleTaskHandler._build_self_eval_prompt(v, [])
@@ -402,9 +412,7 @@ class TestBuildSelfEvalPrompt:
 class TestMergeArtifacts:
     async def test_adds_new_files(self):
         evidence: dict = {}
-        result = _CycleTaskHandler._merge_artifacts(
-            [_art("a.py")], [_art("b.py")], evidence
-        )
+        result = _CycleTaskHandler._merge_artifacts([_art("a.py")], [_art("b.py")], evidence)
 
         assert len(result) == 2
         names = [a["name"] for a in result]
@@ -467,7 +475,7 @@ class TestSelfEvalLoop:
 
         # First call: missing models.py, produces wrong.py
         resp1 = MagicMock()
-        resp1.content = '```python:wrong.py\nx = 1\n```'
+        resp1.content = "```python:wrong.py\nx = 1\n```"
         resp1.tokens_per_second = None
         resp1.prompt_tokens = 10
         resp1.completion_tokens = 20
@@ -475,7 +483,7 @@ class TestSelfEvalLoop:
 
         # Self-eval call: produces models.py
         resp2 = MagicMock()
-        resp2.content = '```python:models.py\nclass RunEvent: pass\n```'
+        resp2.content = "```python:models.py\nclass RunEvent: pass\n```"
         resp2.tokens_per_second = None
         resp2.prompt_tokens = 10
         resp2.completion_tokens = 20
@@ -509,7 +517,7 @@ class TestSelfEvalLoop:
         ctx = self._make_context()
 
         resp = MagicMock()
-        resp.content = '```python:wrong.py\nx = 1\n```'
+        resp.content = "```python:wrong.py\nx = 1\n```"
         resp.tokens_per_second = None
         resp.prompt_tokens = 10
         resp.completion_tokens = 20
@@ -541,7 +549,7 @@ class TestSelfEvalLoop:
 
         # All responses produce wrong file
         bad_resp = MagicMock()
-        bad_resp.content = '```python:wrong.py\nx = 1\n```'
+        bad_resp.content = "```python:wrong.py\nx = 1\n```"
         bad_resp.tokens_per_second = None
         bad_resp.prompt_tokens = 10
         bad_resp.completion_tokens = 20
@@ -735,8 +743,7 @@ class TestQATestExecutionFoldsIntoOutcome:
         assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
         val = result.outputs["validation_result"]
         assert any(
-            "tests_not_executed:runner_missing_pytest" in m
-            for m in val["missing_components"]
+            "tests_not_executed:runner_missing_pytest" in m for m in val["missing_components"]
         )
 
     async def test_validation_disabled_preserves_legacy_pass(self) -> None:

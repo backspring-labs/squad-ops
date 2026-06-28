@@ -199,14 +199,7 @@ def _make_source(templates: dict[str, str]) -> AsyncMock:
     return source
 
 
-_TEMPLATE = (
-    "---\n"
-    "template_id: request.test\n"
-    "required_variables:\n"
-    "  - name\n"
-    "---\n"
-    "Hello {{name}}!\n"
-)
+_TEMPLATE = "---\ntemplate_id: request.test\nrequired_variables:\n  - name\n---\nHello {{name}}!\n"
 
 
 class TestRendererWithCycleCache:

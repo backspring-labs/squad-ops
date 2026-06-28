@@ -369,7 +369,7 @@ class TestTaskScopedRequiredFiles:
     LLM_MANIFESTS_ONLY = (
         "```dockerfile:Dockerfile\nFROM python:3.11-slim\n```\n\n"
         "```text:requirements.txt\nfastapi\n```\n\n"
-        "```json:package.json\n{\"name\":\"frontend\"}\n```\n"
+        '```json:package.json\n{"name":"frontend"}\n```\n'
     )
 
     async def test_manifest_task_passes_without_qa_handoff(self, mock_context, builder_inputs):
@@ -395,20 +395,14 @@ class TestTaskScopedRequiredFiles:
         artifact_names = {a["name"] for a in result.outputs["artifacts"]}
         assert "qa_handoff.md" not in artifact_names
 
-    async def test_qa_handoff_task_still_required_when_in_scope(
-        self, mock_context, builder_inputs
-    ):
+    async def test_qa_handoff_task_still_required_when_in_scope(self, mock_context, builder_inputs):
         # Task 9 in cycle 3's plan: qa_handoff is the scope. The validator
         # MUST still reject if Bob produces it without the required sections.
         mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(
-                role="assistant", content=LLM_QA_HANDOFF_MISSING_SECTION
-            ),
+            return_value=ChatMessage(role="assistant", content=LLM_QA_HANDOFF_MISSING_SECTION),
         )
         mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
-            return_value=ChatMessage(
-                role="assistant", content=LLM_QA_HANDOFF_MISSING_SECTION
-            ),
+            return_value=ChatMessage(role="assistant", content=LLM_QA_HANDOFF_MISSING_SECTION),
         )
         scoped_inputs = dict(builder_inputs)
         scoped_inputs["expected_artifacts"] = ["qa_handoff.md"]
@@ -776,9 +770,7 @@ class TestAssemblyInputsExpandedExtensions:
 
 
 class TestBuilderFailureOutcomeClass:
-    async def test_missing_qa_handoff_emits_semantic_failure(
-        self, mock_context, builder_inputs
-    ):
+    async def test_missing_qa_handoff_emits_semantic_failure(self, mock_context, builder_inputs):
         from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 
         mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
@@ -792,9 +784,7 @@ class TestBuilderFailureOutcomeClass:
         assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
         assert "qa_handoff.md not found" in result.error
 
-    async def test_missing_required_file_emits_semantic_failure(
-        self, mock_context, builder_inputs
-    ):
+    async def test_missing_required_file_emits_semantic_failure(self, mock_context, builder_inputs):
         from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 
         mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
@@ -807,9 +797,7 @@ class TestBuilderFailureOutcomeClass:
         assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
         assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
 
-    async def test_no_fenced_blocks_emits_semantic_failure(
-        self, mock_context, builder_inputs
-    ):
+    async def test_no_fenced_blocks_emits_semantic_failure(self, mock_context, builder_inputs):
         """LLM responds with prose only — no fenced code blocks extractable."""
         from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 

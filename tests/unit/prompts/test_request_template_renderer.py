@@ -233,8 +233,6 @@ class TestCaching:
         renderer = RequestTemplateRenderer(source)
 
         await renderer.render("request.test", {"prd": "A", "role": "dev"}, environment="staging")
-        await renderer.render(
-            "request.test", {"prd": "A", "role": "dev"}, environment="production"
-        )
+        await renderer.render("request.test", {"prd": "A", "role": "dev"}, environment="production")
 
         assert source.resolve_request_template.call_count == 2
