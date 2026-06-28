@@ -116,6 +116,9 @@ def executor(mock_registry, mock_event_bus):
     exec_._cycle_event_bus = mock_event_bus
     # Patch execute_run to track calls without real dispatch
     exec_.execute_run = AsyncMock()
+    # Default to the cycle-create entry (first run = position 0). Resume tests
+    # override this; the real lookup is covered by TestStartingWorkloadIndex.
+    exec_._starting_workload_index = AsyncMock(return_value=0)
     return exec_
 
 
@@ -225,6 +228,104 @@ class TestMultiWorkloadOrchestration:
 
         assert executor.execute_run.await_count == 3
         assert mock_registry.create_run.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Mid-sequence resume (#257)
+# ---------------------------------------------------------------------------
+
+
+class TestStartingWorkloadIndex:
+    """#257: _starting_workload_index maps a run to its workload position so
+    execute_cycle can resume mid-sequence instead of always starting at 0."""
+
+    def _bare_executor(self, registry):
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+        return DispatchedFlowExecutor(
+            cycle_registry=registry,
+            artifact_vault=AsyncMock(),
+            queue=AsyncMock(),
+            squad_profile=AsyncMock(),
+            task_timeout=5.0,
+        )
+
+    @pytest.mark.parametrize(
+        ("run_id", "expected"),
+        [("run_001", 0), ("run_002", 1), ("run_003", 2)],
+    )
+    async def test_index_matches_run_position(self, mock_registry, run_id, expected):
+        """A run's index is its position among non-cancelled runs (run_number order)."""
+        mock_registry.list_runs.return_value = [
+            _make_run("run_001", 1, "completed", "framing"),
+            _make_run("run_002", 2, "paused", "implementation"),
+            _make_run("run_003", 3, "queued", "wrapup"),
+        ]
+        ex = self._bare_executor(mock_registry)
+        assert await ex._starting_workload_index("cyc_001", run_id) == expected
+
+    async def test_cancelled_runs_are_skipped(self, mock_registry):
+        """A cancelled run occupies no workload position — later runs shift down."""
+        mock_registry.list_runs.return_value = [
+            _make_run("run_001", 1, "completed", "framing"),
+            _make_run("run_cx", 2, "cancelled", "implementation"),
+            _make_run("run_003", 3, "paused", "implementation"),
+        ]
+        ex = self._bare_executor(mock_registry)
+        # run_003 is the 2nd non-cancelled run → index 1, not 2
+        assert await ex._starting_workload_index("cyc_001", "run_003") == 1
+
+    async def test_unknown_run_defaults_to_zero(self, mock_registry):
+        """A run not among the cycle's runs falls back to the start (index 0)."""
+        mock_registry.list_runs.return_value = [_make_run("run_001", 1, "completed")]
+        ex = self._bare_executor(mock_registry)
+        assert await ex._starting_workload_index("cyc_001", "ghost") == 0
+
+
+class TestResumeMidSequence:
+    """#257: resuming a later workload's run starts the loop at its position.
+
+    The bug #256 made reachable (wiring resume → execute_cycle): with the old
+    `enumerate` loop, resuming run_002 ran it as workload 0, double-executed it,
+    and re-polled the framing→impl gate. The fix starts at the run's index.
+    """
+
+    async def test_resume_at_index_one_skips_completed_first_workload(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        cycle = _make_cycle(
+            workload_sequence=[
+                {"type": "framing"},
+                {"type": "implementation"},
+                {"type": "wrapup"},
+            ]
+        )
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+        run3 = _make_run("run_003", 3, "completed", "wrapup")
+
+        # Resume the implementation run (position 1); run_003 already exists (reused).
+        executor._starting_workload_index = AsyncMock(return_value=1)
+        mock_registry.get_run.side_effect = [run2, run3]
+        mock_registry.list_runs.return_value = [run1, run2, run3]
+
+        await executor.execute_cycle("cyc_001", "run_002")
+
+        # Only the resumed impl run and wrapup execute — framing (already done) is
+        # NOT re-run, and the resumed run runs exactly once.
+        executed = [c[0][1] for c in executor.execute_run.call_args_list]
+        assert executed == ["run_002", "run_003"]
+        assert "run_001" not in executed
+        mock_registry.create_run.assert_not_called()
+        # Workloads are labeled by their true position (no framing mislabel).
+        completed_types = [
+            c[1]["payload"]["workload_type"]
+            for c in mock_event_bus.emit.call_args_list
+            if c[0][0] == EventType.WORKLOAD_COMPLETED
+        ]
+        assert completed_types == ["implementation", "wrapup"]
 
 
 # ---------------------------------------------------------------------------
