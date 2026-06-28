@@ -141,9 +141,15 @@ class HealthChecker:
         """Return agent status list, merging DB rows with instances.yaml metadata."""
         try:
             async with self.pg_pool.acquire() as conn:
+                # LEFT JOIN the SIP-0089 runtime row so the list carries posture
+                # (mode) and the canonical health signal (runtime_status). Both
+                # are NULL for an agent with no runtime-state row yet (#230).
                 rows = await conn.fetch(
-                    "SELECT agent_id, lifecycle_state, version, tps, memory_count, "
-                    "last_heartbeat, current_task_id FROM agent_status"
+                    "SELECT s.agent_id, s.lifecycle_state, s.version, s.tps, "
+                    "s.memory_count, s.last_heartbeat, s.current_task_id, "
+                    "r.mode, r.runtime_status "
+                    "FROM agent_status s "
+                    "LEFT JOIN agent_runtime_state r ON r.agent_id = s.agent_id"
                 )
 
             instances = self._load_instances()
@@ -167,6 +173,9 @@ class HealthChecker:
                     "role_label": get_role_label(role),
                     "network_status": network_status,
                     "lifecycle_state": lifecycle_state,
+                    # SIP-0089 posture + canonical health (None when no runtime row)
+                    "mode": row["mode"],
+                    "runtime_status": row["runtime_status"],
                     "version": row["version"] or "0.0.0",
                     "tps": row["tps"],
                     "memory_count": row["memory_count"] if row["memory_count"] is not None else 0,
@@ -195,6 +204,8 @@ class HealthChecker:
                     "role_label": get_role_label(info.get("role", "unknown")),
                     "network_status": "offline",
                     "lifecycle_state": "UNKNOWN",
+                    "mode": None,
+                    "runtime_status": None,
                     "version": "0.0.0",
                     "tps": 0,
                     "memory_count": 0,

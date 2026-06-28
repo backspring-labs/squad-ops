@@ -98,6 +98,8 @@ class TestGetAgentStatus:
             "memory_count": 10,
             "last_heartbeat": datetime.utcnow(),
             "current_task_id": None,
+            "mode": None,
+            "runtime_status": None,
         }[key]
 
         mock_conn = AsyncMock()
@@ -127,6 +129,8 @@ class TestGetAgentStatus:
             "memory_count": 10,
             "last_heartbeat": datetime.utcnow(),
             "current_task_id": None,
+            "mode": None,
+            "runtime_status": None,
         }[key]
 
         mock_conn = AsyncMock()
@@ -161,6 +165,8 @@ class TestGetAgentStatus:
             "memory_count": 10,
             "last_heartbeat": datetime.utcnow(),
             "current_task_id": None,
+            "mode": None,
+            "runtime_status": None,
         }[key]
 
         mock_conn = AsyncMock()
@@ -173,6 +179,52 @@ class TestGetAgentStatus:
         neo = [a for a in result if a["agent_id"] == "neo"][0]
         assert neo["role"] == "dev"
         assert neo["role_label"] == "Developer"
+
+
+class TestAgentStatusRuntimeMode:
+    """#230: the agent list LEFT JOINs agent_runtime_state to surface posture
+    (mode) and the canonical health signal (runtime_status)."""
+
+    def _row(self, **overrides):
+        data = {
+            "agent_id": "max",
+            "lifecycle_state": "READY",
+            "version": "0.9.7",
+            "tps": 5,
+            "memory_count": 10,
+            "last_heartbeat": datetime.utcnow(),
+            "current_task_id": None,
+            "mode": None,
+            "runtime_status": None,
+        }
+        data.update(overrides)
+        row = MagicMock()
+        row.__getitem__ = lambda _self, key: data[key]
+        return row
+
+    def _wire(self, mock_pg_pool, row):
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[row])
+        conn.__aenter__ = AsyncMock(return_value=conn)
+        conn.__aexit__ = AsyncMock(return_value=False)
+        mock_pg_pool.acquire.return_value = conn
+
+    @pytest.mark.asyncio
+    async def test_surfaces_mode_and_runtime_status(self, checker, mock_pg_pool):
+        """When a runtime row exists, its mode + runtime_status appear on the agent."""
+        self._wire(mock_pg_pool, self._row(mode="duty", runtime_status="online"))
+        agent = (await checker.get_agent_status())[0]
+        assert agent["mode"] == "duty"
+        assert agent["runtime_status"] == "online"
+
+    @pytest.mark.asyncio
+    async def test_no_runtime_row_yields_none(self, checker, mock_pg_pool):
+        """LEFT JOIN with no agent_runtime_state row → mode/runtime_status are None.
+        The keys are always present so a surface can render a fallback (#230)."""
+        self._wire(mock_pg_pool, self._row(mode=None, runtime_status=None))
+        agent = (await checker.get_agent_status())[0]
+        assert agent["mode"] is None
+        assert agent["runtime_status"] is None
 
 
 class TestUpdateAgentStatusInDb:
