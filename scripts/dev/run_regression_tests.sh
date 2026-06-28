@@ -48,5 +48,8 @@ echo "Running regression tests..."
 echo "Directories: ${REGRESSION_DIRS[*]}"
 echo ""
 
-# Run pytest with the new arch directories
-pytest "${REGRESSION_DIRS[@]}" "$@"
+# Run pytest across the regression directories.
+# #216: -n auto parallelizes across CPU cores (pytest-xdist). The suite is
+# isolation-clean under parallel workers (verified ~4460 tests green). Pass
+# `-n 0` via "$@" to force serial when debugging a single test.
+pytest -n auto "${REGRESSION_DIRS[@]}" "$@"
