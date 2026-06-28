@@ -9,8 +9,14 @@ This is the composition root — it is allowed to import adapters (unlike
 `src/squadops/runtime/*`, which D26 keeps adapter-free). It wires:
 
     PostgresRuntimeState ─┐
-    PostgresAssignment ───┼─→ RuntimeCoordinator ─→ DutyScheduler
+    PostgresAssignment ───┤
+    PostgresFocusLease ───┼─→ RuntimeCoordinator ─→ DutyScheduler
     LoggingRuntimeEventPublisher ─┘
+
+The `PostgresFocusLease` makes the coordinator's §3.4 lease arbitration live:
+opening a duty window acquires the agent's duty FocusLease (preempting a held
+cycle lease), and closing it releases the lease (§3.4). lease ≠ mode — the
+coordinator still owns the authoritative `mode` write.
 
 **Single-writer constraint:** the `RuntimeCoordinator` is the sole writer of
 `AgentRuntimeState.mode` (D16). This is safe only while a *single* runtime-api
@@ -52,13 +58,14 @@ def create_duty_scheduler(config: AppConfig, pool: asyncpg.Pool | None) -> DutyS
     # Imported here (not at module top) so importing this module never pulls the
     # asyncpg adapter stack into processes that only need the factory signature.
     from adapters.events.runtime_event_publisher import LoggingRuntimeEventPublisher
-    from adapters.persistence.runtime import PostgresRuntimeState
+    from adapters.persistence.runtime import PostgresFocusLease, PostgresRuntimeState
     from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
 
     state = PostgresRuntimeState(pool)
     assignments = PostgresAssignment(pool)
+    focus_lease = PostgresFocusLease(pool)
     publisher = LoggingRuntimeEventPublisher()
-    coordinator = RuntimeCoordinator(state, events_publisher=publisher)
+    coordinator = RuntimeCoordinator(state, events_publisher=publisher, focus_lease=focus_lease)
 
     poll_interval = config.runtime.scheduler.poll_interval_seconds
     logger.warning(

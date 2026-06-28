@@ -23,3 +23,11 @@ HEARTBEAT_RECOVERED: Final[str] = "runtime_state.heartbeat_recovered"
 # Assignment window lifecycle (Phase 2 §2.4 — scheduler-emitted, non-transition)
 ASSIGNMENT_WINDOW_SKIPPED: Final[str] = "assignment.window.skipped"
 ASSIGNMENT_WINDOW_REVIEW_REQUIRED: Final[str] = "assignment.window.review_required"
+
+# Focus-lease lifecycle (Phase 3 §3.4 — coordinator-emitted). All lease outcomes
+# emit a `focus_lease.*` event from this canonical set (§11.5). Distinct from the
+# reason codes in `reasons.py` (D18).
+FOCUS_LEASE_GRANTED: Final[str] = "focus_lease.granted"
+FOCUS_LEASE_REJECTED: Final[str] = "focus_lease.rejected"
+FOCUS_LEASE_PREEMPTED: Final[str] = "focus_lease.preempted"
+FOCUS_LEASE_RELEASED: Final[str] = "focus_lease.released"
