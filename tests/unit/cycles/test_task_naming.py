@@ -89,3 +89,65 @@ class TestBuildTaskName:
         """Subtask index 0 must render as ``[0]`` — falsy but valid."""
         env = _envelope(agent_id="neo", inputs={"subtask_focus": "first", "subtask_index": 0})
         assert build_task_name(env) == "neo[0]: first"
+
+
+class TestPerRoleNumbering:
+    """#94: planned-run envelopes carry per-agent role_index/role_total and render
+    ``prefix[n/total]: title`` (1-based) for both framing and implementation."""
+
+    def test_implementation_focused_uses_per_role_count(self) -> None:
+        env = _envelope(
+            agent_id="neo",
+            inputs={
+                "subtask_focus": "Backend Pydantic models & in-memory repository",
+                "role_index": 1,
+                "role_total": 4,
+            },
+        )
+        assert build_task_name(env) == "neo[1/4]: Backend Pydantic models & in-memory repository"
+
+    def test_framing_non_focused_gets_humanized_title_and_count(self) -> None:
+        # The #94 win for framing: a numeric position AND a readable title derived
+        # from the task_type, instead of the bare "nat: strategy.frame_objective".
+        env = _envelope(
+            task_type="strategy.frame_objective",
+            agent_id="nat",
+            role="strat",
+            inputs={"role_index": 1, "role_total": 1},
+        )
+        assert build_task_name(env) == "nat[1/1]: Frame objective"
+
+    @pytest.mark.parametrize(
+        ("task_type", "expected_title"),
+        [
+            ("qa.define_test_strategy", "Define test strategy"),
+            ("governance.assess_readiness", "Assess readiness"),
+            ("data.research_context", "Research context"),
+            ("development.design_plan", "Design plan"),
+            ("noseparator", "Noseparator"),
+        ],
+    )
+    def test_humanized_title_from_task_type(self, task_type, expected_title) -> None:
+        env = _envelope(
+            task_type=task_type, agent_id="x", inputs={"role_index": 2, "role_total": 5}
+        )
+        assert build_task_name(env) == f"x[2/5]: {expected_title}"
+
+    def test_count_is_one_based(self) -> None:
+        """Per-role index is 1-based — the #94 fix for confusing 0-based UI labels."""
+        env = _envelope(
+            agent_id="neo", inputs={"subtask_focus": "first", "role_index": 1, "role_total": 2}
+        )
+        assert build_task_name(env) == "neo[1/2]: first"
+
+    def test_long_focus_still_truncates_with_count(self) -> None:
+        env = _envelope(
+            agent_id="neo", inputs={"subtask_focus": "X" * 100, "role_index": 2, "role_total": 4}
+        )
+        assert build_task_name(env) == f"neo[2/4]: {'X' * 60}"
+
+    def test_partial_count_falls_back_to_legacy(self) -> None:
+        """role_index without role_total (defensive) must not render ``[1/None]`` —
+        fall back to the legacy non-focused shape."""
+        env = _envelope(task_type="development.develop", agent_id="neo", inputs={"role_index": 1})
+        assert build_task_name(env) == "neo: development.develop"
