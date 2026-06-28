@@ -4,7 +4,7 @@
 
 ### Python Version Requirements
 
-SquadOps requires **Python 3.11 or higher**. The project uses Python 3.11.14 in production (Docker containers) and for local development.
+SquadOps requires **Python 3.11 or higher**. Production containers run Python 3.11, but **local development and CI standardize on Python 3.12** — the pinned test constraints (`ci-constraints.txt`) require 3.12, so use 3.12 locally to reproduce the CI gate.
 
 ### Setting Up Python with pyenv (Recommended)
 
@@ -27,10 +27,10 @@ Then restart your terminal or run:
 source ~/.zshrc  # or source ~/.bashrc
 ```
 
-#### 2. Install Python 3.11.14
+#### 2. Install Python 3.12
 
 ```bash
-pyenv install 3.11.14
+pyenv install 3.12
 ```
 
 #### 3. Set Local Python Version
@@ -39,7 +39,7 @@ The project includes a `.python-version` file that pyenv will automatically dete
 
 ```bash
 cd squad-ops
-pyenv local 3.11.14  # This creates/updates .python-version
+pyenv local 3.12  # This creates/updates .python-version
 ```
 
 #### 4. Create Virtual Environment
@@ -52,7 +52,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 # Verify Python version
-python --version  # Should show Python 3.11.14
+python --version  # Should show Python 3.12.x
 ```
 
 #### 5. Install Dependencies
@@ -75,7 +75,7 @@ Run the test script to verify everything is configured correctly:
 **Note**: The test script automatically activates the virtual environment if it exists, so you don't need to activate it manually.
 
 This will check:
-- ✅ Python version (must be >= 3.11)
+- ✅ Python version (must be >= 3.12 for local dev/CI)
 - ✅ Required dependencies (pytest, pytest-asyncio, agent runtime deps)
 
 **Dependency Structure**: 
@@ -123,18 +123,18 @@ All project scripts (like `./tests/run_tests.sh`) automatically activate the vir
 - **Solution**: Restart your terminal or run `source ~/.zshrc` (or `source ~/.bashrc`)
 
 **Problem**: Tests fail with `TypeError: unsupported operand type(s) for |`
-- **Solution**: You're using Python < 3.10. Upgrade to Python 3.11+ using pyenv
+- **Solution**: You're using Python < 3.10. Upgrade to Python 3.12 using pyenv
 
 ### Alternative: Using Homebrew Python Directly
 
 If you prefer not to use pyenv, you can use Homebrew Python directly:
 
 ```bash
-# Install Python 3.11
-brew install python@3.11
+# Install Python 3.12
+brew install python@3.12
 
 # Create virtual environment with explicit path
-/opt/homebrew/bin/python3.11 -m venv .venv
+/opt/homebrew/bin/python3.12 -m venv .venv
 
 # Activate
 source .venv/bin/activate

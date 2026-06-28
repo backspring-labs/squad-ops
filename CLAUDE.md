@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
 **Framework Version**: 1.0.5 (single-sourced via `importlib.metadata.version("squadops")`)
-**Python Requirement**: 3.11+
+**Python Requirement**: 3.11+ (production runs 3.11); develop and test on **Python 3.12** to match CI
 
 ## Commands
 

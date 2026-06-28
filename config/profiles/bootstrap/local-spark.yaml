@@ -2,8 +2,8 @@ schema_version: 1
 name: local-spark
 description: "DGX Spark with GPU — local network deployment"
 
-# Uses system Python intentionally — DGX Spark ships with Python 3.11+
-# on Ubuntu 24.04. Installing pyenv adds complexity with no benefit on
+# Uses system Python intentionally — DGX Spark / Ubuntu 24.04 ships
+# Python 3.12. Installing pyenv adds complexity with no benefit on
 # a controlled hardware target (design rule R5). Still uses .venv for
 # the project runtime (R4).
 
@@ -13,7 +13,7 @@ platform:
   distro_min_version: "24.04"
 
 python:
-  version: "3.11"
+  version: "3.12"
   manager: system
   extras: []
   test_deps: "tests/requirements.txt"

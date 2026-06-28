@@ -38,8 +38,8 @@ run_bootstrap() {
     # ── Python (R5: system Python, R4: still uses .venv) ───────────
     info "=== Python Setup ==="
 
-    setup_system_python "3.11"
-    create_venv "3.11"
+    setup_system_python "3.12"
+    create_venv "3.12"
     install_python_deps "" "tests/requirements.txt"
 
     # ── Docker services ────────────────────────────────────────────
