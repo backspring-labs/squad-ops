@@ -5,10 +5,15 @@ Defines the contract that any database runtime implementation must satisfy.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
+if TYPE_CHECKING:
+    # Type-only: the sqlalchemy `Engine`/`sessionmaker` types appear solely in the
+    # annotations below. `sqlalchemy` is the legacy/alternate persistence backend
+    # (the active runtime path is asyncpg), so it is declared as the optional
+    # `postgres` extra — importing this core port must NOT require it at runtime.
+    from sqlalchemy import Engine
+    from sqlalchemy.orm import sessionmaker
 
 
 @dataclass
@@ -25,7 +30,7 @@ class DbRuntime(ABC):
 
     @property
     @abstractmethod
-    def engine(self) -> Engine:
+    def engine(self) -> "Engine":
         """
         Return the SQLAlchemy engine instance.
 
@@ -36,7 +41,7 @@ class DbRuntime(ABC):
 
     @property
     @abstractmethod
-    def session_factory(self) -> sessionmaker:
+    def session_factory(self) -> "sessionmaker":
         """
         Return the SQLAlchemy sessionmaker instance.
 
