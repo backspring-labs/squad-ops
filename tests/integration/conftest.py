@@ -47,10 +47,29 @@ from tests.integration.agent_manager import AgentManager  # noqa: E402
 
 
 def load_test_config():
-    """Load integration test configuration from file"""
-    config_file = Path(__file__).parent / "test_config.env"
-    config = {}
+    """Load integration test configuration.
 
+    Precedence (highest first): environment variables > ``test_config.env`` file
+    literals > built-in defaults. Previously the file was read *instead of* env
+    (env was only consulted when the file was absent), so a stale file literal
+    silently won and ``RABBITMQ_PASSWORD=... pytest`` was ignored — see #209.
+    Defaults match the docker-compose stack (root ``.env``).
+    """
+    config = {
+        "POSTGRES_URL": "postgresql://squadops:squadops-dev@localhost:5432/squadops",
+        "RABBITMQ_USER": "squadops",
+        "RABBITMQ_PASSWORD": "squadops-dev",
+        "RABBITMQ_HOST": "localhost",
+        "RABBITMQ_PORT": "5672",
+        "REDIS_URL": "redis://localhost:6379",
+        "OLLAMA_URL": "http://localhost:11434",
+        "RUNTIME_API_URL": "http://localhost:8001",
+        "LOG_LEVEL": "INFO",
+        "USE_LOCAL_LLM": "true",
+    }
+
+    # File literals override defaults.
+    config_file = Path(__file__).parent / "test_config.env"
     if config_file.exists():
         with open(config_file) as f:
             for line in f:
@@ -58,22 +77,12 @@ def load_test_config():
                 if line and not line.startswith("#") and "=" in line:
                     key, value = line.split("=", 1)
                     config[key] = value
-    else:
-        # Fallback to environment variables
-        config = {
-            "POSTGRES_URL": os.getenv(
-                "POSTGRES_URL", "postgresql://squadops:squadops123@localhost:5432/squadops"
-            ),
-            "RABBITMQ_USER": os.getenv("RABBITMQ_USER", "squadops"),
-            "RABBITMQ_PASSWORD": os.getenv("RABBITMQ_PASSWORD", "squadops123"),
-            "RABBITMQ_HOST": os.getenv("RABBITMQ_HOST", "localhost"),
-            "RABBITMQ_PORT": os.getenv("RABBITMQ_PORT", "5672"),
-            "REDIS_URL": os.getenv("REDIS_URL", "redis://localhost:6379"),
-            "OLLAMA_URL": os.getenv("OLLAMA_URL", "http://localhost:11434"),
-            "RUNTIME_API_URL": os.getenv("RUNTIME_API_URL", "http://localhost:8001"),
-            "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
-            "USE_LOCAL_LLM": os.getenv("USE_LOCAL_LLM", "true"),
-        }
+
+    # Environment variables override both file and defaults (env wins).
+    for key in config:
+        env_val = os.getenv(key)
+        if env_val is not None:
+            config[key] = env_val
 
     return config
 
@@ -326,9 +335,11 @@ def check_required_services():
             "RabbitMQ is not running on localhost:5672. Start with 'docker-compose up -d rabbitmq'"
         )
 
-    # Check RabbitMQ Management (optional but nice to have)
+    # Check RabbitMQ Management (optional but nice to have). Keep this fast: it's
+    # non-blocking, so a missing/closed mgmt port (15672) must not cost the whole
+    # session ~22s of setup (was timeout=10, retries=2). See #209.
     print("\n📊 Checking RabbitMQ Management (optional)...")
-    rabbitmq_mgmt_healthy = check_rabbitmq_management("localhost", 15672, timeout=10, retries=2)
+    rabbitmq_mgmt_healthy = check_rabbitmq_management("localhost", 15672, timeout=3, retries=1)
     service_status["rabbitmq_management"] = rabbitmq_mgmt_healthy
     if not rabbitmq_mgmt_healthy:
         print("   ⚠️  RabbitMQ Management is optional but recommended for debugging")
@@ -414,7 +425,7 @@ def postgres_container():
 
         class ExternalPostgres:
             def get_connection_url(self):
-                return "postgresql://squadops:squadops123@localhost:5432/squadops"
+                return load_test_config()["POSTGRES_URL"]
 
         yield ExternalPostgres()
     else:
@@ -796,7 +807,7 @@ async def clean_rabbitmq(rabbitmq_container):
                 mgmt_url = f"http://{config.get('RABBITMQ_HOST', 'localhost')}:15672"
                 auth = (
                     config.get("RABBITMQ_USER", "squadops"),
-                    config.get("RABBITMQ_PASSWORD", "squadops123"),
+                    config.get("RABBITMQ_PASSWORD", "squadops-dev"),
                 )
 
                 response = requests.get(f"{mgmt_url}/api/queues", auth=auth, timeout=5)

@@ -38,14 +38,14 @@ Before running integration tests, ensure these services are running:
 1. **PostgreSQL** (port 5432)
    - Database: `squadops`
    - User: `squadops`
-   - Password: `squadops123`
+   - Password: `squadops-dev`
 
 2. **Redis** (port 6379)
    - Default configuration
 
 3. **RabbitMQ** (port 5672)
    - User: `squadops`
-   - Password: `squadops123`
+   - Password: `squadops-dev`
    - Management UI: http://localhost:15672
 
 4. **Ollama** (port 11434)
@@ -189,12 +189,14 @@ Tests automatically clean up state between runs:
 
 ### Environment Variables
 
-Tests use the `test_config.env` file for service configuration:
+Tests read service configuration with this precedence: **environment variables >
+`test_config.env` > built-in defaults** (env wins, so `RABBITMQ_PASSWORD=... pytest`
+works). Defaults match the docker-compose stack (root `.env`):
 
 ```env
-POSTGRES_URL=postgresql://squadops:squadops123@localhost:5432/squadops
+POSTGRES_URL=postgresql://squadops:squadops-dev@localhost:5432/squadops
 RABBITMQ_USER=squadops
-RABBITMQ_PASSWORD=squadops123
+RABBITMQ_PASSWORD=squadops-dev
 RABBITMQ_HOST=localhost
 RABBITMQ_PORT=5672
 REDIS_URL=redis://localhost:6379
