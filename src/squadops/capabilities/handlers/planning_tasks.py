@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -435,7 +436,14 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
             retry_content = await self._retry_without_frontmatter(context, inputs, content)
             if retry_content is not None:
                 content = retry_content
-                result.outputs["artifacts"][0]["content"] = content
+                # #155: `result` is a frozen HandlerResult. Rebuild it with the
+                # retry content instead of mutating its nested `outputs` dict in
+                # place — `frozen=True` does not freeze nested containers, and the
+                # original result may be shared/cached/retried elsewhere.
+                artifacts = result.outputs["artifacts"]
+                new_artifacts = [{**artifacts[0], "content": content}, *artifacts[1:]]
+                new_outputs = {**result.outputs, "artifacts": new_artifacts}
+                result = replace(result, outputs=new_outputs)
                 m = _FRONTMATTER_RE.match(content)
 
             if not m:
