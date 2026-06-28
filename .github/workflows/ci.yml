@@ -45,9 +45,8 @@ jobs:
       - name: Prompt-fragment manifest is in sync
         run: python scripts/dev/regen_fragment_manifest.py --check
 
-      # Runs `ruff check .` (lint, fail-stop) + the test-quality lint + the full
-      # unit regression suite. NOTE: a repo-wide `ruff format --check .` is NOT
-      # gated here yet — 43 pre-existing files need formatting first (tracked
-      # separately); add the format gate once that sweep lands.
-      - name: Regression suite (ruff check + test-quality lint + pytest)
+      # Runs `ruff check .` + `ruff format --check .` (lint + format, fail-stop) +
+      # the test-quality lint + the full unit regression suite. The repo-wide
+      # format sweep landed in #196, so the format check is now gated here.
+      - name: Regression suite (ruff check + format + test-quality lint + pytest)
         run: bash scripts/dev/run_regression_tests.sh
