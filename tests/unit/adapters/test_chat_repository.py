@@ -234,20 +234,48 @@ class TestChatRepositoryListSessions:
         assert "ORDER BY started_at DESC" in sql
 
 
-class TestChatRepositoryJsonb:
-    """JSONB parsing edge cases."""
+class TestChatRepositoryMetadataDecoding:
+    """ChatRepository decodes JSONB metadata via the shared ``parse_jsonb``
+    helper, and (preserved from the old ``_parse_jsonb``) coerces a NULL
+    metadata column to an empty dict at the call site so consumers always get a
+    dict (#156)."""
 
-    def test_parse_jsonb_handles_string(self):
-        """asyncpg returns JSONB as string — parser decodes it."""
-        result = ChatRepository._parse_jsonb('{"key": "value"}')
-        assert result == {"key": "value"}
+    @staticmethod
+    def _session_row(metadata):
+        return {
+            "session_id": "s1",
+            "agent_id": "a1",
+            "user_id": "u1",
+            "started_at": _now(),
+            "ended_at": None,
+            "metadata": metadata,
+        }
 
-    def test_parse_jsonb_handles_dict(self):
-        """Already-decoded dict passes through."""
-        result = ChatRepository._parse_jsonb({"key": "value"})
-        assert result == {"key": "value"}
+    @staticmethod
+    def _message_row(metadata):
+        return {
+            "message_id": "m1",
+            "session_id": "s1",
+            "role": "user",
+            "content": "hi",
+            "created_at": _now(),
+            "metadata": metadata,
+        }
 
-    def test_parse_jsonb_handles_none(self):
-        """None returns empty dict."""
-        result = ChatRepository._parse_jsonb(None)
-        assert result == {}
+    def test_session_decodes_string_metadata(self):
+        """asyncpg returns JSONB as a string — it is decoded into a dict."""
+        repo = ChatRepository(pool=_make_pool()[0])
+        session = repo._assemble_session(self._session_row('{"k": "v"}'))
+        assert session.metadata == {"k": "v"}
+
+    def test_session_null_metadata_becomes_empty_dict(self):
+        """Preserved None→{}: a NULL metadata column surfaces as {} (not None)."""
+        repo = ChatRepository(pool=_make_pool()[0])
+        session = repo._assemble_session(self._session_row(None))
+        assert session.metadata == {}
+
+    def test_message_null_metadata_becomes_empty_dict(self):
+        """Same None→{} preservation on the message-assembly path."""
+        repo = ChatRepository(pool=_make_pool()[0])
+        message = repo._assemble_message(self._message_row(None))
+        assert message.metadata == {}

@@ -12,6 +12,7 @@ import logging
 
 import asyncpg
 
+from adapters.jsonb import parse_jsonb
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.lifecycle import (
     GATE_REJECTED_STATES,
@@ -304,7 +305,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 )
                 if cycle_row is None:
                     raise CycleNotFoundError(f"Cycle not found: {run_row['cycle_id']}")
-                policy = self._parse_jsonb(cycle_row["task_flow_policy"])
+                policy = parse_jsonb(cycle_row["task_flow_policy"])
                 gate_names = {g["name"] for g in policy.get("gates", ())}
                 if decision.gate_name not in gate_names:
                     raise ValidationError(
@@ -435,16 +436,9 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     # --- Internal helpers ---
 
-    @staticmethod
-    def _parse_jsonb(value):
-        """Decode a JSONB column value (asyncpg returns str by default)."""
-        if isinstance(value, str):
-            return json.loads(value)
-        return value  # already a dict (e.g. in tests or with custom codec)
-
     def _row_to_cycle(self, row: asyncpg.Record) -> Cycle:
         """Reconstruct frozen Cycle from asyncpg Record."""
-        tfp = self._parse_jsonb(row["task_flow_policy"])
+        tfp = parse_jsonb(row["task_flow_policy"])
         gates = tuple(
             Gate(
                 name=g["name"],
@@ -453,9 +447,9 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
             for g in tfp.get("gates", ())
         )
-        applied = self._parse_jsonb(row["applied_defaults"]) or {}
-        overrides = self._parse_jsonb(row["execution_overrides"]) or {}
-        experiment = self._parse_jsonb(row["experiment_context"]) or {}
+        applied = parse_jsonb(row["applied_defaults"]) or {}
+        overrides = parse_jsonb(row["execution_overrides"]) or {}
+        experiment = parse_jsonb(row["experiment_context"]) or {}
         return Cycle(
             cycle_id=row["cycle_id"],
             project_id=row["project_id"],
@@ -506,10 +500,10 @@ class PostgresCycleRegistry(CycleRegistryPort):
         return RunCheckpoint(
             run_id=row["run_id"],
             checkpoint_index=row["checkpoint_index"],
-            completed_task_ids=tuple(self._parse_jsonb(row["completed_task_ids"])),
-            prior_outputs=self._parse_jsonb(row["prior_outputs"]),
-            artifact_refs=tuple(self._parse_jsonb(row["artifact_refs"])),
-            plan_delta_refs=tuple(self._parse_jsonb(row["plan_delta_refs"])),
+            completed_task_ids=tuple(parse_jsonb(row["completed_task_ids"])),
+            prior_outputs=parse_jsonb(row["prior_outputs"]),
+            artifact_refs=tuple(parse_jsonb(row["artifact_refs"])),
+            plan_delta_refs=tuple(parse_jsonb(row["plan_delta_refs"])),
             created_at=row["created_at"],
         )
 
