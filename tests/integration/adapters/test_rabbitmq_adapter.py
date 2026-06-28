@@ -336,3 +336,60 @@ class TestNativeSubscribeIntegration:
         # Exactly-once within each queue.
         assert sorted(json.loads(p)["i"] for p in alpha) == list(range(per_queue))
         assert sorted(json.loads(p)["i"] for p in beta) == list(range(per_queue))
+
+
+@pytest.mark.integration
+class TestChannelRecovery:
+    """#146: a dead channel must be rebuilt on the next consume(), not spun on.
+
+    The original bug (an agent spinning for days on ``Channel was not opened``,
+    never consuming again) was fixed by the SIP-0094 ``connect_robust`` +
+    ``_get_queue`` channel-tracking work. There was no regression test, which is
+    why it rotted into a multi-day incident. These lock the recovery: each test
+    publishes to the durable queue, kills the channel, then asserts a subsequent
+    ``consume()`` still delivers the message — which can only happen if the
+    adapter rebuilt the channel and re-declared the stale queue handle.
+    """
+
+    @pytest_asyncio.fixture
+    async def adapter(self, rabbitmq_container):
+        a = RabbitMQAdapter(url=rabbitmq_container.get_connection_url(), namespace=None)
+        yield a
+        await a.close()
+
+    @pytest.mark.asyncio
+    async def test_consume_recovers_after_channel_close(self, adapter):
+        """Channel dies while the connection stays up -> next consume() rebuilds
+        the channel, re-declares the queue, and delivers the queued message."""
+        q = "test146_channel_close_recovery"
+        await _drain(adapter, q)
+        await adapter.ensure_queue(q)  # establish channel + cache the queue handle
+        chan_before = adapter._channel
+        await adapter.publish(q, json.dumps({"task": "survives-channel-close"}))
+
+        # #146 trigger: the channel dies (connection unaffected).
+        await adapter._channel.close()
+        assert adapter._channel.is_closed
+
+        msgs = await adapter.consume(q, max_messages=1)
+        assert [json.loads(m.payload)["task"] for m in msgs] == ["survives-channel-close"]
+        assert adapter._channel is not chan_before  # channel was rebuilt, not reused
+        assert not adapter._channel.is_closed
+
+    @pytest.mark.asyncio
+    async def test_consume_recovers_after_server_side_channel_death(self, adapter):
+        """Broker closes the channel on a channel-level error (the literal
+        ``Channel was not opened`` case) -> next consume() recovers, not spins."""
+        q = "test146_server_close_recovery"
+        await _drain(adapter, q)
+        await adapter.ensure_queue(q)
+        await adapter.publish(q, json.dumps({"task": "survives-server-close"}))
+
+        # Provoke a server-side channel close: passive-declare a missing queue.
+        with pytest.raises(Exception):
+            await adapter._channel.declare_queue("nonexistent_queue_146_xyz", passive=True)
+        assert adapter._channel.is_closed  # broker killed the channel
+
+        msgs = await adapter.consume(q, max_messages=1)
+        assert [json.loads(m.payload)["task"] for m in msgs] == ["survives-server-close"]
+        assert not adapter._channel.is_closed  # rebuilt
