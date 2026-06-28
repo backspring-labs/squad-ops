@@ -8,8 +8,9 @@ import logging
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.dtos import (
     ProfileCloneRequest,
     ProfileCreateRequest,
@@ -18,6 +19,7 @@ from squadops.api.routes.cycles.dtos import (
 )
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import profile_to_response
+from squadops.auth.models import Scope
 from squadops.cycles.models import (
     AgentProfileEntry,
     CycleError,
@@ -93,7 +95,7 @@ async def _check_model_availability(agents: tuple[AgentProfileEntry, ...]) -> li
     return warnings
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_profiles():
     from squadops.api.runtime.deps import get_squad_profile_port
 
@@ -106,7 +108,7 @@ async def list_profiles():
         raise handle_cycle_error(e) from e
 
 
-@router.get("/active")
+@router.get("/active", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_active_profile():
     from squadops.api.runtime.deps import get_squad_profile_port
 
@@ -118,7 +120,7 @@ async def get_active_profile():
         raise handle_cycle_error(e) from e
 
 
-@router.post("/active")
+@router.post("/active", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def set_active_profile(body: SetActiveProfileRequest):
     from squadops.api.runtime.deps import get_squad_profile_port
 
@@ -130,7 +132,7 @@ async def set_active_profile(body: SetActiveProfileRequest):
         raise handle_cycle_error(e) from e
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def create_profile(body: ProfileCreateRequest):
     from squadops.api.runtime.deps import get_squad_profile_port
 
@@ -155,7 +157,7 @@ async def create_profile(body: ProfileCreateRequest):
         raise handle_cycle_error(e) from e
 
 
-@router.put("/{profile_id}")
+@router.put("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def update_profile(profile_id: str, body: ProfileUpdateRequest):
     from squadops.api.runtime.deps import get_squad_profile_port
 
@@ -182,7 +184,7 @@ async def update_profile(profile_id: str, body: ProfileUpdateRequest):
         raise handle_cycle_error(e) from e
 
 
-@router.post("/{profile_id}/clone")
+@router.post("/{profile_id}/clone", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def clone_profile(profile_id: str, body: ProfileCloneRequest):
     from squadops.api.runtime.deps import get_squad_profile_port
 
@@ -205,7 +207,7 @@ async def clone_profile(profile_id: str, body: ProfileCloneRequest):
         raise handle_cycle_error(e) from e
 
 
-@router.delete("/{profile_id}")
+@router.delete("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def delete_profile(profile_id: str):
     from squadops.api.runtime.deps import get_squad_profile_port
 
@@ -217,7 +219,7 @@ async def delete_profile(profile_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.post("/{profile_id}/activate")
+@router.post("/{profile_id}/activate", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def activate_profile(profile_id: str):
     from squadops.api.runtime.deps import get_squad_profile_port
 
@@ -229,7 +231,7 @@ async def activate_profile(profile_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.get("/{profile_id}")
+@router.get("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_profile(profile_id: str):
     from squadops.api.runtime.deps import get_squad_profile_port
 

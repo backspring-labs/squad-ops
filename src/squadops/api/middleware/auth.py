@@ -18,6 +18,10 @@ from squadops.ports.auth.authentication import AuthPort
 
 logger = logging.getLogger(__name__)
 
+# One-time warning latch: #150 — surface a missing audit port instead of silently
+# dropping security audit events.
+_audit_unavailable_warned = False
+
 # Always allowlisted path prefixes (no token required)
 _ALWAYS_ALLOWLISTED_PREFIXES = ("/health",)
 
@@ -90,6 +94,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             except Exception:
                 pass
         if audit_port is None:
+            global _audit_unavailable_warned
+            if not _audit_unavailable_warned:
+                logger.warning(
+                    "Audit port unavailable — security audit events (including token "
+                    "rejections) are not being recorded (#150)."
+                )
+                _audit_unavailable_warned = True
             return
         try:
             from squadops.auth.models import AuditEvent
@@ -237,46 +248,52 @@ def require_auth(auth_port_getter=None):
     return dependency
 
 
+async def _enforce_access(
+    request: Request, *, roles: list[str], scopes: list[str]
+) -> Identity | None:
+    """Shared authorization check for :func:`require_roles` / :func:`require_scopes`.
+
+    No-op when no authorization backend is configured — i.e. auth is disabled for
+    this deployment (``AuthMiddleware`` is itself only attached when auth is
+    enabled, so a protected route must not 401 in an auth-off deployment; this
+    matches the pre-#150 behaviour of leaving routes open when auth is off).
+    When authz IS configured: 401 without an identity, 403 without the required
+    roles/scopes (#150).
+    """
+    # Import here to avoid circular imports at module level
+    from squadops.api.runtime.deps import get_authz_port
+
+    authz = get_authz_port()
+    if authz is None:
+        return getattr(request.state, "identity", None)
+
+    identity: Identity | None = getattr(request.state, "identity", None)
+    if identity is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    ctx = authz.check_access(identity, required_roles=roles, required_scopes=scopes)
+    if not ctx.granted:
+        raise HTTPException(status_code=403, detail=ctx.denial_reason or "Forbidden")
+    return identity
+
+
 def require_roles(*roles: str) -> Callable:
-    """FastAPI dependency that checks identity has at least one of the required roles."""
+    """FastAPI dependency: identity has at least one of the required roles.
 
-    async def dependency(request: Request) -> Identity:
-        identity: Identity | None = getattr(request.state, "identity", None)
-        if identity is None:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+    No-op when auth is disabled (no authorization backend configured)."""
 
-        # Import here to avoid circular imports at module level
-        from squadops.api.runtime.deps import get_authz_port
-
-        authz = get_authz_port()
-        if authz is None:
-            raise HTTPException(status_code=503, detail="Authorization service unavailable")
-
-        ctx = authz.check_access(identity, required_roles=list(roles), required_scopes=[])
-        if not ctx.granted:
-            raise HTTPException(status_code=403, detail=ctx.denial_reason or "Forbidden")
-        return identity
+    async def dependency(request: Request) -> Identity | None:
+        return await _enforce_access(request, roles=list(roles), scopes=[])
 
     return dependency
 
 
 def require_scopes(*scopes: str) -> Callable:
-    """FastAPI dependency that checks identity has all required scopes."""
+    """FastAPI dependency: identity has all of the required scopes.
 
-    async def dependency(request: Request) -> Identity:
-        identity: Identity | None = getattr(request.state, "identity", None)
-        if identity is None:
-            raise HTTPException(status_code=401, detail="Not authenticated")
+    No-op when auth is disabled (no authorization backend configured)."""
 
-        from squadops.api.runtime.deps import get_authz_port
-
-        authz = get_authz_port()
-        if authz is None:
-            raise HTTPException(status_code=503, detail="Authorization service unavailable")
-
-        ctx = authz.check_access(identity, required_roles=[], required_scopes=list(scopes))
-        if not ctx.granted:
-            raise HTTPException(status_code=403, detail=ctx.denial_reason or "Forbidden")
-        return identity
+    async def dependency(request: Request) -> Identity | None:
+        return await _enforce_access(request, roles=[], scopes=list(scopes))
 
     return dependency

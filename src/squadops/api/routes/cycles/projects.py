@@ -4,17 +4,19 @@ Project API routes (SIP-0064 §9.1).
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 
+from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import project_to_response
+from squadops.auth.models import Scope
 from squadops.cycles.models import CycleError
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_projects():
     from squadops.api.runtime.deps import get_project_registry
 
@@ -26,7 +28,7 @@ async def list_projects():
         raise handle_cycle_error(e) from e
 
 
-@router.get("/{project_id}")
+@router.get("/{project_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_project(project_id: str):
     from squadops.api.runtime.deps import get_project_registry
 
@@ -38,7 +40,7 @@ async def get_project(project_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.get("/{project_id}/prd-content")
+@router.get("/{project_id}/prd-content", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_project_prd_content(project_id: str):
     """Read PRD file content for a project (SIP-0074 §3.5).
 

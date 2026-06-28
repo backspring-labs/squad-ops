@@ -10,15 +10,17 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
+from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.dtos import (
     ModelSpecResponse,
     PulledModelResponse,
     PullModelRequest,
     PullStatusResponse,
 )
+from squadops.auth.models import Scope
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,7 @@ router = APIRouter(prefix="/api/v1/models", tags=["models"])
 _CACHE_HEADERS = {"Cache-Control": "public, max-age=300"}
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_models():
     """Return all model registry entries."""
     from squadops.llm.model_registry import MODEL_SPECS
@@ -58,7 +60,7 @@ def _get_ollama_adapter():
     return port
 
 
-@router.get("/pulled")
+@router.get("/pulled", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_pulled_models():
     """List locally pulled models with active profile cross-reference."""
     from squadops.llm.model_registry import MODEL_SPECS
@@ -110,7 +112,7 @@ async def list_pulled_models():
     return results
 
 
-@router.post("/pull", status_code=202)
+@router.post("/pull", status_code=202, dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def pull_model(body: PullModelRequest):
     """Start pulling a model in the background. Returns 202 with pull_id."""
     from squadops.api.runtime.pull_tracker import (
@@ -138,7 +140,7 @@ async def pull_model(body: PullModelRequest):
     ).model_dump()
 
 
-@router.get("/pull/{pull_id}/status")
+@router.get("/pull/{pull_id}/status", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def pull_status(pull_id: str):
     """Poll the status of a model pull job."""
     from squadops.api.runtime.pull_tracker import get_pull_job
@@ -155,7 +157,7 @@ async def pull_status(pull_id: str):
     ).model_dump()
 
 
-@router.delete("/{model_name:path}")
+@router.delete("/{model_name:path}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def delete_model(model_name: str):
     """Delete a locally pulled model."""
     from squadops.llm.exceptions import LLMConnectionError, LLMModelNotFoundError

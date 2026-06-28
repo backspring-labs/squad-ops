@@ -6,11 +6,13 @@ import hashlib
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.dtos import BaselinePromoteRequest
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import artifact_to_response
+from squadops.auth.models import Scope
 from squadops.cycles.models import (
     ArtifactRef,
     BaselineNotAllowedError,
@@ -28,7 +30,10 @@ _MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 _VALID_PROMOTION_STATUSES = {PromotionStatus.WORKING, PromotionStatus.PROMOTED}
 
 
-@router.post("/projects/{project_id}/artifacts/ingest")
+@router.post(
+    "/projects/{project_id}/artifacts/ingest",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))],
+)
 async def ingest_artifact(
     project_id: str,
     file: UploadFile = File(...),
@@ -92,7 +97,7 @@ async def ingest_artifact(
         raise handle_cycle_error(e) from e
 
 
-@router.get("/artifacts/{artifact_id}")
+@router.get("/artifacts/{artifact_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_artifact_metadata(artifact_id: str):
     from squadops.api.runtime.deps import get_artifact_vault
 
@@ -104,7 +109,9 @@ async def get_artifact_metadata(artifact_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.get("/artifacts/{artifact_id}/download")
+@router.get(
+    "/artifacts/{artifact_id}/download", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))]
+)
 async def download_artifact(artifact_id: str):
     from squadops.api.runtime.deps import get_artifact_vault
 
@@ -122,7 +129,9 @@ async def download_artifact(artifact_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.post("/artifacts/{artifact_id}/promote")
+@router.post(
+    "/artifacts/{artifact_id}/promote", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))]
+)
 async def promote_artifact(artifact_id: str):
     """Promote an artifact to cycle-scoped canonical status (SIP-0076 §9.5)."""
     from squadops.api.runtime.deps import get_artifact_vault
@@ -152,7 +161,9 @@ async def promote_artifact(artifact_id: str):
         raise handle_cycle_error(e) from e
 
 
-@router.get("/projects/{project_id}/artifacts")
+@router.get(
+    "/projects/{project_id}/artifacts", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))]
+)
 async def list_project_artifacts(
     project_id: str,
     artifact_type: str | None = None,
@@ -177,7 +188,10 @@ async def list_project_artifacts(
         raise handle_cycle_error(e) from e
 
 
-@router.get("/projects/{project_id}/cycles/{cycle_id}/artifacts")
+@router.get(
+    "/projects/{project_id}/cycles/{cycle_id}/artifacts",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
+)
 async def list_cycle_artifacts(
     project_id: str,
     cycle_id: str,
@@ -202,7 +216,10 @@ async def list_cycle_artifacts(
         raise handle_cycle_error(e) from e
 
 
-@router.get("/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/artifacts")
+@router.get(
+    "/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/artifacts",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
+)
 async def list_run_artifacts(
     project_id: str,
     cycle_id: str,
@@ -229,7 +246,10 @@ async def list_run_artifacts(
         raise handle_cycle_error(e) from e
 
 
-@router.post("/projects/{project_id}/baseline/{artifact_type}")
+@router.post(
+    "/projects/{project_id}/baseline/{artifact_type}",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))],
+)
 async def promote_baseline(project_id: str, artifact_type: str, body: BaselinePromoteRequest):
     """Promote an artifact as baseline (T6: enforcement here, not in vault)."""
     from squadops.api.runtime.deps import get_artifact_vault, get_cycle_registry
@@ -262,7 +282,10 @@ async def promote_baseline(project_id: str, artifact_type: str, body: BaselinePr
         raise handle_cycle_error(e) from e
 
 
-@router.get("/projects/{project_id}/baseline/{artifact_type}")
+@router.get(
+    "/projects/{project_id}/baseline/{artifact_type}",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
+)
 async def get_baseline(project_id: str, artifact_type: str):
     from squadops.api.runtime.deps import get_artifact_vault
 
@@ -278,7 +301,9 @@ async def get_baseline(project_id: str, artifact_type: str):
         raise handle_cycle_error(e) from e
 
 
-@router.get("/projects/{project_id}/baseline")
+@router.get(
+    "/projects/{project_id}/baseline", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))]
+)
 async def list_baselines(project_id: str):
     from squadops.api.runtime.deps import get_artifact_vault
 

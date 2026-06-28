@@ -7,13 +7,15 @@ These are code/config-file-backed value objects that only change on redeploy.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
+from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.dtos import (
     CycleRequestProfileResponse,
     PromptMetaResponse,
 )
+from squadops.auth.models import Scope
 
 router = APIRouter(
     prefix="/api/v1/cycle-request-profiles",
@@ -42,7 +44,7 @@ def _profile_to_response(profile) -> dict:
     ).model_dump()
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_cycle_request_profiles():
     """Return all registered cycle request profiles with prompts metadata."""
     from squadops.contracts.cycle_request_profiles import list_profiles, load_profile
@@ -52,7 +54,7 @@ async def list_cycle_request_profiles():
     return JSONResponse(content=profiles, headers=_CACHE_HEADERS)
 
 
-@router.get("/{profile_name}")
+@router.get("/{profile_name}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_cycle_request_profile(profile_name: str):
     """Return a single cycle request profile by name."""
     from squadops.contracts.cycle_request_profiles import load_profile
