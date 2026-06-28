@@ -1,4 +1,4 @@
-"""Tests for PrefectReporter (adapters/cycles/prefect_reporter.py).
+"""Tests for PrefectWorkflowTracker (adapters/cycles/prefect_workflow_tracker.py).
 
 Covers ensure_flow (create + find existing), create_flow_run,
 create_task_run, set_state methods, and graceful degradation.
@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from adapters.cycles.prefect_reporter import PrefectReporter
+from adapters.cycles.prefect_workflow_tracker import PrefectWorkflowTracker
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -42,7 +42,7 @@ def _mock_response(status_code: int = 200, json_data: dict | list | None = None)
 
 class TestEnsureFlow:
     async def test_creates_flow_when_none_exists(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
 
         # First call: filter returns empty
@@ -69,7 +69,7 @@ class TestEnsureFlow:
         assert "/flows/" in create_call.args[0]
 
     async def test_finds_existing_flow(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
 
         reporter._client.post = AsyncMock(
@@ -82,7 +82,7 @@ class TestEnsureFlow:
         reporter._client.post.assert_called_once()  # Only filter, no create
 
     async def test_returns_cached_flow_id(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._flow_id = "cached-flow-789"
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
 
@@ -94,7 +94,7 @@ class TestEnsureFlow:
 
 class TestCreateFlowRun:
     async def test_creates_flow_run(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(return_value=_mock_response(201, {"id": "run-abc"}))
 
@@ -114,7 +114,7 @@ class TestCreateFlowRun:
 
 class TestCreateTaskRun:
     async def test_creates_task_run(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(return_value=_mock_response(201, {"id": "taskrun-xyz"}))
 
@@ -134,7 +134,7 @@ class TestCreateTaskRun:
 
 class TestSetStateMethods:
     async def test_set_flow_run_state(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(return_value=_mock_response(200, {"status": "ok"}))
 
@@ -147,7 +147,7 @@ class TestSetStateMethods:
         assert body["state"]["name"] == "Running"
 
     async def test_set_task_run_state(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(return_value=_mock_response(200, {"status": "ok"}))
 
@@ -163,7 +163,7 @@ class TestGracefulDegradation:
     """Prefect down -> warning logged, no exception raised."""
 
     async def test_ensure_flow_handles_connection_error(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
@@ -172,7 +172,7 @@ class TestGracefulDegradation:
         assert flow_id  # Returns a placeholder
 
     async def test_create_flow_run_handles_error(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
@@ -180,7 +180,7 @@ class TestGracefulDegradation:
         assert run_id  # Returns a placeholder
 
     async def test_create_task_run_handles_error(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
@@ -188,7 +188,7 @@ class TestGracefulDegradation:
         assert task_run_id  # Returns a placeholder
 
     async def test_set_flow_run_state_handles_error(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
@@ -196,7 +196,7 @@ class TestGracefulDegradation:
         await reporter.set_flow_run_state("run-1", "RUNNING", "Running")
 
     async def test_set_task_run_state_handles_error(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
@@ -204,7 +204,7 @@ class TestGracefulDegradation:
         await reporter.set_task_run_state("taskrun-1", "FAILED", "Failed")
 
     async def test_http_500_does_not_raise(self):
-        reporter = PrefectReporter(api_url=PREFECT_URL)
+        reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(
             return_value=_mock_response(500, {"detail": "Internal Server Error"})

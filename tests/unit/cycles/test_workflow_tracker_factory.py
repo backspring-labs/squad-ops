@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from adapters.cycles.noop_workflow_tracker import NoOpWorkflowTracker
-from adapters.cycles.prefect_reporter import PrefectReporter
+from adapters.cycles.prefect_workflow_tracker import PrefectWorkflowTracker
 from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
 from squadops.config.schema import PrefectConfig
 from squadops.ports.cycles import WorkflowTrackerPort
@@ -38,15 +38,15 @@ def test_returns_noop_when_api_url_unset():
     assert isinstance(tracker, NoOpWorkflowTracker)
 
 
-def test_returns_prefect_reporter_when_configured():
+def test_returns_prefect_workflow_tracker_when_configured():
     tracker = create_workflow_tracker(_cfg())
-    assert isinstance(tracker, PrefectReporter)
+    assert isinstance(tracker, PrefectWorkflowTracker)
     assert isinstance(tracker, WorkflowTrackerPort)
 
 
 def test_falls_back_to_noop_on_init_failure():
     with patch(
-        "adapters.cycles.prefect_reporter.PrefectReporter",
+        "adapters.cycles.prefect_workflow_tracker.PrefectWorkflowTracker",
         side_effect=RuntimeError("boom"),
     ):
         tracker = create_workflow_tracker(_cfg())

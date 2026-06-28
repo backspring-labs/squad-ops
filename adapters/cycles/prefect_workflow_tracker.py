@@ -22,7 +22,7 @@ from squadops.ports.cycles import WorkflowTrackerPort
 logger = logging.getLogger(__name__)
 
 
-class PrefectReporter(WorkflowTrackerPort):
+class PrefectWorkflowTracker(WorkflowTrackerPort):
     """Prefect-backed :class:`WorkflowTrackerPort`.
 
     Best-effort: all methods catch exceptions and log warnings. Execution

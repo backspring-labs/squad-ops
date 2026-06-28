@@ -123,7 +123,7 @@ class TestLangFuseParity:
 
 @pytest.mark.domain_events
 class TestPrefectParity:
-    """Bridge state transitions match executor's direct PrefectReporter calls."""
+    """Bridge state transitions match executor's direct PrefectWorkflowTracker calls."""
 
     def test_run_started_state_matches(self):
         """Executor: set_flow_run_state(frid, 'RUNNING', 'Running')"""

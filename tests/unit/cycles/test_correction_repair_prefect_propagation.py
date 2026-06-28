@@ -65,8 +65,8 @@ def failed_envelope() -> TaskEnvelope:
 
 
 @pytest.fixture
-def mock_prefect_reporter() -> AsyncMock:
-    """``PrefectReporter`` test double; ``create_task_run`` returns sequential IDs."""
+def mock_prefect_workflow_tracker() -> AsyncMock:
+    """``PrefectWorkflowTracker`` test double; ``create_task_run`` returns sequential IDs."""
     reporter = AsyncMock()
     counter = {"n": 0}
 
@@ -79,7 +79,7 @@ def mock_prefect_reporter() -> AsyncMock:
     return reporter
 
 
-def _make_executor(mock_prefect_reporter, reply_router):
+def _make_executor(mock_prefect_workflow_tracker, reply_router):
     """Build a minimally-wired executor for direct method calls."""
     from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 
@@ -94,7 +94,7 @@ def _make_executor(mock_prefect_reporter, reply_router):
         queue=queue,
         squad_profile=squad,
         task_timeout=5.0,
-        workflow_tracker=mock_prefect_reporter,
+        workflow_tracker=mock_prefect_workflow_tracker,
         reply_router=reply_router,
     )
     ex._cycle_event_bus = MagicMock()
@@ -111,9 +111,9 @@ class TestCorrectionTaskRunPropagation:
     correction step and tag every emitted task event with both run IDs."""
 
     async def test_correction_steps_create_task_runs_and_emit_full_context(
-        self, mock_prefect_reporter, cycle, failed_envelope, reply_router
+        self, mock_prefect_workflow_tracker, cycle, failed_envelope, reply_router
     ):
-        ex = _make_executor(mock_prefect_reporter, reply_router)
+        ex = _make_executor(mock_prefect_workflow_tracker, reply_router)
 
         # Stub _dispatch_task: capture kwargs and return a "continue"
         # correction decision so the protocol terminates without entering
@@ -164,7 +164,7 @@ class TestCorrectionTaskRunPropagation:
         )
 
         # Each correction step gets its own Prefect task_run.
-        assert mock_prefect_reporter.create_task_run.await_count == len(captured)
+        assert mock_prefect_workflow_tracker.create_task_run.await_count == len(captured)
         assert all(c["flow_run_id"] == "fr_main" for c in captured)
         assert all(
             c["task_run_id"] is not None and c["task_run_id"].startswith("tr_") for c in captured
@@ -186,11 +186,11 @@ class TestCorrectionTaskRunPropagation:
             assert ctx["task_run_id"].startswith("tr_")
 
     async def test_correction_skips_task_run_creation_when_flow_run_id_missing(
-        self, mock_prefect_reporter, cycle, failed_envelope, reply_router
+        self, mock_prefect_workflow_tracker, cycle, failed_envelope, reply_router
     ):
         """No Prefect flow context → no task_runs created (consistent with
         main path); event contexts carry empty-string IDs (not None)."""
-        ex = _make_executor(mock_prefect_reporter, reply_router)
+        ex = _make_executor(mock_prefect_workflow_tracker, reply_router)
 
         async def succeed(envelope, *_a, **_k):
             if envelope.task_type == "governance.correction_decision":
@@ -217,7 +217,7 @@ class TestCorrectionTaskRunPropagation:
             flow_run_id=None,
         )
 
-        mock_prefect_reporter.create_task_run.assert_not_awaited()
+        mock_prefect_workflow_tracker.create_task_run.assert_not_awaited()
         for call in ex._cycle_event_bus.emit.call_args_list:
             event_type = call.args[0] if call.args else call.kwargs.get("event_type")
             if event_type != EventType.TASK_DISPATCHED:
@@ -237,9 +237,9 @@ class TestCorrectionPatchRepairTaskRunPropagation:
     correction protocol must also create per-step task_runs."""
 
     async def test_patch_repairs_create_task_runs_and_carry_full_context(
-        self, mock_prefect_reporter, cycle, failed_envelope, reply_router
+        self, mock_prefect_workflow_tracker, cycle, failed_envelope, reply_router
     ):
-        ex = _make_executor(mock_prefect_reporter, reply_router)
+        ex = _make_executor(mock_prefect_workflow_tracker, reply_router)
 
         seen_repair_dispatches: list[dict] = []
 
@@ -298,14 +298,14 @@ class TestPulseRepairTaskRunPropagation:
     """
 
     async def test_pulse_repair_dispatches_carry_run_ids(
-        self, mock_prefect_reporter, cycle, failed_envelope, reply_router
+        self, mock_prefect_workflow_tracker, cycle, failed_envelope, reply_router
     ):
         from squadops.cycles.pulse_models import (
             PulseDecision,
             SuiteOutcome,
         )
 
-        ex = _make_executor(mock_prefect_reporter, reply_router)
+        ex = _make_executor(mock_prefect_workflow_tracker, reply_router)
 
         # Stub the boundary verification: report FAIL on the first pass and
         # PASS on the second so the loop runs exactly one repair attempt.
