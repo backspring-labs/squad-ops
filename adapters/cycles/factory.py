@@ -95,9 +95,16 @@ def create_flow_executor(
 
         workflow_tracker = kwargs.get("workflow_tracker")
         if not workflow_tracker and kwargs.get("prefect_api_url"):
-            from adapters.cycles.prefect_workflow_tracker import PrefectWorkflowTracker
+            # Route through the shared factory so the NoOp-fallback and init
+            # logging apply here too (instead of inline-building the adapter and
+            # raising on construction failure). Only build when a Prefect URL is
+            # configured — when it isn't, workflow_tracker stays None, unchanged.
+            from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
+            from squadops.config.schema import PrefectConfig
 
-            workflow_tracker = PrefectWorkflowTracker(api_url=kwargs["prefect_api_url"])
+            workflow_tracker = create_workflow_tracker(
+                PrefectConfig(api_url=kwargs["prefect_api_url"])
+            )
 
         return DispatchedFlowExecutor(
             cycle_registry=cycle_registry,
