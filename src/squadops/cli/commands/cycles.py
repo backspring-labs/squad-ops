@@ -98,10 +98,11 @@ def create_cycle(
     set_flags: list[str] | None = typer.Option(None, "--set", help="Override: key=value"),
     notes: str | None = typer.Option(None, "--notes", help="Experiment notes"),
 ):
-    """Create a new experiment cycle.
+    """Create a new experiment cycle and start its run.
 
-    Creates an experiment record. Does not trigger task execution
-    (deferred to a future release).
+    Persists the cycle and enqueues its run for execution server-side
+    (SIP-0066/0083) — real (LLM-cost) work begins immediately, no separate
+    trigger needed.
     """
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
 

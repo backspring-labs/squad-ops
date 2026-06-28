@@ -150,6 +150,8 @@ def client(mock_cycle_registry, monkeypatch):
     import squadops.api.runtime.deps as deps_mod
 
     monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
+    # create_run now enqueues execution (#133), so a flow executor must be wired.
+    monkeypatch.setattr(deps_mod, "_flow_executor", AsyncMock())
     return TestClient(app)
 
 
