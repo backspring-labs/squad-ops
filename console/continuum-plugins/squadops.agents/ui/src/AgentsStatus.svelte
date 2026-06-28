@@ -10,7 +10,10 @@
   function mapAgent(a) {
     return {
       name: a.agent_name || a.agent_id || a.name,
-      status: a.network_status || a.lifecycle_state || a.status || 'unknown',
+      // Health = runtime_status (SIP-0089); network_status is the legacy fallback
+      // for an agent that has no runtime-state row yet (#230/#231).
+      status: a.runtime_status || a.network_status || a.lifecycle_state || a.status || 'unknown',
+      mode: a.mode || null,
       role: a.role_label || a.role || '',
       current_task: a.current_task_id || a.current_task || null,
     };
@@ -45,6 +48,13 @@
     if (s === 'busy') return 'busy';
     return 'unhealthy';
   }
+
+  function modeClass(mode) {
+    const m = (mode || '').toLowerCase();
+    if (m === 'duty') return 'mode-duty';
+    if (m === 'cycle') return 'mode-cycle';
+    return 'mode-ambient';
+  }
 </script>
 
 <div class="agents-status">
@@ -61,6 +71,9 @@
           <div class="agent-name">{agent.name}</div>
           <div class="agent-role">{agent.role}</div>
           <div class="agent-status {statusClass(agent.status)}">{agent.status}</div>
+          {#if agent.mode}
+            <div class="agent-mode {modeClass(agent.mode)}">{agent.mode}</div>
+          {/if}
           {#if agent.current_task}
             <div class="agent-task">{agent.current_task}</div>
           {/if}
@@ -95,6 +108,14 @@
   .healthy { background: rgba(34, 197, 94, 0.15); color: var(--continuum-accent-success, #22c55e); }
   .busy { background: rgba(99, 102, 241, 0.15); color: var(--continuum-accent-primary, #6366f1); }
   .unhealthy { background: rgba(148, 163, 184, 0.15); color: var(--continuum-text-muted, #94a3b8); }
+  .agent-mode {
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+    padding: 2px 8px; border-radius: var(--continuum-radius-sm, 4px);
+    font-weight: 500; text-transform: uppercase;
+  }
+  .mode-duty { background: rgba(234, 179, 8, 0.15); color: var(--continuum-accent-warning, #eab308); }
+  .mode-cycle { background: rgba(99, 102, 241, 0.15); color: var(--continuum-accent-primary, #6366f1); }
+  .mode-ambient { background: rgba(148, 163, 184, 0.15); color: var(--continuum-text-muted, #94a3b8); }
   .agent-task { font-size: var(--continuum-font-size-xs, 0.75rem); color: var(--continuum-text-secondary, #cbd5e1); flex: 1; text-align: right; }
   .loading, .no-agents { color: var(--continuum-text-muted, #94a3b8); }
 </style>

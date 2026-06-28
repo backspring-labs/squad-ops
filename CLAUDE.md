@@ -131,6 +131,9 @@ squadops artifacts list <run-id>           # List artifacts for run
 ### Agent Squad
 6 agents when builder role is present: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics). The standard 5-agent squad (without Bob) remains the default via `full-squad` profile. Implementations in `src/squadops/agents/`.
 
+### Agent status vs runtime state
+Don't conflate the signals. **Health = `runtime_status`, posture = `mode`** (both from `agent_runtime_state`, SIP-0089); `lifecycle_state`/`network_status` on `agent_status` are heartbeat telemetry (`network_status` is legacy/deprecated). Canonical model + the rule surfaces must conform to: `docs/agent-runtime-status-model.md` (#231).
+
 ## Test Configuration
 
 - Tests auto-receive `unit`/`integration` markers based on file location (`tests/conftest.py`)
