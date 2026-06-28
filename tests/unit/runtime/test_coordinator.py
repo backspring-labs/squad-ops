@@ -68,6 +68,9 @@ class _FakeStatePort(RuntimeStatePort):
     async def update_heartbeat(self, agent_id, *, runtime_status=None):  # unused here
         return await self.ensure_state(agent_id)
 
+    async def mark_offline(self, agent_id):  # unused here
+        return self._rows.get(agent_id)
+
 
 class _RecordingPublisher(RuntimeEventPublisher):
     def __init__(self) -> None:

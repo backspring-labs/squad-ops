@@ -281,45 +281,71 @@ class HealthChecker:
         while self._reconciliation_running:
             try:
                 await asyncio.sleep(interval)
-                timeout = self._config.agent.heartbeat_timeout_window
-                now = datetime.utcnow()
-
-                async with self.pg_pool.acquire() as conn:
-                    rows = await conn.fetch(
-                        "SELECT agent_id, last_heartbeat, lifecycle_state, network_status "
-                        "FROM agent_status"
-                    )
-                    for row in rows:
-                        hb = row["last_heartbeat"]
-                        computed = (
-                            "online" if hb and (now - hb).total_seconds() <= timeout else "offline"
-                        )
-                        stored = row.get("network_status")
-                        need_lifecycle = (
-                            computed == "offline" and row.get("lifecycle_state") != "UNKNOWN"
-                        )
-
-                        if computed != stored or need_lifecycle:
-                            if need_lifecycle:
-                                await conn.execute(
-                                    "UPDATE agent_status SET network_status=$1, lifecycle_state=$2, "
-                                    "updated_at=$3 WHERE agent_id=$4",
-                                    computed,
-                                    "UNKNOWN",
-                                    now,
-                                    row["agent_id"],
-                                )
-                            else:
-                                await conn.execute(
-                                    "UPDATE agent_status SET network_status=$1, updated_at=$2 "
-                                    "WHERE agent_id=$3",
-                                    computed,
-                                    now,
-                                    row["agent_id"],
-                                )
+                await self._reconcile_once()
             except Exception as e:
                 logger.error("Reconciliation loop error: %s", e, exc_info=True)
                 await asyncio.sleep(10)
+
+    async def _reconcile_once(self) -> None:
+        """One reconciliation pass: recompute network_status from heartbeat age,
+        update agent_status, and mirror offline agents into agent_runtime_state
+        (SIP-0089 #159) so the coordinator's §11.3 offline guard sees them."""
+        timeout = self._config.agent.heartbeat_timeout_window
+        now = datetime.utcnow()
+        offline_agents: list[str] = []
+
+        async with self.pg_pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT agent_id, last_heartbeat, lifecycle_state, network_status FROM agent_status"
+            )
+            for row in rows:
+                hb = row["last_heartbeat"]
+                computed = "online" if hb and (now - hb).total_seconds() <= timeout else "offline"
+                stored = row.get("network_status")
+                need_lifecycle = computed == "offline" and row.get("lifecycle_state") != "UNKNOWN"
+
+                if computed != stored or need_lifecycle:
+                    if need_lifecycle:
+                        await conn.execute(
+                            "UPDATE agent_status SET network_status=$1, lifecycle_state=$2, "
+                            "updated_at=$3 WHERE agent_id=$4",
+                            computed,
+                            "UNKNOWN",
+                            now,
+                            row["agent_id"],
+                        )
+                    else:
+                        await conn.execute(
+                            "UPDATE agent_status SET network_status=$1, updated_at=$2 "
+                            "WHERE agent_id=$3",
+                            computed,
+                            now,
+                            row["agent_id"],
+                        )
+                if computed == "offline":
+                    offline_agents.append(row["agent_id"])
+
+        # Mirror offline agents into runtime-state after releasing the read conn, so
+        # the coordinator's §11.3 offline->duty rejection sees a crashed agent (#159).
+        for agent_id in offline_agents:
+            await self._mark_runtime_state_offline(agent_id)
+
+    async def _mark_runtime_state_offline(self, agent_id: str) -> None:
+        """Best-effort mirror of an offline transition into agent_runtime_state.
+
+        Non-authoritative (D17): sets only runtime_status, never last_heartbeat_at
+        or coordinator-owned fields. Failures are isolated like the heartbeat
+        mirror — a runtime-state write must not break reconciliation.
+        """
+        if self._runtime_state is None:
+            return
+        try:
+            await self._runtime_state.mark_offline(agent_id)
+        except Exception as exc:
+            logger.warning(
+                "runtime_state_offline_mirror_failed",
+                extra={"agent_id": agent_id, "error": str(exc)},
+            )
 
     # ── Infrastructure health probes ────────────────────────────────────
 

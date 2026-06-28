@@ -245,3 +245,71 @@ class TestCheckPostgres:
         mock_pg_pool.acquire.side_effect = Exception("Connection refused")
         result = await checker.check_postgres()
         assert result["status"] == "offline"
+
+
+class TestReconcileOnce:
+    """SIP-0089 #159: a reconciliation pass mirrors offline agents into
+    agent_runtime_state so the coordinator's §11.3 offline->duty guard sees them."""
+
+    def _checker(self, mock_config):
+        conn = AsyncMock()
+        conn.__aenter__ = AsyncMock(return_value=conn)
+        conn.__aexit__ = AsyncMock(return_value=False)
+        pool = MagicMock()
+        pool.acquire.return_value = conn
+        runtime_state = AsyncMock()
+        checker = HealthChecker(
+            pg_pool=pool, redis_client=None, config=mock_config, runtime_state=runtime_state
+        )
+        return checker, conn, runtime_state
+
+    @pytest.mark.asyncio
+    async def test_timed_out_agent_is_mirrored_offline(self, mock_config):
+        """Bug class (#159): a crashed/timed-out agent must be marked offline in
+        agent_runtime_state. Without it the coordinator reads a stale 'online'
+        forever and could open a duty window for a dead agent. Only the timed-out
+        agent is mirrored — the live one is not."""
+        checker, conn, runtime_state = self._checker(mock_config)
+        now = datetime.utcnow()
+        conn.fetch = AsyncMock(
+            return_value=[
+                {
+                    "agent_id": "dead",
+                    "last_heartbeat": now - timedelta(seconds=200),  # > 90s timeout
+                    "lifecycle_state": "READY",
+                    "network_status": "online",
+                },
+                {
+                    "agent_id": "alive",
+                    "last_heartbeat": now - timedelta(seconds=10),
+                    "lifecycle_state": "READY",
+                    "network_status": "online",
+                },
+            ]
+        )
+
+        await checker._reconcile_once()
+
+        runtime_state.mark_offline.assert_awaited_once_with("dead")
+
+    @pytest.mark.asyncio
+    async def test_all_online_agents_not_mirrored(self, mock_config):
+        """Bug class: the mirror must be driven by computed offline status, never
+        fire for a healthy agent — a spurious mark_offline would wrongly trip the
+        coordinator's offline guard against a live agent."""
+        checker, conn, runtime_state = self._checker(mock_config)
+        now = datetime.utcnow()
+        conn.fetch = AsyncMock(
+            return_value=[
+                {
+                    "agent_id": "alive",
+                    "last_heartbeat": now - timedelta(seconds=5),
+                    "lifecycle_state": "READY",
+                    "network_status": "online",
+                },
+            ]
+        )
+
+        await checker._reconcile_once()
+
+        runtime_state.mark_offline.assert_not_awaited()

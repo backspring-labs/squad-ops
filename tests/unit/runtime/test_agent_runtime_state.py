@@ -245,3 +245,36 @@ async def test_upsert_state_writes_all_fields_including_coordinator_owned():
         "interruptibility = EXCLUDED.interruptibility",
     ):
         assert col in query, f"upsert UPDATE branch missing: {col}"
+
+
+async def test_mark_offline_sets_only_status_not_heartbeat_or_coordinator_fields():
+    """Bug class (#159 + D17/D16): the reconciliation loop must record a crashed
+    agent as offline WITHOUT bumping last_heartbeat_at (a dead agent's last beat is
+    evidence) or clobbering coordinator-owned fields (a duty agent that crashed is
+    still bound to its window). The UPDATE must set only runtime_status, and the
+    `!= 'offline'` guard makes repeated ticks idempotent."""
+    conn = AsyncMock()
+    conn.fetchrow.return_value = _state_row(mode="duty", runtime_status="offline")
+    adapter = PostgresRuntimeState(_make_pool(conn))
+
+    state = await adapter.mark_offline("max")
+
+    query = conn.fetchrow.call_args.args[0]
+    set_clause = query.split("SET", 1)[1].split("WHERE", 1)[0]
+    assert "runtime_status = 'offline'" in set_clause
+    for forbidden in ("last_heartbeat_at =", "mode =", "focus =", "current_assignment_ref ="):
+        assert forbidden not in set_clause, f"mark_offline must not write {forbidden!r}"
+    assert "runtime_status != 'offline'" in query  # idempotent guard
+    assert "INSERT" not in query  # never fabricates a row for a never-seen agent
+    assert state is not None and state.mode == "duty"  # coordinator field preserved
+
+
+async def test_mark_offline_returns_none_when_no_row_or_already_offline():
+    """Bug class: an agent with no runtime-state row (never heartbeated) or already
+    offline yields no updated row. mark_offline must return None, not raise — the
+    reconciliation mirror is best-effort."""
+    conn = AsyncMock()
+    conn.fetchrow.return_value = None
+    adapter = PostgresRuntimeState(_make_pool(conn))
+
+    assert await adapter.mark_offline("ghost") is None
