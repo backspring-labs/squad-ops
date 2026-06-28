@@ -1,0 +1,73 @@
+# 1.1.x Hardening Plan
+
+**Status:** active · **Established:** 2026-06-28 (with the 1.1.0 release)
+
+## Why this exists
+
+The original 1.0.x plan gated the `1.1.0` version bump on *all* build-reliability
+hardening completing. With SIP-0089 (Agent Runtime State) delivered and tested,
+that gate was re-read (joint Spark/Mac decision, 2026-06-28) as **foundational
+hardening completeness** — the CI-trust arc + reliability bugs — which *is* done.
+1.1.0 shipped on that basis; the remaining hardening is re-baselined here as the
+**1.1.x hardening plan** — ongoing post-1.1 work that no longer blocks a version.
+
+Versioning discipline: **bug fixes → 1.1.x patches; larger capability-bearing
+SIPs may warrant 1.2.0 minors; tech-debt/arch → opportunistic, never
+version-gating.**
+
+Supersedes the gating framing of
+[`1-0-x-build-reliability-hardening-plan.md`](1-0-x-build-reliability-hardening-plan.md)
+(that doc remains the detailed build-reliability axis; this one is the release-lane view).
+
+## Foundational hardening — DONE (shipped in 1.1.0)
+
+- CI-trust arc: declared deps (#206/#191), dev+CI on Python 3.12 (#217),
+  ruff-format gate (#196), adapters in the gate (#207), pulse-e2e (#211),
+  integration config (#209).
+- Reliability bugs: #146 (channel recovery), #155 (frozen-result mutation),
+  #77 (cancel→Prefect), #150 (cycle-route scope enforcement — security).
+
+## 1.1.x patches (bug fixes)
+
+| Issue | |
+|-------|--|
+| #132 | `runs resume --reason` always returns 422 (CLI/API contract drift) |
+| #133 | `runs retry` is dead weight — advertises but never executes |
+| #245 | RabbitMQ `publish()` has no retry during the reconnect window |
+| #239 | OTel `BrokenExporter` test pollutes every regression run (atexit noise) |
+| #168 | Residual `DistributedFlowExecutor` refs after the #164 rename |
+| #198 | FastAPI cap-lift (console router cycle) — adopt ≥0.136 |
+| #130 | Neo `development.develop` unparseable output under spark models |
+
+## Capability SIPs (feature-bearing — likely 1.2.0+ minors)
+
+These add new capabilities, so they ship as minor releases. Order per the
+build-reliability axis; tracked under this hardening plan.
+
+| # | Item |
+|---|------|
+| 2 | Smoke & Acceptance Capability Pack (#176): `qa.start_app`/`probe_endpoint`/`capture_evidence` |
+| — | SIP-0093 authoring depth: B′ (revision loop) → C (M3.1/M3.2) → D (M3.3) |
+| 4 | Cross-Run Memory & Context Handoff (typed ledger) |
+| 6 | Structured Defect Report & Targeted Repair |
+| 7 | Cycle Resume Contract (technical idempotency) |
+| 5/5a | Run Trajectory & Continuation Protocol + minimal budget breakers |
+| 3 | Cycle Evaluation Scorecard (phases 1–2) |
+| 8 | QA Maturity Ladder (composes #2 into stages) |
+| 10 | Stack Capability Registry concretization |
+
+## Ongoing tech-debt / arch (slot opportunistically — never version-gating)
+
+#234/#153 (DbRuntime sqlalchemy-port leak), #154 (adapter imports in domain),
+#156 (`_parse_jsonb` dedup), #250 (duplicate WorkflowTracker factory),
+#242 (gate serviceless integration tests), #218/#219 (runtime-api URL conventions),
+#216 (pytest-xdist), #157 (api/comms coverage), #158 (schema_migrations table),
+#173 (squad-profile name consolidation), #134 (qwen2.5:32b YAML brittleness),
+#224 (model-availability preflight), #237 (drop 3.11 / migrate prod to 3.12),
+#80 (cycle lineage on the record).
+
+## Runtime-lane follow-ups carried out of 1.1.0 (SIP-0089 known limitations)
+
+#233 (recruitment-acquired FocusLeases via coordinator), #244 (single-transaction
+coordinator writes vs best-effort compensation), #222 (resume a hard-duty-deferred
+cycle — needs a checkpoint). These are v1.1.x/v1.2 runtime-lane work.
