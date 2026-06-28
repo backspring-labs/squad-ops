@@ -448,6 +448,23 @@ class _CycleTaskHandler(CapabilityHandler):
             error=error,
         )
 
+    def _log_no_fenced_blocks(self, content: str, *, excerpt: int = 1000) -> None:
+        """Log the truncated raw LLM response when fenced extraction found
+        nothing (#130).
+
+        The build/QA handlers otherwise only persist the raw into a
+        ``build_warnings.md`` artifact, so a zero-extraction failure leaves no
+        signal in the agent logs. The raw is the only way to distinguish a
+        thinking-mode token blowout from a prompt/scope formatting failure.
+        """
+        logger.warning(
+            "%s: no fenced code blocks extracted from a %d-char response; raw[:%d]=%r",
+            self._handler_name,
+            len(content),
+            excerpt,
+            content[:excerpt],
+        )
+
     def _resolve_model_budget(
         self,
         inputs: dict[str, Any],
@@ -1766,6 +1783,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         extracted = extract_fenced_files(content)
 
         if not extracted:
+            self._log_no_fenced_blocks(content)
             return self._fail_result(
                 start_time,
                 inputs,
@@ -2416,6 +2434,7 @@ class QATestHandler(_CycleTaskHandler):
 
         extracted = extract_fenced_files(content)
         if not extracted:
+            self._log_no_fenced_blocks(content)
             return self._fail_result(
                 start_time,
                 inputs,
@@ -3100,6 +3119,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         if not extracted:
             from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 
+            self._log_no_fenced_blocks(content)
             return self._fail_result(
                 start_time,
                 inputs,

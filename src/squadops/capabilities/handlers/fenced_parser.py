@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import re
 
+from squadops.capabilities.handlers.impl._json_extraction import _strip_think_blocks
+
 # Strict format header: ```<lang>:<path>
 _STRICT_HEADER_RE = re.compile(r"^```(\w+):(\S+)\s*$", re.MULTILINE)
 
@@ -142,6 +144,12 @@ def extract_fenced_files(response: str) -> list[dict]:
     """
     if not response:
         return []
+
+    # #130: strip Qwen3-family <think>...</think> reasoning blocks before
+    # scanning for fences. Thinking-mode traces can contain stray ``` fences
+    # (false matches) or consume the response budget entirely; stripping them
+    # first is what PR #128's JSON extractor already does for impl handlers.
+    response = _strip_think_blocks(response)
 
     results: list[dict] = []
     pos = 0
