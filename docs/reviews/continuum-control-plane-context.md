@@ -36,11 +36,11 @@
 ## Cycle Execution Adapters
 - `adapters/cycles/memory_cycle_registry.py` — in-memory `CycleRegistryPort` (current default)
 - `adapters/cycles/filesystem_artifact_vault.py` — filesystem `ArtifactVaultPort`
-- `adapters/cycles/distributed_flow_executor.py` — RabbitMQ-dispatched `FlowExecutionPort`
+- `adapters/cycles/dispatched_flow_executor.py` — RabbitMQ-dispatched `FlowExecutionPort`
 - `adapters/cycles/in_process_flow_executor.py` — local `FlowExecutionPort`
 - `adapters/cycles/config_project_registry.py` — YAML-file `ProjectRegistryPort`
 - `adapters/cycles/config_squad_profile.py` — YAML-file `SquadProfilePort`
-- `adapters/cycles/prefect_reporter.py` — Prefect REST API reporter (flow naming, task spans)
+- `adapters/cycles/prefect_workflow_tracker.py` — Prefect REST API workflow tracker (flow naming, task spans)
 - `adapters/cycles/factory.py` — factory functions for all cycle adapters
 
 ## Domain Models
@@ -369,8 +369,8 @@ adapters/
 ├── capabilities/   (factory.py, filesystem.py, aci_executor.py)
 ├── comms/          (factory.py, rabbitmq.py)
 ├── cycles/         (factory.py, memory_cycle_registry.py, filesystem_artifact_vault.py,
-│                    distributed_flow_executor.py, in_process_flow_executor.py,
-│                    config_project_registry.py, config_squad_profile.py, prefect_reporter.py)
+│                    dispatched_flow_executor.py, in_process_flow_executor.py,
+│                    config_project_registry.py, config_squad_profile.py, prefect_workflow_tracker.py)
 ├── embeddings/     (factory.py, ollama.py)
 ├── llm/            (factory.py, ollama.py)
 ├── memory/         (factory.py, lancedb.py)
@@ -434,7 +434,7 @@ project_registry = create_project_registry("config")
 cycle_registry = create_cycle_registry("memory")     # <-- in-memory!
 squad_profile = create_squad_profile_port("config")
 artifact_vault = create_artifact_vault("filesystem")
-flow_executor = create_flow_executor("distributed", cycle_registry=..., queue=..., ...)
+flow_executor = create_flow_executor("dispatched", cycle_registry=..., queue=..., ...)
 set_cycle_ports(project_registry=..., cycle_registry=..., ...)
 ```
 
