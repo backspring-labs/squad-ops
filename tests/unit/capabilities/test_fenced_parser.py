@@ -40,6 +40,82 @@ class TestSingleFence:
         assert "main()" in result[0]["content"]
 
 
+class TestThinkBlockStripping:
+    """#130: Qwen3-family ``<think>...</think>`` reasoning blocks are stripped
+    before fence scanning. Thinking-mode traces routinely contain stray fenced
+    blocks (or consume the whole response), which corrupted extraction."""
+
+    def test_fence_inside_think_block_is_ignored(self):
+        """A throwaway fenced file inside the reasoning trace must NOT be
+        extracted — only the real file outside the think block."""
+        response = (
+            "<think>\n"
+            "Let me sketch it first:\n"
+            "```python:scratch/draft.py\n"
+            "x = 1  # throwaway\n"
+            "```\n"
+            "</think>\n"
+            "```python:src/main.py\n"
+            "print('real')\n"
+            "```\n"
+        )
+        result = extract_fenced_files(response)
+        assert len(result) == 1
+        assert result[0]["filename"] == "src/main.py"
+        assert result[0]["content"] == "print('real')"
+
+    def test_response_that_is_only_a_think_block_yields_nothing(self):
+        """The exact #130 failure: thinking mode emits a fence but no real
+        output. After stripping the trace, there are no files to extract — the
+        handler can then fail cleanly instead of using throwaway reasoning."""
+        response = (
+            "<think>\n"
+            "I should build a FastAPI app...\n"
+            "```python:plan.py\n"
+            "# just thinking out loud\n"
+            "```\n"
+            "</think>\n"
+        )
+        assert extract_fenced_files(response) == []
+
+    def test_think_prose_before_real_file_does_not_break_extraction(self):
+        """Reasoning prose ahead of the real output is fine, and the tag match
+        is case-insensitive (models emit <think> and <THINK>)."""
+        response = "<THINK>weighing the design</THINK>\n```python:app.py\nprint('ok')\n```\n"
+        result = extract_fenced_files(response)
+        assert len(result) == 1
+        assert result[0]["filename"] == "app.py"
+        assert result[0]["content"] == "print('ok')"
+
+
+class TestNoFencedBlocksLogging:
+    """#130: a zero-extraction failure must surface the raw LLM response in the
+    agent logs (truncated) — otherwise it's only buried in a build_warnings.md
+    artifact, leaving no signal to triage thinking-mode vs prompt/scope failure."""
+
+    def test_logs_truncated_raw_response(self, caplog):
+        import logging
+
+        from squadops.capabilities.handlers.cycle_tasks import DevelopmentDevelopHandler
+
+        handler = DevelopmentDevelopHandler()
+        raw = ("A" * 1500) + "TAIL_MARKER_BEYOND_EXCERPT"
+
+        with caplog.at_level(logging.WARNING):
+            handler._log_no_fenced_blocks(raw, excerpt=1000)
+
+        warnings = [
+            r.getMessage()
+            for r in caplog.records
+            if r.levelno == logging.WARNING and "no fenced code blocks extracted" in r.getMessage()
+        ]
+        assert len(warnings) == 1
+        msg = warnings[0]
+        assert "AAAA" in msg  # the raw prefix is captured
+        assert "TAIL_MARKER" not in msg  # ...but truncated to the excerpt window
+        assert str(len(raw)) in msg  # full response length reported
+
+
 class TestMultipleFences:
     def test_multiple_fences(self):
         response = (
