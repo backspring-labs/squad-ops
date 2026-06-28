@@ -27,8 +27,8 @@ run_bootstrap() {
     # ── Python (fail-fast per R7) ──────────────────────────────────
     info "=== Python Setup ==="
 
-    setup_pyenv "3.11"
-    create_venv "3.11"
+    setup_pyenv "3.12"
+    create_venv "3.12"
     install_python_deps "" "tests/requirements.txt"
 
     # ── Docker services ────────────────────────────────────────────
