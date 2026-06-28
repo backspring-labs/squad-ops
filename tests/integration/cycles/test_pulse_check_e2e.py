@@ -27,8 +27,11 @@ try:
 except ImportError:
     _has_runtime_deps = False
 
+from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import (
+    AgentProfileEntry,
     Cycle,
+    Run,
     RunStatus,
     SquadProfile,
     TaskFlowPolicy,
@@ -70,28 +73,24 @@ def _make_cycle(pulse_checks=None, cadence_policy=None):
     )
 
 
-def _make_registry(cycle):
+async def _make_registry(cycle):
     from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 
     registry = MemoryCycleRegistry()
-    # Seed cycle and run synchronously via internals
-    loop = asyncio.get_event_loop()
-
-    async def _seed():
-        await registry.create_cycle(
-            project_id=cycle.project_id,
-            prd_ref=cycle.prd_ref,
-            squad_profile_id=cycle.squad_profile_id,
-            squad_profile_snapshot_ref=cycle.squad_profile_snapshot_ref,
-            task_flow_policy=cycle.task_flow_policy,
-            build_strategy=cycle.build_strategy,
-            applied_defaults=cycle.applied_defaults,
-            created_by=cycle.created_by,
-            cycle_id_override=cycle.cycle_id,
-        )
-        await registry.create_run(cycle.cycle_id, run_id_override="run_e2e")
-
-    loop.run_until_complete(_seed())
+    # Seed cycle and run via the registry's async domain-object API. These tests
+    # run inside the pytest-asyncio event loop, so await directly — calling
+    # loop.run_until_complete() inside an already-running loop raises
+    # "This event loop is already running" (#211).
+    await registry.create_cycle(cycle)
+    run = Run(
+        run_id="run_e2e",
+        cycle_id=cycle.cycle_id,
+        run_number=1,
+        status=RunStatus.QUEUED.value,
+        initiated_by="system",
+        resolved_config_hash=compute_config_hash(cycle.applied_defaults, {}),
+    )
+    await registry.create_run(run)
     return registry
 
 
@@ -133,10 +132,21 @@ def _make_executor(registry, cycle):
 
     squad_profile = SquadProfile(
         profile_id="full-squad",
-        agents=(),
+        name="Full Squad",
+        description="All agents",
+        version=1,
+        agents=(
+            AgentProfileEntry(agent_id="nat", role="strat", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="neo", role="dev", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="eve", role="qa", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="data-agent", role="data", model="gpt-4", enabled=True),
+            AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),
+        ),
+        created_at=NOW,
     )
     mock_squad_profile = AsyncMock()
-    mock_squad_profile.get_profile.return_value = squad_profile
+    # Executor resolves the squad via resolve_snapshot() -> (profile, snapshot_ref).
+    mock_squad_profile.resolve_snapshot.return_value = (squad_profile, "sha256:e2e")
 
     executor = DispatchedFlowExecutor(
         cycle_registry=registry,
@@ -158,7 +168,7 @@ class TestPulseCheckE2E:
     async def test_backward_compat_no_pulse_checks(self):
         """No pulse_checks in defaults = unchanged run behavior."""
         cycle = _make_cycle()
-        registry = _make_registry(cycle)
+        registry = await _make_registry(cycle)
         executor, mock_queue = _make_executor(registry, cycle)
 
         with patch(
@@ -183,7 +193,7 @@ class TestPulseCheckE2E:
                 }
             ]
         )
-        registry = _make_registry(cycle)
+        registry = await _make_registry(cycle)
         executor, mock_queue = _make_executor(registry, cycle)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -228,7 +238,7 @@ class TestPulseCheckE2E:
                 }
             ]
         )
-        registry = _make_registry(cycle)
+        registry = await _make_registry(cycle)
         executor, mock_queue = _make_executor(registry, cycle)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -277,7 +287,7 @@ class TestPulseCheckE2E:
                 }
             ]
         )
-        registry = _make_registry(cycle)
+        registry = await _make_registry(cycle)
         executor, mock_queue = _make_executor(registry, cycle)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -322,7 +332,7 @@ class TestPulseCheckE2E:
                 }
             ]
         )
-        registry = _make_registry(cycle)
+        registry = await _make_registry(cycle)
         executor, mock_queue = _make_executor(registry, cycle)
 
         from squadops.cycles.pulse_models import PulseVerificationRecord
