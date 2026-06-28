@@ -1,12 +1,12 @@
 """Regression: prompt manifest must register every fragment file on disk.
 
 Bug it catches: PR #126 added three task_type fragment files
-(`task_type.governance.establish_contract`, `task_type.governance.correction_decision`,
+(`task_type.governance.define_done`, `task_type.governance.correction_decision`,
 `task_type.data.analyze_failure`) but did not register them in
 `fragments/manifest.yaml`. PR #129 then made them mandatory via
 `assemble_task_only`, which failed at runtime with
 `MandatoryLayerMissingError` on the first impl task of every cycle (Max's
-`governance.establish_contract`).
+`governance.define_done`).
 
 The shared-fragment lookup goes through the manifest, so an unregistered
 fragment is invisible regardless of whether the file exists.
@@ -60,7 +60,7 @@ def test_impl_handler_task_type_fragments_registered():
     manifest = _load_manifest()
     registered_ids = {entry["fragment_id"] for entry in manifest["fragments"]}
     required = {
-        "task_type.governance.establish_contract",
+        "task_type.governance.define_done",
         "task_type.governance.correction_decision",
         "task_type.data.analyze_failure",
     }

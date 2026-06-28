@@ -1,6 +1,6 @@
 """Tests for SIP-0079 implementation handlers.
 
-Covers GovernanceEstablishContractHandler, DataAnalyzeFailureHandler,
+Covers GovernanceDefineDoneHandler, DataAnalyzeFailureHandler,
 GovernanceCorrectionDecisionHandler, DevelopmentCorrectionRepairHandler,
 QAValidateRepairHandler.
 """
@@ -18,8 +18,8 @@ from squadops.capabilities.handlers.impl.analyze_failure import (
 from squadops.capabilities.handlers.impl.correction_decision import (
     GovernanceCorrectionDecisionHandler,
 )
-from squadops.capabilities.handlers.impl.establish_contract import (
-    GovernanceEstablishContractHandler,
+from squadops.capabilities.handlers.impl.define_done import (
+    GovernanceDefineDoneHandler,
 )
 from squadops.capabilities.handlers.impl.repair_handlers import (
     BuilderAssembleRepairHandler,
@@ -58,7 +58,7 @@ def mock_context():
     assembled.assembly_hash = "sha256:test"
     ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
     # Externalized impl-handler system prompts (correction_decision /
-    # analyze_failure / establish_contract) call assemble_task_only(role,
+    # analyze_failure / define_done) call assemble_task_only(role,
     # task_type) — the task_type fragment with NO role-identity prepend.
     # Mock both forms so the auto-attribute MagicMock doesn't return a
     # non-string.
@@ -70,7 +70,7 @@ def mock_context():
 
 
 # ---------------------------------------------------------------------------
-# GovernanceEstablishContractHandler
+# GovernanceDefineDoneHandler
 # ---------------------------------------------------------------------------
 
 
@@ -89,15 +89,15 @@ class TestEstablishContract:
             return_value=ChatMessage(role="assistant", content=json.dumps(contract)),
         )
 
-        h = GovernanceEstablishContractHandler()
+        h = GovernanceDefineDoneHandler()
         result = await h.handle(mock_context, {"prd": "Build a CLI tool"})
 
         assert result.success is True
         assert result.outputs["contract"]["objective"] == "Build CLI tool"
         assert result.outputs["contract"]["acceptance_criteria"] == ["Passes tests"]
         assert result.outputs["contract"]["time_budget_seconds"] == 3600
-        assert result.outputs["artifacts"][0]["type"] == "run_contract"
-        assert result.outputs["artifacts"][0]["name"] == "run_contract.json"
+        assert result.outputs["artifacts"][0]["type"] == "definition_of_done"
+        assert result.outputs["artifacts"][0]["name"] == "definition_of_done.json"
 
     async def test_parse_failure_returns_needs_replan(self, mock_context):
         _set_llm_mock(
@@ -105,7 +105,7 @@ class TestEstablishContract:
             return_value=ChatMessage(role="assistant", content="not valid json"),
         )
 
-        h = GovernanceEstablishContractHandler()
+        h = GovernanceDefineDoneHandler()
         result = await h.handle(mock_context, {"prd": "test"})
 
         assert result.success is False
@@ -117,7 +117,7 @@ class TestEstablishContract:
             side_effect=LLMConnectionError("timeout"),
         )
 
-        h = GovernanceEstablishContractHandler()
+        h = GovernanceDefineDoneHandler()
         result = await h.handle(mock_context, {"prd": "test"})
 
         assert result.success is False
@@ -131,7 +131,7 @@ class TestEstablishContract:
             return_value=ChatMessage(role="assistant", content=fenced),
         )
 
-        h = GovernanceEstablishContractHandler()
+        h = GovernanceDefineDoneHandler()
         result = await h.handle(mock_context, {"prd": "test"})
 
         assert result.success is True
@@ -163,7 +163,7 @@ class TestEstablishContract:
             return_value=ChatMessage(role="assistant", content=thinking_response),
         )
 
-        h = GovernanceEstablishContractHandler()
+        h = GovernanceDefineDoneHandler()
         result = await h.handle(mock_context, {"prd": "test"})
 
         assert result.success is True
@@ -186,7 +186,7 @@ class TestEstablishContract:
             return_value=ChatMessage(role="assistant", content=response),
         )
 
-        h = GovernanceEstablishContractHandler()
+        h = GovernanceDefineDoneHandler()
         result = await h.handle(mock_context, {"prd": "test"})
 
         assert result.success is True
@@ -380,7 +380,7 @@ class TestAnalyzeFailure:
 
 class TestImplHandlerSystemPromptExternalization:
     """The three SIP-0079 impl handlers (analyze_failure,
-    correction_decision, establish_contract) used to hardcode their
+    correction_decision, define_done) used to hardcode their
     system prompts as Python string constants, bypassing PromptService
     and missing LangFuse version tracking.
 
@@ -409,9 +409,9 @@ class TestImplHandlerSystemPromptExternalization:
                 "governance.correction_decision",
             ),
             (
-                GovernanceEstablishContractHandler,
+                GovernanceDefineDoneHandler,
                 "lead",
-                "governance.establish_contract",
+                "governance.define_done",
             ),
         ],
         ids=lambda x: x.__name__ if isinstance(x, type) else x,
@@ -438,7 +438,7 @@ class TestImplHandlerSystemPromptExternalization:
                     "affected_task_types": [],
                 }
             )
-        else:  # GovernanceEstablishContractHandler
+        else:  # GovernanceDefineDoneHandler
             payload = json.dumps(
                 {
                     "objective": "Build a thing",
@@ -481,7 +481,7 @@ class TestImplHandlerSystemPromptExternalization:
         assert not hasattr(_mod, "_ANALYSIS_SYSTEM_PROMPT")
 
     async def test_contract_constant_removed(self):
-        from squadops.capabilities.handlers.impl import establish_contract as _mod
+        from squadops.capabilities.handlers.impl import define_done as _mod
 
         assert not hasattr(_mod, "_CONTRACT_SYSTEM_PROMPT")
 

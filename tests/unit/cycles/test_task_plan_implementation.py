@@ -92,14 +92,14 @@ def legacy_run():
 class TestImplementationTaskSteps:
     def test_constants_defined(self):
         assert len(IMPLEMENTATION_TASK_STEPS) == 3
-        assert IMPLEMENTATION_TASK_STEPS[0] == ("governance.establish_contract", "lead")
+        assert IMPLEMENTATION_TASK_STEPS[0] == ("governance.define_done", "lead")
         assert IMPLEMENTATION_TASK_STEPS[1] == ("development.develop", "dev")
         assert IMPLEMENTATION_TASK_STEPS[2] == ("qa.test", "qa")
 
     def test_prepends_contract_before_build(self, impl_cycle, impl_run, profile):
         plan = generate_task_plan(impl_cycle, impl_run, profile)
         task_types = [e.task_type for e in plan]
-        assert task_types[0] == "governance.establish_contract"
+        assert task_types[0] == "governance.define_done"
         assert "development.develop" in task_types
         assert "qa.test" in task_types
 
@@ -170,6 +170,6 @@ class TestDeterministicTaskIds:
 
     def test_deterministic_ids_include_task_type(self, impl_cycle, impl_run, profile):
         plan = generate_task_plan(impl_cycle, impl_run, profile)
-        assert plan[0].task_id.endswith("governance.establish_contract")
+        assert plan[0].task_id.endswith("governance.define_done")
         assert plan[1].task_id.endswith("development.develop")
         assert plan[2].task_id.endswith("qa.test")

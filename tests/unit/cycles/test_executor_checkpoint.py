@@ -283,7 +283,7 @@ class TestResumeFromCheckpoint:
         mock_registry.get_latest_checkpoint.return_value = RunCheckpoint(
             run_id="run_impl",
             checkpoint_index=1,
-            completed_task_ids=("task-run_impl-000-governance.establish_contract",),
+            completed_task_ids=("task-run_impl-000-governance.define_done",),
             prior_outputs={"lead": {"summary": "contract established"}},
             artifact_refs=(),
             plan_delta_refs=(),
@@ -304,7 +304,7 @@ class TestResumeFromCheckpoint:
         mock_registry.get_latest_checkpoint.return_value = RunCheckpoint(
             run_id="run_impl",
             checkpoint_index=1,
-            completed_task_ids=("task-run_impl-000-governance.establish_contract",),
+            completed_task_ids=("task-run_impl-000-governance.define_done",),
             prior_outputs=prior,
             artifact_refs=(),
             plan_delta_refs=(),
@@ -340,7 +340,7 @@ class TestResumeFromCheckpoint:
         mock_registry.get_latest_checkpoint.return_value = RunCheckpoint(
             run_id="run_impl",
             checkpoint_index=1,
-            completed_task_ids=("task-run_impl-000-governance.establish_contract",),
+            completed_task_ids=("task-run_impl-000-governance.define_done",),
             prior_outputs={},
             artifact_refs=("art_001",),
             plan_delta_refs=(),
@@ -366,7 +366,7 @@ class TestResumeFromCheckpoint:
             run_id="run_impl",
             checkpoint_index=2,
             completed_task_ids=(
-                "task-run_impl-000-governance.establish_contract",
+                "task-run_impl-000-governance.define_done",
                 "task-run_impl-001-development.develop",
             ),
             prior_outputs={},
@@ -395,7 +395,7 @@ class TestResumeFromCheckpoint:
         mock_registry.get_latest_checkpoint.return_value = RunCheckpoint(
             run_id="run_impl",
             checkpoint_index=1,
-            completed_task_ids=("task-run_impl-000-governance.establish_contract",),
+            completed_task_ids=("task-run_impl-000-governance.define_done",),
             prior_outputs={},
             artifact_refs=(),
             plan_delta_refs=(),

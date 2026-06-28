@@ -163,12 +163,12 @@ fragments:
   roles:
   - lead
   sha256: 91af4ac066ce276fb60d7a049321c9f2743e5e32da671de40c9c7476fab0d28a
-- fragment_id: task_type.governance.establish_contract
-  path: shared/task_type/task_type.governance.establish_contract.md
+- fragment_id: task_type.governance.define_done
+  path: shared/task_type/task_type.governance.define_done.md
   layer: task_type
   roles:
   - lead
-  sha256: 737da7b531599a8bedf7c811394af4cae50e3506512244b6309cd646111b8bcb
+  sha256: 7e9a5144762828089f7ec8fdfcc6ad661fa0dcf4dd962bad3160227f826b6e08
 - fragment_id: task_type.governance.correction_decision
   path: shared/task_type/task_type.governance.correction_decision.md
   layer: task_type

@@ -1,15 +1,15 @@
-"""Tests for RunContract frozen dataclass (SIP-0079 §7.1)."""
+"""Tests for DefinitionOfDone frozen dataclass (SIP-0079 §7.1)."""
 
 import dataclasses
 
 import pytest
 
-from squadops.cycles.run_contract import RunContract
+from squadops.cycles.definition_of_done import DefinitionOfDone
 
 pytestmark = [pytest.mark.domain_orchestration]
 
 
-def _make_contract(**overrides) -> RunContract:
+def _make_contract(**overrides) -> DefinitionOfDone:
     defaults = {
         "objective": "Build the auth module",
         "acceptance_criteria": ("tests pass", "code reviewed"),
@@ -20,10 +20,10 @@ def _make_contract(**overrides) -> RunContract:
         "plan_artifact_ref": "art-plan-001",
     }
     defaults.update(overrides)
-    return RunContract(**defaults)
+    return DefinitionOfDone(**defaults)
 
 
-class TestRunContract:
+class TestDefinitionOfDone:
     def test_frozen_immutability(self):
         rc = _make_contract()
         with pytest.raises(dataclasses.FrozenInstanceError):
@@ -50,7 +50,7 @@ class TestRunContract:
     def test_to_dict_round_trip(self):
         rc = _make_contract(source_gate_decision="approved")
         d = rc.to_dict()
-        restored = RunContract.from_dict(d)
+        restored = DefinitionOfDone.from_dict(d)
         assert restored == rc
 
     def test_from_dict_coerces_lists_to_tuples(self):
@@ -63,7 +63,7 @@ class TestRunContract:
             "required_artifacts": ["code"],
             "plan_artifact_ref": "art-001",
         }
-        rc = RunContract.from_dict(d)
+        rc = DefinitionOfDone.from_dict(d)
         assert isinstance(rc.acceptance_criteria, tuple)
         assert isinstance(rc.non_goals, tuple)
         assert isinstance(rc.stop_conditions, tuple)

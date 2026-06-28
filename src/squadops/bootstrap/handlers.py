@@ -41,8 +41,8 @@ from squadops.capabilities.handlers.impl.analyze_failure import (
 from squadops.capabilities.handlers.impl.correction_decision import (
     GovernanceCorrectionDecisionHandler,
 )
-from squadops.capabilities.handlers.impl.establish_contract import (
-    GovernanceEstablishContractHandler,
+from squadops.capabilities.handlers.impl.define_done import (
+    GovernanceDefineDoneHandler,
 )
 from squadops.capabilities.handlers.impl.repair_handlers import (
     BuilderAssembleRepairHandler,
@@ -126,7 +126,7 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (StrategyCorrectivePlanHandler, ("strat",)),
     (DevelopmentRepairHandler, ("dev",)),
     # Implementation handlers (SIP-0079: Implementation Run Contract)
-    (GovernanceEstablishContractHandler, ("lead",)),
+    (GovernanceDefineDoneHandler, ("lead",)),
     (DataAnalyzeFailureHandler, ("data",)),
     (GovernanceCorrectionDecisionHandler, ("lead",)),
     # Correction-loop repair pair (SIP-0079 §7.7). Distinct from the

@@ -270,7 +270,7 @@ class TestImplementationWorkload:
     def test_builder_present_produces_contract_plus_assembly_steps(self, cycle, builder_profile):
         envelopes = generate_task_plan(cycle, _run("implementation"), builder_profile)
         actual = [e.task_type for e in envelopes]
-        # SIP-0079: governance.establish_contract prepended before builder assembly steps
+        # SIP-0079: governance.define_done prepended before builder assembly steps
         expected = [s[0] for s in IMPLEMENTATION_TASK_STEPS[:1]] + [
             s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS
         ]

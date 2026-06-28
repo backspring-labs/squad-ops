@@ -1,12 +1,12 @@
 ---
-fragment_id: task_type.governance.establish_contract
+fragment_id: task_type.governance.define_done
 layer: task_type
 version: "1.0.0"
 roles: ["lead"]
 ---
-## Establish Run Contract (SIP-0079)
+## Define the Definition of Done (SIP-0079)
 
-Given the planning artifacts and PRD, produce a JSON run contract with
+Given the planning artifacts and PRD, produce a JSON definition of done with
 these fields:
 
 - `objective` (string): one-sentence goal

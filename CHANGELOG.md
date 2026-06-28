@@ -3,6 +3,14 @@
 All notable changes to SquadOps are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [Unreleased]
+
+### Changed
+- Renamed the `governance.establish_contract` capability → **`governance.define_done`**
+  and its `run_contract.json` artifact → **`definition_of_done.json`** (the fields
+  are a standard Definition of Done, not a "contract"). Internal rename, no
+  behaviour change; historical artifacts on disk are left as-is (#79).
+
 ## [1.1.0] — 2026-06-28
 
 The v1.1 line ships the **Agent Runtime State** platform (SIP-0089) on top of a

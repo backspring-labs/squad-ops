@@ -14,6 +14,12 @@ updated_at: '2026-03-05T19:38:22.120040Z'
 **Updated:** 2026-03-04
 **Revision:** 3
 
+> **Renamed (#79):** the capability `governance.establish_contract` and its
+> artifact `run_contract.json` described below are now **`governance.define_done`**
+> / **`definition_of_done.json`** (handler `GovernanceDefineDoneHandler`, model
+> `DefinitionOfDone`). The fields are a standard Definition of Done, not a
+> "contract". This SIP body keeps the original names as historical record.
+
 ---
 
 ## 1. Abstract
