@@ -427,8 +427,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             await self.execute_run(cycle_id, first_run_id, profile_id)
             return
 
+        # #257: support resuming mid-sequence. first_run_id may be a later
+        # workload's run (a resumed/deferred run), not the position-0 run. Start
+        # the loop at that run's workload index so earlier, already-completed
+        # workloads aren't re-run and the resumed run isn't double-executed.
+        # Cycle-create passes the first run, which resolves to index 0.
+        start_index = await self._starting_workload_index(cycle_id, first_run_id)
         current_run_id = first_run_id
-        for i, workload_entry in enumerate(workload_sequence):
+        for i in range(start_index, len(workload_sequence)):
+            workload_entry = workload_sequence[i]
             await self.execute_run(cycle_id, current_run_id, profile_id)
 
             # Check terminal status (compare persisted string values)
@@ -539,6 +546,26 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 context={"cycle_id": cycle_id, "run_id": current_run_id},
                 payload={"workload_type": next_workload.get("type")},
             )
+
+    async def _starting_workload_index(self, cycle_id: str, first_run_id: str) -> int:
+        """Workload-sequence index that ``first_run_id`` occupies (#257).
+
+        Runs map positionally to workloads — one run per position, created in
+        sequence order (D14) — so a run's index among the cycle's non-cancelled
+        runs (sorted by run_number) is its workload position. This lets
+        execute_cycle resume mid-sequence without re-running earlier completed
+        workloads or double-executing the resumed run. Returns 0 when the run is
+        the first/only one (the cycle-create entry) or is not found.
+        """
+        all_runs = await self._cycle_registry.list_runs(cycle_id)
+        non_cancelled = sorted(
+            (r for r in all_runs if r.status != RunStatus.CANCELLED.value),
+            key=lambda r: r.run_number,
+        )
+        for index, run in enumerate(non_cancelled):
+            if run.run_id == first_run_id:
+                return index
+        return 0
 
     async def _poll_inter_workload_gate(
         self, run_id: str, cycle: Cycle, gate_name: str
