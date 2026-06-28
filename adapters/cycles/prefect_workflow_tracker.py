@@ -22,7 +22,7 @@ from squadops.ports.cycles import WorkflowTrackerPort
 logger = logging.getLogger(__name__)
 
 
-class PrefectReporter(WorkflowTrackerPort):
+class PrefectWorkflowTracker(WorkflowTrackerPort):
     """Prefect-backed :class:`WorkflowTrackerPort`.
 
     Best-effort: all methods catch exceptions and log warnings. Execution
@@ -114,6 +114,39 @@ class PrefectReporter(WorkflowTrackerPort):
         except Exception:
             logger.warning("Prefect create_task_run failed", exc_info=True)
             return f"unknown-{uuid4().hex[:8]}"
+
+    async def find_active_flow_run_ids(self, run_names: list[str]) -> list[str]:
+        """Find non-terminal flow runs by exact name so they can be cancelled (#77).
+
+        Best-effort: returns [] on transport failure or when nothing matches.
+        """
+        if not run_names:
+            return []
+        try:
+            resp = await self._client.post(
+                f"{self._api_url}/flow_runs/filter",
+                json={
+                    "flow_runs": {
+                        "name": {"any_": run_names},
+                        "state": {
+                            "type": {
+                                "any_": [
+                                    "SCHEDULED",
+                                    "PENDING",
+                                    "RUNNING",
+                                    "PAUSED",
+                                    "CANCELLING",
+                                ]
+                            }
+                        },
+                    }
+                },
+            )
+            resp.raise_for_status()
+            return [fr["id"] for fr in resp.json()]
+        except Exception:
+            logger.warning("Prefect find_active_flow_run_ids failed", exc_info=True)
+            return []
 
     async def set_flow_run_state(self, flow_run_id: str, state_type: str, state_name: str) -> None:
         """Update flow run state (RUNNING, COMPLETED, FAILED, CANCELLED)."""

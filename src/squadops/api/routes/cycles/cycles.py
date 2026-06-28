@@ -193,6 +193,17 @@ async def cancel_cycle(project_id: str, cycle_id: str):
             payload={"project_id": project_id},
         )
 
-        return {"status": "cancelled", "cycle_id": cycle_id}
+        # #77: stop the orphaned Prefect flow run(s) for this cycle's runs so
+        # workers don't keep executing a logically-cancelled cycle.
+        from squadops.api.routes.cycles.cancellation import cancel_orphaned_flow_runs
+
+        run_ids = [run.run_id for run in await registry.list_runs(cycle_id)]
+        cancelled = await cancel_orphaned_flow_runs(project_id, cycle_id, run_ids)
+
+        return {
+            "status": "cancelled",
+            "cycle_id": cycle_id,
+            "prefect_flow_runs_cancelled": cancelled,
+        }
     except CycleError as e:
         raise handle_cycle_error(e) from e

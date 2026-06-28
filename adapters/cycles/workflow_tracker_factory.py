@@ -3,7 +3,7 @@
 Selects a concrete adapter based on configuration. Mirrors the selection
 recipe established by SIP-0061 (LangFuse) and SIP-0087 (log forwarder):
 
-- Prefect-shaped config with ``api_url`` set → :class:`PrefectReporter`.
+- Prefect-shaped config with ``api_url`` set → :class:`PrefectWorkflowTracker`.
 - Anything else → :class:`NoOpWorkflowTracker`.
 
 The returned port is always non-None — callers never null-check.
@@ -25,9 +25,9 @@ def create_workflow_tracker(prefect_cfg: PrefectConfig | None) -> WorkflowTracke
     if prefect_cfg is None or not prefect_cfg.api_url:
         return NoOpWorkflowTracker()
     try:
-        from adapters.cycles.prefect_reporter import PrefectReporter
+        from adapters.cycles.prefect_workflow_tracker import PrefectWorkflowTracker
 
-        tracker = PrefectReporter(api_url=prefect_cfg.api_url)
+        tracker = PrefectWorkflowTracker(api_url=prefect_cfg.api_url)
         logger.info(
             "Workflow tracker initialized (backend=prefect, api_url=%s)",
             prefect_cfg.api_url,

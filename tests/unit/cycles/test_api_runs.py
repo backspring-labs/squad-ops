@@ -112,6 +112,26 @@ class TestCancelRun:
         assert resp.status_code == 200
         assert resp.json()["status"] == "cancelled"
 
+    def test_cancel_propagates_to_prefect(self, client, monkeypatch):
+        """#77: cancelling a single run transitions its still-running Prefect
+        flow run to CANCELLED."""
+        import squadops.api.runtime.deps as deps_mod
+
+        fake_tracker = AsyncMock()
+        fake_tracker.find_active_flow_run_ids.return_value = ["flowrun-abc"]
+        monkeypatch.setattr(deps_mod, "_workflow_tracker", fake_tracker)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["prefect_flow_runs_cancelled"] == 1
+        fake_tracker.find_active_flow_run_ids.assert_awaited_once_with(
+            ["hello_squad/cyc_001/run_001"]
+        )
+        fake_tracker.set_flow_run_state.assert_awaited_once_with(
+            "flowrun-abc", "CANCELLED", "Cancelled"
+        )
+
 
 class TestGateDecision:
     def test_approve_gate(self, client, mock_cycle_registry):

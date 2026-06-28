@@ -95,9 +95,9 @@ def create_flow_executor(
 
         workflow_tracker = kwargs.get("workflow_tracker")
         if not workflow_tracker and kwargs.get("prefect_api_url"):
-            from adapters.cycles.prefect_reporter import PrefectReporter
+            from adapters.cycles.prefect_workflow_tracker import PrefectWorkflowTracker
 
-            workflow_tracker = PrefectReporter(api_url=kwargs["prefect_api_url"])
+            workflow_tracker = PrefectWorkflowTracker(api_url=kwargs["prefect_api_url"])
 
         return DispatchedFlowExecutor(
             cycle_registry=cycle_registry,

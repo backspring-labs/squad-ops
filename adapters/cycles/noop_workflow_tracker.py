@@ -40,6 +40,9 @@ class NoOpWorkflowTracker(WorkflowTrackerPort):
     ) -> str:
         return self._placeholder()
 
+    async def find_active_flow_run_ids(self, run_names: list[str]) -> list[str]:
+        return []
+
     async def set_flow_run_state(
         self,
         flow_run_id: str,
