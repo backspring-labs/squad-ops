@@ -24,6 +24,15 @@ logger = logging.getLogger(__name__)
 # subscription, so a flapping channel doesn't spin a tight reconnect loop.
 _SUBSCRIBE_RECONNECT_BACKOFF = 0.5
 
+# #245: a publish issued inside connect_robust's reconnect window hits a stale
+# channel ("Channel was not opened") and, with a single attempt, lost the
+# message. Unlike subscribe (a long-lived loop), a publish is a bounded
+# operation: retry a small number of times with backoff — invalidating the
+# stale Queue handle between tries so the next attempt re-declares against the
+# live channel — then surface QueueError so the caller is never blocked forever.
+_PUBLISH_MAX_ATTEMPTS = 3
+_PUBLISH_RETRY_BACKOFF = 0.5
+
 
 class QueueError(Exception):
     """Base exception for queue operations."""
@@ -134,38 +143,73 @@ class RabbitMQAdapter(QueuePort):
         Raises:
             QueueError: If publishing fails
         """
-        try:
-            await self._ensure_connection()
-            queue = await self._get_queue(queue_name)
+        # Build the message once; only the transport send is retried. A bad
+        # payload fails here, before the loop, so it is never retried.
+        message_properties: dict[str, Any] = {
+            "delivery_mode": aio_pika.DeliveryMode.PERSISTENT,
+        }
 
-            # Create message with persistent delivery mode
-            message_properties = {
-                "delivery_mode": aio_pika.DeliveryMode.PERSISTENT,
-            }
+        # Handle delay using TTL and Dead Letter Exchange
+        # Note: For production, consider using rabbitmq-delayed-message-exchange plugin
+        if delay_seconds is not None and delay_seconds > 0:
+            # Use TTL with DLX for delayed delivery
+            # This is a simplified approach; full implementation would use delayed exchange plugin
+            # aio_pika expects expiration as int (milliseconds) or timedelta
+            message_properties["expiration"] = delay_seconds * 1000  # TTL in milliseconds
 
-            # Handle delay using TTL and Dead Letter Exchange
-            # Note: For production, consider using rabbitmq-delayed-message-exchange plugin
-            if delay_seconds is not None and delay_seconds > 0:
-                # Use TTL with DLX for delayed delivery
-                # This is a simplified approach; full implementation would use delayed exchange plugin
-                # aio_pika expects expiration as int (milliseconds) or timedelta
-                message_properties["expiration"] = delay_seconds * 1000  # TTL in milliseconds
+        message = Message(
+            body=payload.encode("utf-8"),
+            **message_properties,
+        )
 
-            message = Message(
-                body=payload.encode("utf-8"),
-                **message_properties,
-            )
+        last_exc: Exception | None = None
+        for attempt in range(1, _PUBLISH_MAX_ATTEMPTS + 1):
+            try:
+                await self._ensure_connection()
+                queue = await self._get_queue(queue_name)
 
-            await self._channel.default_exchange.publish(
-                message,
-                routing_key=queue.name,
-            )
+                await self._channel.default_exchange.publish(
+                    message,
+                    routing_key=queue.name,
+                )
 
-            logger.debug(f"Published message to queue: {queue.name}")
+                if attempt > 1:
+                    logger.info(
+                        "Published message to queue %s on attempt %d/%d",
+                        queue.name,
+                        attempt,
+                        _PUBLISH_MAX_ATTEMPTS,
+                    )
+                else:
+                    logger.debug("Published message to queue: %s", queue.name)
+                return
 
-        except Exception as e:
-            logger.error(f"Failed to publish message to queue {queue_name}: {e}")
-            raise QueueError(f"Failed to publish message: {e}") from e
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # A drop inside connect_robust's reconnect window leaves a stale
+                # channel/Queue handle. Drop the cached handle so the next attempt
+                # re-declares against the live channel (the _get_queue channel-swap
+                # path), back off, and retry.
+                last_exc = e
+                await self.invalidate_queue(queue_name)
+                if attempt < _PUBLISH_MAX_ATTEMPTS:
+                    logger.warning(
+                        "publish to %s failed (attempt %d/%d): %s; retrying",
+                        queue_name,
+                        attempt,
+                        _PUBLISH_MAX_ATTEMPTS,
+                        e,
+                    )
+                    await asyncio.sleep(_PUBLISH_RETRY_BACKOFF * attempt)
+
+        logger.error(
+            "Failed to publish message to queue %s after %d attempts: %s",
+            queue_name,
+            _PUBLISH_MAX_ATTEMPTS,
+            last_exc,
+        )
+        raise QueueError(f"Failed to publish message: {last_exc}") from last_exc
 
     @staticmethod
     def _to_queue_message(
