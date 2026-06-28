@@ -14,6 +14,7 @@ Part of SIP-0066 Phase 4 + build capabilities extension + SIP-0071 + SIP-0078.
 
 from __future__ import annotations
 
+from collections import Counter
 from uuid import uuid4
 
 from squadops.capabilities.handlers.build_profiles import (
@@ -388,6 +389,16 @@ def generate_task_plan(
     envelopes: list[TaskEnvelope] = []
     prev_task_id: str | None = None
 
+    # #94: resolve each step's agent once and count per-agent (≈ per-role, since
+    # the squad maps one agent to one role) so the Prefect label can read
+    # "{agent}[{n}/{total}]" — position within that agent's work, not a global
+    # index. ``lane_seen`` advances in dispatch order to give the 1-based n.
+    step_resolutions = [
+        _resolve_agent_config(profile, s[1] if isinstance(s, tuple) else s.role) for s in steps
+    ]
+    lane_totals = Counter(r[0] for r in step_resolutions)
+    lane_seen: dict[str, int] = {}
+
     for step_index, step in enumerate(steps):
         # Steps are either (task_type, role) tuples or PlanTask objects
         if isinstance(step, tuple):
@@ -411,7 +422,7 @@ def generate_task_plan(
         span_id = uuid4().hex
         causation_id = prev_task_id or correlation_id
 
-        agent_id, agent_model, agent_overrides = _resolve_agent_config(profile, role)
+        agent_id, agent_model, agent_overrides = step_resolutions[step_index]
 
         metadata: dict = {
             "step_index": step_index,
@@ -432,6 +443,11 @@ def generate_task_plan(
             # constrain plan role choices to what the squad actually has.
             "profile_roles": sorted(profile_roles),
         }
+
+        # #94: per-agent position/total for the Prefect "{agent}[{n}/{total}]" label
+        lane_seen[agent_id] = lane_seen.get(agent_id, 0) + 1
+        inputs["role_index"] = lane_seen[agent_id]
+        inputs["role_total"] = lane_totals[agent_id]
 
         # SIP-0086: populate subtask fields from plan
         if plan_task is not None:

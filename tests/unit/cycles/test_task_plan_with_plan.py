@@ -135,6 +135,26 @@ class TestGenerateTaskPlanWithManifest:
         # 5 planning steps + 4 manifest build steps = 9
         assert len(envelopes) == 9
 
+    def test_per_agent_role_numbering(self):
+        """#94: each envelope carries a 1-based role_index + role_total counted
+        per agent (≈ per role), in dispatch order. With this manifest neo (dev)
+        runs 1 planning + 3 build tasks = 4 (numbered 1/4..4/4) and eve (qa) runs
+        1 planning + 1 build = 2 — the per-role progress the global index hid."""
+        from collections import defaultdict
+
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
+        envelopes = generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=manifest)
+
+        by_agent: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        for e in envelopes:
+            by_agent[e.agent_id].append((e.inputs["role_index"], e.inputs["role_total"]))
+
+        assert by_agent["neo"] == [(1, 4), (2, 4), (3, 4), (4, 4)]  # dev
+        assert by_agent["eve"] == [(1, 2), (2, 2)]  # qa
+        assert by_agent["max"] == [(1, 1)]  # lead
+        assert by_agent["nat"] == [(1, 1)]  # strat
+        assert by_agent["data"] == [(1, 1)]  # data
+
     def test_without_manifest_produces_static_steps(self):
         cycle = _make_cycle()
         run = _make_run()
