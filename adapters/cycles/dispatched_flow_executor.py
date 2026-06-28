@@ -1597,10 +1597,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # SEMANTIC_FAILURE / NEEDS_REPAIR / NEEDS_REPLAN → correction
 
-        # D9: contract task failure → immediate abort, no correction
-        if envelope.task_type == "governance.establish_contract":
+        # D9: definition-of-done task failure → immediate abort, no correction
+        if envelope.task_type == "governance.define_done":
             raise _ExecutionError(
-                f"Contract task {envelope.task_id} failed (no correction): {result.error}"
+                f"Definition-of-done task {envelope.task_id} failed (no correction): {result.error}"
             )
 
         # Trigger correction protocol

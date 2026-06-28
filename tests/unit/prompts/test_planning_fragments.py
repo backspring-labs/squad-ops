@@ -211,7 +211,7 @@ class TestPlanningFragmentsContent:
     def test_task_type_fragments_total(self):
         """Exactly 20 task_type fragments exist:
         5 planning + 2 refinement + 5 wrap-up + 3 SIP-0079 impl
-        (analyze_failure, correction_decision, establish_contract —
+        (analyze_failure, correction_decision, define_done —
         moved out of hardcoded constants in impl/*.py) +
         5 SIP-0093 (prepare_plan_authoring_brief, review_plan_manifest,
         development.propose_plan_tasks, qa.propose_plan_tasks,

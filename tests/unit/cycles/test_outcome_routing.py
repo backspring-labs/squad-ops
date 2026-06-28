@@ -329,7 +329,7 @@ class TestSuccessOutcome:
 
 
 class TestNeedReplanFromContract:
-    """NEEDS_REPLAN from governance.establish_contract → immediate abort (D9)."""
+    """NEEDS_REPLAN from governance.define_done → immediate abort (D9)."""
 
     async def test_contract_failure_aborts_immediately(
         self, executor, mock_queue, mock_registry, run

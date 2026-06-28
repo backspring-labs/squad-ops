@@ -76,7 +76,7 @@ Release milestone, not a new SIP. 13 SIPs landed between v0.9.0 and v1.0.0 (auth
   - Implementation/correction/repair task steps with deterministic IDs
   - 6 bounded execution CRP schema keys (`max_task_retries`, `max_task_seconds`, `max_consecutive_failures`, `max_correction_attempts`, `time_budget_seconds`, `implementation_pulse_checks`)
   - Executor checkpoint/resume, time budget enforcement, `_PausedError`
-  - Correction protocol handlers (analyze_failure, correction_decision, establish_contract, repair handlers)
+  - Correction protocol handlers (analyze_failure, correction_decision, define_done, repair handlers)
   - Outcome routing with `outcome_class` on TaskResult
   - Resume and checkpoints API routes (`POST /{run_id}/resume`, `GET /{run_id}/checkpoints`)
   - Resume and checkpoints CLI commands (`squadops runs resume`, `squadops runs checkpoints`)

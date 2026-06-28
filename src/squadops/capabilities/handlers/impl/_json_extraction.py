@@ -1,6 +1,6 @@
 """Robust JSON extraction for SIP-0079 impl handlers.
 
-The three SIP-0079 implementation handlers (establish_contract,
+The three SIP-0079 implementation handlers (define_done,
 correction_decision, analyze_failure) ask the LLM to return a JSON
 object as the entire response. Strict-from-start parsing is brittle —
 LLMs commonly emit:

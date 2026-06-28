@@ -1,8 +1,8 @@
-"""Run Contract model — durable execution contract for implementation runs (SIP-0079 §7.1).
+"""Definition of Done model — durable execution definition for implementation runs (SIP-0079 §7.1).
 
-The run contract captures objective, acceptance criteria, non-goals, time budget,
-stop conditions, and required artifacts. Stored as a run-level artifact of type
-``run_contract`` and referenced by all pulse checks and correction decisions.
+The definition of done captures objective, acceptance criteria, non-goals, time
+budget, stop conditions, and required artifacts. Stored as a run-level artifact of
+type ``definition_of_done`` and referenced by all pulse checks and correction decisions.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class RunContract:
-    """Durable execution contract for an implementation run."""
+class DefinitionOfDone:
+    """Durable definition of done for an implementation run."""
 
     objective: str
     acceptance_criteria: tuple[str, ...]
@@ -30,7 +30,7 @@ class RunContract:
         return dataclasses.asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> RunContract:
+    def from_dict(cls, data: dict[str, Any]) -> DefinitionOfDone:
         """Deserialize from dict.
 
         Converts list fields to tuples for frozen dataclass compatibility.

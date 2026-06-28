@@ -30,8 +30,8 @@ from squadops.capabilities.handlers.impl.analyze_failure import (
 from squadops.capabilities.handlers.impl.correction_decision import (
     GovernanceCorrectionDecisionHandler,
 )
-from squadops.capabilities.handlers.impl.establish_contract import (
-    GovernanceEstablishContractHandler,
+from squadops.capabilities.handlers.impl.define_done import (
+    GovernanceDefineDoneHandler,
 )
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
@@ -229,7 +229,7 @@ class TestCustomHandlerTemplateIdCoverage:
                 {"failure_analysis": {"error": "test"}},
             ),
             (
-                GovernanceEstablishContractHandler,
+                GovernanceDefineDoneHandler,
                 "request.cycle_task_base",
                 {},
             ),

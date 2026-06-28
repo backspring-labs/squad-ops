@@ -1,7 +1,7 @@
-"""Governance establish_contract handler (SIP-0079 §7.2).
+"""Governance define_done handler (SIP-0079 §7.2).
 
 Extracts the planning artifact from prior outputs and asks the LLM
-to produce a structured RunContract (objective, acceptance criteria,
+to produce a structured DefinitionOfDone (objective, acceptance criteria,
 stop conditions, etc.). On parse failure returns NEEDS_REPLAN.
 """
 
@@ -31,13 +31,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class GovernanceEstablishContractHandler(_CycleTaskHandler):
-    """Establish a run contract before implementation begins."""
+class GovernanceDefineDoneHandler(_CycleTaskHandler):
+    """Define the run's definition of done before implementation begins."""
 
-    _handler_name = "governance_establish_contract_handler"
-    _capability_id = "governance.establish_contract"
+    _handler_name = "governance_define_done_handler"
+    _capability_id = "governance.define_done"
     _role = "lead"
-    _artifact_name = "run_contract.json"
+    _artifact_name = "definition_of_done.json"
 
     async def handle(
         self,
@@ -96,7 +96,7 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
 
         content = response.content
 
-        # Parse JSON contract from LLM response. Tolerates <think>
+        # Parse the JSON definition of done from the LLM response. Tolerates <think>
         # blocks, code fences, and prose preamble around the JSON —
         # every impl handler is one model tantrum away from a "char 0"
         # parse error otherwise. Logs a truncated raw response on
@@ -106,7 +106,7 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
             contract_data = extract_first_json_object(content)
         except JSONExtractionError as exc:
             logger.warning(
-                "%s: failed to parse run contract JSON: %s | raw[:500]=%r",
+                "%s: failed to parse definition of done JSON: %s | raw[:500]=%r",
                 self._handler_name,
                 exc,
                 exc.raw_excerpt,
@@ -122,7 +122,7 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
                 success=False,
                 outputs={"outcome_class": TaskOutcome.NEEDS_REPLAN},
                 _evidence=evidence,
-                error=f"Failed to parse run contract: {exc}",
+                error=f"Failed to parse definition of done: {exc}",
             )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -137,7 +137,7 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
 
         outputs = {
             "summary": (
-                f"[lead] Run contract established: {contract_data.get('objective', '')[:60]}"
+                f"[lead] Definition of done established: {contract_data.get('objective', '')[:60]}"
             ),
             "role": self._role,
             "contract": contract_data,
@@ -146,7 +146,7 @@ class GovernanceEstablishContractHandler(_CycleTaskHandler):
                     "name": self._artifact_name,
                     "content": json.dumps(contract_data, indent=2),
                     "media_type": "application/json",
-                    "type": "run_contract",
+                    "type": "definition_of_done",
                 },
             ],
             "prompt_provenance": provenance,

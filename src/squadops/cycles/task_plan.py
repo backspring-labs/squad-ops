@@ -150,7 +150,7 @@ REFINEMENT_TASK_STEPS: list[tuple[str, str]] = [
 
 # Implementation task steps (SIP-0079 §7.2): contract + build steps
 IMPLEMENTATION_TASK_STEPS: list[tuple[str, str]] = [
-    ("governance.establish_contract", "lead"),
+    ("governance.define_done", "lead"),
     ("development.develop", "dev"),
     ("qa.test", "qa"),
 ]

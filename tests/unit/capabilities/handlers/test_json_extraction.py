@@ -3,7 +3,7 @@
 The pre-existing parse pattern (strip-leading-fence then ``json.loads``)
 fails on every common LLM-output shape that isn't pure JSON: thinking
 blocks, prose preamble, json-in-fence-after-prose. This regression hit
-``governance.establish_contract`` on cyc_a4e6dc3afe7a (2026-05-05) and
+``governance.define_done`` on cyc_a4e6dc3afe7a (2026-05-05) and
 silently aborted the implementation phase in ~4 minutes. The tolerant
 extractor below is the load-bearing fix.
 """
