@@ -33,3 +33,15 @@ DUTY_WINDOW_MISSED_OPERATOR_REVIEW: Final[str] = "duty_window_missed_operator_re
 
 # Cycle recruitment-guard reasons (Phase 2 §2.5 — reserve buffer)
 UPCOMING_HARD_DUTY_WINDOW: Final[str] = "upcoming_hard_duty_window"
+
+# Focus-lease decision reasons (Phase 3 §3.1/§3.5 — FocusLease arbitration)
+FOCUS_LEASE_GRANTED: Final[str] = "focus_lease_granted"
+FOCUS_LEASE_RELEASED: Final[str] = "focus_lease_released"
+FOCUS_LEASE_PREEMPTED: Final[str] = "focus_lease_preempted"
+# Rejection reasons that a recruitment attempt may surface (§3.5). Per the §2.5
+# precedent these ride a RUN_PAUSED payload rather than a new cycle EventType.
+FOCUS_LEASE_CONFLICT: Final[str] = "focus_lease_conflict"
+CURRENT_ACTIVITY_CANNOT_PAUSE: Final[str] = "current_activity_cannot_pause"
+AGENT_RUNTIME_STATUS_UNAVAILABLE: Final[str] = "agent_runtime_status_unavailable"
+# Deferred-queue rejection (§3.0/D20): a request that would have queued in v1.2.
+FOCUS_LEASE_QUEUEING_NOT_SUPPORTED: Final[str] = "focus_lease_queueing_not_supported_in_v1.1"

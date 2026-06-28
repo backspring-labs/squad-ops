@@ -5,6 +5,9 @@ Phase 1: `AgentRuntimeState` mirrors SIP-0089 §10.1.
 Phase 2 (§2.1): `Assignment` + `DutyWindow` mirror §10.2/§10.3, plus the
 `window_state()` time classifier used by the scheduler (§2.4) and the cycle
 reserve-buffer guard (§2.5).
+Phase 3 (§3.1): `FocusLease` mirrors §10.4, plus the `LeaseDecision` union
+(`LeaseGranted` / `LeaseRejected` / `LeasePreempting`) returned by the
+`FocusLeasePort`. Queueing (`LeaseQueued`) is deferred to v1.2+ (§3.0/D20).
 
 All models are frozen dataclasses; mutate via `dataclasses.replace()`. `Literal`
 types in code mirror the DB `CHECK` constraints (D3).
@@ -171,3 +174,96 @@ def window_state(
     if now < reserve_after_end:
         return "in_reserve_after"
     return "closed"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 (§3.1) — Focus leases
+# ---------------------------------------------------------------------------
+
+OwnerType = Literal["duty", "cycle", "ambient"]
+RenewalPolicy = Literal["heartbeat", "ttl", "fixed_window"]
+
+# Owner-type precedence for focus arbitration (§11.5 / §12). A higher rank may
+# preempt a lower one; equal or lower is rejected. Duty outranks cycle outranks
+# ambient — the same ordering that lets a duty window displace ambient/cycle work.
+_OWNER_TYPE_PRECEDENCE: dict[OwnerType, int] = {"ambient": 0, "cycle": 1, "duty": 2}
+
+
+def owner_type_outranks(requester: OwnerType, holder: OwnerType) -> bool:
+    """True when a `requester` owner type may preempt a `holder` of focus.
+
+    Strictly-greater precedence: a duty request preempts a cycle/ambient holder,
+    a cycle request preempts an ambient holder, and nothing preempts an equal or
+    higher owner type (those resolve to `rejected`, not `preempting`).
+    """
+    return _OWNER_TYPE_PRECEDENCE[requester] > _OWNER_TYPE_PRECEDENCE[holder]
+
+
+@dataclass(frozen=True)
+class FocusLease:
+    """An explicit ownership claim over an agent's primary attention (§10.4).
+
+    Mirrors the SIP §10.4 sketch plus the holder (`agent_id`) and the persistence
+    bookkeeping the §3.2 table needs: `released_at` (null while the lease is the
+    current/active one — the partial unique index enforces at most one such row
+    per agent) and `idempotency_key` (replay-safe acquire/preempt per D12).
+
+    A lease does NOT encode RuntimeMode: holding a lease is the *hard gate* for
+    primary attention within a mode, but the coordinator still writes `mode`
+    separately (§3.4, "lease ≠ mode").
+    """
+
+    lease_id: str
+    agent_id: str
+    owner_type: OwnerType
+    owner_ref: str
+    acquired_at: datetime
+    expires_at: datetime | None
+    renewal_policy: RenewalPolicy
+    interruptibility: Interruptibility
+    recall_policy: RecallPolicy
+    released_at: datetime | None = None
+    idempotency_key: str | None = None
+
+
+@dataclass(frozen=True)
+class LeaseGranted:
+    """Focus acquired — the agent now holds the lease (§11.5 `granted`)."""
+
+    lease_id: str
+    expires_at: datetime | None
+    reason_code: str
+
+
+@dataclass(frozen=True)
+class LeaseRejected:
+    """Focus denied; the current owner keeps it (§11.5 `rejected`).
+
+    `retry_after` is advisory (when the caller might usefully retry); `None` when
+    no estimate is available. v1.1's deferred-queue rejections also use this shape
+    with reason `focus_lease_queueing_not_supported_in_v1.1` (§3.0/D20).
+    """
+
+    current_owner_ref: str
+    reason_code: str
+    retry_after: timedelta | None = None
+
+
+@dataclass(frozen=True)
+class LeasePreempting:
+    """A higher-precedence owner is displacing the current owner (§11.5 `preempting`).
+
+    No new lease exists yet: the caller must honor `preemption_grace`, revoke the
+    current owner's lease, then re-request to obtain a `LeaseGranted`. Kept as a
+    distinct outcome (rather than auto-granting) so the grace period and the
+    revoke are explicit, observable steps.
+    """
+
+    current_owner_ref: str
+    preemption_grace: timedelta
+    reason_code: str
+
+
+# Discriminated union of v1.1 lease outcomes. `LeaseQueued` is a recognized
+# v1.2+ outcome (§3.0/D20) and is deliberately absent here.
+LeaseDecision = LeaseGranted | LeaseRejected | LeasePreempting
