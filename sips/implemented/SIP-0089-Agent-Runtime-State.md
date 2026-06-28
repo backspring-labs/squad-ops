@@ -1,14 +1,14 @@
 ---
 title: Agent Runtime State
-status: accepted
+status: implemented
 author: Jason Ladd
 created_at: '2026-04-25T00:00:00Z'
 sip_number: 89
-updated_at: '2026-04-25T17:57:13.678325Z'
+updated_at: '2026-06-28T14:29:52.689735Z'
 ---
 # SIP-0089: Agent Runtime State — Modes, Duty Windows, Focus, and RuntimeActivity
 
-**Status:** Accepted
+**Status:** Implemented
 **Authors:** Jason Ladd
 **Created:** 2026-04-25
 **Revision:** 2 (incorporated review feedback on 2026-04-25)

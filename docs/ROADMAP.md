@@ -4,7 +4,13 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
-### v1.0.6 (2026-06-21) — Current — Per-Agent Reply Queues
+### v1.1.0 (2026-06-28) — Current — Agent Runtime State + 1.0.x Hardening
+- **SIP-0089** Agent Runtime State (Phases 1–4): runtime modes (ambient/cycle/duty) with a single-writer coordinator + in-process duty scheduler, assignments & duty windows, FocusLease arbitration, RuntimeActivity observability. Migrations 1100–1130.
+- **1.0.x hardening foundation** landed: CI-trust arc (declared deps, dev+CI on Python 3.12, ruff-format gate, adapters in the gate) + reliability fixes (#146 channel recovery, #155 frozen-result mutation, #77 cancel→Prefect, #209 integration config) + **#150 cycle-route scope enforcement (security)**.
+- The remaining build-reliability work is re-baselined as the **1.1.x hardening plan** (`docs/plans/1-1-x-hardening-plan.md`) — it no longer gates the version. (Gate read as foundational-hardening completeness; joint Spark/Mac decision 2026-06-28.)
+- **SIP-0088** (Agent Runtime Modes umbrella) stays **accepted** — its v1.2 pieces (embodiment, recruitment-driven leases) are future; promoting the umbrella would overstate it.
+
+### v1.0.6 (2026-06-21) — Per-Agent Reply Queues
 - **SIP-0094** Per-Agent Reply Queues + Long-Lived Subscription Model
   - Replaces the leaky per-run `cycle_results_{run_id}` reply queues — which lost replies in the consumer-tag churn window and leaked one orphan queue per run — with durable per-agent `{agent_id}_replies` queues
   - `ReplyRouter` holds one long-lived subscription per agent and resolves replies by `task_id`; new `QueuePort.subscribe()` primitive backed by a reconnecting RabbitMQ iterator (resubscribe surfaced in `health()`)
@@ -358,8 +364,7 @@ The following areas are identified for future work but do not block 1.0 readines
 
 | SIP | Title |
 |-----|-------|
-| **SIP-0088** | Agent Runtime Modes |
-| **SIP-0089** | Agent Runtime State |
+| **SIP-0088** | Agent Runtime Modes (umbrella; v1.2 pieces future) |
 | **SIP-0090** | Agent Embodiment Substrate |
 | **SIP-0091** | Duty Durability via Temporal |
 | **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes |
