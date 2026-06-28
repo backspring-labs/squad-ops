@@ -45,3 +45,10 @@ CURRENT_ACTIVITY_CANNOT_PAUSE: Final[str] = "current_activity_cannot_pause"
 AGENT_RUNTIME_STATUS_UNAVAILABLE: Final[str] = "agent_runtime_status_unavailable"
 # Deferred-queue rejection (§3.0/D20): a request that would have queued in v1.2.
 FOCUS_LEASE_QUEUEING_NOT_SUPPORTED: Final[str] = "focus_lease_queueing_not_supported_in_v1.1"
+
+# Runtime-activity reasons (Phase 4 §4.4/§4.5)
+ACTIVITY_STARTED: Final[str] = "activity_started"
+ACTIVITY_COMPLETED: Final[str] = "activity_completed"
+ACTIVITY_FAILED: Final[str] = "activity_failed"
+# The coordinator aborts an activity orphaned by a mode change (§4.5 thin seam).
+ACTIVITY_PREEMPTED_BY_MODE_CHANGE: Final[str] = "activity_preempted_by_mode_change"

@@ -68,12 +68,13 @@ def test_enabled_with_pool_builds_inert_scheduler_with_configured_interval():
     assert scheduler._task is None  # not started by the factory
 
 
-def test_enabled_scheduler_coordinator_has_focus_lease_wired():
-    """Bug class (§3.4 activation): the coordinator must be built WITH a
-    FocusLeasePort, else duty transitions silently skip lease arbitration (the
-    Phase-2 no-lease path) even though Phase 3 shipped. Guards against the wiring
-    regressing back to `RuntimeCoordinator(state, events_publisher=...)`."""
+def test_enabled_scheduler_coordinator_has_focus_lease_and_activity_wired():
+    """Bug class (§3.4/§4.5 activation): the coordinator must be built WITH both a
+    FocusLeasePort and a RuntimeActivityPort, else duty transitions silently skip
+    lease arbitration / the activity seam even though Phase 3/4 shipped. Guards
+    against the wiring regressing to a bare `RuntimeCoordinator(state, ...)`."""
     scheduler = create_duty_scheduler(_config(enabled=True), MagicMock())
 
     assert scheduler is not None
     assert scheduler._coordinator._focus_lease is not None
+    assert scheduler._coordinator._activity is not None

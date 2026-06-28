@@ -104,10 +104,16 @@ class PostgresRuntimeActivity(RuntimeActivityPort):
             sets.append("ended_at = now()")
         elif state == "running":
             sets.append("started_at = COALESCE(started_at, now())")
+        # Only an ACTIVE activity may transition: terminal states are final, so a
+        # terminal row never moves again. This makes terminalization race-safe —
+        # if the owning handler completes an activity the coordinator just aborted
+        # (or vice versa), the second writer matches no row and gets None.
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 f"UPDATE runtime_activities SET {', '.join(sets)} "
-                f"WHERE runtime_activity_id = $1 RETURNING {_COLUMNS}",
+                "WHERE runtime_activity_id = $1 "
+                "AND state IN ('pending', 'running', 'paused') "
+                f"RETURNING {_COLUMNS}",
                 activity_id,
                 state,
             )

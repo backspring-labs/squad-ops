@@ -10,13 +10,16 @@ This is the composition root — it is allowed to import adapters (unlike
 
     PostgresRuntimeState ─┐
     PostgresAssignment ───┤
-    PostgresFocusLease ───┼─→ RuntimeCoordinator ─→ DutyScheduler
+    PostgresFocusLease ───┤
+    PostgresRuntimeActivity ─┼─→ RuntimeCoordinator ─→ DutyScheduler
     LoggingRuntimeEventPublisher ─┘
 
 The `PostgresFocusLease` makes the coordinator's §3.4 lease arbitration live:
 opening a duty window acquires the agent's duty FocusLease (preempting a held
 cycle lease), and closing it releases the lease (§3.4). lease ≠ mode — the
-coordinator still owns the authoritative `mode` write.
+coordinator still owns the authoritative `mode` write. `PostgresRuntimeActivity`
+wires the §4.5 seam (abort an activity orphaned by a mode change); it is a no-op
+in v1.1 until handlers emit activities (§4.4), but kept wired for consistency.
 
 **Single-writer constraint:** the `RuntimeCoordinator` is the sole writer of
 `AgentRuntimeState.mode` (D16). This is safe only while a *single* runtime-api
@@ -58,14 +61,21 @@ def create_duty_scheduler(config: AppConfig, pool: asyncpg.Pool | None) -> DutyS
     # Imported here (not at module top) so importing this module never pulls the
     # asyncpg adapter stack into processes that only need the factory signature.
     from adapters.events.runtime_event_publisher import LoggingRuntimeEventPublisher
-    from adapters.persistence.runtime import PostgresFocusLease, PostgresRuntimeState
+    from adapters.persistence.runtime import (
+        PostgresFocusLease,
+        PostgresRuntimeActivity,
+        PostgresRuntimeState,
+    )
     from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
 
     state = PostgresRuntimeState(pool)
     assignments = PostgresAssignment(pool)
     focus_lease = PostgresFocusLease(pool)
+    activity = PostgresRuntimeActivity(pool)
     publisher = LoggingRuntimeEventPublisher()
-    coordinator = RuntimeCoordinator(state, events_publisher=publisher, focus_lease=focus_lease)
+    coordinator = RuntimeCoordinator(
+        state, events_publisher=publisher, focus_lease=focus_lease, activity=activity
+    )
 
     poll_interval = config.runtime.scheduler.poll_interval_seconds
     logger.warning(

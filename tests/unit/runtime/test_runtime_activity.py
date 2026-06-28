@@ -201,6 +201,22 @@ async def test_update_state_returns_none_when_activity_absent():
     assert await adapter.update_state("ghost", "completed") is None
 
 
+async def test_update_state_guards_on_active_states_so_terminal_is_final():
+    """Bug class (race-safety): terminal states are final. The WHERE must restrict
+    to active states so a terminal activity never re-transitions — the
+    coordinator's abort and the handler's complete can't double-terminalize (the
+    loser matches no row → None)."""
+    conn = AsyncMock()
+    conn.fetchrow.return_value = None  # terminal row matched nothing
+    adapter = PostgresRuntimeActivity(_make_pool(conn))
+
+    result = await adapter.update_state("already-terminal", "completed")
+
+    assert result is None
+    where = conn.fetchrow.await_args.args[0].split("WHERE", 1)[1]
+    assert "state IN ('pending', 'running', 'paused')" in where
+
+
 # ---------------------------------------------------------------------------
 # terminal helpers
 # ---------------------------------------------------------------------------
