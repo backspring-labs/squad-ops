@@ -52,3 +52,6 @@ ACTIVITY_COMPLETED: Final[str] = "activity_completed"
 ACTIVITY_FAILED: Final[str] = "activity_failed"
 # The coordinator aborts an activity orphaned by a mode change (§4.5 thin seam).
 ACTIVITY_PREEMPTED_BY_MODE_CHANGE: Final[str] = "activity_preempted_by_mode_change"
+
+# Ambient irreversibility policy (Phase 4 §4.6 — v1.2 embodiment seam, no v1.1 callers)
+AMBIENT_IRREVERSIBLE_ACTION_FORBIDDEN: Final[str] = "ambient_irreversible_action_forbidden"
