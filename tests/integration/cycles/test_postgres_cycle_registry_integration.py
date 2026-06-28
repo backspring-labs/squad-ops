@@ -37,7 +37,7 @@ pytestmark = [pytest.mark.docker, pytest.mark.domain_orchestration]
 
 POSTGRES_URL = os.getenv(
     "POSTGRES_URL",
-    "postgresql://squadops:squadops123@localhost:5432/squadops",
+    "postgresql://squadops:squadops-dev@localhost:5432/squadops",
 )
 
 try:
