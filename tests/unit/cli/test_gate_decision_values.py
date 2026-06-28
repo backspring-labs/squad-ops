@@ -62,9 +62,7 @@ class TestGateDecisionFlags:
         mock_client.post.return_value = {"status": "ok"}
         mock_client_cls.return_value = mock_client
 
-        result = runner.invoke(
-            app, ["gate", "proj", "cyc", "run", "g1", "--with-refinements"]
-        )
+        result = runner.invoke(app, ["gate", "proj", "cyc", "run", "g1", "--with-refinements"])
         assert result.exit_code == 0
         call_args = mock_client.post.call_args
         assert call_args[1]["json"]["decision"] == "approved_with_refinements"
@@ -77,9 +75,7 @@ class TestGateDecisionFlags:
         mock_client.post.return_value = {"status": "ok"}
         mock_client_cls.return_value = mock_client
 
-        result = runner.invoke(
-            app, ["gate", "proj", "cyc", "run", "g1", "--return-for-revision"]
-        )
+        result = runner.invoke(app, ["gate", "proj", "cyc", "run", "g1", "--return-for-revision"])
         assert result.exit_code == 0
         call_args = mock_client.post.call_args
         assert call_args[1]["json"]["decision"] == "returned_for_revision"
@@ -94,8 +90,6 @@ class TestGateFlagMutualExclusion:
         assert "must specify exactly one" in result.output
 
     def test_multiple_flags_exits_with_error(self):
-        result = runner.invoke(
-            app, ["gate", "proj", "cyc", "run", "g1", "--approve", "--reject"]
-        )
+        result = runner.invoke(app, ["gate", "proj", "cyc", "run", "g1", "--approve", "--reject"])
         assert result.exit_code == 2
         assert "must specify exactly one" in result.output

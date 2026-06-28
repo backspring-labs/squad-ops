@@ -556,9 +556,7 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
         )
         system_prompt = assembled.content
 
-        max_attempts = int(
-            resolved_config.get("brief_max_attempts", _BRIEF_MAX_ATTEMPTS_DEFAULT)
-        )
+        max_attempts = int(resolved_config.get("brief_max_attempts", _BRIEF_MAX_ATTEMPTS_DEFAULT))
         chat_kwargs = self._build_chat_kwargs(inputs)
 
         def parse_and_validate(
@@ -774,10 +772,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         profile_roles = inputs.get("profile_roles") or []
         roles_section = ""
         if profile_roles:
-            roles_section = (
-                "## Available roles in this squad\n\n"
-                f"{', '.join(profile_roles)}\n\n"
-            )
+            roles_section = f"## Available roles in this squad\n\n{', '.join(profile_roles)}\n\n"
 
         builder_section = ""
         if "builder" in profile_roles and self._role != "builder":
@@ -998,7 +993,10 @@ class DevelopmentProposePlanTasksHandler(_ProposeBaseHandler):
         from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
 
         if yaml_content is None:
-            return None, "No fenced YAML block found. Emit your proposal in a ```yaml:proposed_plan_tasks.yaml``` block."
+            return (
+                None,
+                "No fenced YAML block found. Emit your proposal in a ```yaml:proposed_plan_tasks.yaml``` block.",
+            )
         try:
             proposal = ProposedRoleTasks.from_yaml(yaml_content)
         except ValueError as exc:
@@ -1035,7 +1033,10 @@ class QaProposePlanTasksHandler(_ProposeBaseHandler):
         from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
 
         if yaml_content is None:
-            return None, "No fenced YAML block found. Emit your proposal in a ```yaml:proposed_plan_tasks.yaml``` block."
+            return (
+                None,
+                "No fenced YAML block found. Emit your proposal in a ```yaml:proposed_plan_tasks.yaml``` block.",
+            )
         try:
             proposal = ProposedRoleTasks.from_yaml(yaml_content)
         except ValueError as exc:
@@ -1047,8 +1048,7 @@ class QaProposePlanTasksHandler(_ProposeBaseHandler):
             )
         if proposal.proposing_role != "qa":
             return None, (
-                f"proposing_role must be 'qa' for this handler, "
-                f"got {proposal.proposing_role!r}"
+                f"proposing_role must be 'qa' for this handler, got {proposal.proposing_role!r}"
             )
         return proposal, None
 
@@ -1072,7 +1072,10 @@ class StrategyProposePlanGuidanceHandler(_ProposeBaseHandler):
         from squadops.cycles.plan_guidance import PlanGuidance
 
         if yaml_content is None:
-            return None, "No fenced YAML block found. Emit your guidance in a ```yaml:plan_guidance.yaml``` block."
+            return (
+                None,
+                "No fenced YAML block found. Emit your guidance in a ```yaml:plan_guidance.yaml``` block.",
+            )
         try:
             guidance = PlanGuidance.from_yaml(yaml_content)
         except ValueError as exc:
@@ -1151,9 +1154,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
 
         prior_outputs = inputs.get("prior_outputs") or {}
         resolved_config = inputs.get("resolved_config") or {}
-        configured_contributors = list(
-            resolved_config.get("plan_authoring_contributors") or []
-        )
+        configured_contributors = list(resolved_config.get("plan_authoring_contributors") or [])
 
         # Brief is mandatory upstream — without it the merger has no
         # contract to anchor proposals against. Fail loudly if absent
@@ -1186,9 +1187,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         dev_proposal, dev_missing = self._parse_proposal_outcome(
             dev_outcome, "development", ProposedRoleTasks
         )
-        qa_proposal, qa_missing = self._parse_proposal_outcome(
-            qa_outcome, "qa", ProposedRoleTasks
-        )
+        qa_proposal, qa_missing = self._parse_proposal_outcome(qa_outcome, "qa", ProposedRoleTasks)
         strategy_guidance, strat_missing = self._parse_proposal_outcome(
             strat_outcome, "strategy", PlanGuidance
         )
@@ -1199,9 +1198,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
                 missing_proposals.append(entry)
 
         successful_count = sum(
-            1
-            for p in (dev_proposal, qa_proposal, strategy_guidance)
-            if p is not None
+            1 for p in (dev_proposal, qa_proposal, strategy_guidance) if p is not None
         )
 
         prd = inputs.get("prd", "")
@@ -1334,9 +1331,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         from squadops.cycles.implementation_plan import ImplementationPlan
 
         sole_author_reason = (
-            "no_contributors_configured"
-            if not configured_contributors
-            else "all_proposals_failed"
+            "no_contributors_configured" if not configured_contributors else "all_proposals_failed"
         )
 
         planning_content = self._build_planning_content_from_framing(prior_outputs)

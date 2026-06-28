@@ -168,23 +168,23 @@ class TestFromYAMLErrors:
     def test_empty_proposing_role_rejected(self):
         with pytest.raises(ValueError, match="proposing_role"):
             ProposedRoleTasks.from_yaml(
-                'version: 1\n'
+                "version: 1\n"
                 'proposing_role: ""\n'
-                'proposal_id: prop-1\n'
-                'source_brief_id: brief-1\n'
+                "proposal_id: prop-1\n"
+                "source_brief_id: brief-1\n"
                 "scope_statement: 'x'\n"
-                'tasks: []\n'
+                "tasks: []\n"
             )
 
     def test_non_int_version_rejected(self):
         with pytest.raises(ValueError, match="version"):
             ProposedRoleTasks.from_yaml(
                 'version: "1"\n'
-                'proposing_role: qa\n'
-                'proposal_id: prop-1\n'
-                'source_brief_id: brief-1\n'
+                "proposing_role: qa\n"
+                "proposal_id: prop-1\n"
+                "source_brief_id: brief-1\n"
                 "scope_statement: 'x'\n"
-                'tasks: []\n'
+                "tasks: []\n"
             )
 
     def test_malformed_yaml_rejected(self):

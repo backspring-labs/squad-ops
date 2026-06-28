@@ -27,15 +27,11 @@ from dataclasses import dataclass
 import yaml
 
 _VALID_AUTHORING_MODES = frozenset({"multi_role", "sole_author"})
-_VALID_SOLE_AUTHOR_REASONS = frozenset(
-    {"no_contributors_configured", "all_proposals_failed"}
-)
+_VALID_SOLE_AUTHOR_REASONS = frozenset({"no_contributors_configured", "all_proposals_failed"})
 _VALID_PROPOSAL_COMPLETENESS = frozenset({"complete", "partial", "sole_author"})
 _VALID_MERGE_ACTIONS = frozenset({"accepted", "merged", "modified", "gap_filled"})
 _VALID_BRIEF_CONFLICT_SEVERITIES = frozenset({"warning", "blocking"})
-_VALID_CONFLICT_DISPOSITIONS = frozenset(
-    {"accepted", "rejected", "escalated_to_operator"}
-)
+_VALID_CONFLICT_DISPOSITIONS = frozenset({"accepted", "rejected", "escalated_to_operator"})
 
 
 @dataclass(frozen=True)
@@ -158,9 +154,7 @@ class MergeDecisions:
 
         version = data["version"]
         if not isinstance(version, int):
-            raise ValueError(
-                f"merge_decisions version must be int, got {type(version).__name__}"
-            )
+            raise ValueError(f"merge_decisions version must be int, got {type(version).__name__}")
 
         target_plan_id = str(data["target_plan_id"]).strip()
         brief_id = str(data["brief_id"]).strip()
@@ -243,8 +237,7 @@ def _validate_rc26(
     # sole_author
     if sole_author_reason is None:
         raise ValueError(
-            "merge_decisions: authoring_mode 'sole_author' requires "
-            "sole_author_reason to be set"
+            "merge_decisions: authoring_mode 'sole_author' requires sole_author_reason to be set"
         )
     if proposal_completeness != "sole_author":
         raise ValueError(
@@ -328,14 +321,11 @@ def _parse_canonical_tasks(raw: object) -> list[CanonicalTaskProvenance]:
         source_keys = entry.get("source_proposal_task_keys", [])
         if not isinstance(source_keys, list):
             raise ValueError(
-                f"merge_decisions canonical_tasks[{i}].source_proposal_task_keys "
-                "must be a list"
+                f"merge_decisions canonical_tasks[{i}].source_proposal_task_keys must be a list"
             )
         proposed_by = entry.get("proposed_by", [])
         if not isinstance(proposed_by, list):
-            raise ValueError(
-                f"merge_decisions canonical_tasks[{i}].proposed_by must be a list"
-            )
+            raise ValueError(f"merge_decisions canonical_tasks[{i}].proposed_by must be a list")
 
         parsed.append(
             CanonicalTaskProvenance(
@@ -367,9 +357,7 @@ def _parse_brief_conflicts_disposition(raw: object) -> list[BriefConflictDisposi
     parsed: list[BriefConflictDisposition] = []
     for i, entry in enumerate(raw):
         if not isinstance(entry, dict):
-            raise ValueError(
-                f"merge_decisions brief_conflicts_disposition[{i}] must be a mapping"
-            )
+            raise ValueError(f"merge_decisions brief_conflicts_disposition[{i}] must be a mapping")
         for req in ("brief_field", "severity", "disposition", "reason"):
             if req not in entry:
                 raise ValueError(
@@ -395,5 +383,3 @@ def _parse_brief_conflicts_disposition(raw: object) -> list[BriefConflictDisposi
             )
         )
     return parsed
-
-

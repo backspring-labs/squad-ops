@@ -90,10 +90,26 @@ class TestGetMessages:
     async def test_returns_parsed_messages(self):
         """Cached messages are JSON-parsed and returned."""
         redis = _make_redis()
-        redis.lrange = AsyncMock(return_value=[
-            json.dumps({"message_id": "m1", "role": "user", "content": "hi", "created_at": "2025-01-01T00:00:00"}),
-            json.dumps({"message_id": "m2", "role": "assistant", "content": "hello", "created_at": "2025-01-01T00:00:01"}),
-        ])
+        redis.lrange = AsyncMock(
+            return_value=[
+                json.dumps(
+                    {
+                        "message_id": "m1",
+                        "role": "user",
+                        "content": "hi",
+                        "created_at": "2025-01-01T00:00:00",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "message_id": "m2",
+                        "role": "assistant",
+                        "content": "hello",
+                        "created_at": "2025-01-01T00:00:01",
+                    }
+                ),
+            ]
+        )
         cache = ChatSessionCache(redis=redis)
 
         result = await cache.get_messages("s1")

@@ -52,19 +52,14 @@ class TestParserErrors:
 
     def test_empty_proposer_role_rejected(self):
         with pytest.raises(ValueError, match="proposer_role"):
-            ProposalFailure.from_yaml(
-                'proposer_role: ""\nfailure_reason: llm_error\n'
-            )
+            ProposalFailure.from_yaml('proposer_role: ""\nfailure_reason: llm_error\n')
 
     @pytest.mark.parametrize(
         "bad_reason",
         ["unknown", "BAD_REASON", "user_quit", "manual_override"],
     )
     def test_unknown_failure_reason_rejected(self, bad_reason):
-        yaml_doc = (
-            "proposer_role: development\n"
-            f"failure_reason: {bad_reason}\n"
-        )
+        yaml_doc = f"proposer_role: development\nfailure_reason: {bad_reason}\n"
         with pytest.raises(ValueError, match="failure_reason"):
             ProposalFailure.from_yaml(yaml_doc)
 
@@ -89,10 +84,6 @@ class TestParserErrors:
     def test_every_valid_reason_parses(self, valid_reason):
         """Each bounded reason must round-trip cleanly. Tracks the
         vocabulary against accidental shrinkage in the parser."""
-        yaml_doc = (
-            "proposer_role: development\n"
-            f"failure_reason: {valid_reason}\n"
-            "details: ok\n"
-        )
+        yaml_doc = f"proposer_role: development\nfailure_reason: {valid_reason}\ndetails: ok\n"
         parsed = ProposalFailure.from_yaml(yaml_doc)
         assert parsed.failure_reason == valid_reason

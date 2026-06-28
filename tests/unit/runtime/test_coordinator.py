@@ -88,8 +88,12 @@ async def test_ambient_to_duty_applies_and_binds_assignment():
     coord = RuntimeCoordinator(port, events_publisher=pub)
 
     outcome = await coord.request_transition(
-        "max", "duty", reasons.DUTY_WINDOW_OPENED,
-        requester_kind="scheduler", owner_ref="assign-1", assignment_id="assign-1",
+        "max",
+        "duty",
+        reasons.DUTY_WINDOW_OPENED,
+        requester_kind="scheduler",
+        owner_ref="assign-1",
+        assignment_id="assign-1",
     )
 
     assert outcome.applied is True
@@ -107,8 +111,11 @@ async def test_duty_to_ambient_clears_assignment_ref():
     coord = RuntimeCoordinator(port, events_publisher=_RecordingPublisher())
 
     await coord.request_transition(
-        "max", "ambient", reasons.DUTY_WINDOW_CLOSED,
-        requester_kind="scheduler", owner_ref="assign-1",
+        "max",
+        "ambient",
+        reasons.DUTY_WINDOW_CLOSED,
+        requester_kind="scheduler",
+        owner_ref="assign-1",
     )
 
     assert port.upserts[-1].mode == "ambient"
@@ -123,8 +130,11 @@ async def test_same_mode_is_idempotent_noop_without_write_or_event():
     coord = RuntimeCoordinator(port, events_publisher=pub)
 
     outcome = await coord.request_transition(
-        "max", "duty", reasons.DUTY_WINDOW_OPENED,
-        requester_kind="scheduler", owner_ref="assign-1",
+        "max",
+        "duty",
+        reasons.DUTY_WINDOW_OPENED,
+        requester_kind="scheduler",
+        owner_ref="assign-1",
     )
 
     assert outcome.idempotent_skip is True and outcome.applied is False
@@ -140,8 +150,11 @@ async def test_offline_runtime_cannot_enter_duty():
     coord = RuntimeCoordinator(port, events_publisher=pub)
 
     outcome = await coord.request_transition(
-        "max", "duty", reasons.DUTY_WINDOW_OPENED,
-        requester_kind="scheduler", owner_ref="assign-1",
+        "max",
+        "duty",
+        reasons.DUTY_WINDOW_OPENED,
+        requester_kind="scheduler",
+        owner_ref="assign-1",
     )
 
     assert outcome.applied is False
@@ -156,7 +169,11 @@ async def test_missing_reason_code_rejected_before_state_load():
     coord = RuntimeCoordinator(port, events_publisher=_RecordingPublisher())
 
     outcome = await coord.request_transition(
-        "max", "duty", "", requester_kind="cli", owner_ref="op",
+        "max",
+        "duty",
+        "",
+        requester_kind="cli",
+        owner_ref="op",
     )
 
     assert outcome.applied is False
@@ -171,8 +188,11 @@ async def test_malformed_target_mode_rejected():
     coord = RuntimeCoordinator(port, events_publisher=_RecordingPublisher())
 
     outcome = await coord.request_transition(
-        "max", "paused", reasons.DUTY_WINDOW_OPENED,
-        requester_kind="external", owner_ref="x",
+        "max",
+        "paused",
+        reasons.DUTY_WINDOW_OPENED,
+        requester_kind="external",
+        owner_ref="x",
     )
 
     assert outcome.applied is False
@@ -210,8 +230,11 @@ async def test_applied_event_keeps_event_and_reason_distinct_d18():
     coord = RuntimeCoordinator(port, events_publisher=pub)
 
     await coord.request_transition(
-        "max", "cycle", reasons.CYCLE_RECRUITED,
-        requester_kind="coordinator", owner_ref="cyc-1",
+        "max",
+        "cycle",
+        reasons.CYCLE_RECRUITED,
+        requester_kind="coordinator",
+        owner_ref="cyc-1",
     )
 
     event_name, agent_id, reason_code, payload = pub.emitted[0]

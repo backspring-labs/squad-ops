@@ -70,9 +70,7 @@ class PlanGuidance:
 
         version = data["version"]
         if not isinstance(version, int):
-            raise ValueError(
-                f"plan_guidance version must be int, got {type(version).__name__}"
-            )
+            raise ValueError(f"plan_guidance version must be int, got {type(version).__name__}")
 
         guidance_id = str(data["guidance_id"]).strip()
         if not guidance_id:

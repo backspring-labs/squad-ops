@@ -76,17 +76,13 @@ class TestDevFocusedPrompt:
 
     def test_focused_prompt_no_acceptance_criteria_omits_section(self):
         handler = DevelopmentDevelopHandler()
-        prompt = handler._build_focused_prompt(
-            self._make_inputs(acceptance_criteria=[])
-        )
+        prompt = handler._build_focused_prompt(self._make_inputs(acceptance_criteria=[]))
 
         assert "### Acceptance Criteria" not in prompt
 
     def test_focused_prompt_no_prior_artifacts_omits_section(self):
         handler = DevelopmentDevelopHandler()
-        prompt = handler._build_focused_prompt(
-            self._make_inputs(artifact_contents={})
-        )
+        prompt = handler._build_focused_prompt(self._make_inputs(artifact_contents={}))
 
         assert "### Prior Artifacts" not in prompt
 

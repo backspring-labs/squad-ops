@@ -25,7 +25,12 @@ def _make_results(
 ) -> list[CheckResult]:
     """Build a list of CheckResults for testing."""
     results = [
-        CheckResult(name="python_version", category="python", passed=True, message="Python 3.11.14 via pyenv"),
+        CheckResult(
+            name="python_version",
+            category="python",
+            passed=True,
+            message="Python 3.11.14 via pyenv",
+        ),
         CheckResult(name="venv_exists", category="python", passed=True, message=".venv present"),
         CheckResult(name="platform", category="platform", passed=True, message="darwin 14.5"),
         CheckResult(name="tool:git", category="tools", passed=True, message="git found"),
@@ -33,16 +38,20 @@ def _make_results(
     if include_heuristic_warning:
         results.append(
             CheckResult(
-                name="gpu:ollama-access", category="gpu",
-                passed=False, message="Ollama GPU access not detected",
+                name="gpu:ollama-access",
+                category="gpu",
+                passed=False,
+                message="Ollama GPU access not detected",
                 heuristic=True,
             )
         )
     if include_failure:
         results.append(
             CheckResult(
-                name="docker:postgres", category="docker",
-                passed=False, message="postgres not listening on port 5432",
+                name="docker:postgres",
+                category="docker",
+                passed=False,
+                message="postgres not listening on port 5432",
                 fix_command="docker-compose up -d postgres",
                 auto_fixable=True,
             )

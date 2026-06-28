@@ -141,6 +141,7 @@ def build_planning_steps(
     )
     return steps
 
+
 # Refinement task steps (SIP-0078 §5.10)
 REFINEMENT_TASK_STEPS: list[tuple[str, str]] = [
     ("governance.incorporate_feedback", "lead"),

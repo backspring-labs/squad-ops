@@ -43,10 +43,7 @@ risk_areas:
 # qwen3:27b actually emits (and the form that broke the cycle before the
 # retry/fence-strip wiring).
 _VALID_BRIEF_FENCED_RESPONSE = (
-    "Here's the brief.\n\n"
-    "```yaml:plan_authoring_brief.yaml\n"
-    f"{_VALID_BRIEF_YAML}"
-    "```\n"
+    f"Here's the brief.\n\n```yaml:plan_authoring_brief.yaml\n{_VALID_BRIEF_YAML}```\n"
 )
 
 
@@ -58,9 +55,7 @@ def _make_context(llm_response: str | list[str] = _VALID_BRIEF_FENCED_RESPONSE):
     """
     llm = AsyncMock()
     if isinstance(llm_response, list):
-        llm.chat_stream_with_usage.side_effect = [
-            MagicMock(content=r) for r in llm_response
-        ]
+        llm.chat_stream_with_usage.side_effect = [MagicMock(content=r) for r in llm_response]
     else:
         llm.chat_stream_with_usage.return_value = MagicMock(content=llm_response)
     llm.default_model = "test-model"
@@ -224,9 +219,7 @@ async def test_handler_returns_failure_when_brief_missing_required_field(seeded_
     )
     fenced_response = f"```yaml:plan_authoring_brief.yaml\n{missing_risk_areas}```\n"
     handler = GovernancePreparePlanAuthoringBriefHandler()
-    result = await handler.handle(
-        _make_context(llm_response=fenced_response), seeded_inputs
-    )
+    result = await handler.handle(_make_context(llm_response=fenced_response), seeded_inputs)
 
     assert result.success is False
     assert "risk_areas" in (result.error or "")

@@ -50,10 +50,20 @@ def _has_nontrivial_call(body: list[ast.stmt]) -> bool:
     Plain constructors (ClassName(...)) in assignments are just setup, not behavior.
     """
     # Builtins that inspect structure but don't exercise behavior
-    _PASSIVE_BUILTINS = frozenset({
-        "isinstance", "issubclass", "type", "len", "str",
-        "getattr", "hasattr", "setattr", "vars", "dir",
-    })
+    _PASSIVE_BUILTINS = frozenset(
+        {
+            "isinstance",
+            "issubclass",
+            "type",
+            "len",
+            "str",
+            "getattr",
+            "hasattr",
+            "setattr",
+            "vars",
+            "dir",
+        }
+    )
 
     for node in ast.walk(ast.Module(body=body, type_ignores=[])):
         if isinstance(node, ast.Await):
@@ -85,22 +95,24 @@ def _collect_asserts(body: list[ast.stmt]) -> list[ast.Assert]:
     return asserts
 
 
-_MOCK_ASSERT_METHODS = frozenset({
-    "assert_called",
-    "assert_called_once",
-    "assert_called_with",
-    "assert_called_once_with",
-    "assert_any_call",
-    "assert_has_calls",
-    "assert_not_called",
-    "assert_awaited",
-    "assert_awaited_once",
-    "assert_awaited_with",
-    "assert_awaited_once_with",
-    "assert_any_await",
-    "assert_has_awaits",
-    "assert_not_awaited",
-})
+_MOCK_ASSERT_METHODS = frozenset(
+    {
+        "assert_called",
+        "assert_called_once",
+        "assert_called_with",
+        "assert_called_once_with",
+        "assert_any_call",
+        "assert_has_calls",
+        "assert_not_called",
+        "assert_awaited",
+        "assert_awaited_once",
+        "assert_awaited_with",
+        "assert_awaited_once_with",
+        "assert_any_await",
+        "assert_has_awaits",
+        "assert_not_awaited",
+    }
+)
 
 
 def _has_mock_assertions(body: list[ast.stmt]) -> bool:

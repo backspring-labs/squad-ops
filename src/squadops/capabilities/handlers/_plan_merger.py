@@ -85,9 +85,7 @@ def _resolve_dependency_edges(
                     norm_key,
                 )
             depends_on.append(focus_to_index[norm_key])
-        resolved_pairs.append(
-            (dataclasses.replace(task, depends_on=sorted(set(depends_on))), prov)
-        )
+        resolved_pairs.append((dataclasses.replace(task, depends_on=sorted(set(depends_on))), prov))
     return resolved_pairs, unresolved_deps
 
 
@@ -174,9 +172,7 @@ def merge_proposals(
         for key in prov.source_proposal_task_keys:
             focus_to_index[key] = task.task_index
 
-    resolved_pairs, unresolved_deps = _resolve_dependency_edges(
-        indexed_pairs, focus_to_index
-    )
+    resolved_pairs, unresolved_deps = _resolve_dependency_edges(indexed_pairs, focus_to_index)
 
     canonical_tasks = [t for t, _ in resolved_pairs]
     provenance_entries = [p for _, p in resolved_pairs]
@@ -199,9 +195,7 @@ def merge_proposals(
     configured_set = set(configured_contributors)
     completeness = "complete" if configured_set == successful_roles else "partial"
 
-    proposal_ids = [
-        p.proposal_id for p in (dev_proposal, qa_proposal) if p is not None
-    ]
+    proposal_ids = [p.proposal_id for p in (dev_proposal, qa_proposal) if p is not None]
     guidance_ids = [strategy_guidance.guidance_id] if strategy_guidance else []
 
     plan = _build_canonical_plan(
@@ -245,8 +239,7 @@ def build_sole_author_decisions(
     operator_notes_parts: list[str] = []
     if sole_author_reason == "all_proposals_failed":
         operator_notes_parts.append(
-            "Multi-role authoring degraded to sole-author: every "
-            "configured proposer failed."
+            "Multi-role authoring degraded to sole-author: every configured proposer failed."
         )
         # Per-role missing-proposal warnings still surface in degraded mode
         # so the operator can see which roles failed.
@@ -380,8 +373,7 @@ def _resolve_brief_conflicts(
                         severity="warning",
                         disposition="accepted",
                         reason=(
-                            f"Warning conflict from {proposal.proposing_role} accepted: "
-                            f"{bc.reason}"
+                            f"Warning conflict from {proposal.proposing_role} accepted: {bc.reason}"
                         ),
                     )
                 )
@@ -419,26 +411,20 @@ def _build_operator_notes(
 
     # §5.9 required missing-role warnings
     if "qa" in configured and "qa" not in successful:
-        parts.append(
-            "QA coverage warning: plan was authored without qa-domain input."
-        )
+        parts.append("QA coverage warning: plan was authored without qa-domain input.")
     if "development" in configured and "development" not in successful:
         parts.append(
-            "Implementation decomposition warning: plan was authored "
-            "without dev-domain input."
+            "Implementation decomposition warning: plan was authored without dev-domain input."
         )
     if "strategy" in configured and "strategy" not in successful:
         parts.append(
-            "Ordering/priority warning: plan ordering was assigned without "
-            "strategy guidance."
+            "Ordering/priority warning: plan ordering was assigned without strategy guidance."
         )
 
     # Escalated brief conflicts
     for d in brief_conflicts_disposition:
         if d.disposition == "escalated_to_operator":
-            parts.append(
-                f"Brief conflict escalated ({d.brief_field}): {d.reason}"
-            )
+            parts.append(f"Brief conflict escalated ({d.brief_field}): {d.reason}")
 
     # Unresolved cross-proposal dependencies (rule 7 gap-fill candidates).
     # Rev 1 surfaces these as operator notes rather than auto-filling — the

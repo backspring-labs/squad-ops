@@ -158,15 +158,9 @@ class TestGenerateTaskPlanWithManifest:
         assert len(manifest_envelopes) == 4
 
         # Check RC-2 deterministic ID format
-        assert manifest_envelopes[0].task_id == (
-            "task-run_abcdef12-m000-development.develop"
-        )
-        assert manifest_envelopes[1].task_id == (
-            "task-run_abcdef12-m001-development.develop"
-        )
-        assert manifest_envelopes[3].task_id == (
-            "task-run_abcdef12-m003-qa.test"
-        )
+        assert manifest_envelopes[0].task_id == ("task-run_abcdef12-m000-development.develop")
+        assert manifest_envelopes[1].task_id == ("task-run_abcdef12-m001-development.develop")
+        assert manifest_envelopes[3].task_id == ("task-run_abcdef12-m003-qa.test")
 
     def test_manifest_envelopes_have_subtask_focus(self):
         manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
@@ -245,18 +239,10 @@ class TestGenerateTaskPlanWithManifest:
             description="Missing QA",
             version=1,
             agents=[
-                AgentProfileEntry(
-                    agent_id="max", role="lead", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="neo", role="dev", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="nat", role="strat", model="test", enabled=True
-                ),
-                AgentProfileEntry(
-                    agent_id="data", role="data", model="test", enabled=True
-                ),
+                AgentProfileEntry(agent_id="max", role="lead", model="test", enabled=True),
+                AgentProfileEntry(agent_id="neo", role="dev", model="test", enabled=True),
+                AgentProfileEntry(agent_id="nat", role="strat", model="test", enabled=True),
+                AgentProfileEntry(agent_id="data", role="data", model="test", enabled=True),
             ],
             created_at=NOW,
         )

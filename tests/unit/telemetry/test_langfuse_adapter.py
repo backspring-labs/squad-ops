@@ -390,9 +390,7 @@ class TestPromptToGenerationLinkage:
             a._process_entry(_BufferEntry(_EventType.START_TASK, ctx, None))
 
             record = _make_record(prompt_name="request.cycle_task_base", prompt_version=2)
-            a._process_entry(
-                _BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers()))
-            )
+            a._process_entry(_BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers())))
 
             mock_client.get_prompt.assert_called_once_with(
                 name="request.cycle_task_base", version=2
@@ -416,9 +414,7 @@ class TestPromptToGenerationLinkage:
             a._process_entry(_BufferEntry(_EventType.START_TASK, ctx, None))
 
             record = _make_record()  # No prompt_name
-            a._process_entry(
-                _BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers()))
-            )
+            a._process_entry(_BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers())))
 
             mock_client.get_prompt.assert_not_called()
             tk = ctx.trace_id or ctx.cycle_id
@@ -443,9 +439,7 @@ class TestPromptToGenerationLinkage:
             a._process_entry(_BufferEntry(_EventType.START_TASK, ctx, None))
 
             record = _make_record(prompt_name="nonexistent.template")
-            a._process_entry(
-                _BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers()))
-            )
+            a._process_entry(_BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers())))
 
             mock_client.get_prompt.assert_called_once()
             tk = ctx.trace_id or ctx.cycle_id

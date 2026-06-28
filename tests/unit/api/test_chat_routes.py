@@ -61,9 +61,7 @@ def _setup_app(
     default_all = {"comms-agent": _DEFAULT_AGENT}
     default_msg = {"comms-agent": _DEFAULT_AGENT}
 
-    chat_routes_mod._all_agents = (
-        all_agents if all_agents is not None else default_all
-    )
+    chat_routes_mod._all_agents = all_agents if all_agents is not None else default_all
     chat_routes_mod._messaging_agents = (
         messaging_agents if messaging_agents is not None else default_msg
     )
@@ -142,10 +140,7 @@ class TestSendChatMessage:
             assert response.headers["content-type"].startswith("text/event-stream")
 
             # Parse SSE events
-            events = [
-                line for line in response.text.split("\n")
-                if line.startswith("data:")
-            ]
+            events = [line for line in response.text.split("\n") if line.startswith("data:")]
             assert len(events) >= 2  # at least chunk events + done event
 
             # Verify session_id is in response header
@@ -288,12 +283,11 @@ class TestSendChatMessage:
             )
             # Stream completes despite persistence failure
             assert response.status_code == 200
-            events = [
-                line for line in response.text.split("\n")
-                if line.startswith("data:")
-            ]
+            events = [line for line in response.text.split("\n") if line.startswith("data:")]
             # Should still have text chunks and done event
-            done_events = [e for e in events if '"done": true' in e.lower() or '"done":true' in e.lower()]
+            done_events = [
+                e for e in events if '"done": true' in e.lower() or '"done":true' in e.lower()
+            ]
             assert len(done_events) == 1
         finally:
             _teardown(originals)
@@ -325,16 +319,24 @@ class TestGetSessionMessages:
         """Messages returned in chronological order."""
         repo = _make_chat_repo()
         now = _now()
-        repo.get_session_messages = AsyncMock(return_value=[
-            ChatMessage(
-                message_id="m1", session_id="s1", role="user",
-                content="hello", created_at=now,
-            ),
-            ChatMessage(
-                message_id="m2", session_id="s1", role="assistant",
-                content="hi there", created_at=now,
-            ),
-        ])
+        repo.get_session_messages = AsyncMock(
+            return_value=[
+                ChatMessage(
+                    message_id="m1",
+                    session_id="s1",
+                    role="user",
+                    content="hello",
+                    created_at=now,
+                ),
+                ChatMessage(
+                    message_id="m2",
+                    session_id="s1",
+                    role="assistant",
+                    content="hi there",
+                    created_at=now,
+                ),
+            ]
+        )
         app, originals = _setup_app(chat_repo=repo)
         try:
             client = TestClient(app)
@@ -415,12 +417,16 @@ class TestListAgentSessions:
     def test_returns_sessions_for_agent(self):
         """Returns sessions for the agent+user pair."""
         repo = _make_chat_repo()
-        repo.list_sessions = AsyncMock(return_value=[
-            ChatSession(
-                session_id="s1", agent_id="comms-agent",
-                user_id="anonymous", started_at=_now(),
-            ),
-        ])
+        repo.list_sessions = AsyncMock(
+            return_value=[
+                ChatSession(
+                    session_id="s1",
+                    agent_id="comms-agent",
+                    user_id="anonymous",
+                    started_at=_now(),
+                ),
+            ]
+        )
         app, originals = _setup_app(chat_repo=repo)
         try:
             client = TestClient(app)
@@ -519,10 +525,22 @@ class TestLoadHistory:
     async def test_returns_from_redis_cache_on_hit(self):
         """Redis cache hit returns messages without hitting Postgres."""
         cache = _make_cache()
-        cache.get_messages = AsyncMock(return_value=[
-            {"message_id": "m1", "role": "user", "content": "hi", "created_at": "2025-01-01T00:00:00"},
-            {"message_id": "m2", "role": "assistant", "content": "hello", "created_at": "2025-01-01T00:00:01"},
-        ])
+        cache.get_messages = AsyncMock(
+            return_value=[
+                {
+                    "message_id": "m1",
+                    "role": "user",
+                    "content": "hi",
+                    "created_at": "2025-01-01T00:00:00",
+                },
+                {
+                    "message_id": "m2",
+                    "role": "assistant",
+                    "content": "hello",
+                    "created_at": "2025-01-01T00:00:01",
+                },
+            ]
+        )
         repo = _make_chat_repo()
 
         orig_cache = chat_routes_mod._chat_cache
@@ -549,12 +567,17 @@ class TestLoadHistory:
 
         now = _now()
         repo = _make_chat_repo()
-        repo.get_session_messages = AsyncMock(return_value=[
-            ChatMessage(
-                message_id="m1", session_id="s1", role="user",
-                content="hello", created_at=now,
-            ),
-        ])
+        repo.get_session_messages = AsyncMock(
+            return_value=[
+                ChatMessage(
+                    message_id="m1",
+                    session_id="s1",
+                    role="user",
+                    content="hello",
+                    created_at=now,
+                ),
+            ]
+        )
 
         orig_cache = chat_routes_mod._chat_cache
         orig_repo = chat_routes_mod._chat_repo

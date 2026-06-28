@@ -196,8 +196,7 @@ class TestWorkedExample:
         assert qa_task.focus == "backend join tests"
         assert qa_task.depends_on == [0]  # resolved from "dev:api join"
         assert any(
-            hasattr(c, "check") and c.check == "regex_match"
-            for c in qa_task.acceptance_criteria
+            hasattr(c, "check") and c.check == "regex_match" for c in qa_task.acceptance_criteria
         )
 
     def test_merge_decisions_provenance_recorded(self, brief, dev_proposal, qa_proposal):
@@ -326,9 +325,7 @@ class TestAuthoringModeInvariant:
         assert "QA coverage warning" in decisions.operator_notes
         assert "Ordering/priority warning" in decisions.operator_notes
 
-    def test_emitted_yaml_passes_rc26_parser_validation(
-        self, brief, dev_proposal, qa_proposal
-    ):
+    def test_emitted_yaml_passes_rc26_parser_validation(self, brief, dev_proposal, qa_proposal):
         """The merger's emitted merge_decisions.yaml must round-trip through
         MergeDecisions.from_yaml — which enforces RC-26 at parse time. This
         guards against the merger constructing internally-valid Python
@@ -363,7 +360,9 @@ class TestBriefConflicts:
     BriefConflictDisposition and (for blocking) an operator_notes entry."""
 
     def test_warning_brief_conflict_accepted(self, brief):
-        proposal_yaml = _DEV_PROPOSAL_YAML.rstrip("\n") + """
+        proposal_yaml = (
+            _DEV_PROPOSAL_YAML.rstrip("\n")
+            + """
 brief_conflicts:
   - brief_field: accepted_stack
     proposed_change: Use SQLite instead of in-memory.
@@ -371,6 +370,7 @@ brief_conflicts:
     severity: warning
     affected_proposal_task_keys: ["dev:api join"]
 """
+        )
         dev_proposal = ProposedRoleTasks.from_yaml(proposal_yaml)
         _plan, decisions = merge_proposals(
             brief=brief,
@@ -391,13 +391,16 @@ brief_conflicts:
         assert "escalated" not in decisions.operator_notes.lower()
 
     def test_blocking_brief_conflict_escalated_to_operator(self, brief):
-        proposal_yaml = _DEV_PROPOSAL_YAML.rstrip("\n") + """
+        proposal_yaml = (
+            _DEV_PROPOSAL_YAML.rstrip("\n")
+            + """
 brief_conflicts:
   - brief_field: must_cover_requirements
     proposed_change: PRD adds a requirement the brief omitted.
     reason: PRD says X; brief is missing it.
     severity: blocking
 """
+        )
         dev_proposal = ProposedRoleTasks.from_yaml(proposal_yaml)
         _plan, decisions = merge_proposals(
             brief=brief,

@@ -128,9 +128,7 @@ class TestFromYAMLHappy:
         )
         md = MergeDecisions.from_yaml(yaml_doc)
         assert len(md.missing_proposals) == 2
-        assert md.missing_proposals[0] == MissingProposal(
-            role="qa", failure_reason="llm_error"
-        )
+        assert md.missing_proposals[0] == MissingProposal(role="qa", failure_reason="llm_error")
 
     def test_parses_with_brief_conflicts_disposition(self):
         yaml_doc = _VALID_MULTI_ROLE.replace(
@@ -260,7 +258,7 @@ class TestCanonicalTaskIndices:
         Parser should accept it; the merger surfaces the pathology
         elsewhere if it's actually a problem."""
         yaml_doc = _VALID_SOLE_AUTHOR.replace(
-            "canonical_tasks:\n  - task_index: 0\n    source_proposal_task_keys: []\n    proposed_by: []\n    merge_action: gap_filled\n    reason: \"Sole-author fallback via PlanAuthoringService.\"\n",
+            'canonical_tasks:\n  - task_index: 0\n    source_proposal_task_keys: []\n    proposed_by: []\n    merge_action: gap_filled\n    reason: "Sole-author fallback via PlanAuthoringService."\n',
             "canonical_tasks: []\n",
         )
         md = MergeDecisions.from_yaml(yaml_doc)
@@ -273,20 +271,16 @@ class TestCanonicalTaskIndices:
 
 
 class TestEnumValidation:
-    @pytest.mark.parametrize(
-        "bad_action", ["replaced", "rejected", "ACCEPTED", ""]
-    )
+    @pytest.mark.parametrize("bad_action", ["replaced", "rejected", "ACCEPTED", ""])
     def test_unknown_merge_action_rejected(self, bad_action):
         yaml_doc = _VALID_MULTI_ROLE.replace(
-            "    merge_action: accepted\n    reason: \"Single dev proposal, no conflicts.\"",
+            '    merge_action: accepted\n    reason: "Single dev proposal, no conflicts."',
             f"    merge_action: {bad_action}\n    reason: foo",
         )
         with pytest.raises(ValueError, match="merge_action"):
             MergeDecisions.from_yaml(yaml_doc)
 
-    @pytest.mark.parametrize(
-        "bad_disposition", ["deferred", "fixed", "ESCALATED"]
-    )
+    @pytest.mark.parametrize("bad_disposition", ["deferred", "fixed", "ESCALATED"])
     def test_unknown_disposition_rejected(self, bad_disposition):
         yaml_doc = _VALID_MULTI_ROLE.replace(
             "brief_conflicts_disposition: []",
