@@ -6,7 +6,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.dtos import (
@@ -191,9 +191,16 @@ async def resume_run(
     project_id: str,
     cycle_id: str,
     run_id: str,
+    background_tasks: BackgroundTasks,
     body: RunResumeRequest | None = None,
 ):
-    """Resume a paused or failed run from its latest checkpoint (SIP-0079)."""
+    """Resume a paused or failed run (SIP-0079).
+
+    Resumes from the latest checkpoint when one exists; a run PAUSED before any
+    task ran (e.g. a SIP-0089 §2.5 duty deferral, #222) is re-attempted from the
+    start. Re-execution is enqueued so the run actually proceeds — flipping status
+    alone does not re-run the executor.
+    """
     from squadops.api.runtime.deps import get_cycle_registry
 
     try:
@@ -208,9 +215,12 @@ async def resume_run(
                 f"Cannot resume run in status {run.status!r} — must be paused or failed"
             )
 
-        # 3. Must have at least one checkpoint
+        # 3. Resume source: a checkpoint (resume mid-plan), or — for a run PAUSED
+        #    before any task ran (e.g. a §2.5 duty deferral, #222) — a re-attempt
+        #    from the start. A checkpoint-less FAILED run still can't be resumed
+        #    (no progress and no deliberate pause → create a fresh run).
         latest_cp = await registry.get_latest_checkpoint(run_id)
-        if latest_cp is None:
+        if latest_cp is None and run.status != RunStatus.PAUSED.value:
             raise ValidationError("Cannot resume run without a checkpoint")
 
         # 4. Parent cycle must not be terminal
@@ -242,8 +252,22 @@ async def resume_run(
             },
             payload={
                 "resume_reason": resume_reason,
-                "checkpoint_index": latest_cp.checkpoint_index,
+                "checkpoint_index": latest_cp.checkpoint_index if latest_cp else None,
             },
+        )
+
+        # Re-attempt execution. Flipping status to RUNNING alone does not re-run
+        # the executor — only cycle-create enqueues it. execute_run self-detects
+        # the resume source: it resumes from the latest checkpoint if one exists,
+        # else restarts the plan from the beginning, and re-runs the §2.5 duty
+        # guard (a still-active hard-duty window simply re-defers).
+        from squadops.api.runtime.deps import get_flow_executor
+
+        background_tasks.add_task(
+            get_flow_executor().execute_cycle,
+            cycle_id,
+            run_id,
+            cycle.squad_profile_id,
         )
 
         return run_to_response(updated)

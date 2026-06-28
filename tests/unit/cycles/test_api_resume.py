@@ -123,12 +123,18 @@ def mock_cycle_registry():
 
 
 @pytest.fixture
-def client(mock_cycle_registry, monkeypatch):
+def mock_flow_executor():
+    return AsyncMock()
+
+
+@pytest.fixture
+def client(mock_cycle_registry, mock_flow_executor, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     import squadops.api.runtime.deps as deps_mod
 
     monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)
+    monkeypatch.setattr(deps_mod, "_flow_executor", mock_flow_executor)
     return TestClient(app)
 
 
@@ -149,12 +155,38 @@ class TestResumeRun:
         assert resp.status_code == 200
         assert resp.json()["status"] == "running"
 
-    def test_resume_without_checkpoint(self, client, mock_cycle_registry):
-        """Resume without any checkpoint returns 422."""
+    def test_resume_enqueues_reexecution(self, client, mock_flow_executor):
+        """Resume must re-trigger the executor — flipping status to running alone
+        never re-executes the run. execute_run resumes-from-checkpoint or restarts
+        internally, so the route enqueues execute_cycle unconditionally."""
+        resp = client.post(f"{_URL_PREFIX}/run_001/resume")
+        assert resp.status_code == 200
+        mock_flow_executor.execute_cycle.assert_called_once_with("cyc_001", "run_001", "full-squad")
+
+    def test_resume_paused_without_checkpoint_reattempts(
+        self, client, mock_cycle_registry, mock_flow_executor
+    ):
+        """#222: a PAUSED run with no checkpoint (e.g. a SIP-0089 §2.5 duty
+        deferral, which pauses before any task runs) must resume and re-attempt the
+        plan from the start — NOT 422. Re-execution is enqueued from the start."""
+        mock_cycle_registry.get_latest_checkpoint.return_value = None
+        resp = client.post(f"{_URL_PREFIX}/run_001/resume")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "running"
+        mock_flow_executor.execute_cycle.assert_called_once_with("cyc_001", "run_001", "full-squad")
+
+    def test_resume_failed_without_checkpoint_still_rejected(
+        self, client, mock_cycle_registry, mock_flow_executor
+    ):
+        """A FAILED run with no checkpoint still cannot be resumed — 422 (the
+        relaxation is scoped to PAUSED). No re-execution is enqueued."""
+        mock_cycle_registry.get_run.return_value = _FAILED_RUN
+        mock_cycle_registry.list_runs.return_value = [_FAILED_RUN]
         mock_cycle_registry.get_latest_checkpoint.return_value = None
         resp = client.post(f"{_URL_PREFIX}/run_001/resume")
         assert resp.status_code == 422
         assert resp.json()["detail"]["error"]["code"] == "VALIDATION_ERROR"
+        mock_flow_executor.execute_cycle.assert_not_called()
 
     def test_resume_completed_run(self, client, mock_cycle_registry):
         """Completed run cannot be resumed — 409."""
