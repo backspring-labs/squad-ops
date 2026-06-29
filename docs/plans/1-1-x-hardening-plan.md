@@ -1,6 +1,8 @@
 # 1.1.x Hardening Plan
 
-**Status:** active · **Established:** 2026-06-28 (with the 1.1.0 release)
+**Status:** active (historical record + opportunistic backlog) · **Established:** 2026-06-28 · **Partially superseded 2026-06-29 (#281)**
+
+> **Forward pointer (2026-06-29):** Versioning is now governed by the **even/odd minor convention** (#281) — see `CLAUDE.md` › Versioning & Release Cadence and `docs/ROADMAP.md`. Forward release scheduling of this plan's *Capability SIPs* and *Runtime-lane follow-ups* buckets now lives in **[`1-2-0-release-plan.md`](1-2-0-release-plan.md)**. This doc stays authoritative for exactly two things: the **1.1.0 gate re-baseline record** (below) and the **un-scheduled opportunistic tech-debt backlog**. Items shipped in **1.1.1** are struck/marked inline.
 
 ## Why this exists
 
@@ -11,9 +13,12 @@ hardening completeness** — the CI-trust arc + reliability bugs — which *is* 
 1.1.0 shipped on that basis; the remaining hardening is re-baselined here as the
 **1.1.x hardening plan** — ongoing post-1.1 work that no longer blocks a version.
 
-Versioning discipline: **bug fixes → 1.1.x patches; larger capability-bearing
-SIPs may warrant 1.2.0 minors; tech-debt/arch → opportunistic, never
-version-gating.**
+Versioning discipline: ~~bug fixes → 1.1.x patches; larger capability-bearing
+SIPs may warrant 1.2.0 minors; tech-debt/arch → opportunistic~~ — **superseded
+2026-06-29 by the even/odd minor convention (#281):** even minors = feature
+releases (headline SIP; safe hardening rides along), odd minors = feature-free
+stabilization (big risky refactors + debt), patches = urgent fixes any time.
+See `CLAUDE.md` › Versioning & Release Cadence.
 
 Supersedes the gating framing of
 [`1-0-x-build-reliability-hardening-plan.md`](1-0-x-build-reliability-hardening-plan.md)
@@ -29,20 +34,24 @@ Supersedes the gating framing of
 
 ## 1.1.x patches (bug fixes)
 
-| Issue | |
-|-------|--|
-| #132 | `runs resume --reason` always returns 422 (CLI/API contract drift) |
-| #133 | `runs retry` is dead weight — advertises but never executes |
-| #245 | RabbitMQ `publish()` has no retry during the reconnect window |
-| #239 | OTel `BrokenExporter` test pollutes every regression run (atexit noise) |
-| #168 | Residual `DistributedFlowExecutor` refs after the #164 rename |
-| #198 | FastAPI cap-lift (console router cycle) — adopt ≥0.136 |
-| #130 | Neo `development.develop` unparseable output under spark models |
+Most of this batch shipped in **1.1.1**. Genuinely still open: **#198**. ⚠️ **Hygiene gap:** **#133** and **#205** were credited in the 1.1.1 CHANGELOG but their issues are **still open** — verify residual scope or close them.
+
+| Issue | | Status |
+|-------|--|--------|
+| #132 | `runs resume --reason` always returns 422 (CLI/API contract drift) | ✅ closed |
+| #133 | `runs retry` is dead weight — advertises but never executes | ⚠️ fix shipped in 1.1.1, **issue still open** — verify/close (same for #205) |
+| #245 | RabbitMQ `publish()` has no retry during the reconnect window | ✅ 1.1.1 |
+| #239 | OTel `BrokenExporter` test pollutes every regression run (atexit noise) | ✅ 1.1.1 |
+| #168 | Residual `DistributedFlowExecutor` refs after the #164 rename | ✅ 1.1.1 |
+| #198 | FastAPI cap-lift (console router cycle) — adopt ≥0.136 | ⬜ open — a **1.2.0 prerequisite** (CI health), see `1-2-0-release-plan.md` §5.5 |
+| #130 | Neo `development.develop` unparseable output under spark models | ✅ 1.1.1 |
 
 ## Capability SIPs (feature-bearing — likely 1.2.0+ minors)
 
-These add new capabilities, so they ship as minor releases. Order per the
-build-reliability axis; tracked under this hardening plan.
+These add new capabilities, so they ship as minor releases. **Now scheduled in
+[`1-2-0-release-plan.md`](1-2-0-release-plan.md):** #176 rides *with* 1.2.0 (the
+smoke/invariant net); SIP-0093 B′ (#194) is a later even release; the rest stay
+backlog. Order per the build-reliability axis.
 
 | # | Item |
 |---|------|
@@ -58,16 +67,24 @@ build-reliability axis; tracked under this hardening plan.
 
 ## Ongoing tech-debt / arch (slot opportunistically — never version-gating)
 
-#234/#153 (DbRuntime sqlalchemy-port leak), #154 (adapter imports in domain),
-#156 (`_parse_jsonb` dedup), #250 (duplicate WorkflowTracker factory),
-#242 (gate serviceless integration tests), #218/#219 (runtime-api URL conventions),
-#216 (pytest-xdist), #157 (api/comms coverage), #158 (schema_migrations table),
-#173 (squad-profile name consolidation), #134 (qwen2.5:32b YAML brittleness),
+**Shipped in 1.1.1:** ~~#153 (DbRuntime sqlalchemy sub-piece)~~, ~~#156 (`_parse_jsonb` dedup)~~,
+~~#250 (duplicate WorkflowTracker factory)~~, ~~#216 (pytest-xdist)~~,
+~~#134 (qwen2.5:32b YAML brittleness)~~.
+
+**Still open:** #234 (DbRuntime sqlalchemy-port leak — broader than the closed #153),
+#154 (adapter imports in domain), #242 (gate serviceless integration tests),
+#218/#219 (runtime-api URL conventions), #157 (api/comms coverage),
+#158 (schema_migrations table), #173 (squad-profile name consolidation),
 #224 (model-availability preflight), #237 (drop 3.11 / migrate prod to 3.12),
 #80 (cycle lineage on the record).
 
+**Pulled into the 1.2.0 schedule** (see `1-2-0-release-plan.md`): #234/#186/#152 →
+quarantined to **1.3.0** stabilization; #158/#173 → **1.2.0 prerequisites** (§5.5);
+#224 → folded into the 1.2.0 **Preflight SIP** (#172+#224).
+
 ## Runtime-lane follow-ups carried out of 1.1.0 (SIP-0089 known limitations)
 
-#233 (recruitment-acquired FocusLeases via coordinator), #244 (single-transaction
-coordinator writes vs best-effort compensation), #222 (resume a hard-duty-deferred
-cycle — needs a checkpoint). These are v1.1.x/v1.2 runtime-lane work.
+~~#222 (resume a hard-duty-deferred cycle — needs a checkpoint)~~ **shipped in 1.1.1.**
+#233 (recruitment-acquired FocusLeases via coordinator) and #244 (single-transaction
+coordinator writes vs best-effort compensation) are **now the 1.2.0 committed core** —
+see [`1-2-0-release-plan.md`](1-2-0-release-plan.md) §2.
