@@ -69,6 +69,17 @@ Only four ordering constraints exist; everything else is lane-independent.
 3. **Spark #173 (profile rename) BEFORE Spark #279 (profile add)**, and ideally before Mac #224's preflight finalizes (read-dep on profile names; low risk since read-only). #173 also kills the `active_profile: full-squad` footgun.
 4. **Coordinate Spark #237 (Dockerfile) / #158 (`migrations.py`) timing with Mac #233/#244.** Same `api/runtime/` applier path — announce-before-edit, don't land mid-flight.
 
+### 5.5 Spark items that should land before/with 1.2.0
+
+Most Spark hardening is independent of the feature line, but four items have a real relationship to 1.2.0 — front-load these:
+
+1. **#173 (profile-name consolidation + `active_profile` footgun) — BEFORE the Preflight SIP (#224).** #224 reads squad-profile names/models; #173 renames them and fixes the exact `full-squad`-on-a-non-Spark-box footgun #224 guards against. Build the preflight against the final names. *(Downstream: the `local-cycle-squad-profiles` memory + e2e cheatsheet need a name sweep when this lands.)*
+2. **#158 (schema_migrations + applier hardening) — EARLY, before Mac's runtime migrations.** 1.2.0 pours an unusual amount of new migration surface through the same applier: #244 (RuntimeTransaction), #233 (lease wiring), #231 (`1100_agent_runtime_state.sql`), and the SIP-0090 Phase 1 embodiment table. Harden the applier first so they all land on a tracked path. *(The configurable-timeouts half of #158 is independent.)*
+3. **#176 (framework smoke invariant test) — WITH 1.2.0.** The automated form of the live-validation that caught #270/#272 — a regression net for 1.2.0's runtime changes + preflight. Reads the executor only (low collision); rides *into* the feature release per the convention (safe hardening → even minor).
+4. **#198 (pin FastAPI/Starlette) — NOW, regardless.** Pure CI-health patch; land it before 1.2.0 work piles up against a drifting gate.
+
+**Not before/with 1.2.0:** #276 (its only tie is preceding #152, a *1.3.0* item — rides the patch line on its own schedule, not 1.2.0-gating), #234/#186/#152 (1.3.0 stabilization), #237/#279/#280/#157/#242 (independent).
+
 ## 6. Versioning, cadence & release mechanics
 
 **Even/odd minor convention** (parity gates *features*, not hardening — #281):
@@ -98,12 +109,13 @@ Why phased, not all-in: SIP-0090's value proof (Phases 2–4) lives behind Disco
 >
 > You own the **1.1.x hardening/patch line**. Work off `main`, issue-first and branch-first, per-phase commits, `ruff format .` fail-stop before every push, no silent fixes. Ship patches as they land (the 1.1.1 cadence).
 >
-> **Your scope (track:spark):** #276 (stub-fallback masking — start here, it's a real correctness bug), #279, #280, #176, #157, #242, #198, #158, #234, #237, #173, #218/#219.
+> **Your scope (track:spark), in priority order — front-load the 1.2.0 prerequisites:** **#173** (profile-name consolidation + `active_profile` footgun — *start here*; the 1.2.0 preflight depends on the final names), **#158** (schema_migrations + applier hardening — before Mac lands runtime migrations), **#176** (framework smoke invariant test — the 1.2.0 regression net), **#198** (pin FastAPI/Starlette — CI health, now). Then the independent backlog: #276 (stub-fallback masking — real correctness bug, but not 1.2.0-gating), #279, #280, #157, #242, #234, #237, #218/#219.
 >
 > **Ownership — do NOT edit Macbook-lane files:** `src/squadops/runtime/*`, `src/squadops/api/runtime/*` (except coordinate on `migrations.py`/`Dockerfile` — announce first), `adapters/persistence/runtime/*`, **`adapters/cycles/dispatched_flow_executor.py`** (Mac is decomposing it — hands off), the SIP-0089/0090 surface, `cli/commands/agent.py`.
 >
 > **Hard sequencing rules:**
-> - **#276 must land before Macbook starts #152** (the `cycle_tasks.py` split). Tell the Macbook lane when #276 merges. Do not let #152 start while #276 is open.
+> - **1.2.0 prerequisites first:** **#173 before the Macbook preflight (#224) finalizes** (it reads the profile names you're renaming), and **#158 before Macbook lands runtime migrations** (#233/#244/#231 + SIP-0090 Phase 1 all flow through the applier). Coordinate timing with the Macbook lane on both.
+> - **#276 before Macbook starts #152** (the `cycle_tasks.py` split) — but #152 is a *1.3.0* item, so #276 is **not** 1.2.0-gating; sequence it whenever, just never concurrent with #152. Tell the Macbook lane when #276 merges.
 > - **#173 (profile rename) before #279 (profile add).** #173 also fixes the `active_profile: full-squad` footgun.
 > - Migrations: Spark uses range **1000–1099** only (Mac owns 1100–1199).
 > - Announce before touching shared append-only files (`pyproject.toml`, `ci-constraints.txt`, `tests/requirements.txt`, `run_regression_tests.sh`) and before `api/runtime/{Dockerfile,migrations.py}`.
