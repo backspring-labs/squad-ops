@@ -5,11 +5,60 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-06-28
+
+Hardening patch on the 1.1.0 runtime line. The runtime lane (SIP-0089) was
+live-validated end-to-end after 1.1.0, surfacing two regressions the unit
+suites couldn't catch (#270, #272); both are fixed here alongside the resume
+and reliability work from the 1.1.x hardening plan. No new SIPs — the additive
+items are backward-compatible and the one rename (#79) is internal.
+
+### Added
+- Per-role Prefect task names: tasks render as `{role} [{n}/{total}]: {title}`
+  so a role appearing multiple times in a plan is distinguishable in the
+  Prefect UI (#94).
+- Agent **`mode`** and **`runtime_status`** are now surfaced on the agent-list
+  API and the console agent view, alongside the heartbeat fields — health is
+  `runtime_status`, posture is `mode` (see
+  `docs/agent-runtime-status-model.md`) (#230, #231).
+
+### Fixed
+- **Auth:** cycle API routes returned 403 for every authenticated user — #150
+  applied `cycles:read`/`cycles:write` scope checks, but the role-centric
+  Keycloak realm issues *roles*, not those scopes. Bridge realm roles to their
+  implied scopes in `resolve_identity` so role-bearing tokens authorize as
+  intended (#270).
+- **Duty scheduler:** duty windows never auto-opened under the default
+  `missed_window_policy="skip"` — the poll-cadence lag before the first
+  observing tick was misread as a missed window. A just-active window is now
+  treated as on-time within one poll interval (plus jitter margin) (#272).
+- **Resume:** a duty-deferred run is now re-attempted *and* actually
+  re-executed on resume — the resume route never re-invoked the executor
+  before (#222).
+- **Resume:** mid-sequence runs resume at the correct workload index instead of
+  re-running from workload 0 (#257).
+- **Comms:** `publish()` now retries with bounded backoff across the RabbitMQ
+  reconnect window instead of failing the first send after a drop (#245).
+- **Capabilities:** strip `<think>` blocks before fenced-code parsing, and log
+  the raw output on zero extraction so empty parses are diagnosable (#130).
+- **CLI/API:** `runs retry` now actually executes the run (it previously
+  no-op'd); corrected stale docstrings (#133, #205).
+- **Telemetry:** the `BrokenExporter` test no longer leaks a global OTel
+  provider into sibling tests (#239).
+
 ### Changed
 - Renamed the `governance.establish_contract` capability → **`governance.define_done`**
   and its `run_contract.json` artifact → **`definition_of_done.json`** (the fields
   are a standard Definition of Done, not a "contract"). Internal rename, no
   behaviour change; historical artifacts on disk are left as-is (#79).
+
+### Internal / tooling
+- Regression suite runs in parallel via `pytest-xdist -n auto` (#216).
+- `update_sip_status.py` now rewrites the body `**Status:**` line on promotion,
+  not just the frontmatter (#253).
+- Deduplicated three copies of the JSONB-parsing helper into one (#156); routed
+  the dispatched-flow factory through `create_workflow_tracker` (#250); corrected
+  stale flow-executor references in the control-plane context doc (#168).
 
 ## [1.1.0] — 2026-06-28
 
