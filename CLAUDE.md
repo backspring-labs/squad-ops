@@ -209,7 +209,7 @@ Semver `MAJOR.MINOR.PATCH` with an **even/odd minor convention** layered on top 
 - **Odd minor (1.3, 1.5, …) — stabilization release.** Feature-free by rule (its only constraint). Home for the big, risky structural refactors deliberately quarantined out of feature releases (so a regression is unambiguously the refactor, not a feature) + accumulated debt. Substance gates the cut, not the clock.
 - **Patch (x.y.Z) — urgent/small fixes**, any time, either lane. Never hold a critical fix for the next odd release (the 1.1.1 cadence).
 
-Two concurrent lanes feed this: the **Macbook lane** emits feature SIPs (→ even minors), the **Spark lane** emits hardening (→ patches continuously + big refactors batched into odd minors). Bump via `scripts/maintainer/version_cli.py bump <v>`; keep version markers in this file, `README.md`, and `docs/ROADMAP.md` in sync (they drifted at 1.1.x — don't repeat). Full plan: `docs/plans/1-2-0-release-plan.md`.
+Two concurrent lanes feed this, but only one thing is lane-pinned: **feature SIPs** come from the **Macbook lane** and gate even minors. Everything else is shared — **both lanes** emit patches continuously, and **both** emit the big structural refactors that batch into odd minors (the 1.3.0 batch is #186/#152, Macbook-owned, plus #234, Spark-owned). The Spark lane is the primary *hardening* source, but odd-minor refactors are not exclusively its output. Bump via `scripts/maintainer/version_cli.py bump <v>`; keep version markers in this file, `README.md`, and `docs/ROADMAP.md` in sync (they drifted at 1.1.x — don't repeat). Full plan: `docs/plans/1-2-0-release-plan.md`.
 
 ## Development Workflow
 

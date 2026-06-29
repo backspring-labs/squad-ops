@@ -24,7 +24,7 @@ So: **1.2.0 = Macbook capability SIPs. 1.1.x = Spark hardening, shipping as patc
 
 This core is **almost entirely Lane-M-owned surface** (runtime/, executor, cycle API) → minimal cross-lane collision, and the preflight directly fixes the model-mismatch failure we hit live on 2026-06-29.
 
-> **#224 ownership — resolve before the preflight starts (changed from the prior agreement).** The 1.1.x sprint agreement split #224: *Mac drafts the #172 preflight seam, **Spark provides the model-availability helper*** (lift `api/routes/cycles/profiles.py:71-95` into a reusable check), because model/device availability is the Spark domain. #224 is dual-labeled `track:spark`+`track:macbook` to reflect that. This plan's §2 table now folds the whole Preflight SIP into Mac's surface, which silently drops that split. **Decide explicitly:** either (a) preserve the split — Spark lifts the model-check helper, Mac wires the seam (recommended; keeps device-knowledge in the Spark lane), or (b) Mac takes the whole thing and Spark drops the `track:spark` label from #224. Don't leave it implicit.
+> **#224 ownership — RESOLVED 2026-06-29 (option a, the split is preserved).** The Spark-lane review surfaced that this plan's §2 table had silently folded the whole Preflight SIP into Mac's surface, dropping the prior sprint split. **Decision (Mac-lane, recorded on #224):** keep the split — **Spark lifts the model-availability helper** (`api/routes/cycles/profiles.py:71-95` → a reusable check both `doctor` and cycle-create call), since model/device availability is the Spark domain; **Mac wires the #172 preflight seam** that calls it. The dual `track:spark`+`track:macbook` labels on #224 stay (each lane owns its half). Per-file ownership detail in §5.6.
 
 ### Stretch headline — SIP-0090 Agent Embodiment (the banner, gated)
 SIP-0090 (accepted, the canonical "v1.2 candidate") is the natural 1.2.0 banner: *new surface* (embodiment substrate, identity/surface split, Discord first proof point), vision-aligned (ambient/Discord presence), and it builds on the lease/recruitment substrate the core (#233/#244) completes.
@@ -93,7 +93,7 @@ Execution order: **#198 → {#173 ∥ #158} → #176 (trailing).**
 
 ### 5.6 `api/routes/cycles/*` owner-per-file (resolve before the preflight)
 
-This surface has *legitimate* edits from both lanes (Spark history: #133/#150/#205; Mac incoming: #172+#224 preflight). Before Mac starts the preflight, assign per file: **Mac owns the cycle-create route wiring** (`cycles.py` create handler — that's where the preflight seam lives); **Spark owns the model-availability helper** (`profiles.py:71-95` lift, per the §2 #224 decision). With that split, the two lanes touch different functions in the same files — annotate the seam with a brief comment so the merge is mechanical. If #224 collapses to all-Mac (§2 option b), this section is moot.
+This surface has *legitimate* edits from both lanes (Spark history: #133/#150/#205; Mac incoming: #172+#224 preflight). Before Mac starts the preflight, assign per file: **Mac owns the cycle-create route wiring** (`cycles.py` create handler — that's where the preflight seam lives); **Spark owns the model-availability helper** (`profiles.py:71-95` lift, per the §2 #224 decision). With that split (confirmed by the §2 #224 resolution — option a), the two lanes touch different functions in the same files — annotate the seam with a brief comment so the merge is mechanical.
 
 ## 6. Versioning, cadence & release mechanics
 
