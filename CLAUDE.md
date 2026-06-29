@@ -215,6 +215,8 @@ Two concurrent lanes feed this: the **Macbook lane** emits feature SIPs (→ eve
 
 **Branch first**: Always create a feature branch before writing any code for a new feature or SIP implementation. Develop on the branch with incremental commits per phase — not one giant commit at the end. This keeps `main` clean and gives the PR a proper commit history.
 
+**Close issues from PRs**: Every PR body must include `Closes #NNN` (or `Fixes #NNN`) for each issue it fully resolves, so the merge auto-closes them. A bare `(#NNN)` reference does **not** close the issue — that gap left #133/#205 credited-but-open after 1.1.1 (closed 2026-06-29 during the #281 reconcile). If a PR only partially addresses an issue, reference it without `Closes` and say what remains.
+
 **Proactive guidance**: If you observe a workflow or code best practice being bypassed, call it out early — don't wait to be asked. Examples:
 - Workflow: developing on main instead of a feature branch, skipping tests, hardcoding secrets
 - Code structure: copy-pasted logic that should be a shared helper, inconsistent patterns across similar modules, missing registry updates when adding new entries, constants duplicated across files instead of single-sourced
