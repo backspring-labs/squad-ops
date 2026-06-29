@@ -201,6 +201,16 @@ python scripts/maintainer/update_sip_status.py sips/proposed/SIP-MyIdea.md accep
 python scripts/maintainer/update_sip_status.py sips/accepted/SIP-0067-My-Feature.md implemented
 ```
 
+## Versioning & Release Cadence
+
+Semver `MAJOR.MINOR.PATCH` with an **even/odd minor convention** layered on top — parity gates *features*, not hardening (#281):
+
+- **Even minor (1.2, 1.4, …) — feature release.** Led by ≥1 headline feature SIP, which gates the version. Hardening rides along freely; the safe, ready stuff lands here alongside features (1.1.0 shipped SIP-0089 on a hardening foundation).
+- **Odd minor (1.3, 1.5, …) — stabilization release.** Feature-free by rule (its only constraint). Home for the big, risky structural refactors deliberately quarantined out of feature releases (so a regression is unambiguously the refactor, not a feature) + accumulated debt. Substance gates the cut, not the clock.
+- **Patch (x.y.Z) — urgent/small fixes**, any time, either lane. Never hold a critical fix for the next odd release (the 1.1.1 cadence).
+
+Two concurrent lanes feed this: the **Macbook lane** emits feature SIPs (→ even minors), the **Spark lane** emits hardening (→ patches continuously + big refactors batched into odd minors). Bump via `scripts/maintainer/version_cli.py bump <v>`; keep version markers in this file, `README.md`, and `docs/ROADMAP.md` in sync (they drifted at 1.1.x — don't repeat). Full plan: `docs/plans/1-2-0-release-plan.md`.
+
 ## Development Workflow
 
 **Branch first**: Always create a feature branch before writing any code for a new feature or SIP implementation. Develop on the branch with incremental commits per phase — not one giant commit at the end. This keeps `main` clean and gives the PR a proper commit history.

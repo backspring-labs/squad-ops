@@ -2,6 +2,10 @@
 
 Living document tracking the implementation progression from initial prototype to production framework.
 
+## Versioning Convention
+
+Semver with an **even/odd minor** overlay (parity gates *features*, not hardening — #281): **even minors (1.2, 1.4, …) are feature releases** (led by a headline feature SIP; hardening rides along), **odd minors (1.3, 1.5, …) are feature-free stabilization releases** (the big risky refactors + debt paydown), and **patches ship urgent fixes any time, either lane.** Hardening lands wherever it's ready. See `docs/plans/1-2-0-release-plan.md` and CLAUDE.md.
+
 ## Release Timeline
 
 ### v1.1.1 (2026-06-28) — Current — Runtime Lane Hardening
