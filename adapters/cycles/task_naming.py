@@ -10,54 +10,57 @@ from __future__ import annotations
 
 from squadops.tasks.models import TaskEnvelope
 
-
-def _humanize_task_type(task_type: str) -> str:
-    """Title for a non-focused task, derived from its ``task_type``.
-
-    Takes the leaf segment and makes it read like a title:
-    ``strategy.frame_objective`` → ``Frame objective``,
-    ``qa.define_test_strategy`` → ``Define test strategy``. Falls back to the
-    raw ``task_type`` if it has no usable leaf.
-    """
-    leaf = task_type.rsplit(".", 1)[-1].replace("_", " ").replace("-", " ").strip()
-    return leaf[:1].upper() + leaf[1:] if leaf else task_type
+# Separates the structural task_type from a subtask's free-text focus, e.g.
+# ``development.develop — implement POST /runs``.
+_FOCUS_SEPARATOR = " — "
+_FOCUS_MAX_LEN = 60
 
 
 def build_task_name(envelope: TaskEnvelope) -> str:
     """Build a Gantt-friendly Prefect task name for a dispatched envelope.
 
-    Prefixes with the **agent** that ran the task (``envelope.agent_id``) rather
-    than the role: the role already duplicates the ``task_type`` domain segment
-    (``qa: qa.define_test_strategy``), whereas the agent identity is strictly
-    more informative (``eve: qa.define_test_strategy``). Falls back to the role
-    when ``agent_id`` is unset — correction/repair and gate-boundary envelopes
-    leave it empty — and to ``"unknown"`` when neither is present. ``agent_id``
-    comes from the squad profile, so the label stays profile-configurable.
+    Shape: ``{agent} [{n}/{total}]: {task_type}[ — {focus}]``.
 
-    Planned-run envelopes (framing + implementation) carry per-agent
-    ``role_index``/``role_total`` (#94) and render ``prefix[n/total]: title`` —
-    1-based position within that agent's work, so "how far through dev work are
-    we" is answerable at a glance and the count reflects per-role progress, not a
-    global index. The title is the manifest ``subtask_focus`` when present, else
-    the humanized ``task_type`` (so framing tasks gain a readable title too).
+    **Prefix** — the *agent* that ran the task (``envelope.agent_id``), falling
+    back to the role (``metadata["role"]``) when ``agent_id`` is unset
+    (correction/repair and gate-boundary envelopes leave it empty), then to
+    ``"unknown"``. ``agent_id`` comes from the squad profile, so the label stays
+    profile-configurable.
 
-    Envelopes without per-agent counts (correction/repair, gate boundaries) keep
-    the legacy shape: ``prefix[idx]: focus`` for focused subtasks, else
-    ``prefix: task_type``.
+    **Descriptor** — the raw ``task_type`` (#277). Its domain segment is the
+    role (``qa.define_test_strategy``), so the raw value restores the role
+    identity the agent prefix alone would lose, *and* keeps the verb — strictly
+    more information than a humanized leaf (``qa.define_test_strategy`` →
+    "Test"). When a subtask carries a free-text ``subtask_focus`` (build
+    subtasks, e.g. "implement POST /runs"), it is appended after an em dash and
+    truncated to keep the label Gantt-sized; the ``task_type`` spine stays so the
+    label is uniform and greppable.
+
+    **Count** — planned-run envelopes (framing + implementation) carry per-agent
+    ``role_index``/``role_total`` (#94) and render ``[n/total]`` — 1-based
+    position within *that agent's* work, so "how far through dev work are we" is
+    answerable at a glance. The bracket is spaced off the prefix (``neo [2/5]``,
+    not ``neo[2/5]``) so it doesn't read as an array subscript (#277). Envelopes
+    built outside the plan (correction/repair, gate boundaries) carry no per-agent
+    count; a legacy ``subtask_index`` still renders as ``[idx]``, otherwise the
+    count is omitted.
     """
     role = envelope.metadata.get("role", "unknown") if envelope.metadata else "unknown"
     prefix = envelope.agent_id or role
     inputs = envelope.inputs or {}
+
+    descriptor = envelope.task_type
     focus = inputs.get("subtask_focus")
-    title = str(focus)[:60] if focus else _humanize_task_type(envelope.task_type)
+    if focus:
+        descriptor = f"{envelope.task_type}{_FOCUS_SEPARATOR}{str(focus)[:_FOCUS_MAX_LEN]}"
 
     n = inputs.get("role_index")
     total = inputs.get("role_total")
     if n is not None and total is not None:
-        return f"{prefix}[{n}/{total}]: {title}"
+        return f"{prefix} [{n}/{total}]: {descriptor}"
 
     # Legacy fallback for envelopes built outside the plan (no per-agent counts).
     idx = inputs.get("subtask_index")
-    if focus:
-        return f"{prefix}[{idx}]: {title}" if idx is not None else f"{prefix}: {title}"
-    return f"{prefix}: {envelope.task_type}"
+    if idx is not None:
+        return f"{prefix} [{idx}]: {descriptor}"
+    return f"{prefix}: {descriptor}"
