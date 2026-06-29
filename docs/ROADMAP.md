@@ -4,7 +4,16 @@ Living document tracking the implementation progression from initial prototype t
 
 ## Release Timeline
 
-### v1.1.0 (2026-06-28) — Current — Agent Runtime State + 1.0.x Hardening
+### v1.1.1 (2026-06-28) — Current — Runtime Lane Hardening
+- **Live-validated the runtime lane (SIP-0089) end-to-end** after 1.1.0, which surfaced two regressions the unit suites couldn't catch:
+  - **#270** cycle API routes 403'd every authenticated user — #150's `cycles:*` scope checks didn't account for the role-centric Keycloak realm (issues roles, not scopes); fixed with a role→scope bridge in `resolve_identity`.
+  - **#272** duty windows never auto-opened under the default `missed_window_policy="skip"` — poll-cadence lag was misread as a missed window; fixed with an on-time grace of one poll interval.
+- **Resume reliability:** duty-deferred runs now actually re-execute on resume (#222); mid-sequence runs resume at the correct workload index (#257).
+- **Reliability:** bounded RabbitMQ publish retry/backoff (#245); `runs retry` actually executes (#133, #205); strip `<think>` before fenced parsing (#130); OTel provider test leak fixed (#239).
+- **Additive (backward-compatible):** per-role Prefect task names (#94); agent `mode` + `runtime_status` on the agent list / console (#230, #231).
+- **Internal:** `establish_contract` → `define_done` rename (#79); regression suite parallelized via pytest-xdist (#216); SIP-status script rewrites the body status line (#253).
+
+### v1.1.0 (2026-06-28) — Agent Runtime State + 1.0.x Hardening
 - **SIP-0089** Agent Runtime State (Phases 1–4): runtime modes (ambient/cycle/duty) with a single-writer coordinator + in-process duty scheduler, assignments & duty windows, FocusLease arbitration, RuntimeActivity observability. Migrations 1100–1130.
 - **1.0.x hardening foundation** landed: CI-trust arc (declared deps, dev+CI on Python 3.12, ruff-format gate, adapters in the gate) + reliability fixes (#146 channel recovery, #155 frozen-result mutation, #77 cancel→Prefect, #209 integration config) + **#150 cycle-route scope enforcement (security)**.
 - The remaining build-reliability work is re-baselined as the **1.1.x hardening plan** (`docs/plans/1-1-x-hardening-plan.md`) — it no longer gates the version. (Gate read as foundational-hardening completeness; joint Spark/Mac decision 2026-06-28.)
