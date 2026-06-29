@@ -45,6 +45,11 @@ logger = logging.getLogger(__name__)
 # constructed/started by bootstrap only when runtime.scheduler.enabled is true.
 _DEFAULT_POLL_INTERVAL_SECONDS = 30.0
 
+# #272: tick-processing jitter absorbed on top of the poll interval when deciding
+# whether a just-active window is on-time. The poll cadence already bounds how
+# late the first observing tick can be; this covers the tick's own run time.
+_ON_TIME_GRACE_MARGIN_SECONDS = 2.0
+
 
 class DutyScheduler:
     """Polls duty assignments and requests window-open/close transitions."""
@@ -64,6 +69,12 @@ class DutyScheduler:
         self._state = state
         self._events = events_publisher
         self._poll_interval_seconds = poll_interval_seconds
+        # #272: a window is "on-time" if observed within one poll interval (plus a
+        # small jitter margin) of window_start — that lag is the scheduler's own
+        # cadence, not a missed window.
+        self._on_time_grace = timedelta(
+            seconds=poll_interval_seconds + _ON_TIME_GRACE_MARGIN_SECONDS
+        )
         self._clock = clock or (lambda: datetime.now(UTC))
         self._task: asyncio.Task | None = None
 
@@ -102,7 +113,12 @@ class DutyScheduler:
             if in_duty:
                 return None  # already serving this window
             late = now - a.active_window.start
-            if late <= timedelta(0):
+            # #272: the scheduler only observes a window at a tick boundary, so the
+            # first tick to see it active lags window_start by up to one poll
+            # interval (+ tick run time). That cadence lag is on-time — open it.
+            # missed_window_policy governs lateness *beyond* the grace (agent
+            # offline, scheduler stalled, ticks skipped), not the inherent poll lag.
+            if late <= self._on_time_grace:
                 return await self._open(a, reasons.DUTY_WINDOW_OPENED)
             return await self._open_late(a, late)
 
