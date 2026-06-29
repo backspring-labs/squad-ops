@@ -24,6 +24,8 @@ So: **1.2.0 = Macbook capability SIPs. 1.1.x = Spark hardening, shipping as patc
 
 This core is **almost entirely Lane-M-owned surface** (runtime/, executor, cycle API) → minimal cross-lane collision, and the preflight directly fixes the model-mismatch failure we hit live on 2026-06-29.
 
+> **#224 ownership — resolve before the preflight starts (changed from the prior agreement).** The 1.1.x sprint agreement split #224: *Mac drafts the #172 preflight seam, **Spark provides the model-availability helper*** (lift `api/routes/cycles/profiles.py:71-95` into a reusable check), because model/device availability is the Spark domain. #224 is dual-labeled `track:spark`+`track:macbook` to reflect that. This plan's §2 table now folds the whole Preflight SIP into Mac's surface, which silently drops that split. **Decide explicitly:** either (a) preserve the split — Spark lifts the model-check helper, Mac wires the seam (recommended; keeps device-knowledge in the Spark lane), or (b) Mac takes the whole thing and Spark drops the `track:spark` label from #224. Don't leave it implicit.
+
 ### Stretch headline — SIP-0090 Agent Embodiment (the banner, gated)
 SIP-0090 (accepted, the canonical "v1.2 candidate") is the natural 1.2.0 banner: *new surface* (embodiment substrate, identity/surface split, Discord first proof point), vision-aligned (ambient/Discord presence), and it builds on the lease/recruitment substrate the core (#233/#244) completes.
 
@@ -36,9 +38,9 @@ SIP-0090 (accepted, the canonical "v1.2 candidate") is the natural 1.2.0 banner:
 ## 3. The 1.1.x hardening scope (Spark lane)
 
 Continues the `1-1-x-hardening-plan.md` line, shipping as patches:
-- **Build quality:** **#276** (acceptance passes on a non-running app — stub fallback masks ImportError; high priority), #279 (instrumented+builder request profile), #280 (generated frontend hardcodes API base/CORS).
+- **Build quality:** **#276** (acceptance passes on a non-running app — stub fallback masks ImportError; high priority), #279 (instrumented+builder request profile), #280 (generated frontend hardcodes API base/CORS — **not fully independent of #176:** a smoke test that probes a generated app beyond localhost is exactly what surfaces this, so sequence #280 near #176/#276, not in the loose backlog).
 - **Test/infra:** #176 (smoke-invariant integration test), #157 (api/comms/integration coverage), #242 (serviceless integration rot), #198 (Starlette ≥0.136 pin).
-- **Platform/debt:** #158 (schema_migrations table + configurable timeouts), #234 (DbRuntime port leaks sqlalchemy), #237 (drop 3.11 → 3.12), #173 (consolidate squad-profile names; also fix the `active_profile: full-squad` footgun).
+- **Platform/debt:** #158 (schema_migrations table + configurable timeouts), #234 (DbRuntime port leaks sqlalchemy — **scope grows because of Mac #244:** #244 adds a `RuntimeTransaction` UoW port in the same persistence/runtime area in 1.2.0, so the 1.3.0 #234 reshape must also absorb it; correct order, just a larger blast radius), #237 (drop 3.11 → 3.12 — **changes the support contract:** raising `requires-python` changes what environments can install the package, so it should ride *with* a minor, e.g. 1.2.0, not land as a stealth patch — decide its release home explicitly), #173 (consolidate squad-profile names; also fix the `active_profile: full-squad` footgun).
 - **API surface:** #218/#219 (prefix/versioning standard + unversioned chat routes).
 
 ## 4. Ownership boundaries (the overlap contract — extends the 1.1 two-lane plan)
@@ -54,10 +56,13 @@ The existing boundaries from `1-1-x-two-lane-plan.md` **still hold and already s
 ### 1.2.0-specific collision findings (from the file-collision matrix)
 | File | Risk | Verdict |
 |------|------|---------|
-| **`capabilities/handlers/cycle_tasks.py`** | **CRITICAL — only true cross-lane hot file.** Spark #276 (`QATestHandler` + `_detect_stubs`) × Mac #152 (whole-file split) × Mac #114 (typed-eval). | **Must-sequence (§5.1).** Keep #152 out of the concurrent window. |
+| **`capabilities/handlers/cycle_tasks.py`** | **CRITICAL — only true cross-lane *code* hot file.** Spark #276 (`QATestHandler` at line 2036 + `_detect_stubs`) × Mac #152 (whole-file split) × Mac #114 (typed-eval). Confirmed: the handler #276 edits is inside the 3,246-line file #152 moves. | **Must-sequence (§5.1).** Keep #152 out of the concurrent window. |
+| **`api/routes/cycles/{cycles,profiles}.py`** | **MEDIUM-HIGH — the matrix originally missed this.** Mac's Preflight SIP (#172+#224) hooks **cycle-create** here; but **Spark owns the recent history** (#133/#205 PR #264, #150) and **#224 is dual-labeled `track:spark`+`track:macbook`**. Both lanes legitimately edit this surface. | **Pick an owner per file before the preflight starts** (§5.6). Default: Mac owns the cycle-create *route wiring*; Spark owns the *model-availability helper* it calls (see §2 note). |
 | `adapters/cycles/dispatched_flow_executor.py` | HIGH churn (#186/#233/#172/#244) but **Mac-internal — no Spark contention.** | Within-lane sequencing only (§5.2). Spark ignores this file. |
 | `api/runtime/` (Dockerfile, `migrations.py`) | MEDIUM — Spark #237/#158 × Mac #233/#244 (same applier). | Announce-before-edit; coordinate timing (§5.4). |
 | `config/squad-profiles.yaml` | MEDIUM — Spark #173 (rename) vs #279 (add); Mac #224 read-dep. | Spark-internal sequence #173→#279 (§5.3). |
+| `ci-constraints.txt` | MEDIUM — Spark #198 **re-lock regenerates many transitive lines** (not an append) × any Mac dep adds (SIP-0090 Phase 1 / new ports). | **Coordinated lock-regen window**, not announce-before-append (§5.5 #198). |
+| `CHANGELOG.md`, `docs/ROADMAP.md` | LOW but **predictably conflicting** — both lanes append at release. | Section-per-lane convention in each file; resolve once at the bump, not piecemeal. |
 | `infra/migrations/`, `CLAUDE.md`, `README.md` | LOW — mostly different files / trivial doc merges. | Migration ranges + announce-before-edit cover it. |
 
 ## 5. Cross-lane sequencing (the critical path)
@@ -66,31 +71,43 @@ Only four ordering constraints exist; everything else is lane-independent.
 
 1. **Spark #276 BEFORE Mac #152.** #276 fixes a real bug in `cycle_tasks.py`; #152 mechanically moves all 3,246 lines. Land #276 first, then Mac does #152 as an opportunistic clearing move. Never concurrent.
 2. **Mac runtime wiring (#233 → #244 → #172) BEFORE Mac #186.** Don't decompose `dispatched_flow_executor.py` while still wiring features into it. #186 is non-gating — it runs *after* the runtime features land (or slips to 1.2.x).
-3. **Spark #173 (profile rename) BEFORE Spark #279 (profile add)**, and ideally before Mac #224's preflight finalizes (read-dep on profile names; low risk since read-only). #173 also kills the `active_profile: full-squad` footgun.
+3. **Spark #173 (profile rename) BEFORE Spark #279 (profile add)**, and before Mac #224's preflight finalizes (read-dep on profile names). **Not "low risk read-only":** #173 *collapses* tiers (profiles disappear), so anything on a dropped name breaks at runtime — see §5.5. #173 also kills the `active_profile: full-squad` footgun.
 4. **Coordinate Spark #237 (Dockerfile) / #158 (`migrations.py`) timing with Mac #233/#244.** Same `api/runtime/` applier path — announce-before-edit, don't land mid-flight.
 
-### 5.5 Spark items that should land before/with 1.2.0
+### 5.5 Spark items that relate to 1.2.0
 
-Most Spark hardening is independent of the feature line, but four items have a real relationship to 1.2.0 — front-load these:
+Four Spark items relate to 1.2.0 — but **this is not a linear chain.** They have three different shapes, and the execution order follows the shapes, not the list:
 
-1. **#173 (profile-name consolidation + `active_profile` footgun) — BEFORE the Preflight SIP (#224).** #224 reads squad-profile names/models; #173 renames them and fixes the exact `full-squad`-on-a-non-Spark-box footgun #224 guards against. Build the preflight against the final names. *(Downstream: the `local-cycle-squad-profiles` memory + e2e cheatsheet need a name sweep when this lands.)*
-2. **#158 (schema_migrations + applier hardening) — EARLY, before Mac's runtime migrations.** 1.2.0 pours an unusual amount of new migration surface through the same applier: #244 (RuntimeTransaction), #233 (lease wiring), #231 (`1100_agent_runtime_state.sql`), and the SIP-0090 Phase 1 embodiment table. Harden the applier first so they all land on a tracked path. *(The configurable-timeouts half of #158 is independent.)*
-3. **#176 (framework smoke invariant test) — WITH 1.2.0.** The automated form of the live-validation that caught #270/#272 — a regression net for 1.2.0's runtime changes + preflight. Reads the executor only (low collision); rides *into* the feature release per the convention (safe hardening → even minor).
-4. **#198 (pin FastAPI/Starlette) — NOW, regardless.** Pure CI-health patch; land it before 1.2.0 work piles up against a drifting gate.
+- **One cheap, independent, do-first item: #198.** Knock it out before anything else — it's ~30 min and de-risks the shared lock for *both* lanes.
+- **Two genuine cross-lane gates, order-independent of each other: #173 and #158.** Each unblocks a different Mac workstream; run them early, in either order (or in parallel).
+- **One trailing ride-along: #176.** It validates the *assembled* release, so by definition it lands last — it cannot precede #198.
 
-**Not before/with 1.2.0:** #276 (its only tie is preceding #152, a *1.3.0* item — rides the patch line on its own schedule, not 1.2.0-gating), #234/#186/#152 (1.3.0 stabilization), #237/#279/#280/#157/#242 (independent).
+Execution order: **#198 → {#173 ∥ #158} → #176 (trailing).**
+
+1. **#198 (pin FastAPI/Starlette) — FIRST (cheap, preventive).** Not an active fire: `ci-constraints.txt` currently holds `fastapi==0.135.4`, below the 0.136 break, so CI is *pinned, not red*. But the *declared* dep (`pyproject.toml`) is unbounded, so the next lock regen drifts into the break. Add the upper bound and re-lock now, before 1.2.0 work piles against a latent gate. **Caveat:** the re-lock regenerates many transitive lines in `ci-constraints.txt` — that's **not** an append, so it needs a *coordinated lock-regen window* with the Mac lane, not the normal announce-before-edit treatment (see §4 shared-files note).
+2. **#173 (profile-name consolidation + `active_profile` footgun) — cross-lane gate, BEFORE the Preflight SIP (#224).** #224 reads squad-profile names/models; #173 renames them and fixes the exact `full-squad`-on-a-non-Spark-box footgun #224 guards against. Build the preflight against the final names. **Blast radius is wider than a rename:** #173 *collapses* the full/spark tier redundancy (profiles disappear, not just relabel), and the names are referenced across ~20 files (`console/`, `cli/commands/profiles.py`, `llm/model_registry.py`, many tests). Anything on a dropped name breaks at *runtime*, not just the preflight — treat it as a behavioral change, not a low-risk read-only rename. *(Downstream: the `local-cycle-squad-profiles` memory + e2e cheatsheet need a name sweep when this lands.)*
+3. **#158 (schema_migrations + applier hardening) — cross-lane gate, EARLY, before Mac's runtime migrations.** 1.2.0 pours an unusual amount of new migration surface through the same applier: #244 (RuntimeTransaction), #233 (lease wiring), #231 (`1100_agent_runtime_state.sql`), and the SIP-0090 Phase 1 embodiment table. Harden the applier first so they all land on a tracked path. *(The configurable-timeouts half of #158 is independent.)*
+4. **#176 (framework smoke invariant test) — TRAILING, rides in at the end.** A cheap, small-model CI invariant net for 1.2.0's runtime changes + preflight; reads the executor only (low collision); rides *into* the feature release per the convention (safe hardening → even minor). **It is NOT the automated form of the live-validation that caught #270/#272** (a *full deployed cycle on real models*). A small-model invariant test won't catch the model-mismatch / runtime-wiring class — the two are complementary, and #176 does **not** let us skip the §6 live-validation cycle.
+
+**Not before/with 1.2.0:** #276 (its only tie is preceding #152, a *1.3.0* item — rides the patch line on its own schedule, not 1.2.0-gating), #234/#186/#152 (1.3.0 stabilization), #237/#279/#280/#157/#242 (independent — but see §3 notes on #237's release home and #280's tie to #176).
+
+### 5.6 `api/routes/cycles/*` owner-per-file (resolve before the preflight)
+
+This surface has *legitimate* edits from both lanes (Spark history: #133/#150/#205; Mac incoming: #172+#224 preflight). Before Mac starts the preflight, assign per file: **Mac owns the cycle-create route wiring** (`cycles.py` create handler — that's where the preflight seam lives); **Spark owns the model-availability helper** (`profiles.py:71-95` lift, per the §2 #224 decision). With that split, the two lanes touch different functions in the same files — annotate the seam with a brief comment so the merge is mechanical. If #224 collapses to all-Mac (§2 option b), this section is moot.
 
 ## 6. Versioning, cadence & release mechanics
 
 **Even/odd minor convention** (parity gates *features*, not hardening — #281):
 - **Even minor (1.2.0, 1.4.0, …) = feature release** — led by ≥1 headline feature SIP. Hardening rides along freely: safe, ready hardening (#231, small fixes) lands here alongside features.
 - **Odd minor (1.3.0, 1.5.0, …) = stabilization release** — feature-free; the home for the big risky refactors quarantined out of the feature line (**#186** decompose executor, **#152** split handlers, **#234** DbRuntime port) + accumulated debt. Cut when consolidation has piled up enough — substance gates the cut, not the clock.
-- **Patch (x.y.Z)** — urgent/small fixes any time, either lane (the 1.1.1 cadence). Never held for the next odd release.
+- **Patch (x.y.Z)** — urgent/small fixes any time, either lane (the 1.1.1 cadence). Never held for the next odd release. **The patch number tracks the latest minor:** hardening that lands *before* 1.2.0 cuts ships as **1.1.x**; the same lane's work *after* the cut ships as **1.2.x**. The "1.1.x hardening lane" is shorthand for an ongoing patch line, not a frozen 1.1 series — you can't ship 1.1.2 after 1.2.0 without a backport branch.
 
 So **1.3.0 is the first stabilization release** — the natural home for #186/#152/#234 and the Spark lane's structural backlog. Patches keep flowing from both lanes throughout.
 
+> **Lane→parity mapping is imprecise (fix the CLAUDE.md wording — Mac owns #281).** CLAUDE.md › Versioning says "Macbook lane emits feature SIPs → even minors; Spark lane emits hardening → patches + big refactors batched into odd minors." But the 1.3.0 refactor batch is **#186 + #152 (Mac-owned) + #234 (Spark)** — *both* lanes feed the odd-minor refactor bucket. The rule (parity gates *features*; refactors quarantine to odd) holds; the clean "Mac=even / Spark=odd-refactors" attribution does not. Reword to: *both lanes emit refactors that target odd minors; only feature SIPs are lane-pinned to even.*
+
 **Mechanics (mirror 1.1.0 → 1.1.1):**
-- 1.2.0 bundles the Macbook core when it's done **and live-validated on the deployed stack** — the 1.1 lesson: live validation caught #270/#272 the unit suites couldn't. Run a real `lite` cycle before declaring the minor.
+- 1.2.0 bundles the Macbook core when it's done **and live-validated on the deployed stack** — the 1.1 lesson: live validation caught #270/#272 the unit suites couldn't. Run a real `lite` cycle before declaring the minor. **This is a Spark deliverable, not an afterthought:** the deployed stack runs on the Spark box, so Spark is the de-facto validator for the *whole* 1.2.0 (including Mac's runtime core). Track it as an explicit pre-release Spark task — rebuild+redeploy the integrated `main`, run a real cycle, sign off. **#176 does not substitute** for this (it's a small-model CI invariant; the live cycle exercises real models + the deployed wiring — see §5.5).
 - **SIP lifecycle:** keep SIP-0088 umbrella *accepted* (don't promote). At 1.2.0: author + accept the Preflight SIP; promote SIP-0090 only for the phases that actually land (Phase 1); #233/#244/#231 are 0089 completion (no promotion needed, note in CHANGELOG).
 - Version bump via `scripts/maintainer/version_cli.py bump 1.2.0` (needs venv); honest grouped CHANGELOG; sweep CLAUDE.md/README/ROADMAP version markers (they were stale at 1.1.x — don't repeat).
 
@@ -109,7 +126,7 @@ Why phased, not all-in: SIP-0090's value proof (Phases 2–4) lives behind Disco
 >
 > You own the **1.1.x hardening/patch line**. Work off `main`, issue-first and branch-first, per-phase commits, `ruff format .` fail-stop before every push, no silent fixes. Ship patches as they land (the 1.1.1 cadence).
 >
-> **Your scope (track:spark), in priority order — front-load the 1.2.0 prerequisites:** **#173** (profile-name consolidation + `active_profile` footgun — *start here*; the 1.2.0 preflight depends on the final names), **#158** (schema_migrations + applier hardening — before Mac lands runtime migrations), **#176** (framework smoke invariant test — the 1.2.0 regression net), **#198** (pin FastAPI/Starlette — CI health, now). Then the independent backlog: #276 (stub-fallback masking — real correctness bug, but not 1.2.0-gating), #279, #280, #157, #242, #234, #237, #218/#219.
+> **Your scope (track:spark), in execution order — front-load the 1.2.0 prerequisites (§5.5 is *not* a linear chain):** **#198** *first* (pin FastAPI/Starlette — cheap, preventive, re-lock de-risks the shared `ci-constraints.txt` for both lanes), then the two cross-lane gates in either order — **#173** (profile-name consolidation + `active_profile` footgun; the 1.2.0 preflight #224 reads the final names — wider blast radius than a rename, see §5.5) and **#158** (schema_migrations + applier hardening, before Mac lands runtime migrations), then **#176** *trailing* (small-model smoke invariant — the 1.2.0 CI net; does **not** replace the live-validation cycle). Then the independent backlog: #276 (stub-fallback masking — real correctness bug, but not 1.2.0-gating), #279, #280 (sequence near #176), #157, #242, #234, #237 (decide release home — it changes `requires-python`), #218/#219. **Also yours:** the pre-release live-validation cycle on the deployed stack (§6) — the stack runs on your box.
 >
 > **Ownership — do NOT edit Macbook-lane files:** `src/squadops/runtime/*`, `src/squadops/api/runtime/*` (except coordinate on `migrations.py`/`Dockerfile` — announce first), `adapters/persistence/runtime/*`, **`adapters/cycles/dispatched_flow_executor.py`** (Mac is decomposing it — hands off), the SIP-0089/0090 surface, `cli/commands/agent.py`.
 >
