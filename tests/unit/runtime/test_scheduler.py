@@ -271,6 +271,49 @@ async def test_skip_policy_does_not_open_late_window():
     assert pub.emitted[0][0] == events.ASSIGNMENT_WINDOW_SKIPPED
 
 
+async def test_poll_cadence_lateness_opens_on_time_under_skip():
+    """#272: a window observed a few seconds after window_start (the scheduler's
+    own poll-cadence lag) opens on-time even under the default skip policy. Before
+    the fix this skipped, so a default duty assignment never actually opened."""
+    coord = _RecordingCoordinator()
+    pub = _RecordingPublisher()
+    sched = DutyScheduler(
+        _FakeAssignments([_duty(policy="skip")]),
+        coord,
+        _FakeStatePort(None),
+        events_publisher=pub,
+        poll_interval_seconds=10,
+    )
+
+    # 5s after window_start — within one 10s poll interval.
+    await sched.tick(now=WIN_START + timedelta(seconds=5))
+
+    assert len(coord.requests) == 1
+    assert coord.requests[0]["target_mode"] == "duty"
+    assert coord.requests[0]["reason_code"] == reasons.DUTY_WINDOW_OPENED
+    assert pub.emitted == []  # not skipped
+
+
+async def test_lateness_beyond_poll_grace_still_skips():
+    """The on-time grace is bounded by the poll interval — lateness well beyond it
+    is a genuinely missed window and still honors skip."""
+    coord = _RecordingCoordinator()
+    pub = _RecordingPublisher()
+    sched = DutyScheduler(
+        _FakeAssignments([_duty(policy="skip")]),
+        coord,
+        _FakeStatePort(None),
+        events_publisher=pub,
+        poll_interval_seconds=10,
+    )
+
+    # 60s late, far beyond the ~12s grace for a 10s poll — genuinely missed.
+    await sched.tick(now=WIN_START + timedelta(seconds=60))
+
+    assert coord.requests == []
+    assert pub.emitted[0][0] == events.ASSIGNMENT_WINDOW_SKIPPED
+
+
 async def test_require_operator_review_flags_instead_of_transitioning():
     coord = _RecordingCoordinator()
     pub = _RecordingPublisher()
