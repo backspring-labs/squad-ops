@@ -34,12 +34,12 @@ Supersedes the gating framing of
 
 ## 1.1.x patches (bug fixes)
 
-Most of this batch shipped in **1.1.1**. Genuinely still open: **#198**. ⚠️ **Hygiene gap:** **#133** and **#205** were credited in the 1.1.1 CHANGELOG but their issues are **still open** — verify residual scope or close them.
+Most of this batch shipped in **1.1.1**. Genuinely still open: **#198**. (Resolved hygiene gap: #133 and #205 were credited in the 1.1.1 CHANGELOG but left open — verified against PR #264 and **closed 2026-06-29**, no residual scope.)
 
 | Issue | | Status |
 |-------|--|--------|
 | #132 | `runs resume --reason` always returns 422 (CLI/API contract drift) | ✅ closed |
-| #133 | `runs retry` is dead weight — advertises but never executes | ⚠️ fix shipped in 1.1.1, **issue still open** — verify/close (same for #205) |
+| #133 | `runs retry` is dead weight — advertises but never executes | ✅ 1.1.1 (PR #264; retry now enqueues `execute_cycle`) — closed 2026-06-29 |
 | #245 | RabbitMQ `publish()` has no retry during the reconnect window | ✅ 1.1.1 |
 | #239 | OTel `BrokenExporter` test pollutes every regression run (atexit noise) | ✅ 1.1.1 |
 | #168 | Residual `DistributedFlowExecutor` refs after the #164 rename | ✅ 1.1.1 |
