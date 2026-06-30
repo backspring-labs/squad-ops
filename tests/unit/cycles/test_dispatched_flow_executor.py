@@ -27,6 +27,8 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.pulse_models import CADENCE_BOUNDARY_ID, SuiteOutcome
 from squadops.events.types import EventType
+from squadops.runtime import reasons
+from squadops.runtime.coordinator import TransitionOutcome
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
@@ -897,6 +899,205 @@ class TestReserveBufferGuard:
         statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
         assert statuses[-1] == RunStatus.COMPLETED
         assert mock_queue.publish.call_count == 5
+
+
+# ---------------------------------------------------------------------------
+# SIP-0089 §3.5 (#233) — recruitment routed through the coordinator
+# ---------------------------------------------------------------------------
+
+
+class _RecordingCoordinator:
+    """Fake RuntimeCoordinator: scripts ``ambient→cycle`` outcomes, records transitions.
+
+    Only ``request_transition`` is exercised by the executor. A clean
+    ``ambient→cycle`` (or any release) returns ``applied``; an agent in ``reject``
+    returns a rejected lease outcome carrying the given ``focus_lease_*`` reason.
+    """
+
+    def __init__(self, *, reject: dict[str, str] | None = None) -> None:
+        self._reject = reject or {}
+        # each entry: (agent_id, target_mode, reason_code)
+        self.transitions: list[tuple[str, str, str]] = []
+
+    async def request_transition(
+        self,
+        agent_id,
+        target_mode,
+        reason_code,
+        *,
+        requester_kind,
+        owner_ref,
+        assignment_id=None,
+        scheduled_at=None,
+    ):
+        self.transitions.append((agent_id, target_mode, reason_code))
+        if target_mode == "cycle" and agent_id in self._reject:
+            return TransitionOutcome(
+                applied=False,
+                agent_id=agent_id,
+                from_mode="ambient",
+                to_mode="cycle",
+                reason_code=reason_code,
+                rejected_reason=self._reject[agent_id],
+            )
+        from_mode = "ambient" if target_mode == "cycle" else "cycle"
+        return TransitionOutcome(
+            applied=True,
+            agent_id=agent_id,
+            from_mode=from_mode,
+            to_mode=target_mode,
+            reason_code=reason_code,
+            event_name="agent.mode.transition",
+        )
+
+    def recruited(self) -> set[str]:
+        return {a for a, mode, _ in self.transitions if mode == "cycle"}
+
+    def released(self) -> set[str]:
+        return {a for a, mode, _ in self.transitions if mode == "ambient"}
+
+
+class TestRecruitmentCoordinatorAdmission:
+    """Recruitment routes each participant ``ambient→cycle`` via the coordinator.
+
+    A lease conflict defers the run (RUN_PAUSED, typed ``focus_lease_*`` reason,
+    no dispatch) on the same path as the §2.5 guard. On any finalize the agents
+    the run recruited return to ``ambient`` so no cycle lease strands — the
+    acceptance criterion. Wired independently of the §2.5 guard (no
+    AssignmentPort here) so this isolates the coordinator admission step.
+    """
+
+    def _build(
+        self,
+        *,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        reply_router,
+        cycle,
+        run,
+        event_bus,
+        coordinator,
+    ):
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.get_run.return_value = run
+        return DispatchedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+            reply_router=reply_router,
+            event_bus=event_bus,
+            coordinator=coordinator,
+        )
+
+    async def test_lease_conflict_defers_run_before_dispatch(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        reply_router,
+        cycle,
+        run,
+    ) -> None:
+        event_bus = MagicMock()
+        # "neo" is a participating agent; its cycle lease conflicts.
+        coordinator = _RecordingCoordinator(reject={"neo": reasons.FOCUS_LEASE_CONFLICT})
+        executor = self._build(
+            mock_registry=mock_registry,
+            mock_vault=mock_vault,
+            mock_queue=mock_queue,
+            mock_squad_profile=mock_squad_profile,
+            reply_router=reply_router,
+            cycle=cycle,
+            run=run,
+            event_bus=event_bus,
+            coordinator=coordinator,
+        )
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # Deferred, not dispatched.
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.PAUSED
+        assert mock_queue.publish.call_count == 0
+
+        # RUN_PAUSED rides the lease-conflict reason + the blocking agent — no new
+        # EventType, same payload shape as the §2.5 deferral.
+        paused = [
+            c for c in event_bus.emit.call_args_list if c.args and c.args[0] == EventType.RUN_PAUSED
+        ]
+        assert len(paused) == 1
+        payload = paused[0].kwargs["payload"]
+        assert payload["reason"] == reasons.FOCUS_LEASE_CONFLICT
+        assert payload["deferred_for_agent"] == "neo"
+
+    async def test_clean_admission_dispatches_then_releases_every_recruit(
+        self,
+        mock_registry,
+        mock_vault,
+        mock_queue,
+        mock_squad_profile,
+        reply_router,
+        cycle,
+        run,
+    ) -> None:
+        """No conflict → run completes and every recruited agent is released to
+        ambient (no stranded cycle leases), with the canonical recruit/complete
+        reason codes."""
+        event_bus = MagicMock()
+        coordinator = _RecordingCoordinator()
+        executor = self._build(
+            mock_registry=mock_registry,
+            mock_vault=mock_vault,
+            mock_queue=mock_queue,
+            mock_squad_profile=mock_squad_profile,
+            reply_router=reply_router,
+            cycle=cycle,
+            run=run,
+            event_bus=event_bus,
+            coordinator=coordinator,
+        )
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"],
+            status="SUCCEEDED",
+            outputs={
+                "summary": "ok",
+                "role": "strat",
+                "artifacts": [
+                    {
+                        "name": "o.md",
+                        "content": "# o",
+                        "media_type": "text/markdown",
+                        "type": "document",
+                    }
+                ],
+            },
+        )
+
+        # Real asyncio.sleep (see the §2.5 no-conflict test note: patching it to a
+        # non-yielding AsyncMock busy-spins the per-task heartbeat loop).
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
+        # Recruitment actually ran, and every agent it put in cycle came back to
+        # ambient on finalize — the no-strand guarantee.
+        assert coordinator.recruited()  # non-empty: not vacuously passing
+        assert coordinator.released() == coordinator.recruited()
+        recruit_reasons = {r for _, mode, r in coordinator.transitions if mode == "cycle"}
+        release_reasons = {r for _, mode, r in coordinator.transitions if mode == "ambient"}
+        assert recruit_reasons == {reasons.CYCLE_RECRUITED}
+        assert release_reasons == {reasons.CYCLE_COMPLETED}
 
 
 # ---------------------------------------------------------------------------
