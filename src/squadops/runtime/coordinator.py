@@ -26,9 +26,10 @@ stranded leases). With `focus_lease=None` the coordinator behaves as in Phase 2.
 Phase 4 (§4.5, thin v1.1 seam) wires a RuntimeActivity action: a mode change
 orphans any activity bound to the previous mode, so it is aborted best-effort
 *after* the mode write. The full §4.5 transition order (activity before mode) and
-D25's single-Postgres-transaction wrapping of lease+activity+mode are deferred to
-#244 (gated on recruitment #233) — in v1.1 the path is unexercised. With
-`activity=None` there is no activity bookkeeping.
+D25's single-Postgres-transaction wrapping of lease+activity+mode remain a
+follow-up in #244 (now unblocked — recruitment #233 has landed); the
+activity-orphan path stays unexercised in v1.1. With `activity=None` there is no
+activity bookkeeping.
 
 On apply, a canonical mode-transition event plus the relevant `focus_lease.*`
 events are emitted, each with a *separate* reason code (D14/D18) through the
@@ -474,9 +475,12 @@ class RuntimeCoordinator:
 
         NOTE (§4.5/D25): in v1.1 this path is effectively unexercised — scheduler
         ambient↔duty transitions have no live activity, and cycle activities are
-        owned/terminated by their handler (§4.4). The §4.5 single-Postgres-transaction
-        wrapping of lease+activity+mode (D25) is therefore deferred to #244 (gated
-        on recruitment #233); v1.1 keeps the best-effort post-write abort here.
+        owned/terminated by their handler (§4.4). Recruitment #233 now drives
+        ambient↔cycle through the coordinator but acquires/releases only the lease
+        (no live activity to orphan), so the abort path stays unexercised. The
+        §4.5 single-Postgres-transaction wrapping of lease+activity+mode (D25)
+        remains a follow-up in #244 (unblocked now that #233 has landed); v1.1
+        keeps the best-effort post-write abort here.
         """
         assert self._activity is not None  # guarded by the caller
         try:
