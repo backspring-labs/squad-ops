@@ -18,7 +18,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from squadops.api.runtime.scheduler_bootstrap import create_duty_scheduler
+from squadops.api.runtime.scheduler_bootstrap import (
+    create_duty_scheduler,
+    create_runtime_coordinator,
+)
 from squadops.config.schema import (
     AppConfig,
     AuthConfig,
@@ -27,6 +30,7 @@ from squadops.config.schema import (
     RabbitMQConfig,
     RedisConfig,
 )
+from squadops.runtime.coordinator import RuntimeCoordinator
 from squadops.runtime.scheduler import DutyScheduler
 
 pytestmark = [pytest.mark.domain_runtime]
@@ -78,3 +82,33 @@ def test_enabled_scheduler_coordinator_has_focus_lease_and_activity_wired():
     assert scheduler is not None
     assert scheduler._coordinator._focus_lease is not None
     assert scheduler._coordinator._activity is not None
+
+
+def test_create_runtime_coordinator_without_pool_returns_none():
+    """Bug class: the focus-lease + runtime-state tables live in Postgres, so a
+    pool-less coordinator can't function. Recruitment must fall back to the §2.5
+    guard (executor wires coordinator=None), not get a half-built coordinator."""
+    assert create_runtime_coordinator(None) is None
+
+
+def test_create_runtime_coordinator_wires_focus_lease_and_activity():
+    """The shared coordinator (used by the executor for recruitment) must carry
+    the same §3.4/§4.5 wiring as the scheduler's — a bare coordinator would skip
+    lease arbitration on recruitment."""
+    coordinator = create_runtime_coordinator(MagicMock())
+
+    assert isinstance(coordinator, RuntimeCoordinator)
+    assert coordinator._focus_lease is not None
+    assert coordinator._activity is not None
+
+
+def test_injected_coordinator_is_shared_not_rebuilt():
+    """D16 single-writer: when the composition root injects its coordinator, the
+    scheduler must drive THAT instance, not build a second mode-writer. A rebuild
+    here would silently create two writers of AgentRuntimeState.mode."""
+    shared = create_runtime_coordinator(MagicMock())
+
+    scheduler = create_duty_scheduler(_config(enabled=True), MagicMock(), coordinator=shared)
+
+    assert scheduler is not None
+    assert scheduler._coordinator is shared

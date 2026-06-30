@@ -428,9 +428,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # agent's future recruitment, so this must run before anything that can
             # raise. Empty (and skipped) when the run recruited no one.
             if self._coordinator is not None and recruited_agent_ids:
-                await release_participants(
-                    self._coordinator, recruited_agent_ids, owner_ref=run_id
-                )
+                await release_participants(self._coordinator, recruited_agent_ids, owner_ref=run_id)
             await self._finalize_run(
                 cycle_id,
                 run_id,

@@ -42,13 +42,57 @@ from squadops.runtime.scheduler import DutyScheduler
 logger = logging.getLogger(__name__)
 
 
-def create_duty_scheduler(config: AppConfig, pool: asyncpg.Pool | None) -> DutyScheduler | None:
+def create_runtime_coordinator(pool: asyncpg.Pool | None) -> RuntimeCoordinator | None:
+    """Build the single Postgres-backed ``RuntimeCoordinator``, or ``None`` without a pool.
+
+    This is the **one** coordinator instance the composition root shares between
+    the cycle executor (recruitment lease acquisition, §3.5/#233) and the duty
+    scheduler. Both must drive the *same* instance because the coordinator is the
+    sole writer of ``AgentRuntimeState.mode`` (D16) — building a second one would
+    create two mode-writers.
+
+    NOT gated on ``scheduler.enabled``: recruitment acquires cycle leases whether
+    or not duty scheduling runs. Returns ``None`` only when no pool is available —
+    the focus-lease and runtime-state tables both live in Postgres.
+    """
+    if pool is None:
+        return None
+
+    # Imported here (not at module top) so importing this module never pulls the
+    # asyncpg adapter stack into processes that only need the factory signature.
+    from adapters.events.runtime_event_publisher import LoggingRuntimeEventPublisher
+    from adapters.persistence.runtime import (
+        PostgresFocusLease,
+        PostgresRuntimeActivity,
+        PostgresRuntimeState,
+    )
+
+    state = PostgresRuntimeState(pool)
+    focus_lease = PostgresFocusLease(pool)
+    activity = PostgresRuntimeActivity(pool)
+    publisher = LoggingRuntimeEventPublisher()
+    return RuntimeCoordinator(
+        state, events_publisher=publisher, focus_lease=focus_lease, activity=activity
+    )
+
+
+def create_duty_scheduler(
+    config: AppConfig,
+    pool: asyncpg.Pool | None,
+    *,
+    coordinator: RuntimeCoordinator | None = None,
+) -> DutyScheduler | None:
     """Build the duty scheduler, or return ``None`` when it should not run.
 
     Returns ``None`` (and the caller starts nothing) when the scheduler is
     disabled by config, or when no Postgres pool is available — the assignment
     and runtime-state tables both live in Postgres, so without a pool there is
     nothing to schedule against.
+
+    ``coordinator`` lets the composition root inject the shared single-writer
+    coordinator (D16) so the executor and scheduler drive the same instance. When
+    omitted (standalone use / unit tests) the scheduler builds its own via
+    :func:`create_runtime_coordinator`.
     """
     if not config.runtime.scheduler.enabled:
         logger.info("Duty scheduler disabled (runtime.scheduler.enabled=false)")
@@ -61,21 +105,16 @@ def create_duty_scheduler(config: AppConfig, pool: asyncpg.Pool | None) -> DutyS
     # Imported here (not at module top) so importing this module never pulls the
     # asyncpg adapter stack into processes that only need the factory signature.
     from adapters.events.runtime_event_publisher import LoggingRuntimeEventPublisher
-    from adapters.persistence.runtime import (
-        PostgresFocusLease,
-        PostgresRuntimeActivity,
-        PostgresRuntimeState,
-    )
+    from adapters.persistence.runtime import PostgresRuntimeState
     from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
 
     state = PostgresRuntimeState(pool)
     assignments = PostgresAssignment(pool)
-    focus_lease = PostgresFocusLease(pool)
-    activity = PostgresRuntimeActivity(pool)
     publisher = LoggingRuntimeEventPublisher()
-    coordinator = RuntimeCoordinator(
-        state, events_publisher=publisher, focus_lease=focus_lease, activity=activity
-    )
+    # Share the composition root's single-writer coordinator (D16) when injected;
+    # otherwise build one — the standalone path keeps the §3.4/§4.5 wiring intact.
+    if coordinator is None:
+        coordinator = create_runtime_coordinator(pool)
 
     poll_interval = config.runtime.scheduler.poll_interval_seconds
     logger.warning(
