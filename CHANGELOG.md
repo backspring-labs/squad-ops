@@ -5,7 +5,7 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-## [1.1.1] — 2026-06-28
+## [1.1.1] — 2026-06-29
 
 Hardening patch on the 1.1.0 runtime line. The runtime lane (SIP-0089) was
 live-validated end-to-end after 1.1.0, surfacing two regressions the unit
