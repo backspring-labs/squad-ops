@@ -83,4 +83,7 @@ ollama_models:
     required: true
 
 deployment_profile: dev
-squad_profile: full
+# Default to the largest profile this box actually provisions: it pulls 3b + 7b
+# (smoke + lite), not the 27b that `full` needs. Reserve `full` for the Spark/GPU
+# box; pass --squad-profile explicitly for anything heavier (#173).
+squad_profile: lite
