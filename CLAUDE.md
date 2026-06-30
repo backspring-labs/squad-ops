@@ -81,7 +81,7 @@ squadops doctor dev-mac --json                     # Machine-readable output
 ### CLI (Cycle Execution)
 ```bash
 squadops login                             # Authenticate via Keycloak
-squadops cycles create <project> --squad-profile full-squad --request-profile selftest
+squadops cycles create <project> --squad-profile full --request-profile selftest
 squadops cycles show <cycle-id>            # Show cycle status + runs
 squadops cycles list <project-id>          # List cycles for project
 squadops runs list <cycle-id>              # List runs for cycle
@@ -129,7 +129,7 @@ squadops artifacts list <run-id>           # List artifacts for run
 - **CRP Applied Defaults**: Extra keys in CRP `defaults` flow into `applied_defaults`: `build_tasks`, `plan_tasks`, `pulse_checks`, `cadence_policy`
 
 ### Agent Squad
-6 agents when builder role is present: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics). The standard 5-agent squad (without Bob) remains the default via `full-squad` profile. Implementations in `src/squadops/agents/`.
+6 agents when builder role is present: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics). Roster is set per profile via `members:` (#173): `full` (27b) and `lite` (7b) carry all 6 incl. Bob; `smoke` (3b) is the 5-agent no-builder plumbing squad. Implementations in `src/squadops/agents/`.
 
 ### Agent status vs runtime state
 Don't conflate the signals. **Health = `runtime_status`, posture = `mode`** (both from `agent_runtime_state`, SIP-0089); `lifecycle_state`/`network_status` on `agent_status` are heartbeat telemetry (`network_status` is legacy/deprecated). Canonical model + the rule surfaces must conform to: `docs/agent-runtime-status-model.md` (#231).

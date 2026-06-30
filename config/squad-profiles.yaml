@@ -1,7 +1,7 @@
 profiles:
   - profile_id: smoke
     name: "Smoke Squad"
-    description: "All 5 agents on qwen2.5:3b-instruct — for hello_squad / selftest cycles only"
+    description: "All 5 agents on qwen2.5:3b-instruct — minimal liveness/plumbing squad for hello_squad / selftest cycles only. No builder (dev does assembly). NOT a reasoning-quality signal."
     version: 1
     agents:
       - { agent_id: max, role: lead, model: "qwen2.5:3b-instruct", enabled: true }
@@ -9,29 +9,6 @@ profiles:
       - { agent_id: nat, role: strat, model: "qwen2.5:3b-instruct", enabled: true }
       - { agent_id: eve, role: qa, model: "qwen2.5:3b-instruct", enabled: true }
       - { agent_id: data, role: data, model: "qwen2.5:3b-instruct", enabled: true }
-
-  - profile_id: full-squad
-    name: "Full Squad"
-    description: "All 5 agents on qwen3.6:27b — uniform single-loaded-model on Spark, no swap overhead, max reasoning depth at 16 tps ceiling"
-    version: 2
-    agents:
-      - { agent_id: max, role: lead, model: "qwen3.6:27b", enabled: true }
-      - { agent_id: neo, role: dev, model: "qwen3.6:27b", enabled: true }
-      - { agent_id: nat, role: strat, model: "qwen3.6:27b", enabled: true }
-      - { agent_id: eve, role: qa, model: "qwen3.6:27b", enabled: true }
-      - { agent_id: data, role: data, model: "qwen3.6:27b", enabled: true }
-
-  - profile_id: spark-squad-with-builder
-    name: "Spark Squad with Builder"
-    description: "6 agents on DGX Spark — all roles on qwen3.6:27b (uniform, single loaded model, max reasoning depth)"
-    version: 4
-    agents:
-      - { agent_id: max, role: lead, model: "qwen3.6:27b", enabled: true }
-      - { agent_id: neo, role: dev, model: "qwen3.6:27b", enabled: true }
-      - { agent_id: nat, role: strat, model: "qwen3.6:27b", enabled: true }
-      - { agent_id: bob, role: builder, model: "qwen3.6:27b", enabled: true }
-      - { agent_id: eve, role: qa, model: "qwen3.6:27b", enabled: true }
-      - { agent_id: data, role: data, model: "qwen3.6:27b", enabled: true }
 
   - profile_id: lite
     name: "Lite Squad"
@@ -45,4 +22,20 @@ profiles:
       - { agent_id: eve, role: qa, model: "qwen2.5:7b", enabled: true }
       - { agent_id: data, role: data, model: "qwen2.5:7b", enabled: true }
 
-active_profile: full-squad
+  - profile_id: full
+    name: "Full Squad"
+    description: "All 6 roles incl. builder on qwen3.6:27b — uniform single-loaded model on Spark (no swap overhead), max reasoning depth at the ~16 tps ceiling. The quality squad. (Consolidates the former full-squad + spark-squad-with-builder; #173.)"
+    version: 5
+    agents:
+      - { agent_id: max, role: lead, model: "qwen3.6:27b", enabled: true }
+      - { agent_id: neo, role: dev, model: "qwen3.6:27b", enabled: true }
+      - { agent_id: nat, role: strat, model: "qwen3.6:27b", enabled: true }
+      - { agent_id: bob, role: builder, model: "qwen3.6:27b", enabled: true }
+      - { agent_id: eve, role: qa, model: "qwen3.6:27b", enabled: true }
+      - { agent_id: data, role: data, model: "qwen3.6:27b", enabled: true }
+
+# Default when a cycle is created without an explicit --squad-profile. Points at the
+# always-runnable 'smoke' tier so an unspecified cycle never hard-fails on a missing
+# model (the former 'full-squad' default was the #173 footgun). Real cycles pass
+# --squad-profile explicitly; the model-availability preflight (#224) guards the rest.
+active_profile: smoke

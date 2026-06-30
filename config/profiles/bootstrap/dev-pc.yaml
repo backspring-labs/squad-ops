@@ -83,4 +83,4 @@ ollama_models:
     required: true
 
 deployment_profile: dev
-squad_profile: full-squad
+squad_profile: full

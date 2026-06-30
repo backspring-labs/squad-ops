@@ -104,4 +104,4 @@ ollama_models:
     required: true
 
 deployment_profile: local
-squad_profile: full-squad
+squad_profile: full
