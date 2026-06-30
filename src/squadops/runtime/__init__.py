@@ -7,6 +7,11 @@ Pure coordination layer for `RuntimeMode`, `RuntimeActivity`, `FocusLease`,
 per D26).
 """
 
+from squadops.runtime.admission import (
+    AdmissionResult,
+    admit_participants,
+    release_participants,
+)
 from squadops.runtime.coordinator import (
     RequesterKind,
     RuntimeCoordinator,
@@ -42,6 +47,7 @@ from squadops.runtime.scheduler import DutyScheduler
 __all__ = [
     "ActivitySourceKind",
     "ActivityState",
+    "AdmissionResult",
     "AgentRuntimeState",
     "Assignment",
     "AssignmentType",
@@ -63,9 +69,11 @@ __all__ = [
     "Strictness",
     "TransitionOutcome",
     "WindowState",
+    "admit_participants",
     "is_active_activity_state",
     "is_terminal_activity_state",
     "owner_type_outranks",
+    "release_participants",
     "reserve_buffer_decision",
     "window_state",
 ]
