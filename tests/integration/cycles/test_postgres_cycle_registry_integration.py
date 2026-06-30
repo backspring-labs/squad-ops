@@ -123,7 +123,7 @@ def _make_cycle(**overrides) -> Cycle:
         created_at=_NOW,
         created_by="integration-test",
         prd_ref="prd/test.md",
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="snap-001",
         task_flow_policy=TaskFlowPolicy(
             mode=FlowMode.SEQUENTIAL,

@@ -40,7 +40,7 @@ def cycle() -> Cycle:
         created_at=NOW,
         created_by="system",
         prd_ref="prd_ref_123",
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",

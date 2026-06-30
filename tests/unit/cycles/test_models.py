@@ -150,7 +150,7 @@ class TestCycle:
         assert sample_cycle.cycle_id == "cyc_001"
         assert sample_cycle.project_id == "hello_squad"
         assert sample_cycle.prd_ref == "art_prd_v1"
-        assert sample_cycle.squad_profile_id == "full-squad"
+        assert sample_cycle.squad_profile_id == "full"
         assert sample_cycle.build_strategy == "fresh"
         assert sample_cycle.applied_defaults == {"timeout": 300}
         assert sample_cycle.execution_overrides == {"parallel": False}
@@ -262,7 +262,7 @@ class TestAgentProfileEntry:
 
 class TestSquadProfile:
     def test_construction(self, sample_profile):
-        assert sample_profile.profile_id == "full-squad"
+        assert sample_profile.profile_id == "full"
         assert sample_profile.name == "Full Squad"
         assert sample_profile.version == 1
         assert len(sample_profile.agents) == 5

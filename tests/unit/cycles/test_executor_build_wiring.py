@@ -205,7 +205,7 @@ class TestProducingTaskTypeMetadata:
             created_at=NOW,
             created_by="system",
             prd_ref="prd",
-            squad_profile_id="full-squad",
+            squad_profile_id="full",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
@@ -267,7 +267,7 @@ class TestBuildOnlyValidation:
             created_at=NOW,
             created_by="system",
             prd_ref="prd",
-            squad_profile_id="full-squad",
+            squad_profile_id="full",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
@@ -300,7 +300,7 @@ class TestBuildOnlyValidation:
         squad.resolve_snapshot = AsyncMock(
             return_value=(
                 SquadProfile(
-                    profile_id="full-squad",
+                    profile_id="full",
                     name="Full",
                     description="",
                     version=1,
@@ -381,7 +381,7 @@ class TestBuildOnlySeeding:
             created_at=NOW,
             created_by="system",
             prd_ref="prd",
-            squad_profile_id="full-squad",
+            squad_profile_id="full",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
@@ -421,7 +421,7 @@ class TestBuildOnlySeeding:
         squad.resolve_snapshot = AsyncMock(
             return_value=(
                 SquadProfile(
-                    profile_id="full-squad",
+                    profile_id="full",
                     name="Full",
                     description="",
                     version=1,
@@ -485,7 +485,7 @@ class TestPlanOnlyCyclesUnaffected:
             created_at=NOW,
             created_by="system",
             prd_ref="prd",
-            squad_profile_id="full-squad",
+            squad_profile_id="full",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
@@ -518,7 +518,7 @@ class TestPlanOnlyCyclesUnaffected:
         squad.resolve_snapshot = AsyncMock(
             return_value=(
                 SquadProfile(
-                    profile_id="full-squad",
+                    profile_id="full",
                     name="Full",
                     description="",
                     version=1,

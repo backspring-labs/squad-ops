@@ -3,7 +3,7 @@
 name: multi-phase
 description: "Planning → Implementation → Wrap-up multi-workload cycle"
 defaults:
-  squad_profile_id: full-squad
+  squad_profile_id: full
   build_strategy: fresh
   task_flow_policy:
     mode: sequential

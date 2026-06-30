@@ -9,7 +9,8 @@ The 5-agent squad (lead, dev, strat, qa, data) must:
 - Emit ``fallback_no_builder`` routing reason on build steps
 - Resolve agent_id=neo for the build step (dev role)
 - Generate the same 5-step plan when no build_tasks are configured
-- Work with the real ``full-squad`` profile from squad-profiles.yaml
+- Work with the real ``smoke`` profile from squad-profiles.yaml (the surviving
+  no-builder profile after #173 consolidated the names)
 """
 
 from __future__ import annotations
@@ -47,8 +48,8 @@ CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "squad-profiles.y
 def five_agent_profile():
     """Standard 5-agent profile (no builder)."""
     return SquadProfile(
-        profile_id="full-squad",
-        name="Full Squad",
+        profile_id="smoke",
+        name="Smoke Squad",
         description="All 5 agents",
         version=1,
         agents=(
@@ -86,7 +87,7 @@ def _make_cycle(applied_defaults: dict) -> Cycle:
         created_at=NOW,
         created_by="system",
         prd_ref="Build a CLI tool",
-        squad_profile_id="full-squad",
+        squad_profile_id="smoke",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
@@ -214,22 +215,22 @@ class TestLegacyPlanPlusBuild:
 
 
 class TestLegacyYAMLProfileIntegration:
-    """Tests using the real full-squad profile from squad-profiles.yaml."""
+    """Tests using the real smoke profile from squad-profiles.yaml."""
 
     @pytest.fixture()
     def provider(self):
         return ConfigSquadProfile(yaml_path=CONFIG_PATH)
 
-    async def test_full_squad_has_no_builder(self, provider):
-        profile = await provider.get_profile("full-squad")
+    async def test_smoke_has_no_builder(self, provider):
+        profile = await provider.get_profile("smoke")
         assert not _has_builder_role(profile)
 
-    async def test_full_squad_has_five_agents(self, provider):
-        profile = await provider.get_profile("full-squad")
+    async def test_smoke_has_five_agents(self, provider):
+        profile = await provider.get_profile("smoke")
         assert len(profile.agents) == 5
 
-    async def test_full_squad_plan_emits_development_build(self, provider, run):
-        profile = await provider.get_profile("full-squad")
+    async def test_smoke_plan_emits_development_build(self, provider, run):
+        profile = await provider.get_profile("smoke")
         cycle = _make_cycle(
             {
                 "build_tasks": ["development.develop", "qa.test"],
@@ -240,14 +241,14 @@ class TestLegacyYAMLProfileIntegration:
         assert "development.develop" in task_types
         assert "builder.assemble" not in task_types
 
-    async def test_full_squad_plan_only_five_steps(self, provider, run):
-        profile = await provider.get_profile("full-squad")
+    async def test_smoke_plan_only_five_steps(self, provider, run):
+        profile = await provider.get_profile("smoke")
         cycle = _make_cycle({})
         envelopes = generate_task_plan(cycle, run, profile)
         assert len(envelopes) == 5
 
-    async def test_full_squad_build_route_reason(self, provider, run):
-        profile = await provider.get_profile("full-squad")
+    async def test_smoke_build_route_reason(self, provider, run):
+        profile = await provider.get_profile("smoke")
         cycle = _make_cycle(
             {
                 "build_tasks": ["development.develop", "qa.test"],

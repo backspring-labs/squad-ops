@@ -95,7 +95,7 @@ def mock_orchestrator():
 def mock_squad_profile():
     mock = AsyncMock()
     profile = SquadProfile(
-        profile_id="full-squad",
+        profile_id="full",
         name="Full Squad",
         description="All",
         version=1,
@@ -120,7 +120,7 @@ def cycle():
         created_at=NOW,
         created_by="system",
         prd_ref="prd_ref_123",
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
@@ -447,7 +447,7 @@ class TestGatePauseResume:
             created_at=NOW,
             created_by="system",
             prd_ref="prd_ref_123",
-            squad_profile_id="full-squad",
+            squad_profile_id="full",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(
                 mode="sequential",
@@ -605,7 +605,7 @@ class TestPortSignature:
 
     async def test_execute_run_accepts_new_signature(self, executor):
         """execute_run(cycle_id, run_id, profile_id) works without error."""
-        await executor.execute_run(cycle_id="cyc_001", run_id="run_001", profile_id="full-squad")
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001", profile_id="full")
 
 
 # ===========================================================================

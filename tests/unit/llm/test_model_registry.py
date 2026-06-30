@@ -48,7 +48,7 @@ class TestGetModelSpec:
         assert get_model_spec("unknown") is None
 
     def test_spark_squad_model_registered(self):
-        # Regression: spark-squad-with-builder runs uniformly on
+        # Regression: full runs uniformly on
         # qwen3.6:27b. Missing this entry caused the per-model completion
         # clamp to no-op, so the python_cli fallback (4000 tokens) silently
         # capped React/fullstack dev work in cyc_4178f25a0dff (cycle 2).

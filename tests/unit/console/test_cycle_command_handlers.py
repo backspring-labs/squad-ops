@@ -240,19 +240,19 @@ class TestSetActiveProfileHandler:
         main = _load_main()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"profile_id": "full-squad"}
+        mock_resp.json.return_value = {"profile_id": "full"}
 
         with patch.object(
             main, "_api_request", new_callable=AsyncMock, return_value=mock_resp
         ) as mock_req:
             result = await main.squadops_set_active_profile(
                 {
-                    "profile_id": "full-squad",
+                    "profile_id": "full",
                 },
                 {},
             )
 
-        assert result == {"profile_id": "full-squad"}
+        assert result == {"profile_id": "full"}
         call_args = mock_req.call_args
         assert "/api/v1/squad-profiles/active" in call_args[0][1]
 
@@ -272,14 +272,14 @@ class TestCreateCycleBodyCleaning:
             await main.squadops_create_cycle(
                 {
                     "project_id": "proj1",
-                    "squad_profile_id": "full-squad",
+                    "squad_profile_id": "full",
                 },
                 {},
             )
 
         body = mock_req.call_args[1]["json"]
         assert "project_id" not in body
-        assert body["squad_profile_id"] == "full-squad"
+        assert body["squad_profile_id"] == "full"
 
 
 class TestGateHandlers:

@@ -38,7 +38,7 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         context_window=131_072,
         default_max_completion=16_384,
     ),
-    # qwen3.6:27b is the uniform model used by the spark-squad-with-builder
+    # qwen3.6:27b is the uniform model used by the full
     # profile on DGX Spark. Without a registry entry, get_model_spec()
     # returned None for spark cycles and the per-model completion clamp at
     # cycle_tasks._resolve_model_budget never fired — capability defaults

@@ -52,7 +52,7 @@ def mock_cycle_registry():
 def mock_squad_profile():
     mock = AsyncMock()
     profile = SquadProfile(
-        profile_id="full-squad",
+        profile_id="full",
         name="Full Squad",
         description="All agents",
         version=1,
@@ -93,7 +93,7 @@ class TestCreateCycle:
         resp = client.post(
             "/api/v1/projects/hello_squad/cycles",
             json={
-                "squad_profile_id": "full-squad",
+                "squad_profile_id": "full",
                 "task_flow_policy": {"mode": "sequential"},
             },
         )
@@ -102,7 +102,7 @@ class TestCreateCycle:
         assert body["project_id"] == "hello_squad"
         assert body["run_number"] == 1
         assert body["status"] == "queued"
-        assert body["squad_profile_id"] == "full-squad"
+        assert body["squad_profile_id"] == "full"
         assert "cycle_id" in body
         assert "run_id" in body
 
@@ -111,7 +111,7 @@ class TestCreateCycle:
             "/api/v1/projects/hello_squad/cycles",
             json={
                 "prd_ref": None,
-                "squad_profile_id": "full-squad",
+                "squad_profile_id": "full",
             },
         )
         assert resp.status_code == 200
@@ -121,7 +121,7 @@ class TestCreateCycle:
         mock_project_registry.get_project.side_effect = ProjectNotFoundError("Not found")
         resp = client.post(
             "/api/v1/projects/unknown/cycles",
-            json={"squad_profile_id": "full-squad"},
+            json={"squad_profile_id": "full"},
         )
         assert resp.status_code == 404
 
@@ -130,7 +130,7 @@ class TestCreateCycle:
         resp = client.post(
             "/api/v1/projects/hello_squad/cycles",
             json={
-                "squad_profile_id": "full-squad",
+                "squad_profile_id": "full",
                 "applied_defaults": {
                     "workload_sequence": [
                         {"type": "framing", "gate": "progress_plan_review"},
@@ -147,7 +147,7 @@ class TestCreateCycle:
         """Without workload_sequence, run.workload_type stays None (legacy path)."""
         resp = client.post(
             "/api/v1/projects/hello_squad/cycles",
-            json={"squad_profile_id": "full-squad"},
+            json={"squad_profile_id": "full"},
         )
         assert resp.status_code == 200
         run = mock_cycle_registry.create_run.call_args[0][0]
@@ -157,7 +157,7 @@ class TestCreateCycle:
         resp = client.post(
             "/api/v1/projects/hello_squad/cycles",
             json={
-                "squad_profile_id": "full-squad",
+                "squad_profile_id": "full",
                 "bogus_field": "bad",
             },
         )
@@ -183,7 +183,7 @@ class TestGetCycle:
             created_at=NOW,
             created_by="system",
             prd_ref=None,
-            squad_profile_id="full-squad",
+            squad_profile_id="full",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",

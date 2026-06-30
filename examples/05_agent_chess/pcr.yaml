@@ -6,7 +6,7 @@ description: >
   Two full plan/play/wrapup cycles allow the squad to adapt
   its approach between rounds.
 defaults:
-  squad_profile_id: full-squad
+  squad_profile_id: full
   build_strategy: fresh
   task_flow_policy:
     mode: sequential

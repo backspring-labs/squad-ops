@@ -26,7 +26,7 @@ _AGENTS = (
 )
 
 
-def _make_profile(profile_id: str = "full-squad", name: str = "Full Squad") -> SquadProfile:
+def _make_profile(profile_id: str = "full", name: str = "Full Squad") -> SquadProfile:
     return SquadProfile(
         profile_id=profile_id,
         name=name,
@@ -38,7 +38,7 @@ def _make_profile(profile_id: str = "full-squad", name: str = "Full Squad") -> S
 
 
 def _make_row(
-    profile_id: str = "full-squad",
+    profile_id: str = "full",
     name: str = "Full Squad",
     is_active: bool = False,
     version: int = 1,
@@ -112,7 +112,7 @@ class TestListProfiles:
         conn.fetch = AsyncMock(return_value=[_make_row()])
         result = await adapter.list_profiles()
         assert len(result) == 1
-        assert result[0].profile_id == "full-squad"
+        assert result[0].profile_id == "full"
 
     async def test_empty_list(self, adapter, mock_pool):
         conn = _setup_conn(mock_pool)
@@ -125,8 +125,8 @@ class TestGetProfile:
     async def test_found(self, adapter, mock_pool):
         conn = _setup_conn(mock_pool)
         conn.fetchrow = AsyncMock(return_value=_make_row())
-        profile = await adapter.get_profile("full-squad")
-        assert profile.profile_id == "full-squad"
+        profile = await adapter.get_profile("full")
+        assert profile.profile_id == "full"
 
     async def test_not_found(self, adapter, mock_pool):
         conn = _setup_conn(mock_pool)
@@ -140,7 +140,7 @@ class TestGetActiveProfile:
         conn = _setup_conn(mock_pool)
         conn.fetchrow = AsyncMock(return_value=_make_row(is_active=True))
         profile = await adapter.get_active_profile()
-        assert profile.profile_id == "full-squad"
+        assert profile.profile_id == "full"
 
     async def test_none_active(self, adapter, mock_pool):
         conn = _setup_conn(mock_pool)
@@ -155,7 +155,7 @@ class TestCreateProfile:
         conn.execute = AsyncMock()
         profile = _make_profile()
         result = await adapter.create_profile(profile)
-        assert result.profile_id == "full-squad"
+        assert result.profile_id == "full"
         conn.execute.assert_awaited_once()
 
     async def test_duplicate_raises(self, adapter, mock_pool):
@@ -171,7 +171,7 @@ class TestUpdateProfile:
     async def test_updates_version(self, adapter, mock_pool):
         conn = _setup_conn(mock_pool)
         conn.fetchrow = AsyncMock(side_effect=[_make_row(), _make_row(version=2)])
-        result = await adapter.update_profile("full-squad", name="Updated Name")
+        result = await adapter.update_profile("full", name="Updated Name")
         assert result.version == 2
 
     async def test_not_found(self, adapter, mock_pool):
@@ -188,7 +188,7 @@ class TestDeleteProfile:
         row.__getitem__ = lambda self, key: {"is_active": False}[key]
         conn.fetchrow = AsyncMock(return_value=row)
         conn.execute = AsyncMock()
-        await adapter.delete_profile("full-squad")
+        await adapter.delete_profile("full")
         conn.execute.assert_awaited_once()
 
     async def test_not_found(self, adapter, mock_pool):
@@ -203,7 +203,7 @@ class TestDeleteProfile:
         row.__getitem__ = lambda self, key: {"is_active": True}[key]
         conn.fetchrow = AsyncMock(return_value=row)
         with pytest.raises(ActiveProfileDeletionError):
-            await adapter.delete_profile("full-squad")
+            await adapter.delete_profile("full")
 
 
 class TestActivateProfile:
@@ -212,8 +212,8 @@ class TestActivateProfile:
         conn.fetchrow = AsyncMock(side_effect=[_make_row(), _make_row(is_active=True)])
         conn.execute = AsyncMock()
 
-        result = await adapter.activate_profile("full-squad")
-        assert result.profile_id == "full-squad"
+        result = await adapter.activate_profile("full")
+        assert result.profile_id == "full"
         conn.execute.assert_awaited_once()
 
     async def test_not_found(self, adapter, mock_pool):
@@ -227,10 +227,10 @@ class TestGetActiveProfileId:
     async def test_with_active(self, adapter, mock_pool):
         conn = _setup_conn(mock_pool)
         row = MagicMock()
-        row.__getitem__ = lambda self, key: {"profile_id": "full-squad"}[key]
+        row.__getitem__ = lambda self, key: {"profile_id": "full"}[key]
         conn.fetchrow = AsyncMock(return_value=row)
         result = await adapter.get_active_profile_id()
-        assert result == "full-squad"
+        assert result == "full"
 
     async def test_no_active(self, adapter, mock_pool):
         conn = _setup_conn(mock_pool)
@@ -266,5 +266,5 @@ class TestSeedProfiles:
         conn.execute = AsyncMock()
 
         profiles = [_make_profile()]
-        seeded = await adapter.seed_profiles(profiles, active_id="full-squad")
+        seeded = await adapter.seed_profiles(profiles, active_id="full")
         assert seeded == 1

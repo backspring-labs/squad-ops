@@ -116,7 +116,7 @@ class TestMemoryCycleRegistry:
             created_at=NOW,
             created_by="system",
             prd_ref=None,
-            squad_profile_id="full-squad",
+            squad_profile_id="full",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(
                 mode="fan_out_soft_gates",
@@ -397,7 +397,7 @@ class TestConfigSquadProfile:
                 {
                     "profiles": [
                         {
-                            "profile_id": "full-squad",
+                            "profile_id": "full",
                             "name": "Full Squad",
                             "description": "All agents",
                             "version": 1,
@@ -425,7 +425,7 @@ class TestConfigSquadProfile:
                             ],
                         },
                     ],
-                    "active_profile": "full-squad",
+                    "active_profile": "full",
                 }
             )
         )
@@ -443,8 +443,8 @@ class TestConfigSquadProfile:
         assert all(isinstance(p, SquadProfile) for p in profiles)
 
     async def test_get_profile(self, provider):
-        p = await provider.get_profile("full-squad")
-        assert p.profile_id == "full-squad"
+        p = await provider.get_profile("full")
+        assert p.profile_id == "full"
         assert len(p.agents) == 1
 
     async def test_get_profile_not_found(self, provider):
@@ -453,7 +453,7 @@ class TestConfigSquadProfile:
 
     async def test_get_active_profile(self, provider):
         active = await provider.get_active_profile()
-        assert active.profile_id == "full-squad"
+        assert active.profile_id == "full"
 
     async def test_set_active_profile(self, provider):
         await provider.set_active_profile("minimal")
@@ -465,14 +465,14 @@ class TestConfigSquadProfile:
             await provider.set_active_profile("unknown")
 
     async def test_resolve_snapshot(self, provider):
-        profile, snapshot_hash = await provider.resolve_snapshot("full-squad")
-        assert profile.profile_id == "full-squad"
+        profile, snapshot_hash = await provider.resolve_snapshot("full")
+        assert profile.profile_id == "full"
         assert isinstance(snapshot_hash, str)
         assert len(snapshot_hash) == 64  # SHA-256 hex
 
     async def test_resolve_snapshot_deterministic(self, provider):
-        _, h1 = await provider.resolve_snapshot("full-squad")
-        _, h2 = await provider.resolve_snapshot("full-squad")
+        _, h1 = await provider.resolve_snapshot("full")
+        _, h2 = await provider.resolve_snapshot("full")
         assert h1 == h2
 
 

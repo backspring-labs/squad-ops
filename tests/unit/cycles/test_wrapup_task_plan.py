@@ -51,7 +51,7 @@ def wrapup_profile():
 def full_profile():
     """Full 5-agent squad profile (superset of wrapup roles)."""
     return SquadProfile(
-        profile_id="full-squad",
+        profile_id="full",
         name="Full Squad",
         description="All agents",
         version=1,

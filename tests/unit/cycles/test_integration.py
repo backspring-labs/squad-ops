@@ -64,7 +64,7 @@ def profile_provider(tmp_path):
             {
                 "profiles": [
                     {
-                        "profile_id": "full-squad",
+                        "profile_id": "full",
                         "name": "Full Squad",
                         "description": "All agents",
                         "version": 1,
@@ -78,7 +78,7 @@ def profile_provider(tmp_path):
                         ],
                     }
                 ],
-                "active_profile": "full-squad",
+                "active_profile": "full",
             }
         )
     )
@@ -99,7 +99,7 @@ def _make_cycle(policy=None, build_strategy="fresh", **kwargs):
         created_at=NOW,
         created_by="system",
         prd_ref=kwargs.get("prd_ref"),
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=policy or TaskFlowPolicy(mode="sequential"),
         build_strategy=build_strategy,

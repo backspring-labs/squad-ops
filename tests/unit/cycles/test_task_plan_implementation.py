@@ -32,7 +32,7 @@ NOW = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
 @pytest.fixture
 def profile():
     return SquadProfile(
-        profile_id="full-squad",
+        profile_id="full",
         name="Full Squad",
         description="All agents",
         version=1,
@@ -55,7 +55,7 @@ def impl_cycle():
         created_at=NOW,
         created_by="system",
         prd_ref="prd_ref",
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",

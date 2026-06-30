@@ -79,7 +79,7 @@ def mock_queue(reply_router):
 def mock_squad_profile():
     mock = AsyncMock()
     profile = SquadProfile(
-        profile_id="full-squad",
+        profile_id="full",
         name="Full Squad",
         description="All",
         version=1,
@@ -104,7 +104,7 @@ def cycle():
         created_at=NOW,
         created_by="system",
         prd_ref="prd_ref_123",
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
