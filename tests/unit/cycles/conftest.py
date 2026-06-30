@@ -62,7 +62,7 @@ def sample_cycle(now, sample_flow_policy):
         created_at=now,
         created_by="system",
         prd_ref="art_prd_v1",
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc123",
         task_flow_policy=sample_flow_policy,
         build_strategy="fresh",
@@ -124,7 +124,7 @@ def sample_agent_entry():
 @pytest.fixture
 def sample_profile(now, sample_agent_entry):
     return SquadProfile(
-        profile_id="full-squad",
+        profile_id="full",
         name="Full Squad",
         description="All agents with default models",
         version=1,

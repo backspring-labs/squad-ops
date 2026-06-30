@@ -3,10 +3,11 @@
 Validates that the squad profile carrying a builder agent loads correctly,
 resolves all 6 agents, and has the builder role properly configured.
 
-The original `full-squad-with-builder` profile was removed in PR #175; the
-surviving builder profile is `spark-squad-with-builder`, so these tests target
-it. (Broader squad-profile name consolidation is tracked in issue #173 — this
-change only re-points the stale assertions at the profile that still exists.)
+Profile-name history: the original `full-squad-with-builder` was removed in
+PR #175, leaving `spark-squad-with-builder` as the lone builder profile; #173
+then consolidated the squad-profile names by model tier — the builder profile
+is now `full` (27b) and the surviving no-builder profile is `smoke` (3b). These
+tests target the current names.
 """
 
 from __future__ import annotations
@@ -27,45 +28,47 @@ def provider():
     return ConfigSquadProfile(yaml_path=CONFIG_PATH)
 
 
-class TestSparkSquadWithBuilderProfile:
+class TestFullSquadBuilderProfile:
+    """The `full` profile (27b) is the builder-equipped squad (#173)."""
+
     async def test_profile_loads(self, provider):
-        profile = await provider.get_profile("spark-squad-with-builder")
-        assert profile.profile_id == "spark-squad-with-builder"
+        profile = await provider.get_profile("full")
+        assert profile.profile_id == "full"
 
     async def test_has_six_agents(self, provider):
-        profile = await provider.get_profile("spark-squad-with-builder")
+        profile = await provider.get_profile("full")
         assert len(profile.agents) == 6
 
     async def test_builder_agent_present(self, provider):
-        profile = await provider.get_profile("spark-squad-with-builder")
+        profile = await provider.get_profile("full")
         builder_agents = [a for a in profile.agents if a.role == "builder"]
         assert len(builder_agents) == 1
 
     async def test_builder_agent_is_bob(self, provider):
-        profile = await provider.get_profile("spark-squad-with-builder")
+        profile = await provider.get_profile("full")
         builder_agents = [a for a in profile.agents if a.role == "builder"]
         assert builder_agents[0].agent_id == "bob"
 
     async def test_builder_agent_enabled(self, provider):
-        profile = await provider.get_profile("spark-squad-with-builder")
+        profile = await provider.get_profile("full")
         builder_agents = [a for a in profile.agents if a.role == "builder"]
         assert builder_agents[0].enabled is True
 
     async def test_all_roles_present(self, provider):
-        profile = await provider.get_profile("spark-squad-with-builder")
+        profile = await provider.get_profile("full")
         roles = {a.role for a in profile.agents}
         assert roles == {"lead", "dev", "strat", "builder", "qa", "data"}
 
-    async def test_full_squad_has_no_builder(self, provider):
-        """The non-builder `full-squad` profile still has 5 agents and no builder
-        role — the distinction the builder profile exists to add."""
-        profile = await provider.get_profile("full-squad")
+    async def test_smoke_has_no_builder(self, provider):
+        """The surviving no-builder profile `smoke` still has 5 agents and no
+        builder role — the no-builder build path (dev does assembly) the planner
+        capability filter supports."""
+        profile = await provider.get_profile("smoke")
         assert len(profile.agents) == 5
         roles = {a.role for a in profile.agents}
         assert "builder" not in roles
 
-    async def test_both_profiles_in_listing(self, provider):
+    async def test_consolidated_profiles_in_listing(self, provider):
         profiles = await provider.list_profiles()
         ids = {p.profile_id for p in profiles}
-        assert "full-squad" in ids
-        assert "spark-squad-with-builder" in ids
+        assert ids == {"smoke", "lite", "full"}

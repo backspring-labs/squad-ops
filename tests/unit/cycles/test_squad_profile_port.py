@@ -25,7 +25,7 @@ pytestmark = [pytest.mark.domain_orchestration]
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 _PROFILE = SquadProfile(
-    profile_id="full-squad",
+    profile_id="full",
     name="Full Squad",
     description="All agents",
     version=1,

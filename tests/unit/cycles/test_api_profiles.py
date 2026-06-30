@@ -23,7 +23,7 @@ pytestmark = [pytest.mark.domain_orchestration]
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 _PROFILE = SquadProfile(
-    profile_id="full-squad",
+    profile_id="full",
     name="Full Squad",
     description="All agents",
     version=1,
@@ -38,7 +38,7 @@ def mock_squad_profile():
     mock.list_profiles.return_value = [_PROFILE]
     mock.get_profile.return_value = _PROFILE
     mock.get_active_profile.return_value = _PROFILE
-    mock.get_active_profile_id.return_value = "full-squad"
+    mock.get_active_profile_id.return_value = "full"
     mock.set_active_profile.return_value = None
     mock.activate_profile.return_value = _PROFILE
     mock.create_profile.side_effect = lambda p: p
@@ -71,7 +71,7 @@ class TestListProfiles:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
-        assert data[0]["profile_id"] == "full-squad"
+        assert data[0]["profile_id"] == "full"
 
     def test_includes_is_active(self, client):
         resp = client.get("/api/v1/squad-profiles")
@@ -83,7 +83,7 @@ class TestGetActiveProfile:
     def test_returns_active(self, client):
         resp = client.get("/api/v1/squad-profiles/active")
         assert resp.status_code == 200
-        assert resp.json()["profile_id"] == "full-squad"
+        assert resp.json()["profile_id"] == "full"
         assert resp.json()["is_active"] is True
 
 
@@ -91,18 +91,18 @@ class TestSetActiveProfile:
     def test_sets_active(self, client):
         resp = client.post(
             "/api/v1/squad-profiles/active",
-            json={"profile_id": "full-squad"},
+            json={"profile_id": "full"},
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
-        assert resp.json()["active_profile_id"] == "full-squad"
+        assert resp.json()["active_profile_id"] == "full"
 
 
 class TestGetProfile:
     def test_returns_profile(self, client):
-        resp = client.get("/api/v1/squad-profiles/full-squad")
+        resp = client.get("/api/v1/squad-profiles/full")
         assert resp.status_code == 200
-        assert resp.json()["profile_id"] == "full-squad"
+        assert resp.json()["profile_id"] == "full"
         assert len(resp.json()["agents"]) == 1
 
     def test_not_found(self, client, mock_squad_profile):
@@ -243,7 +243,7 @@ class TestCreateProfile:
 class TestUpdateProfile:
     def test_updates_profile(self, client):
         resp = client.put(
-            "/api/v1/squad-profiles/full-squad",
+            "/api/v1/squad-profiles/full",
             json={"name": "Updated Squad"},
         )
         assert resp.status_code == 200
@@ -260,7 +260,7 @@ class TestUpdateProfile:
 class TestCloneProfile:
     def test_clones_profile(self, client):
         resp = client.post(
-            "/api/v1/squad-profiles/full-squad/clone",
+            "/api/v1/squad-profiles/full/clone",
             json={"name": "Cloned Squad"},
         )
         assert resp.status_code == 200
@@ -277,7 +277,7 @@ class TestCloneProfile:
 
 class TestDeleteProfile:
     def test_deletes_profile(self, client):
-        resp = client.delete("/api/v1/squad-profiles/full-squad")
+        resp = client.delete("/api/v1/squad-profiles/full")
         assert resp.status_code == 200
         assert resp.json()["status"] == "deleted"
 
@@ -288,13 +288,13 @@ class TestDeleteProfile:
 
     def test_active_profile_rejected(self, client, mock_squad_profile):
         mock_squad_profile.delete_profile.side_effect = ActiveProfileDeletionError("Active")
-        resp = client.delete("/api/v1/squad-profiles/full-squad")
+        resp = client.delete("/api/v1/squad-profiles/full")
         assert resp.status_code == 409
 
 
 class TestActivateProfile:
     def test_activates_profile(self, client):
-        resp = client.post("/api/v1/squad-profiles/full-squad/activate")
+        resp = client.post("/api/v1/squad-profiles/full/activate")
         assert resp.status_code == 200
         assert resp.json()["is_active"] is True
 

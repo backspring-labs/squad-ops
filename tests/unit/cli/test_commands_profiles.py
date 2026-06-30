@@ -127,9 +127,7 @@ class TestSquadProfilesClone:
         mock_get_client.return_value = _mock_client(
             post_val={"profile_id": "cloned-squad", "warnings": []}
         )
-        result = runner.invoke(
-            app, ["squad-profiles", "clone", "full-squad", "--name", "Cloned Squad"]
-        )
+        result = runner.invoke(app, ["squad-profiles", "clone", "full", "--name", "Cloned Squad"])
         assert result.exit_code == 0
         assert "cloned-squad" in result.output
 
@@ -138,11 +136,11 @@ class TestSquadProfilesActivate:
     @patch("squadops.cli.commands.profiles._get_client")
     def test_activate(self, mock_get_client):
         mock_get_client.return_value = _mock_client(
-            post_val={"profile_id": "full-squad", "is_active": True}
+            post_val={"profile_id": "full", "is_active": True}
         )
-        result = runner.invoke(app, ["squad-profiles", "activate", "full-squad"])
+        result = runner.invoke(app, ["squad-profiles", "activate", "full"])
         assert result.exit_code == 0
-        assert "full-squad" in result.output
+        assert "full" in result.output
 
 
 class TestSquadProfilesDelete:

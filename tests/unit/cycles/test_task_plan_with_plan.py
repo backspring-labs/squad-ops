@@ -73,7 +73,7 @@ def _make_cycle(**overrides) -> Cycle:
         "created_at": NOW,
         "created_by": "system",
         "prd_ref": "Build a group run app",
-        "squad_profile_id": "full-squad",
+        "squad_profile_id": "full",
         "squad_profile_snapshot_ref": "sha256:abc",
         "task_flow_policy": TaskFlowPolicy(mode="sequential"),
         "build_strategy": "fresh",
@@ -103,7 +103,7 @@ def _make_run(**overrides) -> Run:
 
 def _make_profile() -> SquadProfile:
     return SquadProfile(
-        profile_id="full-squad",
+        profile_id="full",
         name="Full Squad",
         description="Test profile",
         version=1,

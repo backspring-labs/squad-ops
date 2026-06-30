@@ -2,7 +2,7 @@
 
 Tests that the builder role bootstraps cleanly in the handler and skill
 registries, and that dry-run plan generation emits builder.assemble tasks
-when the spark-squad-with-builder profile is used.
+when the full profile is used.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ class TestDryRunPlanGeneration:
 
     async def test_plan_emits_builder_assemble(self, provider):
         """Plan generation with builder profile should emit builder.assemble."""
-        profile = await provider.get_profile("spark-squad-with-builder")
+        profile = await provider.get_profile("full")
         assert _has_builder_role(profile)
 
         cycle = Cycle(
@@ -85,7 +85,7 @@ class TestDryRunPlanGeneration:
             created_at=NOW,
             created_by="system",
             prd_ref="Build a CLI tool",
-            squad_profile_id="spark-squad-with-builder",
+            squad_profile_id="full",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",
@@ -110,7 +110,7 @@ class TestDryRunPlanGeneration:
 
     async def test_plan_without_builder_falls_back(self, provider):
         """Plan generation without builder should emit development.develop."""
-        profile = await provider.get_profile("full-squad")
+        profile = await provider.get_profile("smoke")
         assert not _has_builder_role(profile)
 
         cycle = Cycle(
@@ -119,7 +119,7 @@ class TestDryRunPlanGeneration:
             created_at=NOW,
             created_by="system",
             prd_ref="Build a CLI tool",
-            squad_profile_id="full-squad",
+            squad_profile_id="smoke",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(mode="sequential"),
             build_strategy="fresh",

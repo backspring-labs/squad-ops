@@ -92,7 +92,7 @@ def _make_cycle(cycle_id: str = "cyc-001") -> Cycle:
         created_at=NOW,
         created_by="test",
         prd_ref="prd-001",
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="snap-001",
         task_flow_policy=TaskFlowPolicy(mode="sequential", gates=()),
         build_strategy="standard",

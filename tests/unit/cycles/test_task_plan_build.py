@@ -33,7 +33,7 @@ NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 @pytest.fixture
 def profile():
     return SquadProfile(
-        profile_id="full-squad",
+        profile_id="full",
         name="Full Squad",
         description="All agents",
         version=1,
@@ -67,7 +67,7 @@ def _make_cycle(applied_defaults: dict) -> Cycle:
         created_at=NOW,
         created_by="system",
         prd_ref="Build a CLI tool",
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",
@@ -203,7 +203,7 @@ class TestGateBetweenPlanAndBuild:
             created_at=NOW,
             created_by="system",
             prd_ref="Build a CLI tool",
-            squad_profile_id="full-squad",
+            squad_profile_id="full",
             squad_profile_snapshot_ref="sha256:abc",
             task_flow_policy=TaskFlowPolicy(
                 mode="sequential",

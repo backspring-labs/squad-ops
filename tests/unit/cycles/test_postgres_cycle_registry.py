@@ -44,7 +44,7 @@ _CYCLE = Cycle(
     created_at=NOW,
     created_by="admin",
     prd_ref=None,
-    squad_profile_id="full-squad",
+    squad_profile_id="full",
     squad_profile_snapshot_ref="sha256:abc",
     task_flow_policy=_POLICY,
     build_strategy="fresh",
@@ -108,7 +108,7 @@ def _cycle_row(**overrides):
         "created_at": NOW,
         "created_by": "admin",
         "prd_ref": None,
-        "squad_profile_id": "full-squad",
+        "squad_profile_id": "full",
         "squad_profile_snapshot_ref": "sha256:abc",
         "task_flow_policy": {
             "mode": "sequential",
@@ -192,7 +192,7 @@ class TestPostgresCycleRegistry:
         assert args[2] == NOW  # created_at
         assert args[3] == "admin"  # created_by
         assert args[4] is None  # prd_ref
-        assert args[5] == "full-squad"  # squad_profile_id
+        assert args[5] == "full"  # squad_profile_id
         assert args[6] == "sha256:abc"  # squad_profile_snapshot_ref
         # task_flow_policy is JSON-serialized
         policy_dict = json.loads(args[7])

@@ -27,7 +27,7 @@ _CYCLE = Cycle(
     created_at=NOW,
     created_by="system",
     prd_ref=None,
-    squad_profile_id="full-squad",
+    squad_profile_id="full",
     squad_profile_snapshot_ref="sha256:abc",
     task_flow_policy=TaskFlowPolicy(mode="sequential"),
     build_strategy="fresh",
@@ -39,7 +39,7 @@ _MULTI_WORKLOAD_CYCLE = Cycle(
     created_at=NOW,
     created_by="system",
     prd_ref=None,
-    squad_profile_id="full-squad",
+    squad_profile_id="full",
     squad_profile_snapshot_ref="sha256:abc",
     task_flow_policy=TaskFlowPolicy(mode="sequential"),
     build_strategy="fresh",
@@ -161,7 +161,7 @@ class TestResumeRun:
         internally, so the route enqueues execute_cycle unconditionally."""
         resp = client.post(f"{_URL_PREFIX}/run_001/resume")
         assert resp.status_code == 200
-        mock_flow_executor.execute_cycle.assert_called_once_with("cyc_001", "run_001", "full-squad")
+        mock_flow_executor.execute_cycle.assert_called_once_with("cyc_001", "run_001", "full")
 
     def test_resume_paused_without_checkpoint_reattempts(
         self, client, mock_cycle_registry, mock_flow_executor
@@ -173,7 +173,7 @@ class TestResumeRun:
         resp = client.post(f"{_URL_PREFIX}/run_001/resume")
         assert resp.status_code == 200
         assert resp.json()["status"] == "running"
-        mock_flow_executor.execute_cycle.assert_called_once_with("cyc_001", "run_001", "full-squad")
+        mock_flow_executor.execute_cycle.assert_called_once_with("cyc_001", "run_001", "full")
 
     def test_resume_failed_without_checkpoint_still_rejected(
         self, client, mock_cycle_registry, mock_flow_executor

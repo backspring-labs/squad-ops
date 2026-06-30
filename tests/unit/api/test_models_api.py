@@ -36,9 +36,9 @@ def mock_ollama():
 @pytest.fixture()
 def mock_squad_profile():
     mock = AsyncMock()
-    mock.get_active_profile_id.return_value = "full-squad"
+    mock.get_active_profile_id.return_value = "full"
     mock.get_profile.return_value = SquadProfile(
-        profile_id="full-squad",
+        profile_id="full",
         name="Full Squad",
         description="All agents",
         version=1,

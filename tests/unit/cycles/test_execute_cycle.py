@@ -47,7 +47,7 @@ def _make_cycle(workload_sequence: list[dict] | None = None, **kwargs) -> Cycle:
         created_at=NOW,
         created_by="system",
         prd_ref=None,
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(mode="sequential"),
         build_strategy="fresh",

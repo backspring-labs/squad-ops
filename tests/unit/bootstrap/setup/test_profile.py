@@ -38,7 +38,7 @@ class TestLoadValidProfile:
         assert profile.name == "test-profile"
         assert profile.description == "A test profile"
         assert profile.deployment_profile == "dev"
-        assert profile.squad_profile == "full-squad"
+        assert profile.squad_profile == "full"
 
         # Platform
         assert profile.platform == PlatformSpec(os="darwin", min_version="14.0")

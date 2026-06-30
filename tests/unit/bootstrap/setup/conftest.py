@@ -61,7 +61,7 @@ def valid_profile_data() -> dict:
             {"name": "qwen2.5:7b", "required": True},
         ],
         "deployment_profile": "dev",
-        "squad_profile": "full-squad",
+        "squad_profile": "full",
     }
 
 

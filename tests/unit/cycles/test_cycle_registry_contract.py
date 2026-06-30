@@ -57,7 +57,7 @@ def _make_cycle(cycle_id="cyc_001", project_id="proj_1"):
         created_at=NOW,
         created_by="admin",
         prd_ref=None,
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=_POLICY,
         build_strategy="fresh",

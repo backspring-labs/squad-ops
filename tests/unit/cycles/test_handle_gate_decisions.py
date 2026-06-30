@@ -44,7 +44,7 @@ def cycle():
         created_at=NOW,
         created_by="system",
         prd_ref=None,
-        squad_profile_id="full-squad",
+        squad_profile_id="full",
         squad_profile_snapshot_ref="sha256:abc",
         task_flow_policy=TaskFlowPolicy(
             mode="fan_out_soft_gates",

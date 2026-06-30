@@ -445,8 +445,9 @@ async def test_produce_plan_filters_builder_assemble_by_squad_capability():
     The plan-authoring prompt must NOT offer ``builder.assemble`` when the
     squad has no builder role — otherwise the LLM authors a builder.assemble
     task that aborts at dispatch with 'No handler for capability:
-    builder.assemble', as happened on full-squad. A builder-equipped squad
-    must still be offered it. The rendered template variables (which carry
+    builder.assemble', as happened on a no-builder squad (the former
+    full-squad). A builder-equipped squad must still be offered it. The
+    rendered template variables (which carry
     the available-task-types list and builder example) are the surface.
     """
     base = {

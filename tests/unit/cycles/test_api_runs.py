@@ -30,7 +30,7 @@ _CYCLE = Cycle(
     created_at=NOW,
     created_by="system",
     prd_ref=None,
-    squad_profile_id="full-squad",
+    squad_profile_id="full",
     squad_profile_snapshot_ref="sha256:abc",
     task_flow_policy=TaskFlowPolicy(mode="sequential"),
     build_strategy="fresh",
@@ -98,9 +98,7 @@ class TestCreateRun:
         assert resp.status_code == 200
         new_run_id = resp.json()["run_id"]
 
-        mock_flow_executor.execute_cycle.assert_awaited_once_with(
-            "cyc_001", new_run_id, "full-squad"
-        )
+        mock_flow_executor.execute_cycle.assert_awaited_once_with("cyc_001", new_run_id, "full")
 
 
 class TestListRuns:

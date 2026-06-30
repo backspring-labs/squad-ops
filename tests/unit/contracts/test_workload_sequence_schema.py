@@ -19,7 +19,7 @@ class TestWorkloadSequenceKey:
         profile = CycleRequestProfile(
             name="test",
             defaults={
-                "squad_profile_id": "full-squad",
+                "squad_profile_id": "full",
                 "workload_sequence": [
                     {"type": "framing", "gate": "progress_plan_review"},
                     {"type": "implementation", "gate": None},
@@ -31,7 +31,7 @@ class TestWorkloadSequenceKey:
     def test_without_workload_sequence_still_valid(self):
         profile = CycleRequestProfile(
             name="test",
-            defaults={"squad_profile_id": "full-squad"},
+            defaults={"squad_profile_id": "full"},
         )
         assert "workload_sequence" not in profile.defaults
 
