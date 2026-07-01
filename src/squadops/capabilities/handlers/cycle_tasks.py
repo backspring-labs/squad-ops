@@ -2554,6 +2554,40 @@ class QATestHandler(_CycleTaskHandler):
                 validation.coverage_ratio = passed_count / len(validation.checks)
 
         if output_validation_enabled:
+            # #276: a generated test that hides a broken entrypoint import behind
+            # an ImportError fallback validates a stub app, not the deliverable —
+            # so `tests_passed` above can be falsely green (the stub collects and
+            # passes). Flag it so acceptance fails and the correction loop
+            # regenerates the test against the real module.
+            from squadops.capabilities.handlers.stub_detection import (
+                detect_stub_fallback_tests,
+            )
+
+            stub_offenders = detect_stub_fallback_tests(artifacts)
+            if stub_offenders:
+                validation.checks.append(
+                    {
+                        "check": "no_stub_fallback_tests",
+                        "offenders": stub_offenders,
+                        "passed": False,
+                    }
+                )
+                validation.passed = False
+                validation.missing_components.append(
+                    f"stub_fallback_tests:{','.join(stub_offenders)}"
+                )
+                note = (
+                    "Generated test masks the real entrypoint behind an "
+                    f"ImportError stub: {', '.join(stub_offenders)}"
+                )
+                validation.summary = (
+                    note
+                    if validation.summary in ("", "All checks passed")
+                    else f"{validation.summary}; {note}"
+                )
+                passed_count = sum(1 for c in validation.checks if c["passed"])
+                validation.coverage_ratio = passed_count / len(validation.checks)
+
             evidence_extra["validation_result"] = {
                 "passed": validation.passed,
                 "checks": validation.checks,
