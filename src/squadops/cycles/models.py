@@ -166,6 +166,15 @@ class ProfileValidationError(CycleError):
     """Raised for squad profile validation failures (bad ID, unknown override keys)."""
 
 
+class PreflightRejectedError(CycleError):
+    """Raised when the create-time preflight blocks a cycle (SIP-0095).
+
+    Carries the joined blocking-finding messages: the requested workloads' roles the
+    squad can't satisfy and/or models definitively not pulled. Maps to HTTP 422 —
+    fail fast before the cycle is persisted or dispatched.
+    """
+
+
 # Allowed keys in AgentProfileEntry.config_overrides (SIP-0075 §5.5.1).
 # Unknown keys are rejected with 422, not silently ignored.
 ALLOWED_CONFIG_OVERRIDE_KEYS = frozenset(

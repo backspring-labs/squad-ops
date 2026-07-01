@@ -2,6 +2,7 @@
 Cycle API routes (SIP-0064 §9.3).
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -18,11 +19,61 @@ from squadops.cycles.models import (
     CycleError,
     CycleStatus,
     Gate,
+    PreflightRejectedError,
     Run,
+    SquadProfile,
     TaskFlowPolicy,
 )
+from squadops.cycles.preflight import (
+    combine,
+    model_availability_decision,
+    required_roles_decision,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles", tags=["cycles"])
+
+
+async def _pulled_model_names() -> list[str] | None:
+    """Best-effort list of the LLM backend's pulled-model names, or ``None``.
+
+    ``None`` (backend not configured / not an Ollama adapter / unreachable) makes the
+    model-availability preflight *warn and allow* rather than block — never block on
+    missing evidence (SIP-0095 §6.2). Only a reachable backend yields a verifiable list.
+    """
+    from squadops.api.runtime.deps import get_llm_port
+
+    try:
+        from adapters.llm.ollama import OllamaAdapter
+
+        port = get_llm_port()
+        if not isinstance(port, OllamaAdapter):
+            return None
+        raw = await port.list_pulled_models()
+    except Exception as exc:  # not configured, wrong adapter, or backend unreachable
+        logger.info("preflight_model_list_unverifiable", extra={"error": str(exc)})
+        return None
+    return [name for m in raw if (name := m.get("name"))]
+
+
+async def _run_create_preflight(profile: SquadProfile, applied_defaults: dict) -> None:
+    """SIP-0095 create-time preflight: fail fast BEFORE persist/dispatch.
+
+    Blocks (HTTP 422) when the squad can't satisfy the requested workloads' required
+    roles or names a model definitively not pulled; an unreachable backend warns and
+    allows. Warnings are logged here — the response/CLI surface is Phase 4.
+    """
+    decision = combine(
+        required_roles_decision(profile, applied_defaults),
+        model_availability_decision(profile, await _pulled_model_names()),
+    )
+    for w in decision.warnings:
+        logger.warning(
+            "cycle_create_preflight_warning", extra={"code": w.code, "detail": w.message}
+        )
+    if decision.rejected:
+        raise PreflightRejectedError(decision.summary())
 
 
 @router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
@@ -66,6 +117,10 @@ async def create_cycle(
 
         # SIP-0065 D2: use client-supplied applied_defaults (CRP defaults from CLI)
         applied_defaults = body.applied_defaults
+
+        # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
+        await _run_create_preflight(profile, applied_defaults)
+
         config_hash = compute_config_hash(applied_defaults, body.execution_overrides)
 
         cycle = Cycle(

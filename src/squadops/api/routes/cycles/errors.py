@@ -16,6 +16,7 @@ from squadops.cycles.models import (
     CycleNotFoundError,
     GateAlreadyDecidedError,
     IllegalStateTransitionError,
+    PreflightRejectedError,
     ProfileNotFoundError,
     ProfileValidationError,
     ProjectNotFoundError,
@@ -36,6 +37,7 @@ _ERROR_MAP: list[tuple[type, int, str]] = [
     (BaselineNotAllowedError, 409, "BASELINE_NOT_ALLOWED"),
     (ActiveProfileDeletionError, 409, "ACTIVE_PROFILE_DELETION"),
     (ProfileValidationError, 422, "PROFILE_VALIDATION_ERROR"),
+    (PreflightRejectedError, 422, "PREFLIGHT_REJECTED"),
     (ValidationError, 422, "VALIDATION_ERROR"),
 ]
 

@@ -3,7 +3,7 @@ Tests for SIP-0064 cycle API routes.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -48,18 +48,28 @@ def mock_cycle_registry():
     return mock
 
 
-@pytest.fixture
-def mock_squad_profile():
-    mock = AsyncMock()
-    profile = SquadProfile(
+def _full_plan_profile():
+    """A squad carrying every role the default (plan) workload requires (SIP-0095),
+    so the create-time preflight passes. Models are unverifiable in these tests (no
+    LLM port wired → warn-and-allow), so only roles gate here."""
+    roles = [("max", "lead"), ("nat", "strat"), ("neo", "dev"), ("eve", "qa"), ("data", "data")]
+    return SquadProfile(
         profile_id="full",
         name="Full Squad",
         description="All agents",
         version=1,
-        agents=(AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),),
+        agents=tuple(
+            AgentProfileEntry(agent_id=aid, role=role, model="gpt-4", enabled=True)
+            for aid, role in roles
+        ),
         created_at=NOW,
     )
-    mock.resolve_snapshot.return_value = (profile, "sha256:abc123")
+
+
+@pytest.fixture
+def mock_squad_profile():
+    mock = AsyncMock()
+    mock.resolve_snapshot.return_value = (_full_plan_profile(), "sha256:abc123")
     return mock
 
 
@@ -344,3 +354,59 @@ class TestCycleRouteScopeEnforcement:
             client = TestClient(app)
             resp = client.get("/api/v1/projects/hello_squad/cycles", headers={})
         assert resp.status_code == 401
+
+
+class TestCreateCyclePreflight:
+    """SIP-0095 Phase 3: the create-time preflight fails fast (422) before persist."""
+
+    _REQUEST = {"squad_profile_id": "full", "task_flow_policy": {"mode": "sequential"}}
+
+    def test_full_squad_with_unverifiable_models_is_allowed(self, client):
+        """Roles satisfied + LLM backend unreachable (None) → warn-and-allow → 200."""
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
+        assert resp.status_code == 200
+
+    def test_blocks_when_squad_cannot_satisfy_required_roles(
+        self, client, mock_squad_profile, mock_cycle_registry
+    ):
+        lean = SquadProfile(
+            profile_id="lite",
+            name="Lean",
+            description="",
+            version=1,
+            agents=(AgentProfileEntry(agent_id="max", role="lead", model="gpt-4", enabled=True),),
+            created_at=NOW,
+        )
+        mock_squad_profile.resolve_snapshot.return_value = (lean, "sha256:x")
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
+
+        assert resp.status_code == 422
+        err = resp.json()["detail"]["error"]
+        assert err["code"] == "PREFLIGHT_REJECTED"
+        assert "role" in err["message"]  # names the missing role
+        mock_cycle_registry.create_cycle.assert_not_called()  # fail-fast: nothing persisted
+        mock_cycle_registry.create_run.assert_not_called()
+
+    def test_blocks_when_a_required_model_is_not_pulled(self, client, mock_cycle_registry):
+        # backend reachable but empty → the profile's `gpt-4` is definitively absent
+        with patch(
+            "squadops.api.routes.cycles.cycles._pulled_model_names",
+            new=AsyncMock(return_value=[]),
+        ):
+            resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
+
+        assert resp.status_code == 422
+        err = resp.json()["detail"]["error"]
+        assert err["code"] == "PREFLIGHT_REJECTED"
+        assert "gpt-4" in err["message"]
+        mock_cycle_registry.create_cycle.assert_not_called()
+
+    def test_allows_when_required_model_is_pulled(self, client):
+        # tagless `gpt-4` matches the canonical `gpt-4:latest` (no family inference)
+        with patch(
+            "squadops.api.routes.cycles.cycles._pulled_model_names",
+            new=AsyncMock(return_value=["gpt-4:latest"]),
+        ):
+            resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
+        assert resp.status_code == 200
