@@ -24,6 +24,7 @@ pytestmark = [pytest.mark.domain_capabilities]
 # ---------------------------------------------------------------------------
 
 _SOURCE_FILES = [
+    {"path": "package.json", "content": '{"scripts": {}}'},
     {"path": "src/App.jsx", "content": "export default function App() {}"},
 ]
 
@@ -61,7 +62,11 @@ class TestRunNodeTestsNoFiles:
 
 class TestRunNodeTestsNoPackageJson:
     async def test_missing_package_json(self):
-        result = await run_node_tests(_SOURCE_FILES, _TEST_FILES)
+        # No package.json anywhere in the file set → discovery finds none → skip.
+        result = await run_node_tests(
+            [{"path": "src/App.jsx", "content": "export default function App() {}"}],
+            _TEST_FILES,
+        )
         assert result.executed is False
         assert "package.json" in result.error
 
@@ -196,20 +201,33 @@ class TestRunNodeTestsTimeout:
 
 
 # ---------------------------------------------------------------------------
-# run_node_tests — target_dir
+# run_node_tests — package.json discovery (#303, replaces the old target_dir path)
 # ---------------------------------------------------------------------------
 
 
-class TestRunNodeTestsTargetDir:
-    async def test_target_dir_checked_for_package_json(self):
-        """When target_dir is set, package.json is expected in that subdir."""
-        result = await run_node_tests(
-            _SOURCE_FILES,
-            _TEST_FILES,
-            target_dir="frontend",
-        )
-        assert result.executed is False
-        assert "frontend" in result.error
+class TestRunNodeTestsDiscovery:
+    @patch("squadops.capabilities.handlers.test_runner._materialize_files")
+    @patch("tempfile.mkdtemp", return_value="/tmp/qa_node_test")
+    @patch("shutil.rmtree")
+    async def test_package_json_in_subdir_is_discovered(self, _rmtree, _mkdtemp, _mat):
+        """package.json placed at frontend/src/ (not a fixed dir) is discovered and
+        run, instead of being skipped as 'not found' (#303)."""
+        install_proc = _make_proc_mock(returncode=0)
+        vitest_proc = _make_proc_mock(returncode=0, stdout=b"1 passed")
+        call_count = 0
+
+        async def mock_exec(*_args, **_kwargs):
+            nonlocal call_count
+            call_count += 1
+            return install_proc if call_count == 1 else vitest_proc
+
+        source = [{"path": "frontend/src/package.json", "content": '{"scripts": {}}'}]
+        tests = [{"path": "frontend/src/App.test.jsx", "content": "test('a', () => {})"}]
+        with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
+            result = await run_node_tests(source, tests)
+
+        assert result.executed is True
+        assert result.exit_code == 0
 
 
 # ---------------------------------------------------------------------------

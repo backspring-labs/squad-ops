@@ -2,8 +2,10 @@
 
 Bug this guards: a Vite frontend can pass vitest unit tests yet fail to build
 (e.g. missing root ``index.html``), shipping a non-runnable deliverable green.
-``run_frontend_build`` must FAIL when the build ran and errored, and must SKIP
-(not fail) when it can't assess (no frontend, no package.json, no node).
+``run_frontend_build`` must FAIL when the build ran and errored — and also when
+frontend source is present but has no discoverable ``package.json`` (#303, a
+broken frontend, not an absent one) — and must SKIP (not fail) when it genuinely
+can't assess: no frontend at all, install failure, or no node.
 """
 
 from __future__ import annotations
@@ -73,12 +75,31 @@ async def test_skips_when_no_frontend_source():
     assert result.ran is False and result.failed is False
 
 
-async def test_skips_when_no_package_json():
+async def test_no_package_json_with_frontend_source_is_blocking():
+    """Frontend source present but no package.json anywhere → the deliverable
+    can't build → BLOCKING failure, not a benign skip (#303)."""
     result = await run_frontend_build(
         [{"path": "frontend/src/main.jsx", "content": "export default 1"}]
     )
-    assert result.ran is False
+    assert result.ran is True
+    assert result.ok is False
+    assert result.failed is True
     assert "package.json" in result.error
+
+
+async def test_discovers_package_json_in_subdir(monkeypatch):
+    """package.json at frontend/src/ (not the frontend root) is discovered and
+    built — the exact cyc_1d2e21ab0cfb case that used to skip (#303)."""
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec([0, 0]))  # install, build ok
+    result = await run_frontend_build(
+        [
+            {"path": "frontend/src/package.json", "content": _PKG_WITH_BUILD},
+            {"path": "frontend/src/main.jsx", "content": "export default 1"},
+        ]
+    )
+    assert result.ran is True
+    assert result.ok is True
+    assert result.failed is False
 
 
 # --- Build outcome (mocked subprocess) ----------------------------------------
