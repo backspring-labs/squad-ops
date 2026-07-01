@@ -24,6 +24,8 @@ So: **1.2.0 = Macbook capability SIPs. 1.1.x = Spark hardening, shipping as patc
 
 This core is **almost entirely Lane-M-owned surface** (runtime/, executor, cycle API) → minimal cross-lane collision, and the preflight directly fixes the model-mismatch failure we hit live on 2026-06-29.
 
+> **STATUS UPDATE (2026-07-01):** **#233 and #244 have LANDED.** #233 (recruitment → coordinator/FocusLease) shipped as PR #287 (`0e86299`, slices 1–4; `src/squadops/runtime/admission.py` + the shared single-writer coordinator wired in `api/runtime/main.py`); #244 (RuntimeTransaction UoW) shipped as PR #293 (`8cf5ab7`, wired + live rollback test). The 0089-completion core is **done**; remaining committed 1.2.0 core = **#231 + Preflight (SIP-0095, accepted) + SIP-0090 Phase 1**. This reverses the "deferred-by-design" call on #233 in `issue-triage-2026-06-28.md`.
+
 > **#224 ownership — RESOLVED 2026-06-29 (option a, the split is preserved).** The Spark-lane review surfaced that this plan's §2 table had silently folded the whole Preflight SIP into Mac's surface, dropping the prior sprint split. **Decision (Mac-lane, recorded on #224):** keep the split — **Spark lifts the model-availability helper** (`api/routes/cycles/profiles.py:71-95` → a reusable check both `doctor` and cycle-create call), since model/device availability is the Spark domain; **Mac wires the #172 preflight seam** that calls it. The dual `track:spark`+`track:macbook` labels on #224 stay (each lane owns its half). Per-file ownership detail in §5.6.
 
 ### Stretch headline — SIP-0090 Agent Embodiment (the banner, gated)
