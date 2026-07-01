@@ -1,0 +1,47 @@
+name: validated-fullstack
+description: >
+  Instrumented fullstack build for quality apps (#279). Composes the two levers
+  that two group_run validations isolated: `validation`'s depth instrumentation
+  (output validation, typed + command acceptance, self-eval + correction budget,
+  and a 2-run framing→implementation sequence for clean gate/checkpoint boundaries
+  and resumability) PLUS the builder path with stack-aware development
+  (`fullstack_fastapi_react`). `build_tasks: true` routes through `builder.assemble`
+  automatically when the squad has a builder (SIP-0071), so this needs a
+  builder-carrying squad to exercise assembly. Pairs with #276 (build/boot +
+  required_files) as the runnable-app backstop.
+defaults:
+  build_strategy: fresh
+  dev_capability: fullstack_fastapi_react
+  build_profile: fullstack_fastapi_react
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_plan_review
+        description: Review planning artifacts and build manifest before implementation begins.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  workload_sequence:
+    - type: framing
+      gate: progress_plan_review
+    - type: implementation
+      gate: null
+  build_tasks: true
+  implementation_plan: true
+  output_validation: true
+  # Implementation-profile depth: typed checks exercise meaningfully and
+  # correction has budget to surface + fix structural issues.
+  max_self_eval_passes: 2
+  max_correction_attempts: 3
+  max_build_subtasks: 15
+  # SIP-0092 M1 instrumentation (typed + command acceptance).
+  typed_acceptance: true
+  command_acceptance_checks: true
+  # Long-cycle budget for a full instrumented fullstack build.
+  time_budget_seconds: 7200
+  experiment_context: {}
+  notes: "#279 — instrumented validation + builder + fullstack_fastapi_react (best-of-both)"
