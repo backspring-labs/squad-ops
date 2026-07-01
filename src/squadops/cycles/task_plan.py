@@ -24,8 +24,7 @@ from squadops.capabilities.handlers.build_profiles import (
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
-    REQUIRED_REFINEMENT_ROLES,
-    REQUIRED_WRAPUP_ROLES,
+    WORKLOAD_REQUIRED_ROLES,
     Cycle,
     CycleError,
     Run,
@@ -275,7 +274,9 @@ def _resolve_workload_steps(
     builder_used = False
 
     if workload_type == WorkloadType.FRAMING:
-        _check_required_roles(profile.profile_id, REQUIRED_PLAN_ROLES, profile_roles)
+        _check_required_roles(
+            profile.profile_id, WORKLOAD_REQUIRED_ROLES[workload_type], profile_roles
+        )
         # SIP-0093 PR 93.3: framing sequence is dynamic per
         # plan_authoring_contributors config. Empty/missing contributors
         # → sole-author route through the merger.
@@ -283,7 +284,7 @@ def _resolve_workload_steps(
         steps = build_planning_steps(contributors)
     elif workload_type == WorkloadType.REFINEMENT:
         _check_required_roles(
-            profile.profile_id, REQUIRED_REFINEMENT_ROLES, profile_roles, "refinement"
+            profile.profile_id, WORKLOAD_REQUIRED_ROLES[workload_type], profile_roles, "refinement"
         )
         steps = list(REFINEMENT_TASK_STEPS)
     elif workload_type == WorkloadType.IMPLEMENTATION:
@@ -293,10 +294,14 @@ def _resolve_workload_steps(
         else:
             steps = list(IMPLEMENTATION_TASK_STEPS)
     elif workload_type == WorkloadType.EVALUATION:
-        _check_required_roles(profile.profile_id, REQUIRED_PLAN_ROLES, profile_roles)
+        _check_required_roles(
+            profile.profile_id, WORKLOAD_REQUIRED_ROLES[workload_type], profile_roles
+        )
         steps = list(CYCLE_TASK_STEPS)
     elif workload_type == WorkloadType.WRAPUP:
-        _check_required_roles(profile.profile_id, REQUIRED_WRAPUP_ROLES, profile_roles, "wrap-up")
+        _check_required_roles(
+            profile.profile_id, WORKLOAD_REQUIRED_ROLES[workload_type], profile_roles, "wrap-up"
+        )
         steps = list(WRAPUP_TASK_STEPS)
     else:
         steps = []
