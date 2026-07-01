@@ -2178,16 +2178,27 @@ class QATestHandler(_CycleTaskHandler):
         return None
 
     def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
-        """Get source artifacts filtered by capability (D4, D9)."""
+        """Get source artifacts filtered by capability (D4, D9).
+
+        Includes source files (by ``source_filter`` extension, non-test) AND the
+        capability's ``build_support_files`` (config/entry files matched by
+        basename — package.json, vite.config.js, index.html, …). Without the
+        support files the QA build/test workspace can't build the deliverable and
+        the frontend build check (#290) + vitest skip on "no package.json" (#296).
+        """
         capability = get_capability(
             inputs.get("resolved_config", {}).get("dev_capability", "python_cli")
         )
         contents = inputs.get("artifact_contents", {})
+        support = set(getattr(capability, "build_support_files", ()))
         sources = {}
         for key, value in contents.items():
-            if any(key.endswith(ext) for ext in capability.source_filter):
-                if not _is_test_file(key, capability.test_file_patterns):
-                    sources[key] = value
+            basename = key.replace("\\", "/").rsplit("/", 1)[-1]
+            is_source = any(
+                key.endswith(ext) for ext in capability.source_filter
+            ) and not _is_test_file(key, capability.test_file_patterns)
+            if is_source or basename in support:
+                sources[key] = value
         return sources
 
     @staticmethod
