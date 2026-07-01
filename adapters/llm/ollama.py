@@ -23,6 +23,10 @@ from squadops.ports.llm.provider import LLMPort
 
 logger = logging.getLogger(__name__)
 
+# #158: default timeout for the model-list/health probe (GET /api/tags). Separate
+# from the main request timeout; tunable via the constructor for slow networks.
+_DEFAULT_MODEL_LIST_TIMEOUT = 10.0
+
 
 def _compute_tokens_per_second(data: dict[str, Any]) -> float | None:
     """Compute tokens/second from Ollama response timing fields.
@@ -48,6 +52,7 @@ class OllamaAdapter(LLMPort):
         base_url: str = "http://localhost:11434",
         default_model: str = "llama3.2",
         timeout_seconds: float = 180.0,
+        model_list_timeout_seconds: float = _DEFAULT_MODEL_LIST_TIMEOUT,
     ):
         """Initialize Ollama adapter.
 
@@ -55,10 +60,13 @@ class OllamaAdapter(LLMPort):
             base_url: Ollama server URL
             default_model: Default model to use if not specified in request
             timeout_seconds: Default request timeout
+            model_list_timeout_seconds: Timeout for the model-list/health probe
+                (GET /api/tags), separate from the main request timeout (#158).
         """
         self._base_url = base_url.rstrip("/")
         self._default_model = default_model
         self._timeout = timeout_seconds
+        self._model_list_timeout = model_list_timeout_seconds
         self._models_cache: list[str] = []
         self._client: httpx.AsyncClient | None = None
 
@@ -404,7 +412,7 @@ class OllamaAdapter(LLMPort):
         client = await self._get_client()
 
         try:
-            response = await client.get("/api/tags", timeout=10.0)
+            response = await client.get("/api/tags", timeout=self._model_list_timeout)
             response.raise_for_status()
             data = response.json()
 
@@ -423,7 +431,7 @@ class OllamaAdapter(LLMPort):
         """
         try:
             client = await self._get_client()
-            response = await client.get("/api/tags", timeout=5.0)
+            response = await client.get("/api/tags", timeout=self._model_list_timeout)
             return {
                 "healthy": response.status_code == 200,
                 "base_url": self._base_url,
@@ -496,7 +504,7 @@ class OllamaAdapter(LLMPort):
         """
         client = await self._get_client()
         try:
-            response = await client.get("/api/tags", timeout=10.0)
+            response = await client.get("/api/tags", timeout=self._model_list_timeout)
             response.raise_for_status()
             data = response.json()
             return data.get("models", [])

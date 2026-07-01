@@ -26,6 +26,9 @@ from squadops.ports.auth.authentication import AuthPort
 
 logger = logging.getLogger(__name__)
 
+# #158: default timeout for JWKS/OIDC HTTP fetches; tunable for slow networks.
+_DEFAULT_HTTP_TIMEOUT = 10.0
+
 
 class KeycloakAuthAdapter(AuthPort):
     """OIDC token validation against a Keycloak realm via JWKS."""
@@ -40,6 +43,7 @@ class KeycloakAuthAdapter(AuthPort):
         jwks_forced_refresh_min_interval_seconds: int = 30,
         clock_skew_seconds: int = 30,
         issuer_public_url: str | None = None,
+        http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT,
     ) -> None:
         self._issuer_url = issuer_url.rstrip("/")
         self._audience = audience
@@ -52,6 +56,7 @@ class KeycloakAuthAdapter(AuthPort):
         self._jwks_cache_ttl = jwks_cache_ttl_seconds
         self._forced_refresh_min_interval = jwks_forced_refresh_min_interval_seconds
         self._clock_skew = clock_skew_seconds
+        self._http_timeout = http_timeout_seconds
 
         self._jwks: dict | None = None
         self._jwks_fetched_at: float = 0.0
@@ -60,7 +65,7 @@ class KeycloakAuthAdapter(AuthPort):
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=10.0)
+            self._client = httpx.AsyncClient(timeout=self._http_timeout)
         return self._client
 
     async def _fetch_jwks(self, *, force: bool = False) -> dict:

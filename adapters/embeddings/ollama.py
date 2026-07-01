@@ -28,6 +28,10 @@ MODEL_DIMENSIONS: dict[str, int] = {
 DEFAULT_MODEL = "nomic-embed-text"
 DEFAULT_DIMENSIONS = 768
 
+# #158: default timeout for the model-list/health probe (GET /api/tags),
+# separate from the main embedding-request timeout; tunable for slow networks.
+_DEFAULT_MODEL_LIST_TIMEOUT = 5.0
+
 
 class OllamaEmbeddingsAdapter(EmbeddingsPort):
     """Ollama embeddings adapter for local inference.
@@ -40,6 +44,7 @@ class OllamaEmbeddingsAdapter(EmbeddingsPort):
         base_url: str = "http://localhost:11434",
         model: str = DEFAULT_MODEL,
         timeout_seconds: float = 30.0,
+        model_list_timeout_seconds: float = _DEFAULT_MODEL_LIST_TIMEOUT,
     ):
         """Initialize Ollama embeddings adapter.
 
@@ -47,10 +52,13 @@ class OllamaEmbeddingsAdapter(EmbeddingsPort):
             base_url: Ollama server URL
             model: Embedding model to use
             timeout_seconds: Request timeout
+            model_list_timeout_seconds: Timeout for the model-list/health probe
+                (GET /api/tags), separate from the main request timeout (#158).
         """
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout = timeout_seconds
+        self._model_list_timeout = model_list_timeout_seconds
         self._dimensions = MODEL_DIMENSIONS.get(model, DEFAULT_DIMENSIONS)
         self._client: httpx.AsyncClient | None = None
 
@@ -133,7 +141,7 @@ class OllamaEmbeddingsAdapter(EmbeddingsPort):
         """
         try:
             client = await self._get_client()
-            response = await client.get("/api/tags", timeout=5.0)
+            response = await client.get("/api/tags", timeout=self._model_list_timeout)
             return {
                 "healthy": response.status_code == 200,
                 "base_url": self._base_url,
