@@ -47,6 +47,7 @@ from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.runtime import reasons
+from squadops.runtime.admission import admit_participants, release_participants
 from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult
 from squadops.telemetry.context import use_correlation_context, use_run_ids
@@ -68,6 +69,7 @@ if TYPE_CHECKING:
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
+    from squadops.runtime.coordinator import RuntimeCoordinator
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +124,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         reply_router: ReplyRouter | None = None,
         assignment_port: AssignmentPort | None = None,
         activity_port: RuntimeActivityPort | None = None,
+        coordinator: RuntimeCoordinator | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
@@ -141,6 +144,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # dispatch, complete/fail on reply) so an agent's current task is
         # observable. Best-effort — never breaks dispatch; None disables it.
         self._activity_port = activity_port
+        # SIP-0089 §3.5 (#233): opt-in RuntimeCoordinator. When wired, recruitment
+        # routes each participant ambient→cycle through the coordinator (acquiring
+        # the cycle FocusLease) after the §2.5 guard passes, and releases them on
+        # finalize. When None (memory registry / lite local cycles), recruitment
+        # falls back to §2.5-only — a cycle never hard-fails for missing runtime
+        # infra.
+        self._coordinator = coordinator
         self._cancelled: set[str] = set()
 
         # SIP-0077: Cycle event bus (defaults to NoOp if not provided)
@@ -169,6 +179,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         self._pulse_report_entries = []
         cycle = None
         plan = None
+        # SIP-0089 §3.5 (#233): agents this run transitioned ambient→cycle, to be
+        # returned to ambient (releasing their cycle lease) in the finally. Stays
+        # empty when recruitment defers (admission rolls its own recruits back) or
+        # when no coordinator is wired.
+        recruited_agent_ids: tuple[str, ...] = ()
 
         try:
             cycle, run_root = await self._prepare_cycle_for_run(cycle_id, run_id)
@@ -212,6 +227,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             implementation_plan = await self._load_plan_for_run(cycle, run)
 
             plan = generate_task_plan(cycle, run, profile, plan=implementation_plan)
+            participating_agent_ids = {e.agent_id for e in plan}
 
             # SIP-0089 §2.5: reserve-buffer guard. The plan now names every
             # agent this run would recruit. If one is committed to — or about to
@@ -224,11 +240,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 active_assignments = await self._assignment_port.list_active_assignments(guard_now)
                 decision = reserve_buffer_decision(
                     active_assignments,
-                    {e.agent_id for e in plan},
+                    participating_agent_ids,
                     guard_now,
                 )
                 if not decision.allowed:
                     raise _RecruitmentRejectedError(decision.blocking_agent_id, decision.reason)
+
+            # SIP-0089 §3.5 (#233): having cleared the reserve-buffer guard, route
+            # recruitment through the coordinator — each participant transitions
+            # ambient→cycle, acquiring its cycle FocusLease (§3.4). A lease
+            # conflict is a deferral, not a failure: it rides the same
+            # _RecruitmentRejectedError → RUN_PAUSED path with a typed focus_lease_*
+            # reason (no new EventType). admission rolls back any agents it already
+            # recruited before deferring, so a paused run strands no one in cycle.
+            # Opt-in: skipped when no coordinator is wired (§2.5-only fallback).
+            if self._coordinator is not None:
+                admission = await admit_participants(
+                    self._coordinator,
+                    participating_agent_ids,
+                    owner_ref=run_id,
+                )
+                if not admission.admitted:
+                    raise _RecruitmentRejectedError(admission.blocking_agent_id, admission.reason)
+                recruited_agent_ids = admission.recruited_agent_ids
 
             # Build-only validation (D6): require plan_artifact_refs
             include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
@@ -388,6 +422,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             logger.exception("Run %s failed with unexpected error: %s", run_id, exc)
 
         finally:
+            # SIP-0089 §3.5 (#233): release the cycle leases this run acquired,
+            # whatever the outcome (completed/failed/paused/cancelled). Best-effort
+            # and isolated per agent — a stranded cycle lease would block all of an
+            # agent's future recruitment, so this must run before anything that can
+            # raise. Empty (and skipped) when the run recruited no one.
+            if self._coordinator is not None and recruited_agent_ids:
+                await release_participants(self._coordinator, recruited_agent_ids, owner_ref=run_id)
             await self._finalize_run(
                 cycle_id,
                 run_id,

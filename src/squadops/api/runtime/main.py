@@ -157,6 +157,9 @@ _reconciliation_task = None
 
 # SIP-0089 §2.4: in-process duty-transition scheduler (opt-in; stopped on shutdown)
 _duty_scheduler = None
+# SIP-0089 §3.5 (#233): the single-writer RuntimeCoordinator (D16), built once in
+# the cycle subsystem and shared by the executor (recruitment) and the scheduler.
+_runtime_coordinator = None
 
 
 async def _init_auth_subsystem(config) -> None:
@@ -246,7 +249,7 @@ async def _init_log_forwarding(config) -> None:
 
 async def _init_cycle_subsystem(config, pool) -> None:
     """Initialize SIP-0064 cycle ports + SIP-0066 orchestrator."""
-    global _workflow_tracker, _reply_router
+    global _workflow_tracker, _reply_router, _runtime_coordinator
     try:
         from adapters.cycles.factory import (
             create_artifact_vault,
@@ -333,6 +336,14 @@ async def _init_cycle_subsystem(config, pool) -> None:
             # written here (not in agents) as each task is dispatched/replied.
             activity_port = PostgresRuntimeActivity(pool)
 
+        # SIP-0089 §3.5 (#233): the single-writer coordinator (D16), built once
+        # here and reused by the duty scheduler (see _init_duty_scheduler) so the
+        # executor's recruitment and the scheduler drive the same mode-writer.
+        # None when pool-less → recruitment falls back to the §2.5 guard only.
+        from squadops.api.runtime.scheduler_bootstrap import create_runtime_coordinator
+
+        _runtime_coordinator = create_runtime_coordinator(pool)
+
         flow_executor = create_flow_executor(
             "dispatched",
             cycle_registry=cycle_registry,
@@ -347,6 +358,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             reply_router=_reply_router,
             assignment_port=assignment_port,
             activity_port=activity_port,
+            coordinator=_runtime_coordinator,
         )
 
         set_cycle_ports(
@@ -460,7 +472,9 @@ async def _init_duty_scheduler(config, pool) -> None:
     try:
         from squadops.api.runtime.scheduler_bootstrap import create_duty_scheduler
 
-        _duty_scheduler = create_duty_scheduler(config, pool)
+        # Reuse the single-writer coordinator built in _init_cycle_subsystem (D16);
+        # the scheduler builds its own only if that wiring was skipped.
+        _duty_scheduler = create_duty_scheduler(config, pool, coordinator=_runtime_coordinator)
         if _duty_scheduler is not None:
             await _duty_scheduler.start()
             logger.info("Duty scheduler started")
