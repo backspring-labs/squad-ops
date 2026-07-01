@@ -1,12 +1,18 @@
 """
-Unit tests for the cycle-create preflight capability check — SIP-0095 (#172), Phase 1.
+Unit tests for the cycle-create preflight — SIP-0095 capability check (#172) +
+model-availability check (#224, Spark half).
 
-Bug classes guarded: false-positive blocks on a satisfiable squad; the wrong
-required-role set per workload; unhelpful error text; **incorrectly blocking a
-builder-less build cycle** (the option-A scope: build/implementation impose no
-static role requirement); disabled agents counting toward roles; multi-workload
-non-aggregation; and the combine/decision semantics (any block rejects; warnings
-ride alongside).
+Capability bug classes guarded: false-positive blocks on a satisfiable squad; the
+wrong required-role set per workload; unhelpful error text; **incorrectly blocking
+a builder-less build cycle** (option-A scope); disabled agents counting toward
+roles; multi-workload non-aggregation; combine/decision semantics.
+
+Model-availability bug classes guarded (SIP §6.2/§6.3/§137): blocking on
+unverifiable evidence (backend unreachable MUST warn-and-allow, not block);
+conflating a reachable-empty list with an unreachable backend; false blocks from
+tag normalization (`llama3.2` vs `llama3.2:latest`); false *passes* from
+family inference (`qwen3:7b` satisfying `qwen3:27b`); disabled agents' models
+being checked; non-actionable error text.
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ from squadops.cycles.preflight import (
     Finding,
     PreflightDecision,
     combine,
+    model_availability_decision,
     required_roles_decision,
 )
 
@@ -148,3 +155,98 @@ def test_empty_decision_is_not_rejected():
     d = PreflightDecision()
     assert d.rejected is False
     assert d.summary() == ""
+
+
+# --- model_availability_decision (SIP §6.2/§6.3, #224 — Spark half) ------------
+
+
+def _model_profile(models, *, profile_id="test-squad", disabled_idx=()):
+    """Profile whose enabled agents carry the given model names."""
+    agents = tuple(
+        AgentProfileEntry(
+            agent_id=f"agent-{i}", role=f"r{i}", model=m, enabled=(i not in disabled_idx)
+        )
+        for i, m in enumerate(models)
+    )
+    return SquadProfile(
+        profile_id=profile_id, name="Test", description="", version=1, agents=agents, created_at=NOW
+    )
+
+
+def test_all_required_models_pulled_allows():
+    profile = _model_profile(["qwen3:27b", "nomic-embed-text"])
+    decision = model_availability_decision(profile, ["qwen3:27b", "nomic-embed-text", "extra:1b"])
+    assert decision.rejected is False
+    assert decision.blocking == ()
+    assert decision.warnings == ()
+
+
+def test_missing_model_blocks_with_actionable_message():
+    profile = _model_profile(["qwen3:27b"], profile_id="full")
+    decision = model_availability_decision(profile, ["qwen3:7b", "llama3.2:latest"])
+
+    assert decision.rejected is True
+    (finding,) = decision.blocking
+    assert finding.code == "model_unavailable"
+    assert finding.severity == "block"
+    assert "`qwen3:27b`" in finding.message  # the required-but-missing model
+    assert "squad profile `full`" in finding.message
+    assert "qwen3:7b" in finding.message  # shows what the backend actually has
+
+
+def test_unreachable_backend_warns_and_allows():
+    """None pulled list = unverifiable → warn, never block (SIP §6.3, AC#5)."""
+    profile = _model_profile(["qwen3:27b"])
+    decision = model_availability_decision(profile, None)
+
+    assert decision.rejected is False  # allowed, not blocked on missing evidence
+    (warning,) = decision.warnings
+    assert warning.code == "model_unverifiable"
+    assert warning.severity == "warning"
+    assert "`qwen3:27b`" in warning.message
+
+
+def test_empty_pulled_list_is_verifiable_and_blocks():
+    """Reachable-but-empty (a list, not None) is verifiable → blocks, unlike unreachable."""
+    profile = _model_profile(["qwen3:27b"])
+    decision = model_availability_decision(profile, [])
+    assert decision.rejected is True
+    assert decision.blocking[0].code == "model_unavailable"
+
+
+def test_tagless_model_matches_latest_no_false_block():
+    """`llama3.2` ⇔ `llama3.2:latest` (canonical tag) — no false block (SIP §137)."""
+    profile = _model_profile(["llama3.2"])
+    decision = model_availability_decision(profile, ["llama3.2:latest"])
+    assert decision.rejected is False
+
+
+def test_different_tag_blocks_no_family_inference():
+    """`qwen3:7b` must NOT satisfy a required `qwen3:27b` — no family inference (§137)."""
+    profile = _model_profile(["qwen3:27b"])
+    decision = model_availability_decision(profile, ["qwen3:7b"])
+    assert decision.rejected is True
+
+
+def test_disabled_agent_model_not_checked():
+    """A missing model belonging to a disabled agent must not block."""
+    profile = _model_profile(["present:1b", "missing:27b"], disabled_idx={1})
+    decision = model_availability_decision(profile, ["present:1b"])
+    assert decision.rejected is False
+
+
+def test_multiple_missing_models_each_block():
+    profile = _model_profile(["a:1b", "b:2b", "c:3b"])
+    decision = model_availability_decision(profile, ["a:1b"])
+
+    assert len(decision.blocking) == 2
+    missing = {m for f in decision.blocking for m in ("b:2b", "c:3b") if f"`{m}`" in f.message}
+    assert missing == {"b:2b", "c:3b"}
+
+
+def test_no_enabled_models_is_empty_decision():
+    """No enabled agents with models → nothing to check, even with no backend."""
+    profile = _model_profile(["x:1b"], disabled_idx={0})
+    decision = model_availability_decision(profile, None)
+    assert decision.rejected is False
+    assert decision.blocking == () and decision.warnings == ()
