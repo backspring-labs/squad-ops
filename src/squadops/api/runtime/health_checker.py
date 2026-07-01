@@ -129,6 +129,16 @@ class HealthChecker:
     # ── Network status derivation ───────────────────────────────────────
 
     def _compute_network_status(self, last_heartbeat: datetime | None) -> str:
+        """Heartbeat-age reachability flag. **Legacy — being removed in #305.**
+
+        `network_status` is a heartbeat-derived reachability signal on `agent_status`;
+        the canonical health signal is `runtime_status` on `agent_runtime_state`. As
+        of #305 Part A, no read surface consults `network_status` any more —
+        `runtime_status` is always-populated and the single source of truth. This
+        method survives only to feed the reconciliation loop's offline verdict; **#305
+        Part B removes it and drops the column** (after #158). **Do not add new
+        dependencies on it** (health-status model: `docs/agent-runtime-status-model.md`).
+        """
         if last_heartbeat is None:
             return "offline"
         timeout = self._config.agent.heartbeat_timeout_window
@@ -306,12 +316,17 @@ class HealthChecker:
 
         Failures are isolated — runtime-state writes must not break the
         existing agent_status heartbeat flow (D17 non-authoritative).
+
+        #305 Part A: **always** ensures the runtime row so `runtime_status` is never
+        None at the read surfaces. When lifecycle maps to a status we set it; when it
+        doesn't, we still call `update_heartbeat` (the row is ensured, an existing
+        status is kept via COALESCE, and a fresh row defaults to online) — we never
+        skip, which previously left heartbeating agents row-less and forced the
+        `network_status` fallback.
         """
         if self._runtime_state is None:
             return
         runtime_status = runtime_status_from_lifecycle(lifecycle_state)
-        if runtime_status is None:
-            return
         try:
             await self._runtime_state.update_heartbeat(agent_id, runtime_status=runtime_status)
         except Exception as exc:
@@ -383,10 +398,15 @@ class HealthChecker:
         Non-authoritative (D17): sets only runtime_status, never last_heartbeat_at
         or coordinator-owned fields. Failures are isolated like the heartbeat
         mirror — a runtime-state write must not break reconciliation.
+
+        #305 Part A: ensures the row exists first (mark_offline never creates one),
+        so a never-heartbeated / legacy agent is backfilled and the offline verdict
+        actually lands — guaranteeing runtime_status is populated for every agent.
         """
         if self._runtime_state is None:
             return
         try:
+            await self._runtime_state.ensure_state(agent_id)
             await self._runtime_state.mark_offline(agent_id)
         except Exception as exc:
             logger.warning(

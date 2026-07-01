@@ -27,7 +27,9 @@ _LIFECYCLE_TO_RUNTIME_STATUS: Final[dict[str, str]] = {
 def runtime_status_from_lifecycle(lifecycle_state: str) -> str | None:
     """Return the SIP-0089 `runtime_status` for an agent `lifecycle_state`.
 
-    Returns `None` for unknown values so callers can skip the runtime-state
-    update entirely rather than write a default that would mask drift.
+    Returns `None` for an unmapped `lifecycle_state`. Callers still ensure the
+    runtime row exists (#305 Part A — `runtime_status` must never be None at the
+    read surfaces); a `None` here means only "don't overwrite the stored status"
+    (the row's existing value is kept via COALESCE, and reconciliation owns offline).
     """
     return _LIFECYCLE_TO_RUNTIME_STATUS.get(lifecycle_state)

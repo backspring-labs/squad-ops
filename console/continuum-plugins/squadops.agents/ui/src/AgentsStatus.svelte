@@ -10,9 +10,9 @@
   function mapAgent(a) {
     return {
       name: a.agent_name || a.agent_id || a.name,
-      // Health = runtime_status (SIP-0089); network_status is the legacy fallback
-      // for an agent that has no runtime-state row yet (#230/#231).
-      status: a.runtime_status || a.network_status || a.lifecycle_state || a.status || 'unknown',
+      // Health = runtime_status (SIP-0089) — the single source of truth, now
+      // always-populated (#305 Part A); no network_status/lifecycle fallback.
+      status: a.runtime_status || 'unknown',
       mode: a.mode || null,
       role: a.role_label || a.role || '',
       current_task: a.current_task_id || a.current_task || null,

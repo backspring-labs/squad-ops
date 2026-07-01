@@ -87,7 +87,9 @@ def _render_status_table(
                 a.get("agent_id", ""),
                 a.get("agent_name", ""),
                 a.get("role", ""),
-                a.get("network_status", ""),
+                # Health = runtime_status (SIP-0089) — the single source of truth,
+                # now always-populated (#305 Part A); no network_status fallback.
+                a.get("runtime_status") or "",
                 a.get("lifecycle_state", ""),
                 a.get("version", ""),
                 a.get("last_seen", "") or "",
