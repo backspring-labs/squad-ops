@@ -4,7 +4,7 @@
 **Implements:** `sips/accepted/SIP-0095-Cycle-Create-Preflight.md` (accepted 2026-07-01)
 **Lanes:** Macbook (capability half + route wiring) · Spark (model-availability half + doctor parity)
 
-This plan resolves SIP-0095's two open questions and reconciles the SIP against the actual code, then lays out the build. **Read §1–§3 first — they contain one material scope correction to the accepted SIP that needs a nod before implementation.**
+This plan resolves SIP-0095's two open questions and reconciles the SIP against the actual code, then lays out the build. **§2.1 carried a material scope correction (the builder case is not create-time-checkable); option A is confirmed (2026-07-01) and SIP §6.1 + §9 AC#4 have been amended to match. The materialized-plan/gate half is tracked separately as #295.**
 
 ---
 
@@ -47,7 +47,7 @@ Therefore **SIP-0095 §9 acceptance criterion #4 ("a build-enabled cycle on a bu
 - The **create-time** capability check covers **static workload→role satisfiability** only (the table above). It catches "you requested a `WRAPUP` workload but your squad has no `data` role," etc.
 - The **materialized-plan** capability mismatch (the builder case) stays with `validate_against_profile`. It already runs at dispatch; **optionally** hoisting it earlier — to the `progress_plan_review` gate, right after framing authors the plan and before implementation dispatch — is the real "catch #172 sooner" win, but it is a **distinct seam from create-time** and arguably its own small follow-up (not this SIP's create-time scope).
 
-**Decision for you:** (A) ship SIP-0095 as create-time-only (static role + model) and file the gate-time hoist of `validate_against_profile` as a separate follow-up to fully close #172; or (B) include the gate-time hoist as Phase 5 of this plan. I recommend **(A)** — it keeps SIP-0095 cohesively "create-time," and the gate hoist is a clean, separately-reviewable change. This plan is written for (A) with (B) sketched as an optional appendix phase.
+**Decision: option (A), confirmed 2026-07-01.** SIP-0095 ships **create-time-only** (static role + model). The gate-time hoist of `validate_against_profile` — the materialized-plan/builder half of #172 — is tracked as a **separate follow-up, [#295](https://github.com/backspring-labs/squad-ops/issues/295)**, and is **out of this plan's scope**. SIP §6.1 and §9 AC#4 have been amended to match.
 
 ---
 
@@ -135,7 +135,7 @@ Annotate the `cycles.py` seam with a one-line comment marking the Mac wiring vs 
 2. **Model decision + doctor (Spark)** — `model_availability_decision`; doctor check; unit tests.
 3. **Route wiring (Mac)** — call both in `create_cycle`; 422 mapping; block path.
 4. **Warning surface (Mac)** — response DTO `warnings` + persist on cycle metadata + CLI echo on success.
-5. *(Optional, pending §2.1 decision (B))* — hoist `validate_against_profile` to the `progress_plan_review` gate to catch the materialized-plan/builder mismatch earlier than dispatch.
+*(Out of scope — tracked as #295: hoist `validate_against_profile` to the `progress_plan_review` gate to catch the materialized-plan/builder mismatch earlier than dispatch. Not part of SIP-0095 per option A.)*
 
 ---
 
@@ -155,7 +155,7 @@ Annotate the `cycles.py` seam with a one-line comment marking the Mac wiring vs 
 - **422 mapping:** if `handle_cycle_error` currently maps `CycleError` → 400, either add a `PreflightRejected` subclass → 422 or adjust the mapping; verify no other `CycleError` caller depends on the current status.
 - **Warning-surface persistence:** confirm the cycle record has a metadata field (or `applied_defaults`-adjacent slot) to carry `preflight_warnings` without a schema migration; if not, a small additive migration (Mac lane, migration range 11xx).
 - **Model-name exactness:** exact tag matching (SIP §6.2) means `config/squad-profiles.yaml` model tags must match Ollama's reported tags exactly; a mismatch is a *clear config error* by design, but worth a one-time audit of the current profiles against a pulled list.
-- **Scope creep into the gate:** §2.1 decision (B) would pull the plan-review gate into scope — keep it out unless you choose (B).
+- **Scope creep into the gate:** the plan-review-gate hoist (#295) is deliberately out of scope — keep it out of this plan; it's a separately-reviewable follow-up.
 
 ---
 
@@ -163,6 +163,6 @@ Annotate the `cycles.py` seam with a one-line comment marking the Mac wiring vs 
 
 1. **OQ1:** warnings surface on create response + CLI echo + persisted cycle metadata; defer event/Continuum.
 2. **OQ2:** static workload→role map as tabled; **`build_tasks`/`IMPLEMENTATION` require no static role** (builder-optional).
-3. **Scope correction:** SIP §9 AC#4 revised — the builder/materialized-plan case is a dispatch/gate concern (`validate_against_profile`), not create-time. **Recommend option (A):** SIP-0095 ships create-time-only; the gate-time hoist is a separate follow-up.
+3. **Scope correction (option A, confirmed):** SIP §6.1 + §9 AC#4 amended — the builder/materialized-plan case is a dispatch/gate concern (`validate_against_profile`), not create-time. SIP-0095 ships create-time-only; the gate-time hoist is tracked as **#295**.
 
-Awaiting your review before implementation begins.
+Plan finalized for option A. Ready to implement Phase 1 on approval.

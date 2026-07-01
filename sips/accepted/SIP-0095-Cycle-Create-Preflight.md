@@ -74,8 +74,8 @@ A deterministic validation gate applied before a cycle is persisted or dispatche
 
 Capability satisfiability is evaluated through the **required role sets implied by the requested workloads** — this SIP validates *static workload-role* satisfiability, not a dynamic per-task capability-registry proof. It does not attempt to prove that every eventually-materialized task capability has a handler; **dispatch-time plan validation remains the deeper defense.**
 
-- The gate maps each requested workload (and workload-expanding defaults) to its required role set and blocks when the enabled squad roster is missing any required role.
-- **Workload-expanding defaults MUST be accounted for, not just the bare workload sequence** — in particular, **build-task paths require a builder-capable squad** (the motivating `builder.assemble` case). A build-enabled cycle on a builder-less squad MUST be blocked at create time.
+- The gate maps each requested workload to its required role set and blocks when the enabled squad roster is missing any required role.
+- **The `builder` / materialized-plan case is *not* a create-time check** *(corrected during implementation planning — see `docs/plans/SIP-0095-cycle-create-preflight-plan.md` §2.1)*. `build_tasks` / `IMPLEMENTATION` impose **no** static builder requirement: a builder-less squad gracefully runs the non-builder build path, by design. The `builder.assemble`-on-a-builder-less-squad mismatch (#172's live case) comes from a *materialized* plan authored *during* the run — there is no plan at create time — and is validated by `ImplementationPlan.validate_against_profile` at dispatch; hoisting that check to the plan-review gate is tracked as **#295**. This SIP's create-time capability check is therefore **static workload-role satisfiability only**.
 
 ### 6.2 Model availability (#224)
 
@@ -123,7 +123,7 @@ If the backend cannot be queried, the result is *unverifiable* and MUST be surfa
 1. A rejected cycle-create request **creates no cycle row**.
 2. A rejected cycle-create request **creates no dispatch request** and **starts no background execution**.
 3. The operator receives a **clear, actionable error** naming the missing role or the missing model (per §7).
-4. **Build-task expansion is honored:** a build-enabled cycle on a builder-less squad is blocked at create time (§6.1).
+4. **Builder/materialized-plan mismatch is correctly out of create-time scope (§6.1):** a build-enabled cycle on a builder-less squad is **not** blocked at create time (the non-builder build path is a valid graceful fallback); the `builder.assemble`-type mismatch is caught by dispatch-time `validate_against_profile`, and hoisting it to the plan-review gate is tracked as #295.
 5. **Unverifiable ≠ blocked:** when the backend is unreachable, the cycle is still created and the operator is warned (§6.3) — creation is not blocked on missing evidence.
 6. **Unverifiable warning is visible:** when creation succeeds with unverifiable model availability, the API response includes a warning-level message **and the CLI visibly prints it** — the warning cannot be returned-but-invisible.
 7. **Doctor parity:** the same model-availability finding enforced at create time is visible through `doctor` when `doctor` has enough backend visibility to evaluate it.
