@@ -65,14 +65,22 @@ def create_runtime_coordinator(pool: asyncpg.Pool | None) -> RuntimeCoordinator 
         PostgresFocusLease,
         PostgresRuntimeActivity,
         PostgresRuntimeState,
+        PostgresRuntimeTransaction,
     )
 
     state = PostgresRuntimeState(pool)
     focus_lease = PostgresFocusLease(pool)
     activity = PostgresRuntimeActivity(pool)
     publisher = LoggingRuntimeEventPublisher()
+    # §4.5/D25: the UoW makes the transition's lease+activity+mode writes atomic —
+    # a mode-write failure aborts the transaction rather than best-effort compensating.
+    transaction = PostgresRuntimeTransaction(pool)
     return RuntimeCoordinator(
-        state, events_publisher=publisher, focus_lease=focus_lease, activity=activity
+        state,
+        events_publisher=publisher,
+        focus_lease=focus_lease,
+        activity=activity,
+        transaction=transaction,
     )
 
 
