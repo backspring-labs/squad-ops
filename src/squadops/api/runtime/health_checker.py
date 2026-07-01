@@ -129,6 +129,17 @@ class HealthChecker:
     # ── Network status derivation ───────────────────────────────────────
 
     def _compute_network_status(self, last_heartbeat: datetime | None) -> str:
+        """Heartbeat-age reachability flag. **Legacy — deprecated (#231).**
+
+        `network_status` is a heartbeat-derived reachability signal on
+        `agent_status`; the canonical health signal is `runtime_status` on
+        `agent_runtime_state` (coordinator-owned, D16), into which the
+        reconciliation loop mirrors an offline verdict via `mark_offline`. This is
+        kept only so the field's back-compat consumers keep working and so the
+        reconciliation loop can compute the offline verdict to mirror — **do not
+        add new dependencies on it; read `runtime_status` instead** (health-status
+        model: `docs/agent-runtime-status-model.md`).
+        """
         if last_heartbeat is None:
             return "offline"
         timeout = self._config.agent.heartbeat_timeout_window

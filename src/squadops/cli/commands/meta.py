@@ -87,7 +87,9 @@ def _render_status_table(
                 a.get("agent_id", ""),
                 a.get("agent_name", ""),
                 a.get("role", ""),
-                a.get("network_status", ""),
+                # Health = runtime_status (SIP-0089), falling back to the legacy
+                # network_status only when there's no runtime row yet (#231).
+                a.get("runtime_status") or a.get("network_status", ""),
                 a.get("lifecycle_state", ""),
                 a.get("version", ""),
                 a.get("last_seen", "") or "",
