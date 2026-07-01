@@ -42,8 +42,8 @@ AGENTS_RESPONSE = [
         "agent_name": "Max",
         "role": "Task Lead",
         # Canonical health (SIP-0089) — `recovering` is a runtime_status-only value,
-        # so seeing it in the STATUS column proves the CLI prefers runtime_status
-        # over the (disagreeing) legacy network_status (#231).
+        # so seeing it in the STATUS column proves the CLI shows runtime_status and
+        # NOT the disagreeing legacy network_status (#305: single source of truth).
         "runtime_status": "recovering",
         "mode": "cycle",
         "network_status": "online",
@@ -55,8 +55,10 @@ AGENTS_RESPONSE = [
         "agent_id": "neo",
         "agent_name": "Neo",
         "role": "Developer",
-        # No runtime row yet → STATUS falls back to network_status (#231).
-        "network_status": "online",
+        # runtime_status is always-populated now (#305 Part A) — network_status here
+        # disagrees on purpose and must be ignored (no fallback).
+        "runtime_status": "online",
+        "network_status": "offline",
         "lifecycle_state": "WORKING",
         "version": "0.9.3",
         "last_seen": "2026-02-09T14:00:00Z",
@@ -112,8 +114,8 @@ class TestStatusCommand:
         # Agents table rendered
         assert "Max" in result.output
         assert "Neo" in result.output
-        # #231: STATUS shows runtime_status (max's `recovering` — a runtime-only
-        # value), proving it's preferred over the disagreeing legacy network_status.
+        # #305: STATUS shows runtime_status only (max's `recovering` — a runtime-only
+        # value), proving network_status is not consulted (no fallback).
         assert "recovering" in result.output
 
     @patch("squadops.cli.commands.meta.APIClient")

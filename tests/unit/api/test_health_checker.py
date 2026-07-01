@@ -343,6 +343,9 @@ class TestReconcileOnce:
         await checker._reconcile_once()
 
         runtime_state.mark_offline.assert_awaited_once_with("dead")
+        # #305 Part A: the row is ensured first so a never-heartbeated/legacy agent is
+        # backfilled and the offline verdict actually lands (mark_offline never creates).
+        runtime_state.ensure_state.assert_awaited_once_with("dead")
 
     @pytest.mark.asyncio
     async def test_all_online_agents_not_mirrored(self, mock_config):
@@ -365,6 +368,35 @@ class TestReconcileOnce:
         await checker._reconcile_once()
 
         runtime_state.mark_offline.assert_not_awaited()
+
+
+class TestHeartbeatMirror:
+    """#305 Part A: the heartbeat always ensures a runtime row so runtime_status is
+    never None at the read surfaces — even when lifecycle_state doesn't map to a
+    runtime_status. This is what lets the network_status fallback be removed."""
+
+    def _checker(self, mock_config):
+        runtime_state = AsyncMock()
+        checker = HealthChecker(
+            pg_pool=MagicMock(), redis_client=None, config=mock_config, runtime_state=runtime_state
+        )
+        return checker, runtime_state
+
+    @pytest.mark.asyncio
+    async def test_mapped_lifecycle_sets_runtime_status(self, mock_config):
+        checker, runtime_state = self._checker(mock_config)
+        await checker._update_runtime_state_heartbeat("max", "READY")
+        runtime_state.update_heartbeat.assert_awaited_once_with("max", runtime_status="online")
+
+    @pytest.mark.asyncio
+    async def test_unmapped_lifecycle_still_ensures_the_row(self, mock_config):
+        """The old bug: an unmapped lifecycle (e.g. UNKNOWN, which reconciliation
+        itself sets) made the heartbeat SKIP update_heartbeat, leaving the agent
+        row-less → runtime_status None → the network_status fallback. Now it always
+        calls update_heartbeat (row ensured; existing status kept via COALESCE)."""
+        checker, runtime_state = self._checker(mock_config)
+        await checker._update_runtime_state_heartbeat("ghost", "UNKNOWN")
+        runtime_state.update_heartbeat.assert_awaited_once_with("ghost", runtime_status=None)
 
 
 class TestGetCurrentActivity:
