@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import asyncpg
 
+from adapters.persistence.runtime._conn import acquire
 from squadops.ports.runtime.focus_lease import FocusLeasePort
 from squadops.runtime import reasons
 from squadops.runtime.models import (
@@ -62,8 +64,9 @@ class PostgresFocusLease(FocusLeasePort):
         recall_policy: RecallPolicy = "graceful",
         preemption_grace: timedelta = timedelta(),
         wait: bool = False,
+        conn: Any = None,
     ) -> LeaseDecision:
-        async with self._pool.acquire() as conn:
+        async with acquire(self._pool, conn) as conn:
             # (D12) idempotent replay: a still-active lease with this key wins,
             # so a retried acquire never creates a duplicate.
             existing = await self._active_lease_by_key(conn, idempotency_key)
@@ -132,22 +135,22 @@ class PostgresFocusLease(FocusLeasePort):
         # asyncpg returns e.g. "UPDATE 1"; "UPDATE 0" means no active lease matched.
         return result.split()[-1] != "0"
 
-    async def release_lease(self, lease_id: str, reason_code: str) -> None:
-        await self._mark_released(lease_id)
+    async def release_lease(self, lease_id: str, reason_code: str, *, conn: Any = None) -> None:
+        await self._mark_released(lease_id, conn=conn)
 
-    async def revoke_lease(self, lease_id: str, reason_code: str) -> None:
-        await self._mark_released(lease_id)
+    async def revoke_lease(self, lease_id: str, reason_code: str, *, conn: Any = None) -> None:
+        await self._mark_released(lease_id, conn=conn)
 
-    async def get_current_lease(self, agent_id: str) -> FocusLease | None:
-        async with self._pool.acquire() as conn:
+    async def get_current_lease(self, agent_id: str, *, conn: Any = None) -> FocusLease | None:
+        async with acquire(self._pool, conn) as conn:
             return await self._current_lease(conn, agent_id)
 
-    async def _mark_released(self, lease_id: str) -> None:
+    async def _mark_released(self, lease_id: str, *, conn: Any = None) -> None:
         """Free the active-lease slot. Shared by release (cooperative) and revoke
         (non-cooperative) — the storage effect is identical in v1.1; the audit
         distinction is carried by the coordinator's reason/event, not a column.
         The `released_at IS NULL` guard makes a repeated release/revoke a no-op."""
-        async with self._pool.acquire() as conn:
+        async with acquire(self._pool, conn) as conn:
             await conn.execute(
                 "UPDATE focus_leases SET released_at = now(), updated_at = now() "
                 "WHERE lease_id = $1 AND released_at IS NULL",

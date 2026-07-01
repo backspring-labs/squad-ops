@@ -13,7 +13,7 @@ must not overwrite coordinator-owned fields (`mode`, `focus`,
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from squadops.runtime.models import AgentRuntimeState
@@ -27,10 +27,16 @@ class RuntimeStatePort(ABC):
         """Return the current state for `agent_id`, or `None` if no row exists."""
 
     @abstractmethod
-    async def upsert_state(self, state: AgentRuntimeState) -> AgentRuntimeState:
+    async def upsert_state(
+        self, state: AgentRuntimeState, *, conn: Any = None
+    ) -> AgentRuntimeState:
         """Persist `state` (insert or update by `agent_id`) and return it.
 
         Coordinator-owned writes go through this method. Heartbeat must not.
+
+        `conn` (§4.5/D25): when supplied, the write runs on that unit-of-work
+        connection so it commits atomically with the coordinator's lease/activity
+        writes; when omitted, the adapter acquires its own connection.
         """
 
     @abstractmethod
