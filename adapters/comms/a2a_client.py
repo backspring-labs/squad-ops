@@ -18,6 +18,10 @@ _request_id_counter = itertools.count(1)
 
 logger = logging.getLogger(__name__)
 
+# #158: default timeout for the agent-card discovery fetch
+# (GET /.well-known/agent.json), separate from the main request timeout.
+_DEFAULT_AGENT_CARD_TIMEOUT = 10.0
+
 
 class A2AClientAdapter:
     """Stateless A2A client for proxying chat requests to agent servers.
@@ -26,8 +30,13 @@ class A2AClientAdapter:
     Each request is independent — session state lives in Redis/Postgres.
     """
 
-    def __init__(self, timeout_seconds: float = 180.0) -> None:
+    def __init__(
+        self,
+        timeout_seconds: float = 180.0,
+        agent_card_timeout_seconds: float = _DEFAULT_AGENT_CARD_TIMEOUT,
+    ) -> None:
         self._timeout = timeout_seconds
+        self._agent_card_timeout = agent_card_timeout_seconds
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -53,7 +62,7 @@ class A2AClientAdapter:
         """
         client = await self._get_client()
         url = f"{base_url.rstrip('/')}/.well-known/agent.json"
-        response = await client.get(url, timeout=10.0)
+        response = await client.get(url, timeout=self._agent_card_timeout)
         response.raise_for_status()
         return response.json()
 

@@ -32,6 +32,9 @@ _SUBSCRIBE_RECONNECT_BACKOFF = 0.5
 # live channel — then surface QueueError so the caller is never blocked forever.
 _PUBLISH_MAX_ATTEMPTS = 3
 _PUBLISH_RETRY_BACKOFF = 0.5
+# #158: default poll window for the bounded consume() wait (how long a single
+# collect_messages() cycle blocks before returning). Tunable via the constructor.
+_DEFAULT_CONSUME_POLL_TIMEOUT = 1.0
 
 
 class QueueError(Exception):
@@ -52,6 +55,7 @@ class RabbitMQAdapter(QueuePort):
         self,
         url: str,
         namespace: str | None = None,
+        consume_poll_timeout_seconds: float = _DEFAULT_CONSUME_POLL_TIMEOUT,
     ):
         """
         Initialize RabbitMQ adapter.
@@ -59,9 +63,11 @@ class RabbitMQAdapter(QueuePort):
         Args:
             url: RabbitMQ connection URL (e.g., 'amqp://user:pass@host:port/vhost')
             namespace: Optional namespace to prepend to queue names (e.g., 'comms.namespace')
+            consume_poll_timeout_seconds: Bounded wait per consume() poll cycle (#158).
         """
         self.url = url
         self.namespace = namespace
+        self._consume_poll_timeout = consume_poll_timeout_seconds
         self._connection: Connection | None = None
         self._channel: aio_pika.Channel | None = None
         self._queues: dict[str, Queue] = {}
@@ -271,7 +277,7 @@ class RabbitMQAdapter(QueuePort):
             # Note: This is a simplified approach; for production long-running consumers,
             # consider using a callback-based consumer pattern
             try:
-                await asyncio.wait_for(collect_messages(), timeout=1.0)
+                await asyncio.wait_for(collect_messages(), timeout=self._consume_poll_timeout)
             except TimeoutError:
                 # Timeout is acceptable - we may have gotten some messages or none
                 pass

@@ -13,6 +13,9 @@ from squadops.ports.tools.container import ContainerPort
 from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerResult, ContainerSpec
 
+# #158: default timeout for the docker daemon health probe (`docker info`).
+_DEFAULT_HEALTH_TIMEOUT = 5.0
+
 
 class DockerAdapter(ContainerPort):
     """Docker container adapter.
@@ -21,13 +24,19 @@ class DockerAdapter(ContainerPort):
     Uses docker CLI for simplicity; could be replaced with docker-py.
     """
 
-    def __init__(self, docker_host: str | None = None):
+    def __init__(
+        self,
+        docker_host: str | None = None,
+        health_timeout_seconds: float = _DEFAULT_HEALTH_TIMEOUT,
+    ):
         """Initialize Docker adapter.
 
         Args:
             docker_host: Optional Docker host URL (uses DOCKER_HOST env if not set)
+            health_timeout_seconds: Timeout for the daemon health probe (#158).
         """
         self._docker_host = docker_host
+        self._health_timeout = health_timeout_seconds
 
     async def _run_docker(
         self,
@@ -128,7 +137,7 @@ class DockerAdapter(ContainerPort):
         """Check Docker daemon health."""
         try:
             exit_code, stdout, _ = await self._run_docker(
-                "info", "--format", "{{.ServerVersion}}", timeout=5.0
+                "info", "--format", "{{.ServerVersion}}", timeout=self._health_timeout
             )
             return {
                 "healthy": exit_code == 0,
