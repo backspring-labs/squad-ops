@@ -44,6 +44,11 @@ class DevelopmentCapability:
     test_file_patterns: tuple[str, ...]
     max_completion_tokens: int = 4000
     test_timeout_seconds: int = 60
+    # Config/entry files (by basename) needed to *build/test* the deliverable but
+    # excluded by ``source_filter`` (e.g. package.json, vite.config.js, index.html).
+    # Materialized into the QA build/test workspace so the frontend build check
+    # (#290) and vitest actually run instead of skipping on "no package.json" (#296).
+    build_support_files: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +206,14 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
             "*.spec.js",
             "*.spec.jsx",
         ),
+        build_support_files=(
+            "package.json",
+            "vite.config.js",
+            "vite.config.ts",
+            "index.html",
+            "tsconfig.json",
+            "tsconfig.node.json",
+        ),
         max_completion_tokens=8000,
         test_timeout_seconds=120,
     ),
@@ -304,6 +317,14 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
             "*.test.jsx",
             "*.spec.js",
             "*.spec.jsx",
+        ),
+        build_support_files=(
+            "package.json",
+            "vite.config.js",
+            "vite.config.ts",
+            "index.html",
+            "tsconfig.json",
+            "tsconfig.node.json",
         ),
         max_completion_tokens=12000,
         test_timeout_seconds=180,
