@@ -92,15 +92,14 @@ docker_services:
     timeout_seconds: 90
 
 ollama_models:
-  - name: "qwen2.5:72b"
-    required: true
-  - name: "llama3:70b"
+  # Must cover every squad profile this box runs (config/squad-profiles.yaml):
+  # smoke → qwen2.5:3b-instruct, lite → qwen2.5:7b, full → qwen3.6:27b. Keep in
+  # sync with squad-profiles.yaml so a fresh bootstrap provisions a runnable squad (#285).
+  - name: "qwen2.5:3b-instruct"
     required: true
   - name: "qwen2.5:7b"
     required: true
-  - name: "llama3.1:8b"
-    required: true
-  - name: "qwen2.5:3b-instruct"
+  - name: "qwen3.6:27b"
     required: true
 
 deployment_profile: local

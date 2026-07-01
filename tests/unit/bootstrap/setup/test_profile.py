@@ -450,8 +450,12 @@ class TestRealProfiles:
         assert len(gpu_deps) == 2
         assert all(d.install == "none" for d in gpu_deps)
 
-        # Spark has large models
-        assert len(profile.ollama_models) >= 4
+        # Spark runs the `full` squad, so it must pull `full`'s 27b model — plus
+        # `lite` (7b) and `smoke` (3b) so any validation profile is runnable (#285).
+        model_names = {m.name for m in profile.ollama_models}
+        assert "qwen3.6:27b" in model_names  # `full` — the #285 gap this guards
+        assert "qwen2.5:7b" in model_names  # `lite`
+        assert "qwen2.5:3b-instruct" in model_names  # `smoke`
 
 
 # ---------------------------------------------------------------------------
