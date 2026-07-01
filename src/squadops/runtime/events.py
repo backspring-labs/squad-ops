@@ -38,3 +38,18 @@ RUNTIME_ACTIVITY_STARTED: Final[str] = "runtime_activity.started"
 RUNTIME_ACTIVITY_COMPLETED: Final[str] = "runtime_activity.completed"
 RUNTIME_ACTIVITY_FAILED: Final[str] = "runtime_activity.failed"
 RUNTIME_ACTIVITY_ABORTED: Final[str] = "runtime_activity.aborted"
+
+# Embodiment lifecycle (SIP-0090 Phase 1 §5.2 — EmbodimentCoordinator-emitted). Each
+# attachment transition emits the `embodiment.*` event named for its target state;
+# `EMBODIMENT_HEALTH_CHANGED` covers a health change with no attachment move. Distinct
+# from the reason codes in `reasons.py` (D18).
+EMBODIMENT_ATTACHING: Final[str] = "embodiment.attaching"
+EMBODIMENT_ATTACHED: Final[str] = "embodiment.attached"
+EMBODIMENT_DESYNCED: Final[str] = "embodiment.desynced"
+EMBODIMENT_RECONNECTING: Final[str] = "embodiment.reconnecting"
+EMBODIMENT_DETACHED: Final[str] = "embodiment.detached"
+EMBODIMENT_HEALTH_CHANGED: Final[str] = "embodiment.health_changed"
+
+# Resource-budget enforcement (SIP-0090 Phase 1 §7.2). Emitted whenever a budget
+# request is rejected on exhaustion — degradation is never silent.
+BUDGET_EXHAUSTED: Final[str] = "budget.exhausted"

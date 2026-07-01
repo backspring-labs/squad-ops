@@ -28,6 +28,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+from squadops.runtime.reasons import BUDGET_EXHAUSTED
+
 BudgetDimension = Literal["attention", "compute", "action", "concurrency"]
 CONSUMABLE_DIMENSIONS: frozenset[BudgetDimension] = frozenset({"attention", "compute", "action"})
 
@@ -39,7 +41,9 @@ ExhaustionOutcome = Literal[
     "require_operator_override",
 ]
 
-BUDGET_EXHAUSTED_REASON = "budget_exhausted"
+# `budget_exhausted` is the single canonical reason code — sourced from
+# `runtime.reasons` (not redefined here) so there is one source of truth.
+BUDGET_EXHAUSTED_REASON = BUDGET_EXHAUSTED
 
 # Default enforcement policy: which outcome each dimension forces on exhaustion
 # (§7.2). Conservative by design — the safe default for an over-budget agent is to

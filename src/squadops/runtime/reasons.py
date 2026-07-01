@@ -55,3 +55,24 @@ ACTIVITY_PREEMPTED_BY_MODE_CHANGE: Final[str] = "activity_preempted_by_mode_chan
 
 # Ambient irreversibility policy (Phase 4 §4.6 — v1.2 embodiment seam, no v1.1 callers)
 AMBIENT_IRREVERSIBLE_ACTION_FORBIDDEN: Final[str] = "ambient_irreversible_action_forbidden"
+
+# Embodiment lifecycle reasons (SIP-0090 Phase 1 §5.2 — the "why" behind each
+# attachment transition, supplied to the EmbodimentCoordinator and echoed on the
+# emitted `embodiment.*` event). Distinct from the event names in `events.py` (D18).
+EMBODIMENT_ATTACH_REQUESTED: Final[str] = "embodiment_attach_requested"
+EMBODIMENT_ATTACH_SUCCEEDED: Final[str] = "embodiment_attach_succeeded"
+EMBODIMENT_ATTACH_FAILED: Final[str] = "embodiment_attach_failed"
+EMBODIMENT_DESYNC_DETECTED: Final[str] = "embodiment_desync_detected"
+EMBODIMENT_RECONNECT_STARTED: Final[str] = "embodiment_reconnect_started"
+EMBODIMENT_RECONNECT_FAILED: Final[str] = "embodiment_reconnect_failed"
+EMBODIMENT_RELEASED: Final[str] = "embodiment_released"
+EMBODIMENT_HEALTH_CHANGED: Final[str] = "embodiment_health_changed"
+
+# Transition-rejection reasons (SIP-0090 §5.2 — EmbodimentCoordinator, mirrors the
+# SIP-0089 INVALID_MODE_TRANSITION / MISSING_REASON_CODE precedent).
+INVALID_ATTACHMENT_TRANSITION: Final[str] = "invalid_attachment_transition"
+EMBODIMENT_ALREADY_ACTIVE: Final[str] = "embodiment_already_active"
+
+# Resource-budget enforcement (SIP-0090 Phase 1 §7.2). The single canonical reason a
+# budget-exhaustion decision carries; `runtime.budgets` imports it (single source).
+BUDGET_EXHAUSTED: Final[str] = "budget_exhausted"
