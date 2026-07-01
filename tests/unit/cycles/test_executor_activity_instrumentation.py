@@ -73,7 +73,7 @@ class _FakeActivityPort(RuntimeActivityPort):
         self.started.append({"agent_id": agent_id, **kwargs})
         return _activity()
 
-    async def update_state(self, activity_id, state):
+    async def update_state(self, activity_id, state, *, conn=None):
         raise NotImplementedError
 
     async def complete_activity(self, activity_id, *, evidence_ref=None):
@@ -84,10 +84,10 @@ class _FakeActivityPort(RuntimeActivityPort):
         self.failed.append((activity_id, reason_code))
         return None
 
-    async def abort_activity(self, activity_id, reason_code):
+    async def abort_activity(self, activity_id, reason_code, *, conn=None):
         raise NotImplementedError
 
-    async def get_current_activity(self, agent_id):
+    async def get_current_activity(self, agent_id, *, conn=None):
         raise NotImplementedError
 
 

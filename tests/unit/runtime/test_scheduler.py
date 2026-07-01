@@ -104,7 +104,7 @@ class _FakeStatePort(RuntimeStatePort):
     async def get_state(self, agent_id):
         return self._row
 
-    async def upsert_state(self, state):
+    async def upsert_state(self, state, *, conn=None):
         self._row = state
         self.upserts.append(state)
         return state

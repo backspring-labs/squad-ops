@@ -1,15 +1,15 @@
-"""Unit tests for SIP-0089 §4.5 (thin v1.1 seam) — coordinator RuntimeActivity action.
+"""Unit tests for SIP-0089 §4.5 — coordinator RuntimeActivity action.
 
 A mode change orphans any activity bound to the *previous* mode; the coordinator
-aborts it best-effort, post-write. Bug classes guarded:
+aborts it as part of the transition's unit of work, in §4.5 order (before the mode
+write; #244/D25). Bug classes guarded:
 - an activity left running after its mode ended (stale "current work");
 - aborting an activity that belongs to the mode being ENTERED (false abort);
-- the activity action breaking an otherwise-applied transition (it must be
-  best-effort — observability never fails a mode change);
+- an abort failure aborting the whole transition (atomicity — no "mode changed but
+  stale activity still running" state; supersedes the Phase-4 best-effort seam);
 - emitting/aborting when there is no current activity.
 
-The full §4.5 transition order + D25 single transaction are deferred to #244; these
-tests pin the v1.1 seam behavior.
+Events are emitted post-commit, so an aborted transition emits none.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ class _FakeStatePort(RuntimeStatePort):
     async def get_state(self, agent_id):
         return self._rows.get(agent_id)
 
-    async def upsert_state(self, state):
+    async def upsert_state(self, state, *, conn=None):
         self._rows[state.agent_id] = state
         self.upserts.append(state)
         return state
@@ -89,7 +89,7 @@ class _FakeActivityPort(RuntimeActivityPort):
     async def start_activity(self, agent_id, **kwargs):  # unused here
         raise NotImplementedError
 
-    async def update_state(self, activity_id, state):  # unused here
+    async def update_state(self, activity_id, state, *, conn=None):  # unused here
         raise NotImplementedError
 
     async def complete_activity(self, activity_id, *, evidence_ref=None):  # unused here
@@ -98,7 +98,7 @@ class _FakeActivityPort(RuntimeActivityPort):
     async def fail_activity(self, activity_id, reason_code):  # unused here
         raise NotImplementedError
 
-    async def abort_activity(self, activity_id, reason_code):
+    async def abort_activity(self, activity_id, reason_code, *, conn=None):
         if self.abort_raises:
             raise RuntimeError("boom")
         self.aborted.append((activity_id, reason_code))
@@ -106,7 +106,7 @@ class _FakeActivityPort(RuntimeActivityPort):
         self._current = None
         return replace(cur, state="aborted") if cur is not None else None
 
-    async def get_current_activity(self, agent_id):
+    async def get_current_activity(self, agent_id, *, conn=None):
         return self._current
 
 
@@ -172,21 +172,30 @@ async def test_no_current_activity_is_a_noop():
     assert events.RUNTIME_ACTIVITY_ABORTED not in pub.names()
 
 
-async def test_activity_abort_failure_does_not_break_transition():
-    """Bug class (best-effort): the activity action is observability — a failure
-    aborting the activity must NOT fail an already-applied mode transition. The
-    mode is written, the transition reports applied, no abort event is emitted."""
+async def test_activity_abort_failure_aborts_the_transition():
+    """Bug class (§4.5/D25): the activity action is now part of the atomic unit and
+    runs BEFORE the mode write, so a failure aborting the orphaned activity aborts
+    the whole transition — the mode is NOT written and nothing is emitted. This
+    supersedes the Phase-4 best-effort seam (the coordinator can't make the abort
+    best-effort inside a unit of work without a savepoint, which would leak the
+    driver into the domain) — and it is strictly *safer*: there is no "mode changed
+    but stale activity still running" state, because either both happen or neither."""
     state = _FakeStatePort(_state(mode="cycle"))
     pub = _RecordingPublisher()
     act = _FakeActivityPort(_activity(mode="cycle"), abort_raises=True)
     coord = RuntimeCoordinator(state, events_publisher=pub, activity=act)
 
-    outcome = await coord.request_transition(
-        "max", "ambient", reasons.CYCLE_COMPLETED, requester_kind="coordinator", owner_ref="cyc-1"
-    )
+    with pytest.raises(RuntimeError, match="boom"):
+        await coord.request_transition(
+            "max",
+            "ambient",
+            reasons.CYCLE_COMPLETED,
+            requester_kind="coordinator",
+            owner_ref="cyc-1",
+        )
 
-    assert outcome.applied is True and state.upserts[-1].mode == "ambient"
-    assert events.RUNTIME_ACTIVITY_ABORTED not in pub.names()  # abort failed → no event
+    assert state.upserts == []  # mode never written — the abort precedes it (§4.5)
+    assert pub.names() == []  # nothing committed → no events
 
 
 async def test_no_activity_port_keeps_prior_behavior():

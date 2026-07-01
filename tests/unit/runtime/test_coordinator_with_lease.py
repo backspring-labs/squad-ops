@@ -61,7 +61,7 @@ class _FakeStatePort(RuntimeStatePort):
     async def get_state(self, agent_id):
         return self._rows.get(agent_id)
 
-    async def upsert_state(self, state):
+    async def upsert_state(self, state, *, conn=None):
         if self.fail_upsert:
             raise RuntimeError("simulated mode-write failure")
         self._rows[state.agent_id] = state
@@ -118,6 +118,7 @@ class _FakeFocusLease(FocusLeasePort):
         recall_policy="graceful",
         preemption_grace=timedelta(),
         wait=False,
+        conn=None,
     ):
         cur = self._active.get(agent_id)
         if cur is not None:
@@ -150,15 +151,15 @@ class _FakeFocusLease(FocusLeasePort):
     async def renew_lease(self, lease_id, *, expires_at=None):
         return True
 
-    async def release_lease(self, lease_id, reason_code):
+    async def release_lease(self, lease_id, reason_code, *, conn=None):
         self.released.append(lease_id)
         self._drop(lease_id)
 
-    async def revoke_lease(self, lease_id, reason_code):
+    async def revoke_lease(self, lease_id, reason_code, *, conn=None):
         self.revoked.append(lease_id)
         self._drop(lease_id)
 
-    async def get_current_lease(self, agent_id):
+    async def get_current_lease(self, agent_id, *, conn=None):
         return self._active.get(agent_id)
 
     def _drop(self, lease_id):
