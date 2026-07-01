@@ -1,4 +1,4 @@
-last_assigned: 94
+last_assigned: 95
 sips:
 - sip_uid: null
   sip_number: null
@@ -855,3 +855,12 @@ sips:
   approver: jladd
   created_at: '2026-05-02T00:00:00Z'
   updated_at: '2026-06-21T18:10:41.938458Z'
+- sip_uid: null
+  sip_number: 95
+  title: Cycle-Create Preflight
+  path: sips/accepted/SIP-0095-Cycle-Create-Preflight.md
+  status: accepted
+  author: jladd
+  approver: jladd
+  created_at: '2026-07-01T00:00:00Z'
+  updated_at: '2026-06-30T21:57:45.847512Z'
