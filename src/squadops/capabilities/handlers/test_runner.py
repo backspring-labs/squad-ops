@@ -69,6 +69,44 @@ def _materialize_files(
             fh.write(rec["content"])
 
 
+def _find_package_json_dir(files: list[dict[str, str]]) -> str | None:
+    """Return the workspace-relative dir of the shallowest ``package.json``.
+
+    Discovers where the Node project root actually is instead of assuming a fixed
+    ``frontend/`` — models sometimes place ``package.json`` at ``frontend/src/``
+    or the workspace root (#303). ``""`` means the workspace root; ``None`` means
+    no ``package.json`` was produced at all.
+    """
+    dirs = [
+        os.path.dirname(rec["path"])
+        for rec in files
+        if os.path.basename(rec["path"]) == "package.json"
+    ]
+    if not dirs:
+        return None
+    # Shallowest (fewest path segments, then shortest) is the real project root.
+    return min(dirs, key=lambda d: (d.count("/") if d else -1, len(d)))
+
+
+def _source_dir_pythonpath(workspace: str, source_files: list[dict[str, str]]) -> str:
+    """Build a ``PYTHONPATH`` covering every dir that holds a Python source file.
+
+    So a ``backend/``-nested app whose test does ``from main import app`` (main at
+    ``backend/main.py``) imports cleanly even though pytest runs from the
+    workspace root (#303).
+    """
+    dirs = {
+        os.path.dirname(os.path.join(workspace, rec["path"]))
+        for rec in source_files
+        if rec["path"].endswith(".py")
+    }
+    existing = os.environ.get("PYTHONPATH", "")
+    parts = [workspace, *sorted(dirs)]
+    if existing:
+        parts.append(existing)
+    return os.pathsep.join(parts)
+
+
 async def run_generated_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
@@ -93,6 +131,7 @@ async def run_generated_tests(
         all_files = source_files + test_files
         _materialize_files(workspace, all_files)
 
+        env = {**os.environ, "PYTHONPATH": _source_dir_pythonpath(workspace, source_files)}
         proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
@@ -101,6 +140,7 @@ async def run_generated_tests(
             "--tb=short",
             "-q",
             cwd=workspace,
+            env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -147,14 +187,12 @@ async def run_generated_tests(
 async def run_node_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
-    target_dir: str | None = None,
     timeout_seconds: int = 60,
 ) -> RunTestsResult:
     """Run vitest in a Node workspace (D6).
 
-    Materializes files, runs ``npm install`` then ``npx vitest run``.
-    *target_dir* is the subdirectory within the workspace where
-    ``package.json`` lives (e.g., ``"frontend"`` for fullstack projects).
+    Materializes files, discovers the ``package.json`` dir (#303 — don't assume a
+    fixed ``frontend/``), then runs ``npm install`` and ``npx vitest run`` there.
 
     Returns a ``RunTestsResult`` — never raises.
     """
@@ -171,17 +209,16 @@ async def run_node_tests(
         all_files = source_files + test_files
         _materialize_files(workspace, all_files)
 
-        # Resolve cwd: workspace/target_dir if provided, else workspace
-        cwd = os.path.join(workspace, target_dir) if target_dir else workspace
-
-        # Check for package.json
-        if not os.path.isfile(os.path.join(cwd, "package.json")):
+        # Discover where package.json actually is (#303) — don't assume a fixed dir.
+        pkg_dir = _find_package_json_dir(all_files)
+        if pkg_dir is None:
             return RunTestsResult(
                 executed=False,
-                error=f"No package.json found in {target_dir or 'workspace root'}",
+                error="No package.json found — cannot run vitest",
                 test_file_count=len(test_files),
                 source_file_count=len(source_files),
             )
+        cwd = os.path.join(workspace, pkg_dir) if pkg_dir else workspace
 
         # npm install
         try:
@@ -316,8 +353,10 @@ async def run_frontend_build(
     root ``index.html`` (observed in cyc_2f415e43f9cf: ``vite build`` failed
     immediately, yet the run shipped green).
 
-    Skips (``ran=False``) when there is no frontend source, no ``package.json``,
-    or Node is unavailable — a skip is never a failure. Never raises.
+    Skips (``ran=False``) when there is no frontend source at all, or Node is
+    unavailable — a skip is never a failure. But frontend source present with no
+    discoverable ``package.json`` is a BLOCKING failure (#303) — a frontend that
+    can't build is broken, not absent. Never raises.
     """
     frontend_source = (
         [rec for rec in source_files if rec["path"].startswith(f"{target_dir}/")]
@@ -330,11 +369,19 @@ async def run_frontend_build(
     workspace = tempfile.mkdtemp(prefix="qa_build_")
     try:
         _materialize_files(workspace, frontend_source)
-        cwd = os.path.join(workspace, target_dir) if target_dir else workspace
-
+        # Discover the package.json dir (#303) — don't assume target_dir/package.json.
+        pkg_dir = _find_package_json_dir(frontend_source)
+        if pkg_dir is None:
+            # Frontend source exists (checked above) but no package.json anywhere:
+            # the deliverable can't build — a real failure, not a benign skip (#303).
+            return BuildCheckResult(
+                ran=True,
+                ok=False,
+                exit_code=1,
+                error="frontend source present but no package.json found — cannot build",
+            )
+        cwd = os.path.join(workspace, pkg_dir) if pkg_dir else workspace
         pkg_path = os.path.join(cwd, "package.json")
-        if not os.path.isfile(pkg_path):
-            return BuildCheckResult(ran=False, error="no package.json — cannot build")
 
         # Prefer the package's own build script; fall back to vite build.
         import json
@@ -446,7 +493,6 @@ async def run_fullstack_tests(
     frontend_result = await run_node_tests(
         frontend_source,
         frontend_tests,
-        target_dir="frontend",
         timeout_seconds=timeout_seconds,
     )
 
