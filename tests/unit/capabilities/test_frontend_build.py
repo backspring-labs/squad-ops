@@ -12,8 +12,16 @@ import asyncio
 
 import pytest
 
+import squadops.capabilities.handlers.test_runner as tr
+from squadops.capabilities.dev_capabilities import (
+    TEST_FRAMEWORK_BOTH,
+    TEST_FRAMEWORK_PYTEST,
+    TEST_FRAMEWORK_VITEST,
+)
 from squadops.capabilities.handlers.test_runner import (
     BuildCheckResult,
+    RunTestsResult,
+    run_build_validation,
     run_frontend_build,
 )
 
@@ -123,3 +131,57 @@ async def test_missing_node_is_skip_not_failure(monkeypatch):
     )
     assert result.ran is False
     assert result.failed is False
+
+
+# --- run_build_validation: framework dispatch + blocking-build fold ------------
+# The QA handler is framework-agnostic; this orchestration lives in test_runner.
+
+
+async def test_build_validation_backend_only_skips_build(monkeypatch):
+    """pytest/backend-only capabilities have no frontend — never invoke a build."""
+    called = {"build": False}
+
+    async def _generated(*_a, **_k):
+        return RunTestsResult(executed=True, exit_code=0)
+
+    async def _build(*_a, **_k):
+        called["build"] = True
+        return BuildCheckResult(ran=True, ok=False)
+
+    monkeypatch.setattr(tr, "run_generated_tests", _generated)
+    monkeypatch.setattr(tr, "run_frontend_build", _build)
+    result = await run_build_validation(TEST_FRAMEWORK_PYTEST, [], [{"path": "t", "content": "x"}])
+    assert result.exit_code == 0
+    assert called["build"] is False
+
+
+async def test_build_validation_build_failure_blocks_even_when_tests_pass(monkeypatch):
+    """A frontend build failure is blocking even where fullstack tests passed (D13)."""
+
+    async def _fullstack(*_a, **_k):
+        return RunTestsResult(executed=True, exit_code=0)  # tests green
+
+    async def _build(*_a, **_k):
+        return BuildCheckResult(ran=True, ok=False, exit_code=2, error="vite build failed")
+
+    monkeypatch.setattr(tr, "run_fullstack_tests", _fullstack)
+    monkeypatch.setattr(tr, "run_frontend_build", _build)
+    result = await run_build_validation(TEST_FRAMEWORK_BOTH, [], [{"path": "t", "content": "x"}])
+    assert result.tests_passed is False
+    assert result.exit_code == 2
+    assert "vite build failed" in result.error
+
+
+async def test_build_validation_build_skip_does_not_fail(monkeypatch):
+    """A build skip (no node) must not turn a passing suite red."""
+
+    async def _node(*_a, **_k):
+        return RunTestsResult(executed=True, exit_code=0)
+
+    async def _build(*_a, **_k):
+        return BuildCheckResult(ran=False, error="npm not found")
+
+    monkeypatch.setattr(tr, "run_node_tests", _node)
+    monkeypatch.setattr(tr, "run_frontend_build", _build)
+    result = await run_build_validation(TEST_FRAMEWORK_VITEST, [], [{"path": "t", "content": "x"}])
+    assert result.tests_passed is True

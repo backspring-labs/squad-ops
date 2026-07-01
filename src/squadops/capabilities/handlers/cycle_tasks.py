@@ -2236,64 +2236,26 @@ class QATestHandler(_CycleTaskHandler):
         sources: dict[str, str],
         extracted: list[dict],
     ) -> tuple[Any, dict]:
-        """Run test suite and return (test_result, report_artifact)."""
-        from squadops.capabilities.dev_capabilities import (
-            TEST_FRAMEWORK_BOTH,
-            TEST_FRAMEWORK_VITEST,
-        )
-        from squadops.capabilities.handlers.test_runner import (
-            run_frontend_build,
-            run_fullstack_tests,
-            run_generated_tests,
-            run_node_tests,
-        )
+        """Run the build-validation suite and return (result, report_artifact).
+
+        Framework dispatch (pytest/vitest/both) and the #276 frontend build check
+        live in ``test_runner`` (which owns test-framework knowledge). This handler
+        stays framework-agnostic — it passes ``capability.test_framework`` through
+        and reads only the generic ``RunTestsResult``.
+        """
+        from squadops.capabilities.handlers.test_runner import run_build_validation
 
         source_file_records = [{"path": p, "content": c} for p, c in sources.items()]
         test_file_records = [
             {"path": rec["filename"], "content": rec["content"]} for rec in extracted
         ]
-        test_timeout = capability.test_timeout_seconds
 
-        if capability.test_framework == TEST_FRAMEWORK_VITEST:
-            test_result = await run_node_tests(
-                source_file_records,
-                test_file_records,
-                timeout_seconds=test_timeout,
-            )
-        elif capability.test_framework == TEST_FRAMEWORK_BOTH:
-            test_result = await run_fullstack_tests(
-                source_file_records,
-                test_file_records,
-                timeout_seconds=test_timeout,
-            )
-        else:
-            test_result = await run_generated_tests(
-                source_file_records,
-                test_file_records,
-                timeout_seconds=test_timeout,
-            )
-
-        # #276: vitest unit tests pass even when the app cannot build (e.g. a Vite
-        # app missing its root index.html), so a non-runnable frontend ships green.
-        # Verify the frontend actually builds and fold a build failure into the
-        # test outcome so the existing acceptance fold -> SEMANTIC_FAILURE ->
-        # correction loop handles it. A skip (no frontend / no node) is not a failure.
-        build_result = None
-        if capability.test_framework in (TEST_FRAMEWORK_VITEST, TEST_FRAMEWORK_BOTH):
-            build_result = await run_frontend_build(
-                source_file_records, timeout_seconds=test_timeout
-            )
-            if build_result.failed:
-                from dataclasses import replace
-
-                merged_error = "; ".join(
-                    part for part in (test_result.error, build_result.error) if part
-                )
-                test_result = replace(
-                    test_result,
-                    exit_code=test_result.exit_code or build_result.exit_code or 1,
-                    error=merged_error,
-                )
+        test_result = await run_build_validation(
+            capability.test_framework,
+            source_file_records,
+            test_file_records,
+            timeout_seconds=capability.test_timeout_seconds,
+        )
 
         report_lines = [
             "# Test Execution Report\n",
@@ -2302,15 +2264,6 @@ class QATestHandler(_CycleTaskHandler):
             f"**Test files:** {test_result.test_file_count}\n",
             f"**Source files:** {test_result.source_file_count}\n",
         ]
-        if build_result is not None:
-            if build_result.failed:
-                report_lines.append(f"\n**Frontend build:** FAILED — {build_result.error}\n")
-                if build_result.stderr:
-                    report_lines.append(f"\n## Build stderr\n\n```\n{build_result.stderr}\n```\n")
-            elif build_result.ran:
-                report_lines.append("\n**Frontend build:** passed\n")
-            else:
-                report_lines.append(f"\n**Frontend build:** skipped ({build_result.error})\n")
         if test_result.stdout:
             report_lines.append(f"\n## stdout\n\n```\n{test_result.stdout}\n```\n")
         if test_result.stderr:
