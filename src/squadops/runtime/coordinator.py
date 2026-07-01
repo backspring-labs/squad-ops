@@ -19,17 +19,21 @@ Phase 2 gates:
 Phase 3 (§3.4) wires FocusLease arbitration: entering a focus-bearing mode
 (`cycle`/`duty`) must secure the owner's lease *before* the mode write (§4.5
 step 4 precedes step 6), and **lease ≠ mode** — a granted lease never changes
-`RuntimeMode`; the upsert is authoritative. Phase 3 uses best-effort compensation
-(a lease acquired for a transition is rolled back if the mode write fails — no
-stranded leases). With `focus_lease=None` the coordinator behaves as in Phase 2.
+`RuntimeMode`; the upsert is authoritative. With `focus_lease=None` the
+coordinator behaves as in Phase 2.
 
-Phase 4 (§4.5, thin v1.1 seam) wires a RuntimeActivity action: a mode change
-orphans any activity bound to the previous mode, so it is aborted best-effort
-*after* the mode write. The full §4.5 transition order (activity before mode) and
-D25's single-Postgres-transaction wrapping of lease+activity+mode remain a
-follow-up in #244 (now unblocked — recruitment #233 has landed); the
-activity-orphan path stays unexercised in v1.1. With `activity=None` there is no
-activity bookkeeping.
+Phase 4 (§4.5) wires a RuntimeActivity action: a mode change orphans any activity
+bound to the previous mode, so it is aborted as part of the transition. With
+`activity=None` there is no activity bookkeeping.
+
+#244/D25 realizes the full §4.5 order and atomicity: `_apply_transition` runs
+lease (step 4) → activity abort (step 5) → mode write (step 6) inside a
+`RuntimeTransactionPort.begin()` unit of work. With a real UoW a failure at any
+step *aborts the transaction*, rolling back the lease acquisition and the activity
+abort (no stranded leases, no orphaned activity); with the default null UoW
+(no transaction port) the writes use their own connections and best-effort
+compensation (release the just-acquired lease on a failed mode write) stands in.
+Events are emitted only *after* the unit of work commits.
 
 On apply, a canonical mode-transition event plus the relevant `focus_lease.*`
 events are emitted, each with a *separate* reason code (D14/D18) through the
