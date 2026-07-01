@@ -158,7 +158,8 @@
         <div class="squad-row">
           {#each agentStatus as agent}
             <div class="squad-member">
-              <span class="squad-dot {agent.network_status === 'online' ? 'dot-online' : 'dot-offline'}"></span>
+              <!-- Health = runtime_status (SIP-0089); network_status is the legacy fallback (#231) -->
+              <span class="squad-dot {(agent.runtime_status || agent.network_status) === 'online' ? 'dot-online' : 'dot-offline'}"></span>
               <span class="squad-name">{agent.agent_name || agent.agent_id}</span>
               <span class="squad-role">{agent.role_label || agent.role || ''}</span>
             </div>
