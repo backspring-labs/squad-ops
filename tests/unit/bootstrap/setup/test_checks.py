@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import squadops.bootstrap.setup.checks as checks_mod
 from squadops.bootstrap.setup.checks import (
     CheckResult,
     check_auth_token,
@@ -31,6 +34,7 @@ from squadops.bootstrap.setup.profile import (
     PythonSpec,
     SystemDep,
 )
+from squadops.cycles.models import AgentProfileEntry, ProfileNotFoundError, SquadProfile
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -537,3 +541,80 @@ class TestRunChecks:
             result = check_system_dep(dep)
         assert result.passed is False
         assert result.fix_command is not None
+
+
+# ---------------------------------------------------------------------------
+# Squad model-availability check (#224 doctor parity — shares the create-time
+# decision so `doctor` and cycle-create can't drift on "is the model available").
+# ---------------------------------------------------------------------------
+
+
+def _squad_profile(models, *, pid="full"):
+    agents = tuple(
+        AgentProfileEntry(agent_id=f"a{i}", role=f"r{i}", model=m, enabled=True)
+        for i, m in enumerate(models)
+    )
+    return SquadProfile(
+        profile_id=pid,
+        name="X",
+        description="",
+        version=1,
+        agents=agents,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
+class TestSquadModelChecks:
+    """`_collect_squad_checks` maps the shared model-availability decision to doctor
+    CheckResults: available→pass(✓), missing→hard fail(✗), unreachable→warn(~)."""
+
+    def _run(self, monkeypatch, *, installed, squad=None, squad_profile="full", not_found=False):
+        class _FakeCSP:
+            def __init__(self, *a, **k):
+                pass
+
+            async def get_profile(self, pid):
+                if not_found:
+                    raise ProfileNotFoundError(pid)
+                return squad
+
+        monkeypatch.setattr("adapters.cycles.config_squad_profile.ConfigSquadProfile", _FakeCSP)
+        monkeypatch.setattr(checks_mod, "_query_ollama_models", lambda: installed)
+        return checks_mod._collect_squad_checks(SimpleNamespace(squad_profile=squad_profile))
+
+    def test_all_models_available_passes(self, monkeypatch):
+        results = self._run(
+            monkeypatch, squad=_squad_profile(["qwen3.6:27b"]), installed={"qwen3.6:27b", "x:1b"}
+        )
+        assert len(results) == 1
+        assert results[0].passed is True
+        assert results[0].category == "squad"
+
+    def test_missing_model_is_hard_fail(self, monkeypatch):
+        results = self._run(
+            monkeypatch, squad=_squad_profile(["qwen3.6:27b"]), installed={"qwen2.5:7b"}
+        )
+        (r,) = results
+        assert r.passed is False and r.heuristic is False  # ✗ hard fail
+        assert "qwen3.6:27b" in r.message
+
+    def test_unreachable_backend_warns_not_fails(self, monkeypatch):
+        """installed=None (ollama unreachable) → heuristic warn (~), never a hard fail."""
+        results = self._run(monkeypatch, squad=_squad_profile(["qwen3.6:27b"]), installed=None)
+        (r,) = results
+        assert r.passed is False and r.heuristic is True  # ~ warn-and-allow
+
+    def test_empty_backend_is_hard_fail_not_warn(self, monkeypatch):
+        """Reachable-but-empty (set(), not None) is verifiable → hard fail, not warn."""
+        results = self._run(monkeypatch, squad=_squad_profile(["qwen3.6:27b"]), installed=set())
+        (r,) = results
+        assert r.passed is False and r.heuristic is False
+
+    def test_no_squad_profile_yields_no_checks(self, monkeypatch):
+        assert self._run(monkeypatch, installed=set(), squad_profile=None) == []
+
+    def test_unknown_squad_profile_is_reported(self, monkeypatch):
+        results = self._run(monkeypatch, installed=set(), not_found=True)
+        (r,) = results
+        assert r.passed is False
+        assert "not defined" in r.message
