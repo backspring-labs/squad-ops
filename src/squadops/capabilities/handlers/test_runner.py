@@ -17,7 +17,7 @@ import os
 import shutil
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 logger = logging.getLogger(__name__)
 
@@ -282,6 +282,130 @@ async def run_node_tests(
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+@dataclass(frozen=True)
+class BuildCheckResult:
+    """Outcome of a deliverable build/boot check (#276).
+
+    ``ran`` is False when the check was skipped (no build script, no npm, or no
+    frontend source) — a skip is not a failure. ``ok`` is True only when the
+    check actually ran and succeeded.
+    """
+
+    ran: bool
+    ok: bool = False
+    exit_code: int = -1
+    error: str = ""
+    stderr: str = ""
+
+    @property
+    def failed(self) -> bool:
+        """True only when the check ran and did not succeed (skips are not failures)."""
+        return self.ran and not self.ok
+
+
+async def run_frontend_build(
+    source_files: list[dict[str, str]],
+    target_dir: str | None = "frontend",
+    timeout_seconds: int = 120,
+) -> BuildCheckResult:
+    """Verify the frontend actually builds (#276).
+
+    Materializes the frontend source, ``npm install``s, then runs the package's
+    ``build`` script (falling back to ``npx vite build``). Catches deliverables
+    that pass vitest unit tests but cannot build — e.g. a Vite app missing its
+    root ``index.html`` (observed in cyc_2f415e43f9cf: ``vite build`` failed
+    immediately, yet the run shipped green).
+
+    Skips (``ran=False``) when there is no frontend source, no ``package.json``,
+    or Node is unavailable — a skip is never a failure. Never raises.
+    """
+    frontend_source = (
+        [rec for rec in source_files if rec["path"].startswith(f"{target_dir}/")]
+        if target_dir
+        else source_files
+    )
+    if not frontend_source:
+        return BuildCheckResult(ran=False, error="no frontend source")
+
+    workspace = tempfile.mkdtemp(prefix="qa_build_")
+    try:
+        _materialize_files(workspace, frontend_source)
+        cwd = os.path.join(workspace, target_dir) if target_dir else workspace
+
+        pkg_path = os.path.join(cwd, "package.json")
+        if not os.path.isfile(pkg_path):
+            return BuildCheckResult(ran=False, error="no package.json — cannot build")
+
+        # Prefer the package's own build script; fall back to vite build.
+        import json
+
+        try:
+            scripts = json.loads(open(pkg_path, encoding="utf-8").read()).get("scripts", {})
+        except (OSError, ValueError):
+            scripts = {}
+        build_cmd = ["npm", "run", "build"] if "build" in scripts else ["npx", "vite", "build"]
+
+        try:
+            install = await asyncio.create_subprocess_exec(
+                "npm",
+                "install",
+                "--no-audit",
+                "--no-fund",
+                cwd=cwd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                _, inst_err = await asyncio.wait_for(install.communicate(), timeout=timeout_seconds)
+            except TimeoutError:
+                install.kill()
+                await install.wait()
+                return BuildCheckResult(
+                    ran=False, error=f"npm install timed out after {timeout_seconds}s"
+                )
+            if install.returncode != 0:
+                return BuildCheckResult(
+                    ran=False,
+                    error="npm install failed (dependency resolution) — cannot assess build",
+                    stderr=inst_err.decode(errors="replace")[:_STDOUT_LIMIT],
+                )
+        except FileNotFoundError:
+            return BuildCheckResult(ran=False, error="npm not found — Node.js not installed")
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *build_cmd,
+                cwd=cwd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            return BuildCheckResult(
+                ran=False, error=f"{build_cmd[0]} not found — Node.js not installed"
+            )
+
+        try:
+            _, raw_stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return BuildCheckResult(ran=False, error=f"build timed out after {timeout_seconds}s")
+
+        exit_code = proc.returncode or 0
+        return BuildCheckResult(
+            ran=True,
+            ok=exit_code == 0,
+            exit_code=exit_code,
+            stderr=raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT],
+            error="" if exit_code == 0 else f"frontend build failed (exit {exit_code})",
+        )
+    except Exception as exc:  # never raise — a runner error is a skip, not a failure
+        logger.warning("Frontend build check error: %s", exc, exc_info=True)
+        return BuildCheckResult(ran=False, error=str(exc))
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
 async def run_fullstack_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
@@ -359,3 +483,49 @@ async def run_fullstack_tests(
         test_file_count=backend_result.test_file_count + frontend_result.test_file_count,
         source_file_count=backend_result.source_file_count + frontend_result.source_file_count,
     )
+
+
+async def run_build_validation(
+    test_framework: str,
+    source_files: list[dict[str, str]],
+    test_files: list[dict[str, str]],
+    timeout_seconds: int = 60,
+) -> RunTestsResult:
+    """Run the framework-appropriate test suite plus a build check, as one result.
+
+    Single entry point that owns all test-framework dispatch (pytest / vitest /
+    both) and the #276 frontend build check, so callers stay framework-agnostic.
+
+    A frontend *build* failure is BLOCKING (a non-building app is broken) even
+    where frontend unit tests are non-blocking (D13). A build *skip* — no
+    frontend, no ``package.json``, or no Node — never fails. Returns a
+    ``RunTestsResult`` — never raises.
+    """
+    from squadops.capabilities.dev_capabilities import (
+        TEST_FRAMEWORK_BOTH,
+        TEST_FRAMEWORK_VITEST,
+    )
+
+    if test_framework == TEST_FRAMEWORK_VITEST:
+        result = await run_node_tests(source_files, test_files, timeout_seconds=timeout_seconds)
+        build_target: str | None = None
+    elif test_framework == TEST_FRAMEWORK_BOTH:
+        result = await run_fullstack_tests(
+            source_files, test_files, timeout_seconds=timeout_seconds
+        )
+        build_target = "frontend"
+    else:
+        # pytest / backend-only: nothing to build
+        return await run_generated_tests(source_files, test_files, timeout_seconds=timeout_seconds)
+
+    build = await run_frontend_build(
+        source_files, target_dir=build_target, timeout_seconds=timeout_seconds
+    )
+    if build.failed:
+        merged_error = "; ".join(part for part in (result.error, build.error) if part)
+        result = replace(
+            result,
+            exit_code=result.exit_code or build.exit_code or 1,
+            error=merged_error,
+        )
+    return result

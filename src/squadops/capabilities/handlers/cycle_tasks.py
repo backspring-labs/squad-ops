@@ -2236,41 +2236,26 @@ class QATestHandler(_CycleTaskHandler):
         sources: dict[str, str],
         extracted: list[dict],
     ) -> tuple[Any, dict]:
-        """Run test suite and return (test_result, report_artifact)."""
-        from squadops.capabilities.dev_capabilities import (
-            TEST_FRAMEWORK_BOTH,
-            TEST_FRAMEWORK_VITEST,
-        )
-        from squadops.capabilities.handlers.test_runner import (
-            run_fullstack_tests,
-            run_generated_tests,
-            run_node_tests,
-        )
+        """Run the build-validation suite and return (result, report_artifact).
+
+        Framework dispatch (pytest/vitest/both) and the #276 frontend build check
+        live in ``test_runner`` (which owns test-framework knowledge). This handler
+        stays framework-agnostic — it passes ``capability.test_framework`` through
+        and reads only the generic ``RunTestsResult``.
+        """
+        from squadops.capabilities.handlers.test_runner import run_build_validation
 
         source_file_records = [{"path": p, "content": c} for p, c in sources.items()]
         test_file_records = [
             {"path": rec["filename"], "content": rec["content"]} for rec in extracted
         ]
-        test_timeout = capability.test_timeout_seconds
 
-        if capability.test_framework == TEST_FRAMEWORK_VITEST:
-            test_result = await run_node_tests(
-                source_file_records,
-                test_file_records,
-                timeout_seconds=test_timeout,
-            )
-        elif capability.test_framework == TEST_FRAMEWORK_BOTH:
-            test_result = await run_fullstack_tests(
-                source_file_records,
-                test_file_records,
-                timeout_seconds=test_timeout,
-            )
-        else:
-            test_result = await run_generated_tests(
-                source_file_records,
-                test_file_records,
-                timeout_seconds=test_timeout,
-            )
+        test_result = await run_build_validation(
+            capability.test_framework,
+            source_file_records,
+            test_file_records,
+            timeout_seconds=capability.test_timeout_seconds,
+        )
 
         report_lines = [
             "# Test Execution Report\n",
