@@ -216,17 +216,25 @@ class TestRunGeneratedTestsTimeout:
 
 
 class TestRunGeneratedTestsCleanup:
-    async def test_workspace_cleaned_up_after_run(self):
+    async def test_workspace_cleaned_up_after_run(self, monkeypatch):
         source = [{"path": "a.py", "content": "x = 1"}]
         tests = [{"path": "test_a.py", "content": "def test_a():\n    assert True\n"}]
 
-        # We can't easily capture the workspace path, but we can verify
-        # that repeated runs don't accumulate temp dirs (smoke test).
-        import glob
+        # Capture the exact workspace this run creates and assert it's gone.
+        # (Globbing shared /tmp for qa_run_* is flaky under -n auto: a parallel
+        # worker's in-flight workspace leaks into the assertion.)
         import tempfile
 
-        before = set(glob.glob(os.path.join(tempfile.gettempdir(), "qa_run_*")))
+        created: list[str] = []
+        real_mkdtemp = tempfile.mkdtemp
+
+        def _capturing_mkdtemp(*args, **kwargs):
+            path = real_mkdtemp(*args, **kwargs)
+            created.append(path)
+            return path
+
+        monkeypatch.setattr(tempfile, "mkdtemp", _capturing_mkdtemp)
         await run_generated_tests(source, tests)
-        after = set(glob.glob(os.path.join(tempfile.gettempdir(), "qa_run_*")))
-        # No new dirs should remain
-        assert after - before == set()
+
+        assert created, "run_generated_tests did not create a workspace"
+        assert all(not os.path.exists(p) for p in created)
