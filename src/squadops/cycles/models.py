@@ -186,6 +186,20 @@ REQUIRED_REFINEMENT_ROLES = frozenset({"lead", "qa"})
 # Required roles for wrap-up workloads. Wrap-up is data + QA + lead. (SIP-0080 §7.1)
 REQUIRED_WRAPUP_ROLES = frozenset({"data", "qa", "lead"})
 
+# Static role requirement per workload type — the single source of truth shared by
+# dispatch-time step resolution (task_plan._resolve_workload_steps) and the create-time
+# preflight (cycles.preflight.required_roles_decision), so the two never drift (SIP-0095 §2,
+# R3). IMPLEMENTATION carries NO static role requirement: a builder-less squad gracefully runs
+# the non-builder build path by design — the builder/materialized-plan mismatch is a
+# dispatch/gate concern (#295), not a create-time check.
+WORKLOAD_REQUIRED_ROLES: dict[str, frozenset[str]] = {
+    WorkloadType.FRAMING: REQUIRED_PLAN_ROLES,
+    WorkloadType.REFINEMENT: REQUIRED_REFINEMENT_ROLES,
+    WorkloadType.EVALUATION: REQUIRED_PLAN_ROLES,
+    WorkloadType.WRAPUP: REQUIRED_WRAPUP_ROLES,
+    WorkloadType.IMPLEMENTATION: frozenset(),
+}
+
 
 # =============================================================================
 # Validation helpers
