@@ -225,8 +225,11 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
             "configuration, and operational readiness. The container build "
             "must be multi-stage: a Python base for the backend, a Node build "
             "stage for the frontend static assets, and a final stage that "
-            "serves both. The QA handoff document must include CORS "
-            "configuration notes for the backend."
+            "serves both. Keep the app portable: pass the frontend API base as a "
+            "build arg/env (`VITE_API_BASE`) and the backend CORS origins as a "
+            "runtime env (`CORS_ORIGINS`), document both in `.env.example`, and "
+            "never hardcode `localhost` URLs into the image. The QA handoff "
+            "document must include CORS configuration notes for the backend."
         ),
         required_files=("Dockerfile", "qa_handoff.md"),
         optional_files=("docker-compose.yaml", "start.sh", ".env.example", "nginx.conf"),

@@ -229,3 +229,31 @@ class TestRegistryCompleteness:
     def test_all_have_non_empty_test_file_patterns(self):
         for name, cap in DEV_CAPABILITIES.items():
             assert len(cap.test_file_patterns) > 0, f"{name} has empty test_file_patterns"
+
+
+class TestFullstackPortableIntegration:
+    """#280: generated fullstack apps must be portable, not localhost-bound.
+
+    Guards the capability guidance against regressing to a hardcoded API base or
+    a single hardcoded CORS origin — the pattern that made generated apps break
+    over LAN/tailnet (cyc_8971abe7b35d).
+    """
+
+    @pytest.fixture
+    def guidance(self):
+        return get_capability("fullstack_fastapi_react").file_structure_guidance
+
+    @pytest.mark.parametrize(
+        "marker",
+        ["VITE_API_BASE", "/api", "proxy", "CORS_ORIGINS"],
+    )
+    def test_prescribes_portable_integration_markers(self, guidance, marker):
+        """Env-driven relative API base + Vite proxy + config-driven CORS."""
+        assert marker in guidance, f"portable-integration marker {marker!r} missing from guidance"
+
+    def test_forbids_hardcoded_backend_url(self, guidance):
+        assert "Do NOT hardcode the backend URL" in guidance
+
+    def test_drops_the_hardcoded_cors_only_instruction(self, guidance):
+        # The old anti-pattern (single hardcoded allowed origin) must not return.
+        assert "Configure CORS to allow requests from http://localhost:5173" not in guidance
