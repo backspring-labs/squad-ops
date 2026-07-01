@@ -101,15 +101,18 @@ class TestHealthAgents:
 
 class TestAgentStatusById:
     def test_get_agent_status_found(self, client, mock_health_checker):
+        # The route LEFT JOINs agent_runtime_state, so the row carries mode +
+        # runtime_status (the canonical health signal, #231).
         mock_row = {
             "agent_id": "max",
             "lifecycle_state": "READY",
-            "network_status": "online",
             "version": "0.9.7",
             "tps": 5,
             "memory_count": 10,
             "last_heartbeat": datetime(2026, 2, 16, 12, 0, 0),
             "current_task_id": None,
+            "mode": "cycle",
+            "runtime_status": "online",
         }
         mock_conn = AsyncMock()
         mock_conn.fetchrow = AsyncMock(return_value=mock_row)
@@ -122,6 +125,11 @@ class TestAgentStatusById:
         data = resp.json()
         assert data["agent_id"] == "max"
         assert data["lifecycle_state"] == "READY"
+        # #231: the single-agent route now carries the canonical health + posture
+        # at parity with the list route, with network_status demoted to back-compat.
+        assert data["runtime_status"] == "online"
+        assert data["mode"] == "cycle"
+        assert data["network_status"] == "online"  # legacy field still present
 
     def test_get_agent_status_not_found(self, client, mock_health_checker):
         mock_conn = AsyncMock()
