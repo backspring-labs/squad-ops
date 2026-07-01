@@ -6,6 +6,7 @@ and returns a CheckResult with pass/fail, fix guidance, and heuristic flag.
 
 from __future__ import annotations
 
+import asyncio
 import platform
 import shutil
 import socket
@@ -420,8 +421,14 @@ def _check_docker_health(svc: DockerService) -> CheckResult:
 # ---------------------------------------------------------------------------
 
 
-def _get_ollama_models() -> set[str]:
-    """Get set of installed Ollama model names."""
+def _query_ollama_models() -> set[str] | None:
+    """Installed Ollama model names, or ``None`` if the backend can't be queried.
+
+    ``None`` (``ollama`` missing / non-zero exit / timeout) is deliberately
+    distinct from an empty set (reachable, nothing pulled): callers that
+    warn-and-allow on *unverifiable* availability (SIP-0095 §6.3) need that
+    distinction, or they'd wrongly block whenever the backend hiccups.
+    """
     try:
         result = subprocess.run(
             ["ollama", "list"],
@@ -429,16 +436,21 @@ def _get_ollama_models() -> set[str]:
             text=True,
             timeout=15,
         )
-        if result.returncode != 0:
-            return set()
-        models = set()
-        for line in result.stdout.splitlines()[1:]:  # skip header
-            parts = line.split()
-            if parts:
-                models.add(parts[0])
-        return models
     except (subprocess.TimeoutExpired, OSError):
-        return set()
+        return None
+    if result.returncode != 0:
+        return None
+    models = set()
+    for line in result.stdout.splitlines()[1:]:  # skip header
+        parts = line.split()
+        if parts:
+            models.add(parts[0])
+    return models
+
+
+def _get_ollama_models() -> set[str]:
+    """Installed Ollama model names, empty on failure (legacy binary pull-check)."""
+    return _query_ollama_models() or set()
 
 
 def check_ollama_model_exact(model: OllamaModelExact, installed: set[str]) -> CheckResult:
@@ -672,6 +684,64 @@ def _collect_models_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return results
 
 
+def _collect_squad_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    """Model-availability for the box's squad profile, via the SHARED create-time
+    decision (SIP-0095 §8, #224) — so ``doctor`` and cycle-create agree on what
+    "available" means. Blocks name a definitively-missing model; an unreachable
+    backend warns (heuristic ``~``) rather than fails, per warn-and-allow (§6.3).
+    """
+    if not profile.squad_profile:
+        return []
+
+    # Local imports: only doctor's `squad` category needs these, and this confines
+    # the adapter import to the bootstrap-wiring layer (#154).
+    from adapters.cycles.config_squad_profile import ConfigSquadProfile
+    from squadops.cycles.models import ProfileNotFoundError
+    from squadops.cycles.preflight import model_availability_decision
+
+    pid = profile.squad_profile
+    try:
+        squad = asyncio.run(ConfigSquadProfile().get_profile(pid))
+    except ProfileNotFoundError:
+        return [
+            CheckResult(
+                name=f"squad profile `{pid}`",
+                category="squad",
+                passed=False,
+                message=f"squad profile `{pid}` is not defined in config/squad-profiles.yaml",
+            )
+        ]
+
+    decision = model_availability_decision(squad, _query_ollama_models())
+    if not decision.blocking and not decision.warnings:
+        count = len({a.model for a in squad.agents if a.enabled and a.model})
+        return [
+            CheckResult(
+                name=f"squad `{pid}` models",
+                category="squad",
+                passed=True,
+                message=f"all {count} model(s) for squad `{pid}` are available",
+            )
+        ]
+
+    results = [
+        CheckResult(name=f"squad `{pid}` model", category="squad", passed=False, message=f.message)
+        for f in decision.blocking
+    ]
+    results.extend(
+        # unverifiable → warn (~), not a hard fail (warn-and-allow)
+        CheckResult(
+            name=f"squad `{pid}` model",
+            category="squad",
+            passed=False,
+            heuristic=True,
+            message=f.message,
+        )
+        for f in decision.warnings
+    )
+    return results
+
+
 def _collect_gpu_checks(profile: BootstrapProfile) -> list[CheckResult]:
     has_nvidia = any("nvidia" in dep.name for dep in profile.system_deps)
     return list(check_nvidia_gpu()) if has_nvidia else []
@@ -687,6 +757,7 @@ _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("tools", _collect_tools_checks),
     ("docker", _collect_docker_checks),
     ("models", _collect_models_checks),
+    ("squad", _collect_squad_checks),
     ("gpu", _collect_gpu_checks),
     ("auth", _collect_auth_checks),
 ]
