@@ -16,7 +16,7 @@ reason is not persisted as a column in v1.1 — `state` + `ended_at` are.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from squadops.runtime.models import (
@@ -59,12 +59,16 @@ class RuntimeActivityPort(ABC):
         """
 
     @abstractmethod
-    async def update_state(self, activity_id: str, state: ActivityState) -> RuntimeActivity | None:
+    async def update_state(
+        self, activity_id: str, state: ActivityState, *, conn: Any = None
+    ) -> RuntimeActivity | None:
         """Transition an activity to `state`, managing timestamps automatically.
 
         `paused` stamps `paused_at`; a terminal state stamps `ended_at`; `running`
         ensures `started_at` is set (resume keeps the original). Returns the updated
         activity, or `None` if no such activity exists.
+
+        `conn` (§4.5/D25): run on the caller's unit-of-work connection when given.
         """
 
     @abstractmethod
@@ -80,10 +84,18 @@ class RuntimeActivityPort(ABC):
         event-surfaced (D18), not persisted in v1.1."""
 
     @abstractmethod
-    async def abort_activity(self, activity_id: str, reason_code: str) -> RuntimeActivity | None:
+    async def abort_activity(
+        self, activity_id: str, reason_code: str, *, conn: Any = None
+    ) -> RuntimeActivity | None:
         """Terminal helper: mark the activity `aborted` (non-cooperative stop).
-        `reason_code` is event-surfaced (D18), not persisted in v1.1."""
+        `reason_code` is event-surfaced (D18), not persisted in v1.1.
+
+        `conn` (§4.5/D25): run on the caller's unit-of-work connection when given."""
 
     @abstractmethod
-    async def get_current_activity(self, agent_id: str) -> RuntimeActivity | None:
-        """Return the agent's current (active) activity, or `None`."""
+    async def get_current_activity(
+        self, agent_id: str, *, conn: Any = None
+    ) -> RuntimeActivity | None:
+        """Return the agent's current (active) activity, or `None`.
+
+        `conn` (§4.5/D25): read on the caller's unit-of-work connection when given."""

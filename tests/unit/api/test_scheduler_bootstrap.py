@@ -91,15 +91,20 @@ def test_create_runtime_coordinator_without_pool_returns_none():
     assert create_runtime_coordinator(None) is None
 
 
-def test_create_runtime_coordinator_wires_focus_lease_and_activity():
+def test_create_runtime_coordinator_wires_focus_lease_activity_and_transaction():
     """The shared coordinator (used by the executor for recruitment) must carry
-    the same §3.4/§4.5 wiring as the scheduler's — a bare coordinator would skip
-    lease arbitration on recruitment."""
+    the §3.4/§4.5 wiring — focus lease, activity, AND the RuntimeTransaction UoW
+    (#244/D25). A bare coordinator would skip lease arbitration on recruitment, and
+    a missing transaction would silently fall back to best-effort compensation
+    instead of an atomic rollback."""
+    from adapters.persistence.runtime import PostgresRuntimeTransaction
+
     coordinator = create_runtime_coordinator(MagicMock())
 
     assert isinstance(coordinator, RuntimeCoordinator)
     assert coordinator._focus_lease is not None
     assert coordinator._activity is not None
+    assert isinstance(coordinator._transaction, PostgresRuntimeTransaction)
 
 
 def test_injected_coordinator_is_shared_not_rebuilt():

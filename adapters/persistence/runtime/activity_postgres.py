@@ -20,9 +20,11 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import asyncpg
 
+from adapters.persistence.runtime._conn import acquire
 from squadops.ports.runtime.activity import RuntimeActivityPort
 from squadops.runtime.models import (
     ActivitySourceKind,
@@ -93,7 +95,9 @@ class PostgresRuntimeActivity(RuntimeActivityPort):
             )
         return _row_to_activity(row)
 
-    async def update_state(self, activity_id: str, state: ActivityState) -> RuntimeActivity | None:
+    async def update_state(
+        self, activity_id: str, state: ActivityState, *, conn: Any = None
+    ) -> RuntimeActivity | None:
         # Timestamp management is intrinsic to the state being entered: pausing
         # stamps paused_at, a terminal state stamps ended_at, and (re)entering
         # running ensures started_at is set without clobbering the original.
@@ -108,7 +112,7 @@ class PostgresRuntimeActivity(RuntimeActivityPort):
         # terminal row never moves again. This makes terminalization race-safe —
         # if the owning handler completes an activity the coordinator just aborted
         # (or vice versa), the second writer matches no row and gets None.
-        async with self._pool.acquire() as conn:
+        async with acquire(self._pool, conn) as conn:
             row = await conn.fetchrow(
                 f"UPDATE runtime_activities SET {', '.join(sets)} "
                 "WHERE runtime_activity_id = $1 "
@@ -127,11 +131,15 @@ class PostgresRuntimeActivity(RuntimeActivityPort):
     async def fail_activity(self, activity_id: str, reason_code: str) -> RuntimeActivity | None:
         return await self.update_state(activity_id, "failed")
 
-    async def abort_activity(self, activity_id: str, reason_code: str) -> RuntimeActivity | None:
-        return await self.update_state(activity_id, "aborted")
+    async def abort_activity(
+        self, activity_id: str, reason_code: str, *, conn: Any = None
+    ) -> RuntimeActivity | None:
+        return await self.update_state(activity_id, "aborted", conn=conn)
 
-    async def get_current_activity(self, agent_id: str) -> RuntimeActivity | None:
-        async with self._pool.acquire() as conn:
+    async def get_current_activity(
+        self, agent_id: str, *, conn: Any = None
+    ) -> RuntimeActivity | None:
+        async with acquire(self._pool, conn) as conn:
             row = await conn.fetchrow(
                 f"SELECT {_COLUMNS} FROM runtime_activities "
                 "WHERE agent_id = $1 AND state IN ('pending', 'running', 'paused')",

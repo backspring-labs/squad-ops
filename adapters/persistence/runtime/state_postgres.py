@@ -12,9 +12,11 @@ semantics: heartbeat never overwrites coordinator-owned fields
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import asyncpg
 
+from adapters.persistence.runtime._conn import acquire
 from squadops.ports.runtime.state import RuntimeStatePort
 from squadops.runtime.models import AgentRuntimeState
 
@@ -41,8 +43,10 @@ class PostgresRuntimeState(RuntimeStatePort):
             )
         return _row_to_state(row) if row else None
 
-    async def upsert_state(self, state: AgentRuntimeState) -> AgentRuntimeState:
-        async with self._pool.acquire() as conn:
+    async def upsert_state(
+        self, state: AgentRuntimeState, *, conn: Any = None
+    ) -> AgentRuntimeState:
+        async with acquire(self._pool, conn) as conn:
             await conn.execute(
                 "INSERT INTO agent_runtime_state ("
                 "agent_id, mode, runtime_status, focus, "

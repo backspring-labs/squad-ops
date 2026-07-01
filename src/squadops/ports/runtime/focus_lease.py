@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from squadops.runtime.models import (
@@ -52,6 +52,7 @@ class FocusLeasePort(ABC):
         recall_policy: RecallPolicy = "graceful",
         preemption_grace: timedelta = timedelta(),
         wait: bool = False,
+        conn: Any = None,
     ) -> LeaseDecision:
         """Attempt to acquire the agent's primary focus; resolve to one outcome.
 
@@ -76,23 +77,31 @@ class FocusLeasePort(ABC):
         """
 
     @abstractmethod
-    async def release_lease(self, lease_id: str, reason_code: str) -> None:
+    async def release_lease(self, lease_id: str, reason_code: str, *, conn: Any = None) -> None:
         """Cooperatively complete a lease (the owner finished its focus work).
 
         Marks `released_at`, freeing the single-active-lease slot. `reason_code`
         is surfaced by the coordinator's `focus_lease.released` event (D18); it is
         not persisted as a column in v1.1. A no-op for an already-released lease.
+
+        `conn` (§4.5/D25): run on the caller's unit-of-work connection when given.
         """
 
     @abstractmethod
-    async def revoke_lease(self, lease_id: str, reason_code: str) -> None:
+    async def revoke_lease(self, lease_id: str, reason_code: str, *, conn: Any = None) -> None:
         """Non-cooperatively remove a lease (preemption / forced reclaim).
 
         Same storage effect as `release_lease` (marks `released_at`); the
         distinction is audit-only — revoke is initiated by a displacing owner, not
         the holder, and is surfaced via the `focus_lease.preempted` reason/event.
+
+        `conn` (§4.5/D25): run on the caller's unit-of-work connection when given.
         """
 
     @abstractmethod
-    async def get_current_lease(self, agent_id: str) -> FocusLease | None:
-        """Return the agent's current (un-released) lease, or `None`."""
+    async def get_current_lease(self, agent_id: str, *, conn: Any = None) -> FocusLease | None:
+        """Return the agent's current (un-released) lease, or `None`.
+
+        `conn` (§4.5/D25): read on the caller's unit-of-work connection when given,
+        so the coordinator sees a consistent snapshot within its transaction.
+        """

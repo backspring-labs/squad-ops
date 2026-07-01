@@ -2297,7 +2297,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
             # Issue #110: propagate squad-profile model + overrides so
             # correction-loop reasoning runs on the cycle's specified model
-            # (e.g. spark-squad-with-builder pins data/lead to qwen3.6:27b)
+            # (e.g. the `full` profile pins data/lead to qwen3.6:27b)
             # rather than the agent container's instance default.
             corr_inputs: dict[str, Any] = {
                 "prd": cycle.prd_ref,
