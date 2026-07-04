@@ -129,6 +129,35 @@ class TestErrorMapping:
         assert exc_info.value.exit_code == exit_codes.VALIDATION_ERROR
         assert "validation failed" in str(exc_info.value)
 
+    def test_422_wrapped_detail_envelope_renders_the_message(self):
+        """#319: cycle routes nest {"error": {...}} under FastAPI's `detail`. The
+        actionable message (e.g. the SIP-0095 preflight's 'pull model X') must reach
+        the operator, not get swallowed into an empty 'validation failed —'."""
+        api = _make_api_client_with_response(
+            422,
+            {
+                "detail": {
+                    "error": {
+                        "code": "PREFLIGHT_REJECTED",
+                        "message": "requires model `qwen3.6:27b`",
+                        "details": None,
+                    }
+                }
+            },
+        )
+        with pytest.raises(CLIError) as exc_info:
+            api.post("/test")
+        assert exc_info.value.exit_code == exit_codes.VALIDATION_ERROR
+        assert "requires model `qwen3.6:27b`" in str(exc_info.value)
+
+    def test_plain_string_detail_still_renders(self):
+        """#319: health/auth return {"detail": "<string>"} — that message must survive
+        the unwrap unchanged, not regress to empty."""
+        api = _make_api_client_with_response(404, {"detail": "resource missing"})
+        with pytest.raises(CLIError) as exc_info:
+            api.get("/test")
+        assert "resource missing" in str(exc_info.value)
+
     def test_413_maps_to_validation_error(self):
         api = _make_api_client_with_response(413)
         with pytest.raises(CLIError) as exc_info:
