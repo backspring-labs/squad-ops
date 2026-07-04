@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: v1.1.1 — Production-ready framework with hexagonal architecture, the Agent Runtime State platform (SIP-0089: runtime modes ambient/cycle/duty, single-writer coordinator, duty scheduler, FocusLease arbitration, RuntimeActivity observability), distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop with dynamic task decomposition (SIP-0086), Prefect task-scoped log streaming (SIP-0087), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 4,470+ passing tests.
+**Current Status**: v1.2.0 — Production-ready framework with hexagonal architecture, the Agent Embodiment Substrate (SIP-0090 Phase 1: embodiment lifecycle, single-active invariant, resource budgets), the Cycle Create Preflight (SIP-0095: create-time fail-fast on unsatisfiable roles / unpulled models), the completed Agent Runtime State platform (SIP-0089: runtime modes ambient/cycle/duty, single-writer coordinator, FocusLease arbitration, single-transaction UoW, RuntimeActivity observability), distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop (SIP-0086), Prefect task-scoped log streaming (SIP-0087), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 4,650+ passing tests.
 
 ---
 
@@ -173,12 +173,12 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructio
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v1.1.1 — Agent Runtime State (SIP-0089) on a hardened 1.0.x foundation; distributed cycle execution, multi-run orchestration, correction protocol, build convergence loop (SIP-0086), and Prefect task-scoped log streaming (SIP-0087) shipped
+**Current**: v1.2.0 — first even/odd feature release: SIP-0090 Agent Embodiment Substrate (Phase 1), SIP-0095 Cycle Create Preflight (create-time fail-fast), and the SIP-0089 runtime-arc completion (recruitment→coordinator FocusLease, single-transaction UoW), on a #158/#231 hardening base
 
 ---
 
 ## Current Status
-**Framework Version**: 1.1.1
+**Framework Version**: 1.2.0
 **Development Status**: Post-1.1 stable multi-agent orchestration with the Agent Runtime State platform (SIP-0089: runtime modes, duty scheduler, FocusLease, RuntimeActivity), console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Prefect task-scoped log streaming, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
 
 ### Project Statistics
