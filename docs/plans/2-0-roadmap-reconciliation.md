@@ -100,9 +100,9 @@ capability-backed agents*) and its concept-boundary table (§11) are sound and w
   "Macbook builds the whole path" model), but its disk-exhaustion / retention behavior is a
   **Spark confirmation-gate** concern (the SIP flags Spark disk repeatedly).
 
-## Next moves (not yet done)
+## Next moves
 
-1. Draft the carved-out **Campaign Orchestration SIP (1.6)** — the near-term acceptable unit.
+1. ~~Draft the carved-out **Campaign Orchestration SIP (1.6)**~~ — **done**: `sips/proposed/SIP-Campaign-Orchestration.md`. The near-term acceptable unit: objective envelope + continuation policy, reusing recruitment unchanged, with the Loop-Policy decision vocab folded in. Not yet accepted (proposed).
 2. Reconcile the umbrella boundary (Campaign vs Capability-Backed-Agents vs Continuum-Runtime-Console).
 3. When `docs/ROADMAP.md` is next touched, apply the Finding-4 remap and the Finding-2 pillar map.
 4. Fix SIP-0091's stale `Targets: v1.3` → 1.4.
