@@ -1,15 +1,15 @@
 ---
 title: Cycle-Create Preflight
-status: accepted
+status: implemented
 author: jladd
 created_at: '2026-07-01T00:00:00Z'
 sip_number: 95
-updated_at: '2026-06-30T21:57:45.818751Z'
+updated_at: '2026-07-04T06:39:04.348281Z'
 ---
 # SIP-0095: Cycle Create Preflight
 
 ## Status
-Accepted
+Implemented (v1.2.0)
 
 **Targets:** v1.2
 **Combines:** #172 (capability/role satisfiability) + #224 (model availability)
