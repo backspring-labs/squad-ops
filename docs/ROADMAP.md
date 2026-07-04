@@ -8,7 +8,15 @@ Semver with an **even/odd minor** overlay (parity gates *features*, not hardenin
 
 ## Release Timeline
 
-### v1.1.1 (2026-06-28) — Current — Runtime Lane Hardening
+### v1.2.0 (2026-07-04) — Current — First Feature Release (even/odd cadence)
+First **even-minor feature release** (#281). Three feature SIPs, on a hardening base:
+- **SIP-0090 Agent Embodiment Substrate — Phase 1:** the internal embodiment model — lifecycle state machine (single-active-per-agent, enforced in code + a Postgres partial unique index), resource budget primitives (non-silent exhaustion), `EmbodimentStatePort` + Postgres persistence, `EmbodimentCoordinator`. No adapter yet (#312, #317).
+- **SIP-0095 Cycle Create Preflight:** create-time fail-fast (422 `PREFLIGHT_REJECTED`) on unsatisfiable roles / unpulled models; unreachable backend warns-and-allows; doctor parity; warnings on response + CLI (#298, #309, #311, #315, #321).
+- **SIP-0089 runtime-arc completion:** recruitment via coordinator + FocusLease (#233); single-transaction coordinator UoW (#244).
+- **#231** health signal → single source of truth (`runtime_status` always-populated); **#173** profiles → smoke/lite/full; **#158** operational hardening; **#319/#320** CLI error-message fix.
+- **Deferred:** #295 (materialized-plan gate check → rides #186); SIP-0090 budget persistence/wiring (→ Phase 2).
+
+### v1.1.1 (2026-06-28) — Runtime Lane Hardening
 - **Live-validated the runtime lane (SIP-0089) end-to-end** after 1.1.0, which surfaced two regressions the unit suites couldn't catch:
   - **#270** cycle API routes 403'd every authenticated user — #150's `cycles:*` scope checks didn't account for the role-centric Keycloak realm (issues roles, not scopes); fixed with a role→scope bridge in `resolve_identity`.
   - **#272** duty windows never auto-opened under the default `missed_window_policy="skip"` — poll-cadence lag was misread as a missed window; fixed with an on-time grace of one poll interval.
