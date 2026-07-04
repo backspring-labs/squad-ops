@@ -410,3 +410,22 @@ class TestCreateCyclePreflight:
         ):
             resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
         assert resp.status_code == 200
+
+    def test_warn_and_allow_surfaces_the_warning_on_the_response(self, client):
+        """Phase 4: an unreachable backend (None) → created, but the response carries a
+        `model_unverifiable` warning so the operator isn't left in the dark."""
+        # no LLM port is wired in this test → _pulled_model_names() returns None
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
+        assert resp.status_code == 200
+        warnings = resp.json()["warnings"]
+        assert [w["code"] for w in warnings] == ["model_unverifiable"]
+        assert "unreachable" in warnings[0]["message"]  # actionable operator text
+
+    def test_no_warnings_when_models_are_verified(self, client):
+        with patch(
+            "squadops.api.routes.cycles.cycles._pulled_model_names",
+            new=AsyncMock(return_value=["gpt-4:latest"]),
+        ):
+            resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
+        assert resp.status_code == 200
+        assert resp.json()["warnings"] == []

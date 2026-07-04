@@ -167,6 +167,9 @@ def create_cycle(
                 "hash": data.get("resolved_config_hash", ""),
             }
         )
+        # SIP-0095 Phase 4: surface non-blocking preflight warnings (warn-and-allow).
+        for w in data.get("warnings", []):
+            print_error(f"Warning: preflight [{w['code']}] — {w['message']}")
 
 
 @app.command("list")
