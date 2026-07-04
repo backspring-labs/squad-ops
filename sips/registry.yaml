@@ -858,9 +858,9 @@ sips:
 - sip_uid: null
   sip_number: 95
   title: Cycle-Create Preflight
-  path: sips/accepted/SIP-0095-Cycle-Create-Preflight.md
-  status: accepted
+  path: sips/implemented/SIP-0095-Cycle-Create-Preflight.md
+  status: implemented
   author: jladd
   approver: jladd
   created_at: '2026-07-01T00:00:00Z'
-  updated_at: '2026-06-30T21:57:45.847512Z'
+  updated_at: '2026-07-04T06:39:04.349114Z'
