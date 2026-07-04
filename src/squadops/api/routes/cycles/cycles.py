@@ -9,7 +9,11 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, BackgroundTasks, Depends
 
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.dtos import CycleCreateRequest, CycleCreateResponse
+from squadops.api.routes.cycles.dtos import (
+    CycleCreateRequest,
+    CycleCreateResponse,
+    PreflightWarningDTO,
+)
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import cycle_to_response
 from squadops.auth.models import Scope
@@ -25,6 +29,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.cycles.preflight import (
+    Finding,
     combine,
     model_availability_decision,
     required_roles_decision,
@@ -57,23 +62,27 @@ async def _pulled_model_names() -> list[str] | None:
     return [name for m in raw if (name := m.get("name"))]
 
 
-async def _run_create_preflight(profile: SquadProfile, applied_defaults: dict) -> None:
+async def _run_create_preflight(
+    profile: SquadProfile, applied_defaults: dict
+) -> tuple[Finding, ...]:
     """SIP-0095 create-time preflight: fail fast BEFORE persist/dispatch.
 
     Blocks (HTTP 422) when the squad can't satisfy the requested workloads' required
     roles or names a model definitively not pulled; an unreachable backend warns and
-    allows. Warnings are logged here — the response/CLI surface is Phase 4.
+    allows. Returns the non-blocking warnings so the route can surface them on the
+    response (Phase 4); raises on a blocking finding.
     """
     decision = combine(
         required_roles_decision(profile, applied_defaults),
         model_availability_decision(profile, await _pulled_model_names()),
     )
+    if decision.rejected:
+        raise PreflightRejectedError(decision.summary())
     for w in decision.warnings:
         logger.warning(
             "cycle_create_preflight_warning", extra={"code": w.code, "detail": w.message}
         )
-    if decision.rejected:
-        raise PreflightRejectedError(decision.summary())
+    return decision.warnings
 
 
 @router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
@@ -119,7 +128,7 @@ async def create_cycle(
         applied_defaults = body.applied_defaults
 
         # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
-        await _run_create_preflight(profile, applied_defaults)
+        preflight_warnings = await _run_create_preflight(profile, applied_defaults)
 
         config_hash = compute_config_hash(applied_defaults, body.execution_overrides)
 
@@ -196,6 +205,9 @@ async def create_cycle(
             squad_profile_snapshot_ref=snapshot_hash,
             task_flow_policy=body.task_flow_policy,
             resolved_config_hash=config_hash,
+            warnings=[
+                PreflightWarningDTO(code=w.code, message=w.message) for w in preflight_warnings
+            ],
         )
     except CycleError as e:
         raise handle_cycle_error(e) from e

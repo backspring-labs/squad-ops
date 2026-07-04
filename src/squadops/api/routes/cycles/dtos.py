@@ -178,6 +178,17 @@ class CycleResponse(BaseModel):
     workload_progress: list[WorkloadProgressEntry] = Field(default_factory=list)
 
 
+class PreflightWarningDTO(BaseModel):
+    """A non-blocking create-time preflight warning (SIP-0095 §7).
+
+    `code` is a stable machine label (e.g. `model_unverifiable`); `message` is the
+    actionable operator text. The cycle was created despite the warning (warn-and-allow).
+    """
+
+    code: str
+    message: str
+
+
 class CycleCreateResponse(BaseModel):
     """Response for cycle creation — includes first run_id."""
 
@@ -191,6 +202,8 @@ class CycleCreateResponse(BaseModel):
     squad_profile_snapshot_ref: str
     task_flow_policy: TaskFlowPolicyDTO
     resolved_config_hash: str
+    # SIP-0095 Phase 4: non-blocking preflight warnings surfaced to the operator.
+    warnings: list[PreflightWarningDTO] = Field(default_factory=list)
 
 
 class AgentProfileEntryResponse(BaseModel):
