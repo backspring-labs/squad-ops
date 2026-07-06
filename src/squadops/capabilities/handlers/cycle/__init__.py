@@ -1,12 +1,22 @@
-"""Compatibility shim — cycle task handlers moved to the ``cycle`` package (#152).
+"""Cycle task handlers package (SIP-0066) — split from cycle_tasks.py (#152).
 
-The 3,098-line module was split into ``squadops.capabilities.handlers.cycle``
-(one module per handler + shared ``base``/``validation``). This path re-exports
-the same names so existing importers and tests work unchanged. New code should
-import from ``squadops.capabilities.handlers.cycle`` directly.
+One module per handler plus shared base/validation. The legacy import path
+``squadops.capabilities.handlers.cycle_tasks`` re-exports this package's
+names and remains the compatibility surface for existing importers.
 """
 
-from squadops.capabilities.handlers.cycle import (
+from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.builder import BuilderAssembleHandler
+from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+from squadops.capabilities.handlers.cycle.governance import GovernanceReviewHandler
+from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+from squadops.capabilities.handlers.cycle.roles import (
+    DataReportHandler,
+    DevelopmentDesignHandler,
+    QAValidateHandler,
+    StrategyAnalyzeHandler,
+)
+from squadops.capabilities.handlers.cycle.validation import (
     _DEFAULT_TYPE,
     _EXT_MAP,
     _FILENAME_MAP,
@@ -14,18 +24,9 @@ from squadops.capabilities.handlers.cycle import (
     _STACK_INDICATORS,
     _STUB_PATTERNS,
     _STUB_THRESHOLD_BYTES,
-    BuilderAssembleHandler,
-    DataReportHandler,
-    DevelopmentDesignHandler,
-    DevelopmentDevelopHandler,
-    GovernanceReviewHandler,
-    QATestHandler,
-    QAValidateHandler,
-    StrategyAnalyzeHandler,
     ValidationResult,
     _build_typed_check_evaluation_artifact,
     _classify_file,
-    _CycleTaskHandler,
     _detect_expected_layers,
     _detect_stubs,
     _estimate_min_artifacts,

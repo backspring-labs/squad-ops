@@ -377,7 +377,7 @@ class TestM13Observability:
             severity="error",
             description="users endpoint",
         )
-        with caplog.at_level("DEBUG", logger="squadops.capabilities.handlers.cycle_tasks"):
+        with caplog.at_level("DEBUG", logger="squadops.capabilities.handlers.cycle.develop"):
             await h._validate_output(
                 _inputs([criterion], config={"stack": "fastapi"}),
                 [_art("main.py", _FASTAPI_ALL)],
@@ -398,7 +398,7 @@ class TestM13Observability:
             severity="error",
             description="users CRUD",
         )
-        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle_tasks"):
+        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle.develop"):
             await h._validate_output(
                 _inputs([criterion], config={"stack": "fastapi"}),
                 [_art("main.py", _FASTAPI_MISSING)],
@@ -420,7 +420,7 @@ class TestM13Observability:
             params={"file": "main.py", "methods_paths": ["GET /users"]},
             severity="error",
         )
-        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle_tasks"):
+        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle.develop"):
             await h._validate_output(
                 _inputs([criterion], focus="check focus", config={"stack": "fastapi"}),
                 [_art("main.py", _FASTAPI_ALL)],
@@ -436,7 +436,7 @@ class TestM13Observability:
     async def test_summary_log_skipped_when_no_typed_checks(self, caplog):
         # Prose-only criteria → summary log should NOT fire (it would be noise).
         h = DevelopmentDevelopHandler()
-        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle_tasks"):
+        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle.develop"):
             await h._validate_output(
                 _inputs([_PROSE_CRITERION], config={"stack": "fastapi"}),
                 [_art("main.py", _FASTAPI_ALL)],
