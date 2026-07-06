@@ -77,7 +77,10 @@ max-complexity = 12
 # than blocking the gate. Newly added code in any file (including these)
 # is still gated.
 "adapters/cycles/dispatched_flow_executor.py" = ["C901"]
-"src/squadops/capabilities/handlers/cycle_tasks.py" = ["C901"]
+# (#152 split: the exempted handle() functions moved from cycle_tasks.py
+# into the cycle/ package; exemption follows them, decomposition still deferred)
+"src/squadops/capabilities/handlers/cycle/develop.py" = ["C901"]
+"src/squadops/capabilities/handlers/cycle/qa_test.py" = ["C901"]
 "scripts/dev/lint_realm_exports.py" = ["C901"]
 "scripts/maintainer/audit_sip_registry.py" = ["C901"]
 "scripts/maintainer/cleanup_sip_registry.py" = ["C901"]
