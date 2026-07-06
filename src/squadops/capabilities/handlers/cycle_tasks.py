@@ -716,6 +716,120 @@ class _CycleTaskHandler(CapabilityHandler):
             _evidence=evidence,
         )
 
+    def _resolve_artifact_content(
+        self,
+        inputs: dict[str, Any],
+        filename_substring: str,
+    ) -> str | None:
+        """Resolve artifact content by filename substring from inputs."""
+        contents = inputs.get("artifact_contents", {})
+        for key, value in contents.items():
+            if filename_substring in key:
+                return value
+        return None
+
+    async def _resolve_with_vault_fallback(
+        self,
+        inputs: dict[str, Any],
+        filename_substring: str,
+    ) -> str | None:
+        """Resolve artifact content with vault fallback (D3).
+
+        Tries ``artifact_contents`` first, falls back to
+        ``artifact_vault.retrieve()`` using ``artifact_refs`` when
+        the content was not pre-resolved (e.g., 512KB limit exceeded).
+        """
+        result = self._resolve_artifact_content(inputs, filename_substring)
+        if result is not None:
+            return result
+
+        vault = inputs.get("artifact_vault")
+        refs = inputs.get("artifact_refs", [])
+        if not vault or not refs:
+            return None
+
+        for ref_id in refs:
+            try:
+                ref, content_bytes = await vault.retrieve(ref_id)
+                if filename_substring in ref.filename:
+                    return content_bytes.decode(errors="replace")
+            except Exception:
+                logger.debug(
+                    "Vault fallback: failed to retrieve %s",
+                    ref_id,
+                    exc_info=True,
+                )
+        return None
+
+    # Prompt-layer naming for _record_generation; BuilderAssembleHandler
+    # overrides with "assemble" (its layer set is {role}-assemble).
+    _prompt_layer_kind = "build"
+
+    def _record_generation(
+        self,
+        context: ExecutionContext,
+        prompt: str,
+        response: str,
+        duration_ms: float,
+        resolved_model: str | None = None,
+        rendered: object | None = None,
+        chat_response: ChatMessage | None = None,
+    ) -> None:
+        """Record LLM generation for LangFuse tracing (SIP-0061).
+
+        GovernanceReviewHandler keeps its own variant (different call shape:
+        it derives the model from chat_kwargs and has no ChatMessage).
+        """
+        if chat_response and chat_response.tokens_per_second:
+            logger.info(
+                "%s LLM throughput: %.1f t/s (%s tokens)",
+                self._handler_name,
+                chat_response.tokens_per_second,
+                chat_response.completion_tokens,
+            )
+        llm_obs = getattr(context.ports, "llm_observability", None)
+        if llm_obs and context.correlation_context:
+            import uuid
+
+            from squadops.telemetry.models import (
+                MAX_OBSERVABILITY_TEXT_LENGTH,
+                GenerationRecord,
+                PromptLayer,
+                PromptLayerMetadata,
+            )
+
+            gen_record = GenerationRecord(
+                generation_id=str(uuid.uuid4()),
+                model=resolved_model or context.ports.llm.default_model,
+                prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                latency_ms=duration_ms,
+                tokens_per_second=(chat_response.tokens_per_second if chat_response else None),
+                prompt_tokens=chat_response.prompt_tokens if chat_response else None,
+                completion_tokens=(chat_response.completion_tokens if chat_response else None),
+                total_tokens=chat_response.total_tokens if chat_response else None,
+                prompt_name=getattr(rendered, "template_id", None),
+                prompt_version=(
+                    int(rendered.template_version)
+                    if rendered and getattr(rendered, "template_version", None)
+                    else None
+                ),
+            )
+            layers = PromptLayerMetadata(
+                prompt_layer_set_id=f"{self._role}-{self._prompt_layer_kind}",
+                layers=(
+                    PromptLayer(
+                        layer_type="system",
+                        layer_id=f"{self._role}-{self._prompt_layer_kind}-system",
+                    ),
+                    PromptLayer(
+                        layer_type="user",
+                        layer_id=f"{self._prompt_layer_kind}-{self._capability_id}",
+                    ),
+                ),
+            )
+            llm_obs.record_generation(context.correlation_context, gen_record, layers)
+
 
 class StrategyAnalyzeHandler(_CycleTaskHandler):
     """Cycle task handler for strategy analysis (strat role)."""
@@ -1552,51 +1666,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             summary="; ".join(summary_parts) or "All checks passed",
         )
 
-    def _resolve_artifact_content(
-        self,
-        inputs: dict[str, Any],
-        filename_substring: str,
-    ) -> str | None:
-        """Resolve artifact content by filename substring from inputs."""
-        contents = inputs.get("artifact_contents", {})
-        for key, value in contents.items():
-            if filename_substring in key:
-                return value
-        return None
-
-    async def _resolve_with_vault_fallback(
-        self,
-        inputs: dict[str, Any],
-        filename_substring: str,
-    ) -> str | None:
-        """Resolve artifact content with vault fallback (D3).
-
-        Tries ``artifact_contents`` first, falls back to
-        ``artifact_vault.retrieve()`` using ``artifact_refs`` when
-        the content was not pre-resolved (e.g., 512KB limit exceeded).
-        """
-        result = self._resolve_artifact_content(inputs, filename_substring)
-        if result is not None:
-            return result
-
-        vault = inputs.get("artifact_vault")
-        refs = inputs.get("artifact_refs", [])
-        if not vault or not refs:
-            return None
-
-        for ref_id in refs:
-            try:
-                ref, content_bytes = await vault.retrieve(ref_id)
-                if filename_substring in ref.filename:
-                    return content_bytes.decode(errors="replace")
-            except Exception:
-                logger.debug(
-                    "Vault fallback: failed to retrieve %s",
-                    ref_id,
-                    exc_info=True,
-                )
-        return None
-
     def _build_user_prompt(
         self,
         prd: str,
@@ -1978,60 +2047,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         )
         return None, user_prompt
 
-    def _record_generation(
-        self,
-        context: ExecutionContext,
-        prompt: str,
-        response: str,
-        duration_ms: float,
-        resolved_model: str | None = None,
-        rendered: object | None = None,
-        chat_response: ChatMessage | None = None,
-    ) -> None:
-        if chat_response and chat_response.tokens_per_second:
-            logger.info(
-                "%s LLM throughput: %.1f t/s (%s tokens)",
-                self._handler_name,
-                chat_response.tokens_per_second,
-                chat_response.completion_tokens,
-            )
-        llm_obs = getattr(context.ports, "llm_observability", None)
-        if llm_obs and context.correlation_context:
-            import uuid
-
-            from squadops.telemetry.models import (
-                MAX_OBSERVABILITY_TEXT_LENGTH,
-                GenerationRecord,
-                PromptLayer,
-                PromptLayerMetadata,
-            )
-
-            gen_record = GenerationRecord(
-                generation_id=str(uuid.uuid4()),
-                model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                latency_ms=duration_ms,
-                tokens_per_second=(chat_response.tokens_per_second if chat_response else None),
-                prompt_tokens=chat_response.prompt_tokens if chat_response else None,
-                completion_tokens=(chat_response.completion_tokens if chat_response else None),
-                total_tokens=chat_response.total_tokens if chat_response else None,
-                prompt_name=getattr(rendered, "template_id", None),
-                prompt_version=(
-                    int(rendered.template_version)
-                    if rendered and getattr(rendered, "template_version", None)
-                    else None
-                ),
-            )
-            layers = PromptLayerMetadata(
-                prompt_layer_set_id=f"{self._role}-build",
-                layers=(
-                    PromptLayer(layer_type="system", layer_id=f"{self._role}-build-system"),
-                    PromptLayer(layer_type="user", layer_id=f"build-{self._capability_id}"),
-                ),
-            )
-            llm_obs.record_generation(context.correlation_context, gen_record, layers)
-
 
 class QATestHandler(_CycleTaskHandler):
     """Build handler: generates test files from validation plan + source (D1).
@@ -2131,51 +2146,6 @@ class QATestHandler(_CycleTaskHandler):
             coverage_ratio=coverage,
             summary="; ".join(summary_parts) or "All checks passed",
         )
-
-    def _resolve_artifact_content(
-        self,
-        inputs: dict[str, Any],
-        filename_substring: str,
-    ) -> str | None:
-        """Resolve artifact content by filename substring from inputs."""
-        contents = inputs.get("artifact_contents", {})
-        for key, value in contents.items():
-            if filename_substring in key:
-                return value
-        return None
-
-    async def _resolve_with_vault_fallback(
-        self,
-        inputs: dict[str, Any],
-        filename_substring: str,
-    ) -> str | None:
-        """Resolve artifact content with vault fallback (D3).
-
-        Tries ``artifact_contents`` first, falls back to
-        ``artifact_vault.retrieve()`` using ``artifact_refs`` when
-        the content was not pre-resolved (e.g., 512KB limit exceeded).
-        """
-        result = self._resolve_artifact_content(inputs, filename_substring)
-        if result is not None:
-            return result
-
-        vault = inputs.get("artifact_vault")
-        refs = inputs.get("artifact_refs", [])
-        if not vault or not refs:
-            return None
-
-        for ref_id in refs:
-            try:
-                ref, content_bytes = await vault.retrieve(ref_id)
-                if filename_substring in ref.filename:
-                    return content_bytes.decode(errors="replace")
-            except Exception:
-                logger.debug(
-                    "Vault fallback: failed to retrieve %s",
-                    ref_id,
-                    exc_info=True,
-                )
-        return None
 
     def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
         """Get source artifacts filtered by capability (D4, D9).
@@ -2708,60 +2678,6 @@ class QATestHandler(_CycleTaskHandler):
         )
         return None, user_prompt
 
-    def _record_generation(
-        self,
-        context: ExecutionContext,
-        prompt: str,
-        response: str,
-        duration_ms: float,
-        resolved_model: str | None = None,
-        rendered: object | None = None,
-        chat_response: ChatMessage | None = None,
-    ) -> None:
-        if chat_response and chat_response.tokens_per_second:
-            logger.info(
-                "%s LLM throughput: %.1f t/s (%s tokens)",
-                self._handler_name,
-                chat_response.tokens_per_second,
-                chat_response.completion_tokens,
-            )
-        llm_obs = getattr(context.ports, "llm_observability", None)
-        if llm_obs and context.correlation_context:
-            import uuid
-
-            from squadops.telemetry.models import (
-                MAX_OBSERVABILITY_TEXT_LENGTH,
-                GenerationRecord,
-                PromptLayer,
-                PromptLayerMetadata,
-            )
-
-            gen_record = GenerationRecord(
-                generation_id=str(uuid.uuid4()),
-                model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                latency_ms=duration_ms,
-                tokens_per_second=(chat_response.tokens_per_second if chat_response else None),
-                prompt_tokens=chat_response.prompt_tokens if chat_response else None,
-                completion_tokens=(chat_response.completion_tokens if chat_response else None),
-                total_tokens=chat_response.total_tokens if chat_response else None,
-                prompt_name=getattr(rendered, "template_id", None),
-                prompt_version=(
-                    int(rendered.template_version)
-                    if rendered and getattr(rendered, "template_version", None)
-                    else None
-                ),
-            )
-            layers = PromptLayerMetadata(
-                prompt_layer_set_id=f"{self._role}-build",
-                layers=(
-                    PromptLayer(layer_type="system", layer_id=f"{self._role}-build-system"),
-                    PromptLayer(layer_type="user", layer_id=f"build-{self._capability_id}"),
-                ),
-            )
-            llm_obs.record_generation(context.correlation_context, gen_record, layers)
-
 
 # ---------------------------------------------------------------------------
 # Builder build handler (SIP-0071)
@@ -2780,50 +2696,13 @@ class BuilderAssembleHandler(_CycleTaskHandler):
     _capability_id = "builder.assemble"
     _role = "builder"
     _artifact_name = "build_output"
+    _prompt_layer_kind = "assemble"
 
     def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
         errors = super().validate_inputs(inputs, contract)
         if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
             errors.append("'artifact_contents' or 'artifact_vault' is required for assembly tasks")
         return errors
-
-    def _resolve_artifact_content(
-        self,
-        inputs: dict[str, Any],
-        filename_substring: str,
-    ) -> str | None:
-        contents = inputs.get("artifact_contents", {})
-        for key, value in contents.items():
-            if filename_substring in key:
-                return value
-        return None
-
-    async def _resolve_with_vault_fallback(
-        self,
-        inputs: dict[str, Any],
-        filename_substring: str,
-    ) -> str | None:
-        result = self._resolve_artifact_content(inputs, filename_substring)
-        if result is not None:
-            return result
-
-        vault = inputs.get("artifact_vault")
-        refs = inputs.get("artifact_refs", [])
-        if not vault or not refs:
-            return None
-
-        for ref_id in refs:
-            try:
-                ref, content_bytes = await vault.retrieve(ref_id)
-                if filename_substring in ref.filename:
-                    return content_bytes.decode(errors="replace")
-            except Exception:
-                logger.debug(
-                    "Vault fallback: failed to retrieve %s",
-                    ref_id,
-                    exc_info=True,
-                )
-        return None
 
     @staticmethod
     def _validate_builder_output(
@@ -3217,60 +3096,3 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         )
 
         return HandlerResult(success=True, outputs=outputs, _evidence=evidence)
-
-    def _record_generation(
-        self,
-        context: ExecutionContext,
-        prompt: str,
-        response: str,
-        duration_ms: float,
-        resolved_model: str | None = None,
-        rendered: object | None = None,
-        chat_response: ChatMessage | None = None,
-    ) -> None:
-        if chat_response and chat_response.tokens_per_second:
-            logger.info(
-                "%s LLM throughput: %.1f t/s (%s tokens)",
-                self._handler_name,
-                chat_response.tokens_per_second,
-                chat_response.completion_tokens,
-            )
-        llm_obs = getattr(context.ports, "llm_observability", None)
-        if llm_obs and context.correlation_context:
-            import uuid
-
-            from squadops.telemetry.models import (
-                MAX_OBSERVABILITY_TEXT_LENGTH,
-                GenerationRecord,
-                PromptLayer,
-                PromptLayerMetadata,
-            )
-
-            gen_record = GenerationRecord(
-                generation_id=str(uuid.uuid4()),
-                model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                latency_ms=duration_ms,
-                tokens_per_second=(chat_response.tokens_per_second if chat_response else None),
-                prompt_tokens=chat_response.prompt_tokens if chat_response else None,
-                completion_tokens=(chat_response.completion_tokens if chat_response else None),
-                total_tokens=chat_response.total_tokens if chat_response else None,
-                prompt_name=getattr(rendered, "template_id", None),
-                prompt_version=(
-                    int(rendered.template_version)
-                    if rendered and getattr(rendered, "template_version", None)
-                    else None
-                ),
-            )
-            layers = PromptLayerMetadata(
-                prompt_layer_set_id=f"{self._role}-assemble",
-                layers=(
-                    PromptLayer(
-                        layer_type="system",
-                        layer_id=f"{self._role}-assemble-system",
-                    ),
-                    PromptLayer(layer_type="user", layer_id=f"assemble-{self._capability_id}"),
-                ),
-            )
-            llm_obs.record_generation(context.correlation_context, gen_record, layers)
