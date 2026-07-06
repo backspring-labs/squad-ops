@@ -21,7 +21,7 @@ roll-up the evidence SIP defines, and its recruitment safety depends on lease ha
 
 | SIP | Status | Release | Role in the arc |
 |---|---|---|---|
-| Verification Evidence Integrity | proposed (`sips/proposed/`) | **1.4 headline** | integrity invariant, provenance, inert-check detection, `CycleOutcome` contract |
+| **SIP-0096** Verification Evidence Integrity | **accepted 2026-07-06** (PR #337, rev 2) | **1.4 headline** | integrity invariant, provenance, inert-check detection, `CycleOutcome` contract |
 | SIP-0091 Duty Durability via Temporal | accepted (fix stale `Targets: v1.3` → 1.4, #335) | **1.4 headline** | durable responsibility |
 | SIP-0090 Embodiment Phase 2 (Discord) | accepted (phased) | 1.4 **or** 1.6 — open decision | first live embodiment consumer |
 | Campaign Orchestration | proposed (revised 2026-07-06 per #334) | **1.6 headline** | objective envelope + continuation policy |
@@ -49,7 +49,7 @@ conformance, no behavior change).
 |---|---|---|
 | **Evidence SIP Phase 0** — verification audit (confirm the SIP's §6.1 classification mapping + §8 conformance table against code and the accepted SIP-0092/0070 texts; semantics are decided in the SIP, not here) | M | docs-only, feature-free, keeps 1.4 unblocked |
 | **#288 lease-arbitration fix** | M | lease-semantics *hardening* (1.3-legal); runtime surface is Lane-M-owned; hard gate for 1.6 Phase 2 — do not let it slip past 1.5 |
-| Evidence SIP proposal PR → design review → **accept** | M (maintainer) | acceptance is a design commitment on main; the 1.4 feature branch starts from it |
+| ~~Evidence SIP proposal PR → design review → **accept**~~ | M (maintainer) | **done 2026-07-06** — PR #337 merged; promoted to **SIP-0096** (`sips/accepted/`); the 1.4 feature branch starts from it |
 | #336 docs-drift lint | S | CI/test-infra is Lane-S-owned |
 
 Note: #295 stays exactly where the 1.3 plan put it (rides #186). The evidence SIP's

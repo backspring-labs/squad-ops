@@ -1328,7 +1328,7 @@ The following capabilities should be considered late 1.x enablers:
 
 - Durable Run records.
 - Better artifact linking.
-- Improved Cycle evidence model — concretely: the **Verification Evidence Integrity SIP** (`sips/proposed/SIP-Verification-Evidence-Integrity.md`, targets 1.4). Promotion gates, scorecards, and self-improvement measurement all presume acceptance signals cannot be fabricated by a stub, a skip, or an inert check; that SIP's integrity invariant + `CycleOutcome` roll-up is the enabler this line item means.
+- Improved Cycle evidence model — concretely: **SIP-0096 Verification Evidence Integrity** (`sips/accepted/SIP-0096-Verification-Evidence-Integrity.md`, accepted, targets 1.4). Promotion gates, scorecards, and self-improvement measurement all presume acceptance signals cannot be fabricated by a stub, a skip, or an inert check; that SIP's integrity invariant + `CycleOutcome` roll-up is the enabler this line item means.
 - Basic Campaign model.
 - Test Bay source-control integration.
 - Disposable workspace cleanup.

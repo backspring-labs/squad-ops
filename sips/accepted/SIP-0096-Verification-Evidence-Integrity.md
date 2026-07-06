@@ -1,13 +1,15 @@
 ---
 title: Verification Evidence Integrity
-status: proposed
+status: accepted
 author: jladd
 created_at: '2026-07-05T00:00:00Z'
+sip_number: 96
+updated_at: '2026-07-06T08:05:29.730876Z'
 ---
 # SIP: Verification Evidence Integrity
 
 ## Status
-Proposed — **revision 2** (2026-07-06: incorporates maintainer design review + independent adversarial review; rev 1's account of current behavior contained errors, corrected in §2/§8; load-bearing semantics previously deferred to Phase 0 are now decided in-text)
+**Status:** Accepted (2026-07-06, PR #337) — accepted at **revision 2** (incorporates maintainer design review + independent adversarial review; rev 1's account of current behavior contained errors, corrected in §2/§8; load-bearing semantics previously deferred to Phase 0 are decided in-text)
 
 **Targets:** v1.4 (feature minor — headline feature SIP candidate, alongside SIP-0091)
 **Motivated by:** the 2026-07-04 health assessment finding that orchestration maturity is outrunning evidence quality. The 2.0 arc (Campaign → Test Bay → capability promotion) automates decisions over cycle evidence; this SIP must land before Campaign continuation automation because Campaign decisions must not consume unclassified or non-creditable verification evidence.
