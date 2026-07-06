@@ -33,20 +33,21 @@ roll-up the evidence SIP defines, and its recruitment safety depends on lease ha
 
 | Item | Lane | Notes |
 |---|---|---|
-| #276 stub-fallback fix | S | bug; also unblocks #152 (the 1.3 collision rule) |
-| #306 Node.js in agent image / #296 source_filter | S | bugs; make frontend checks *able* to run |
-| #329 aio_pika log demotion | S | restores fleet observability this week |
-| #326 `/health` write-lane fix | S | untracked security hole → 1.3-hardening-shaped |
+| ~~#276 stub-fallback + frontend-build checks~~ | S | **already shipped** (PRs #289/#290); #296 **closed** (`5cb22ce`). What remains of #276 is #291 (executor `required_files`, Lane M → rides the 1.4 evidence arc). **#152's #276-gate is therefore satisfied.** |
+| #306 Node.js in agent image | S (Mac-doable) | bug; makes the shipped #290 frontend check actually executable |
+| #329 aio_pika log demotion | S (Mac-doable) | restores fleet observability this week |
+| #326 `/health` write-lane fix | S (Mac-doable) | untracked security hole → 1.3-hardening-shaped |
 | #335 docs hygiene (ROADMAP stats, SIP-0091 tag, untracked refs) | M | direct-push OK (simple docs) |
 
-The three bug fixes ship as ordinary patches; the evidence SIP later locks the *class*
-(its Phase 2 converts each fix into a permanent honest-reporting conformance case).
+The remaining bug fixes ship as ordinary patches; the evidence SIP locks the *class*
+(its Phase 2 covers the shipped #289/#290 checks with classification + provenance
+conformance, no behavior change).
 
 ### During 1.3 (riders — additive to the two-lane plan, not amendments)
 
 | Item | Lane | Why it rides here |
 |---|---|---|
-| **Evidence SIP Phase 0** — vocabulary reconciliation audit (read accepted SIP-0092/0070/0079 against §6–§7; field-level mapping; no third vocabulary) | M | docs-only, feature-free, keeps 1.4 unblocked |
+| **Evidence SIP Phase 0** — verification audit (confirm the SIP's §6.1 classification mapping + §8 conformance table against code and the accepted SIP-0092/0070 texts; semantics are decided in the SIP, not here) | M | docs-only, feature-free, keeps 1.4 unblocked |
 | **#288 lease-arbitration fix** | M | lease-semantics *hardening* (1.3-legal); runtime surface is Lane-M-owned; hard gate for 1.6 Phase 2 — do not let it slip past 1.5 |
 | Evidence SIP proposal PR → design review → **accept** | M (maintainer) | acceptance is a design commitment on main; the 1.4 feature branch starts from it |
 | #336 docs-drift lint | S | CI/test-infra is Lane-S-owned |
@@ -59,12 +60,15 @@ is itself an arc prerequisite — a reason to protect the 1.3 batch, not change 
 
 - **Evidence SIP Phase 1** — aggregation function + `blocked_unverified` verdict +
   provenance fields + `required_checks` profile schema. (Lane M: cycles/executor seam.)
-- **Evidence SIP Phase 2** — retrofit the proof cases (#276/#306/#296 honest reporting,
-  #291 required-files check, SIP-0095 preflight tooling-parity). Each lands with a live
-  `lite` cycle per the live-validation rule. (Split M/S along the usual file ownership:
-  executor/handlers = M; test-runner/build-check/agent-image conformance = S.)
-- **Evidence SIP Phase 3** — inert-check detection, doctor report, console badging,
-  `verification.check_inert` event, `CycleOutcome` roll-up consumed by wrap-up.
+- **Evidence SIP Phase 2** — conformance of the real gaps (rev-2 §8): the two named
+  SIP-0070 amendments (SKIP-only→PASS pulse fix; D13 required-frontend blocking),
+  #306 image fix + preflight tooling-parity, #291 required-files as a checked contract,
+  and classification/provenance retrofit of the shipped #289/#290 checks. Each lands
+  with a live `lite` cycle per the live-validation rule. (Split M/S along the usual
+  file ownership: executor/handlers = M; test-runner/build-check/agent-image = S.)
+- **Evidence SIP Phase 3** — `CycleOutcome` roll-up persisted + consumed by wrap-up,
+  gate waiver flow, doctor verification category (non-executable + inert reporting;
+  console badging and a dedicated event are deferred until demand).
   #114 (typed-check evaluation surfacing) rides this phase.
 - **SIP-0091 duty durability** per its own spec (Lane M).
 - **Open decision (make at 1.4 planning, not now):** does SIP-0090 Phase 2 (Discord)
