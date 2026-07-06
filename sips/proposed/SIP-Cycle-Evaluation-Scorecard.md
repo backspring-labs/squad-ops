@@ -4,6 +4,7 @@
 **Authors:** SquadOps Architecture
 **Created:** 2026-02-28
 **Revision:** 1
+**Sequences after:** the Verification Evidence Integrity SIP (`sips/proposed/SIP-Verification-Evidence-Integrity.md`, targets 1.4) — every scorecard dimension presumes the underlying acceptance/verification signals cannot be fabricated by stubbed, skipped, or inert checks; scoring un-integrity-checked evidence would institutionalize exactly the wrong lessons §2 warns about.
 
 ## 1. Abstract
 

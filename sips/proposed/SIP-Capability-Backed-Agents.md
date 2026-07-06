@@ -254,6 +254,7 @@ Umbrella phases; each becomes its own bounded implementation SIP. Per the roadma
 - **SIP-0089 / SIP-0090 / SIP-0091** — preserves identity ≠ capability ≠ embodiment ≠ mode; capability activation is not a mode; duty may activate a capability but is not the capability.
 - **SIP-0095** — capability preflight extends the cycle-create preflight gate.
 - **SIP-0070 / SIP-042** — evidence/acceptance and memory build on pulse verification and LanceDB.
+- **Verification Evidence Integrity (proposed, targets 1.4)** — the Evidence Ledger's "evidence is not acceptance" boundary (§12) presumes acceptance signals are themselves integrity-checked; skill evidence adopts the same executed vs not-executed honesty (a skill that could not run is recorded as not-executed with a reason, never silently omitted).
 - **SIP-0064 (`TaskFlowPolicy`) / Campaign** — capability activation respects run-level flow policy; cross-cycle capability-driven squad augmentation is the 2.0 Campaign story.
 - **SIP-0069 + Continuum Runtime Console** — future console visibility into bindings, active capabilities, working sets, evidence, and design workflows.
 

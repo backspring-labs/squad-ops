@@ -102,7 +102,7 @@ capability-backed agents*) and its concept-boundary table (§11) are sound and w
 
 ## Next moves
 
-1. ~~Draft the carved-out **Campaign Orchestration SIP (1.6)**~~ — **done**: `sips/proposed/SIP-Campaign-Orchestration.md`. The near-term acceptable unit: objective envelope + continuation policy, reusing recruitment unchanged, with the Loop-Policy decision vocab folded in. Not yet accepted (proposed).
+1. ~~Draft the carved-out **Campaign Orchestration SIP (1.6)**~~ — **done**: `sips/proposed/SIP-Campaign-Orchestration.md`. The near-term acceptable unit: objective envelope + continuation policy, reusing recruitment unchanged, with the Loop-Policy decision vocab folded in. Not yet accepted (proposed). **Update 2026-07-06:** revised per #334 (evidence contract, #288 prerequisite, AC#4 hardening); the Finding-5 feature-lane line is superseded by `docs/plans/1-4-evidence-arc-plan.md` — 1.4 = duty durability **+ Verification Evidence Integrity** (`sips/proposed/SIP-Verification-Evidence-Integrity.md`), which gates Campaign Phase 2.
 2. Reconcile the umbrella boundary (Campaign vs Capability-Backed-Agents vs Continuum-Runtime-Console).
 3. When `docs/ROADMAP.md` is next touched, apply the Finding-4 remap and the Finding-2 pillar map.
 4. Fix SIP-0091's stale `Targets: v1.3` → 1.4.

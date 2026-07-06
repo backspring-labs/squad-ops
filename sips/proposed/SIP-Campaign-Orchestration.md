@@ -13,6 +13,7 @@ Proposed
 **Carved from:** `SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements.md` (the 2.0 vision anchor). This SIP is the **near-term, implementable mechanic** — the objective envelope + continuation policy — with no dependency on capability packs, Test Bay, or new agent roles. See `docs/plans/2-0-roadmap-reconciliation.md`.
 **Supersedes:** the "Loop Policy" naming in `docs/ideas/SquadOps-Roadmap-Runtime-Loop-Capability-Backed-Agents.md`. The idea's continuance-decision vocabulary is adopted here as the Campaign continuation decision.
 **Builds on:** SIP-0064 (Cycle/Run/TaskFlowPolicy + gates), SIP-0067 (Postgres cycle registry pattern), SIP-0070 (pulse checks / verification evidence), SIP-0083 (multi-run cycle orchestration), SIP-0089 (runtime state / cycle recruitment via the coordinator + FocusLease), SIP-0069 (Continuum console).
+**Depends on (must land before Phase 2):** the **Verification Evidence Integrity SIP** (`sips/proposed/SIP-Verification-Evidence-Integrity.md`, targets 1.4) — defines the `CycleOutcome` roll-up the continuation decision reads (§7.2); it ships one even-minor ahead so the evidence contract is live-validated before Campaign automates over it. And **#288** (coordinator same-mode lease free-ride) — see §8; automated back-to-back launches and `fork` make that window systematic.
 
 ---
 
@@ -126,7 +127,11 @@ campaign_continuation_decision(
 
 ### 7.2 Decision inputs
 
-The objective's **measurement method**, the latest Cycle's **verification/acceptance evidence** (SIP-0070 pulse checks + gate outcomes), accumulated evidence, and **policy limits** (max cycles, budget, time, required-evidence thresholds). No agent narrative alone may drive `stop_success` — it must point to verification evidence or an operator gate.
+The objective's **measurement method**, the latest Cycle's **`CycleOutcome` evidence roll-up** (Verification Evidence Integrity SIP: the `verified` / `failed` / `unverified` / `inert` sets + `verdict`, built on SIP-0070 pulse checks and gate outcomes), accumulated evidence, and **policy limits** (max cycles, budget, time, required-evidence thresholds).
+
+Integrity rules the decision inherits, not re-implements:
+- No agent narrative alone may drive `stop_success` — it requires a roll-up with `verdict = accepted` (executed-and-passed evidence) or an operator gate.
+- A `blocked_unverified` verdict (required checks never executed) may only yield `repair` or `escalate` — never `continue`, `retry`, `fork`, or `stop_success`. An unverified Cycle proves nothing to continue from; treating its silence as signal is exactly the failure class the evidence-integrity invariant exists to kill.
 
 ### 7.3 Decision output
 
@@ -139,6 +144,11 @@ The objective's **measurement method**, the latest Cycle's **verification/accept
 > **A Campaign launches Cycles; it never holds agents between them.**
 
 Each Cycle recruits its squad exactly as today: the SIP-0089 coordinator grants a per-run `ambient→cycle` transition (`owner_ref = run_id`, `duty(2) > cycle(1) > ambient(0)` precedence, reserve-buffer guard), released when the run ends. Campaign sits entirely *above* recruitment — it decides *whether* and *with what request profile* to launch the next Cycle, then calls the ordinary path. There is no Campaign-scoped FocusLease, no cross-Cycle attention hold, no change to `runtime` lease semantics. This keeps the highest-risk part of the runtime untouched and is the reason Campaign is a bounded, low-risk feature.
+
+Two ordering constraints make the invariant real rather than aspirational:
+
+1. **#288 is a named prerequisite.** The coordinator's same-mode `idempotent_skip` returns before lease arbitration, so a second same-agent Cycle free-rides the first's lease and loses the agent mid-run when the first releases. Today that is a rare concurrent edge; Campaign's automated back-to-back launches — and `fork`, which creates concurrent sibling Cycles *by design* — make it a routine path. #288 lands before Phase 2.
+2. **The continuation choke point runs only after the terminated Cycle's participant release completes** (the executor returns participants `cycle→ambient` in its `finally`; the decision must sequence after that), *or* recruitment must arbitrate on `owner_ref` mismatch even for same-mode requests. Otherwise the next Cycle recruits agents still holding the prior run's lease — the #288 window, manufactured sequentially.
 
 ---
 
@@ -170,14 +180,14 @@ Frozen dataclasses in the SIP-0064 style, alongside `Cycle`/`Run`:
 
 ## 12. Continuum Surface (SIP-0069)
 
-Continuum shows active/paused/blocked/completed Campaigns; a Campaign detail view exposes objective, current Cycle, accumulated evidence summary, the **continuation-decision history** (each with its rationale + evidence refs), and disposition. Operator actions map to existing gate decisions where a continuation `escalate` is pending. No new HTTP prefix — Campaign resources follow the `/api/v1/<resource>` lane (per the API conventions rule); read surfaces reuse the cycle read patterns.
+Continuum shows active/paused/blocked/completed Campaigns; a Campaign detail view exposes objective, current Cycle, accumulated evidence summary, the **continuation-decision history** (each with its rationale + evidence refs), and disposition. Operator actions map to existing gate decisions where a continuation `escalate` is pending. No new HTTP prefix — Campaign resources follow the `/api/v1/<resource>` lane (per the API conventions rule); read surfaces reuse the cycle read patterns. Continuation decisions are also emitted as SIP-0077 cycle events (e.g. `campaign.continuation_decided`, with the taxonomy-parity tests updated) and reach LangFuse/Prefect/metrics through the existing bridges — no new observability channel.
 
 ---
 
 ## 13. Phasing (within the 1.6 arc)
 
 - **Phase 1 — Model + registry + manual coordination.** `Campaign`/`CampaignObjective`/`CampaignPolicy` models, `CampaignRegistryPort` + adapters, the additive `Cycle.campaign_id`, create/attach via API+CLI, derived status. An operator can group Cycles under an objective and see the aggregate. *No auto-continuation yet.* (Migration-light, CI-able — mirrors how SIP-0090 Phase 1 proved the model before wiring.)
-- **Phase 2 — Continuation policy.** `campaign_continuation_decision` pure function + the choke point that runs it when a Campaign's Cycle terminates, records the decision, and launches the next Cycle through the existing create path. This is the headline capability.
+- **Phase 2 — Continuation policy.** `campaign_continuation_decision` pure function + the choke point that runs it when a Campaign's Cycle terminates, records the decision, and launches the next Cycle through the existing create path. This is the headline capability. **Sequenced behind:** #288 (lease arbitration, §8), the Verification Evidence Integrity SIP (the `CycleOutcome` contract §7.2 reads), and the request-profile naming taxonomy (#316) — a *policy-derived* `next_request_profile` needs a coherent profile namespace to derive from.
 - **Phase 3 — Continuum surface.** The Campaign views + continuation-decision history + operator gate integration.
 
 Acceptance of the SIP is **all three phases**, consistent with the SIP-0089/0090 precedent that a phase ≠ the whole SIP.
@@ -189,8 +199,8 @@ Acceptance of the SIP is **all three phases**, consistent with the SIP-0089/0090
 1. A Campaign can be created against a Project with a declared objective and policy, and persists across restart (Postgres adapter).
 2. A Cycle can be created **with** a `campaign_id` and **without** one; the Campaign-less path is byte-for-byte unchanged in behavior.
 3. After a Campaign's Cycle terminates, a `ContinuationDecision` is computed, **recorded with its rationale and evidence refs**, and — when the outcome launches a Cycle — the next Cycle is created through the ordinary cycle-create path with the policy-derived request profile.
-4. **Recruitment invariant holds:** no Campaign-scoped lease exists; each launched Cycle recruits per-run through the SIP-0089 coordinator exactly as a standalone Cycle does (verified by asserting lease `owner_ref` is a `run_id`, never a `campaign_id`).
-5. `stop_success` is never emitted on agent narrative alone — it requires verification evidence or an operator gate.
+4. **Recruitment invariant holds — asserted positively:** every Campaign-launched Cycle acquires its **own** `cycle` FocusLease per recruited agent (`owner_ref` = that Cycle's `run_id`), held for the duration of its run. The negative form ("no lease has `owner_ref = campaign_id`") is necessary but insufficient — the #288 failure mode is a Cycle holding *no* lease at all, which a negative assertion cannot catch.
+5. `stop_success` is never emitted on agent narrative alone — it requires a `CycleOutcome` roll-up with `verdict = accepted` or an operator gate; a `blocked_unverified` verdict yields only `repair` or `escalate` (§7.2).
 6. Policy limits are enforced: a Campaign cannot exceed `max_cycles` or its budget; exhaustion yields `stop_failure`/`exhausted`, not silent looping.
 7. The continuation decision is **pure** — an architecture test asserts the decision function performs no persistence/dispatch (side effects live only at the choke point).
 8. Continuum shows a Campaign's objective, current Cycle, decision history, and disposition.
@@ -204,6 +214,7 @@ Acceptance of the SIP is **all three phases**, consistent with the SIP-0089/0090
 - **Scope creep into the 2.0 apparatus.** Self-Improvement/Test-Bay/capability pressure will want in. *Mitigation:* §5 non-goals are load-bearing; `target_type` is the single neutral extension hook, unused here.
 - **Recruitment-semantics drift.** A "keep the squad warm across Cycles" optimization would breach §8. *Mitigation:* AC#4 architecture assertion; the invariant is stated as the SIP's central constraint.
 - **Continuation-map vs verification drift.** The decision reads SIP-0070/gate evidence; if that evidence shape changes, the decision inputs must track it. *Mitigation:* consume verification through its existing contract, not a private copy.
+- **Acting on untrustworthy evidence.** The decision is only as good as the roll-up it reads; inert or stubbed checks (the #276/#306 class) would let `continue`/`stop_success` fire on fabricated green. *Mitigation:* the Verification Evidence Integrity SIP is a named Phase-2 dependency, and `blocked_unverified` maps only to `repair`/`escalate` (§7.2) — the decision refuses to treat silence as signal.
 - **Overlap with SIP-0083.** Multi-run-within-a-cycle already exists; a poorly-drawn boundary could duplicate it. *Mitigation:* §6 layering — Campaign only acts *after a Cycle terminates*, never on runs within a Cycle.
 
 ---
@@ -212,7 +223,7 @@ Acceptance of the SIP is **all three phases**, consistent with the SIP-0089/0090
 
 - **Carved from** the Campaign/Self-Improvement/Test-Bay vision anchor; **enables** the 2.0 Self-Improvement SIP (a Self-Improvement Campaign is a specialized Campaign type).
 - **Sibling** to `TaskFlowPolicy` (SIP-0064); **above** SIP-0086/0079/0083.
-- **Consumes** SIP-0070 verification, SIP-0064 gates, SIP-0089 recruitment, SIP-0069 Continuum — all unchanged.
+- **Consumes** SIP-0070 verification (via the Verification Evidence Integrity `CycleOutcome` contract), SIP-0064 gates, SIP-0089 recruitment, SIP-0069 Continuum — all unchanged.
 - **Precedent** for the pure-decision-at-a-choke-point shape: SIP-0089 §2.5 reserve-buffer guard, SIP-0095 cycle-create preflight.
 
 ---
@@ -229,10 +240,11 @@ Acceptance of the SIP is **all three phases**, consistent with the SIP-0089/0090
 
 ## 18. Open Questions
 
-1. Should `fork` create a sibling Campaign or a branched Cycle path within the same Campaign? (Leaning: branched Cycle path; a separate objective is a separate Campaign.)
+1. Should `fork` create a sibling Campaign or a branched Cycle path within the same Campaign? (Leaning: branched Cycle path; a separate objective is a separate Campaign.) **Must resolve before acceptance:** `fork` implies concurrent sibling Cycles, which manufactures the #288 window and changes the recruitment-safety story (§8) — if fork ships in Phase 2, #288 is a hard blocker; if fork defers to a later phase, say so explicitly.
 2. Minimum `CampaignPolicy` for Phase 2 — is `max_cycles` + budget + a verification threshold enough, or is a small stop-condition DSL needed?
 3. Does scheduled/nightly Campaign creation belong here (thin scheduler reuse of SIP-0089's poll) or in the 2.0 Self-Improvement SIP? (Leaning: the *scheduling mechanic* here if cheap; *nightly-improvement policy* in 2.0.)
 4. How much evidence does the continuation decision need inline vs by reference to stay pure and cheap?
+5. What does `defer` concretely wait on? §7.1 says "Reuses SIP-0089 duty windows," but duty windows are *agent-scoped* posture and Campaign defer is *orchestration-scoped* pausing — a vocabulary borrow, not a mechanism. Candidates: an operator-declared condition, a scheduled resume time (thin reuse of the SIP-0089 scheduler poll), or an external signal. Needs a concrete answer before Phase 2.
 
 ---
 
