@@ -23,6 +23,7 @@ roll-up the evidence SIP defines, and its recruitment safety depends on lease ha
 |---|---|---|---|
 | **SIP-0096** Verification Evidence Integrity | **accepted 2026-07-06** (PR #337, rev 2) | **1.4 headline** | integrity invariant, provenance, inert-check detection, `CycleOutcome` contract |
 | SIP-0091 Duty Durability via Temporal | accepted (fix stale `Targets: v1.3` → 1.4, #335) | **1.4 headline** | durable responsibility |
+| **SIP-0097** Executor Decomposition Boundaries | **accepted 2026-07-06** (PR #340, rev 2) | **1.3** (structural) | produces the `RunCompletion`+`RunLedger` seam SIP-0096 §6.4 wires into (slice 2 scheduled early for exactly this) |
 | SIP-0090 Embodiment Phase 2 (Discord) | accepted (phased) | 1.4 **or** 1.6 — open decision | first live embodiment consumer |
 | Campaign Orchestration | proposed (revised 2026-07-06 per #334) | **1.6 headline** | objective envelope + continuation policy |
 | Self-Improvement + Test Bay; Capability-Backed Agents; Cycle Evaluation Scorecard | proposed (vision/backlog) | 2.0 / post-1.6 | consumers of the trusted-evidence substrate |
