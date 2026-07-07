@@ -50,6 +50,7 @@ from squadops.cycles.pulse_verification import (
     resolve_milestone_bindings,
     run_pulse_verification,
 )
+from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.run_report_builder import build_run_report
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan
@@ -142,24 +143,35 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
             event_bus = NoOpCycleEventBus()
         self._cycle_event_bus = event_bus
-        # Accumulated per-run pulse verification summaries for run report.
-        # Reset at the start of each execute_run().
-        self._pulse_report_entries: list[dict[str, Any]] = []
-        # SIP-0083: forwarding overrides set by execute_cycle() before
-        # calling execute_run() for subsequent workloads. Merged into
-        # cycle.execution_overrides via dataclasses.replace().
-        self._forwarding_overrides: dict = {}
+        # SIP-0097 §6.6: per-run pulse summaries live on the RunLedger created
+        # in execute_run() and passed explicitly; multi-workload forwarding
+        # overrides are threaded execute_cycle() → execute_run() as a
+        # parameter. The executor carries no per-run/per-cycle mutable
+        # instance state (self._cancelled is the one cross-run exception).
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    async def execute_run(self, cycle_id: str, run_id: str, profile_id: str | None = None) -> None:
-        """Execute a run by dispatching tasks to agent containers via RabbitMQ."""
+    async def execute_run(
+        self,
+        cycle_id: str,
+        run_id: str,
+        profile_id: str | None = None,
+        *,
+        forwarding_overrides: dict | None = None,
+    ) -> None:
+        """Execute a run by dispatching tasks to agent containers via RabbitMQ.
+
+        ``forwarding_overrides`` is an adapter-internal keyword extension
+        (SIP-0083 multi-workload forwarding, threaded from execute_cycle();
+        SIP-0097 §6.6 — an immutable cycle-scoped value, never stored on the
+        executor). Port callers use the positional FlowExecutionPort signature.
+        """
         obs_ctx = None
         flow_run_id = None
         terminal_status = "COMPLETED"
-        self._pulse_report_entries = []
+        ledger = RunLedger()
         cycle = None
         plan = None
         # SIP-0089 §3.5 (#233): agents this run transitioned ambient→cycle, to be
@@ -169,7 +181,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         recruited_agent_ids: tuple[str, ...] = ()
 
         try:
-            cycle, run_root = await self._prepare_cycle_for_run(cycle_id, run_id)
+            cycle, run_root = await self._prepare_cycle_for_run(
+                cycle_id, run_id, forwarding_overrides=forwarding_overrides
+            )
             run = await self._cycle_registry.get_run(run_id)
             profile, _ = await self._squad_profile.resolve_snapshot(profile_id)
 
@@ -298,6 +312,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         obs_ctx=obs_ctx,
                         profile=profile,
                         run_root=run_root,
+                        ledger=ledger,
                     )
                 elif mode == "fan_out_fan_in":
                     await self._execute_fan_out(plan, run_id, cycle, flow_run_id)
@@ -311,6 +326,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         obs_ctx=obs_ctx,
                         profile=profile,
                         run_root=run_root,
+                        ledger=ledger,
                     )
                 else:
                     await self._execute_sequential(
@@ -321,6 +337,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         seed_artifact_refs,
                         obs_ctx=obs_ctx,
                         run_root=run_root,
+                        ledger=ledger,
                     )
 
                 # Success -> completed
@@ -420,6 +437,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 flow_run_id,
                 cycle=cycle,
                 plan=plan,
+                ledger=ledger,
             )
 
     async def cancel_run(self, run_id: str) -> None:
@@ -458,9 +476,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Cycle-create passes the first run, which resolves to index 0.
         start_index = await self._starting_workload_index(cycle_id, first_run_id)
         current_run_id = first_run_id
+        # SIP-0097 §6.6: forwarding overrides are a cycle-scoped value threaded
+        # into each run invocation, not executor state. Built at the end of
+        # workload i, consumed by workload i+1's execute_run.
+        forwarding_overrides: dict | None = None
         for i in range(start_index, len(workload_sequence)):
             workload_entry = workload_sequence[i]
-            await self.execute_run(cycle_id, current_run_id, profile_id)
+            await self.execute_run(
+                cycle_id,
+                current_run_id,
+                profile_id,
+                forwarding_overrides=forwarding_overrides,
+            )
 
             # Check terminal status (compare persisted string values)
             run = await self._cycle_registry.get_run(current_run_id)
@@ -547,7 +574,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
 
             # Build forwarding overrides for the next workload's execute_run()
-            self._forwarding_overrides = await self._build_forwarding_overrides(
+            forwarding_overrides = await self._build_forwarding_overrides(
                 cycle,
                 run,
             )
@@ -1040,6 +1067,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         obs_ctx: Any = None,
         profile: SquadProfile | None = None,
         run_root: str = "",
+        *,
+        ledger: RunLedger,
     ) -> None:
         """Sequential: dispatch one task at a time, fail-fast.
 
@@ -1220,6 +1249,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     flow_run_id=flow_run_id,
                     agent_resolver=agent_resolver,
                     run_root=run_root,
+                    ledger=ledger,
                 )
 
                 if cadence_closed:
@@ -1745,6 +1775,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         flow_run_id: str | None,
         agent_resolver: dict[str, str],
         run_root: str,
+        *,
+        ledger: RunLedger,
     ) -> None:
         """Run milestone and cadence pulse evaluations at the current boundary."""
         from squadops.capabilities.models import AcceptanceContext
@@ -1781,6 +1813,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     max_repair_attempts=max_repair_attempts,
                     flow_run_id=flow_run_id,
                     agent_resolver=agent_resolver,
+                    ledger=ledger,
                 )
 
         # --- Cadence close check ---
@@ -1801,13 +1834,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 max_repair_attempts=max_repair_attempts,
                 flow_run_id=flow_run_id,
                 agent_resolver=agent_resolver,
+                ledger=ledger,
             )
 
     # ------------------------------------------------------------------
     # Extracted helpers for execute_run
     # ------------------------------------------------------------------
 
-    async def _prepare_cycle_for_run(self, cycle_id: str, run_id: str) -> tuple[Cycle, str]:
+    async def _prepare_cycle_for_run(
+        self,
+        cycle_id: str,
+        run_id: str,
+        forwarding_overrides: dict | None = None,
+    ) -> tuple[Cycle, str]:
         """Load cycle, merge forwarding overrides, resolve PRD, materialize run root.
 
         Returns (cycle, run_root).
@@ -1816,15 +1855,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         cycle = await self._cycle_registry.get_cycle(cycle_id)
         # SIP-0083: merge forwarding overrides from multi-workload orchestration
-        if self._forwarding_overrides:
+        # (threaded per-run from execute_cycle, SIP-0097 §6.6 — not executor state)
+        if forwarding_overrides:
             cycle = _dc.replace(
                 cycle,
                 execution_overrides={
                     **cycle.execution_overrides,
-                    **self._forwarding_overrides,
+                    **forwarding_overrides,
                 },
             )
-            self._forwarding_overrides = {}
 
         # Resolve PRD content — if prd_ref is an artifact ID, fetch the
         # actual content so handlers receive the PRD text, not just the ID.
@@ -1905,6 +1944,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         flow_run_id: str | None,
         cycle: Cycle | None = None,
         plan: list[TaskEnvelope] | None = None,
+        ledger: RunLedger | None = None,
     ) -> None:
         """Close observability traces and generate run report."""
         # LangFuse: close cycle trace
@@ -1939,6 +1979,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     terminal_status,
                     cycle=cycle,
                     plan=plan,
+                    ledger=ledger,
                 )
         except Exception:
             logger.warning("Run report generation failed", exc_info=True)
@@ -2578,6 +2619,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         engine: AcceptanceCheckEngine,
         context: AcceptanceContext,
         repair_attempt_number: int = 0,
+        *,
+        ledger: RunLedger,
     ) -> tuple[PulseDecision, list[PulseVerificationRecord]]:
         """Run all suites at a boundary, persist records, return decision + records.
 
@@ -2668,8 +2711,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         decision = determine_boundary_decision(records)
 
-        # Accumulate for run report
-        self._pulse_report_entries.append(
+        # Accumulate for run report (SIP-0097 §6.6: on the RunLedger)
+        ledger.record_pulse_boundary(
             {
                 "boundary_id": boundary_id,
                 "cadence_interval_id": cadence_interval_id,
@@ -2729,6 +2772,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         max_repair_attempts: int = 2,
         flow_run_id: str | None = None,
         agent_resolver: dict[str, str] | None = None,
+        *,
+        ledger: RunLedger,
     ) -> None:
         """Verify boundary, repair on failure, exhaust on repeated failure.
 
@@ -2747,6 +2792,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             obs_ctx=obs_ctx,
             engine=engine,
             context=context,
+            ledger=ledger,
         )
 
         if decision == PulseDecision.PASS:
@@ -2952,6 +2998,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 engine=engine,
                 context=context,
                 repair_attempt_number=repair_attempt,
+                ledger=ledger,
             )
 
             if decision == PulseDecision.PASS:
@@ -3081,6 +3128,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         terminal_status: str,
         cycle: Cycle | None = None,
         plan: list[TaskEnvelope] | None = None,
+        ledger: RunLedger | None = None,
     ) -> None:
         """Generate run_report.md and store as a documentation artifact (D10).
 
@@ -3097,7 +3145,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             terminal_status,
             cycle=cycle,
             plan=plan,
-            pulse_report_entries=self._pulse_report_entries,
+            pulse_report_entries=list(ledger.pulse_entries) if ledger else None,
         )
         content_bytes = content.encode("utf-8")
 
