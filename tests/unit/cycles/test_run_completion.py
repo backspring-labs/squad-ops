@@ -1,9 +1,9 @@
-"""Tests for run report generation (SIP-Enhanced-Agent-Build-Capabilities).
+"""Tests for the RunCompletion collaborator (SIP-0097 §6.4, slice 2).
 
-Validates that _generate_run_report() produces a structured markdown report
+Validates that generate_run_report() produces a structured markdown report
 stored as a documentation artifact, and that failures don't affect run status.
-
-Part of Phase 3.
+Moved from test_run_report.py — assertions unmodified; the fixture now
+constructs RunCompletion directly, without a DispatchedFlowExecutor instance.
 """
 
 from __future__ import annotations
@@ -89,35 +89,31 @@ def _make_plan(count: int = 3) -> list[TaskEnvelope]:
 
 
 @pytest.fixture
-def executor(reply_router):
-    """Create a DispatchedFlowExecutor with mocked ports."""
-    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+def completion():
+    """Create a RunCompletion with mocked ports — no executor needed."""
+    from adapters.cycles.run_completion import RunCompletion
 
     vault = AsyncMock()
     vault.store = AsyncMock(side_effect=lambda ref, content: ref)
     registry = AsyncMock()
 
-    ex = DispatchedFlowExecutor(
+    return RunCompletion(
         cycle_registry=registry,
         artifact_vault=vault,
-        queue=AsyncMock(),
-        squad_profile=AsyncMock(),
-        reply_router=reply_router,
     )
-    return ex
 
 
 class TestReportContainsMetadata:
-    async def test_report_contains_metadata(self, executor):
+    async def test_report_contains_metadata(self, completion):
         """Run report includes cycle/run metadata."""
         cycle = _make_cycle()
         run = _make_run(
             started_at=NOW,
             artifact_refs=("art_001", "art_002"),
         )
-        executor._cycle_registry.get_run = AsyncMock(return_value=run)
+        completion._cycle_registry.get_run = AsyncMock(return_value=run)
 
-        await executor._generate_run_report(
+        await completion.generate_run_report(
             "cyc_001",
             "run_001",
             "COMPLETED",
@@ -126,7 +122,7 @@ class TestReportContainsMetadata:
         )
 
         # Verify vault.store was called with the report content
-        call_args = executor._artifact_vault.store.call_args
+        call_args = completion._artifact_vault.store.call_args
         ref = call_args[0][0]
         content_bytes = call_args[0][1]
         content = content_bytes.decode()
@@ -139,13 +135,13 @@ class TestReportContainsMetadata:
         assert "play_game" in content
         assert "fresh" in content
 
-    async def test_report_includes_quality_notes(self, executor):
+    async def test_report_includes_quality_notes(self, completion):
         """Run report includes quality notes section."""
         cycle = _make_cycle()
         run = _make_run()
-        executor._cycle_registry.get_run = AsyncMock(return_value=run)
+        completion._cycle_registry.get_run = AsyncMock(return_value=run)
 
-        await executor._generate_run_report(
+        await completion.generate_run_report(
             "cyc_001",
             "run_001",
             "COMPLETED",
@@ -153,17 +149,17 @@ class TestReportContainsMetadata:
             plan=None,
         )
 
-        content = executor._artifact_vault.store.call_args[0][1].decode()
+        content = completion._artifact_vault.store.call_args[0][1].decode()
         assert "Quality Notes" in content
         assert "All tasks completed successfully" in content
 
-    async def test_report_quality_notes_failed(self, executor):
+    async def test_report_quality_notes_failed(self, completion):
         """Run report quality notes reflect FAILED status."""
         cycle = _make_cycle()
         run = _make_run()
-        executor._cycle_registry.get_run = AsyncMock(return_value=run)
+        completion._cycle_registry.get_run = AsyncMock(return_value=run)
 
-        await executor._generate_run_report(
+        await completion.generate_run_report(
             "cyc_001",
             "run_001",
             "FAILED",
@@ -171,18 +167,18 @@ class TestReportContainsMetadata:
             plan=None,
         )
 
-        content = executor._artifact_vault.store.call_args[0][1].decode()
+        content = completion._artifact_vault.store.call_args[0][1].decode()
         assert "Quality Notes" in content
         assert "failed" in content.lower()
 
-    async def test_report_includes_task_plan(self, executor):
+    async def test_report_includes_task_plan(self, completion):
         """Run report includes task plan breakdown."""
         cycle = _make_cycle()
         run = _make_run()
-        executor._cycle_registry.get_run = AsyncMock(return_value=run)
+        completion._cycle_registry.get_run = AsyncMock(return_value=run)
         plan = _make_plan(3)
 
-        await executor._generate_run_report(
+        await completion.generate_run_report(
             "cyc_001",
             "run_001",
             "COMPLETED",
@@ -190,14 +186,14 @@ class TestReportContainsMetadata:
             plan=plan,
         )
 
-        content = executor._artifact_vault.store.call_args[0][1].decode()
+        content = completion._artifact_vault.store.call_args[0][1].decode()
         assert "Task Plan" in content
         assert "strategy.analyze_prd" in content
         assert "development.design" in content
         assert "qa.validate" in content
         assert "Total tasks: 3" in content
 
-    async def test_report_includes_gate_decisions(self, executor):
+    async def test_report_includes_gate_decisions(self, completion):
         """Run report includes gate decisions when present."""
         cycle = _make_cycle()
         run = _make_run(
@@ -211,9 +207,9 @@ class TestReportContainsMetadata:
                 ),
             ),
         )
-        executor._cycle_registry.get_run = AsyncMock(return_value=run)
+        completion._cycle_registry.get_run = AsyncMock(return_value=run)
 
-        await executor._generate_run_report(
+        await completion.generate_run_report(
             "cyc_001",
             "run_001",
             "COMPLETED",
@@ -221,19 +217,19 @@ class TestReportContainsMetadata:
             plan=None,
         )
 
-        content = executor._artifact_vault.store.call_args[0][1].decode()
+        content = completion._artifact_vault.store.call_args[0][1].decode()
         assert "Gate Decisions" in content
         assert "plan-review" in content
         assert "approved" in content
         assert "LGTM" in content
 
-    async def test_report_includes_artifact_count(self, executor):
+    async def test_report_includes_artifact_count(self, completion):
         """Run report includes artifact inventory count."""
         cycle = _make_cycle()
         run = _make_run(artifact_refs=("a1", "a2", "a3"))
-        executor._cycle_registry.get_run = AsyncMock(return_value=run)
+        completion._cycle_registry.get_run = AsyncMock(return_value=run)
 
-        await executor._generate_run_report(
+        await completion.generate_run_report(
             "cyc_001",
             "run_001",
             "COMPLETED",
@@ -241,36 +237,36 @@ class TestReportContainsMetadata:
             plan=None,
         )
 
-        content = executor._artifact_vault.store.call_args[0][1].decode()
+        content = completion._artifact_vault.store.call_args[0][1].decode()
         assert "Total artifacts: 3" in content
 
 
 class TestReportFailureNoStatusChange:
-    async def test_report_failure_no_status_change(self, executor):
+    async def test_report_failure_no_status_change(self, completion):
         """Report generation failure doesn't affect run status."""
-        executor._cycle_registry.get_run = AsyncMock(
+        completion._cycle_registry.get_run = AsyncMock(
             side_effect=Exception("registry down"),
         )
 
         # Should not raise — caller wraps in try/except
         with pytest.raises(Exception, match="registry down"):
-            await executor._generate_run_report(
+            await completion.generate_run_report(
                 "cyc_001",
                 "run_001",
                 "COMPLETED",
             )
 
         # The run status was NOT updated (no update_run_status calls)
-        executor._cycle_registry.update_run_status.assert_not_called()
+        completion._cycle_registry.update_run_status.assert_not_called()
 
 
 class TestReportWithoutCycleOrPlan:
-    async def test_report_without_cycle_or_plan(self, executor):
+    async def test_report_without_cycle_or_plan(self, completion):
         """Report works with minimal data (no cycle, no plan)."""
         run = _make_run()
-        executor._cycle_registry.get_run = AsyncMock(return_value=run)
+        completion._cycle_registry.get_run = AsyncMock(return_value=run)
 
-        await executor._generate_run_report(
+        await completion.generate_run_report(
             "cyc_001",
             "run_001",
             "FAILED",
@@ -278,7 +274,7 @@ class TestReportWithoutCycleOrPlan:
             plan=None,
         )
 
-        call_args = executor._artifact_vault.store.call_args
+        call_args = completion._artifact_vault.store.call_args
         ref = call_args[0][0]
         content = call_args[0][1].decode()
 

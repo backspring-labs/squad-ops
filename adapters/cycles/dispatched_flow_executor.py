@@ -29,6 +29,7 @@ from adapters.cycles.execution_errors import (
     _PausedError,
     _RecruitmentRejectedError,
 )
+from adapters.cycles.run_completion import RunCompletion
 from adapters.cycles.task_naming import build_task_name
 from squadops.cycles.agent_config import build_agent_resolver, resolve_agent_config
 from squadops.cycles.checkpoint import RunCheckpoint
@@ -51,7 +52,6 @@ from squadops.cycles.pulse_verification import (
     run_pulse_verification,
 )
 from squadops.cycles.run_ledger import RunLedger
-from squadops.cycles.run_report_builder import build_run_report
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
@@ -109,6 +109,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         assignment_port: AssignmentPort | None = None,
         activity_port: RuntimeActivityPort | None = None,
         coordinator: RuntimeCoordinator | None = None,
+        run_completion: RunCompletion | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
@@ -136,6 +137,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # infra.
         self._coordinator = coordinator
         self._cancelled: set[str] = set()
+        # SIP-0097 §6.4: run-completion collaborator (terminal path). Plain
+        # injected collaborator with a default composed from this executor's
+        # own deps — not a port.
+        self._run_completion = run_completion or RunCompletion(
+            cycle_registry=cycle_registry,
+            artifact_vault=artifact_vault,
+            llm_observability=llm_observability,
+            workflow_tracker=workflow_tracker,
+        )
 
         # SIP-0077: Cycle event bus (defaults to NoOp if not provided)
         if event_bus is None:
@@ -429,7 +439,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # raise. Empty (and skipped) when the run recruited no one.
             if self._coordinator is not None and recruited_agent_ids:
                 await release_participants(self._coordinator, recruited_agent_ids, owner_ref=run_id)
-            await self._finalize_run(
+            await self._run_completion.finalize(
                 cycle_id,
                 run_id,
                 terminal_status,
@@ -1935,55 +1945,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         return obs_ctx, flow_run_id
 
-    async def _finalize_run(
-        self,
-        cycle_id: str,
-        run_id: str,
-        terminal_status: str,
-        obs_ctx: Any,
-        flow_run_id: str | None,
-        cycle: Cycle | None = None,
-        plan: list[TaskEnvelope] | None = None,
-        ledger: RunLedger | None = None,
-    ) -> None:
-        """Close observability traces and generate run report."""
-        # LangFuse: close cycle trace
-        if self._llm_observability and obs_ctx:
-            from squadops.telemetry.models import StructuredEvent
-
-            self._llm_observability.record_event(
-                obs_ctx,
-                StructuredEvent(
-                    name="cycle.completed",
-                    message=f"Cycle {cycle_id} reached {terminal_status}",
-                ),
-            )
-            self._llm_observability.end_cycle_trace(obs_ctx)
-            self._llm_observability.flush()
-
-        # Prefect: set terminal state
-        if self._workflow_tracker and flow_run_id:
-            try:
-                await self._workflow_tracker.set_flow_run_state(
-                    flow_run_id, terminal_status, terminal_status.title()
-                )
-            except Exception:
-                logger.warning("Prefect terminal state update failed", exc_info=True)
-
-        # Run report: best-effort (D10)
-        try:
-            if cycle_id and run_id:
-                await self._generate_run_report(
-                    cycle_id,
-                    run_id,
-                    terminal_status,
-                    cycle=cycle,
-                    plan=plan,
-                    ledger=ledger,
-                )
-        except Exception:
-            logger.warning("Run report generation failed", exc_info=True)
-
     # ------------------------------------------------------------------
     # Extracted helpers for _run_correction_protocol
     # ------------------------------------------------------------------
@@ -3120,51 +3081,3 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 status.value,
                 exc_info=True,
             )
-
-    async def _generate_run_report(
-        self,
-        cycle_id: str,
-        run_id: str,
-        terminal_status: str,
-        cycle: Cycle | None = None,
-        plan: list[TaskEnvelope] | None = None,
-        ledger: RunLedger | None = None,
-    ) -> None:
-        """Generate run_report.md and store as a documentation artifact (D10).
-
-        Best-effort: called in finally block, failures are logged but
-        never affect the run's terminal status.
-        """
-        # Fetch latest run state for gate decisions and artifact refs
-        run = await self._cycle_registry.get_run(run_id)
-
-        content = build_run_report(
-            cycle_id,
-            run_id,
-            run,
-            terminal_status,
-            cycle=cycle,
-            plan=plan,
-            pulse_report_entries=list(ledger.pulse_entries) if ledger else None,
-        )
-        content_bytes = content.encode("utf-8")
-
-        # Note: uses direct vault.store() instead of _store_artifact() because
-        # the report is generated outside of any task context (no TaskEnvelope).
-        ref = ArtifactRef(
-            artifact_id=f"art_{uuid4().hex[:12]}",
-            project_id=cycle.project_id if cycle else "unknown",
-            artifact_type="document",
-            filename="run_report.md",
-            content_hash=sha256(content_bytes).hexdigest(),
-            size_bytes=len(content_bytes),
-            media_type="text/markdown",
-            created_at=datetime.now(UTC),
-            cycle_id=cycle_id,
-            run_id=run_id,
-            metadata={"report_type": "run_report"},
-        )
-
-        await self._artifact_vault.store(ref, content_bytes)
-        await self._cycle_registry.append_artifact_refs(run_id, (ref.artifact_id,))
-        logger.info("Run report generated for %s", run_id)
