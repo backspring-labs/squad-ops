@@ -23,8 +23,16 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from adapters.cycles.execution_errors import (
+    _CancellationError,
+    _ExecutionError,
+    _PausedError,
+    _RecruitmentRejectedError,
+)
 from adapters.cycles.task_naming import build_task_name
+from squadops.cycles.agent_config import build_agent_resolver, resolve_agent_config
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
 from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, Run, RunStatus
 from squadops.cycles.naming import flow_run_name
 from squadops.cycles.plan_delta import PlanDelta
@@ -42,6 +50,7 @@ from squadops.cycles.pulse_verification import (
     resolve_milestone_bindings,
     run_pulse_verification,
 )
+from squadops.cycles.run_report_builder import build_run_report
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
@@ -72,32 +81,6 @@ if TYPE_CHECKING:
     from squadops.runtime.coordinator import RuntimeCoordinator
 
 logger = logging.getLogger(__name__)
-
-
-class _ExecutionError(Exception):
-    """Internal: task failure or gate rejection."""
-
-
-class _CancellationError(Exception):
-    """Internal: run was cancelled."""
-
-
-class _PausedError(Exception):
-    """Internal: run paused due to BLOCKED outcome."""
-
-
-class _RecruitmentRejectedError(Exception):
-    """Internal: cycle recruitment deferred (SIP-0089 §2.5/§11.4).
-
-    A participating agent is committed to — or about to start — a hard duty
-    window, so the run is paused (a *deferral*, not a failure). Re-attempt via
-    ``squadops runs resume`` once the window closes.
-    """
-
-    def __init__(self, agent_id: str | None, reason: str | None) -> None:
-        super().__init__(f"recruitment rejected for agent {agent_id}: {reason}")
-        self.agent_id = agent_id
-        self.reason = reason
 
 
 class DispatchedFlowExecutor(FlowExecutionPort):
@@ -1106,7 +1089,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
 
         # Build role → agent_id resolver for repair task dispatch
-        agent_resolver = self._build_agent_resolver(profile)
+        agent_resolver = build_agent_resolver(profile)
 
         # ------------------------------------------------------------------
         # SIP-0070: Parse pulse checks + cadence policy from applied_defaults
@@ -1304,13 +1287,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     # ------------------------------------------------------------------
     # Extracted helpers for _execute_sequential
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _build_agent_resolver(profile: SquadProfile | None) -> dict[str, str]:
-        """Build a role → agent_id mapping from the squad profile."""
-        if not profile:
-            return {}
-        return {agent.role: agent.agent_id for agent in profile.agents if agent.enabled}
 
     async def _check_task_preconditions(
         self,
@@ -1968,101 +1944,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             logger.warning("Run report generation failed", exc_info=True)
 
     # ------------------------------------------------------------------
-    # Extracted helpers for _generate_run_report
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _build_report_metadata_lines(
-        cycle_id: str,
-        run_id: str,
-        run: Any,
-        terminal_status: str,
-        cycle: Any,
-    ) -> list[str]:
-        """Build the metadata section lines for the run report."""
-        lines = [
-            "# Run Report",
-            "",
-            "## Metadata",
-            f"- **Cycle ID:** {cycle_id}",
-            f"- **Run ID:** {run_id}",
-            f"- **Run Number:** {run.run_number}",
-            f"- **Status:** {terminal_status}",
-        ]
-        if cycle:
-            lines.append(f"- **Project ID:** {cycle.project_id}")
-            lines.append(f"- **Build Strategy:** {cycle.build_strategy}")
-            lines.append(f"- **Squad Profile:** {cycle.squad_profile_id}")
-        if run.started_at:
-            lines.append(f"- **Started:** {run.started_at.isoformat()}")
-        if run.finished_at:
-            lines.append(f"- **Finished:** {run.finished_at.isoformat()}")
-        return lines
-
-    @staticmethod
-    def _build_report_quality_lines(terminal_status: str) -> list[str]:
-        """Build the quality notes section for the run report."""
-        lines = ["", "## Quality Notes"]
-        if terminal_status == "COMPLETED":
-            lines.append("All tasks completed successfully.")
-        elif terminal_status == "FAILED":
-            lines.append("One or more tasks failed. Check task artifacts for details.")
-        elif terminal_status == "CANCELLED":
-            lines.append("Run was cancelled before completion.")
-        else:
-            lines.append(f"Terminal status: {terminal_status}")
-        lines.append("")
-        return lines
-
-    def _build_pulse_report_lines(self) -> list[str]:
-        """Build the pulse verification section for the run report."""
-        lines: list[str] = []
-        lines.append("")
-        lines.append("## Pulse Verification")
-        pass_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "pass")
-        fail_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "fail")
-        exhausted_count = sum(1 for e in self._pulse_report_entries if e["decision"] == "exhausted")
-        total = len(self._pulse_report_entries)
-        lines.append(
-            f"Total boundary checks: {total} "
-            f"(PASS: {pass_count}, FAIL: {fail_count}, EXHAUSTED: {exhausted_count})"
-        )
-        repair_entries = [e for e in self._pulse_report_entries if e["repair_attempt"] > 0]
-        if repair_entries:
-            max_attempt = max(e["repair_attempt"] for e in repair_entries)
-            lines.append(f"Repair attempts: {len(repair_entries)} (max attempt: {max_attempt})")
-        lines.append("")
-        for entry in self._pulse_report_entries:
-            suites_str = ", ".join(f"{s['suite_id']}={s['outcome']}" for s in entry["suites"])
-            repair_tag = f" (repair #{entry['repair_attempt']})" if entry["repair_attempt"] else ""
-            lines.append(
-                f"- **{entry['boundary_id']}** [{entry['decision'].upper()}]{repair_tag}: "
-                f"{suites_str}"
-            )
-        return lines
-
-    # ------------------------------------------------------------------
     # Extracted helpers for _run_correction_protocol
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _resolve_agent_config(role: str, profile: Any) -> tuple[str, str | None, dict[str, Any]]:
-        """Resolve a role to ``(agent_id, agent_model, agent_overrides)`` from the squad profile.
-
-        Mirrors ``squadops.cycles.task_plan._resolve_agent_config`` so correction
-        and repair envelopes propagate the cycle's profile-specified model and
-        config overrides into the handler. Without this, ``inputs["agent_model"]``
-        is absent and the handler falls back to the agent container's instance
-        default — silently diverging from the cycle's squad profile (issue #110).
-        Falls back to ``(role, None, {})`` when no enabled match exists.
-        """
-        if profile:
-            for agent in profile.agents:
-                if agent.role == role and agent.enabled:
-                    model = agent.model if agent.model else None
-                    overrides = dict(agent.config_overrides or {})
-                    return agent.agent_id, model, overrides
-        return role, None, {}
 
     async def _store_correction_task_artifacts(
         self,
@@ -2142,103 +2025,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     # Correction protocol
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _build_failure_evidence(
-        envelope: TaskEnvelope,
-        result: TaskResult,
-        *,
-        prior_plan_deltas_count: int,
-    ) -> dict[str, Any]:
-        """Assemble the failure-evidence payload handed to data.analyze_failure.
-
-        Issue #84 follow-up: the data role was previously handed only
-        `error` + `outcome_class` and had to guess at the failure shape;
-        downstream
-        correction-decision then picked rewind on content failures because
-        it had no indication that a patch would suffice. Pull through the
-        failed handler's structured `validation_result` + preliminary
-        `failure_classification` + rejected artifact summaries so the
-        analyzer reasons about concrete checks instead of free-text
-        error strings. Each rejected-artifact content snippet is capped
-        at 1500 chars so a multi-file failure doesn't bloat the prompt.
-        """
-        result_outputs = result.outputs or {}
-        validation_result = result_outputs.get("validation_result") or {}
-        rejected_artifacts: list[dict[str, Any]] = []
-        for art in result_outputs.get("artifacts", []) or []:
-            content = art.get("content", "")
-            if isinstance(content, str):
-                size = len(content)
-                snippet = content[:1500]
-            else:
-                size = 0
-                snippet = ""
-            rejected_artifacts.append(
-                {
-                    "name": art.get("name", ""),
-                    "type": art.get("type", ""),
-                    "size": size,
-                    "content_snippet": snippet,
-                }
-            )
-        return {
-            "failed_task_id": envelope.task_id,
-            "failed_task_type": envelope.task_type,
-            "error": result.error or "",
-            "outcome_class": result_outputs.get("outcome_class", ""),
-            "preliminary_failure_classification": result_outputs.get("failure_classification", ""),
-            "validation_result": {
-                "passed": validation_result.get("passed"),
-                "summary": validation_result.get("summary", ""),
-                "missing_components": validation_result.get("missing_components", []),
-                "checks": validation_result.get("checks", []),
-            },
-            "rejected_artifacts": rejected_artifacts,
-            "prior_plan_deltas_count": prior_plan_deltas_count,
-        }
-
-    @staticmethod
-    def _compose_failure_trigger(
-        envelope: TaskEnvelope,
-        failure_evidence: dict[str, Any],
-    ) -> str:
-        """Issue #114: compose the plan_delta `trigger` string.
-
-        When the failure traces to a blocking typed-acceptance check trip
-        (an evaluation row with check prefix ``acceptance:``, severity
-        ``error``, and ``passed: False``), emit the extended shape
-        ``typed_check_failed:<task_type>:<task_index>:<check_index>`` so
-        the SIP-0092 gate evaluator can attribute corrections to specific
-        check failures without re-deriving them from prose.
-
-        Otherwise returns the legacy shape ``task_failure:<task_type>``
-        (e.g. development.develop returned no valid code, RabbitMQ
-        timeout, JSON parse error — none of which are typed-check trips).
-        Both shapes coexist and consumers must handle both.
-        """
-        legacy = f"task_failure:{envelope.task_type}"
-        validation_result = failure_evidence.get("validation_result") or {}
-        checks = validation_result.get("checks") or []
-        for row in checks:
-            if not isinstance(row, dict):
-                continue
-            check_name = row.get("check", "")
-            if not isinstance(check_name, str) or not check_name.startswith("acceptance:"):
-                continue
-            if row.get("passed", True):
-                continue
-            if row.get("severity") != "error":
-                continue
-            task_index = row.get("task_index")
-            check_index = row.get("check_index")
-            if task_index is None or check_index is None:
-                # Identity fields missing (legacy data, monolithic flow).
-                # Fall back to legacy shape rather than emit a malformed
-                # trigger downstream consumers would have to special-case.
-                continue
-            return f"typed_check_failed:{envelope.task_type}:{task_index}:{check_index}"
-        return legacy
-
     async def _run_correction_protocol(
         self,
         run_id: str,
@@ -2278,7 +2064,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         )
 
         # 2. Build correction task envelopes (deterministic IDs)
-        failure_evidence = self._build_failure_evidence(
+        failure_evidence = build_failure_evidence(
             envelope, result, prior_plan_deltas_count=len(plan_delta_refs)
         )
 
@@ -2293,7 +2079,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         for step_idx, (task_type, role) in enumerate(CORRECTION_TASK_STEPS):
             corr_task_id = f"corr-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-            agent_id, agent_model, agent_overrides = self._resolve_agent_config(role, profile)
+            resolved = resolve_agent_config(role, profile)
+            agent_id = resolved.agent_id
+            agent_model = resolved.model
+            agent_overrides = resolved.config_overrides
 
             # Issue #110: propagate squad-profile model + overrides so
             # correction-loop reasoning runs on the cycle's specified model
@@ -2419,7 +2208,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             delta_id=uuid4().hex,
             run_id=run_id,
             correction_path=correction_path,
-            trigger=self._compose_failure_trigger(envelope, failure_evidence),
+            trigger=compose_failure_trigger(envelope, failure_evidence),
             failure_classification=analysis_outputs.get("classification", "unknown"),
             analysis_summary=analysis_outputs.get("analysis_summary", "N/A"),
             decision_rationale=decision_outputs.get("decision_rationale", "N/A"),
@@ -2460,7 +2249,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if correction_path == "patch":
             for step_idx, (task_type, role) in enumerate(repair_steps_for(envelope.task_type)):
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-                agent_id, agent_model, agent_overrides = self._resolve_agent_config(role, profile)
+                resolved = resolve_agent_config(role, profile)
+                agent_id = resolved.agent_id
+                agent_model = resolved.model
+                agent_overrides = resolved.config_overrides
 
                 # Plumb the failed task's contract through to the repair
                 # envelope. Without this the repair handler only sees the
@@ -3298,43 +3090,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Fetch latest run state for gate decisions and artifact refs
         run = await self._cycle_registry.get_run(run_id)
 
-        lines = self._build_report_metadata_lines(cycle_id, run_id, run, terminal_status, cycle)
-
-        # Task breakdown
-        if plan:
-            lines.append("")
-            lines.append("## Task Plan")
-            lines.append(f"Total tasks: {len(plan)}")
-            lines.append("")
-            for i, envelope in enumerate(plan):
-                role = envelope.metadata.get("role", "unknown")
-                lines.append(
-                    f"{i + 1}. **{envelope.task_type}** (agent: {envelope.agent_id}, role: {role})"
-                )
-
-        # Gate decisions
-        if run.gate_decisions:
-            lines.append("")
-            lines.append("## Gate Decisions")
-            for gd in run.gate_decisions:
-                lines.append(
-                    f"- **{gd.gate_name}:** {gd.decision}" + (f" — {gd.notes}" if gd.notes else "")
-                )
-
-        # Artifact inventory
-        if run.artifact_refs:
-            lines.append("")
-            lines.append("## Artifacts")
-            lines.append(f"Total artifacts: {len(run.artifact_refs)}")
-
-        # Pulse verification summary
-        if self._pulse_report_entries:
-            lines.extend(self._build_pulse_report_lines())
-
-        # Quality notes
-        lines.extend(self._build_report_quality_lines(terminal_status))
-
-        content = "\n".join(lines)
+        content = build_run_report(
+            cycle_id,
+            run_id,
+            run,
+            terminal_status,
+            cycle=cycle,
+            plan=plan,
+            pulse_report_entries=self._pulse_report_entries,
+        )
         content_bytes = content.encode("utf-8")
 
         # Note: uses direct vault.store() instead of _store_artifact() because
