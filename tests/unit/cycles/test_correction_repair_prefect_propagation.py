@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from squadops.cycles.models import Cycle, TaskFlowPolicy
+from squadops.cycles.run_ledger import RunLedger
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
@@ -356,6 +357,7 @@ class TestPulseRepairTaskRunPropagation:
             max_repair_attempts=2,
             flow_run_id="fr_main",
             agent_resolver={"strat": "nat", "dev": "neo", "qa": "eve", "lead": "max"},
+            ledger=RunLedger(),
         )
 
         # Repair task_runs were created and IDs threaded through dispatch.

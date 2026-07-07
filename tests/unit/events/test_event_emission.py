@@ -48,13 +48,23 @@ def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
     return refs
 
 
-# Source files that contain emit() calls
+# Source files that contain emit() calls (or decide the event type an emit
+# call uses — SIP-0097 slice 2 moved the run-terminal mapping, and its
+# EventType references, to the RunCompletion module; the executor's single
+# collapsed handler emits what the mapping decides)
 _EXECUTOR_PATH = Path("adapters/cycles/dispatched_flow_executor.py")
+_RUN_COMPLETION_PATH = Path("adapters/cycles/run_completion.py")
 _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
 _RUNS_ROUTE = Path("src/squadops/api/routes/cycles/runs.py")
 _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")
 
-_ALL_EMISSION_FILES = [_EXECUTOR_PATH, _CYCLES_ROUTE, _RUNS_ROUTE, _ARTIFACTS_ROUTE]
+_ALL_EMISSION_FILES = [
+    _EXECUTOR_PATH,
+    _RUN_COMPLETION_PATH,
+    _CYCLES_ROUTE,
+    _RUNS_ROUTE,
+    _ARTIFACTS_ROUTE,
+]
 
 
 @pytest.fixture(scope="module")
@@ -100,8 +110,6 @@ class TestExecutorEmissionPoints:
         [
             "RUN_STARTED",
             "RUN_COMPLETED",
-            "RUN_FAILED",
-            "RUN_CANCELLED",
             "RUN_PAUSED",
             "RUN_RESUMED",
             "TASK_DISPATCHED",
@@ -125,8 +133,25 @@ class TestExecutorEmissionPoints:
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_22_types(self, executor_refs: set[str]) -> None:
-        assert len(executor_refs) == 22
+    def test_executor_has_20_types(self, executor_refs: set[str]) -> None:
+        """20 = the former 22 minus RUN_FAILED/RUN_CANCELLED, whose static
+        references moved to the run-completion terminal mapping (SIP-0097
+        slice 2c). RUN_PAUSED stays: the duty-deferral path still references
+        it directly in the executor."""
+        assert len(executor_refs) == 20
+
+
+class TestRunCompletionEmissionPoints:
+    """The run-terminal event types are decided by the RunCompletion mapping
+    (SIP-0097 §6.4); the executor's collapsed handler emits what it decides."""
+
+    @pytest.fixture(scope="class")
+    def run_completion_refs(self) -> set[str]:
+        return _find_event_type_refs_in_file(_RUN_COMPLETION_PATH)
+
+    @pytest.mark.parametrize("attr", ["RUN_CANCELLED", "RUN_PAUSED", "RUN_FAILED"])
+    def test_terminal_mapping_covers(self, attr: str, run_completion_refs: set[str]) -> None:
+        assert attr in run_completion_refs
 
 
 class TestRouteEmissionPoints:
@@ -217,18 +242,18 @@ class TestEmitCallSitePayloadFields:
                 total_calls += 1
                 if any(kw.arg == "payload" for kw in call.keywords):
                     with_payload += 1
-        # At least 38 of 48 calls have payload (a few lifecycle events omit it)
+        # At least 38 of 44 calls have payload (a few lifecycle events omit it)
         assert with_payload >= 38
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 41 executor + 7 route = 48 total emit calls.
+        """Sanity check: 37 executor + 7 route = 44 total emit calls.
 
-        The 41st executor emit is the SIP-0089 §2.5 reserve-buffer deferral —
-        `EventType.RUN_PAUSED` with payload reason `upcoming_hard_duty_window`,
-        raised from the `_RecruitmentRejectedError` handler. Reusing RUN_PAUSED
-        (rather than minting a new EventType) keeps the locked cycle taxonomy
-        intact, so this count — not the taxonomy size — is what moves."""
+        SIP-0097 slice 2c collapsed execute_run's five per-exception-class
+        terminal emits (cancelled / recruitment-deferral paused / paused /
+        execution-failed / unexpected-failed) into one emit driven by the
+        RunCompletion terminal mapping — same events at runtime, 4 fewer
+        static call sites (was 41 executor + 7 route = 48)."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 48
+        assert total == 44
