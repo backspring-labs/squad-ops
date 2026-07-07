@@ -8,6 +8,7 @@ Part of Phase 3.
 
 from __future__ import annotations
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,6 +21,21 @@ from squadops.cli.main import app
 runner = CliRunner()
 
 pytestmark = [pytest.mark.domain_cli]
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(output: str) -> str:
+    """Strip ANSI style sequences from CLI output before asserting.
+
+    Under CliRunner, output is not a TTY so rich normally emits no styling —
+    but a caller environment exporting FORCE_COLOR overrides that detection,
+    and rich's auto-highlighter styles numbers as separate tokens, splitting
+    substrings like "2 file(s)" across escape sequences (#345). Assert on the
+    plain text so the tests are deterministic regardless of the shell's
+    color environment.
+    """
+    return _ANSI_RE.sub("", output)
 
 
 def _mock_client(
@@ -90,7 +106,7 @@ class TestAssembleWritesFiles:
         assert result.exit_code == 0
         assert (tmp_path / "play_game" / "src" / "main.py").read_bytes() == b"print('hello')"
         assert (tmp_path / "play_game" / "tests" / "test_main.py").exists()
-        assert "2 file(s)" in result.output
+        assert "2 file(s)" in _plain(result.output)
 
     @patch("squadops.cli.commands.runs._get_client")
     def test_assemble_uses_cycle_id_fallback(self, mock_get_client, tmp_path):
@@ -165,7 +181,7 @@ class TestAssembleNoBuildArtifacts:
         )
 
         assert result.exit_code == exit_codes.NOT_FOUND
-        assert "planning artifacts" in result.output
+        assert "planning artifacts" in _plain(result.output)
 
 
 class TestAssembleNoArtifacts:
@@ -273,7 +289,7 @@ class TestAssembleFiltersCorrectly:
         assert (tmp_path / "proj" / "main.py").exists()
         assert (tmp_path / "proj" / "config.yaml").exists()
         assert not (tmp_path / "proj" / "plan.md").exists()
-        assert "2 file(s)" in result.output
+        assert "2 file(s)" in _plain(result.output)
 
 
 class TestAssembleReadmeContent:
@@ -320,9 +336,9 @@ class TestAssembleReadmeContent:
         )
 
         assert result.exit_code == 0
-        assert "README.md" in result.output
-        assert "# My Project" in result.output
-        assert "Hello world" in result.output
+        assert "README.md" in _plain(result.output)
+        assert "# My Project" in _plain(result.output)
+        assert "Hello world" in _plain(result.output)
 
 
 class TestAssembleJsonOutput:
@@ -362,4 +378,4 @@ class TestAssembleJsonOutput:
         )
 
         assert result.exit_code == 0
-        assert "app.py" in result.output
+        assert "app.py" in _plain(result.output)
