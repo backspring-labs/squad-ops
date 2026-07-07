@@ -532,3 +532,72 @@ class TestPausedHandler:
 
         event_types = [c.args[0] for c in mock_event_bus.emit.call_args_list]
         assert EventType.RUN_PAUSED in event_types
+
+
+# ---------------------------------------------------------------------------
+# Resume of an already-RUNNING run (#342)
+# ---------------------------------------------------------------------------
+
+
+class TestResumeOfAlreadyRunningRun:
+    """#342: the resume/retry routes flip the run to RUNNING before enqueuing
+    execution (#222/#256). execute_run must therefore skip its own RUNNING
+    transition when the run already is — RUNNING → RUNNING is an illegal
+    self-loop on every lifecycle-enforcing registry (postgres AND memory),
+    so the unconditional call instantly failed every resumed run live."""
+
+    def _wire_lifecycle_enforcement(self, mock_registry, initial_status: str) -> dict:
+        """Make the mock registry enforce transitions exactly like the real ones."""
+        from squadops.cycles.lifecycle import validate_run_transition
+
+        state = {"status": initial_status}
+
+        def _run(run_id: str = "run_impl") -> Run:
+            return Run(
+                run_id="run_impl",
+                cycle_id="cyc_impl",
+                run_number=1,
+                status=state["status"],
+                initiated_by="api",
+                resolved_config_hash="hash",
+                workload_type=WorkloadType.IMPLEMENTATION,
+            )
+
+        async def _update(run_id: str, status: RunStatus) -> Run:
+            validate_run_transition(RunStatus(state["status"]), status)
+            state["status"] = status.value
+            return _run()
+
+        mock_registry.get_run = AsyncMock(side_effect=_run)
+        mock_registry.update_run_status = AsyncMock(side_effect=_update)
+        mock_registry.append_artifact_refs.side_effect = lambda run_id, refs: _run()
+        return state
+
+    async def test_resumed_running_run_executes_and_completes(
+        self, executor, mock_registry, mock_queue, mock_event_bus
+    ) -> None:
+        """A run the resume route already flipped to RUNNING must execute to
+        COMPLETED — not instantly FAIL on the RUNNING→RUNNING self-loop."""
+        state = self._wire_lifecycle_enforcement(mock_registry, "running")
+
+        with patch.object(executor, "_execute_sequential", new_callable=AsyncMock):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        assert state["status"] == "completed"
+        event_types = [c.args[0] for c in mock_event_bus.emit.call_args_list]
+        assert EventType.RUN_COMPLETED in event_types
+        assert EventType.RUN_FAILED not in event_types
+
+    async def test_queued_run_still_transitions_to_running_first(
+        self, executor, mock_registry, mock_queue, mock_event_bus
+    ) -> None:
+        """The create path is unchanged: a QUEUED run still gets the executor's
+        QUEUED→RUNNING transition before completing."""
+        state = self._wire_lifecycle_enforcement(mock_registry, "queued")
+
+        with patch.object(executor, "_execute_sequential", new_callable=AsyncMock):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        assert state["status"] == "completed"
+        first_transition = mock_registry.update_run_status.call_args_list[0].args[1]
+        assert first_transition == RunStatus.RUNNING
