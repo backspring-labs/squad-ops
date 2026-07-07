@@ -197,8 +197,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             run = await self._cycle_registry.get_run(run_id)
             profile, _ = await self._squad_profile.resolve_snapshot(profile_id)
 
-            # queued/failed/paused -> running
-            await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
+            # queued/failed/paused -> running. Skipped when already RUNNING:
+            # the resume/retry routes flip the run to RUNNING before enqueuing
+            # execution (#222/#256), and RUNNING -> RUNNING is an illegal
+            # transition — the unconditional call instantly failed every
+            # resumed run on a lifecycle-enforcing registry (#342).
+            if run.status != RunStatus.RUNNING.value:
+                await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
 
             # SIP-0079: Check if resuming from checkpoint
             existing_checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
