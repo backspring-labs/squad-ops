@@ -281,3 +281,163 @@ class TestReportWithoutCycleOrPlan:
         assert ref.project_id == "unknown"
         assert "FAILED" in content
         assert "cyc_001" in content
+
+
+# ---------------------------------------------------------------------------
+# Terminal-status mapping (SIP-0097 slice 2c) — one case per exception class,
+# asserting the exact status/event/payload/log consequence execute_run acts on.
+# ---------------------------------------------------------------------------
+
+
+class TestResolveTerminalOutcome:
+    def test_cancellation_maps_to_cancelled(self):
+        from adapters.cycles.execution_errors import _CancellationError
+        from adapters.cycles.run_completion import resolve_terminal_outcome
+        from squadops.cycles.models import RunStatus
+        from squadops.events.types import EventType
+
+        outcome = resolve_terminal_outcome(_CancellationError("run_1"), "run_1")
+        assert outcome.terminal_status == "CANCELLED"
+        assert outcome.run_status == RunStatus.CANCELLED
+        assert outcome.event_type == EventType.RUN_CANCELLED
+        assert outcome.event_payload is None
+        assert outcome.log_kind == "info"
+        assert outcome.log_message == "Run run_1 cancelled"
+
+    def test_recruitment_rejection_maps_to_paused_with_reason_payload(self):
+        """A duty deferral must stay distinguishable from a BLOCKED pause —
+        losing the reason/agent payload would break the operator's resume
+        triage (SIP-0089 §2.5)."""
+        from adapters.cycles.execution_errors import _RecruitmentRejectedError
+        from adapters.cycles.run_completion import resolve_terminal_outcome
+        from squadops.cycles.models import RunStatus
+        from squadops.events.types import EventType
+
+        exc = _RecruitmentRejectedError("max", "hard_duty_window")
+        outcome = resolve_terminal_outcome(exc, "run_1")
+        assert outcome.terminal_status == "PAUSED"
+        assert outcome.run_status == RunStatus.PAUSED
+        assert outcome.event_type == EventType.RUN_PAUSED
+        assert outcome.event_payload == {
+            "reason": "hard_duty_window",
+            "deferred_for_agent": "max",
+        }
+        assert outcome.log_kind == "info"
+        assert "recruitment deferred" in outcome.log_message
+
+    def test_paused_error_maps_to_paused_without_payload(self):
+        from adapters.cycles.execution_errors import _PausedError
+        from adapters.cycles.run_completion import resolve_terminal_outcome
+        from squadops.cycles.models import RunStatus
+        from squadops.events.types import EventType
+
+        outcome = resolve_terminal_outcome(_PausedError("blocked"), "run_1")
+        assert outcome.terminal_status == "PAUSED"
+        assert outcome.run_status == RunStatus.PAUSED
+        assert outcome.event_type == EventType.RUN_PAUSED
+        assert outcome.event_payload is None
+        assert outcome.log_message == "Run run_1 paused"
+
+    def test_execution_error_maps_to_failed_with_error_payload(self):
+        from adapters.cycles.execution_errors import _ExecutionError
+        from adapters.cycles.run_completion import resolve_terminal_outcome
+        from squadops.cycles.models import RunStatus
+        from squadops.events.types import EventType
+
+        outcome = resolve_terminal_outcome(_ExecutionError("task t-1 failed"), "run_1")
+        assert outcome.terminal_status == "FAILED"
+        assert outcome.run_status == RunStatus.FAILED
+        assert outcome.event_type == EventType.RUN_FAILED
+        assert outcome.event_payload == {"error": "task t-1 failed"}
+        assert outcome.log_kind == "error"
+
+    def test_unexpected_exception_maps_to_failed_with_traceback_logging(self):
+        """An unclassified crash must keep log_kind='exception' — downgrading
+        it to 'error' silently drops the traceback from the logs."""
+        from adapters.cycles.run_completion import resolve_terminal_outcome
+        from squadops.cycles.models import RunStatus
+        from squadops.events.types import EventType
+
+        outcome = resolve_terminal_outcome(ValueError("boom"), "run_1")
+        assert outcome.terminal_status == "FAILED"
+        assert outcome.run_status == RunStatus.FAILED
+        assert outcome.event_type == EventType.RUN_FAILED
+        assert outcome.event_payload == {"error": "boom"}
+        assert outcome.log_kind == "exception"
+        assert "unexpected error" in outcome.log_message
+
+    def test_recruitment_rejection_checked_before_generic_paused(self):
+        """_RecruitmentRejectedError must not fall through to the payload-less
+        PAUSED branch — the reason payload is the resume affordance."""
+        from adapters.cycles.execution_errors import _RecruitmentRejectedError
+        from adapters.cycles.run_completion import resolve_terminal_outcome
+
+        outcome = resolve_terminal_outcome(_RecruitmentRejectedError(None, None), "run_1")
+        assert outcome.event_payload == {"reason": None, "deferred_for_agent": None}
+
+
+# ---------------------------------------------------------------------------
+# RunLedger (SIP-0097 §6.6)
+# ---------------------------------------------------------------------------
+
+
+class TestRunLedger:
+    def test_read_before_any_write_is_empty(self):
+        """finalize on a run with no pulse boundaries must see zero entries,
+        not crash — the report's pulse section is skipped entirely."""
+        from squadops.cycles.run_ledger import RunLedger
+
+        ledger = RunLedger()
+        assert ledger.pulse_entries == ()
+
+    def test_entries_accumulate_in_order(self):
+        from squadops.cycles.run_ledger import RunLedger
+
+        ledger = RunLedger()
+        ledger.record_pulse_boundary({"boundary_id": "b1", "decision": "pass"})
+        ledger.record_pulse_boundary({"boundary_id": "b2", "decision": "fail"})
+        assert [e["boundary_id"] for e in ledger.pulse_entries] == ["b1", "b2"]
+
+    def test_read_accessor_is_immutable_view(self):
+        """A consumer mutating its view must not corrupt the ledger —
+        the accumulated evidence is append-only by contract."""
+        from squadops.cycles.run_ledger import RunLedger
+
+        ledger = RunLedger()
+        ledger.record_pulse_boundary({"boundary_id": "b1", "decision": "pass"})
+        view = ledger.pulse_entries
+        with pytest.raises((TypeError, AttributeError)):
+            view.append({"boundary_id": "rogue"})  # type: ignore[attr-defined]
+        assert len(ledger.pulse_entries) == 1
+
+    async def test_report_renders_ledger_entries(self):
+        """End-to-end through generate_run_report: ledger entries reach the
+        pulse section — the seam SIP-0096 will aggregate over."""
+        from adapters.cycles.run_completion import RunCompletion
+        from squadops.cycles.run_ledger import RunLedger
+
+        vault = AsyncMock()
+        vault.store = AsyncMock(side_effect=lambda ref, content: ref)
+        registry = AsyncMock()
+        registry.get_run = AsyncMock(return_value=_make_run())
+        completion = RunCompletion(cycle_registry=registry, artifact_vault=vault)
+
+        ledger = RunLedger()
+        ledger.record_pulse_boundary(
+            {
+                "boundary_id": "post_qa",
+                "cadence_interval_id": 0,
+                "decision": "pass",
+                "repair_attempt": 0,
+                "suites": [{"suite_id": "smoke_suite", "outcome": "pass"}],
+            }
+        )
+
+        await completion.generate_run_report(
+            "cyc_001", "run_001", "COMPLETED", cycle=_make_cycle(), ledger=ledger
+        )
+
+        content = vault.store.call_args[0][1].decode()
+        assert "Pulse Verification" in content
+        assert "post_qa" in content
+        assert "smoke_suite=pass" in content

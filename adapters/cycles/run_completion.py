@@ -20,13 +20,21 @@ collaborator's first client.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
-from squadops.cycles.models import ArtifactRef
+from adapters.cycles.execution_errors import (
+    _CancellationError,
+    _ExecutionError,
+    _PausedError,
+    _RecruitmentRejectedError,
+)
+from squadops.cycles.models import ArtifactRef, RunStatus
 from squadops.cycles.run_report_builder import build_run_report
+from squadops.events.types import EventType
 
 if TYPE_CHECKING:
     from squadops.cycles.models import Cycle
@@ -38,6 +46,83 @@ if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TerminalOutcome:
+    """The run-end consequence of an exception (SIP-0097 §6.4).
+
+    Pure data: the executor's single except-block persists the status,
+    emits the event, and logs — this mapping decides what.
+    """
+
+    terminal_status: str
+    run_status: RunStatus
+    event_type: str
+    event_payload: dict[str, Any] | None
+    log_kind: Literal["info", "error", "exception"]
+    log_message: str
+
+
+def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome:
+    """Map an execute_run exception to its terminal outcome.
+
+    Moved from execute_run's per-class exception handlers; the mapping —
+    including event payload shapes and log wording — is behavior-preserving:
+    cancellation → CANCELLED, recruitment deferral / BLOCKED pause → PAUSED,
+    execution error / unexpected → FAILED.
+    """
+    if isinstance(exc, _CancellationError):
+        return TerminalOutcome(
+            terminal_status="CANCELLED",
+            run_status=RunStatus.CANCELLED,
+            event_type=EventType.RUN_CANCELLED,
+            event_payload=None,
+            log_kind="info",
+            log_message=f"Run {run_id} cancelled",
+        )
+    if isinstance(exc, _RecruitmentRejectedError):
+        # SIP-0089 §2.5: deferral, not failure. PAUSED has a first-class
+        # resume affordance (squadops runs resume → RUN_RESUMED); the reason
+        # rides in the payload so operators can distinguish a duty deferral
+        # from a BLOCKED-outcome pause.
+        return TerminalOutcome(
+            terminal_status="PAUSED",
+            run_status=RunStatus.PAUSED,
+            event_type=EventType.RUN_PAUSED,
+            event_payload={"reason": exc.reason, "deferred_for_agent": exc.agent_id},
+            log_kind="info",
+            log_message=(
+                f"Run {run_id} paused — recruitment deferred "
+                f"(agent={exc.agent_id}, reason={exc.reason})"
+            ),
+        )
+    if isinstance(exc, _PausedError):
+        return TerminalOutcome(
+            terminal_status="PAUSED",
+            run_status=RunStatus.PAUSED,
+            event_type=EventType.RUN_PAUSED,
+            event_payload=None,
+            log_kind="info",
+            log_message=f"Run {run_id} paused",
+        )
+    if isinstance(exc, _ExecutionError):
+        return TerminalOutcome(
+            terminal_status="FAILED",
+            run_status=RunStatus.FAILED,
+            event_type=EventType.RUN_FAILED,
+            event_payload={"error": str(exc)},
+            log_kind="error",
+            log_message=f"Run {run_id} failed: {exc}",
+        )
+    return TerminalOutcome(
+        terminal_status="FAILED",
+        run_status=RunStatus.FAILED,
+        event_type=EventType.RUN_FAILED,
+        event_payload={"error": str(exc)},
+        log_kind="exception",
+        log_message=f"Run {run_id} failed with unexpected error: {exc}",
+    )
 
 
 class RunCompletion:

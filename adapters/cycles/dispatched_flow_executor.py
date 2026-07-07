@@ -29,7 +29,7 @@ from adapters.cycles.execution_errors import (
     _PausedError,
     _RecruitmentRejectedError,
 )
-from adapters.cycles.run_completion import RunCompletion
+from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
 from adapters.cycles.task_naming import build_task_name
 from squadops.cycles.agent_config import build_agent_resolver, resolve_agent_config
 from squadops.cycles.checkpoint import RunCheckpoint
@@ -364,72 +364,27 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
                 logger.info("Run %s completed successfully", run_id)
 
-        except _CancellationError:
-            terminal_status = "CANCELLED"
-            await self._safe_transition(run_id, RunStatus.CANCELLED)
-            self._cycle_event_bus.emit(
-                EventType.RUN_CANCELLED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle_id, "run_id": run_id},
-            )
-            logger.info("Run %s cancelled", run_id)
-
-        except _RecruitmentRejectedError as exc:
-            # SIP-0089 §2.5: deferral, not failure. PAUSED has a first-class
-            # resume affordance (squadops runs resume → RUN_RESUMED); the reason
-            # rides in the payload so operators can distinguish a duty deferral
-            # from a BLOCKED-outcome pause.
-            terminal_status = "PAUSED"
-            await self._safe_transition(run_id, RunStatus.PAUSED)
-            self._cycle_event_bus.emit(
-                EventType.RUN_PAUSED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle_id, "run_id": run_id},
-                payload={"reason": exc.reason, "deferred_for_agent": exc.agent_id},
-            )
-            logger.info(
-                "Run %s paused — recruitment deferred (agent=%s, reason=%s)",
-                run_id,
-                exc.agent_id,
-                exc.reason,
-            )
-
-        except _PausedError:
-            terminal_status = "PAUSED"
-            await self._safe_transition(run_id, RunStatus.PAUSED)
-            self._cycle_event_bus.emit(
-                EventType.RUN_PAUSED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle_id, "run_id": run_id},
-            )
-            logger.info("Run %s paused", run_id)
-
-        except _ExecutionError as exc:
-            terminal_status = "FAILED"
-            await self._safe_transition(run_id, RunStatus.FAILED)
-            self._cycle_event_bus.emit(
-                EventType.RUN_FAILED,
-                entity_type="run",
-                entity_id=run_id,
-                context={"cycle_id": cycle_id, "run_id": run_id},
-                payload={"error": str(exc)},
-            )
-            logger.error("Run %s failed: %s", run_id, exc)
-
         except Exception as exc:
-            terminal_status = "FAILED"
-            await self._safe_transition(run_id, RunStatus.FAILED)
+            # SIP-0097 §6.4: the exception→status mapping is owned by the
+            # run-completion module; this block persists, emits, and logs
+            # what the mapping decides (behavior-preserving collapse of the
+            # former per-class handlers).
+            outcome = resolve_terminal_outcome(exc, run_id)
+            terminal_status = outcome.terminal_status
+            await self._safe_transition(run_id, outcome.run_status)
             self._cycle_event_bus.emit(
-                EventType.RUN_FAILED,
+                outcome.event_type,
                 entity_type="run",
                 entity_id=run_id,
                 context={"cycle_id": cycle_id, "run_id": run_id},
-                payload={"error": str(exc)},
+                payload=outcome.event_payload,
             )
-            logger.exception("Run %s failed with unexpected error: %s", run_id, exc)
+            if outcome.log_kind == "exception":
+                logger.exception(outcome.log_message)
+            elif outcome.log_kind == "error":
+                logger.error(outcome.log_message)
+            else:
+                logger.info(outcome.log_message)
 
         finally:
             # SIP-0089 §3.5 (#233): release the cycle leases this run acquired,
