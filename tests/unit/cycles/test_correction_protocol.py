@@ -1346,30 +1346,3 @@ class TestCorrectionModelResolution:
         assert inputs["subtask_focus"] == "QA handoff packaging"
         assert inputs["failure_analysis"]["analysis_summary"] == "Missing '## How to Test'"
         assert inputs["correction_decision"]["correction_path"] == "patch"
-
-    def test_resolve_agent_config_falls_back_when_role_absent(self):
-        """Helper returns (role, None, {}) when profile has no enabled match.
-
-        Reachable only via direct calls (the run-level path validates required
-        roles upstream), but the fallback exists so a misconfigured profile
-        can't crash the correction loop.
-        """
-        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
-
-        class _ProfileStub:
-            agents = (
-                AgentProfileEntry(agent_id="strat-a", role="strat", model="m", enabled=True),
-                AgentProfileEntry(
-                    agent_id="data-disabled",
-                    role="data",
-                    model="m-data",
-                    enabled=False,
-                ),
-            )
-
-        agent_id, model, overrides = DispatchedFlowExecutor._resolve_agent_config(
-            "data", _ProfileStub()
-        )
-        assert agent_id == "data"
-        assert model is None
-        assert overrides == {}

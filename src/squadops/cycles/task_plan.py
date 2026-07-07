@@ -21,6 +21,7 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
+from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
@@ -223,19 +224,6 @@ _KNOWN_WORKLOAD_TYPES = {
 _BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
 
 
-def _resolve_agent_config(profile: SquadProfile, role: str) -> tuple[str, str | None, dict]:
-    """Resolve agent config from profile by role.
-
-    Returns:
-        (agent_id, model_or_None, config_overrides)
-    """
-    for agent in profile.agents:
-        if agent.role == role and agent.enabled:
-            model = agent.model if agent.model else None
-            return agent.agent_id, model, dict(agent.config_overrides or {})
-    return role, None, {}
-
-
 def _has_builder_role(profile: SquadProfile) -> bool:
     """Check if squad profile includes a builder role agent.
 
@@ -399,9 +387,9 @@ def generate_task_plan(
     # "{agent}[{n}/{total}]" — position within that agent's work, not a global
     # index. ``lane_seen`` advances in dispatch order to give the 1-based n.
     step_resolutions = [
-        _resolve_agent_config(profile, s[1] if isinstance(s, tuple) else s.role) for s in steps
+        resolve_agent_config(s[1] if isinstance(s, tuple) else s.role, profile) for s in steps
     ]
-    lane_totals = Counter(r[0] for r in step_resolutions)
+    lane_totals = Counter(r.agent_id for r in step_resolutions)
     lane_seen: dict[str, int] = {}
 
     for step_index, step in enumerate(steps):
@@ -427,7 +415,10 @@ def generate_task_plan(
         span_id = uuid4().hex
         causation_id = prev_task_id or correlation_id
 
-        agent_id, agent_model, agent_overrides = step_resolutions[step_index]
+        resolved = step_resolutions[step_index]
+        agent_id = resolved.agent_id
+        agent_model = resolved.model
+        agent_overrides = resolved.config_overrides
 
         metadata: dict = {
             "step_index": step_index,

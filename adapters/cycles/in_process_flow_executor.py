@@ -17,6 +17,7 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from adapters.cycles.execution_errors import _CancellationError, _ExecutionError
 from squadops.cycles.models import ArtifactRef, Cycle, RunStatus
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
@@ -30,14 +31,6 @@ if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope
 
 logger = logging.getLogger(__name__)
-
-
-class _ExecutionError(Exception):
-    """Internal: task failure or gate rejection."""
-
-
-class _CancellationError(Exception):
-    """Internal: run was cancelled."""
 
 
 class InProcessFlowExecutor(FlowExecutionPort):
