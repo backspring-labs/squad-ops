@@ -2,11 +2,14 @@
 """Verify or regenerate the prompt-fragment manifest sha256 entries.
 
 The manifest (``src/squadops/prompts/fragments/manifest.yaml``) records a
-``sha256`` for each fragment's body. Editing a fragment without updating its
-hash makes the runtime integrity check
+``sha256`` for each fragment's body AND a top-level ``manifest_hash`` over
+(version, fragments). Editing a fragment without updating its hash makes the
+runtime integrity check
 (:meth:`FileSystemPromptRepository.validate_integrity`) and the unit tests
 diverge, and a stale manifest lets the assembler raise ``HashMismatchError`` at
-runtime — exactly the drift behind issue #195.
+runtime — exactly the drift behind issue #195. A stale ``manifest_hash`` is
+the #327 drift: it now fails manifest loading hard instead of warning, so
+this tool maintains it too (both ``--check`` and ``--write``).
 
 This is the single tool that keeps fragments and the manifest in sync:
 
@@ -52,19 +55,56 @@ def _drift() -> list[tuple[str, str, str, str]]:
     return out
 
 
+def _manifest_hash_drift() -> tuple[str, str] | None:
+    """Return ``(stored, computed)`` when the top-level manifest_hash is stale.
+
+    Computed the same way the runtime does (PromptManifest.compute_manifest_hash
+    over version + fragment entries), so this tool, the loader, and the tests
+    can't disagree (#327).
+    """
+    from squadops.prompts.models import ManifestFragment, PromptManifest
+
+    data = yaml.safe_load(MANIFEST_PATH.read_text(encoding="utf-8")) or {}
+    fragments = tuple(
+        ManifestFragment(
+            fragment_id=f["fragment_id"],
+            path=f["path"],
+            layer=f["layer"],
+            roles=tuple(f.get("roles", ["*"])),
+            sha256=f["sha256"],
+        )
+        for f in data.get("fragments", [])
+    )
+    stored = data.get("manifest_hash", "")
+    computed = PromptManifest.compute_manifest_hash(data.get("version", "0.0.0"), fragments)
+    return None if stored == computed else (stored, computed)
+
+
 def check() -> int:
     drift = _drift()
     total = len(_entries())
-    if not drift:
+    rc = 0
+    if drift:
+        print(f"STALE: {len(drift)}/{total} fragment hash(es) out of date in {MANIFEST_PATH.name}:")
+        for fid, path, stored, computed in drift:
+            print(f"  - {fid} ({path})")
+            print(f"      stored:   {stored}")
+            print(f"      computed: {computed}")
+        rc = 1
+    else:
         print(f"OK: all {total} fragment hashes match {MANIFEST_PATH.name}")
-        return 0
-    print(f"STALE: {len(drift)}/{total} fragment hash(es) out of date in {MANIFEST_PATH.name}:")
-    for fid, path, stored, computed in drift:
-        print(f"  - {fid} ({path})")
+    hash_drift = _manifest_hash_drift()
+    if hash_drift:
+        stored, computed = hash_drift
+        print(f"STALE: top-level manifest_hash out of date in {MANIFEST_PATH.name}:")
         print(f"      stored:   {stored}")
         print(f"      computed: {computed}")
-    print("\nFix: python scripts/dev/regen_fragment_manifest.py --write")
-    return 1
+        rc = 1
+    else:
+        print("OK: top-level manifest_hash matches")
+    if rc:
+        print("\nFix: python scripts/dev/regen_fragment_manifest.py --write")
+    return rc
 
 
 def write() -> int:
@@ -74,17 +114,31 @@ def write() -> int:
         for fid, path, _stored, _computed in missing:
             print(f"ERROR: fragment file missing for {fid} ({path})", file=sys.stderr)
         return 1
-    if not drift:
+    if drift:
+        # Minimal edit: replace only the changed (globally unique) hash strings
+        # so the diff is exactly the stale lines and all other formatting is
+        # preserved.
+        raw = MANIFEST_PATH.read_text(encoding="utf-8")
+        for fid, path, stored, computed in drift:
+            raw = raw.replace(stored, computed)
+            print(f"updated {fid} ({path})")
+        MANIFEST_PATH.write_text(raw, encoding="utf-8")
+        print(f"wrote {len(drift)} fragment hash(es) to {MANIFEST_PATH}")
+    hash_drift = _manifest_hash_drift()
+    if hash_drift:
+        stored, computed = hash_drift
+        raw = MANIFEST_PATH.read_text(encoding="utf-8")
+        if stored and stored in raw:
+            raw = raw.replace(stored, computed)
+        else:
+            print(
+                "ERROR: could not locate stored manifest_hash for in-place update", file=sys.stderr
+            )
+            return 1
+        MANIFEST_PATH.write_text(raw, encoding="utf-8")
+        print(f"updated manifest_hash -> {computed}")
+    if not drift and not hash_drift:
         print(f"OK: manifest already current ({len(_entries())} fragments)")
-        return 0
-    # Minimal edit: replace only the changed (globally unique) hash strings so
-    # the diff is exactly the stale lines and all other formatting is preserved.
-    raw = MANIFEST_PATH.read_text(encoding="utf-8")
-    for fid, path, stored, computed in drift:
-        raw = raw.replace(stored, computed)
-        print(f"updated {fid} ({path})")
-    MANIFEST_PATH.write_text(raw, encoding="utf-8")
-    print(f"\nwrote {len(drift)} hash(es) to {MANIFEST_PATH}")
     return 0
 
 
