@@ -1,8 +1,12 @@
-"""Tests for SIP-0079 correction protocol in DispatchedFlowExecutor.
+"""Tests for the SIP-0079 correction protocol, owned by ``CorrectionRunner``
+since SIP-0097 slice 3 (renamed from test_correction_protocol.py).
 
 Covers all 4 correction paths (continue, patch, rewind, abort),
 plan delta storage, max_correction_attempts, correction task checkpointing,
-and CORRECTION_INITIATED/DECIDED/COMPLETED event emission.
+and CORRECTION_INITIATED/DECIDED/COMPLETED event emission. Most tests drive
+the protocol end-to-end through the executor (which composes the default
+runner); ``TestCorrectionRunnerStandalone`` constructs the collaborator
+directly, without a ``DispatchedFlowExecutor`` instance (SIP-0097 §9).
 """
 
 from __future__ import annotations
@@ -1349,3 +1353,203 @@ class TestCorrectionModelResolution:
         assert inputs["subtask_focus"] == "QA handoff packaging"
         assert inputs["failure_analysis"]["analysis_summary"] == "Missing '## How to Test'"
         assert inputs["correction_decision"]["correction_path"] == "patch"
+
+
+# ---------------------------------------------------------------------------
+# Standalone construction (SIP-0097 §9): the collaborator is instantiable and
+# testable without a DispatchedFlowExecutor instance
+# ---------------------------------------------------------------------------
+
+
+class TestCorrectionRunnerStandalone:
+    """Drive run_correction_protocol on a directly-constructed CorrectionRunner
+    with scripted callables — no executor anywhere."""
+
+    def _make_runner(self, responder, vault=None, registry=None, bus=None):
+        """Build a CorrectionRunner whose dispatch callable answers via
+        ``responder(envelope) -> TaskResult`` and whose store_artifact
+        callable records what would be persisted."""
+        from adapters.cycles.correction_runner import CorrectionRunner
+        from squadops.cycles.models import ArtifactRef
+
+        registry = registry or AsyncMock()
+        vault = vault or AsyncMock()
+        vault.store.side_effect = lambda ref, _content: ref
+        bus = bus or MagicMock()
+
+        async def dispatch_task(envelope, run_id, **_kwargs):
+            return responder(envelope)
+
+        async def create_task_run(_flow_run_id, _envelope):
+            return None
+
+        async def store_artifact(art, cycle, run_id, envelope, producing_task_type=None):
+            content = art.get("content", "").encode()
+            ref = ArtifactRef(
+                artifact_id=f"art_{envelope.task_id}",
+                project_id=cycle.project_id,
+                artifact_type=art.get("type", "document"),
+                filename=art["name"],
+                content_hash="h",
+                size_bytes=len(content),
+                media_type=art.get("media_type", "text/markdown"),
+                created_at=NOW,
+                cycle_id=cycle.cycle_id,
+                run_id=run_id,
+            )
+            return await vault.store(ref, content)
+
+        runner = CorrectionRunner(
+            cycle_registry=registry,
+            artifact_vault=vault,
+            event_bus=bus,
+            dispatch_task=dispatch_task,
+            create_task_run=create_task_run,
+            store_artifact=store_artifact,
+        )
+        return runner, registry, vault, bus
+
+    def _failed_envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_failed",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="development.implement",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={},
+            metadata={"role": "dev"},
+        )
+
+    async def test_analysis_fields_survive_to_plan_delta(self, cycle):
+        """Issue #95 regression, executor-free: the analyzer's classification
+        and analysis_summary must reach the PlanDelta even though the
+        subsequent governance.correction_decision step doesn't carry them."""
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "classification": "work_product",
+                        "analysis_summary": "missing acceptance section",
+                    },
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "continue",
+                        "decision_rationale": "retry remaining",
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, vault, _bus = self._make_runner(responder)
+        plan_delta_refs: list[str] = []
+
+        path = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=plan_delta_refs,
+        )
+
+        assert path == "continue"
+        assert len(plan_delta_refs) == 1
+        delta_calls = [
+            c for c in vault.store.call_args_list if c.args[0].artifact_type == "plan_delta"
+        ]
+        assert len(delta_calls) == 1
+        delta = json.loads(delta_calls[0].args[1])
+        assert delta["failure_classification"] == "work_product"
+        assert delta["analysis_summary"] == "missing acceptance section"
+        assert delta["correction_path"] == "continue"
+
+    async def test_missing_decision_defaults_to_abort(self, cycle):
+        """Edge case: a decision step that returns no correction_path must
+        yield "abort" (never a silent continue) — and still emit the full
+        CORRECTION_INITIATED → DECIDED → COMPLETED lifecycle."""
+
+        def responder(envelope):
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, bus = self._make_runner(responder)
+
+        path = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert path == "abort"
+        emitted = [c.args[0] for c in bus.emit.call_args_list]
+        assert EventType.CORRECTION_INITIATED in emitted
+        assert EventType.CORRECTION_DECIDED in emitted
+        assert EventType.CORRECTION_COMPLETED in emitted
+
+    async def test_failed_step_emits_task_failed_and_skips_checkpoint(self, cycle):
+        """Error path: a correction step that FAILs must emit TASK_FAILED and
+        must NOT be checkpointed as completed (only succeeded steps are)."""
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id, status="FAILED", error="analyzer crashed"
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"correction_path": "continue"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, registry, _vault, bus = self._make_runner(responder)
+        completed: list[str] = []
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=completed,
+            plan_delta_refs=[],
+        )
+
+        failed_events = [
+            c for c in bus.emit.call_args_list if c.args and c.args[0] == EventType.TASK_FAILED
+        ]
+        assert len(failed_events) == 1
+        assert failed_events[0].kwargs["payload"]["error"] == "analyzer crashed"
+        # The failed analyzer step is not in completed_task_ids; the
+        # succeeding decision step is.
+        assert not any("data.analyze_failure" in t for t in completed)
+        assert any("governance.correction_decision" in t for t in completed)
+        # One checkpoint saved (decision step only).
+        assert registry.save_checkpoint.await_count == 1
