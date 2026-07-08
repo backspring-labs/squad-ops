@@ -1,0 +1,10 @@
+# QA agent role — system (apt) packages, the system-level analog of
+# requirements.txt. Installed at image build time for this role only.
+#
+# Node.js + npm: the qa.test capability runs the frontend build check (#290)
+# and vitest (run_build_validation → run_node_tests / run_frontend_build),
+# which shell out to npm/npx. Any role that runs npm/npx or other native
+# tooling declares its packages here — no role name is hardcoded in the
+# Dockerfile (#306).
+nodejs
+npm
