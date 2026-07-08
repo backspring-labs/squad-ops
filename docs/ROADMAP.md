@@ -10,14 +10,24 @@ Semver with an **even/odd minor** overlay (parity gates *features*, not hardenin
 
 Version labels per the even/odd remap in `docs/plans/2-0-roadmap-reconciliation.md` (Findings 2 + 4):
 
-- **v1.3 (in progress)** — first stabilization minor, feature-free by rule: executor decomposition (SIP-0097 / #186), `cycle_tasks` package split (#152), comms poll→push consumer (#323), dead `DbRuntime` backend removal (#234).
+- **v1.3 — shipped 2026-07-08** (first stabilization minor; see Release Timeline).
 - **v1.4** — duty durability (SIP-0091) + verification evidence integrity (SIP-0096), the headline pair; possibly embodiment Phase 2 (SIP-0090, first live adapter). Plan: `docs/plans/1-4-evidence-arc-plan.md`.
 - **v1.6** — Campaign mechanic (objective envelope + continuation policy; `sips/proposed/SIP-Campaign-Orchestration.md`), gated on SIP-0096 implemented + #288 + #316.
 - **v1.8/v2.0** — the three 2.0 pillars: Capability-Backed Agents (what an agent *is*), Campaign capability-augmentation, Self-Improvement + Test Bay (the capstone).
 
 ## Release Timeline
 
-### v1.2.0 (2026-07-04) — Current — First Feature Release (even/odd cadence)
+### v1.3.0 (2026-07-08) — Current — First Stabilization Release (feature-free)
+First **odd-minor stabilization release** (#281): the big structural refactors quarantined out of feature releases, plus debt paydown. Entire core scope landed from the Macbook lane (Spark offline); every structural change live-validated before merge.
+- **SIP-0097 executor decomposition (#186, #295):** `DispatchedFlowExecutor` 3,358→1,805 lines across 6 sliced PRs; five injected collaborators (pure hoists, `RunLedger`+`RunCompletion` — zero per-run mutable state, the SIP-0096 §6.4 seam — `CorrectionRunner`, `PulseBoundaryRunner`, `TaskDispatcher`); slice 6 = the #295 plan-review gate check. SIP-0097 promoted → implemented.
+- **#152:** `cycle_tasks.py` (3,276 lines) → `capabilities/handlers/cycle/` package behind a compat shim (after the #332 helper hoist).
+- **#323:** agent comms poll→push — persistent `subscribe()` consumer, prefetch 1; kills consumer churn, up-to-1s pickup latency, and the `aio_pika` log flood (obsoleted #329).
+- **#234:** dead sqlalchemy `DbRuntime` backend removed — `ports/` is vendor-type-free; asyncpg everywhere.
+- **Fixed:** #327 prompt-registry drift (deploy re-sync + manifest hard-fail), #342 resume insta-fail (live pause→resume→complete verified, closed #258), #345 color-env test flakiness.
+- **Docs/CI:** #335 hygiene pass (this file's stats/tables un-froze) + #336 docs-drift guards in the regression gate (version markers, SIP target parity, doc-ref existence).
+- **Deferred:** #288 (Campaign 1.6 gate → pulled into the 1.4 window), #331/#333 (→ 1.5).
+
+### v1.2.0 (2026-07-04) — First Feature Release (even/odd cadence)
 First **even-minor feature release** (#281). Three feature SIPs, on a hardening base:
 - **SIP-0090 Agent Embodiment Substrate — Phase 1:** the internal embodiment model — lifecycle state machine (single-active-per-agent, enforced in code + a Postgres partial unique index), resource budget primitives (non-silent exhaustion), `EmbodimentStatePort` + Postgres persistence, `EmbodimentCoordinator`. No adapter yet (#312, #317).
 - **SIP-0095 Cycle Create Preflight:** create-time fail-fast (422 `PREFLIGHT_REJECTED`) on unsatisfiable roles / unpulled models; unreachable backend warns-and-allows; doctor parity; warnings on response + CLI (#298, #309, #311, #315, #321).
@@ -436,9 +446,9 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-07-08 (v1.2.0, pre-1.3.0 cut):*
+*As of 2026-07-08 (v1.3.0):*
 
-- **Framework version**: 1.2.0
+- **Framework version**: 1.3.0
 - **SIPs**: 60 implemented, 6 accepted (SIP-0088, 0090–0093, 0096), 20 deprecated (registry); 14 files in `sips/proposed/` (7 registry-tracked legacy + 7 unnumbered drafts)
 - **Tests**: 4,700+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~83,000 test lines, ~110,000 doc lines)

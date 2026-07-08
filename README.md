@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: v1.2.0 — Production-ready framework with hexagonal architecture, the Agent Embodiment Substrate (SIP-0090 Phase 1: embodiment lifecycle, single-active invariant, resource budgets), the Cycle Create Preflight (SIP-0095: create-time fail-fast on unsatisfiable roles / unpulled models), the completed Agent Runtime State platform (SIP-0089: runtime modes ambient/cycle/duty, single-writer coordinator, FocusLease arbitration, single-transaction UoW, RuntimeActivity observability), distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop (SIP-0086), Prefect task-scoped log streaming (SIP-0087), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 4,650+ passing tests.
+**Current Status**: v1.3.0 — Production-ready framework with hexagonal architecture, freshly stabilized in the first even/odd stabilization release (SIP-0097 executor decomposition, cycle-task handler package split, push-based agent comms, vendor-type-free ports), plus the Agent Embodiment Substrate (SIP-0090 Phase 1), the Cycle Create Preflight (SIP-0095), the completed Agent Runtime State platform (SIP-0089: runtime modes ambient/cycle/duty, single-writer coordinator, FocusLease arbitration, single-transaction UoW, RuntimeActivity observability), distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop (SIP-0086), Prefect task-scoped log streaming (SIP-0087), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 4,700+ passing tests.
 
 ---
 
@@ -173,20 +173,21 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructio
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v1.2.0 — first even/odd feature release: SIP-0090 Agent Embodiment Substrate (Phase 1), SIP-0095 Cycle Create Preflight (create-time fail-fast), and the SIP-0089 runtime-arc completion (recruitment→coordinator FocusLease, single-transaction UoW), on a #158/#231 hardening base
+**Current**: v1.3.0 — first stabilization release (feature-free by rule): SIP-0097 executor decomposition (#186, 3,358→1,805 lines, zero per-run mutable state), `cycle_tasks` package split (#152), agent comms poll→push consumer (#323), dead `DbRuntime` backend removed (#234), plus the prompt-registry deploy re-sync (#327) and resume fix (#342)
 
 ---
 
 ## Current Status
-**Framework Version**: 1.2.0
-**Development Status**: Post-1.1 stable multi-agent orchestration with the Agent Runtime State platform (SIP-0089: runtime modes, duty scheduler, FocusLease, RuntimeActivity), console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Prefect task-scoped log streaming, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
+**Framework Version**: 1.3.0
+**Development Status**: Stabilized multi-agent orchestration (post-SIP-0097 decomposition) with the Agent Runtime State platform (SIP-0089: runtime modes, duty scheduler, FocusLease, RuntimeActivity), console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Prefect task-scoped log streaming, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
 
 ### Project Statistics
-- **~39,000 lines** of Python source code
-- **~51,000 lines** of test code
-- **~84,000 lines** of documentation
-- **3,030+ tests** passing in regression suite
-- **~88 SIPs** (54 implemented, 1 accepted, 13 proposed, 20 deprecated)
+*As of 2026-07-08 (v1.3.0):*
+- **~61,000 lines** of Python source code (src + adapters)
+- **~83,000 lines** of test code
+- **~110,000 lines** of documentation
+- **4,700+ tests** passing in regression suite
+- **~94 SIPs** (60 implemented, 6 accepted, 20 deprecated; 14 proposals/drafts)
 
 ### Functional Components
 - 6 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics)
