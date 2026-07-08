@@ -404,14 +404,20 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         LF_PUBLIC=$(grep "^SQUADOPS__LANGFUSE__PUBLIC_KEY=" .env | cut -d= -f2-)
         LF_SECRET=$(grep "^SQUADOPS__LANGFUSE__SECRET_KEY=" .env | cut -d= -f2-)
         # .env's SQUADOPS__LANGFUSE__HOST is the container-side address
-        # (host.docker.internal); this sync runs host-side → localhost.
+        # (host.docker.internal) and doesn't resolve from the host shell.
+        # The host-side address is derived from the compose port binding —
+        # the single source of truth this script already depends on — so a
+        # port change in docker-compose.yml can't silently strand the sync.
+        LF_BINDING=$(docker compose port langfuse 3000 2>/dev/null)
         PROMPT_SYNC_PY="$REPO_ROOT/.venv/bin/python3"
         [ -x "$PROMPT_SYNC_PY" ] || PROMPT_SYNC_PY=python3
         # Agents request assets with the "production" label (adapter default) —
         # the upload label must match or resolution misses.
-        if SQUADOPS_MAINTAINER=1 "$PROMPT_SYNC_PY" scripts/maintainer/upload_prompts_to_langfuse.py \
+        if [ -z "$LF_BINDING" ]; then
+            echo -e "${RED}  ⚠️  Prompt sync SKIPPED — langfuse has no published port (is the service up?). Agents may hit 'Prompt asset not found' at runtime.${NC}"
+        elif SQUADOPS_MAINTAINER=1 "$PROMPT_SYNC_PY" scripts/maintainer/upload_prompts_to_langfuse.py \
             --environment production \
-            --host "http://localhost:3001" \
+            --host "http://localhost:${LF_BINDING##*:}" \
             --public-key "$LF_PUBLIC" --secret-key "$LF_SECRET" \
             > /tmp/prompt_sync.log 2>&1; then
             echo -e "     ${GREEN}✅ Prompt assets synced${NC} ($(grep -c '^  OK' /tmp/prompt_sync.log) assets)"
