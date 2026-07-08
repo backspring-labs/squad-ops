@@ -52,10 +52,12 @@ def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
 # call uses — SIP-0097 slice 2 moved the run-terminal mapping, and its
 # EventType references, to the RunCompletion module; the executor's single
 # collapsed handler emits what the mapping decides. Slice 3 moved the
-# correction protocol, and its emit sites, to the CorrectionRunner module.)
+# correction protocol, and its emit sites, to the CorrectionRunner module;
+# slice 4 did the same for the pulse path and the PulseBoundaryRunner.)
 _EXECUTOR_PATH = Path("adapters/cycles/dispatched_flow_executor.py")
 _RUN_COMPLETION_PATH = Path("adapters/cycles/run_completion.py")
 _CORRECTION_RUNNER_PATH = Path("adapters/cycles/correction_runner.py")
+_PULSE_BOUNDARY_RUNNER_PATH = Path("adapters/cycles/pulse_boundary_runner.py")
 _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
 _RUNS_ROUTE = Path("src/squadops/api/routes/cycles/runs.py")
 _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")
@@ -64,6 +66,7 @@ _ALL_EMISSION_FILES = [
     _EXECUTOR_PATH,
     _RUN_COMPLETION_PATH,
     _CORRECTION_RUNNER_PATH,
+    _PULSE_BOUNDARY_RUNNER_PATH,
     _CYCLES_ROUTE,
     _RUNS_ROUTE,
     _ARTIFACTS_ROUTE,
@@ -118,11 +121,6 @@ class TestExecutorEmissionPoints:
             "TASK_DISPATCHED",
             "TASK_SUCCEEDED",
             "TASK_FAILED",
-            "PULSE_BOUNDARY_REACHED",
-            "PULSE_SUITE_EVALUATED",
-            "PULSE_BOUNDARY_DECIDED",
-            "PULSE_REPAIR_STARTED",
-            "PULSE_REPAIR_EXHAUSTED",
             "CHECKPOINT_CREATED",
             "CHECKPOINT_RESTORED",
             "WORKLOAD_COMPLETED",
@@ -133,15 +131,16 @@ class TestExecutorEmissionPoints:
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_17_types(self, executor_refs: set[str]) -> None:
-        """17 = the former 20 minus CORRECTION_INITIATED/DECIDED/COMPLETED,
-        which moved to the CorrectionRunner with the correction protocol
-        (SIP-0097 slice 3). CHECKPOINT_CREATED and TASK_DISPATCHED/
+    def test_executor_has_12_types(self, executor_refs: set[str]) -> None:
+        """12 = the former 17 minus the five PULSE_* types, which moved to
+        the PulseBoundaryRunner with the pulse path (SIP-0097 slice 4; slice
+        3 had moved CORRECTION_INITIATED/DECIDED/COMPLETED to the
+        CorrectionRunner). CHECKPOINT_CREATED and TASK_DISPATCHED/
         SUCCEEDED/FAILED stay: the sequential loop and
         _collect_artifacts_and_checkpoint still emit them for regular tasks.
         RUN_PAUSED stays: the duty-deferral path still references it directly
         in the executor."""
-        assert len(executor_refs) == 17
+        assert len(executor_refs) == 12
 
 
 class TestRunCompletionEmissionPoints:
@@ -181,6 +180,32 @@ class TestCorrectionRunnerEmissionPoints:
     )
     def test_correction_runner_emits(self, attr: str, correction_runner_refs: set[str]) -> None:
         assert attr in correction_runner_refs
+
+
+class TestPulseBoundaryRunnerEmissionPoints:
+    """The pulse path's events are emitted by the PulseBoundaryRunner
+    (SIP-0097 §6.2): the PULSE_* lifecycle plus per-repair-task TASK_*
+    events for the SIP-0086 repair chain."""
+
+    @pytest.fixture(scope="class")
+    def pulse_runner_refs(self) -> set[str]:
+        return _find_event_type_refs_in_file(_PULSE_BOUNDARY_RUNNER_PATH)
+
+    @pytest.mark.parametrize(
+        "attr",
+        [
+            "PULSE_BOUNDARY_REACHED",
+            "PULSE_SUITE_EVALUATED",
+            "PULSE_BOUNDARY_DECIDED",
+            "PULSE_REPAIR_STARTED",
+            "PULSE_REPAIR_EXHAUSTED",
+            "TASK_DISPATCHED",
+            "TASK_SUCCEEDED",
+            "TASK_FAILED",
+        ],
+    )
+    def test_pulse_boundary_runner_emits(self, attr: str, pulse_runner_refs: set[str]) -> None:
+        assert attr in pulse_runner_refs
 
 
 class TestRouteEmissionPoints:
@@ -275,17 +300,16 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 27 executor + 7 correction-runner + 7 route = 41
-        total emit calls.
+        """Sanity check: 19 executor + 7 correction-runner +
+        8 pulse-boundary-runner + 7 route = 41 total emit calls.
 
         SIP-0097 slice 2c collapsed execute_run's five per-exception-class
         terminal emits into one emit driven by the RunCompletion terminal
         mapping (48 → 44). Slice 3 moved the correction protocol's emit
-        sites from the executor to the CorrectionRunner and collapsed the
-        correction/repair loops' duplicated per-step emits
-        (TASK_DISPATCHED/SUCCEEDED/FAILED ×2 each) into the shared
-        _dispatch_protocol_step helper — same events at runtime, 3 fewer
-        static call sites (44 → 41)."""
+        sites to the CorrectionRunner and collapsed its duplicated per-step
+        emits into _dispatch_protocol_step (44 → 41). Slice 4 moved the
+        pulse path's 8 emit sites (5 PULSE_* + repair-chain TASK_*) to the
+        PulseBoundaryRunner — same events at runtime, same total."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
