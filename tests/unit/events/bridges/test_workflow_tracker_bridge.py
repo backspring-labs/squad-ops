@@ -2,7 +2,7 @@
 
 As of SIP-0087 the bridge handles only flow-level state transitions and
 terminal task-state transitions — task-run creation + RUNNING is done in
-``DispatchedFlowExecutor._dispatch_task``. The bridge therefore expects
+``TaskDispatcher.dispatch_task``. The bridge therefore expects
 ``task_run_id`` to be carried in the event context for TASK_SUCCEEDED /
 TASK_FAILED events.
 """

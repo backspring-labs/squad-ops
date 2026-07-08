@@ -1,8 +1,10 @@
-"""Unit tests for SIP-0089 §4.4 — executor-side RuntimeActivity instrumentation.
+"""Unit tests for SIP-0089 §4.4 — dispatch-side RuntimeActivity instrumentation.
 
-The DispatchedFlowExecutor opens a RuntimeActivity per dispatched task (start on
-dispatch, complete/fail on reply) so an agent's current task is observable. Bug
-classes guarded:
+The TaskDispatcher (SIP-0097 §6.1 — this instrumentation moved with the
+transport out of DispatchedFlowExecutor in slice 5; renamed from
+test_executor_activity_instrumentation.py) opens a RuntimeActivity per
+dispatched task (start on dispatch, complete/fail on reply) so an agent's
+current task is observable. Bug classes guarded:
 - a dispatched task not opening an activity (no observability) or opening one with
   the wrong identity (mode/source_kind/refs);
 - a SUCCEEDED task not completing its activity, or a FAILED/raised task not
@@ -18,7 +20,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+from adapters.cycles.task_dispatcher import TaskDispatcher
 from squadops.ports.runtime.activity import RuntimeActivityPort
 from squadops.runtime.models import RuntimeActivity
 from squadops.tasks.models import TaskEnvelope, TaskResult
@@ -101,7 +103,7 @@ async def test_start_task_activity_opens_cycle_activity_with_task_identity():
     carrying the task's identity (source_ref, cycle_id, task_id) so it's queryable
     and attributable. Returns the minted activity id."""
     act = _FakeActivityPort()
-    ex = DispatchedFlowExecutor(activity_port=act)
+    ex = TaskDispatcher(activity_port=act)
 
     activity_id = await ex._start_task_activity(_envelope())
 
@@ -119,7 +121,7 @@ async def test_start_task_activity_opens_cycle_activity_with_task_identity():
 async def test_start_task_activity_disabled_when_no_port():
     """Bug class: instrumentation is opt-in. With no activity port, dispatch must
     not attempt any activity work — returns None, no calls."""
-    ex = DispatchedFlowExecutor()  # no activity_port
+    ex = TaskDispatcher()  # no activity_port
 
     assert await ex._start_task_activity(_envelope()) is None
 
@@ -128,7 +130,7 @@ async def test_start_task_activity_swallows_errors():
     """Bug class (best-effort): a failure opening the activity must NOT propagate
     (it would break dispatch). Returns None so finish becomes a no-op."""
     act = _FakeActivityPort(start_raises=True)
-    ex = DispatchedFlowExecutor(activity_port=act)
+    ex = TaskDispatcher(activity_port=act)
 
     assert await ex._start_task_activity(_envelope()) is None
 
@@ -141,7 +143,7 @@ async def test_start_task_activity_swallows_errors():
 async def test_finish_completes_on_succeeded_result():
     """Bug class: a SUCCEEDED task must complete its activity (not fail it)."""
     act = _FakeActivityPort()
-    ex = DispatchedFlowExecutor(activity_port=act)
+    ex = TaskDispatcher(activity_port=act)
 
     await ex._finish_task_activity("act-1", TaskResult(task_id="t1", status="SUCCEEDED"))
 
@@ -160,7 +162,7 @@ async def test_finish_fails_on_non_success(result):
     """Bug class: a FAILED/CANCELED/raised task must fail its activity, never leave
     it running or mark it complete."""
     act = _FakeActivityPort()
-    ex = DispatchedFlowExecutor(activity_port=act)
+    ex = TaskDispatcher(activity_port=act)
 
     await ex._finish_task_activity("act-1", result)
 
@@ -172,7 +174,7 @@ async def test_finish_noop_without_activity_id():
     """Bug class: if start was disabled/failed (activity_id None) finish must be a
     no-op — never call complete/fail with a missing id."""
     act = _FakeActivityPort()
-    ex = DispatchedFlowExecutor(activity_port=act)
+    ex = TaskDispatcher(activity_port=act)
 
     await ex._finish_task_activity(None, TaskResult(task_id="t1", status="SUCCEEDED"))
 
@@ -188,11 +190,11 @@ async def test_dispatch_task_starts_then_completes_activity_on_success():
     """Bug class (the end-to-end wrap): dispatching a task must open an activity
     before the reply wait and complete it after a SUCCEEDED reply."""
     act = _FakeActivityPort()
-    ex = DispatchedFlowExecutor(activity_port=act)
-    ex._create_task_run_if_enabled = AsyncMock(return_value=None)
+    ex = TaskDispatcher(activity_port=act)
+    ex.create_task_run_if_enabled = AsyncMock(return_value=None)
     ex._publish_and_await = AsyncMock(return_value=TaskResult(task_id="t1", status="SUCCEEDED"))
 
-    result = await ex._dispatch_task(_envelope(), "run-1", heartbeat_interval=999)
+    result = await ex.dispatch_task(_envelope(), "run-1", heartbeat_interval=999)
 
     assert result.status == "SUCCEEDED"
     assert len(act.started) == 1
@@ -203,13 +205,13 @@ async def test_dispatch_task_fails_activity_on_failed_reply():
     """Bug class: a FAILED reply must fail the task's activity (not complete it),
     so a failed task never shows as completed work."""
     act = _FakeActivityPort()
-    ex = DispatchedFlowExecutor(activity_port=act)
-    ex._create_task_run_if_enabled = AsyncMock(return_value=None)
+    ex = TaskDispatcher(activity_port=act)
+    ex.create_task_run_if_enabled = AsyncMock(return_value=None)
     ex._publish_and_await = AsyncMock(
         return_value=TaskResult(task_id="t1", status="FAILED", error="timeout")
     )
 
-    result = await ex._dispatch_task(_envelope(), "run-1", heartbeat_interval=999)
+    result = await ex.dispatch_task(_envelope(), "run-1", heartbeat_interval=999)
 
     assert result.status == "FAILED"
     assert act.completed == [] and len(act.failed) == 1

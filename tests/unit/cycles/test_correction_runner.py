@@ -1377,11 +1377,16 @@ class TestCorrectionRunnerStandalone:
         vault.store.side_effect = lambda ref, _content: ref
         bus = bus or MagicMock()
 
-        async def dispatch_task(envelope, run_id, **_kwargs):
-            return responder(envelope)
+        class _PassthroughDispatcher:
+            """Minimal TaskDispatcher stand-in: routes dispatch_task through
+            the test's responder, never creates Prefect task_runs (SIP-0097
+            slice 5 — the runner takes the dispatcher itself, not callables)."""
 
-        async def create_task_run(_flow_run_id, _envelope):
-            return None
+            async def dispatch_task(self, envelope, run_id, **_kwargs):
+                return responder(envelope)
+
+            async def create_task_run_if_enabled(self, _flow_run_id, _envelope):
+                return None
 
         async def store_artifact(art, cycle, run_id, envelope, producing_task_type=None):
             content = art.get("content", "").encode()
@@ -1403,8 +1408,7 @@ class TestCorrectionRunnerStandalone:
             cycle_registry=registry,
             artifact_vault=vault,
             event_bus=bus,
-            dispatch_task=dispatch_task,
-            create_task_run=create_task_run,
+            task_dispatcher=_PassthroughDispatcher(),
             store_artifact=store_artifact,
         )
         return runner, registry, vault, bus

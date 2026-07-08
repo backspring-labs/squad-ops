@@ -15,12 +15,10 @@ Per the SIP-0097 observability ownership rule this collaborator only
 *emits* events through the LLM observability port — it never opens or
 closes observability scopes.
 
-**Interim state (slice 4 < slice 5):** task transport does not exist as a
-collaborator yet, so this runner receives the same three narrow
-executor-supplied callables as ``CorrectionRunner`` — ``dispatch_task`` and
-``create_task_run`` (both owned by ``TaskDispatcher`` from slice 5, which
-replaces these callables per §6.2/AC#9) and ``store_artifact``
-(executor-resident artifact plumbing per §6.7, residual-but-watched).
+Task transport goes through the injected ``TaskDispatcher`` (§6.2 final
+state — slice 5 retired the interim executor-supplied dispatch callables
+per AC#9). ``store_artifact`` remains a narrow executor-supplied callable:
+artifact plumbing is §6.7 executor residual, residual-but-watched.
 
 Cancellation: the pulse path performs no cancellation checks of its own (it
 never did); it relies on the dispatch path's checks at dispatch/await
@@ -53,6 +51,7 @@ from squadops.events.types import EventType
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from adapters.cycles.task_dispatcher import TaskDispatcher
     from squadops.capabilities.acceptance import AcceptanceCheckEngine
     from squadops.capabilities.models import AcceptanceContext
     from squadops.cycles.models import ArtifactRef, Cycle
@@ -61,7 +60,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
-    from squadops.tasks.models import TaskEnvelope, TaskResult
+    from squadops.tasks.models import TaskEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -80,15 +79,13 @@ class PulseBoundaryRunner:
         event_bus: CycleEventBusPort,
         llm_observability: LLMObservabilityPort | None = None,
         *,
-        dispatch_task: Callable[..., Awaitable[TaskResult]],
-        create_task_run: Callable[[str | None, TaskEnvelope], Awaitable[str | None]],
+        task_dispatcher: TaskDispatcher,
         store_artifact: Callable[..., Awaitable[ArtifactRef]],
     ) -> None:
         self._cycle_registry = cycle_registry
         self._event_bus = event_bus
         self._llm_observability = llm_observability
-        self._dispatch_task = dispatch_task
-        self._create_task_run = create_task_run
+        self._task_dispatcher = task_dispatcher
         self._store_artifact = store_artifact
 
     def setup_pulse_context(
@@ -591,7 +588,9 @@ class PulseBoundaryRunner:
                 # SIP-0087 B2: create the Prefect task_run before dispatch so
                 # SIP-0086 pulse-repair handlers also stream logs to a per-task
                 # UI pane and the bridge can transition terminal state.
-                pulse_repair_task_run_id = await self._create_task_run(flow_run_id, enriched_repair)
+                pulse_repair_task_run_id = await self._task_dispatcher.create_task_run_if_enabled(
+                    flow_run_id, enriched_repair
+                )
                 role = repair_env.metadata.get("role", "unknown")
                 pulse_repair_context = {
                     "cycle_id": cycle.cycle_id,
@@ -610,7 +609,7 @@ class PulseBoundaryRunner:
                     },
                 )
 
-                result = await self._dispatch_task(
+                result = await self._task_dispatcher.dispatch_task(
                     enriched_repair,
                     run_id,
                     flow_run_id=flow_run_id,

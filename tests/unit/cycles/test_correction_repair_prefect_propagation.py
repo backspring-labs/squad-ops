@@ -10,7 +10,7 @@ governance.review_plan task pane") is unreachable.
 These tests drive ``CorrectionRunner.run_correction_protocol`` (via the
 executor's composed default) and ``_verify_with_repair`` directly and pin
 the contract by inspecting the spied call args of
-``_create_task_run_if_enabled`` / ``_dispatch_task`` / event emissions.
+``create_task_run_if_enabled`` / ``dispatch_task`` / event emissions.
 """
 
 from __future__ import annotations
@@ -120,7 +120,7 @@ class TestCorrectionTaskRunPropagation:
     ):
         ex = _make_executor(mock_prefect_workflow_tracker, reply_router)
 
-        # Stub _dispatch_task: capture kwargs and return a "continue"
+        # Stub the dispatcher's dispatch_task: capture kwargs and return a "continue"
         # correction decision so the protocol terminates without entering
         # the patch branch (covered separately).
         captured: list[dict] = []
@@ -152,7 +152,7 @@ class TestCorrectionTaskRunPropagation:
                 outputs={"summary": "ok"},
             )
 
-        ex._dispatch_task = fake_dispatch
+        ex._task_dispatcher.dispatch_task = fake_dispatch
 
         await ex._correction_runner.run_correction_protocol(
             run_id="run_001",
@@ -206,7 +206,7 @@ class TestCorrectionTaskRunPropagation:
                 )
             return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
 
-        ex._dispatch_task = succeed
+        ex._task_dispatcher.dispatch_task = succeed
 
         await ex._correction_runner.run_correction_protocol(
             run_id="run_001",
@@ -268,7 +268,7 @@ class TestCorrectionPatchRepairTaskRunPropagation:
                 )
             return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
 
-        ex._dispatch_task = fake_dispatch
+        ex._task_dispatcher.dispatch_task = fake_dispatch
 
         await ex._correction_runner.run_correction_protocol(
             run_id="run_001",
@@ -343,7 +343,7 @@ class TestPulseRepairTaskRunPropagation:
                 outputs={"summary": "ok"},
             )
 
-        ex._dispatch_task = fake_dispatch
+        ex._task_dispatcher.dispatch_task = fake_dispatch
 
         suite = MagicMock(suite_id="suite_a")
         await ex._pulse_boundary_runner._verify_with_repair(
