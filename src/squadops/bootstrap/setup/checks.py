@@ -7,6 +7,7 @@ and returns a CheckResult with pass/fail, fix guidance, and heuristic flag.
 from __future__ import annotations
 
 import asyncio
+import json
 import platform
 import shutil
 import socket
@@ -28,7 +29,9 @@ from squadops.bootstrap.setup.profile import (
 # Result model
 # ---------------------------------------------------------------------------
 
-VALID_CATEGORIES = frozenset({"python", "platform", "tools", "docker", "models", "gpu", "auth"})
+VALID_CATEGORIES = frozenset(
+    {"python", "platform", "tools", "docker", "models", "squad", "gpu", "auth", "broker"}
+)
 
 
 @dataclass(frozen=True)
@@ -653,6 +656,150 @@ def check_auth_token() -> CheckResult:
 
 
 # ---------------------------------------------------------------------------
+# Broker hygiene checks (#328)
+# ---------------------------------------------------------------------------
+
+# Queue-name prefixes retired by SIP-0094 (per-run cycle_results_{run_id} reply
+# queues, replaced by durable per-agent {agent_id}_replies). Any surviving queue
+# with one of these prefixes is orphaned residue, not a live path.
+_RETIRED_QUEUE_PREFIXES = ("cycle_results",)
+
+
+def _query_broker_queues(service: str = "rabbitmq") -> list[dict] | None:
+    """Per-queue ``{name, messages, consumers}`` via ``rabbitmqctl list_queues``
+    run inside the broker container.
+
+    The container is resolved from the compose *service* name (``docker compose
+    ps -q``) rather than a hardcoded container name, and rabbitmqctl runs as the
+    broker admin so no credentials are needed — the same host-side access path
+    ``rebuild_and_deploy.sh`` uses. Returns ``None`` when the broker can't be
+    queried (docker absent, container down, rabbitmqctl error); callers warn
+    heuristically rather than hard-fail on an unqueryable broker.
+    """
+    try:
+        cid_proc = subprocess.run(
+            ["docker", "compose", "ps", "-q", service],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        container_id = cid_proc.stdout.strip()
+        if cid_proc.returncode != 0 or not container_id:
+            return None
+        proc = subprocess.run(
+            [
+                "docker",
+                "exec",
+                container_id,
+                "rabbitmqctl",
+                "list_queues",
+                "name",
+                "messages",
+                "consumers",
+                "--formatter",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if proc.returncode != 0:
+            return None
+        data = json.loads(proc.stdout)
+        return [
+            {
+                "name": q.get("name", ""),
+                "messages": int(q.get("messages", 0) or 0),
+                "consumers": int(q.get("consumers", 0) or 0),
+            }
+            for q in data
+        ]
+    except (subprocess.TimeoutExpired, OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def check_broker_hygiene(service: str = "rabbitmq") -> list[CheckResult]:
+    """Flag broker cruft: queues on a retired naming scheme, and any queue
+    holding messages with no consumer (undrained backlog). Both are the residue
+    the SIP-0094 migration left and the #323 consumer churn would have shown
+    (#328). An unqueryable broker warns (~) rather than failing.
+    """
+    queues = _query_broker_queues(service)
+    if queues is None:
+        return [
+            CheckResult(
+                name="broker:queues",
+                category="broker",
+                passed=False,
+                heuristic=True,
+                message="Broker not queryable — skipped queue hygiene",
+                detail=(
+                    "Could not run `rabbitmqctl list_queues` in the broker container "
+                    "(docker unavailable or broker not running)."
+                ),
+            )
+        ]
+
+    results: list[CheckResult] = []
+
+    retired = sorted(
+        q["name"] for q in queues if any(q["name"].startswith(p) for p in _RETIRED_QUEUE_PREFIXES)
+    )
+    if retired:
+        preview = ", ".join(retired[:5]) + (" …" if len(retired) > 5 else "")
+        results.append(
+            CheckResult(
+                name="broker:retired-queues",
+                category="broker",
+                passed=False,
+                message=(
+                    f"{len(retired)} queue(s) use a retired naming scheme "
+                    "(pre-SIP-0094 cycle_results_*)"
+                ),
+                detail=f"Orphaned by the SIP-0094 per-agent reply-queue migration: {preview}",
+                fix_command=(
+                    "Delete after confirming the backlog is dead history, e.g. "
+                    "`docker compose exec rabbitmq rabbitmqctl delete_queue <name>`"
+                ),
+            )
+        )
+
+    undrained = sorted(
+        (q for q in queues if q["messages"] > 0 and q["consumers"] == 0),
+        key=lambda q: -q["messages"],
+    )
+    if undrained:
+        preview = ", ".join(f"{q['name']} ({q['messages']} msg)" for q in undrained[:5])
+        results.append(
+            CheckResult(
+                name="broker:undrained-queues",
+                category="broker",
+                passed=False,
+                message=f"{len(undrained)} queue(s) hold messages with no consumer",
+                detail=f"Undrained backlog — results produced but nothing draining: {preview}",
+                fix_command=(
+                    "Investigate the missing consumer; drain or delete the queue "
+                    "once the backlog is confirmed dead."
+                ),
+            )
+        )
+
+    if not results:
+        results.append(
+            CheckResult(
+                name="broker:queues",
+                category="broker",
+                passed=True,
+                message=(
+                    f"{len(queues)} broker queue(s) healthy — no retired schemes, "
+                    "no undrained backlogs"
+                ),
+            )
+        )
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -751,6 +898,15 @@ def _collect_auth_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return [check_auth_token()]
 
 
+def _collect_broker_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    """Broker hygiene, only when the profile declares the rabbitmq service —
+    mirrors how the GPU checks gate on an nvidia dependency."""
+    broker_svc = next((svc for svc in profile.docker_services if svc.name == "rabbitmq"), None)
+    if broker_svc is None:
+        return []
+    return check_broker_hygiene(broker_svc.name)
+
+
 _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("python", _collect_python_checks),
     ("platform", _collect_platform_checks),
@@ -760,6 +916,7 @@ _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("squad", _collect_squad_checks),
     ("gpu", _collect_gpu_checks),
     ("auth", _collect_auth_checks),
+    ("broker", _collect_broker_checks),
 ]
 
 
