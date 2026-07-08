@@ -74,11 +74,14 @@ async def admit_participants(
     the same blocking agent across retries. Per agent:
 
       * ``applied`` → recruited (release it on finalize);
-      * ``idempotent_skip`` → already in ``cycle`` (replay or another owner) —
-        admitted, but **not** recorded as recruited-by-us, so finalize won't
-        release a lease we didn't take;
+      * ``idempotent_skip`` → this run already holds the agent's cycle lease (a
+        recruitment replay) — admitted, but **not** recorded as recruited-by-us,
+        so finalize won't release a lease we didn't take this call;
       * rejected → defer: roll back everyone recruited so far, then return the
-        coordinator's typed reason (a ``focus_lease_*`` code).
+        coordinator's typed reason (a ``focus_lease_*`` code). A concurrent run
+        holding the agent's lease reaches *here*, not ``idempotent_skip`` — the
+        coordinator rejects a same-mode request from a different lease owner
+        (#288), so a second cycle never free-rides the first's lease.
 
     ``owner_ref`` identifies the lease owner (the run/cycle id); the coordinator
     derives a stable lease idem key from it, so retrying the same run replays the
