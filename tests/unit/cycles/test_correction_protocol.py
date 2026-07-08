@@ -154,6 +154,9 @@ def executor(
 
     mock_registry.get_cycle.return_value = cycle
     mock_registry.get_run.return_value = run
+    # SIP-0097 slice 3: the event bus must be passed at construction — the
+    # default CorrectionRunner captures it in __init__, so a post-hoc
+    # `ex._cycle_event_bus = ...` assignment would not reach correction events.
     ex = DispatchedFlowExecutor(
         cycle_registry=mock_registry,
         artifact_vault=mock_vault,
@@ -161,8 +164,8 @@ def executor(
         squad_profile=mock_squad_profile,
         task_timeout=5.0,
         reply_router=mock_queue.reply_router,
+        event_bus=mock_event_bus,
     )
-    ex._cycle_event_bus = mock_event_bus
     return ex
 
 
@@ -388,7 +391,7 @@ class TestCorrectionTaskArtifactStorage:
 
         all_refs: list[str] = []
         stored: list = []
-        await executor._store_correction_task_artifacts(
+        await executor._correction_runner._store_correction_task_artifacts(
             result, envelope, cycle, "run_x", all_refs, stored
         )
 
@@ -445,7 +448,7 @@ class TestCorrectionTaskArtifactStorage:
 
         all_refs: list[str] = []
         stored: list = []
-        await executor._store_correction_task_artifacts(
+        await executor._correction_runner._store_correction_task_artifacts(
             result, envelope, cycle, "run_x", all_refs, stored
         )
 

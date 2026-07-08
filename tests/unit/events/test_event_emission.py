@@ -51,9 +51,11 @@ def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
 # Source files that contain emit() calls (or decide the event type an emit
 # call uses — SIP-0097 slice 2 moved the run-terminal mapping, and its
 # EventType references, to the RunCompletion module; the executor's single
-# collapsed handler emits what the mapping decides)
+# collapsed handler emits what the mapping decides. Slice 3 moved the
+# correction protocol, and its emit sites, to the CorrectionRunner module.)
 _EXECUTOR_PATH = Path("adapters/cycles/dispatched_flow_executor.py")
 _RUN_COMPLETION_PATH = Path("adapters/cycles/run_completion.py")
+_CORRECTION_RUNNER_PATH = Path("adapters/cycles/correction_runner.py")
 _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
 _RUNS_ROUTE = Path("src/squadops/api/routes/cycles/runs.py")
 _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")
@@ -61,6 +63,7 @@ _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")
 _ALL_EMISSION_FILES = [
     _EXECUTOR_PATH,
     _RUN_COMPLETION_PATH,
+    _CORRECTION_RUNNER_PATH,
     _CYCLES_ROUTE,
     _RUNS_ROUTE,
     _ARTIFACTS_ROUTE,
@@ -122,9 +125,6 @@ class TestExecutorEmissionPoints:
             "PULSE_REPAIR_EXHAUSTED",
             "CHECKPOINT_CREATED",
             "CHECKPOINT_RESTORED",
-            "CORRECTION_INITIATED",
-            "CORRECTION_DECIDED",
-            "CORRECTION_COMPLETED",
             "WORKLOAD_COMPLETED",
             "WORKLOAD_GATE_AWAITING",
             "WORKLOAD_ADVANCED",
@@ -133,12 +133,15 @@ class TestExecutorEmissionPoints:
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_20_types(self, executor_refs: set[str]) -> None:
-        """20 = the former 22 minus RUN_FAILED/RUN_CANCELLED, whose static
-        references moved to the run-completion terminal mapping (SIP-0097
-        slice 2c). RUN_PAUSED stays: the duty-deferral path still references
-        it directly in the executor."""
-        assert len(executor_refs) == 20
+    def test_executor_has_17_types(self, executor_refs: set[str]) -> None:
+        """17 = the former 20 minus CORRECTION_INITIATED/DECIDED/COMPLETED,
+        which moved to the CorrectionRunner with the correction protocol
+        (SIP-0097 slice 3). CHECKPOINT_CREATED and TASK_DISPATCHED/
+        SUCCEEDED/FAILED stay: the sequential loop and
+        _collect_artifacts_and_checkpoint still emit them for regular tasks.
+        RUN_PAUSED stays: the duty-deferral path still references it directly
+        in the executor."""
+        assert len(executor_refs) == 17
 
 
 class TestRunCompletionEmissionPoints:
@@ -152,6 +155,32 @@ class TestRunCompletionEmissionPoints:
     @pytest.mark.parametrize("attr", ["RUN_CANCELLED", "RUN_PAUSED", "RUN_FAILED"])
     def test_terminal_mapping_covers(self, attr: str, run_completion_refs: set[str]) -> None:
         assert attr in run_completion_refs
+
+
+class TestCorrectionRunnerEmissionPoints:
+    """The correction protocol's events are emitted by the CorrectionRunner
+    (SIP-0097 §6.3): the CORRECTION_* lifecycle, per-step TASK_* events for
+    correction/repair dispatches, and CHECKPOINT_CREATED for each successful
+    step."""
+
+    @pytest.fixture(scope="class")
+    def correction_runner_refs(self) -> set[str]:
+        return _find_event_type_refs_in_file(_CORRECTION_RUNNER_PATH)
+
+    @pytest.mark.parametrize(
+        "attr",
+        [
+            "CORRECTION_INITIATED",
+            "CORRECTION_DECIDED",
+            "CORRECTION_COMPLETED",
+            "TASK_DISPATCHED",
+            "TASK_SUCCEEDED",
+            "TASK_FAILED",
+            "CHECKPOINT_CREATED",
+        ],
+    )
+    def test_correction_runner_emits(self, attr: str, correction_runner_refs: set[str]) -> None:
+        assert attr in correction_runner_refs
 
 
 class TestRouteEmissionPoints:
@@ -246,13 +275,15 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 38
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 37 executor + 7 route = 44 total emit calls.
+        """Sanity check: 27 executor + 10 correction-runner + 7 route = 44
+        total emit calls.
 
         SIP-0097 slice 2c collapsed execute_run's five per-exception-class
-        terminal emits (cancelled / recruitment-deferral paused / paused /
-        execution-failed / unexpected-failed) into one emit driven by the
-        RunCompletion terminal mapping — same events at runtime, 4 fewer
-        static call sites (was 41 executor + 7 route = 48)."""
+        terminal emits into one emit driven by the RunCompletion terminal
+        mapping (48 → 44). Slice 3 moved the correction protocol's 10 emit
+        sites (CORRECTION_INITIATED/DECIDED/COMPLETED, 2× TASK_DISPATCHED/
+        SUCCEEDED/FAILED, CHECKPOINT_CREATED) from the executor to the
+        CorrectionRunner — same events at runtime, same total."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))

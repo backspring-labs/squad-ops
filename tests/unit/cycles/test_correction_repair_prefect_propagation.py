@@ -7,8 +7,9 @@ have no Prefect task pane and the bridge can't transition terminal state —
 acceptance criterion §7.5 ("manifest retry events appear in
 governance.review_plan task pane") is unreachable.
 
-These tests drive ``_run_correction_protocol`` and ``_verify_with_repair``
-directly and pin the contract by inspecting the spied call args of
+These tests drive ``CorrectionRunner.run_correction_protocol`` (via the
+executor's composed default) and ``_verify_with_repair`` directly and pin
+the contract by inspecting the spied call args of
 ``_create_task_run_if_enabled`` / ``_dispatch_task`` / event emissions.
 """
 
@@ -89,6 +90,9 @@ def _make_executor(mock_prefect_workflow_tracker, reply_router):
     vault.store.side_effect = lambda ref, _content: ref
     queue = AsyncMock()
     squad = AsyncMock()
+    # SIP-0097 slice 3: the event bus must be passed at construction — the
+    # default CorrectionRunner captures it in __init__, so a post-hoc
+    # `ex._cycle_event_bus = ...` assignment would not reach correction events.
     ex = DispatchedFlowExecutor(
         cycle_registry=registry,
         artifact_vault=vault,
@@ -97,8 +101,8 @@ def _make_executor(mock_prefect_workflow_tracker, reply_router):
         task_timeout=5.0,
         workflow_tracker=mock_prefect_workflow_tracker,
         reply_router=reply_router,
+        event_bus=MagicMock(),
     )
-    ex._cycle_event_bus = MagicMock()
     return ex
 
 
@@ -108,7 +112,7 @@ def _make_executor(mock_prefect_workflow_tracker, reply_router):
 
 
 class TestCorrectionTaskRunPropagation:
-    """`_run_correction_protocol` must create Prefect task_runs for each
+    """`run_correction_protocol` must create Prefect task_runs for each
     correction step and tag every emitted task event with both run IDs."""
 
     async def test_correction_steps_create_task_runs_and_emit_full_context(
@@ -150,7 +154,7 @@ class TestCorrectionTaskRunPropagation:
 
         ex._dispatch_task = fake_dispatch
 
-        await ex._run_correction_protocol(
+        await ex._correction_runner.run_correction_protocol(
             run_id="run_001",
             cycle=cycle,
             envelope=failed_envelope,
@@ -204,7 +208,7 @@ class TestCorrectionTaskRunPropagation:
 
         ex._dispatch_task = succeed
 
-        await ex._run_correction_protocol(
+        await ex._correction_runner.run_correction_protocol(
             run_id="run_001",
             cycle=cycle,
             envelope=failed_envelope,
@@ -266,7 +270,7 @@ class TestCorrectionPatchRepairTaskRunPropagation:
 
         ex._dispatch_task = fake_dispatch
 
-        await ex._run_correction_protocol(
+        await ex._correction_runner.run_correction_protocol(
             run_id="run_001",
             cycle=cycle,
             envelope=failed_envelope,
