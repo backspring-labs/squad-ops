@@ -142,70 +142,41 @@ class TestAgentStatusById:
         assert resp.status_code == 404
 
 
-class TestCreateOrUpdateAgentStatus:
-    def test_valid_heartbeat(self, client, mock_health_checker):
+class TestHealthLaneIsReadOnly:
+    """#326: agent-status writes moved to /api/v1/agents/status. The /health
+    lane is unauthenticated, so a write route reappearing here is a security
+    regression — these paths must not resolve at all."""
+
+    def test_post_agent_status_gone_from_health_lane(self, client):
         resp = client.post(
             "/health/agents/status",
-            json={
-                "agent_id": "max",
-                "lifecycle_state": "READY",
-            },
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "updated"
-        mock_health_checker.update_agent_status_in_db.assert_awaited_once()
-
-    def test_invalid_lifecycle_state_returns_400(self, client, mock_health_checker):
-        resp = client.post(
-            "/health/agents/status",
-            json={
-                "agent_id": "max",
-                "lifecycle_state": "INVALID",
-            },
-        )
-        assert resp.status_code == 400
-        assert "Invalid lifecycle_state" in resp.json()["detail"]
-
-
-class TestUpdateAgentStatus:
-    def test_update_with_no_fields_returns_400(self, client, mock_health_checker):
-        resp = client.put("/health/agents/status/max", json={})
-        assert resp.status_code == 400
-        assert "No fields" in resp.json()["detail"]
-
-    def test_update_valid_fields(self, client, mock_health_checker):
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock(return_value="UPDATE 1")
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_health_checker.pg_pool.acquire.return_value = mock_conn
-
-        resp = client.put(
-            "/health/agents/status/max",
-            json={
-                "lifecycle_state": "WORKING",
-                "tps": 10,
-            },
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "updated"
-
-    def test_update_not_found(self, client, mock_health_checker):
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock(return_value="UPDATE 0")
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_health_checker.pg_pool.acquire.return_value = mock_conn
-
-        resp = client.put(
-            "/health/agents/status/ghost",
-            json={
-                "lifecycle_state": "READY",
-            },
+            json={"agent_id": "max", "lifecycle_state": "READY"},
         )
         assert resp.status_code == 404
+
+    def test_put_agent_status_gone_from_health_lane(self, client):
+        resp = client.put(
+            "/health/agents/status/max",
+            json={"lifecycle_state": "WORKING"},
+        )
+        # 405, not 404: the path still exists for GET (single-agent status
+        # probe); only the write method must be gone.
+        assert resp.status_code == 405
+
+    def test_health_router_exposes_only_safe_methods(self):
+        """Structural ratchet for the lane rule (#218): every route on the
+        /health router must be GET-only. Catches any future write route added
+        to this router before the middleware allowlist would expose it."""
+        from squadops.api.routes.platform_health import router as health_router
+
+        for route in health_router.routes:
+            methods = getattr(route, "methods", set()) or set()
+            unsafe = methods - {"GET", "HEAD"}
+            assert not unsafe, (
+                f"Route {route.path} exposes unsafe methods {unsafe} on the "
+                "unauthenticated /health lane — writable resources belong on "
+                "/api/v1 (see routes/agent_status.py, #326)"
+            )
 
 
 class TestAgentCurrentActivity:

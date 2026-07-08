@@ -57,7 +57,7 @@ ensure_env_file() {
 
     # Create Docker secret files from .env passwords
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
-        info "[dry-run] create secrets/{db_password,rabbitmq_password,keycloak_admin_password}.txt"
+        info "[dry-run] create secrets/{db_password,rabbitmq_password,keycloak_admin_password,agent_client_secret}.txt"
     elif [[ -f "$env_file" ]]; then
         mkdir -p secrets
         if [[ ! -f "secrets/db_password.txt" ]]; then
@@ -77,6 +77,11 @@ ensure_env_file() {
             # Keycloak DB DSN — matches KC_DB_URL credentials in docker-compose
             echo -n "postgresql://keycloak:keycloak@postgres:5432/keycloak" > secrets/keycloak_db_dsn.txt
             success "Created secrets/keycloak_db_dsn.txt"
+        fi
+        if [[ ! -f "secrets/agent_client_secret.txt" ]]; then
+            # squadops-agent client secret (#326) — matches the realm export
+            echo -n "squadops-agent-secret" > secrets/agent_client_secret.txt
+            success "Created secrets/agent_client_secret.txt"
         fi
     fi
 

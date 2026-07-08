@@ -40,6 +40,12 @@ def _make_app(
     async def health_infra():
         return {"status": "ok"}
 
+    # Deliberately-mounted write route under /health: the middleware must NOT
+    # allowlist it (#326) — the no-auth lane covers safe methods only.
+    @app.post("/health/rogue-write")
+    async def health_rogue_write():
+        return {"status": "written"}
+
     @app.get("/docs")
     async def docs():
         return {"docs": "swagger"}
@@ -86,7 +92,8 @@ def _make_auth_port(identity: Identity | None = None) -> MagicMock:
 
 
 class TestHealthEndpointAllowlist:
-    """/health and /health/infra always pass without token."""
+    """GET under /health always passes without token; the allowlist is
+    method-scoped (#326) so writes under /health still require auth."""
 
     def test_health_no_token(self):
         app = _make_app()
@@ -99,6 +106,26 @@ class TestHealthEndpointAllowlist:
         client = TestClient(app)
         resp = client.get("/health/infra")
         assert resp.status_code == 200
+
+    def test_post_under_health_requires_token(self):
+        """#326 regression: an unauthenticated client must not be able to
+        reach a write route mounted under /health — the prefix allowlist
+        applies to safe methods only."""
+        auth_port = _make_auth_port()
+        app = _make_app(auth_port=auth_port)
+        client = TestClient(app)
+        resp = client.post("/health/rogue-write")
+        assert resp.status_code == 401
+
+    def test_post_under_health_passes_with_valid_token(self):
+        """The method guard demands auth, it doesn't block the route: a
+        valid token still reaches a write route under /health."""
+        auth_port = _make_auth_port()
+        app = _make_app(auth_port=auth_port)
+        client = TestClient(app)
+        resp = client.post("/health/rogue-write", headers={"Authorization": "Bearer good-token"})
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "written"}
 
 
 class TestDocsAllowlist:

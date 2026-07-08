@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -20,7 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 class HealthCheckHttpReporter(AgentHeartbeatReporter):
-    """Posts agent status updates to the runtime-api health endpoints."""
+    """Posts agent status updates to the runtime-api agent-status endpoint.
+
+    Writes go to the authed /api/v1 lane (#326). When ``token_provider`` is
+    set (agent service identity via client credentials), each request carries
+    a Bearer token; without it the request is unauthenticated — valid only
+    for auth-disabled deployments.
+    """
 
     def __init__(
         self,
@@ -28,12 +35,14 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
         base_url: str | None = None,
         timeout_seconds: int = 5,
         fail_silently: bool = True,
+        token_provider: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
         self._base_url = (
             base_url or os.getenv("SQUADOPS_RUNTIME_API_URL") or "http://runtime-api:8001"
         ).rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._fail_silently = fail_silently
+        self._token_provider = token_provider
 
     async def send_status(
         self,
@@ -45,7 +54,7 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
         tps: float | None = None,
         memory_count: int | None = None,
     ) -> None:
-        url = f"{self._base_url}/health/agents/status"
+        url = f"{self._base_url}/api/v1/agents/status"
         payload: dict[str, Any] = {
             "agent_id": agent_id,
             "lifecycle_state": lifecycle_state,
@@ -56,8 +65,12 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
         }
 
         try:
+            headers: dict[str, str] = {}
+            if self._token_provider is not None:
+                token = await self._token_provider()
+                headers["Authorization"] = f"Bearer {token}"
             async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-                resp = await client.post(url, json=payload)
+                resp = await client.post(url, json=payload, headers=headers)
                 if resp.status_code >= 400:
                     raise RuntimeError(f"runtime-api responded {resp.status_code}: {resp.text}")
         except Exception as e:

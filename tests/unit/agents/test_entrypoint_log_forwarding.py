@@ -33,6 +33,7 @@ def _make_runner():
     runner = AgentRunner.__new__(AgentRunner)
     runner.agent_id = "neo"
     runner._log_forwarder = None
+    runner._service_token_client = None
     return runner
 
 

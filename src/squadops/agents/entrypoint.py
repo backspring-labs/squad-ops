@@ -97,6 +97,7 @@ class AgentRunner:
         self._shutdown_event = asyncio.Event()
         self._heartbeat_task: asyncio.Task | None = None
         self._heartbeat_reporter = None
+        self._service_token_client = None
         self._lifecycle_state = "STARTING"
         self._queue = None
         self._config = None
@@ -151,10 +152,8 @@ class AgentRunner:
             # (SIP-0087). Always-inject pattern — NoOp when disabled.
             self._log_forwarder = await self._create_log_forwarder(self._config)
 
-            # Create heartbeat reporter
-            from adapters.observability.healthcheck_http import HealthCheckHttpReporter
-
-            self._heartbeat_reporter = HealthCheckHttpReporter()
+            # Create heartbeat reporter (authed /api/v1 lane, #326)
+            self._heartbeat_reporter = self._create_heartbeat_reporter(self._config)
 
             # Bootstrap system
             self.system = await self._create_system()
@@ -200,6 +199,49 @@ class AgentRunner:
 
         return await create_log_forwarder(config.prefect)
 
+    def _create_heartbeat_reporter(self, config):
+        """Build the heartbeat reporter (#326).
+
+        Status writes live on the authed /api/v1 lane: when an agent service
+        identity is configured (auth.agent_client + auth.oidc), heartbeats
+        carry a Bearer token acquired via client credentials; otherwise they
+        go out unauthenticated — valid only for auth-disabled deployments.
+
+        Raises:
+            ValueError: agent_client is configured without the oidc section
+                needed to reach the token endpoint (misconfiguration must
+                surface, not degrade to anonymous heartbeats).
+        """
+        from adapters.observability.healthcheck_http import HealthCheckHttpReporter
+
+        auth_cfg = config.auth
+        token_provider = None
+        if auth_cfg.agent_client is not None:
+            if auth_cfg.oidc is None:
+                raise ValueError(
+                    "auth.agent_client is configured but auth.oidc is missing — "
+                    "the OIDC issuer_url is required to acquire service tokens. "
+                    "Set SQUADOPS__AUTH__OIDC__ISSUER_URL (and AUDIENCE) or unset "
+                    "SQUADOPS__AUTH__AGENT_CLIENT__*."
+                )
+            from adapters.auth.factory import create_service_token_client
+
+            self._service_token_client = create_service_token_client(
+                "agent",
+                auth_cfg.agent_client,
+                auth_cfg.oidc,
+            )
+            token_provider = self._service_token_client.get_token
+            logger.info(
+                "Agent service identity configured for heartbeats",
+                extra={
+                    "agent_id": self.agent_id,
+                    "client_id": auth_cfg.agent_client.client_id,
+                },
+            )
+
+        return HealthCheckHttpReporter(token_provider=token_provider)
+
     async def stop(self) -> None:
         """Stop the agent gracefully."""
         logger.info("Stopping agent", extra={"agent_id": self.agent_id})
@@ -227,6 +269,11 @@ class AgentRunner:
         if self._log_forwarder is not None:
             await self._log_forwarder.aclose()
             self._log_forwarder = None
+
+        # Release the service-token client's HTTP session (#326)
+        if self._service_token_client is not None:
+            await self._service_token_client.close()
+            self._service_token_client = None
 
         logger.info("Agent stopped", extra={"agent_id": self.agent_id})
 

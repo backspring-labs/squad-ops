@@ -25,6 +25,9 @@ class Role:
     ADMIN = "admin"
     OPERATOR = "operator"
     VIEWER = "viewer"
+    # Service role held by the squadops-agent service account (#326): lets agent
+    # containers report their own status via the authed lane, nothing else.
+    AGENT = "agent"
 
 
 class Scope:
@@ -72,6 +75,11 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.CYCLES_READ,
             Scope.AGENTS_READ,
             Scope.TASKS_READ,
+        }
+    ),
+    Role.AGENT: frozenset(
+        {
+            Scope.AGENTS_WRITE,
         }
     ),
 }
