@@ -26,7 +26,7 @@
 
 ### Agent Framework
 - **Agent Squad** – 6 agents: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics)
-- **BaseAgent** – DI-enabled base class with SecretManager, DbRuntime, and port injection
+- **BaseAgent** – DI-enabled base class with full port injection (LLM, memory, queue, telemetry, filesystem)
 - **Capability Contracts** – Declarative delivery expectations with acceptance checks (SIP-0058)
 
 ### Cycle Execution Pipeline (SIP-0064/0066/0068/0076–0080/0083)

@@ -93,7 +93,7 @@ squadops artifacts list <run-id>           # List artifacts for run
 
 ### Hexagonal Structure (Ports & Adapters)
 - **`src/squadops/`** - Core domain
-  - `ports/` - Abstract interfaces (SecretProvider, DbRuntime, QueuePort, CycleRegistryPort, AuthPort, AuditPort, LLMObservabilityPort)
+  - `ports/` - Abstract interfaces (SecretProvider, QueuePort, CycleRegistryPort, AuthPort, AuditPort, LLMObservabilityPort)
   - `agents/` - BaseAgent with DI, entrypoint for RabbitMQ message handling
   - `tasks/` - TaskEnvelope, TaskResult models (A2A message format with lineage per SIP-031)
   - `capabilities/` - Capability contracts, workload runner, cycle task handlers, build handlers (SIP-0058, SIP-0068)
@@ -119,7 +119,7 @@ squadops artifacts list <run-id>           # List artifacts for run
 - **`infra/`** - Database migrations and DDL
 
 ### Key Patterns
-- **Dependency Injection**: `BaseAgent` receives `SecretManager`, `DbRuntime`, `AgentHeartbeatReporter` via constructor
+- **Dependency Injection**: `BaseAgent` receives its ports (LLM, memory, prompt service, queue, metrics/events, filesystem, LLM observability) via constructor injection
 - **Factory Pattern**: Adapters use factories for provider selection based on environment
 - **Task Envelope**: A2A message format with lineage (correlation_id, causation_id, trace_id) per SIP-031
 - **DTO Purity**: Task adapters return canonical DTOs; API formatting happens in FastAPI layer
