@@ -168,6 +168,47 @@ class TestEnsureQueue:
         ch2.declare_queue.assert_awaited_once_with("neo_replies", **REPLY_QUEUE_DECLARE_ARGS)
 
 
+class TestPrefetchQos:
+    """#323: an adapter constructed with ``prefetch_count`` must apply it as
+    channel QoS so a persistent push consumer is handed one unacked message
+    at a time."""
+
+    @staticmethod
+    def _connect(adapter: RabbitMQAdapter) -> MagicMock:
+        """Wire a live mock connection that yields a fresh mock channel."""
+        ch = MagicMock()
+        ch.is_closed = False
+        ch.set_qos = AsyncMock()
+        conn = MagicMock()
+        conn.is_closed = False
+        conn.channel = AsyncMock(return_value=ch)
+        adapter._connection = conn
+        return ch
+
+    async def test_prefetch_applied_on_channel_creation(self) -> None:
+        """Bug caught: dropping the set_qos call silently reverts to unbounded
+        prefetch — the broker flushes the whole queue into the consumer's
+        client-side buffer, and an agent dying mid-task takes every buffered
+        message with it."""
+        adapter = RabbitMQAdapter(url="amqp://test", prefetch_count=1)
+        ch = self._connect(adapter)
+
+        await adapter._ensure_connection()
+
+        ch.set_qos.assert_awaited_once_with(prefetch_count=1)
+
+    async def test_no_prefetch_leaves_qos_untouched(self) -> None:
+        """Default construction must not impose QoS on the shared channel —
+        existing publish-only and reply-subscriber users keep broker-default
+        delivery."""
+        adapter = RabbitMQAdapter(url="amqp://test")
+        ch = self._connect(adapter)
+
+        await adapter._ensure_connection()
+
+        ch.set_qos.assert_not_awaited()
+
+
 class TestConsumeBlockingErrorWrapping:
     """``consume_blocking`` must wrap broker errors in QueueError so callers
     can recover (invalidate cache, retry) instead of crashing on raw
