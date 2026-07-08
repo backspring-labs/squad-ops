@@ -216,6 +216,7 @@ services:
     container_name: squadops-max
     restart: unless-stopped
     secrets:
+      - agent_client_secret
       - db_password
       - rabbitmq_password
       - keycloak_admin_password
@@ -236,8 +237,13 @@ services:
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
       # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
-      # Auth not needed for agents (no HTTP server)
+      # Agent service identity (#326): no HTTP server, so inbound-auth middleware
+      # stays off; heartbeats to runtime-api authenticate via client credentials.
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     volumes:
       - max_memory_data:/app/data/memory_db
@@ -263,6 +269,7 @@ services:
     container_name: squadops-nat
     restart: unless-stopped
     secrets:
+      - agent_client_secret
       - db_password
       - rabbitmq_password
       - keycloak_admin_password
@@ -283,8 +290,13 @@ services:
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
       # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
-      # Auth not needed for agents (no HTTP server)
+      # Agent service identity (#326): no HTTP server, so inbound-auth middleware
+      # stays off; heartbeats to runtime-api authenticate via client credentials.
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     depends_on:
       rabbitmq:
@@ -329,6 +341,7 @@ services:
     container_name: squadops-neo
     restart: unless-stopped
     secrets:
+      - agent_client_secret
       - db_password
       - rabbitmq_password
       - keycloak_admin_password
@@ -349,8 +362,13 @@ services:
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
       # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
-      # Auth not needed for agents (no HTTP server)
+      # Agent service identity (#326): no HTTP server, so inbound-auth middleware
+      # stays off; heartbeats to runtime-api authenticate via client credentials.
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     volumes:
       - ./docker-compose.yml:/app/docker-compose.yml
@@ -378,6 +396,7 @@ services:
     container_name: squadops-eve
     restart: unless-stopped
     secrets:
+      - agent_client_secret
       - db_password
       - rabbitmq_password
       - keycloak_admin_password
@@ -398,8 +417,13 @@ services:
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
       # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
-      # Auth not needed for agents (no HTTP server)
+      # Agent service identity (#326): no HTTP server, so inbound-auth middleware
+      # stays off; heartbeats to runtime-api authenticate via client credentials.
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     depends_on:
       rabbitmq:
@@ -423,6 +447,7 @@ services:
     container_name: squadops-data
     restart: unless-stopped
     secrets:
+      - agent_client_secret
       - db_password
       - rabbitmq_password
       - keycloak_admin_password
@@ -443,8 +468,13 @@ services:
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
       # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
-      # Auth not needed for agents (no HTTP server)
+      # Agent service identity (#326): no HTTP server, so inbound-auth middleware
+      # stays off; heartbeats to runtime-api authenticate via client credentials.
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     volumes:
       - data_memory_data:/app/data/memory_db
@@ -472,6 +502,7 @@ services:
     container_name: squadops-bob
     restart: unless-stopped
     secrets:
+      - agent_client_secret
       - db_password
       - rabbitmq_password
       - keycloak_admin_password
@@ -492,8 +523,13 @@ services:
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
       # Prompt asset source (SIP-0084): 'filesystem' or 'langfuse'
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
-      # Auth not needed for agents (no HTTP server)
+      # Agent service identity (#326): no HTTP server, so inbound-auth middleware
+      # stays off; heartbeats to runtime-api authenticate via client credentials.
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
     volumes:
       - bob_memory_data:/app/data/memory_db
@@ -542,6 +578,7 @@ services:
     container_name: squadops-joi
     restart: unless-stopped
     secrets:
+      - agent_client_secret
       - db_password
       - rabbitmq_password
       - keycloak_admin_password
@@ -561,7 +598,13 @@ services:
       SQUADOPS__LANGFUSE__PUBLIC_KEY: ${SQUADOPS__LANGFUSE__PUBLIC_KEY}
       SQUADOPS__LANGFUSE__SECRET_KEY: ${SQUADOPS__LANGFUSE__SECRET_KEY}
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:-filesystem}
+      # Agent service identity (#326): no HTTP server, so inbound-auth middleware
+      # stays off; heartbeats to runtime-api authenticate via client credentials.
       SQUADOPS__AUTH__ENABLED: "false"
+      SQUADOPS__AUTH__OIDC__ISSUER_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
+      SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
+      SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
     volumes:
       - joi_memory_data:/app/data/memory_db
     depends_on:
@@ -738,6 +781,8 @@ volumes:
   data_memory_data: {}
   joi_memory_data: {}
 secrets:
+  agent_client_secret:
+    file: ./secrets/agent_client_secret.txt
   db_password:
     file: ./secrets/db_password.txt
   rabbitmq_password:

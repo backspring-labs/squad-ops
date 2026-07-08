@@ -369,6 +369,17 @@ class AuthConfig(BaseModel):
     service_clients: dict[str, ServiceClientConfig] = Field(
         default_factory=dict, description="Named service client configurations"
     )
+    agent_client: ServiceClientConfig | None = Field(
+        default=None,
+        description=(
+            "Client credentials an agent container uses for outbound calls to "
+            "runtime-api (heartbeats via POST /api/v1/agents/status, #326). "
+            "First-class field (not a service_clients entry) so it is addressable "
+            "via SQUADOPS__AUTH__AGENT_CLIENT__* env vars; requires oidc.issuer_url "
+            "for the token endpoint. Independent of `enabled`, which governs "
+            "inbound request validation only."
+        ),
+    )
     roles_mode: str = Field(
         default="realm", description="Role extraction mode: 'realm' or 'client'"
     )
