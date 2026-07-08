@@ -22,9 +22,7 @@ from pathlib import Path
 
 import pytest
 
-_HELPER = (
-    Path(__file__).resolve().parents[3] / "scripts" / "dev" / "ops" / "derive_binding.sh"
-)
+_HELPER = Path(__file__).resolve().parents[3] / "scripts" / "dev" / "ops" / "derive_binding.sh"
 
 
 def _derive(binding: str) -> tuple[int, str]:
