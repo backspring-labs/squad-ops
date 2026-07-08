@@ -27,7 +27,6 @@ psycopg-binary>=3.0.0  # Binary PostgreSQL adapter (includes libpq, no system de
 aiofiles>=23.0.0  # Async file I/O (used by base_agent)
 aio-pika>=9.3.0  # RabbitMQ async client
 asyncpg>=0.29.0  # PostgreSQL async driver
-sqlalchemy>=2.0  # Sync Engine/sessionmaker used by adapters/persistence/postgres (issue #206)
 python-jose[cryptography]>=3.3  # JWT validation used by adapters/auth/keycloak (issue #191)
 # Upper bound pins the test env to the FastAPI the project actually runs (0.135.x).
 # Starlette >=0.136 newly rejects including a router instance into more than one
