@@ -31,7 +31,6 @@ pulse = ["jsonschema>=4.0", "httpx>=0.25"]
 # Adapter-specific deps. Previously undeclared and pulled in only transitively
 # (via Prefect in the Docker images), so minimal/CI envs failed to import the
 # adapters and unit collection aborted. See issues #206 / #191.
-postgres = ["sqlalchemy>=2.0"]            # adapters/persistence/postgres (Engine/sessionmaker)
 auth = ["python-jose[cryptography]>=3.3"] # adapters/auth/keycloak (JWT validation)
 
 #######################################

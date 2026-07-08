@@ -584,10 +584,6 @@ def load_config(
     # Store resolved profile as private attribute
     app_config._profile = resolved_profile
 
-    # NOTE: DbRuntime is created lazily — only the runtime-api needs it.
-    # Agents communicate via RabbitMQ and never access the DB directly.
-    # See AppConfig.get_db_runtime() for on-demand creation.
-
     # Set global singleton
     global _config_instance
     _config_instance = app_config
