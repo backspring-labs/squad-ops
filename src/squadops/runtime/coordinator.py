@@ -225,8 +225,20 @@ class RuntimeCoordinator:
             state = await self._state.ensure_state(agent_id)
         current = state.mode
 
-        # target == current: nothing to do.
+        # target == current: normally a no-op — but a same-mode request never
+        # reaches lease arbitration, so a focus-bearing mode whose lease is held
+        # by a DIFFERENT owner must be rejected here, not skipped (#288). Without
+        # this, a second cycle recruiting an already-recruited agent free-rides
+        # the incumbent's lease (admission treats the skip as "admitted"), then
+        # loses the agent mid-run when the incumbent finalizes and releases. A
+        # same-owner replay still skips (genuinely idempotent).
         if current == target_mode:
+            if self._focus_lease is not None and _owner_type_for_mode(target_mode) is not None:
+                held = await self._focus_lease.get_current_lease(agent_id)
+                if held is not None and held.owner_ref != owner_ref:
+                    return self._reject(
+                        agent_id, current, target_mode, reason_code, reasons.FOCUS_LEASE_CONFLICT
+                    )
             if idem_key is not None:
                 self._applied_keys.add(idem_key)
             return TransitionOutcome(

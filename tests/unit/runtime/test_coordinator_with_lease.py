@@ -324,3 +324,82 @@ async def test_no_lease_port_preserves_phase2_behavior():
 
     assert outcome.applied is True and state.upserts[-1].mode == "cycle"
     assert pub.names() == [events.MODE_TRANSITION]  # no focus_lease.* events
+
+
+# ---------------------------------------------------------------------------
+# #288 — a same-mode request from a DIFFERENT lease owner must arbitrate,
+# not free-ride the incumbent's lease.
+# ---------------------------------------------------------------------------
+
+
+async def test_same_mode_different_owner_rejects_not_skips():
+    """Bug class (#288): agent already in `cycle` for run A; run B requests
+    `cycle` for the same agent. The same-mode path must reject with a lease
+    conflict — NOT return idempotent_skip — so B never free-rides A's lease and
+    loses the agent when A finalizes. A's lease is left untouched."""
+    state = _FakeStatePort(_state(mode="cycle"))
+    pub = _RecordingPublisher()
+    fl = _FakeFocusLease()
+    incumbent = fl.seed("max", "cycle", "cyc-A")  # A holds the lease
+    coord = RuntimeCoordinator(state, events_publisher=pub, focus_lease=fl)
+
+    outcome = await coord.request_transition(
+        "max", "cycle", reasons.CYCLE_RECRUITED, requester_kind="external", owner_ref="cyc-B"
+    )
+
+    assert outcome.applied is False
+    assert outcome.idempotent_skip is False  # the bug was: this was True
+    assert outcome.rejected_reason == reasons.FOCUS_LEASE_CONFLICT
+    # A's lease is untouched — B neither stole nor released it.
+    still = await fl.get_current_lease("max")
+    assert still is not None and still.lease_id == incumbent.lease_id
+    assert still.owner_ref == "cyc-A"
+    assert fl.released == [] and fl.revoked == []
+    # Mode unchanged; no transition/lease events for a rejected request.
+    assert (await state.get_state("max")).mode == "cycle"
+    assert pub.names() == []
+
+
+async def test_same_mode_same_owner_still_idempotent_skips():
+    """A recruitment replay by the SAME owner is genuinely idempotent — it must
+    still skip (not reject), so #288's fix doesn't break lease-replay retries."""
+    state = _FakeStatePort(_state(mode="cycle"))
+    pub = _RecordingPublisher()
+    fl = _FakeFocusLease()
+    fl.seed("max", "cycle", "cyc-A")
+    coord = RuntimeCoordinator(state, events_publisher=pub, focus_lease=fl)
+
+    outcome = await coord.request_transition(
+        "max", "cycle", reasons.CYCLE_RECRUITED, requester_kind="external", owner_ref="cyc-A"
+    )
+
+    assert outcome.applied is False
+    assert outcome.idempotent_skip is True
+    assert outcome.rejected_reason is None
+    assert fl.released == [] and fl.revoked == []
+
+
+async def test_concurrent_recruit_of_same_agent_defers_second_run():
+    """End-to-end through admit_participants with a real coordinator: run A
+    recruits `max`, then run B recruits the same `max`. B must DEFER on a lease
+    conflict (admitted=False), not be silently admitted while free-riding A's
+    lease (#288). A's lease survives B's attempt."""
+    from squadops.runtime.admission import admit_participants
+
+    state = _FakeStatePort(_state(mode="ambient"))
+    fl = _FakeFocusLease()
+    coord = RuntimeCoordinator(state, events_publisher=_RecordingPublisher(), focus_lease=fl)
+
+    a = await admit_participants(coord, ["max"], owner_ref="cyc-A")
+    assert a.admitted is True and a.recruited_agent_ids == ("max",)
+    a_lease = await fl.get_current_lease("max")
+    assert a_lease is not None and a_lease.owner_ref == "cyc-A"
+
+    b = await admit_participants(coord, ["max"], owner_ref="cyc-B")
+    assert b.admitted is False
+    assert b.blocking_agent_id == "max"
+    assert b.reason == reasons.FOCUS_LEASE_CONFLICT
+    assert b.recruited_agent_ids == ()
+    # A still owns max; B neither took nor dropped the lease.
+    still = await fl.get_current_lease("max")
+    assert still is not None and still.owner_ref == "cyc-A"
