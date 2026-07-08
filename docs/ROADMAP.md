@@ -17,7 +17,15 @@ Version labels per the even/odd remap in `docs/plans/2-0-roadmap-reconciliation.
 
 ## Release Timeline
 
-### v1.3.0 (2026-07-08) — Current — First Stabilization Release (feature-free)
+### v1.3.1 (2026-07-08) — Current — Hardening Patch
+Post-1.3.0 batch from the 2026-07-04 independent health assessment (Macbook lane while Spark offline). All fixes, no feature SIPs — patches ride either lane anytime, independent of even/odd feature parity (#281). Every runtime-affecting change live-validated before merge.
+- **#326 (security):** agent-status writes moved off the unauthenticated `/health` lane (any client could write) to `POST/PUT /api/v1/agents/status` behind `agents:write`; `/health/*` is GET-only and the middleware allowlist is method-scoped so a future `/health` write fails closed. Agents authenticate heartbeats via a new `squadops-agent` service identity (client credentials, `agent` role ⇒ `agents:write`).
+- **#288 (concurrency):** concurrent same-agent cycles no longer bypass FocusLease arbitration — a same-mode recruit from a *different* lease owner now rejects with `focus_lease_conflict` (the run defers) instead of free-riding the incumbent's lease and losing the agent mid-run.
+- **#306 (inert check):** the QA image now has Node.js, so the frontend build check (#290) + vitest actually run instead of silently skipping on "npm not found". Node ships in the qa image only, via a config-driven per-role `system-packages.txt` (no role name hardcoded).
+- **#328 (broker hygiene):** new `broker` category in `squadops doctor` flags retired-scheme (`cycle_results_*`) queues + undrained backlogs (messages, no consumer); the orphaned pre-SIP-0094 queues (one with 48 undrained messages) were swept.
+- **Docs/SIP:** filed the Externalized Build Sandbox proposal (the principled exit to toolchain-bundling that #306 works around near-term); stays `proposed`.
+
+### v1.3.0 (2026-07-08) — First Stabilization Release (feature-free)
 First **odd-minor stabilization release** (#281): the big structural refactors quarantined out of feature releases, plus debt paydown. Entire core scope landed from the Macbook lane (Spark offline); every structural change live-validated before merge.
 - **SIP-0097 executor decomposition (#186, #295):** `DispatchedFlowExecutor` 3,358→1,805 lines across 6 sliced PRs; five injected collaborators (pure hoists, `RunLedger`+`RunCompletion` — zero per-run mutable state, the SIP-0096 §6.4 seam — `CorrectionRunner`, `PulseBoundaryRunner`, `TaskDispatcher`); slice 6 = the #295 plan-review gate check. SIP-0097 promoted → implemented.
 - **#152:** `cycle_tasks.py` (3,276 lines) → `capabilities/handlers/cycle/` package behind a compat shim (after the #332 helper hoist).
@@ -25,7 +33,7 @@ First **odd-minor stabilization release** (#281): the big structural refactors q
 - **#234:** dead sqlalchemy `DbRuntime` backend removed — `ports/` is vendor-type-free; asyncpg everywhere.
 - **Fixed:** #327 prompt-registry drift (deploy re-sync + manifest hard-fail), #342 resume insta-fail (live pause→resume→complete verified, closed #258), #345 color-env test flakiness.
 - **Docs/CI:** #335 hygiene pass (this file's stats/tables un-froze) + #336 docs-drift guards in the regression gate (version markers, SIP target parity, doc-ref existence).
-- **Deferred:** #288 (Campaign 1.6 gate → pulled into the 1.4 window), #331/#333 (→ 1.5).
+- **Deferred:** #331/#333 (→ 1.5). (#288, originally eyed for the 1.4 window, shipped in the 1.3.1 hardening patch above.)
 
 ### v1.2.0 (2026-07-04) — First Feature Release (even/odd cadence)
 First **even-minor feature release** (#281). Three feature SIPs, on a hardening base:
@@ -446,10 +454,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-07-08 (v1.3.0):*
+*As of 2026-07-08 (v1.3.1):*
 
-- **Framework version**: 1.3.0
-- **SIPs**: 60 implemented, 6 accepted (SIP-0088, 0090–0093, 0096), 20 deprecated (registry); 14 files in `sips/proposed/` (7 registry-tracked legacy + 7 unnumbered drafts)
+- **Framework version**: 1.3.1
+- **SIPs**: 60 implemented, 6 accepted (SIP-0088, 0090–0093, 0096), 20 deprecated (registry); 23 files in `sips/proposed/` (7 registry-tracked legacy + 15 unnumbered SIP drafts + 1 idea doc)
 - **Tests**: 4,700+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~83,000 test lines, ~110,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

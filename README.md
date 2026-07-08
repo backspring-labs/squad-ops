@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: v1.3.0 — Production-ready framework with hexagonal architecture, freshly stabilized in the first even/odd stabilization release (SIP-0097 executor decomposition, cycle-task handler package split, push-based agent comms, vendor-type-free ports), plus the Agent Embodiment Substrate (SIP-0090 Phase 1), the Cycle Create Preflight (SIP-0095), the completed Agent Runtime State platform (SIP-0089: runtime modes ambient/cycle/duty, single-writer coordinator, FocusLease arbitration, single-transaction UoW, RuntimeActivity observability), distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop (SIP-0086), Prefect task-scoped log streaming (SIP-0087), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 4,700+ passing tests.
+**Current Status**: v1.3.1 — Production-ready framework with hexagonal architecture, freshly stabilized in the first even/odd stabilization release (SIP-0097 executor decomposition, cycle-task handler package split, push-based agent comms, vendor-type-free ports) and hardened in the 1.3.1 patch (authed agent-status lane #326, FocusLease concurrency fix #288, QA-image Node #306, broker-hygiene doctor check #328), plus the Agent Embodiment Substrate (SIP-0090 Phase 1), the Cycle Create Preflight (SIP-0095), the completed Agent Runtime State platform (SIP-0089: runtime modes ambient/cycle/duty, single-writer coordinator, FocusLease arbitration, single-transaction UoW, RuntimeActivity observability), distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop (SIP-0086), Prefect task-scoped log streaming (SIP-0087), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 4,700+ passing tests.
 
 ---
 
@@ -173,16 +173,16 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructio
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v1.3.0 — first stabilization release (feature-free by rule): SIP-0097 executor decomposition (#186, 3,358→1,805 lines, zero per-run mutable state), `cycle_tasks` package split (#152), agent comms poll→push consumer (#323), dead `DbRuntime` backend removed (#234), plus the prompt-registry deploy re-sync (#327) and resume fix (#342)
+**Current**: v1.3.1 — hardening patch on the 1.3.0 stabilization line: agent-status writes moved off the unauthenticated `/health` lane onto the authed `/api/v1` lane with a service identity (#326), concurrent same-agent cycles no longer bypass FocusLease arbitration (#288), the QA image now has Node so the frontend build check actually runs (#306), and a broker-hygiene `doctor` check + sweep of orphaned pre-SIP-0094 queues (#328). Built on v1.3.0 — the first stabilization release (SIP-0097 executor decomposition #186 3,358→1,805 lines, `cycle_tasks` package split #152, agent comms poll→push #323, dead `DbRuntime` removed #234)
 
 ---
 
 ## Current Status
-**Framework Version**: 1.3.0
+**Framework Version**: 1.3.1
 **Development Status**: Stabilized multi-agent orchestration (post-SIP-0097 decomposition) with the Agent Runtime State platform (SIP-0089: runtime modes, duty scheduler, FocusLease, RuntimeActivity), console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Prefect task-scoped log streaming, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
 
 ### Project Statistics
-*As of 2026-07-08 (v1.3.0):*
+*As of 2026-07-08 (v1.3.1):*
 - **~61,000 lines** of Python source code (src + adapters)
 - **~83,000 lines** of test code
 - **~110,000 lines** of documentation
