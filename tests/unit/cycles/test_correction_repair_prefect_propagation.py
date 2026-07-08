@@ -298,7 +298,8 @@ class TestCorrectionPatchRepairTaskRunPropagation:
 
 
 class TestPulseRepairTaskRunPropagation:
-    """`_verify_with_repair` is reached when a pulse-check boundary FAILs.
+    """`PulseBoundaryRunner._verify_with_repair` is reached when a
+    pulse-check boundary FAILs (via the executor's composed default).
     Each repair task must get a dedicated Prefect task_run + full event ctx.
     """
 
@@ -324,7 +325,7 @@ class TestPulseRepairTaskRunPropagation:
                 ]
             return PulseDecision.PASS, [MagicMock(suite_outcome=SuiteOutcome.PASS) for _ in suites]
 
-        ex._run_boundary_verification = fake_verify
+        ex._pulse_boundary_runner._run_boundary_verification = fake_verify
 
         captured: list[dict] = []
 
@@ -345,7 +346,7 @@ class TestPulseRepairTaskRunPropagation:
         ex._dispatch_task = fake_dispatch
 
         suite = MagicMock(suite_id="suite_a")
-        await ex._verify_with_repair(
+        await ex._pulse_boundary_runner._verify_with_repair(
             suites=[suite],
             boundary_id="boundary_x",
             cadence_interval_id=0,
