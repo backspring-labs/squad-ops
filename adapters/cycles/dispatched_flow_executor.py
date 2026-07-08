@@ -1026,7 +1026,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
             # Post-task gate check (runs after verification)
             if self._is_gate_boundary(cycle, envelope.task_type):
-                await self._handle_gate(run_id, cycle, envelope.task_type)
+                await self._handle_gate(
+                    run_id,
+                    cycle,
+                    envelope.task_type,
+                    stored_artifacts=stored_artifacts,
+                    profile=profile,
+                )
 
     # ------------------------------------------------------------------
     # SIP-0086: Manifest loading for implementation workloads
@@ -1561,11 +1567,31 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 return True
         return False
 
-    async def _handle_gate(self, run_id: str, cycle: Cycle, task_type: str) -> None:
-        """Pause, poll for decision, resume or reject."""
+    async def _handle_gate(
+        self,
+        run_id: str,
+        cycle: Cycle,
+        task_type: str,
+        *,
+        stored_artifacts: list[tuple[str, ArtifactRef]] | None = None,
+        profile: Any = None,
+    ) -> None:
+        """Pause, poll for decision, resume or reject.
+
+        #295 (SIP-0097 slice 6): before pausing for review, a materialized
+        implementation plan naming a role the squad can't satisfy is rejected
+        here — the operator is never asked to approve an unsatisfiable plan,
+        and the failure lands at the gate instead of mid-implementation
+        dispatch. The dispatch-time check in generate_task_plan remains the
+        final net.
+        """
         gate_names = [
             g.name for g in cycle.task_flow_policy.gates if task_type in g.after_task_types
         ]
+        if stored_artifacts and profile is not None:
+            await self._reject_unsatisfiable_plan_at_gate(
+                stored_artifacts, profile, gate_names, cycle
+            )
         logger.info("Run %s paused at gate(s): %s", run_id, gate_names)
         await self._cycle_registry.update_run_status(run_id, RunStatus.PAUSED)
         self._cycle_event_bus.emit(
@@ -1615,6 +1641,58 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                             )
 
             await asyncio.sleep(poll_interval)
+
+    async def _reject_unsatisfiable_plan_at_gate(
+        self,
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        profile: Any,
+        gate_names: list[str],
+        cycle: Cycle,
+    ) -> None:
+        """#295: fail fast when the materialized plan can't be satisfied.
+
+        Looks for the run's authored ``implementation_plan.yaml`` /
+        ``control_implementation_plan`` artifact (same detection as
+        ``_load_plan_for_run``) and validates its roles against the squad
+        profile. Keyed on plan presence, not the gate's name, so it holds
+        across the ``progress_plan_review`` / ``plan-review`` naming variants.
+        An absent or unreadable plan defers to the dispatch-time net —
+        this check only ever *adds* an earlier rejection, never a pass.
+        """
+        if not cycle.applied_defaults.get("implementation_plan", False):
+            return
+
+        from squadops.cycles.implementation_plan import ImplementationPlan
+
+        plan = None
+        for artifact_id, ref in stored_artifacts:
+            if ref.filename == "implementation_plan.yaml" or (
+                hasattr(ref, "artifact_type") and ref.artifact_type == "control_implementation_plan"
+            ):
+                try:
+                    _, content_bytes = await self._artifact_vault.retrieve(artifact_id)
+                    plan = ImplementationPlan.from_yaml(content_bytes.decode(errors="replace"))
+                except Exception:
+                    logger.warning(
+                        "Plan artifact %s unreadable at gate(s) %s — deferring to the "
+                        "dispatch-time validation net",
+                        artifact_id,
+                        gate_names,
+                        exc_info=True,
+                    )
+                    return
+                break
+        if plan is None:
+            return
+
+        errors = plan.validate_against_profile(profile)
+        if errors:
+            raise _ExecutionError(
+                f"Plan rejected at gate(s) {gate_names}: the materialized implementation "
+                f"plan cannot be satisfied by squad profile {profile.profile_id!r} — "
+                + "; ".join(errors)
+                + ". Fix the plan or run with a squad profile that has the missing role(s)."
+            )
 
     # ------------------------------------------------------------------
     # Helpers
