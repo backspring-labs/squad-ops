@@ -145,6 +145,89 @@ class CorrectionRunner:
             },
         )
 
+    async def _dispatch_protocol_step(
+        self,
+        step_envelope: TaskEnvelope,
+        run_id: str,
+        cycle: Cycle,
+        flow_run_id: str | None,
+        *,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+    ) -> TaskResult:
+        """Dispatch one correction/repair step and handle its outcome.
+
+        The shared per-step sequence both protocol loops used verbatim:
+        create the Prefect task_run (SIP-0087 B2), emit TASK_DISPATCHED,
+        dispatch, then on success emit TASK_SUCCEEDED + persist the step's
+        output artifacts BEFORE checkpointing (the silent-artifact-drop
+        guard), or on failure emit TASK_FAILED. Returns the step's result;
+        output collection stays with the caller (the two loops bucket
+        outputs differently — issue #95 vs. repair prior_outputs).
+        """
+        task_run_id = await self._create_task_run(flow_run_id, step_envelope)
+        task_context = {
+            "cycle_id": cycle.cycle_id,
+            "run_id": run_id,
+            "flow_run_id": flow_run_id or "",
+            "task_run_id": task_run_id or "",
+        }
+        self._event_bus.emit(
+            EventType.TASK_DISPATCHED,
+            entity_type="task",
+            entity_id=step_envelope.task_id,
+            context=task_context,
+            payload={"task_type": step_envelope.task_type},
+        )
+
+        result = await self._dispatch_task(
+            step_envelope,
+            run_id,
+            flow_run_id=flow_run_id,
+            task_run_id=task_run_id,
+        )
+
+        if result.status == "SUCCEEDED":
+            self._event_bus.emit(
+                EventType.TASK_SUCCEEDED,
+                entity_type="task",
+                entity_id=step_envelope.task_id,
+                context=task_context,
+                payload={"task_type": step_envelope.task_type},
+            )
+            # Persist the step's output artifacts BEFORE checkpointing —
+            # _checkpoint_correction_task only snapshots existing refs and
+            # would otherwise drop these silently.
+            await self._store_correction_task_artifacts(
+                result,
+                step_envelope,
+                cycle,
+                run_id,
+                all_artifact_refs,
+                stored_artifacts,
+            )
+            await self._checkpoint_correction_task(
+                step_envelope.task_id,
+                run_id,
+                cycle,
+                completed_task_ids,
+                prior_outputs,
+                all_artifact_refs,
+                plan_delta_refs,
+            )
+        else:
+            self._event_bus.emit(
+                EventType.TASK_FAILED,
+                entity_type="task",
+                entity_id=step_envelope.task_id,
+                context=task_context,
+                payload={"task_type": step_envelope.task_type, "error": result.error or ""},
+            )
+        return result
+
     async def run_correction_protocol(
         self,
         run_id: str,
@@ -234,68 +317,19 @@ class CorrectionRunner:
                 metadata={"role": role, "step_index": step_idx},
             )
 
-            # 3. Dispatch correction task. SIP-0087 B2: create task_run before
-            # dispatch so the agent's PrefectLogHandler can scope correction-
-            # task logs to a dedicated UI pane and the bridge can transition
-            # terminal state without owning the ID.
-            corr_task_run_id = await self._create_task_run(flow_run_id, corr_envelope)
-            corr_task_context = {
-                "cycle_id": cycle.cycle_id,
-                "run_id": run_id,
-                "flow_run_id": flow_run_id or "",
-                "task_run_id": corr_task_run_id or "",
-            }
-            self._event_bus.emit(
-                EventType.TASK_DISPATCHED,
-                entity_type="task",
-                entity_id=corr_task_id,
-                context=corr_task_context,
-                payload={"task_type": task_type},
-            )
-
-            corr_result = await self._dispatch_task(
+            # 3. Dispatch correction task (task_run creation + task events
+            # live in _dispatch_protocol_step, SIP-0087 B2).
+            corr_result = await self._dispatch_protocol_step(
                 corr_envelope,
                 run_id,
-                flow_run_id=flow_run_id,
-                task_run_id=corr_task_run_id,
+                cycle,
+                flow_run_id,
+                prior_outputs=prior_outputs,
+                all_artifact_refs=all_artifact_refs,
+                stored_artifacts=stored_artifacts,
+                completed_task_ids=completed_task_ids,
+                plan_delta_refs=plan_delta_refs,
             )
-
-            if corr_result.status == "SUCCEEDED":
-                self._event_bus.emit(
-                    EventType.TASK_SUCCEEDED,
-                    entity_type="task",
-                    entity_id=corr_task_id,
-                    context=corr_task_context,
-                    payload={"task_type": task_type},
-                )
-                # Persist the correction task's output artifacts BEFORE
-                # checkpointing — _checkpoint_correction_task only snapshots
-                # existing refs and would otherwise drop these silently.
-                await self._store_correction_task_artifacts(
-                    corr_result,
-                    corr_envelope,
-                    cycle,
-                    run_id,
-                    all_artifact_refs,
-                    stored_artifacts,
-                )
-                await self._checkpoint_correction_task(
-                    corr_task_id,
-                    run_id,
-                    cycle,
-                    completed_task_ids,
-                    prior_outputs,
-                    all_artifact_refs,
-                    plan_delta_refs,
-                )
-            else:
-                self._event_bus.emit(
-                    EventType.TASK_FAILED,
-                    entity_type="task",
-                    entity_id=corr_task_id,
-                    context=corr_task_context,
-                    payload={"task_type": task_type, "error": corr_result.error or ""},
-                )
 
             # Collect correction task outputs into the right named bucket so
             # downstream PlanDelta construction reads each field from the
@@ -411,67 +445,20 @@ class CorrectionRunner:
                     metadata={"role": role, "step_index": step_idx},
                 )
 
-                # SIP-0087 B2: create repair task_run + propagate IDs through
-                # dispatch and terminal events so correction-driven repairs
-                # appear in the Prefect UI.
-                repair_task_run_id = await self._create_task_run(flow_run_id, repair_envelope)
-                repair_task_context = {
-                    "cycle_id": cycle.cycle_id,
-                    "run_id": run_id,
-                    "flow_run_id": flow_run_id or "",
-                    "task_run_id": repair_task_run_id or "",
-                }
-                self._event_bus.emit(
-                    EventType.TASK_DISPATCHED,
-                    entity_type="task",
-                    entity_id=repair_task_id,
-                    context=repair_task_context,
-                    payload={"task_type": task_type},
-                )
-
-                repair_result = await self._dispatch_task(
+                # Dispatch the repair step (task_run creation + task events
+                # live in _dispatch_protocol_step, SIP-0087 B2 — so
+                # correction-driven repairs appear in the Prefect UI).
+                repair_result = await self._dispatch_protocol_step(
                     repair_envelope,
                     run_id,
-                    flow_run_id=flow_run_id,
-                    task_run_id=repair_task_run_id,
+                    cycle,
+                    flow_run_id,
+                    prior_outputs=prior_outputs,
+                    all_artifact_refs=all_artifact_refs,
+                    stored_artifacts=stored_artifacts,
+                    completed_task_ids=completed_task_ids,
+                    plan_delta_refs=plan_delta_refs,
                 )
-
-                if repair_result.status == "SUCCEEDED":
-                    self._event_bus.emit(
-                        EventType.TASK_SUCCEEDED,
-                        entity_type="task",
-                        entity_id=repair_task_id,
-                        context=repair_task_context,
-                        payload={"task_type": task_type},
-                    )
-                    # Persist the repair task's output artifacts (e.g.
-                    # the regenerated qa_handoff.md from
-                    # builder.assemble_repair) before checkpointing.
-                    await self._store_correction_task_artifacts(
-                        repair_result,
-                        repair_envelope,
-                        cycle,
-                        run_id,
-                        all_artifact_refs,
-                        stored_artifacts,
-                    )
-                    await self._checkpoint_correction_task(
-                        repair_task_id,
-                        run_id,
-                        cycle,
-                        completed_task_ids,
-                        prior_outputs,
-                        all_artifact_refs,
-                        plan_delta_refs,
-                    )
-                else:
-                    self._event_bus.emit(
-                        EventType.TASK_FAILED,
-                        entity_type="task",
-                        entity_id=repair_task_id,
-                        context=repair_task_context,
-                        payload={"task_type": task_type, "error": repair_result.error or ""},
-                    )
 
                 # Collect repair outputs. Unlike the regular fan-in path
                 # (executor fan-in), keep `artifacts` so the next step in this

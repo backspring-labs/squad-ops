@@ -271,20 +271,22 @@ class TestEmitCallSitePayloadFields:
                 total_calls += 1
                 if any(kw.arg == "payload" for kw in call.keywords):
                     with_payload += 1
-        # At least 38 of 44 calls have payload (a few lifecycle events omit it)
-        assert with_payload >= 38
+        # At least 35 of 41 calls have payload (a few lifecycle events omit it)
+        assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 27 executor + 10 correction-runner + 7 route = 44
+        """Sanity check: 27 executor + 7 correction-runner + 7 route = 41
         total emit calls.
 
         SIP-0097 slice 2c collapsed execute_run's five per-exception-class
         terminal emits into one emit driven by the RunCompletion terminal
-        mapping (48 → 44). Slice 3 moved the correction protocol's 10 emit
-        sites (CORRECTION_INITIATED/DECIDED/COMPLETED, 2× TASK_DISPATCHED/
-        SUCCEEDED/FAILED, CHECKPOINT_CREATED) from the executor to the
-        CorrectionRunner — same events at runtime, same total."""
+        mapping (48 → 44). Slice 3 moved the correction protocol's emit
+        sites from the executor to the CorrectionRunner and collapsed the
+        correction/repair loops' duplicated per-step emits
+        (TASK_DISPATCHED/SUCCEEDED/FAILED ×2 each) into the shared
+        _dispatch_protocol_step helper — same events at runtime, 3 fewer
+        static call sites (44 → 41)."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 44
+        assert total == 41
