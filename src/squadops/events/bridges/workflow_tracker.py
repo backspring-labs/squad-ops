@@ -2,7 +2,7 @@
 
 Maps run lifecycle events to flow-run state changes. As of SIP-0087,
 task-run lifecycle (creation + state transitions) lives in
-``DispatchedFlowExecutor._dispatch_task`` where the ``task_run_id`` is
+``TaskDispatcher.dispatch_task`` where the ``task_run_id`` is
 available for correlation-context scoping and the long-task heartbeat.
 The bridge still forwards terminal task-state transitions when a
 ``task_run_id`` is carried in the event context, but it no longer creates
@@ -50,7 +50,7 @@ class WorkflowTrackerBridge:
     Handles run-level state transitions and terminal task-state transitions
     (when the emitter supplies ``task_run_id`` in the event context).
     Task-run creation + ``RUNNING`` transitions are driven by
-    ``_dispatch_task`` so the ``task_run_id`` is known before the handler
+    ``dispatch_task`` so the ``task_run_id`` is known before the handler
     starts emitting logs.
     """
 

@@ -6,12 +6,10 @@ its two helpers (``_store_correction_task_artifacts``,
 ``_checkpoint_correction_task``). Outcome *routing* (what the run does with
 the returned correction path) stays with the executor's orchestration loop.
 
-**Interim state (slice 3 < slice 5):** task transport does not exist as a
-collaborator yet, so this runner receives three narrow executor-supplied
-callables — ``dispatch_task`` and ``create_task_run`` (both owned by
-``TaskDispatcher`` from slice 5, which replaces these callables per §6.3/AC#9)
-and ``store_artifact`` (executor-resident artifact plumbing per §6.7,
-residual-but-watched).
+Task transport goes through the injected ``TaskDispatcher`` (§6.3 final
+state — slice 5 retired the interim executor-supplied dispatch callables
+per AC#9). ``store_artifact`` remains a narrow executor-supplied callable:
+artifact plumbing is §6.7 executor residual, residual-but-watched.
 
 Cancellation: the protocol performs no cancellation checks of its own (it
 never did); it relies on the dispatch path's checks at dispatch/await
@@ -37,6 +35,7 @@ from squadops.tasks.models import TaskEnvelope
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from adapters.cycles.task_dispatcher import TaskDispatcher
     from squadops.cycles.models import Cycle
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
@@ -60,15 +59,13 @@ class CorrectionRunner:
         artifact_vault: ArtifactVaultPort,
         event_bus: CycleEventBusPort,
         *,
-        dispatch_task: Callable[..., Awaitable[TaskResult]],
-        create_task_run: Callable[[str | None, TaskEnvelope], Awaitable[str | None]],
+        task_dispatcher: TaskDispatcher,
         store_artifact: Callable[..., Awaitable[ArtifactRef]],
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
         self._event_bus = event_bus
-        self._dispatch_task = dispatch_task
-        self._create_task_run = create_task_run
+        self._task_dispatcher = task_dispatcher
         self._store_artifact = store_artifact
 
     async def _store_correction_task_artifacts(
@@ -168,7 +165,9 @@ class CorrectionRunner:
         output collection stays with the caller (the two loops bucket
         outputs differently — issue #95 vs. repair prior_outputs).
         """
-        task_run_id = await self._create_task_run(flow_run_id, step_envelope)
+        task_run_id = await self._task_dispatcher.create_task_run_if_enabled(
+            flow_run_id, step_envelope
+        )
         task_context = {
             "cycle_id": cycle.cycle_id,
             "run_id": run_id,
@@ -183,7 +182,7 @@ class CorrectionRunner:
             payload={"task_type": step_envelope.task_type},
         )
 
-        result = await self._dispatch_task(
+        result = await self._task_dispatcher.dispatch_task(
             step_envelope,
             run_id,
             flow_run_id=flow_run_id,

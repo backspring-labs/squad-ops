@@ -53,11 +53,13 @@ def _find_event_type_refs_in_file(filepath: Path) -> set[str]:
 # EventType references, to the RunCompletion module; the executor's single
 # collapsed handler emits what the mapping decides. Slice 3 moved the
 # correction protocol, and its emit sites, to the CorrectionRunner module;
-# slice 4 did the same for the pulse path and the PulseBoundaryRunner.)
+# slice 4 did the same for the pulse path and the PulseBoundaryRunner;
+# slice 5 moved the retry loop's per-attempt TASK_* emits to TaskDispatcher.)
 _EXECUTOR_PATH = Path("adapters/cycles/dispatched_flow_executor.py")
 _RUN_COMPLETION_PATH = Path("adapters/cycles/run_completion.py")
 _CORRECTION_RUNNER_PATH = Path("adapters/cycles/correction_runner.py")
 _PULSE_BOUNDARY_RUNNER_PATH = Path("adapters/cycles/pulse_boundary_runner.py")
+_TASK_DISPATCHER_PATH = Path("adapters/cycles/task_dispatcher.py")
 _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
 _RUNS_ROUTE = Path("src/squadops/api/routes/cycles/runs.py")
 _ARTIFACTS_ROUTE = Path("src/squadops/api/routes/cycles/artifacts.py")
@@ -67,6 +69,7 @@ _ALL_EMISSION_FILES = [
     _RUN_COMPLETION_PATH,
     _CORRECTION_RUNNER_PATH,
     _PULSE_BOUNDARY_RUNNER_PATH,
+    _TASK_DISPATCHER_PATH,
     _CYCLES_ROUTE,
     _RUNS_ROUTE,
     _ARTIFACTS_ROUTE,
@@ -139,7 +142,10 @@ class TestExecutorEmissionPoints:
         SUCCEEDED/FAILED stay: the sequential loop and
         _collect_artifacts_and_checkpoint still emit them for regular tasks.
         RUN_PAUSED stays: the duty-deferral path still references it directly
-        in the executor."""
+        in the executor. (Slice 5 moved the retry loop's TASK_SUCCEEDED/
+        FAILED emits to TaskDispatcher, but the fan-out path still
+        references all three TASK_* types here, so the count is unchanged.)
+        """
         assert len(executor_refs) == 12
 
 
@@ -206,6 +212,20 @@ class TestPulseBoundaryRunnerEmissionPoints:
     )
     def test_pulse_boundary_runner_emits(self, attr: str, pulse_runner_refs: set[str]) -> None:
         assert attr in pulse_runner_refs
+
+
+class TestTaskDispatcherEmissionPoints:
+    """The retry loop's per-attempt terminal task events are emitted by the
+    TaskDispatcher (SIP-0097 §6.1 — dispatch_with_retry moved with the
+    transport in slice 5)."""
+
+    @pytest.fixture(scope="class")
+    def task_dispatcher_refs(self) -> set[str]:
+        return _find_event_type_refs_in_file(_TASK_DISPATCHER_PATH)
+
+    @pytest.mark.parametrize("attr", ["TASK_SUCCEEDED", "TASK_FAILED"])
+    def test_task_dispatcher_emits(self, attr: str, task_dispatcher_refs: set[str]) -> None:
+        assert attr in task_dispatcher_refs
 
 
 class TestRouteEmissionPoints:
@@ -300,16 +320,18 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 19 executor + 7 correction-runner +
-        8 pulse-boundary-runner + 7 route = 41 total emit calls.
+        """Sanity check: 17 executor + 7 correction-runner +
+        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 41 total
+        emit calls.
 
         SIP-0097 slice 2c collapsed execute_run's five per-exception-class
         terminal emits into one emit driven by the RunCompletion terminal
         mapping (48 → 44). Slice 3 moved the correction protocol's emit
         sites to the CorrectionRunner and collapsed its duplicated per-step
         emits into _dispatch_protocol_step (44 → 41). Slice 4 moved the
-        pulse path's 8 emit sites (5 PULSE_* + repair-chain TASK_*) to the
-        PulseBoundaryRunner — same events at runtime, same total."""
+        pulse path's 8 emit sites to the PulseBoundaryRunner; slice 5 moved
+        the retry loop's 2 per-attempt TASK_* emits to the TaskDispatcher —
+        same events at runtime, same total."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))

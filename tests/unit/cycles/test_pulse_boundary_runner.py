@@ -448,7 +448,7 @@ class TestPulseVerificationCadence:
     ):
         """Cadence suite runs when max_pulse_seconds elapsed (non-preemptive).
 
-        Mocks _dispatch_task directly to avoid time.monotonic interference
+        Mocks the dispatcher's dispatch_task directly to avoid time.monotonic interference
         with the dispatch timeout loop, then mocks time.monotonic to
         simulate wall-clock advancement beyond max_pulse_seconds.
         """
@@ -474,7 +474,7 @@ class TestPulseVerificationCadence:
             cycle,
         )
 
-        # Mock _dispatch_task to return success instantly (bypasses time.monotonic
+        # Mock dispatch_task to return success instantly (bypasses time.monotonic
         # in the dispatch polling loop)
         async def fake_dispatch(envelope, run_id, **kwargs):
             return TaskResult(
@@ -483,7 +483,7 @@ class TestPulseVerificationCadence:
                 outputs={"summary": "ok", "artifacts": []},
             )
 
-        executor._dispatch_task = fake_dispatch
+        executor._task_dispatcher.dispatch_task = fake_dispatch
 
         # Simulate time advancing 15s between each monotonic() call.
         # cadence tracking calls monotonic() twice per task iteration:
@@ -1930,11 +1930,16 @@ class TestPulseBoundaryRunnerStandalone:
         registry = registry or AsyncMock()
         bus = bus or MagicMock()
 
-        async def dispatch_task(envelope, run_id, **_kwargs):
-            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+        class _PassthroughDispatcher:
+            """Minimal TaskDispatcher stand-in: dispatches always succeed,
+            no Prefect task_runs are created (SIP-0097 slice 5 — the runner
+            takes the dispatcher itself, not callables)."""
 
-        async def create_task_run(_flow_run_id, _envelope):
-            return None
+            async def dispatch_task(self, envelope, run_id, **_kwargs):
+                return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+            async def create_task_run_if_enabled(self, _flow_run_id, _envelope):
+                return None
 
         async def store_artifact(*_args, **_kwargs):
             raise AssertionError("no artifacts expected in these tests")
@@ -1943,8 +1948,7 @@ class TestPulseBoundaryRunnerStandalone:
             cycle_registry=registry,
             event_bus=bus,
             llm_observability=None,
-            dispatch_task=dispatch_task,
-            create_task_run=create_task_run,
+            task_dispatcher=_PassthroughDispatcher(),
             store_artifact=store_artifact,
         )
         return runner, registry, bus
