@@ -1,15 +1,15 @@
 ---
 title: Dispatched Flow Executor Decomposition Boundaries
-status: accepted
+status: implemented
 author: jladd
 created_at: '2026-07-06T00:00:00Z'
 sip_number: 97
-updated_at: '2026-07-06T17:30:43.706441Z'
+updated_at: '2026-07-07T18:12:26.480790Z'
 ---
 # SIP: Dispatched Flow Executor Decomposition Boundaries
 
 ## Status
-**Status:** Accepted (2026-07-06, PR #340) — accepted at **revision 2** (incorporates maintainer design review: six-targets-plus-residual framing, versioned v1.3/v1.4 ledger semantics, interim-vs-final dispatch dependencies, slice-2 internal staging, RunLedger contract, resolved placement questions)
+**Status:** Implemented (2026-07-08 — all six slices merged: PRs #341, #344, #347, #348, #349, #350; #186 and #295 closed; executor 3,358 → 1,805 lines, residual per §6.7, no interim callables, no per-run mutable state). Accepted 2026-07-06 (PR #340) at **revision 2** (incorporates maintainer design review: six-targets-plus-residual framing, versioned v1.3/v1.4 ledger semantics, interim-vs-final dispatch dependencies, slice-2 internal staging, RunLedger contract, resolved placement questions)
 
 **Targets:** v1.3 (stabilization minor — primarily structural and behavior-preserving; the only intentional behavior addition is the explicitly scoped #295 plan-review validation rider, slice 6)
 **Seeded by:** #186 (decompose `DispatchedFlowExecutor`), absorbing #151's targets (correction protocol, run-report generation, test-file split, error-class + agent-config in-passing wins). #185 (task-naming extraction, `adapters/cycles/task_naming.py`) already proved the extraction pattern and is the model for every slice here.
