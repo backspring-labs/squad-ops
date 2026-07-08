@@ -407,8 +407,16 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         # (host.docker.internal) and doesn't resolve from the host shell.
         # The host-side address is derived from the compose port binding —
         # the single source of truth this script already depends on — so a
-        # port change in docker-compose.yml can't silently strand the sync.
+        # port/interface change in docker-compose.yml can't silently strand
+        # the sync. Both parts are used: a wildcard bind (0.0.0.0/[::]) maps
+        # to loopback (a networking fact — this script publishes the port on
+        # the machine it runs on); an interface-pinned bind is used as-is.
         LF_BINDING=$(docker compose port langfuse 3000 2>/dev/null)
+        LF_ADDR="${LF_BINDING%:*}"
+        LF_PORT="${LF_BINDING##*:}"
+        case "$LF_ADDR" in
+            0.0.0.0|"[::]"|::) LF_ADDR="127.0.0.1" ;;
+        esac
         PROMPT_SYNC_PY="$REPO_ROOT/.venv/bin/python3"
         [ -x "$PROMPT_SYNC_PY" ] || PROMPT_SYNC_PY=python3
         # Agents request assets with the "production" label (adapter default) —
@@ -417,7 +425,7 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
             echo -e "${RED}  ⚠️  Prompt sync SKIPPED — langfuse has no published port (is the service up?). Agents may hit 'Prompt asset not found' at runtime.${NC}"
         elif SQUADOPS_MAINTAINER=1 "$PROMPT_SYNC_PY" scripts/maintainer/upload_prompts_to_langfuse.py \
             --environment production \
-            --host "http://localhost:${LF_BINDING##*:}" \
+            --host "http://${LF_ADDR}:${LF_PORT}" \
             --public-key "$LF_PUBLIC" --secret-key "$LF_SECRET" \
             > /tmp/prompt_sync.log 2>&1; then
             echo -e "     ${GREEN}✅ Prompt assets synced${NC} ($(grep -c '^  OK' /tmp/prompt_sync.log) assets)"
