@@ -12,7 +12,7 @@ updated_at: '2026-04-25T17:57:14.005001Z'
 **Authors:** Jason Ladd
 **Created:** 2026-04-25
 **Revision:** 2 (incorporated review feedback on 2026-04-25)
-**Targets:** v1.3
+**Targets:** v1.4 (feature minor — headline alongside SIP-0096; remapped from the stale v1.3 self-tag, which predated the even/odd convention #281 under which 1.3 is feature-free stabilization — see `docs/plans/2-0-roadmap-reconciliation.md` Finding 4, #335)
 **Depends on:** `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1) — must land first
 **Parent vision:** `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (umbrella index)
 **Sibling:** `sips/accepted/SIP-0090-Agent-Embodiment-Substrate.md` (v1.2)

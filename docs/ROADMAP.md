@@ -6,6 +6,15 @@ Living document tracking the implementation progression from initial prototype t
 
 Semver with an **even/odd minor** overlay (parity gates *features*, not hardening — #281): **even minors (1.2, 1.4, …) are feature releases** (led by a headline feature SIP; hardening rides along), **odd minors (1.3, 1.5, …) are feature-free stabilization releases** (the big risky refactors + debt paydown), and **patches ship urgent fixes any time, either lane.** Hardening lands wherever it's ready. See `docs/plans/1-2-0-release-plan.md` and CLAUDE.md.
 
+## Forward Cadence (planned)
+
+Version labels per the even/odd remap in `docs/plans/2-0-roadmap-reconciliation.md` (Findings 2 + 4):
+
+- **v1.3 (in progress)** — first stabilization minor, feature-free by rule: executor decomposition (SIP-0097 / #186), `cycle_tasks` package split (#152), comms poll→push consumer (#323), dead `DbRuntime` backend removal (#234).
+- **v1.4** — duty durability (SIP-0091) + verification evidence integrity (SIP-0096), the headline pair; possibly embodiment Phase 2 (SIP-0090, first live adapter). Plan: `docs/plans/1-4-evidence-arc-plan.md`.
+- **v1.6** — Campaign mechanic (objective envelope + continuation policy; `sips/proposed/SIP-Campaign-Orchestration.md`), gated on SIP-0096 implemented + #288 + #316.
+- **v1.8/v2.0** — the three 2.0 pillars: Capability-Backed Agents (what an agent *is*), Campaign capability-augmentation, Self-Improvement + Test Bay (the capstone).
+
 ## Release Timeline
 
 ### v1.2.0 (2026-07-04) — Current — First Feature Release (even/odd cadence)
@@ -383,13 +392,14 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Accepted (Next Up)
 
-| SIP | Title |
-|-----|-------|
-| **SIP-0088** | Agent Runtime Modes (umbrella; v1.2 pieces future) |
-| **SIP-0090** | Agent Embodiment Substrate |
-| **SIP-0091** | Duty Durability via Temporal |
-| **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes |
-| **SIP-0093** | Multi-Role Plan Authoring |
+| SIP | Title | Target |
+|-----|-------|--------|
+| **SIP-0088** | Agent Runtime Modes (umbrella; runtime arc shipped 1.1–1.2, remaining pieces future) | — |
+| **SIP-0090** | Agent Embodiment Substrate (Phase 1 shipped 1.2.0) | Phases 2+ → v1.4+ |
+| **SIP-0091** | Duty Durability via Temporal | v1.4 |
+| **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes | — |
+| **SIP-0093** | Multi-Role Plan Authoring | — |
+| **SIP-0096** | Verification Evidence Integrity | v1.4 |
 
 ## Proposals (Backlog)
 
@@ -400,7 +410,17 @@ The following areas are identified for future work but do not block 1.0 readines
 | (unnumbered) | API Contract Hardening |
 | (unnumbered) | Cycle Evaluation Scorecard |
 
-### Other Proposals
+### Unnumbered Drafts (filed, awaiting design review)
+
+| SIP | Title |
+|-----|-------|
+| (unnumbered) | Campaign Orchestration (v1.6 candidate) |
+| (unnumbered) | Campaign Self-Improvement and Test Bay Requirements (2.0 vision anchor) |
+| (unnumbered) | Agent Comms Delivery Guarantees (Campaign 1.6 gate) |
+| (unnumbered) | Edge Deployment Profile |
+| (unnumbered) | Experiment Queue and Cycle Assessment |
+
+### Legacy Proposals
 
 | SIP | Title |
 |-----|-------|
@@ -411,16 +431,15 @@ The following areas are identified for future work but do not block 1.0 readines
 | SIP-0018-v2 | Squad Context Protocol |
 | SIP-0023 | Domain Expert Architecture for Product Strategy |
 | SIP-0028 | Hybrid Deployment Model (Multi-Environment) |
-| (unnumbered) | Edge Deployment Profile |
-| (unnumbered) | Experiment Queue and Cycle Assessment |
-| (unnumbered) | Intelligent Delegation Protocols |
 
 ---
 
 ## Stats
 
-- **Framework version**: 1.0.6
-- **SIPs**: 57 implemented, 6 accepted (SIP-0088–0093), 8 proposed, 20 deprecated (~91 total)
-- **Tests**: 3,030+ passing in the regression suite
-- **Python source**: ~39,000 lines (~51,000 test lines, ~84,000 doc lines)
+*As of 2026-07-08 (v1.2.0, pre-1.3.0 cut):*
+
+- **Framework version**: 1.2.0
+- **SIPs**: 60 implemented, 6 accepted (SIP-0088, 0090–0093, 0096), 20 deprecated (registry); 14 files in `sips/proposed/` (7 registry-tracked legacy + 7 unnumbered drafts)
+- **Tests**: 4,700+ passing in the regression suite
+- **Python source**: ~61,000 lines (src + adapters; ~83,000 test lines, ~110,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
