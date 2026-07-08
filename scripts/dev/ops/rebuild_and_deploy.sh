@@ -405,24 +405,22 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         LF_SECRET=$(grep "^SQUADOPS__LANGFUSE__SECRET_KEY=" .env | cut -d= -f2-)
         # .env's SQUADOPS__LANGFUSE__HOST is the container-side address
         # (host.docker.internal) and doesn't resolve from the host shell.
-        # The host-side address is derived from the compose port binding —
-        # the single source of truth this script already depends on — so a
-        # port/interface change in docker-compose.yml can't silently strand
-        # the sync. Both parts are used: a wildcard bind (0.0.0.0/[::]) maps
-        # to loopback (a networking fact — this script publishes the port on
-        # the machine it runs on); an interface-pinned bind is used as-is.
-        LF_BINDING=$(docker compose port langfuse 3000 2>/dev/null)
-        LF_ADDR="${LF_BINDING%:*}"
-        LF_PORT="${LF_BINDING##*:}"
-        case "$LF_ADDR" in
-            0.0.0.0|"[::]"|::) LF_ADDR="127.0.0.1" ;;
-        esac
+        # The host-side address+port are derived from the compose port
+        # binding — the single source of truth this script already depends
+        # on — so a port/interface change in docker-compose.yml can't
+        # silently strand the sync. Parsing rules (wildcard→loopback,
+        # multi-line IPv4+IPv6 output, pinned interfaces) live in the
+        # unit-tested helper.
+        source "$REPO_ROOT/scripts/dev/ops/derive_binding.sh"
+        LF_HOSTPORT=$(derive_binding "$(docker compose port langfuse 3000 2>/dev/null)") || LF_HOSTPORT=""
+        LF_ADDR="${LF_HOSTPORT% *}"
+        LF_PORT="${LF_HOSTPORT#* }"
         PROMPT_SYNC_PY="$REPO_ROOT/.venv/bin/python3"
         [ -x "$PROMPT_SYNC_PY" ] || PROMPT_SYNC_PY=python3
         # Agents request assets with the "production" label (adapter default) —
         # the upload label must match or resolution misses.
-        if [ -z "$LF_BINDING" ]; then
-            echo -e "${RED}  ⚠️  Prompt sync SKIPPED — langfuse has no published port (is the service up?). Agents may hit 'Prompt asset not found' at runtime.${NC}"
+        if [ -z "$LF_HOSTPORT" ]; then
+            echo -e "${RED}  ⚠️  Prompt sync SKIPPED — no derivable langfuse port binding (is the service up?). Agents may hit 'Prompt asset not found' at runtime.${NC}"
         elif SQUADOPS_MAINTAINER=1 "$PROMPT_SYNC_PY" scripts/maintainer/upload_prompts_to_langfuse.py \
             --environment production \
             --host "http://${LF_ADDR}:${LF_PORT}" \
