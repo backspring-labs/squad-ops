@@ -71,6 +71,21 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       pip install -r "agents/instances/${AGENT_ROLE}/requirements.txt"; \
     fi
 
+# Install per-role system (apt) extras — the system-level analog of the pip
+# step above. A role declares its native packages in
+# agents/instances/<role>/system-packages.txt (comments and blank lines ignored);
+# the role name is NOT hardcoded here, so a new build-capable role (or a renamed
+# one) is a data change, not a Dockerfile edit (#306). Today only the qa role
+# declares any — Node.js/npm for the frontend build check + vitest.
+RUN sys_pkgs="agents/instances/${AGENT_ROLE}/system-packages.txt"; \
+    if [ -f "$sys_pkgs" ]; then \
+      pkgs="$(grep -vE '^\s*#|^\s*$' "$sys_pkgs")"; \
+      if [ -n "$pkgs" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends $pkgs \
+        && rm -rf /var/lib/apt/lists/*; \
+      fi; \
+    fi
+
 # Cache-bust: when SOURCE_HASH changes, Docker invalidates this layer and below
 ARG SOURCE_HASH=unknown
 
