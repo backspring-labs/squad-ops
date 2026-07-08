@@ -127,6 +127,11 @@ from squadops.api.routes.platform_health import router as platform_health_router
 
 app.include_router(platform_health_router)
 
+# Agent status writes — authed /api/v1 lane (#326; moved off /health)
+from squadops.api.routes.agent_status import router as agent_status_router  # noqa: E402
+
+app.include_router(agent_status_router)
+
 # SIP-0085: Chat routes for console messaging
 from squadops.api.routes.chat import agents_router as chat_agents_router  # noqa: E402
 from squadops.api.routes.chat import chat_router  # noqa: E402

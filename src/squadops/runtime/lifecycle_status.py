@@ -2,8 +2,9 @@
 Map agent lifecycle_state → runtime_status for SIP-0089 heartbeat integration.
 
 `lifecycle_state` is the existing agent-status vocabulary used by
-`HealthChecker` and the `/health/agents/status` endpoint. `runtime_status`
-is the SIP-0089 §10.5 health vocabulary on `agent_runtime_state`.
+`HealthChecker` and the `/api/v1/agents/status` heartbeat endpoint (#326).
+`runtime_status` is the SIP-0089 §10.5 health vocabulary on
+`agent_runtime_state`.
 
 The mapping is locked v1.1 per §1.0 spike normalization. Server-side
 timeout detection (last_heartbeat_at older than N seconds → offline) is

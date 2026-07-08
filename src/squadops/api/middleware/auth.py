@@ -22,8 +22,11 @@ logger = logging.getLogger(__name__)
 # dropping security audit events.
 _audit_unavailable_warned = False
 
-# Always allowlisted path prefixes (no token required)
+# Always allowlisted path prefixes (no token required). Read-only lane: the
+# allowlist applies to safe methods (GET/HEAD) only, so a write route mounted
+# under /health can never ride the no-auth lane (#326).
 _ALWAYS_ALLOWLISTED_PREFIXES = ("/health",)
+_ALLOWLISTED_METHODS = ("GET", "HEAD")
 
 # Conditionally allowlisted paths (only when expose_docs=True)
 _DOCS_PATHS = {"/docs", "/openapi.json", "/redoc"}
@@ -53,7 +56,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 class AuthMiddleware(BaseHTTPMiddleware):
     """JWT token validation middleware (SIP-0062).
 
-    - Always allows /health and /health/infra without a token.
+    - Always allows GET/HEAD under /health without a token (read-only probe
+      lane); any other method under /health requires a token like every
+      protected route (#326).
     - Conditionally allows /docs and /openapi.json when expose_docs=True.
     - When provider='disabled', returns 503 for protected endpoints.
     - Otherwise, validates Bearer token and injects Identity into request.state.
@@ -126,8 +131,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path.rstrip("/") or "/"
         request_id = getattr(request.state, "request_id", "unknown")
 
-        # Always-allowlisted paths (prefix match)
-        if any(path.startswith(prefix) for prefix in _ALWAYS_ALLOWLISTED_PREFIXES):
+        # Always-allowlisted paths (prefix match, safe methods only — #326)
+        if request.method in _ALLOWLISTED_METHODS and any(
+            path.startswith(prefix) for prefix in _ALWAYS_ALLOWLISTED_PREFIXES
+        ):
             return await call_next(request)
 
         # Conditionally allowlisted docs paths
