@@ -30,6 +30,12 @@
         "description": "Read-only access to dashboards and status",
         "composite": false,
         "clientRole": false
+      },
+      {
+        "name": "agent",
+        "description": "Agent service identity — status writes via /api/v1/agents/status only",
+        "composite": false,
+        "clientRole": false
       }
     ],
     "client": {
@@ -136,6 +142,37 @@
       ]
     },
     {
+      "clientId": "squadops-agent",
+      "name": "SquadOps Agent",
+      "description": "Confidential client for agent containers — heartbeat/status writes to runtime-api (#326)",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "secret": "squadops-agent-secret",
+      "protocolMappers": [
+        {
+          "name": "runtime-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "squadops-runtime",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ]
+    },
+    {
       "clientId": "squadops-cli",
       "name": "SquadOps CLI",
       "description": "Public client for CLI authentication (password grant + device flow)",
@@ -188,6 +225,14 @@
         "admin",
         "operator",
         "viewer"
+      ]
+    },
+    {
+      "username": "service-account-squadops-agent",
+      "enabled": true,
+      "serviceAccountClientId": "squadops-agent",
+      "realmRoles": [
+        "agent"
       ]
     }
   ],
