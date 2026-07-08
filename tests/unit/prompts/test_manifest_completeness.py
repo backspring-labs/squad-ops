@@ -69,3 +69,49 @@ def test_impl_handler_task_type_fragments_registered():
         "SIP-0079 impl handler task_type fragments are not registered in manifest.yaml. "
         f"Missing: {sorted(missing)}. These are mandatory for assemble_task_only()."
     )
+
+
+def test_manifest_hash_matches_pinned_fingerprint():
+    """#327: the shipped manifest's top-level manifest_hash must match the
+    hash computed over (version, fragments) — the loader now fails HARD on a
+    mismatch (every agent refuses to start), so a stale fingerprint must be
+    caught here, at CI time, not in the fleet. Fix:
+    python scripts/dev/regen_fragment_manifest.py --write"""
+    from squadops.prompts.models import ManifestFragment, PromptManifest
+
+    manifest = _load_manifest()
+    fragments = tuple(
+        ManifestFragment(
+            fragment_id=f["fragment_id"],
+            path=f["path"],
+            layer=f["layer"],
+            roles=tuple(f.get("roles", ["*"])),
+            sha256=f["sha256"],
+        )
+        for f in manifest["fragments"]
+    )
+    computed = PromptManifest.compute_manifest_hash(manifest.get("version", "0.0.0"), fragments)
+    assert manifest.get("manifest_hash") == computed, (
+        "manifest.yaml's manifest_hash is stale — agents will fail to load any "
+        "prompt (ManifestValidationError at first use). Regenerate with: "
+        "python scripts/dev/regen_fragment_manifest.py --write"
+    )
+
+
+def test_every_fragment_hash_matches_file_content():
+    """#327/#195: every per-fragment sha256 in the manifest must match the
+    fragment file's canonical body hash — same computation as the runtime
+    integrity check and the regen tool."""
+    from adapters.prompts.filesystem import FileSystemPromptRepository
+
+    manifest = _load_manifest()
+    stale = []
+    for entry in manifest["fragments"]:
+        path = FRAGMENTS_DIR / entry["path"]
+        computed = FileSystemPromptRepository.hash_fragment_file(path)
+        if computed != entry["sha256"]:
+            stale.append(entry["fragment_id"])
+    assert not stale, (
+        f"Stale fragment hashes in manifest.yaml: {stale}. Regenerate with: "
+        "python scripts/dev/regen_fragment_manifest.py --write"
+    )

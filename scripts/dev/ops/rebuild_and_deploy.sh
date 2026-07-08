@@ -393,6 +393,33 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         fi
     done
 
+    # Step 4b (#327): re-sync governed prompt assets to LangFuse. Agents
+    # resolve prompts from the registry when
+    # SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse — a rebuild that ships
+    # new/changed templates without re-uploading them fails cycles at runtime
+    # with "Prompt asset not found" (the #327 drift). Deploy = sync.
+    if grep -q "^SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER=langfuse" .env 2>/dev/null; then
+        echo ""
+        echo -e "${BLUE}📤 Step 4b: Syncing prompt assets to LangFuse (#327)...${NC}"
+        LF_PUBLIC=$(grep "^SQUADOPS__LANGFUSE__PUBLIC_KEY=" .env | cut -d= -f2-)
+        LF_SECRET=$(grep "^SQUADOPS__LANGFUSE__SECRET_KEY=" .env | cut -d= -f2-)
+        # .env's SQUADOPS__LANGFUSE__HOST is the container-side address
+        # (host.docker.internal); this sync runs host-side → localhost.
+        PROMPT_SYNC_PY="$REPO_ROOT/.venv/bin/python3"
+        [ -x "$PROMPT_SYNC_PY" ] || PROMPT_SYNC_PY=python3
+        # Agents request assets with the "production" label (adapter default) —
+        # the upload label must match or resolution misses.
+        if SQUADOPS_MAINTAINER=1 "$PROMPT_SYNC_PY" scripts/maintainer/upload_prompts_to_langfuse.py \
+            --environment production \
+            --host "http://localhost:3001" \
+            --public-key "$LF_PUBLIC" --secret-key "$LF_SECRET" \
+            > /tmp/prompt_sync.log 2>&1; then
+            echo -e "     ${GREEN}✅ Prompt assets synced${NC} ($(grep -c '^  OK' /tmp/prompt_sync.log) assets)"
+        else
+            echo -e "${RED}  ⚠️  Prompt sync FAILED — agents may hit 'Prompt asset not found' at runtime (see /tmp/prompt_sync.log)${NC}"
+        fi
+    fi
+
     # Step 5: Wait for agents to be healthy
     echo ""
     echo -e "${BLUE}⏳ Step 5: Waiting for agents to be healthy (30 seconds)...${NC}"

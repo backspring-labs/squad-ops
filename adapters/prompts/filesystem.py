@@ -117,13 +117,22 @@ class FileSystemPromptRepository(PromptRepository):
             manifest_hash=data.get("manifest_hash", ""),
         )
 
-        # Verify manifest integrity if hash provided
+        # Verify manifest integrity if hash provided. #327: fail hard — a
+        # warn-and-continue here means agents silently run a prompt set that
+        # doesn't match its pinned fingerprint (masked config drift).
         if manifest.manifest_hash:
             computed = PromptManifest.compute_manifest_hash(manifest.version, manifest.fragments)
             if computed != manifest.manifest_hash:
-                logger.warning(
+                raise ManifestValidationError(
                     f"Manifest hash mismatch: expected {manifest.manifest_hash[:16]}..., "
-                    f"got {computed[:16]}..."
+                    f"got {computed[:16]}... — the deployed prompt set does not match its "
+                    f"pinned manifest. Regenerate with: "
+                    f"python scripts/dev/regen_fragment_manifest.py --write",
+                    {
+                        "expected": manifest.manifest_hash,
+                        "computed": computed,
+                        "path": str(self.manifest_path),
+                    },
                 )
 
         return manifest
