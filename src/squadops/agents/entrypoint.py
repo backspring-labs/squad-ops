@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from squadops.bootstrap.system import SquadOpsSystem
+    from squadops.comms.queue_message import QueueMessage
     from squadops.ports.observability import LogForwarderPort
 
 
@@ -346,9 +347,11 @@ class AgentRunner:
         # Create filesystem adapter
         filesystem = LocalFileSystemAdapter()
 
-        # Create RabbitMQ queue adapter
+        # Create RabbitMQ queue adapter. prefetch_count=1 (#323): the broker
+        # hands this agent one unacked comms message at a time, matching the
+        # old poll loop's one-at-a-time pickup.
         rabbitmq_url = config.comms.rabbitmq.url
-        queue = RabbitMQAdapter(url=rabbitmq_url)
+        queue = RabbitMQAdapter(url=rabbitmq_url, prefetch_count=1)
         self._queue = queue  # Store for use in _consume_tasks
 
         # Conditionally wire A2A messaging (SIP-0085 P2-RC6)
@@ -428,12 +431,13 @@ class AgentRunner:
         }
 
     async def _consume_tasks(self) -> None:
-        """Consume tasks from the queue.
+        """Consume comms messages via a persistent push consumer (#323).
 
-        Connects to RabbitMQ and processes incoming tasks through the orchestrator.
+        Registers a single long-lived ``subscribe()`` consumer on the agent's
+        comms queue — the broker delivers each message the moment it arrives,
+        with no per-poll ``basic.consume``/``basic.cancel`` churn — then parks
+        until shutdown is requested.
         """
-        import json
-
         # Queue name for this agent's communications
         comms_queue = f"{self.agent_id}_comms"
         replies_queue = f"{self.agent_id}_replies"
@@ -449,63 +453,66 @@ class AgentRunner:
         # queue won't create it. Idempotent — safe to call on every boot.
         await self._queue.ensure_queue(replies_queue)
 
-        while not self._shutdown_event.is_set():
-            try:
-                # Consume messages from the comms queue
-                messages = await self._queue.consume(comms_queue, max_messages=1)
+        # The subscription layer owns the ack: each delivery is acked after
+        # _process_comms_message returns — success or failure — preserving the
+        # old poll loop's ack-always policy. subscribe() re-establishes the
+        # consumer itself if the channel drops.
+        subscription = await self._queue.subscribe(
+            comms_queue, on_message=self._process_comms_message
+        )
 
-                for message in messages:
-                    try:
-                        # Parse the message payload
-                        payload = json.loads(message.payload)
-                        action = payload.get("action", "")
-                        metadata = payload.get("metadata", {})
+        try:
+            await self._shutdown_event.wait()
+        finally:
+            # Cancel the consumer before closing the connection, so the
+            # subscription's resubscribe loop can't race the teardown.
+            await subscription.cancel()
+            if self._queue:
+                await self._queue.close()
 
-                        logger.info(
-                            "Received message",
-                            extra={
-                                "agent_id": self.agent_id,
-                                "action": action,
-                                "message_id": message.message_id,
-                            },
-                        )
+        logger.info("Task consumer stopped")
 
-                        # Handle different action types
-                        if action == "comms.chat":
-                            await self._handle_chat_message(payload, metadata)
-                        elif action == "comms.task":
-                            await self._handle_task_envelope(payload, metadata)
-                        else:
-                            logger.warning(
-                                f"Unknown action: {action}",
-                                extra={"agent_id": self.agent_id},
-                            )
+    async def _process_comms_message(self, message: QueueMessage) -> None:
+        """Route one comms delivery to its action handler.
 
-                        # Acknowledge the message
-                        await self._queue.ack(message)
+        Callback for the persistent ``subscribe()`` consumer (#323). Never
+        raises: failures are logged with agent context and swallowed, so the
+        subscription acks the message and keeps consuming — the same outcome
+        the old poll loop's ack-on-error path produced. It must not ack
+        either; the subscription layer acks every delivery after this returns.
+        """
+        import json
 
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to process message: {e}",
-                            extra={"agent_id": self.agent_id, "message_id": message.message_id},
-                        )
-                        # Acknowledge anyway to avoid infinite retries
-                        await self._queue.ack(message)
+        try:
+            payload = json.loads(message.payload)
+            action = payload.get("action", "")
+            metadata = payload.get("metadata", {})
 
-            except Exception as e:
-                logger.error(
-                    f"Queue consumption error: {e}",
+            logger.info(
+                "Received message",
+                extra={
+                    "agent_id": self.agent_id,
+                    "action": action,
+                    "message_id": message.message_id,
+                },
+            )
+
+            # Handle different action types
+            if action == "comms.chat":
+                await self._handle_chat_message(payload, metadata)
+            elif action == "comms.task":
+                await self._handle_task_envelope(payload, metadata)
+            else:
+                logger.warning(
+                    f"Unknown action: {action}",
                     extra={"agent_id": self.agent_id},
                 )
 
-            # Small delay between consumption cycles
-            await asyncio.sleep(0.5)
-
-        # Close queue connection on shutdown
-        if self._queue:
-            await self._queue.close()
-
-        logger.info("Task consumer stopped")
+        except Exception as e:
+            logger.error(
+                f"Failed to process message: {e}",
+                extra={"agent_id": self.agent_id, "message_id": message.message_id},
+            )
 
     def _build_system_prompt(self) -> str:
         """Build system prompt using PromptService for role-specific identity.

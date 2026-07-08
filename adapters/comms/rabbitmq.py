@@ -56,6 +56,7 @@ class RabbitMQAdapter(QueuePort):
         url: str,
         namespace: str | None = None,
         consume_poll_timeout_seconds: float = _DEFAULT_CONSUME_POLL_TIMEOUT,
+        prefetch_count: int | None = None,
     ):
         """
         Initialize RabbitMQ adapter.
@@ -64,10 +65,15 @@ class RabbitMQAdapter(QueuePort):
             url: RabbitMQ connection URL (e.g., 'amqp://user:pass@host:port/vhost')
             namespace: Optional namespace to prepend to queue names (e.g., 'comms.namespace')
             consume_poll_timeout_seconds: Bounded wait per consume() poll cycle (#158).
+            prefetch_count: Per-consumer QoS prefetch applied to the channel
+                (#323). Bounds how many unacked messages the broker pushes to
+                a long-lived consumer; None keeps the broker default
+                (unbounded).
         """
         self.url = url
         self.namespace = namespace
         self._consume_poll_timeout = consume_poll_timeout_seconds
+        self._prefetch_count = prefetch_count
         self._connection: Connection | None = None
         self._channel: aio_pika.Channel | None = None
         self._queues: dict[str, Queue] = {}
@@ -84,6 +90,11 @@ class RabbitMQAdapter(QueuePort):
 
         if self._channel is None or self._channel.is_closed:
             self._channel = await self._connection.channel()
+            if self._prefetch_count is not None:
+                # #323: bound unacked deliveries so a persistent subscribe()
+                # consumer is handed one message at a time instead of the
+                # broker flushing the whole queue into its client-side buffer.
+                await self._channel.set_qos(prefetch_count=self._prefetch_count)
             logger.debug("RabbitMQ channel created")
 
     def _apply_namespace(self, queue_name: str) -> str:
