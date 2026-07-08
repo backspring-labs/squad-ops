@@ -1,14 +1,5 @@
 last_assigned: 97
 sips:
-- sip_uid: null
-  sip_number: null
-  title: Intelligent Delegation Protocols for SquadOps
-  path: sips/proposed/SIP-intelligent-delegation-protocols.md
-  status: proposed
-  author: SquadOps Core Team
-  approver: null
-  created_at: '2026-02-16T00:00:00Z'
-  updated_at: '2026-02-16T00:00:00Z'
 - sip_number: 3
   sip_uid: '17642554775787694'
   title: -SIP-003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol

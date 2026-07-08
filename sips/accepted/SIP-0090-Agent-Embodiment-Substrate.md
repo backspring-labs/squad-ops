@@ -12,7 +12,7 @@ updated_at: '2026-04-25T17:57:13.839284Z'
 **Authors:** Jason Ladd
 **Created:** 2026-04-25
 **Revision:** 2 (incorporated review feedback on 2026-04-25)
-**Targets:** v1.2
+**Targets:** v1.2 (Phase 1 — shipped in 1.2.0; Phases 2+ target v1.4+, first live adapter = Discord)
 **Depends on:** `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1) — must land first
 **Parent vision:** `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (umbrella index)
 **Sibling:** `sips/accepted/SIP-0091-Duty-Durability-via-Temporal.md` (v1.3)
