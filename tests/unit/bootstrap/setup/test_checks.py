@@ -618,3 +618,106 @@ class TestSquadModelChecks:
         (r,) = results
         assert r.passed is False
         assert "not defined" in r.message
+
+
+class TestBrokerHygiene:
+    """#328: doctor flags retired-scheme queues and undrained backlogs.
+
+    Each test patches _query_broker_queues (the docker/rabbitmqctl boundary) so
+    the hygiene logic is exercised without a live broker.
+    """
+
+    _Q = "squadops.bootstrap.setup.checks._query_broker_queues"
+
+    def test_retired_scheme_queues_hard_fail(self):
+        with patch(
+            self._Q,
+            return_value=[
+                {"name": "max_replies", "messages": 0, "consumers": 1},
+                {"name": "cycle_results_run_abc", "messages": 0, "consumers": 0},
+                {"name": "cycle_results_run_def", "messages": 0, "consumers": 0},
+            ],
+        ):
+            results = checks_mod.check_broker_hygiene()
+        retired = [r for r in results if r.name == "broker:retired-queues"]
+        assert len(retired) == 1
+        r = retired[0]
+        assert r.passed is False and r.heuristic is False
+        assert "2 queue(s)" in r.message
+        assert r.fix_command is not None
+
+    def test_undrained_backlog_hard_fail(self):
+        """A queue with messages and no consumer is flagged even if its name is
+        the current SIP-0094 scheme — the general hygiene signal, not just cruft."""
+        with patch(
+            self._Q,
+            return_value=[
+                {"name": "eve_replies", "messages": 7, "consumers": 0},
+                {"name": "max_replies", "messages": 0, "consumers": 1},
+            ],
+        ):
+            results = checks_mod.check_broker_hygiene()
+        undrained = [r for r in results if r.name == "broker:undrained-queues"]
+        assert len(undrained) == 1
+        assert undrained[0].passed is False and undrained[0].heuristic is False
+        assert "eve_replies (7 msg)" in undrained[0].detail
+
+    def test_a_consumed_queue_with_messages_is_not_flagged(self):
+        """messages>0 WITH a consumer is normal in-flight work, not a backlog."""
+        with patch(
+            self._Q,
+            return_value=[{"name": "max_comms", "messages": 3, "consumers": 1}],
+        ):
+            results = checks_mod.check_broker_hygiene()
+        assert [r.name for r in results] == ["broker:queues"]
+        assert results[0].passed is True
+
+    def test_retired_and_undrained_both_reported(self):
+        with patch(
+            self._Q,
+            return_value=[
+                {"name": "cycle_results_run_abc", "messages": 48, "consumers": 0},
+            ],
+        ):
+            results = checks_mod.check_broker_hygiene()
+        names = {r.name for r in results}
+        # The one retired queue is both wrong-scheme AND an undrained backlog.
+        assert names == {"broker:retired-queues", "broker:undrained-queues"}
+        assert all(r.passed is False for r in results)
+
+    def test_clean_broker_passes(self):
+        with patch(
+            self._Q,
+            return_value=[
+                {"name": "max_replies", "messages": 0, "consumers": 1},
+                {"name": "eve_replies", "messages": 0, "consumers": 1},
+            ],
+        ):
+            results = checks_mod.check_broker_hygiene()
+        assert len(results) == 1
+        assert results[0].passed is True
+        assert "2 broker queue(s) healthy" in results[0].message
+
+    def test_unqueryable_broker_warns_not_fails(self):
+        """docker down / broker unreachable → heuristic warn (~), never a hard
+        fail — doctor must not go red just because the broker isn't up."""
+        with patch(self._Q, return_value=None):
+            results = checks_mod.check_broker_hygiene()
+        assert len(results) == 1
+        assert results[0].passed is False
+        assert results[0].heuristic is True
+
+    def test_collect_gates_on_rabbitmq_service_present(self):
+        """Broker checks run only when the profile declares the rabbitmq service
+        (mirrors GPU gating on an nvidia dep)."""
+        with_broker = _profile(
+            docker_services=[DockerService(name="rabbitmq", healthcheck="tcp", port=5672)]
+        )
+        without_broker = _profile(
+            docker_services=[DockerService(name="postgres", healthcheck="tcp", port=5432)]
+        )
+        with patch(self._Q, return_value=[]) as mock_q:
+            assert checks_mod._collect_broker_checks(without_broker) == []
+            mock_q.assert_not_called()
+            checks_mod._collect_broker_checks(with_broker)
+            mock_q.assert_called_once()
