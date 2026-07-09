@@ -133,6 +133,7 @@ def create_cycle(
         "squad_profile_id": squad_profile_id,
         "applied_defaults": crp.defaults,
         "execution_overrides": overrides,
+        "request_profile": profile,
         "notes": notes,
     }
     if prd_ref:

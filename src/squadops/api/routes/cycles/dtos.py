@@ -41,6 +41,7 @@ class CycleCreateRequest(BaseModel):
     execution_overrides: dict = Field(default_factory=dict)
     expected_artifact_types: list[str] = Field(default_factory=list)
     experiment_context: dict = Field(default_factory=dict)
+    request_profile: str | None = None  # SIP-0096: cycle-level config provenance (CRP name)
     notes: str | None = None
 
     model_config = ConfigDict(extra="forbid")

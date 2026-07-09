@@ -57,8 +57,8 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     "(cycle_id, project_id, created_at, created_by, prd_ref, "
                     "squad_profile_id, squad_profile_snapshot_ref, task_flow_policy, "
                     "build_strategy, applied_defaults, execution_overrides, "
-                    "expected_artifact_types, experiment_context, notes) "
-                    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+                    "expected_artifact_types, experiment_context, notes, request_profile) "
+                    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
                     cycle.cycle_id,
                     cycle.project_id,
                     cycle.created_at,
@@ -73,6 +73,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     list(cycle.expected_artifact_types),
                     json.dumps(cycle.experiment_context),
                     cycle.notes,
+                    cycle.request_profile,
                 )
         except asyncpg.UniqueViolationError as err:
             raise ValidationError(f"Cycle already exists: {cycle.cycle_id}") from err
@@ -464,6 +465,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             execution_overrides=overrides,
             expected_artifact_types=tuple(row["expected_artifact_types"] or []),
             experiment_context=experiment,
+            request_profile=row["request_profile"],
             notes=row["notes"],
             cancelled=row["cancelled"],
         )

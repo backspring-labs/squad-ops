@@ -305,6 +305,11 @@ class Cycle:
     # Extensible experiment context
     experiment_context: dict = field(default_factory=dict)
 
+    # Cycle-request-profile name this cycle was created from — cycle-level config
+    # provenance (SIP-0096). All runs of the cycle share it; None for cycles created
+    # before this field existed.
+    request_profile: str | None = None
+
     notes: str | None = None
 
     # Operator cancellation flag. When True, derived status is CANCELLED

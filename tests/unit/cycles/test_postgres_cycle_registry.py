@@ -8,6 +8,7 @@ Concurrency, locking, and uniqueness are validated by integration tests (Phase 3
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -125,6 +126,7 @@ def _cycle_row(**overrides):
         "execution_overrides": {},
         "expected_artifact_types": [],
         "experiment_context": {},
+        "request_profile": None,
         "notes": None,
         "cancelled": False,
     }
@@ -185,7 +187,7 @@ class TestPostgresCycleRegistry:
         conn.execute.assert_awaited_once()
         sql = conn.execute.call_args[0][0]
         assert "INSERT INTO cycle_registry" in sql
-        # Verify all 14 positional params ($1 ... $14)
+        # Verify positional params ($1 ... $15)
         args = conn.execute.call_args[0][1:]
         assert args[0] == "cyc_001"  # cycle_id
         assert args[1] == "proj_1"  # project_id
@@ -234,6 +236,25 @@ class TestPostgresCycleRegistry:
         assert isinstance(gate, Gate)
         assert gate.name == "qa_gate"
         assert gate.after_task_types == ("dev",)
+
+    async def test_create_cycle_persists_request_profile(self, registry, conn):
+        """Catches the INSERT dropping the cycle-level request-profile provenance."""
+        conn.execute.return_value = None
+
+        await registry.create_cycle(replace(_CYCLE, request_profile="selftest"))
+
+        sql = conn.execute.call_args[0][0]
+        assert "request_profile" in sql
+        args = conn.execute.call_args[0][1:]
+        assert args[14] == "selftest"  # $15
+
+    async def test_get_cycle_reads_request_profile(self, registry, conn):
+        """Catches _row_to_cycle not mapping the request_profile column back."""
+        conn.fetchrow.return_value = _cycle_row(request_profile="selftest")
+
+        cycle = await registry.get_cycle("cyc_001")
+
+        assert cycle.request_profile == "selftest"
 
     # ------------------------------------------------------------------
     # 4. create_run — cancelled cycle raises IllegalStateTransitionError
