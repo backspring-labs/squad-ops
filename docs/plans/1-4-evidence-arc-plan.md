@@ -10,7 +10,7 @@ verification evidence integrity**, not duty durability alone).
 - **1.3 (current)** stabilizes the *structure* (god-object decomposition, port de-leak, comms push consumer).
 - **1.4** makes the *evidence* trustworthy (Verification Evidence Integrity SIP + SIP-0091 duty durability).
 - **1.6** automates decisions *over* trusted evidence (Campaign Orchestration).
-- **1.8** makes the evidence *graded* (Plutarch CycleAssessment scorecard, sliced thin) — the release where the SquadOps thesis ("a governed squad beats a single strong model on long-horizon work") becomes falsifiable.
+- **1.8** makes the evidence *graded* (a thin cycle-evaluation scorecard: `CycleAssessment` over the `CycleOutcome` seam) — the release where the SquadOps thesis ("a governed squad beats a single strong model on long-horizon work") becomes falsifiable.
 - **2.0** compounds on top (Capability-Backed Agents, Self-Improvement, Test Bay) over a *trusted, shipped* scorecard — not one it invents in the same release.
 
 The ordering is load-bearing, and it extends one rung at a time: Campaign's continuation
@@ -30,7 +30,7 @@ behind "evidence is honest," and "compound over grades" behind "grades are trust
 | **SIP-0097** Executor Decomposition Boundaries | **accepted 2026-07-06** (PR #340, rev 2) | **1.3** (structural) | produces the `RunCompletion`+`RunLedger` seam SIP-0096 §6.4 wires into (slice 2 scheduled early for exactly this) |
 | SIP-0090 Embodiment Phase 2 (Discord) | accepted (phased) | 1.4 **or** 1.6 — open decision | first live embodiment consumer |
 | Campaign Orchestration | proposed (revised 2026-07-06 per #334) | **1.6 headline** | objective envelope + continuation policy |
-| **Plutarch Cycle Assessment** (scorecard slice) | proposed — over-scoped; retarget `SIP-Plutarch-Experimentation-and-Cycle-Assessment-Framework` off stale `v1.1` and slice thin | **1.8 headline** | grades honest evidence: `CycleAssessment` over the `CycleOutcome` seam + benchmark registry + first-wave internal eval packs + model-comparison harness — makes the thesis falsifiable |
+| **Cycle Evaluation Scorecard** | proposed — slice thin from the over-scoped `SIP-Plutarch-Experimentation-and-Cycle-Assessment-Framework` vision doc (retarget off stale `v1.1`) | **1.8 headline** | grades honest evidence: `CycleAssessment` over the `CycleOutcome` seam + benchmark registry + first-wave internal eval packs + model-comparison harness — makes the thesis falsifiable |
 | Self-Improvement + Test Bay; Capability-Backed Agents | proposed (vision/backlog) | 2.0 | compound over the *shipped* 1.8 scorecard, never raw check results |
 
 ## Phase-by-release execution
@@ -76,7 +76,7 @@ is itself an arc prerequisite — a reason to protect the 1.3 batch, not change 
   gate waiver flow, doctor verification category (non-executable + inert reporting;
   console badging and a dedicated event are deferred until demand).
   #114 (typed-check evaluation surfacing) rides this phase. **Design `CycleOutcome` for
-  its two downstream readers now** — Campaign's continuation policy (1.6) and the Plutarch
+  its two downstream readers now** — Campaign's continuation policy (1.6) and the
   `CycleAssessment` scorecard (1.8) — so 1.8 is a new reader of a stable seam, not a
   re-cut (carry the scorecard's outcome/quality/efficiency/stability fields from the start).
 - **SIP-0091 duty durability** per its own spec (Lane M).
@@ -114,22 +114,24 @@ consumer; accumulated debt. Standard odd-minor: substance gates the cut, not the
 ### 1.8 (feature minor — the grading release)
 
 The release where honest evidence becomes **graded** evidence, and the SquadOps thesis
-becomes falsifiable. Headline: a **thin** Plutarch slice — not the full 7-subsystem
-framework (its own risk section warns against "overbuilding the experiment system before
-the app-building loop is stable"). Ship, in dependency order:
+becomes falsifiable. Headline: a **thin cycle-evaluation scorecard** — not the full
+7-subsystem experimentation framework the vision doc describes (its own risk section warns
+against "overbuilding the experiment system before the app-building loop is stable").
+Ship, in dependency order:
 
 - **`CycleAssessment` scorecard** consuming the `CycleOutcome` roll-up (a new *reader* of
   the 1.4 seam, never a re-cut) — outcome / quality / efficiency / stability at minimum.
 - **Benchmark registry** + **first-wave internal eval packs** (Dev, QA, Research, Tool
   Executor — the roles with the clearest starting eval paths).
 - **Model-comparison harness**: one squad configuration vs one strong single-model
-  baseline under the same pack — the direct test of Plutarch's Question #1.
+  baseline under the same pack — the direct test of the thesis (can a governed squad outperform one strong model?).
 - Recommendation-*producing*, **not** self-authorizing (governance boundary held; active
   policy mutation stays a 2.0 concern).
 
 **Cut gate:** the scorecard live-produces a `CycleAssessment` for a real `lite`/`full`
 cycle, and at least one squad-vs-single-model comparison runs end-to-end. Retarget the
-Plutarch SIP off its stale `v1.1` tag and slice it before acceptance.
+vision SIP (`SIP-Plutarch-…`) off its stale `v1.1` tag and slice this scorecard out of it
+before acceptance.
 
 **Why 1.8 and not folded into 2.0:** a major version must *compound on* a proven
 measurement substrate, not invent it in the same cut. Splitting grading (1.8) from
@@ -157,13 +159,13 @@ trustworthy" — the same producer-before-consumer discipline that separates 1.4
 1. **Evidence SIP acceptance** ← Phase 0 audit complete (no vocabulary collision with 0092/0070/0079).
 2. **1.4 cut** ← evidence Phases 1–3 live-validated (one `lite` cycle blocking honestly on a required unrunnable check; one completing with disclosure); SIP-0091 arc complete.
 3. **Campaign SIP acceptance** ← the four 1.6 gates above.
-4. **1.8 grading (Plutarch scorecard) acceptance** ← Plutarch SIP retargeted off `v1.1` and sliced thin; `CycleAssessment` consumes `CycleOutcome` only, never raw check results; the fields it reads already exist in the 1.4 `CycleOutcome` contract (no re-cut).
+4. **1.8 grading (cycle-evaluation scorecard) acceptance** ← the vision SIP (`SIP-Plutarch-…`) retargeted off `v1.1` and the scorecard sliced thin; `CycleAssessment` consumes `CycleOutcome` only, never raw check results; the fields it reads already exist in the 1.4 `CycleOutcome` contract (no re-cut).
 5. **Any 2.0 compounding work (self-improvement, capability-backed agents)** ← the 1.8 scorecard is shipped and live-proven; it acts on `CycleAssessment` grades, never on raw checks.
 
 ## Ratification note
 
 The forward cadence here is mirrored in `docs/ROADMAP.md` → "Forward Cadence (planned)":
 the even-minor trust ladder **1.4** (honest evidence) → **1.6** (Campaign) → **1.8**
-(grading / Plutarch scorecard) → **2.0** (compounding), each behind an odd-minor
+(grading / cycle-evaluation scorecard) → **2.0** (compounding), each behind an odd-minor
 stabilization tail, per the #281 even/odd convention. The legacy "Cycle Evaluation
 Scorecard" backlog entry in that file is reconciled to the 1.8 slot in the same edit.

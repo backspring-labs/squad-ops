@@ -13,7 +13,7 @@ Version labels per the even/odd remap in `docs/plans/2-0-roadmap-reconciliation.
 - **v1.3 — shipped 2026-07-08** (first stabilization minor; see Release Timeline).
 - **v1.4** — duty durability (SIP-0091) + verification evidence integrity (SIP-0096), the headline pair; possibly embodiment Phase 2 (SIP-0090, first live adapter). Plan: `docs/plans/1-4-evidence-arc-plan.md`.
 - **v1.6** — Campaign mechanic (objective envelope + continuation policy; `sips/proposed/SIP-Campaign-Orchestration.md`), gated on SIP-0096 implemented + #288 + #316.
-- **v1.8** — the grading release: a **thin Plutarch slice** — `CycleAssessment` scorecard over the `CycleOutcome` seam + benchmark registry + first-wave internal eval packs (Dev, QA, Research, Tool Executor) + a squad-vs-single-model comparison harness. Makes the SquadOps thesis *falsifiable*. Gated on SIP-0096 implemented (its `CycleOutcome` fields designed for this reader). Retarget `docs/ideas/SIP-Plutarch-Experimentation-and-Cycle-Assessment-Framework-*` off its stale `v1.1` tag and slice it. Plan: `docs/plans/1-4-evidence-arc-plan.md`.
+- **v1.8** — the grading release: a **thin cycle-evaluation scorecard** — `CycleAssessment` over the `CycleOutcome` seam + benchmark registry + first-wave internal eval packs (Dev, QA, Research, Tool Executor) + a squad-vs-single-model comparison harness. Makes the SquadOps thesis *falsifiable*. Gated on SIP-0096 implemented (its `CycleOutcome` fields designed for this reader). Sliced from the over-scoped vision doc `docs/ideas/SIP-Plutarch-Experimentation-and-Cycle-Assessment-Framework-*` (retarget off its stale `v1.1` tag). Plan: `docs/plans/1-4-evidence-arc-plan.md`.
 - **v2.0** — compound on the *shipped* 1.8 scorecard: the 2.0 pillars — Capability-Backed Agents (what an agent *is*), Campaign capability-augmentation, Self-Improvement + Test Bay (the capstone). Self-improvement acts on `CycleAssessment` grades, never raw checks.
 
 Each even-minor consumer sits strictly behind the release that earns its trust: automate over evidence (1.6) behind honest evidence (1.4); compound over grades (2.0) behind trustworthy grades (1.8). Odd minors (1.5, 1.7, 1.9) are the stabilization tails between.
@@ -372,7 +372,7 @@ These SIPs were originally scoped as "1.0 Hardening" but did not land before the
 
 **API Contract Hardening** was kept out of 1.0 because the Spark validation path did not expose execution-safety-blocking API issues. It is sequenced whenever a consumer (console, external integrator) surfaces a specific contract pain point.
 
-**Cycle Evaluation Scorecard** is now slotted as the **v1.8** grading release (thin Plutarch scorecard slice) — gated on SIP-0096 Verification Evidence Integrity implemented, consuming the `CycleOutcome` roll-up rather than raw checks. Scorecard sophistication improves learning *after* runs; it does not improve the success of any individual run, which is exactly why it sits behind honest evidence (1.4) and trusted automation (1.6). See `docs/plans/1-4-evidence-arc-plan.md`.
+**Cycle Evaluation Scorecard** is now slotted as the **v1.8** grading release — gated on SIP-0096 Verification Evidence Integrity implemented, consuming the `CycleOutcome` roll-up rather than raw checks. Scorecard sophistication improves learning *after* runs; it does not improve the success of any individual run, which is exactly why it sits behind honest evidence (1.4) and trusted automation (1.6). See `docs/plans/1-4-evidence-arc-plan.md`.
 
 ### Critical Path
 
