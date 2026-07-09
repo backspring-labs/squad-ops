@@ -5,6 +5,42 @@ current release and is **not disturbed** by this plan) and `2-0-roadmap-reconcil
 (whose Finding-5 feature-lane line this supersedes: 1.4 is now **duty durability +
 verification evidence integrity**, not duty durability alone).
 
+## North Star — why this arc exists
+
+Two outside-in capabilities are the payoff the whole arc builds toward; every release
+below is a rung under them, not an end in itself:
+
+- **A — Experimentation over squads.** Run bounded experiments on squads building apps /
+  performing tasks, measure outcomes, and surface either a **config efficiency** (tune
+  what we have) or a **capability gap** (we need something we don't). This is the 2.0
+  *Test Bay / Self-Improvement* pillar: the 1.8 scorecard generalized from grading *one*
+  cycle to comparing *many* (baseline vs challenger, with isolation/replay so the
+  comparison is fair).
+- **B — Capability-pack authorship.** The squad itself authors new agent capability packs
+  from industry/domain knowledge via the extension mechanism (SKILL.md-format bundles +
+  references) — continually finding new ways to build better. This is the 2.0
+  *Capability-Backed Agents* pillar; here a Campaign's *deliverable* is a reusable pack,
+  not an app.
+
+**They are one flywheel:** A detects the gap → B authors the pack that fills it → A
+re-measures the delta. It closes only if the evidence underneath is honest — the entire
+reason for the ladder: honest evidence (1.4) → automate over it (1.6) → grade it (1.8) →
+**experiment over grades (A)** → **author from gaps (B)**. The dependency is strict —
+**A before B**: never adopt a capability you cannot yet measure, or you are back to
+intuition-over-evidence, the risk this arc exists to kill.
+
+**Invocation engine (working hypothesis, not yet committed):** probably *not* a new
+engine — **Campaign parameterized by objective type** (`build-app` | `run-experiment` |
+`author-capability-pack`), one orchestrator with a typed objective/deliverable. Hold this
+hypothesis until it demonstrably breaks before minting a separate engine (the same
+"don't name a subsystem before you need it" discipline that de-personified the scorecard).
+
+**What this demands of 1.4 now:** both visions are *experiments over configuration*, and
+you can only compare configs you recorded. So `CycleOutcome` (1.4) and `CycleAssessment`
+(1.8) must carry **config + squad + capability-pack provenance** (which model / profile /
+packs / memory were active) so the Test Bay can later attribute an outcome delta to a
+config change. Design it in now; it is expensive to retrofit.
+
 ## The thesis (one sentence per release)
 
 - **1.3 (current)** stabilizes the *structure* (god-object decomposition, port de-leak, comms push consumer).
