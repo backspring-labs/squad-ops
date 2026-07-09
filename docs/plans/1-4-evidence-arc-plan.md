@@ -10,12 +10,16 @@ verification evidence integrity**, not duty durability alone).
 - **1.3 (current)** stabilizes the *structure* (god-object decomposition, port de-leak, comms push consumer).
 - **1.4** makes the *evidence* trustworthy (Verification Evidence Integrity SIP + SIP-0091 duty durability).
 - **1.6** automates decisions *over* trusted evidence (Campaign Orchestration).
-- **2.0** compounds on top (Capability-Backed Agents, Self-Improvement, Test Bay, Scorecard).
+- **1.8** makes the evidence *graded* (Plutarch CycleAssessment scorecard, sliced thin) — the release where the SquadOps thesis ("a governed squad beats a single strong model on long-horizon work") becomes falsifiable.
+- **2.0** compounds on top (Capability-Backed Agents, Self-Improvement, Test Bay) over a *trusted, shipped* scorecard — not one it invents in the same release.
 
-The ordering is load-bearing: Campaign's continuation policy reads the `CycleOutcome`
-roll-up the evidence SIP defines, and its recruitment safety depends on lease hardening
-(#288). Every gate below exists to keep "automate over evidence" strictly behind
-"evidence is honest."
+The ordering is load-bearing, and it extends one rung at a time: Campaign's continuation
+policy (1.6) reads the `CycleOutcome` roll-up the evidence SIP (1.4) defines, and its
+recruitment safety depends on lease hardening (#288); the grading layer (1.8) is a new
+*reader* of that same `CycleOutcome` seam; and 2.0's self-improvement acts only on grades
+the 1.8 scorecard has already shipped and live-proven. Every boundary keeps the consumer
+of a trust layer strictly behind the release that earns it: "automate over evidence"
+behind "evidence is honest," and "compound over grades" behind "grades are trustworthy."
 
 ## SIP map
 
@@ -26,7 +30,8 @@ roll-up the evidence SIP defines, and its recruitment safety depends on lease ha
 | **SIP-0097** Executor Decomposition Boundaries | **accepted 2026-07-06** (PR #340, rev 2) | **1.3** (structural) | produces the `RunCompletion`+`RunLedger` seam SIP-0096 §6.4 wires into (slice 2 scheduled early for exactly this) |
 | SIP-0090 Embodiment Phase 2 (Discord) | accepted (phased) | 1.4 **or** 1.6 — open decision | first live embodiment consumer |
 | Campaign Orchestration | proposed (revised 2026-07-06 per #334) | **1.6 headline** | objective envelope + continuation policy |
-| Self-Improvement + Test Bay; Capability-Backed Agents; Cycle Evaluation Scorecard | proposed (vision/backlog) | 2.0 / post-1.6 | consumers of the trusted-evidence substrate |
+| **Plutarch Cycle Assessment** (scorecard slice) | proposed — over-scoped; retarget `SIP-Plutarch-Experimentation-and-Cycle-Assessment-Framework` off stale `v1.1` and slice thin | **1.8 headline** | grades honest evidence: `CycleAssessment` over the `CycleOutcome` seam + benchmark registry + first-wave internal eval packs + model-comparison harness — makes the thesis falsifiable |
+| Self-Improvement + Test Bay; Capability-Backed Agents | proposed (vision/backlog) | 2.0 | compound over the *shipped* 1.8 scorecard, never raw check results |
 
 ## Phase-by-release execution
 
@@ -70,7 +75,10 @@ is itself an arc prerequisite — a reason to protect the 1.3 batch, not change 
 - **Evidence SIP Phase 3** — `CycleOutcome` roll-up persisted + consumed by wrap-up,
   gate waiver flow, doctor verification category (non-executable + inert reporting;
   console badging and a dedicated event are deferred until demand).
-  #114 (typed-check evaluation surfacing) rides this phase.
+  #114 (typed-check evaluation surfacing) rides this phase. **Design `CycleOutcome` for
+  its two downstream readers now** — Campaign's continuation policy (1.6) and the Plutarch
+  `CycleAssessment` scorecard (1.8) — so 1.8 is a new reader of a stable seam, not a
+  re-cut (carry the scorecard's outcome/quality/efficiency/stability fields from the start).
 - **SIP-0091 duty durability** per its own spec (Lane M).
 - **Open decision (make at 1.4 planning, not now):** does SIP-0090 Phase 2 (Discord)
   ride 1.4 or wait for 1.6? Leaning 1.4 if capacity allows — it is the first *live*
@@ -97,6 +105,37 @@ Campaign Orchestration accepts and implements **only when its named gates are gr
 | #316 request-profile naming taxonomy (for policy-derived `next_request_profile`) | 1.3–1.5, Lane S (`SIP-Cycle-Request-Profile-Naming-Taxonomy.md` exists in proposed) |
 | Campaign SIP open questions 1 (fork) and 5 (defer mechanism) resolved | pre-acceptance |
 
+### 1.7 (stabilization — feature-free by rule)
+
+Home for: Campaign hardening spillover (continuation-policy edge cases, defer/fork
+mechanics from 1.6); `CycleOutcome` persistence/schema tuning ahead of its 1.8 grading
+consumer; accumulated debt. Standard odd-minor: substance gates the cut, not the clock.
+
+### 1.8 (feature minor — the grading release)
+
+The release where honest evidence becomes **graded** evidence, and the SquadOps thesis
+becomes falsifiable. Headline: a **thin** Plutarch slice — not the full 7-subsystem
+framework (its own risk section warns against "overbuilding the experiment system before
+the app-building loop is stable"). Ship, in dependency order:
+
+- **`CycleAssessment` scorecard** consuming the `CycleOutcome` roll-up (a new *reader* of
+  the 1.4 seam, never a re-cut) — outcome / quality / efficiency / stability at minimum.
+- **Benchmark registry** + **first-wave internal eval packs** (Dev, QA, Research, Tool
+  Executor — the roles with the clearest starting eval paths).
+- **Model-comparison harness**: one squad configuration vs one strong single-model
+  baseline under the same pack — the direct test of Plutarch's Question #1.
+- Recommendation-*producing*, **not** self-authorizing (governance boundary held; active
+  policy mutation stays a 2.0 concern).
+
+**Cut gate:** the scorecard live-produces a `CycleAssessment` for a real `lite`/`full`
+cycle, and at least one squad-vs-single-model comparison runs end-to-end. Retarget the
+Plutarch SIP off its stale `v1.1` tag and slice it before acceptance.
+
+**Why 1.8 and not folded into 2.0:** a major version must *compound on* a proven
+measurement substrate, not invent it in the same cut. Splitting grading (1.8) from
+self-improvement (2.0) keeps "compound over grades" strictly behind "grades are
+trustworthy" — the same producer-before-consumer discipline that separates 1.4 from 1.6.
+
 ## Issue → arc map (everything filed 2026-07-04/05)
 
 | Issue | Arc slot |
@@ -118,11 +157,13 @@ Campaign Orchestration accepts and implements **only when its named gates are gr
 1. **Evidence SIP acceptance** ← Phase 0 audit complete (no vocabulary collision with 0092/0070/0079).
 2. **1.4 cut** ← evidence Phases 1–3 live-validated (one `lite` cycle blocking honestly on a required unrunnable check; one completing with disclosure); SIP-0091 arc complete.
 3. **Campaign SIP acceptance** ← the four 1.6 gates above.
-4. **Any 2.0 measurement work (scorecard, self-improvement)** ← consumes `CycleOutcome` only; never raw check results.
+4. **1.8 grading (Plutarch scorecard) acceptance** ← Plutarch SIP retargeted off `v1.1` and sliced thin; `CycleAssessment` consumes `CycleOutcome` only, never raw check results; the fields it reads already exist in the 1.4 `CycleOutcome` contract (no re-cut).
+5. **Any 2.0 compounding work (self-improvement, capability-backed agents)** ← the 1.8 scorecard is shipped and live-proven; it acts on `CycleAssessment` grades, never on raw checks.
 
 ## Ratification note
 
-This plan does not edit `docs/ROADMAP.md`. When ROADMAP is next touched (#335), apply:
-the Finding-4 remap from `2-0-roadmap-reconciliation.md`, the stats-block fix, **and**
-the 1.4 line from this plan (duty durability + verification evidence integrity as the
-even-minor headliners, embodiment Phase 2 as the open rider).
+The forward cadence here is mirrored in `docs/ROADMAP.md` → "Forward Cadence (planned)":
+the even-minor trust ladder **1.4** (honest evidence) → **1.6** (Campaign) → **1.8**
+(grading / Plutarch scorecard) → **2.0** (compounding), each behind an odd-minor
+stabilization tail, per the #281 even/odd convention. The legacy "Cycle Evaluation
+Scorecard" backlog entry in that file is reconciled to the 1.8 slot in the same edit.
