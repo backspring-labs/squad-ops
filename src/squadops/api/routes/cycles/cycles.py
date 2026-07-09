@@ -146,6 +146,7 @@ async def create_cycle(
             execution_overrides=body.execution_overrides,
             expected_artifact_types=tuple(body.expected_artifact_types),
             experiment_context=body.experiment_context,
+            request_profile=body.request_profile,
             notes=body.notes,
         )
 
