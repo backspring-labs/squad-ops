@@ -16,6 +16,7 @@ from squadops.auth.models import Scope
 from squadops.cycles.models import (
     ArtifactRef,
     BaselineNotAllowedError,
+    BuildStrategy,
     CycleError,
     PromotionStatus,
     ValidationError,
@@ -264,7 +265,7 @@ async def promote_baseline(project_id: str, artifact_type: str, body: BaselinePr
         if ref.cycle_id:
             registry = get_cycle_registry()
             cycle = await registry.get_cycle(ref.cycle_id)
-            if cycle.build_strategy == "fresh":
+            if cycle.build_strategy == BuildStrategy.FRESH.value:
                 raise BaselineNotAllowedError(
                     "Cannot promote baseline for a fresh build strategy cycle"
                 )

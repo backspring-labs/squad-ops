@@ -22,6 +22,7 @@ from squadops.cycles.models import (
     CycleError,
     CycleStatus,
     GateDecision,
+    GateDecisionValue,
     Run,
     RunStatus,
     RunTerminalError,
@@ -179,7 +180,7 @@ async def gate_decision(
         # flow to the next workload via plan_artifact_refs /
         # prior_workload_artifact_refs. Without this the manifest stays
         # at "working" status and the impl workload gets no inputs.
-        if body.decision == "approved":
+        if body.decision == GateDecisionValue.APPROVED.value:
             await _promote_run_artifacts(run_id)
 
         # SIP-0077: gate.decided

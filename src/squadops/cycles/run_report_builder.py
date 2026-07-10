@@ -10,9 +10,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from squadops.cycles.models import RunStatus
+from squadops.cycles.pulse_models import PulseDecision
+
 if TYPE_CHECKING:
     from squadops.cycles.verification_integrity import RunVerificationSummary
     from squadops.tasks.models import TaskEnvelope
+
+# terminal_status flows through the report pipeline as an UPPERCASE bare string
+# (an untyped shadow of RunStatus — full unification tracked in #377). Source the
+# compared values from the enum so it stays the single source of truth, and
+# compare case-insensitively so a lowercase RunStatus value can't silently miss.
+_COMPLETED = RunStatus.COMPLETED.value.upper()
+_FAILED = RunStatus.FAILED.value.upper()
+_CANCELLED = RunStatus.CANCELLED.value.upper()
 
 
 def _build_report_metadata_lines(
@@ -46,11 +57,12 @@ def _build_report_metadata_lines(
 def _build_report_quality_lines(terminal_status: str) -> list[str]:
     """Build the quality notes section for the run report."""
     lines = ["", "## Quality Notes"]
-    if terminal_status == "COMPLETED":
+    status = (terminal_status or "").upper()
+    if status == _COMPLETED:
         lines.append("All tasks completed successfully.")
-    elif terminal_status == "FAILED":
+    elif status == _FAILED:
         lines.append("One or more tasks failed. Check task artifacts for details.")
-    elif terminal_status == "CANCELLED":
+    elif status == _CANCELLED:
         lines.append("Run was cancelled before completion.")
     else:
         lines.append(f"Terminal status: {terminal_status}")
@@ -63,9 +75,11 @@ def _build_pulse_report_lines(pulse_report_entries: list[dict[str, Any]]) -> lis
     lines: list[str] = []
     lines.append("")
     lines.append("## Pulse Verification")
-    pass_count = sum(1 for e in pulse_report_entries if e["decision"] == "pass")
-    fail_count = sum(1 for e in pulse_report_entries if e["decision"] == "fail")
-    exhausted_count = sum(1 for e in pulse_report_entries if e["decision"] == "exhausted")
+    pass_count = sum(1 for e in pulse_report_entries if e["decision"] == PulseDecision.PASS.value)
+    fail_count = sum(1 for e in pulse_report_entries if e["decision"] == PulseDecision.FAIL.value)
+    exhausted_count = sum(
+        1 for e in pulse_report_entries if e["decision"] == PulseDecision.EXHAUSTED.value
+    )
     total = len(pulse_report_entries)
     lines.append(
         f"Total boundary checks: {total} "
