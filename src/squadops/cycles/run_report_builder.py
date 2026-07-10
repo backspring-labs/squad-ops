@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.models import RunStatus
+from squadops.cycles.pulse_models import PulseDecision
 from squadops.cycles.verification_integrity import RunVerdict
 
 if TYPE_CHECKING:
@@ -18,9 +19,9 @@ if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope
 
 # terminal_status flows through the report pipeline as an UPPERCASE bare string
-# (an untyped shadow of RunStatus — see #377 to unify). Source the compared values
-# from the RunStatus enum so this stays the single source of truth, and compare
-# case-insensitively so a lowercase RunStatus value can't silently miss.
+# (an untyped shadow of RunStatus — full unification tracked in #377). Source the
+# compared values from the enum so it stays the single source of truth, and
+# compare case-insensitively so a lowercase RunStatus value can't silently miss.
 _COMPLETED = RunStatus.COMPLETED.value.upper()
 _FAILED = RunStatus.FAILED.value.upper()
 _CANCELLED = RunStatus.CANCELLED.value.upper()
@@ -95,9 +96,11 @@ def _build_pulse_report_lines(pulse_report_entries: list[dict[str, Any]]) -> lis
     lines: list[str] = []
     lines.append("")
     lines.append("## Pulse Verification")
-    pass_count = sum(1 for e in pulse_report_entries if e["decision"] == "pass")
-    fail_count = sum(1 for e in pulse_report_entries if e["decision"] == "fail")
-    exhausted_count = sum(1 for e in pulse_report_entries if e["decision"] == "exhausted")
+    pass_count = sum(1 for e in pulse_report_entries if e["decision"] == PulseDecision.PASS.value)
+    fail_count = sum(1 for e in pulse_report_entries if e["decision"] == PulseDecision.FAIL.value)
+    exhausted_count = sum(
+        1 for e in pulse_report_entries if e["decision"] == PulseDecision.EXHAUSTED.value
+    )
     total = len(pulse_report_entries)
     lines.append(
         f"Total boundary checks: {total} "
