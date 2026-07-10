@@ -40,6 +40,7 @@ from squadops.cycles.naming import flow_run_name
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan
+from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.runtime.admission import admit_participants, release_participants
@@ -958,6 +959,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 handle_task_outcome=_route_outcome,
             )
 
+            # SIP-0096 §6.4 (Phase 2): record this task's verification evidence into
+            # the run ledger for the end-of-run aggregation choke point. Runs for
+            # every completed task — success AND corrected-failure — so failed/stub
+            # evidence is never dropped. Best-effort: a normalizer defect must never
+            # break task execution (the report path has the same guard).
+            if result is not None and result.outputs:
+                try:
+                    for check_result in normalize_task_checks(result.outputs):
+                        ledger.record_check_result(check_result)
+                except Exception:
+                    logger.warning("Verification-evidence recording failed", exc_info=True)
+
             if not task_succeeded:
                 # SIP-0079: correction completed with continue/patch outcome.
                 # Original flow: consecutive_failures was incremented before
@@ -1515,6 +1528,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
+        # SIP-0096 Phase 2 slice-1 gap: this fan-out path does NOT yet record
+        # verification evidence to the run ledger (the sequential path does, at the
+        # dispatch-with-retry seam). Harmless while the throttle is off (no shipped
+        # profile declares required_checks) — a FAN_OUT_FAN_IN cycle simply records
+        # zero evidence, same as pre-Phase-2. MUST be wired before slice 4 turns the
+        # throttle on, or a required check would falsely block here. Tracked in #375.
         all_artifact_refs: list[str] = []
         for i, result in enumerate(results):
             task_context = {
