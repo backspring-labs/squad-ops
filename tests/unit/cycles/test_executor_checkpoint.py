@@ -710,3 +710,35 @@ class TestVerificationEvidenceRecording:
         assert "## Verification Integrity" in report
         assert "Failed: tests_pass" in report
         assert "Executed: 1 " in report
+
+    async def test_break_correction_records_failure_and_blocks_false_green(
+        self, executor, mock_registry, mock_queue, mock_vault
+    ) -> None:
+        """The #376 leak: after a `patch` correction the executor advances
+        (break_correction) with the ORIGINAL failed result. That failed evidence
+        must still be recorded, and a COMPLETED run whose verdict is rejected must
+        NOT print 'All tasks completed successfully' (§6.6.4 narrative override)."""
+        failed = TaskResult(
+            task_id="t",
+            status="FAILED",
+            error="build failed",
+            outputs={"test_result": {"executed": True, "exit_code": 1, "tests_passed": False}},
+        )
+        with (
+            patch.object(
+                executor._task_dispatcher,
+                "dispatch_with_retry",
+                new_callable=AsyncMock,
+                return_value=(False, failed),
+            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        # Every task advanced on break_correction → run COMPLETED...
+        assert mock_registry.update_run_status.call_args_list[-1].args[1] == RunStatus.COMPLETED
+        report = self._run_report(mock_vault)
+        # ...but the failed evidence was recorded and the narrative is honest.
+        assert "Failed: tests_pass" in report
+        assert "REJECTED" in report
+        assert "All tasks completed successfully." not in report

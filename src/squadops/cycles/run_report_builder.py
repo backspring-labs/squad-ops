@@ -10,9 +10,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from squadops.cycles.models import RunStatus
+from squadops.cycles.verification_integrity import RunVerdict
+
 if TYPE_CHECKING:
     from squadops.cycles.verification_integrity import RunVerificationSummary
     from squadops.tasks.models import TaskEnvelope
+
+# terminal_status flows through the report pipeline as an UPPERCASE bare string
+# (an untyped shadow of RunStatus — see #377 to unify). Source the compared values
+# from the RunStatus enum so this stays the single source of truth, and compare
+# case-insensitively so a lowercase RunStatus value can't silently miss.
+_COMPLETED = RunStatus.COMPLETED.value.upper()
+_FAILED = RunStatus.FAILED.value.upper()
+_CANCELLED = RunStatus.CANCELLED.value.upper()
 
 
 def _build_report_metadata_lines(
@@ -43,14 +54,35 @@ def _build_report_metadata_lines(
     return lines
 
 
-def _build_report_quality_lines(terminal_status: str) -> list[str]:
-    """Build the quality notes section for the run report."""
+def _build_report_quality_lines(
+    terminal_status: str, verification_summary: RunVerificationSummary | None = None
+) -> list[str]:
+    """Build the quality notes section for the run report.
+
+    SIP-0096 §6.6(4), narrative-override prohibition: the narrative must not
+    claim success when the structured verification verdict is ``rejected`` or
+    ``blocked_unverified``. A run can reach COMPLETED with failed/unverified
+    evidence — the verdict is deliberately not a ``RunStatus`` (§6.5) — so when
+    it does, this note reflects the verdict instead of asserting all-clear.
+    """
     lines = ["", "## Quality Notes"]
-    if terminal_status == "COMPLETED":
+    status = (terminal_status or "").upper()
+    verdict = verification_summary.verdict if verification_summary else None
+    if status == _COMPLETED and verdict == RunVerdict.REJECTED:
+        lines.append(
+            "Tasks completed, but verification **REJECTED** — one or more executed "
+            "checks failed. See Verification Integrity."
+        )
+    elif status == _COMPLETED and verdict == RunVerdict.BLOCKED_UNVERIFIED:
+        lines.append(
+            "Tasks completed, but verification **BLOCKED_UNVERIFIED** — a required "
+            "check did not execute. See Verification Integrity."
+        )
+    elif status == _COMPLETED:
         lines.append("All tasks completed successfully.")
-    elif terminal_status == "FAILED":
+    elif status == _FAILED:
         lines.append("One or more tasks failed. Check task artifacts for details.")
-    elif terminal_status == "CANCELLED":
+    elif status == _CANCELLED:
         lines.append("Run was cancelled before completion.")
     else:
         lines.append(f"Terminal status: {terminal_status}")
@@ -165,6 +197,6 @@ def build_run_report(
         lines.extend(_build_verification_lines(verification_summary))
 
     # Quality notes
-    lines.extend(_build_report_quality_lines(terminal_status))
+    lines.extend(_build_report_quality_lines(terminal_status, verification_summary))
 
     return "\n".join(lines)
