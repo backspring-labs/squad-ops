@@ -678,3 +678,35 @@ class TestVerificationEvidenceRecording:
         assert "### Unverified (not executed)" in report
         assert "tests_pass" in report
         assert "Executed: 0 " in report  # not-executed excluded from the executed count
+
+    async def test_aborted_task_evidence_survives_the_abort(
+        self, executor, mock_registry, mock_queue, mock_vault
+    ) -> None:
+        """A task that fails and aborts the run must still record its verification
+        evidence. The abort path raises from inside dispatch_with_retry (before the
+        normal recording line), so this is the #276-class failing evidence that
+        would otherwise vanish — a failed run must read as honest red, not '0
+        verified'."""
+
+        def responder(env):
+            return TaskResult(
+                task_id=env["task_id"],
+                status="FAILED",
+                error="tests broke",
+                outputs={"test_result": {"executed": True, "exit_code": 1, "tests_passed": False}},
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        # Run failed, but the failing task's evidence reached the roll-up.
+        status_calls = mock_registry.update_run_status.call_args_list
+        assert status_calls[-1].args[1] == RunStatus.FAILED
+        report = self._run_report(mock_vault)
+        assert "## Verification Integrity" in report
+        assert "Failed: tests_pass" in report
+        assert "Executed: 1 " in report
