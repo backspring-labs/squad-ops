@@ -34,6 +34,10 @@ from adapters.cycles.execution_errors import (
 )
 from squadops.cycles.models import ArtifactRef, RunStatus
 from squadops.cycles.run_report_builder import build_run_report
+from squadops.cycles.verification_integrity import (
+    RunVerificationSummary,
+    aggregate_verification,
+)
 from squadops.events.types import EventType
 
 if TYPE_CHECKING:
@@ -179,6 +183,15 @@ class RunCompletion:
             except Exception:
                 logger.warning("Prefect terminal state update failed", exc_info=True)
 
+        # SIP-0096 §6.4: the pure verification-integrity choke point. finalize is
+        # the single site that sees the run's RunLedger at run end; run the
+        # aggregation over every recorded check result against the profile's
+        # declared required set. Phase 1 is inert — no producer records results
+        # and no shipped profile declares required_checks — so this computes
+        # `accepted` with zero recorded evidence and discloses it in the report.
+        # Phase 2 wires the producers and per-profile required lists (the throttle).
+        summary = self._aggregate_verification(cycle, ledger)
+
         # Run report: best-effort (D10)
         try:
             if cycle_id and run_id:
@@ -189,9 +202,38 @@ class RunCompletion:
                     cycle=cycle,
                     plan=plan,
                     ledger=ledger,
+                    verification_summary=summary,
                 )
         except Exception:
             logger.warning("Run report generation failed", exc_info=True)
+
+    @staticmethod
+    def _aggregate_verification(
+        cycle: Cycle | None, ledger: RunLedger | None
+    ) -> RunVerificationSummary:
+        """Run the SIP-0096 aggregation over the ledger against the cycle's required set.
+
+        Requiredness comes only from the cycle's ``applied_defaults['required_checks']``
+        (an explicit profile declaration, §6.3 / AC#5) — never inferred. Both the
+        results and the required list default to empty, so a pre-SIP-0096 cycle or
+        a Phase-1 (throttle-off) cycle aggregates to an honest `accepted`.
+        """
+        required_check_ids: tuple[str, ...] = ()
+        if cycle is not None:
+            declared = cycle.applied_defaults.get("required_checks")
+            if declared:
+                required_check_ids = tuple(declared)
+        results = ledger.check_results if ledger else ()
+        summary = aggregate_verification(results, required_check_ids)
+        logger.info(
+            "Verification integrity: verdict=%s executed=%d passed=%d unverified=%d required_unmet=%d",
+            summary.verdict.value,
+            summary.executed_count,
+            summary.passed_count,
+            len(summary.unverified),
+            len(summary.required_unmet),
+        )
+        return summary
 
     async def generate_run_report(
         self,
@@ -201,6 +243,7 @@ class RunCompletion:
         cycle: Cycle | None = None,
         plan: list[TaskEnvelope] | None = None,
         ledger: RunLedger | None = None,
+        verification_summary: RunVerificationSummary | None = None,
     ) -> None:
         """Generate run_report.md and store as a documentation artifact (D10).
 
@@ -218,6 +261,7 @@ class RunCompletion:
             cycle=cycle,
             plan=plan,
             pulse_report_entries=list(ledger.pulse_entries) if ledger else None,
+            verification_summary=verification_summary,
         )
         content_bytes = content.encode("utf-8")
 

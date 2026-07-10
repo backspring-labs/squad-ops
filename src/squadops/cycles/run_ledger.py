@@ -17,16 +17,20 @@ persistence stays with the existing registry/report paths.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from squadops.cycles.verification_integrity import CheckResult
 
 
 class RunLedger:
     """Append-only per-run evidence ledger with immutable read accessors."""
 
-    __slots__ = ("_pulse_entries",)
+    __slots__ = ("_pulse_entries", "_check_results")
 
     def __init__(self) -> None:
         self._pulse_entries: list[dict[str, Any]] = []
+        self._check_results: list[CheckResult] = []
 
     def record_pulse_boundary(self, entry: dict[str, Any]) -> None:
         """Record one pulse boundary-decision summary (append-only)."""
@@ -36,3 +40,18 @@ class RunLedger:
     def pulse_entries(self) -> tuple[dict[str, Any], ...]:
         """Immutable view of the accumulated pulse boundary summaries."""
         return tuple(self._pulse_entries)
+
+    def record_check_result(self, result: CheckResult) -> None:
+        """Record one normalized verification result (SIP-0096 §6.4, append-only).
+
+        The aggregation target consumed by ``aggregate_verification`` at the
+        ``RunCompletion`` seam. Phase 1 leaves this empty (no producer wiring);
+        Phase 2 has each verification producer normalize its result into a
+        ``CheckResult`` and append it here.
+        """
+        self._check_results.append(result)
+
+    @property
+    def check_results(self) -> tuple[CheckResult, ...]:
+        """Immutable view of the accumulated verification results (SIP-0096)."""
+        return tuple(self._check_results)

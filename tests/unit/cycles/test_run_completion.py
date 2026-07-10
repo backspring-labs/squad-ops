@@ -441,3 +441,91 @@ class TestRunLedger:
         assert "Pulse Verification" in content
         assert "post_qa" in content
         assert "smoke_suite=pass" in content
+
+    def test_check_results_accumulate_in_order(self):
+        """SIP-0096: producers append normalized CheckResults; the aggregation
+        seam reads them back in order."""
+        from squadops.cycles.run_ledger import RunLedger
+        from squadops.cycles.verification_integrity import CheckResult
+
+        ledger = RunLedger()
+        assert ledger.check_results == ()  # empty before any producer writes (Phase 1 inert)
+        ledger.record_check_result(CheckResult(check_id="a", status="passed"))
+        ledger.record_check_result(CheckResult(check_id="b", status="failed"))
+        assert [r.check_id for r in ledger.check_results] == ["a", "b"]
+
+    def test_check_results_accessor_is_immutable_view(self):
+        from squadops.cycles.run_ledger import RunLedger
+        from squadops.cycles.verification_integrity import CheckResult
+
+        ledger = RunLedger()
+        ledger.record_check_result(CheckResult(check_id="a", status="passed"))
+        view = ledger.check_results
+        with pytest.raises((TypeError, AttributeError)):
+            view.append(CheckResult(check_id="rogue", status="passed"))  # type: ignore[attr-defined]
+        assert len(ledger.check_results) == 1
+
+
+# ---------------------------------------------------------------------------
+# SIP-0096 verification-integrity wiring (Phase 1 choke point at finalize)
+# ---------------------------------------------------------------------------
+
+
+class TestVerificationIntegrityWiring:
+    def _completion(self):
+        from adapters.cycles.run_completion import RunCompletion
+
+        vault = AsyncMock()
+        vault.store = AsyncMock(side_effect=lambda ref, content: ref)
+        registry = AsyncMock()
+        registry.get_run = AsyncMock(return_value=_make_run())
+        return RunCompletion(cycle_registry=registry, artifact_vault=vault), vault
+
+    async def test_finalize_discloses_verdict_inert_by_default(self):
+        """A default cycle (no required_checks, no recorded results) finalizes to an
+        honest `accepted` and the report carries the verification section — the seam
+        is live even though Phase 1 records nothing."""
+        completion, vault = self._completion()
+        from squadops.cycles.run_ledger import RunLedger
+
+        await completion.finalize(
+            "cyc_001", "run_001", "COMPLETED", None, None, cycle=_make_cycle(), ledger=RunLedger()
+        )
+        content = vault.store.call_args[0][1].decode()
+        assert "Verification Integrity" in content
+        assert "accepted" in content
+
+    async def test_finalize_required_check_with_no_result_blocks(self):
+        """A profile-declared required check that produced no result drives
+        blocked_unverified through the real finalize→aggregate→report path (AC#2)."""
+        from dataclasses import replace
+
+        from squadops.cycles.run_ledger import RunLedger
+
+        completion, vault = self._completion()
+        cycle = replace(_make_cycle(), applied_defaults={"required_checks": ["required_files"]})
+
+        await completion.finalize(
+            "cyc_001", "run_001", "COMPLETED", None, None, cycle=cycle, ledger=RunLedger()
+        )
+        content = vault.store.call_args[0][1].decode()
+        assert "blocked_unverified" in content
+        assert "required_files" in content
+        assert "harness/evidence problem" in content  # framed as harness, not product failure
+
+    async def test_finalize_reflects_recorded_failure(self):
+        """A recorded executed-failed result reaches the verdict (rejected) end-to-end,
+        proving the ledger→aggregation→report wiring carries real evidence (Phase 2 shape)."""
+        from squadops.cycles.run_ledger import RunLedger
+        from squadops.cycles.verification_integrity import CheckResult
+
+        completion, vault = self._completion()
+        ledger = RunLedger()
+        ledger.record_check_result(CheckResult(check_id="tests_pass", status="failed"))
+
+        await completion.finalize(
+            "cyc_001", "run_001", "COMPLETED", None, None, cycle=_make_cycle(), ledger=ledger
+        )
+        content = vault.store.call_args[0][1].decode()
+        assert "rejected" in content
+        assert "tests_pass" in content

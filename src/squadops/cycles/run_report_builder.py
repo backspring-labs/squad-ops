@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from squadops.cycles.verification_integrity import RunVerificationSummary
     from squadops.tasks.models import TaskEnvelope
 
 
@@ -84,6 +85,37 @@ def _build_pulse_report_lines(pulse_report_entries: list[dict[str, Any]]) -> lis
     return lines
 
 
+def _build_verification_lines(summary: RunVerificationSummary) -> list[str]:
+    """Build the SIP-0096 verification-integrity section (honest evidence disclosure).
+
+    Surfaces the run verdict, executed pass-rate, and — critically — every
+    not-executed result, so silence is never presented as green (§6.6.3). In
+    Phase 1 this is inert (no producers wired) and typically shows zero recorded
+    checks; it becomes load-bearing as Phase 2 wires producers.
+    """
+    lines = ["", "## Verification Integrity"]
+    lines.append(f"Verdict: **{summary.verdict.value}**")
+    lines.append(
+        f"Executed: {summary.executed_count} "
+        f"(passed {summary.passed_count}, pass-rate {summary.pass_rate:.0%})"
+    )
+    if summary.failed:
+        lines.append(f"Failed: {', '.join(summary.failed)}")
+    if summary.unverified:
+        lines.append("")
+        lines.append("### Unverified (not executed)")
+        for u in summary.unverified:
+            tag = " [required]" if u.required else ""
+            lines.append(f"- **{u.check_id}**: {u.reason}{tag}")
+    if summary.required_unmet:
+        lines.append("")
+        lines.append(
+            f"⚠️ {len(summary.required_unmet)} required check(s) unverified — "
+            "this is a harness/evidence problem, not a product failure."
+        )
+    return lines
+
+
 def build_run_report(
     cycle_id: str,
     run_id: str,
@@ -92,6 +124,7 @@ def build_run_report(
     cycle: Any = None,
     plan: list[TaskEnvelope] | None = None,
     pulse_report_entries: list[dict[str, Any]] | None = None,
+    verification_summary: RunVerificationSummary | None = None,
 ) -> str:
     """Assemble the full run_report.md markdown content (D10)."""
     lines = _build_report_metadata_lines(cycle_id, run_id, run, terminal_status, cycle)
@@ -126,6 +159,10 @@ def build_run_report(
     # Pulse verification summary
     if pulse_report_entries:
         lines.extend(_build_pulse_report_lines(pulse_report_entries))
+
+    # SIP-0096 verification-integrity roll-up
+    if verification_summary is not None:
+        lines.extend(_build_verification_lines(verification_summary))
 
     # Quality notes
     lines.extend(_build_report_quality_lines(terminal_status))
