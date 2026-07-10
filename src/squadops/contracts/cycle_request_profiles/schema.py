@@ -50,12 +50,41 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     # via resolved_config. Valid roles: development, qa, strategy (build reserved
     # for Rev 2). Without this entry no request profile can turn the path on.
     "plan_authoring_contributors",
+    # SIP-0096 §6.3: explicit list of stable check-ids this profile REQUIRES.
+    # A required check classified not-executed at run end blocks acceptance as
+    # blocked_unverified. Requiredness is declared here, never inferred from
+    # names/types/history (AC#5). Absent/empty → nothing required (Phase 1 ships
+    # no required lists; the per-profile list is the Phase 2 throttle).
+    "required_checks",
 }
 
 _ALL_ALLOWED_KEYS = _ALLOWED_DEFAULT_KEYS | _APPLIED_DEFAULTS_EXTRA_KEYS
 
 # SIP-0076 D11/D18: valid gate name prefixes for workload_sequence entries.
 _VALID_GATE_PREFIXES = ("progress_", "promote_")
+
+
+def _validate_required_checks(defaults: dict) -> None:
+    """Validate the SIP-0096 ``required_checks`` declaration shape at load time.
+
+    Must be a list of non-empty, non-duplicate check-id strings. Fail loud on a
+    malformed declaration rather than let a mis-shaped required list silently
+    mis-aggregate at run end (the "no fallback that masks" rule).
+    """
+    checks = defaults.get("required_checks")
+    if checks is None:
+        return
+    if not isinstance(checks, list):
+        raise ValueError(
+            f"required_checks must be a list of check-id strings, got {type(checks).__name__}"
+        )
+    seen: set[str] = set()
+    for entry in checks:
+        if not isinstance(entry, str) or not entry.strip():
+            raise ValueError(f"required_checks entries must be non-empty strings, got {entry!r}")
+        if entry in seen:
+            raise ValueError(f"required_checks contains duplicate check-id {entry!r}")
+        seen.add(entry)
 
 
 def _validate_workload_sequence_gates(defaults: dict) -> None:
@@ -107,4 +136,6 @@ class CycleRequestProfile(BaseModel):
             raise ValueError(f"Unknown default keys: {unknown}")
         # SIP-0076 D11/D18: validate gate names in workload_sequence
         _validate_workload_sequence_gates(v)
+        # SIP-0096 §6.3: validate the required_checks declaration shape
+        _validate_required_checks(v)
         return v
