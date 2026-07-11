@@ -1,6 +1,6 @@
 """Data capability handler.
 
-Orchestrates data-related skills (data analysis, metrics collection)
+Orchestrates data-related skills (metrics collection)
 to fulfill data capability contracts.
 
 Part of SIP-0.8.8 Phase 5.
@@ -19,124 +19,6 @@ from squadops.capabilities.handlers.base import (
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
-
-
-class DataAnalysisHandler(CapabilityHandler):
-    """Handler for data analysis capability.
-
-    Orchestrates data_analysis skill to analyze data
-    and produce insights.
-    """
-
-    @property
-    def name(self) -> str:
-        return "data_analysis_handler"
-
-    @property
-    def capability_id(self) -> str:
-        return "data.analysis"
-
-    @property
-    def description(self) -> str:
-        return "Analyze data and produce insights"
-
-    @property
-    def required_skills(self) -> tuple[str, ...]:
-        return ("data_analysis",)
-
-    def validate_inputs(
-        self,
-        inputs: dict[str, Any],
-        contract=None,
-    ) -> list[str]:
-        errors = super().validate_inputs(inputs, contract)
-
-        if "data" not in inputs:
-            errors.append("'data' is required")
-
-        return errors
-
-    async def handle(
-        self,
-        context: ExecutionContext,
-        inputs: dict[str, Any],
-    ) -> HandlerResult:
-        """Analyze data using data_analysis skill.
-
-        Args:
-            context: ExecutionContext with skill access
-            inputs: Must contain 'data', optionally 'analysis_type'
-
-        Returns:
-            HandlerResult with analysis results
-        """
-        start_time = time.perf_counter()
-
-        try:
-            skill_inputs = {"data": inputs["data"]}
-            if "analysis_type" in inputs:
-                skill_inputs["analysis_type"] = inputs["analysis_type"]
-
-            result = await context.execute_skill("data_analysis", skill_inputs)
-
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            if not result.success:
-                evidence = HandlerEvidence.create(
-                    handler_name=self.name,
-                    capability_id=self.capability_id,
-                    duration_ms=duration_ms,
-                    skill_executions=context.get_skill_executions(),
-                    inputs_hash=self._hash_dict({"data_type": type(inputs["data"]).__name__}),
-                    outputs_hash=self._hash_dict({"error": result.error}),
-                    metadata={"error": True},
-                )
-                return HandlerResult(
-                    success=False,
-                    outputs={},
-                    _evidence=evidence,
-                    error=result.error,
-                )
-
-            outputs = {
-                "statistics": result.outputs.get("statistics", {}),
-                "summary": result.outputs.get("summary", ""),
-                "insights": result.outputs.get("insights", []),
-                "recommendations": result.outputs.get("recommendations", []),
-            }
-
-            evidence = HandlerEvidence.create(
-                handler_name=self.name,
-                capability_id=self.capability_id,
-                duration_ms=duration_ms,
-                skill_executions=context.get_skill_executions(),
-                inputs_hash=self._hash_dict({"data_type": type(inputs["data"]).__name__}),
-                outputs_hash=self._hash_dict({"has_statistics": bool(outputs["statistics"])}),
-            )
-
-            return HandlerResult(
-                success=True,
-                outputs=outputs,
-                _evidence=evidence,
-            )
-
-        except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self.name,
-                capability_id=self.capability_id,
-                duration_ms=duration_ms,
-                skill_executions=context.get_skill_executions(),
-                inputs_hash=self._hash_dict(inputs),
-                outputs_hash=self._hash_dict({"error": str(e)}),
-                metadata={"error": True},
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(e),
-            )
 
 
 class MetricsCollectionHandler(CapabilityHandler):

@@ -4,7 +4,6 @@ Tests skills WITHOUT agents - direct SkillContext mocking.
 Part of SIP-0.8.8 Phase 4.
 """
 
-import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,14 +12,12 @@ from squadops.agents.base import PortsBundle
 from squadops.agents.skills.context import SkillContext
 
 # Data skills
-from squadops.agents.skills.data.data_analysis import DataAnalysisSkill
 from squadops.agents.skills.data.metrics_collection import MetricsCollectionSkill
 
 # Dev skills
 from squadops.agents.skills.dev.code_generation import CodeGenerationSkill
 
 # Lead skills
-from squadops.agents.skills.lead.task_analysis import TaskAnalysisSkill
 from squadops.agents.skills.lead.task_delegation import TaskDelegationSkill
 
 # QA skills
@@ -28,7 +25,6 @@ from squadops.agents.skills.qa.test_execution import TestExecutionSkill
 from squadops.agents.skills.qa.validation import ValidationSkill
 
 # Strat skills
-from squadops.agents.skills.strat.strategy_analysis import StrategyAnalysisSkill
 
 
 @pytest.fixture
@@ -63,57 +59,6 @@ def skill_context(mock_ports):
         cycle_id="cycle-1",
         ports=mock_ports,
     )
-
-
-class TestTaskAnalysisSkill:
-    """Tests for TaskAnalysisSkill."""
-
-    def test_validate_inputs_missing_description(self):
-        """Validation should fail without description."""
-        skill = TaskAnalysisSkill()
-        errors = skill.validate_inputs({})
-        assert "'description' is required" in errors
-
-    @pytest.mark.asyncio
-    async def test_execute_success(self, skill_context, mock_ports):
-        """Skill should analyze task successfully."""
-        mock_ports.llm.chat.return_value = MagicMock(
-            content=json.dumps(
-                {
-                    "summary": "Create a REST API",
-                    "requirements": ["FastAPI", "Database"],
-                    "approach": "Build incrementally",
-                    "complexity": "medium",
-                    "risks": ["API changes"],
-                }
-            )
-        )
-
-        skill = TaskAnalysisSkill()
-        result = await skill.execute(
-            skill_context,
-            {"description": "Build a REST API"},
-        )
-
-        assert result.success is True
-        assert result.outputs["complexity"] == "medium"
-        assert "summary" in result.outputs
-
-    @pytest.mark.asyncio
-    async def test_execute_handles_non_json_response(self, skill_context, mock_ports):
-        """Skill should handle non-JSON LLM responses."""
-        mock_ports.llm.chat.return_value = MagicMock(
-            content="This is a plain text analysis of the task..."
-        )
-
-        skill = TaskAnalysisSkill()
-        result = await skill.execute(
-            skill_context,
-            {"description": "Build something"},
-        )
-
-        assert result.success is True
-        assert "summary" in result.outputs
 
 
 class TestTaskDelegationSkill:
@@ -265,100 +210,6 @@ class TestValidationSkill:
 
         assert result.outputs["valid"] is False
         assert any("Invalid JSON" in e for e in result.outputs["errors"])
-
-
-class TestStrategyAnalysisSkill:
-    """Tests for StrategyAnalysisSkill."""
-
-    def test_validate_inputs_missing_goals(self):
-        """Validation should fail without goals."""
-        skill = StrategyAnalysisSkill()
-        errors = skill.validate_inputs({"context": "test"})
-        assert "'goals' is required" in errors
-
-    @pytest.mark.asyncio
-    async def test_execute_analyzes_strategy(self, skill_context, mock_ports):
-        """Skill should analyze strategy."""
-        mock_ports.llm.chat.return_value = MagicMock(
-            content=json.dumps(
-                {
-                    "assessment": "Current state is stable",
-                    "options": [{"name": "Option A"}],
-                    "recommendation": "Go with A",
-                    "risks": [],
-                    "metrics": ["conversion rate"],
-                }
-            )
-        )
-
-        skill = StrategyAnalysisSkill()
-        result = await skill.execute(
-            skill_context,
-            {
-                "context": "Market analysis",
-                "goals": ["Increase revenue"],
-            },
-        )
-
-        assert result.success is True
-        assert "assessment" in result.outputs
-        assert "options" in result.outputs
-
-
-class TestDataAnalysisSkill:
-    """Tests for DataAnalysisSkill."""
-
-    def test_validate_inputs_missing_data(self):
-        """Validation should fail without data."""
-        skill = DataAnalysisSkill()
-        errors = skill.validate_inputs({})
-        assert "'data' is required" in errors
-
-    @pytest.mark.asyncio
-    async def test_execute_analyzes_list_data(self, skill_context, mock_ports):
-        """Skill should analyze list data."""
-        mock_ports.llm.chat.return_value = MagicMock(
-            content=json.dumps(
-                {
-                    "summary": "Numeric data",
-                    "insights": ["Mean is 3"],
-                    "recommendations": [],
-                }
-            )
-        )
-
-        skill = DataAnalysisSkill()
-        result = await skill.execute(
-            skill_context,
-            {"data": [1, 2, 3, 4, 5]},
-        )
-
-        assert result.success is True
-        assert "statistics" in result.outputs
-        assert result.outputs["statistics"]["count"] == 5
-        assert result.outputs["statistics"]["mean"] == 3.0
-
-    @pytest.mark.asyncio
-    async def test_execute_analyzes_dict_data(self, skill_context, mock_ports):
-        """Skill should analyze dict data."""
-        mock_ports.llm.chat.return_value = MagicMock(
-            content=json.dumps(
-                {
-                    "summary": "Key-value data",
-                    "insights": [],
-                    "recommendations": [],
-                }
-            )
-        )
-
-        skill = DataAnalysisSkill()
-        result = await skill.execute(
-            skill_context,
-            {"data": {"a": 1, "b": 2}},
-        )
-
-        assert result.success is True
-        assert result.outputs["statistics"]["key_count"] == 2
 
 
 class TestMetricsCollectionSkill:

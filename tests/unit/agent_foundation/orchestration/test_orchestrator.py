@@ -69,7 +69,7 @@ def handler_registry():
     """Create handler registry with test handlers."""
     registry = HandlerRegistry()
     registry.register(
-        MockHandler("governance.task_analysis", {"summary": "test"}),
+        MockHandler("governance.task_delegation", {"summary": "test"}),
         roles=("lead",),
     )
     registry.register(
@@ -119,12 +119,12 @@ class TestTaskRouting:
 
     def test_route_governance_task(self, orchestrator):
         """Should route governance tasks to lead."""
-        envelope = create_envelope("governance.task_analysis")
+        envelope = create_envelope("governance.task_delegation")
 
         routing = orchestrator.route_task(envelope)
 
         assert routing.target_role == "lead"
-        assert routing.capability_id == "governance.task_analysis"
+        assert routing.capability_id == "governance.task_delegation"
 
     def test_route_development_task(self, orchestrator):
         """Should route development tasks to dev."""
@@ -158,7 +158,7 @@ class TestTaskSubmission:
     @pytest.mark.asyncio
     async def test_submit_task_success(self, orchestrator):
         """Should execute task successfully."""
-        envelope = create_envelope("governance.task_analysis")
+        envelope = create_envelope("governance.task_delegation")
 
         result = await orchestrator.submit_task(envelope)
 
@@ -179,7 +179,7 @@ class TestTaskSubmission:
     async def test_submit_batch(self, orchestrator):
         """Should execute batch of tasks."""
         envelopes = [
-            create_envelope("governance.task_analysis"),
+            create_envelope("governance.task_delegation"),
             create_envelope("development.code_generation"),
         ]
 
@@ -194,7 +194,7 @@ class TestTaskSubmission:
         """Should skip remaining on failure."""
         envelopes = [
             create_envelope("nonexistent.capability"),  # Will fail
-            create_envelope("governance.task_analysis"),  # Should be skipped
+            create_envelope("governance.task_delegation"),  # Should be skipped
         ]
 
         results = await orchestrator.submit_batch(envelopes)
@@ -210,7 +210,7 @@ class TestTaskSubmission:
         assert orchestrator.get_active_tasks() == []
 
         # After submission (synchronous check not possible, just verify method)
-        envelope = create_envelope("governance.task_analysis")
+        envelope = create_envelope("governance.task_delegation")
         await orchestrator.submit_task(envelope)
 
         # After completion
@@ -225,7 +225,7 @@ class TestOrchestratorCapabilities:
         caps = orchestrator.get_available_capabilities()
 
         assert len(caps) == 3
-        assert "governance.task_analysis" in caps
+        assert "governance.task_delegation" in caps
         assert "development.code_generation" in caps
         assert "qa.validation" in caps
 
@@ -234,9 +234,9 @@ class TestOrchestratorCapabilities:
         lead_caps = orchestrator.get_available_capabilities(role="lead")
         dev_caps = orchestrator.get_available_capabilities(role="dev")
 
-        assert "governance.task_analysis" in lead_caps
+        assert "governance.task_delegation" in lead_caps
         assert "development.code_generation" in dev_caps
-        assert "governance.task_analysis" not in dev_caps
+        assert "governance.task_delegation" not in dev_caps
 
 
 class TestHealthCheck:
@@ -297,7 +297,7 @@ class TestOrchestratorCallSiteBoundary:
             ports=mock_ports,
             llm_observability=mock_obs,
         )
-        envelopes = [create_envelope("governance.task_analysis")]
+        envelopes = [create_envelope("governance.task_delegation")]
         await orchestrator.submit_batch(envelopes)
 
         mock_obs.record_generation.assert_not_called()

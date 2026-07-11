@@ -13,7 +13,6 @@ from squadops.agents.skills.base import ExecutionEvidence, Skill, SkillResult
 from squadops.agents.skills.registry import SkillRegistry
 from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.capabilities.handlers.data import (
-    DataAnalysisHandler,
     MetricsCollectionHandler,
 )
 from squadops.capabilities.handlers.development import (
@@ -21,7 +20,6 @@ from squadops.capabilities.handlers.development import (
     CodeGenerationHandler,
 )
 from squadops.capabilities.handlers.governance import (
-    TaskAnalysisHandler,
     TaskDelegationHandler,
 )
 from squadops.capabilities.handlers.qa import (
@@ -122,61 +120,6 @@ def create_context(mock_ports, skills: list[Skill]) -> ExecutionContext:
 # =============================================================================
 # Governance Handler Tests
 # =============================================================================
-
-
-class TestTaskAnalysisHandler:
-    """Tests for TaskAnalysisHandler."""
-
-    def test_required_skills(self):
-        """Handler should declare required skills."""
-        handler = TaskAnalysisHandler()
-        assert "task_analysis" in handler.required_skills
-
-    def test_validate_inputs_missing_description(self):
-        """Should fail without description."""
-        handler = TaskAnalysisHandler()
-        errors = handler.validate_inputs({})
-        assert "'description' is required" in errors
-
-    def test_validate_inputs_empty_description(self):
-        """Should fail with empty description."""
-        handler = TaskAnalysisHandler()
-        errors = handler.validate_inputs({"description": "  "})
-        assert "'description' cannot be empty" in errors
-
-    @pytest.mark.asyncio
-    async def test_handle_success(self, mock_ports):
-        """Should handle task analysis successfully."""
-        skill = MockSkill(
-            "task_analysis",
-            outputs={
-                "summary": "Test summary",
-                "complexity": "medium",
-                "requirements": ["req1"],
-                "approach": "Test approach",
-            },
-        )
-        context = create_context(mock_ports, [skill])
-
-        handler = TaskAnalysisHandler()
-        result = await handler.handle(context, {"description": "Test task"})
-
-        assert result.success is True
-        assert result.outputs["summary"] == "Test summary"
-        assert result.outputs["complexity"] == "medium"
-        assert result.evidence.handler_name == "task_analysis_handler"
-
-    @pytest.mark.asyncio
-    async def test_handle_skill_failure(self, mock_ports):
-        """Should handle skill failure."""
-        skill = MockSkill("task_analysis", success=False, error="Skill failed")
-        context = create_context(mock_ports, [skill])
-
-        handler = TaskAnalysisHandler()
-        result = await handler.handle(context, {"description": "Test task"})
-
-        assert result.success is False
-        assert "Skill failed" in result.error
 
 
 class TestTaskDelegationHandler:
@@ -363,39 +306,6 @@ class TestValidationHandler:
 # =============================================================================
 
 
-class TestDataAnalysisHandler:
-    """Tests for DataAnalysisHandler."""
-
-    def test_validate_inputs_missing_data(self):
-        """Should fail without data."""
-        handler = DataAnalysisHandler()
-        errors = handler.validate_inputs({})
-        assert "'data' is required" in errors
-
-    @pytest.mark.asyncio
-    async def test_handle_success(self, mock_ports):
-        """Should handle data analysis successfully."""
-        skill = MockSkill(
-            "data_analysis",
-            outputs={
-                "statistics": {"count": 5},
-                "summary": "Analysis summary",
-                "insights": ["insight1"],
-                "recommendations": [],
-            },
-        )
-        context = create_context(mock_ports, [skill])
-
-        handler = DataAnalysisHandler()
-        result = await handler.handle(
-            context,
-            {"data": [1, 2, 3, 4, 5]},
-        )
-
-        assert result.success is True
-        assert result.outputs["statistics"]["count"] == 5
-
-
 class TestMetricsCollectionHandler:
     """Tests for MetricsCollectionHandler."""
 
@@ -521,11 +431,17 @@ class TestHandlerEvidence:
     @pytest.mark.asyncio
     async def test_evidence_has_duration(self, mock_ports):
         """Evidence should track execution duration."""
-        skill = MockSkill("task_analysis", outputs={"summary": "s"})
+        skill = MockSkill(
+            "task_delegation",
+            outputs={"target_role": "dev", "task_envelope": {}},
+        )
         context = create_context(mock_ports, [skill])
 
-        handler = TaskAnalysisHandler()
-        result = await handler.handle(context, {"description": "test"})
+        handler = TaskDelegationHandler()
+        result = await handler.handle(
+            context,
+            {"task_type": "development.develop", "task_description": "test"},
+        )
 
         assert result.evidence.duration_ms >= 0
 
