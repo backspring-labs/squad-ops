@@ -22,7 +22,6 @@ from squadops.capabilities.handlers.cycle_tasks import (
     StrategyAnalyzeHandler,
 )
 from squadops.capabilities.handlers.data import (
-    DataAnalysisHandler,
     MetricsCollectionHandler,
 )
 from squadops.capabilities.handlers.development import (
@@ -32,7 +31,6 @@ from squadops.capabilities.handlers.development import (
 
 # Import handlers
 from squadops.capabilities.handlers.governance import (
-    TaskAnalysisHandler,
     TaskDelegationHandler,
 )
 from squadops.capabilities.handlers.impl.analyze_failure import (
@@ -95,7 +93,6 @@ logger = logging.getLogger(__name__)
 # All handler classes with their role assignments
 HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     # Governance handlers (lead role)
-    (TaskAnalysisHandler, ("lead",)),
     (TaskDelegationHandler, ("lead",)),
     # Development handlers (dev role)
     (CodeGenerationHandler, ("dev",)),
@@ -104,7 +101,6 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (TestExecutionHandler, ("qa",)),
     (ValidationHandler, ("qa", "lead")),  # Lead can validate too
     # Data handlers (data role)
-    (DataAnalysisHandler, ("data",)),
     (MetricsCollectionHandler, ("data",)),
     # Warmboot handlers (all roles can warmboot)
     (WarmbootHandler, ("lead", "dev", "qa", "strat", "data", "builder")),

@@ -21,9 +21,9 @@ Quick Start:
     # Execute a task
     from squadops.api import TaskRequestDTO
     request = TaskRequestDTO(
-        task_type="governance.task_analysis",
+        task_type="governance.task_delegation",
         source_agent="user",
-        inputs={"description": "Build a REST API"},
+        inputs={"task_type": "development.develop", "task_description": "Build a REST API"},
     )
     result = await system.task_service.execute_task(request)
 """

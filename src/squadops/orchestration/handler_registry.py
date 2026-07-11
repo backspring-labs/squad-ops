@@ -57,8 +57,8 @@ class HandlerRegistry:
 
     Example:
         registry = HandlerRegistry()
-        registry.register(TaskAnalysisHandler(), roles=("lead",))
-        handler = registry.get("governance.task_analysis")
+        registry.register(TaskDelegationHandler(), roles=("lead",))
+        handler = registry.get("governance.task_delegation")
     """
 
     def __init__(self) -> None:

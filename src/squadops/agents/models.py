@@ -41,7 +41,6 @@ LEAD_ROLE = AgentRole(
     display_name="Lead Agent",
     description="Task orchestration and delegation",
     default_skills=(
-        "task_analysis",
         "task_delegation",
         "code_review",
         "cycle_planning",
@@ -79,7 +78,6 @@ STRAT_ROLE = AgentRole(
     display_name="Strategy Agent",
     description="Strategic planning and analysis",
     default_skills=(
-        "strategy_analysis",
         "architecture_review",
         "requirement_analysis",
     ),
@@ -90,7 +88,6 @@ DATA_ROLE = AgentRole(
     display_name="Data Agent",
     description="Analytics and data processing",
     default_skills=(
-        "data_analysis",
         "metrics_collection",
         "report_generation",
     ),

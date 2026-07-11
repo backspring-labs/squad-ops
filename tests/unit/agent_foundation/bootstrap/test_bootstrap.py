@@ -78,7 +78,6 @@ class TestSkillBootstrap:
         assert "llm_query" in skill_names
 
         # Should have lead-specific skills
-        assert "task_analysis" in skill_names
         assert "task_delegation" in skill_names
 
     def test_get_skills_for_role_dev(self):
@@ -112,7 +111,7 @@ class TestSkillBootstrap:
 
         # Should include key skills
         assert "llm_query" in skills
-        assert "task_analysis" in skills
+        assert "task_delegation" in skills
         assert "code_generation" in skills
 
     def test_create_skill_registry_filtered(self):
@@ -123,7 +122,7 @@ class TestSkillBootstrap:
 
         # Should have shared + lead skills
         assert "llm_query" in skills
-        assert "task_analysis" in skills
+        assert "task_delegation" in skills
 
         # Should NOT have dev-only skills
         # (code_generation is dev-only if not in shared)
@@ -135,7 +134,7 @@ class TestSkillBootstrap:
         skills = registry.list_skills()
 
         # Should have lead skills only
-        assert "task_analysis" in skills
+        assert "task_delegation" in skills
 
 
 class TestBuilderHandlerRegistration:
@@ -229,7 +228,7 @@ class TestHandlerBootstrap:
         assert len(capabilities) >= 8
 
         # Should include key capabilities
-        assert "governance.task_analysis" in capabilities
+        assert "governance.task_delegation" in capabilities
         assert "development.code_generation" in capabilities
         assert "qa.validation" in capabilities
 
@@ -240,7 +239,7 @@ class TestHandlerBootstrap:
         capabilities = registry.list_capabilities()
 
         # Should have lead capabilities
-        assert "governance.task_analysis" in capabilities
+        assert "governance.task_delegation" in capabilities
 
         # Should have warmboot (available to all)
         assert "agent.warmboot" in capabilities
@@ -251,7 +250,7 @@ class TestHandlerBootstrap:
 
         # Lead should have governance
         lead_caps = registry.list_by_role("lead")
-        assert "governance.task_analysis" in lead_caps
+        assert "governance.task_delegation" in lead_caps
 
         # Dev should have development
         dev_caps = registry.list_by_role("dev")
@@ -315,7 +314,7 @@ class TestSystemBootstrap:
         caps = orchestrator.get_available_capabilities()
 
         # Should have lead and dev capabilities
-        assert "governance.task_analysis" in caps
+        assert "governance.task_delegation" in caps
         assert "development.code_generation" in caps
 
     def test_create_system(self, mock_ports):

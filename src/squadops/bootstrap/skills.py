@@ -12,7 +12,7 @@ import logging
 from typing import TYPE_CHECKING
 
 # Import skill modules for auto-discovery
-from squadops.agents.skills import builder, data, dev, lead, qa, shared, strat
+from squadops.agents.skills import builder, data, dev, lead, qa, shared
 from squadops.agents.skills.registry import SkillRegistry
 
 if TYPE_CHECKING:
@@ -27,17 +27,16 @@ SKILL_MODULES = {
     "lead": lead,
     "dev": dev,
     "qa": qa,
-    "strat": strat,
     "data": data,
     "builder": builder,
 }
 
-# Role -> skill module mappings
+# Role -> skill module mappings (roles without an entry fall back to shared)
 ROLE_SKILL_MODULES = {
     "lead": ["shared", "lead"],
     "dev": ["shared", "dev"],
     "qa": ["shared", "qa"],
-    "strat": ["shared", "strat"],
+    "strat": ["shared"],
     "data": ["shared", "data"],
     "builder": ["shared", "builder"],
 }
