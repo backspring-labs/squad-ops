@@ -207,6 +207,87 @@ def test_only_declared_ids_block():
 
 
 # --------------------------------------------------------------------------- #
+# Final-state resolution — the repaired-and-re-run check (§6.5, #379)
+# --------------------------------------------------------------------------- #
+
+
+def test_same_subject_failed_then_passed_supersedes_to_accepted():
+    """The #379 core bug: a check that FAILED then re-ran and PASSED (same producing
+    task) must resolve to its FINAL state — verdict ``accepted``, not the union that
+    would pin ``rejected`` forever. This is the coupled half of #374's re-run-to-green.
+    """
+    s = aggregate_verification(
+        [_failed("tests_pass", subject="task-A"), _passed("tests_pass", subject="task-A")]
+    )
+    assert s.verdict is RunVerdict.ACCEPTED
+    assert s.failed == ()
+    assert s.verified == ("tests_pass",)
+    assert (s.executed_count, s.passed_count) == (1, 1)
+
+
+def test_same_subject_passed_then_failed_stays_rejected():
+    """Supersession is order-sensitive, not fail-masking: a check that passed then
+    regressed (final = FAILED) must stay ``rejected`` — the fix must not swallow a
+    real later failure."""
+    s = aggregate_verification(
+        [_passed("tests_pass", subject="task-A"), _failed("tests_pass", subject="task-A")]
+    )
+    assert s.verdict is RunVerdict.REJECTED
+    assert s.failed == ("tests_pass",)
+    assert s.verified == ()
+
+
+def test_different_subjects_same_check_id_accumulate():
+    """Distinct producing tasks emitting the same check_id (``tests_pass`` once per
+    develop task) are NOT collapsed: one failing → ``rejected``. Naive last-write-wins
+    by bare check_id would wrongly drop the earlier task's real failure."""
+    s = aggregate_verification(
+        [_failed("tests_pass", subject="task-A"), _passed("tests_pass", subject="task-B")]
+    )
+    assert s.verdict is RunVerdict.REJECTED
+    assert set(s.failed) == {"tests_pass"}
+    assert set(s.verified) == {"tests_pass"}
+    assert s.executed_count == 2  # both subjects counted, not deduped to one
+
+
+def test_subjectless_results_are_never_collapsed():
+    """``subject=None`` carries no producer identity — each result stays independent
+    (the pre-#379 accumulate default), so two un-identified rows for one check_id
+    still both count. Guards against silently collapsing legacy/un-subjected producers.
+    """
+    s = aggregate_verification([_failed("c"), _passed("c")])  # no subject on either
+    assert s.verdict is RunVerdict.REJECTED
+    assert s.executed_count == 2
+
+
+def test_required_check_recovers_to_accepted_after_repair():
+    """The re-run-to-green case #374 needs: a REQUIRED check that failed then passed
+    on re-verification must reach ``accepted`` — the superseded FAILED attempt must
+    not leave it stuck ``rejected`` (nor ``blocked_unverified``, since the final state
+    IS executed-and-passed)."""
+    s = aggregate_verification(
+        [_failed("tests_pass", subject="task-A"), _passed("tests_pass", subject="task-A")],
+        required_check_ids=["tests_pass"],
+    )
+    assert s.verdict is RunVerdict.ACCEPTED
+    assert s.required_unmet == ()
+
+
+def test_multiple_failed_attempts_then_pass_all_supersede():
+    """Two failed attempts then a pass (same subject) all collapse to the final PASSED
+    — bounded correction may retry more than once before converging."""
+    s = aggregate_verification(
+        [
+            _failed("tests_pass", subject="task-A"),
+            _failed("tests_pass", subject="task-A"),
+            _passed("tests_pass", subject="task-A"),
+        ]
+    )
+    assert s.verdict is RunVerdict.ACCEPTED
+    assert (s.executed_count, s.passed_count) == (1, 1)
+
+
+# --------------------------------------------------------------------------- #
 # Drift + purity guards (AC#13)
 # --------------------------------------------------------------------------- #
 

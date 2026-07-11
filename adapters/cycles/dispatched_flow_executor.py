@@ -942,7 +942,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 _holder=_last_failed_result,
             ):
                 _holder["result"] = result
-                return await self._handle_task_outcome(
+                action = await self._handle_task_outcome(
                     result=result,
                     envelope=_envelope,
                     cycle=cycle,
@@ -958,16 +958,30 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     profile=profile,
                     flow_run_id=flow_run_id,
                 )
+                if action == "continue":
+                    # #379: this attempt failed and is about to be re-dispatched — a
+                    # correction patch re-verifying behaviorally (#374), or a plain
+                    # retry. Record its evidence now so the ledger honestly holds the
+                    # failed→passed history; aggregation supersedes it to the final
+                    # state per (check_id, subject). Self-filtering: a transport retry
+                    # carries no validation_result/test_result → nothing is recorded.
+                    _record_task_evidence(result)
+                return action
 
-            def _record_task_evidence(task_result) -> None:
+            def _record_task_evidence(task_result, _envelope=envelope) -> None:
                 # Normalize this task's verification outputs into the run ledger for
-                # the end-of-run aggregation choke point. Best-effort: a normalizer
-                # defect must never break task execution (the report path is guarded
-                # the same way).
+                # the end-of-run aggregation choke point. Every result is stamped with
+                # the producing task id (#379) so a repaired-and-re-run check resolves
+                # to its final state at aggregation. ``_envelope`` is bound as a default
+                # (B023) so it captures THIS iteration's task, matching _route_outcome.
+                # Best-effort: a normalizer defect must never break task execution (the
+                # report path is guarded the same).
                 if task_result is None or not getattr(task_result, "outputs", None):
                     return
                 try:
-                    for check_result in normalize_task_checks(task_result.outputs):
+                    for check_result in normalize_task_checks(
+                        task_result.outputs, subject=_envelope.task_id
+                    ):
                         ledger.record_check_result(check_result)
                 except Exception:
                     logger.warning("Verification-evidence recording failed", exc_info=True)

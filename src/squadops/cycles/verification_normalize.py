@@ -24,6 +24,7 @@ executor at the dispatch seam):
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping
 from typing import Any
 
@@ -39,8 +40,17 @@ CHECK_TESTS_PASS = "tests_pass"
 CHECK_NO_STUB = "no_stub_fallback_tests"
 
 
-def normalize_task_checks(outputs: Mapping[str, Any]) -> list[CheckResult]:
+def normalize_task_checks(
+    outputs: Mapping[str, Any], *, subject: str | None = None
+) -> list[CheckResult]:
     """Map one completed task's ``outputs`` into recordable ``CheckResult``s (§6.1).
+
+    ``subject`` is the producing plan-task id (``envelope.task_id``); it is stamped
+    on every result so aggregation can supersede a repaired-and-re-run check to its
+    final state per ``(check_id, subject)`` (§6.5, #379) — the same task re-verified
+    collapses to its final outcome, while distinct tasks emitting the same
+    ``check_id`` (e.g. ``tests_pass``) stay independent. ``None`` leaves the results
+    un-identified (each counts on its own).
 
     Robust by construction — a malformed row is skipped, never raised, because this
     runs in the executor's per-task path and must never break task execution.
@@ -85,6 +95,8 @@ def normalize_task_checks(outputs: Mapping[str, Any]) -> list[CheckResult]:
     if isinstance(test_result, Mapping):
         results.append(_tests_pass_from_result(test_result, is_stub=stub_detected))
 
+    if subject is not None:
+        results = [dataclasses.replace(r, subject=subject) for r in results]
     return results
 
 

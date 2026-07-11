@@ -224,3 +224,44 @@ def test_clean_pass_aggregates_accepted():
     )
     assert summary.verdict is RunVerdict.ACCEPTED
     assert CHECK_TESTS_PASS in summary.verified
+
+
+# --------------------------------------------------------------------------- #
+# Producing-subject stamping — the #379 identity qualifier
+# --------------------------------------------------------------------------- #
+
+
+def test_subject_stamped_on_every_result():
+    """The producing task id is stamped on every normalized result so aggregation can
+    resolve a re-run to final state (§6.5). Without it, subject is None and the same
+    task's repaired re-run can't supersede its earlier failure."""
+    out = {
+        "test_result": {"executed": True, "exit_code": 0, "tests_passed": True},
+        "validation_result": {
+            "checks": [{"check": "acceptance:file_exists", "status": "passed", "passed": True}]
+        },
+    }
+    results = normalize_task_checks(out, subject="task-A")
+    assert results  # non-empty
+    assert {r.subject for r in results} == {"task-A"}
+
+
+def test_subject_defaults_to_none_when_unset():
+    """Backward-compatible default: no subject → un-identified results (each counts on
+    its own at aggregation), so an un-migrated call site keeps the pre-#379 behavior."""
+    out = {"test_result": {"executed": True, "exit_code": 0, "tests_passed": True}}
+    assert normalize_task_checks(out)[0].subject is None
+
+
+def test_task_re_run_supersedes_earlier_failure_via_subject():
+    """The coupled #374 path end-to-end at the normalize+aggregate level: the SAME task
+    re-recorded (failed build → repaired → passing re-run) resolves to accepted when
+    both records carry its subject; the failed attempt is superseded, not unioned."""
+    failing = {"test_result": {"executed": True, "exit_code": 1, "tests_passed": False}}
+    passing = {"test_result": {"executed": True, "exit_code": 0, "tests_passed": True}}
+    ledger = normalize_task_checks(failing, subject="task-A") + normalize_task_checks(
+        passing, subject="task-A"
+    )
+    summary = aggregate_verification(ledger, required_check_ids=[CHECK_TESTS_PASS])
+    assert summary.verdict is RunVerdict.ACCEPTED
+    assert summary.failed == ()

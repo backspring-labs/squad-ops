@@ -155,6 +155,16 @@ class CheckResult:
     is_stub: bool = False
     stub_disclosed: bool = False
     provenance: CheckProvenance | None = None
+    subject: str | None = None
+    # The producing subject's identity (§6.3) — the plan-task id that emitted this
+    # result. DISTINCT from ``provenance.subject_ref`` (the *thing* under test — a
+    # file-set hash/artifact/endpoint, which legitimately *differs* between a failed
+    # check and its re-run against patched artifacts, so it is the wrong grouping
+    # key). ``subject`` is stable across a task's re-verification, so aggregation can
+    # supersede a repaired-and-re-run check to its final state (§6.5) without
+    # collapsing distinct producers that share a ``check_id`` (e.g. ``tests_pass``
+    # emitted once per develop task). ``None`` = no producer identity → never
+    # collapsed (each such result is its own evidence).
 
 
 @dataclass(frozen=True)
@@ -235,6 +245,40 @@ def _not_executed_reason(result: CheckResult) -> str:
     return result.reason or UNSPECIFIED_REASON
 
 
+def _resolve_final_state(results: Sequence[CheckResult]) -> list[CheckResult]:
+    """Collapse each identified producer's re-verified check to its final state (§6.5).
+
+    A check that failed, was repaired, and re-ran lands on the append-only ledger
+    twice (a FAILED then a PASSED ``CheckResult`` with the same ``(check_id,
+    subject)``). The verdict must reflect the **final** state after correction's
+    bounded attempts — not the union of all attempts (#379), which would pin a
+    recovered run to ``rejected`` forever (the "stuck-red" mirror of the false-green
+    this SIP kills). So the LAST-appended result per identity supersedes.
+
+    The ledger is append-only, so append order *is* attempt order — resolution keys
+    off position, never a timestamp, keeping this module clock-free.
+
+    Results with ``subject is None`` carry no producer identity and are **never**
+    collapsed: each is independent evidence (the correct default — e.g. distinct
+    develop tasks emitting ``tests_pass`` must accumulate, "any subject failed →
+    rejected"; only the *same* subject re-verified supersedes).
+    """
+    resolved: list[CheckResult] = []
+    final_pos_by_identity: dict[tuple[str, str], int] = {}
+    for r in results:
+        if r.subject is None:
+            resolved.append(r)
+            continue
+        identity = (r.check_id, r.subject)
+        prior = final_pos_by_identity.get(identity)
+        if prior is None:
+            final_pos_by_identity[identity] = len(resolved)
+            resolved.append(r)
+        else:
+            resolved[prior] = r  # supersede the earlier attempt with the final one
+    return resolved
+
+
 def aggregate_verification(
     results: Sequence[CheckResult],
     required_check_ids: Collection[str] = (),
@@ -259,6 +303,10 @@ def aggregate_verification(
 
     Not-executed results are excluded from ``executed_count``/``passed_count`` and
     from all success credit, and are always disclosed in ``unverified`` (§6.6.3).
+
+    A check that was repaired and re-verified is first resolved to its final state
+    per ``(check_id, subject)`` (§6.5, #379) — the verdict reflects the outcome
+    after correction, not the union of every attempt. See ``_resolve_final_state``.
     """
     required = frozenset(required_check_ids)
     verified: list[str] = []
@@ -266,7 +314,9 @@ def aggregate_verification(
     unverified: list[UnverifiedCheck] = []
     seen_ids: set[str] = set()
 
-    for r in results:
+    # Resolve each producer's re-verified check to its final state first (§6.5, #379)
+    # so a repaired-and-passed check no longer counts its superseded FAILED attempt.
+    for r in _resolve_final_state(results):
         seen_ids.add(r.check_id)
         family = classify(r)
         if family is EvidenceFamily.EXECUTED_PASSED:
