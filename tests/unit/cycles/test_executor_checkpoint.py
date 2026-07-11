@@ -29,6 +29,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
     WorkloadType,
 )
+from squadops.cycles.run_ledger import RunLedger
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskResult
 
@@ -742,3 +743,70 @@ class TestVerificationEvidenceRecording:
         assert "Failed: tests_pass" in report
         assert "REJECTED" in report
         assert "All tasks completed successfully." not in report
+
+    async def test_rerun_records_failed_attempt_then_supersedes_to_accepted(
+        self, executor, mock_registry, mock_queue, mock_vault
+    ) -> None:
+        """#379 end-to-end at the recording seam: a task whose check FAILS then PASSES
+        on re-dispatch (the ``continue`` path — a retry here, a #374 repair re-run in
+        production) records BOTH attempts, stamped with the producing task id, and the
+        verdict resolves to the FINAL state (accepted). Without recording the failed
+        attempt the honest-history is lost; without subject-keyed supersession the run
+        would be stuck ``rejected`` (the exact coupling #374 depends on).
+        """
+        dispatch_count = 0
+
+        def fail_then_pass(env):
+            nonlocal dispatch_count
+            dispatch_count += 1
+            # First dispatch of the first task fails its tests; the retry (2nd
+            # dispatch) and every later task pass. env["task_id"] is stable across the
+            # re-dispatch, so both records share the producing subject.
+            failed = dispatch_count == 1
+            return TaskResult(
+                task_id=env["task_id"],
+                status="FAILED" if failed else "SUCCEEDED",
+                error="tests failed" if failed else None,
+                outputs={
+                    "summary": "x",
+                    "artifacts": [],
+                    "test_result": {
+                        "executed": True,
+                        "exit_code": 1 if failed else 0,
+                        "tests_passed": not failed,
+                    },
+                },
+            )
+
+        mock_queue.reply_router.responder = fail_then_pass
+
+        recorded: list = []
+        real_record = RunLedger.record_check_result
+
+        def _spy(self, result):
+            recorded.append(result)
+            real_record(self, result)
+
+        with (
+            patch.object(RunLedger, "record_check_result", _spy),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        # The failed attempt WAS recorded (my _route_outcome change fires on continue),
+        # and it carries a producing subject so it can be superseded.
+        tp = [r for r in recorded if r.check_id == "tests_pass"]
+        failed_records = [r for r in tp if r.status == "failed"]
+        passed_records = [r for r in tp if r.status == "passed"]
+        assert failed_records, "the failed re-run attempt must be recorded, not dropped"
+        assert all(r.subject for r in tp), "every recorded check must carry its subject"
+        # The failed attempt and its passing re-run share one subject (same task).
+        failed_subj = failed_records[0].subject
+        assert any(r.subject == failed_subj for r in passed_records)
+
+        # Final verdict reflects the recovered state — the superseded failure does not
+        # pin it rejected.
+        report = self._run_report(mock_vault)
+        assert mock_registry.update_run_status.call_args_list[-1].args[1] == RunStatus.COMPLETED
+        assert "Verdict: **accepted**" in report
+        assert "Failed: tests_pass" not in report
