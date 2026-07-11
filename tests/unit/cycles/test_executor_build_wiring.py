@@ -651,6 +651,67 @@ class TestBuilderDeliverableCompleteness:
         assert ("run_001", RunStatus.COMPLETED) in calls
         assert ("run_001", RunStatus.FAILED) not in calls
 
+    async def test_builder_run_records_required_files_evidence_on_the_ledger(self, reply_router):
+        """#399: the executor must append a required_files CheckResult to the
+        RunLedger so the verdict reflects the deliverable-completeness evidence
+        (not silence). A complete run records it as PASSED."""
+        from unittest.mock import patch
+
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.cycles.check_registry import CHECK_REQUIRED_FILES
+        from squadops.cycles.run_ledger import RunLedger
+        from squadops.cycles.verification_integrity import ResultStatus
+        from squadops.tasks.models import TaskResult
+
+        cycle = self._builder_cycle()
+        run = Run(
+            run_id="run_001",
+            cycle_id="cyc_001",
+            run_number=1,
+            status="queued",
+            initiated_by="api",
+            resolved_config_hash="hash",
+        )
+        registry = self._registry(cycle, run)
+        vault = self._vault()
+
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"],
+            status="SUCCEEDED",
+            outputs={
+                "summary": "done",
+                "role": env["metadata"].get("role"),
+                "artifacts": [
+                    {"name": "Dockerfile", "content": "FROM python:3.12\n", "type": "source"},
+                    {
+                        "name": "qa_handoff.md",
+                        "content": "## How to Run\n## How to Test\n## Expected Behavior\n",
+                        "type": "document",
+                    },
+                ],
+            },
+        )
+        ex = DispatchedFlowExecutor(
+            cycle_registry=registry,
+            artifact_vault=vault,
+            queue=reply_router.bind(AsyncMock()),
+            squad_profile=self._builder_squad(),
+            reply_router=reply_router,
+        )
+
+        recorded = []
+        with patch.object(
+            RunLedger,
+            "record_check_result",
+            autospec=True,
+            side_effect=lambda _self, r: recorded.append(r),
+        ):
+            await ex.execute_run("cyc_001", "run_001")
+
+        req = [r for r in recorded if r.check_id == CHECK_REQUIRED_FILES]
+        assert len(req) == 1
+        assert req[0].status == ResultStatus.PASSED
+
 
 class TestPlanOnlyCyclesUnaffected:
     """Regression: plan-only cycles still work as before."""

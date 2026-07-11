@@ -34,7 +34,7 @@ from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outco
 from adapters.cycles.task_dispatcher import TaskDispatcher
 from adapters.cycles.task_naming import build_task_name
 from squadops.cycles.agent_config import build_agent_resolver
-from squadops.cycles.build_completeness import compute_missing_required_files
+from squadops.cycles.build_completeness import evaluate_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, Run, RunStatus
 from squadops.cycles.naming import flow_run_name
@@ -1093,16 +1093,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # is never checked, so a run can ship green without the Dockerfile its
         # own profile mandates (#276). The loop is done, so stored_artifacts now
         # holds the complete emitted set — the only point where the deliverable
-        # is fully known. Missing → fail the run (FAILED, via _ExecutionError →
-        # resolve_terminal_outcome) with the missing list.
+        # is fully known.
+        #
+        # #399: record the result on the ledger as a required_files CheckResult
+        # BEFORE deciding to raise, so a missing-files run's verification verdict
+        # is honestly `rejected` (executed-failed evidence) instead of reading
+        # `accepted` on zero evidence — then fail the run (FAILED, via
+        # _ExecutionError → resolve_terminal_outcome) with the missing list.
         resolved_config = {**cycle.applied_defaults, **cycle.execution_overrides}
-        deficiency = compute_missing_required_files(plan, stored_artifacts, resolved_config)
-        if deficiency is not None:
-            profile_name, missing = deficiency
-            raise _ExecutionError(
-                f"Build deliverable incomplete: build profile {profile_name!r} requires files "
-                f"the run never emitted. Missing required files: {missing}."
-            )
+        required_files = evaluate_required_files(plan, stored_artifacts, resolved_config)
+        if required_files is not None:
+            ledger.record_check_result(required_files.check_result)
+            if required_files.missing:
+                raise _ExecutionError(
+                    f"Build deliverable incomplete: build profile "
+                    f"{required_files.profile_name!r} requires files the run never emitted. "
+                    f"Missing required files: {list(required_files.missing)}."
+                )
 
     # ------------------------------------------------------------------
     # SIP-0086: Manifest loading for implementation workloads
