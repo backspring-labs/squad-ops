@@ -30,7 +30,18 @@ from squadops.bootstrap.setup.profile import (
 # ---------------------------------------------------------------------------
 
 VALID_CATEGORIES = frozenset(
-    {"python", "platform", "tools", "docker", "models", "squad", "gpu", "auth", "broker"}
+    {
+        "python",
+        "platform",
+        "tools",
+        "docker",
+        "models",
+        "squad",
+        "gpu",
+        "auth",
+        "broker",
+        "verification",
+    }
 )
 
 
@@ -907,6 +918,63 @@ def _collect_broker_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return check_broker_hygiene(broker_svc.name)
 
 
+def _collect_verification_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    """SIP-0096 §8: report which tooling-backed framework checks can execute here.
+
+    Deployment-scoped (not per cycle-request profile): for each framework check
+    that needs external tooling, is that tooling provisioned in this deployment
+    (``agents/instances/*/system-packages.txt``)? This is the same resolution the
+    create-time preflight parity uses, so doctor's report agrees with the runtime
+    reject (§8 parity). Checks with no external tooling are always executable and
+    reported only implicitly (nothing to verify). Unresolvable provisioning →
+    heuristic pass (never red when it cannot verify — the broker pattern)."""
+    from squadops.cycles.check_registry import FRAMEWORK_CHECKS
+    from squadops.cycles.check_tooling import resolve_provisioned_tooling
+
+    provisioned = resolve_provisioned_tooling()
+    results: list[CheckResult] = []
+    for check in FRAMEWORK_CHECKS.values():
+        if not check.required_tooling:
+            continue
+        needs = ", ".join(check.required_tooling)
+        if provisioned is None:
+            results.append(
+                CheckResult(
+                    name=f"check_tooling:{check.check_id}",
+                    category="verification",
+                    passed=True,
+                    heuristic=True,
+                    message=f"{check.check_id} needs {needs} — provisioning could not be resolved",
+                )
+            )
+            continue
+        missing = [t for t in check.required_tooling if t not in provisioned]
+        if missing:
+            results.append(
+                CheckResult(
+                    name=f"check_tooling:{check.check_id}",
+                    category="verification",
+                    passed=False,
+                    message=(
+                        f"{check.check_id} requires {', '.join(missing)}, not provisioned — "
+                        f"a profile requiring it is rejected at create-time preflight"
+                    ),
+                    detail="Provisioned via agents/instances/<role>/system-packages.txt",
+                    fix_command="Declare the package in the role's system-packages.txt and rebuild",
+                )
+            )
+        else:
+            results.append(
+                CheckResult(
+                    name=f"check_tooling:{check.check_id}",
+                    category="verification",
+                    passed=True,
+                    message=f"{check.check_id} tooling provisioned ({needs})",
+                )
+            )
+    return results
+
+
 _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("python", _collect_python_checks),
     ("platform", _collect_platform_checks),
@@ -917,6 +985,7 @@ _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("gpu", _collect_gpu_checks),
     ("auth", _collect_auth_checks),
     ("broker", _collect_broker_checks),
+    ("verification", _collect_verification_checks),
 ]
 
 

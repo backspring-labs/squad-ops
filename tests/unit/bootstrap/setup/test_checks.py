@@ -721,3 +721,39 @@ class TestBrokerHygiene:
             mock_q.assert_not_called()
             checks_mod._collect_broker_checks(with_broker)
             mock_q.assert_called_once()
+
+
+class TestVerificationChecks:
+    """SIP-0096 §8 doctor verification category: does the deployment provision the
+    tooling each tooling-backed framework check needs? (create-time-preflight parity)."""
+
+    _R = "squadops.cycles.check_tooling.resolve_provisioned_tooling"
+
+    def test_provisioned_tooling_passes(self):
+        with patch(self._R, return_value=frozenset({"node"})):
+            results = checks_mod._collect_verification_checks(_profile())
+        frontend = next(r for r in results if r.name == "check_tooling:frontend_build")
+        assert frontend.passed is True and frontend.category == "verification"
+
+    def test_absent_tooling_fails_with_fix(self):
+        """No Node provisioned → the frontend check is non-executable; doctor flags
+        it (and preflight would reject a profile requiring it) with a fix."""
+        with patch(self._R, return_value=frozenset()):
+            results = checks_mod._collect_verification_checks(_profile())
+        frontend = next(r for r in results if r.name == "check_tooling:frontend_build")
+        assert frontend.passed is False
+        assert frontend.fix_command and "system-packages.txt" in frontend.fix_command
+
+    def test_unresolved_provisioning_is_heuristic_pass_not_red(self):
+        """Can't resolve provisioning → heuristic pass, never a false red (the
+        broker pattern) — doctor must not fail when it cannot verify."""
+        with patch(self._R, return_value=None):
+            results = checks_mod._collect_verification_checks(_profile())
+        frontend = next(r for r in results if r.name == "check_tooling:frontend_build")
+        assert frontend.passed is True and frontend.heuristic is True
+
+    def test_verification_category_is_runnable_and_registered(self):
+        with patch(self._R, return_value=frozenset({"node"})):
+            results = run_checks(_profile(), category="verification")
+        assert results and all(r.category == "verification" for r in results)
+        assert "verification" in checks_mod.VALID_CATEGORIES
