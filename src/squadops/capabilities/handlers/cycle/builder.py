@@ -277,6 +277,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         inputs: dict[str, Any],
     ) -> HandlerResult:
         from squadops.capabilities.handlers.build_profiles import (
+            DEFAULT_BUILD_PROFILE,
             QA_HANDOFF_REQUIRED_SECTIONS,
             get_profile,
         )
@@ -289,7 +290,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         resolved_config = inputs.get("resolved_config", {})
 
         # Step 1: Resolve build profile
-        profile_name = resolved_config.get("build_profile", "python_cli_builder")
+        profile_name = resolved_config.get("build_profile", DEFAULT_BUILD_PROFILE)
         try:
             profile = get_profile(profile_name)
         except ValueError as exc:

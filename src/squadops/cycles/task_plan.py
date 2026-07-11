@@ -223,6 +223,25 @@ _KNOWN_WORKLOAD_TYPES = {
 # Task types that are build steps (for routing_reason metadata)
 _BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
 
+# Builder-role (SIP-0071) capability namespace. A run is a *builder deliverable*
+# run — subject to the profile-level ``required_files`` completeness gate
+# (#291) — iff its plan contains a ``builder.*`` task. This is deliberately
+# narrower than ``_BUILD_TASK_TYPES``: the generic ``development.develop`` /
+# ``qa.test`` steps are shared by plain build-only runs that have no build
+# profile and emit source, not a packaged deliverable.
+BUILDER_TASK_TYPE_PREFIX = "builder."
+
+
+def plan_has_builder_task(plan: list[TaskEnvelope]) -> bool:
+    """True when the plan contains a builder-role assembly task (#291).
+
+    Distinguishes a builder deliverable run (a build profile with
+    ``required_files`` applies) from a plain develop+test build run, which
+    reuses the ``development.develop`` / ``qa.test`` task types but produces
+    no packaged deliverable to check for completeness.
+    """
+    return any(t.task_type.startswith(BUILDER_TASK_TYPE_PREFIX) for t in plan)
+
 
 def _has_builder_role(profile: SquadProfile) -> bool:
     """Check if squad profile includes a builder role agent.
