@@ -20,12 +20,20 @@ intentionally out of scope — see ``_BUILD_TASK_TYPES`` vs
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.build_profiles import get_profile
+from squadops.cycles.check_registry import CHECK_REQUIRED_FILES
 from squadops.cycles.task_plan import plan_has_builder_task
+from squadops.cycles.verification_integrity import (
+    CheckProvenance,
+    CheckResult,
+    ResultStatus,
+)
 
 if TYPE_CHECKING:
     from squadops.cycles.models import ArtifactRef
@@ -33,33 +41,42 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Bound the missing-file digest carried in provenance (§7: bounded, never a
+# payload copy). Basenames are short; this caps a pathological deliverable.
+_MISSING_DIGEST_MAX = 200
 
-def compute_missing_required_files(
+
+@dataclass(frozen=True)
+class RequiredFilesOutcome:
+    """Result of evaluating a builder run's ``required_files`` (#291/#399).
+
+    ``missing`` empty ⇒ every required file was emitted. ``check_result`` is the
+    SIP-0096 evidence record (§6.1) the executor appends to the ``RunLedger`` so
+    a missing-files run's verdict is honestly ``rejected`` rather than reading
+    ``accepted`` on zero evidence.
+    """
+
+    profile_name: str
+    missing: tuple[str, ...]
+    check_result: CheckResult
+
+
+def evaluate_required_files(
     plan: list[TaskEnvelope],
     stored_artifacts: list[tuple[str, ArtifactRef]],
     resolved_config: dict[str, Any],
-) -> tuple[str, list[str]] | None:
-    """Profile-level required-files check for a completed builder run.
+) -> RequiredFilesOutcome | None:
+    """Evaluate ``build_profile.required_files`` against the emitted artifact set.
 
-    Args:
-        plan: the run's full task plan (used only to detect a builder run).
-        stored_artifacts: ``(artifact_id, ArtifactRef)`` for every artifact the
-            run emitted — the complete deliverable set at run completion.
-        resolved_config: ``{**applied_defaults, **execution_overrides}`` — the
-            same merged config the builder handler reads ``build_profile`` from.
-            ``build_profile`` is required for builder runs (#392); a builder run
-            reaching here without one was already rejected at plan generation.
-
-    Returns:
-        ``(profile_name, missing_files)`` when the run built a deliverable and
-        one or more of the build profile's ``required_files`` is absent from the
-        complete emitted set; ``None`` when the run isn't a builder run or every
-        required file is present.
+    Returns ``None`` when the run isn't a builder deliverable run (or its profile
+    can't be resolved — deferred, see below); otherwise the profile, the missing
+    basenames (empty ⇒ complete), and a normalized ``required_files``
+    ``CheckResult`` (passed when complete, failed otherwise, with bounded §7
+    provenance: a digest of the emitted set and, on failure, the missing list).
 
     Filenames are compared by basename on both sides — matching the builder
     handler's ``os.path.basename`` normalization — so a required ``Dockerfile``
-    is satisfied whether it was emitted at the root or under a subdirectory, and
-    a path mismatch never fails a complete deliverable.
+    is satisfied whether emitted at the root or under a subdirectory.
     """
     if not plan_has_builder_task(plan):
         return None
@@ -72,7 +89,7 @@ def compute_missing_required_files(
         # fabricate a profile to check against — but log, since reaching here
         # means the plan-generation guard was bypassed.
         logger.warning(
-            "required_files completeness check skipped: builder run has no build_profile "
+            "required_files check skipped: builder run has no build_profile "
             "(should have been rejected at plan generation)"
         )
         return None
@@ -81,15 +98,43 @@ def compute_missing_required_files(
     except ValueError:
         # An unknown profile would already have failed the builder task in the
         # handler (get_profile raises there too), so a fail-fast run never
-        # reaches completion with one. Defer rather than crash the completeness
-        # net on a config error already surfaced upstream.
-        logger.warning(
-            "required_files completeness check skipped: unknown build profile %r", profile_name
-        )
+        # reaches completion with one. Defer rather than crash on a config error
+        # already surfaced upstream.
+        logger.warning("required_files check skipped: unknown build profile %r", profile_name)
         return None
 
     emitted = {os.path.basename(ref.filename) for _, ref in stored_artifacts if ref.filename}
-    missing = [name for name in profile.required_files if os.path.basename(name) not in emitted]
-    if missing:
-        return profile_name, missing
-    return None
+    missing = tuple(
+        name for name in profile.required_files if os.path.basename(name) not in emitted
+    )
+    subject_ref = (
+        "fileset:" + hashlib.sha256(",".join(sorted(emitted)).encode("utf-8")).hexdigest()[:16]
+    )
+    check_result = CheckResult(
+        check_id=CHECK_REQUIRED_FILES,
+        status=ResultStatus.FAILED if missing else ResultStatus.PASSED,
+        provenance=CheckProvenance(
+            subject_ref=subject_ref,
+            output_digest=(",".join(missing)[:_MISSING_DIGEST_MAX] if missing else None),
+        ),
+    )
+    return RequiredFilesOutcome(
+        profile_name=profile_name, missing=missing, check_result=check_result
+    )
+
+
+def compute_missing_required_files(
+    plan: list[TaskEnvelope],
+    stored_artifacts: list[tuple[str, ArtifactRef]],
+    resolved_config: dict[str, Any],
+) -> tuple[str, list[str]] | None:
+    """The #291 deliverable-completeness verdict: ``(profile, missing)`` or ``None``.
+
+    Thin wrapper over :func:`evaluate_required_files` preserving #291's shape —
+    ``None`` when the run isn't a builder run **or** every required file is
+    present; the profile + missing list only when the deliverable is incomplete.
+    """
+    outcome = evaluate_required_files(plan, stored_artifacts, resolved_config)
+    if outcome is None or not outcome.missing:
+        return None
+    return outcome.profile_name, list(outcome.missing)
