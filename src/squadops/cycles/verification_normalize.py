@@ -28,6 +28,12 @@ import dataclasses
 from collections.abc import Mapping
 from typing import Any
 
+from squadops.cycles.check_registry import (
+    CHECK_NO_STUB_FALLBACK_TESTS as CHECK_NO_STUB,
+)
+from squadops.cycles.check_registry import (
+    CHECK_TESTS_PASS,
+)
 from squadops.cycles.verification_integrity import (
     CheckProvenance,
     CheckResult,
@@ -35,9 +41,10 @@ from squadops.cycles.verification_integrity import (
     ResultStatus,
 )
 
-# Framework test-spine check identities (stable, §6.3 required-addressable).
-CHECK_TESTS_PASS = "tests_pass"
-CHECK_NO_STUB = "no_stub_fallback_tests"
+# Framework test-spine check identities (stable, §6.3 required-addressable) —
+# single-sourced from the canonical registry. ``CHECK_NO_STUB`` keeps its short
+# local name (re-exported) for the producers/tests that import it here.
+__all__ = ["CHECK_NO_STUB", "CHECK_TESTS_PASS", "normalize_task_checks"]
 
 
 def normalize_task_checks(

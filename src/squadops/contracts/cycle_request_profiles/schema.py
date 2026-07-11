@@ -65,11 +65,14 @@ _VALID_GATE_PREFIXES = ("progress_", "promote_")
 
 
 def _validate_required_checks(defaults: dict) -> None:
-    """Validate the SIP-0096 ``required_checks`` declaration shape at load time.
+    """Validate the SIP-0096 ``required_checks`` declaration at load time.
 
-    Must be a list of non-empty, non-duplicate check-id strings. Fail loud on a
-    malformed declaration rather than let a mis-shaped required list silently
-    mis-aggregate at run end (the "no fallback that masks" rule).
+    Must be a list of non-empty, non-duplicate check-id strings, and every id
+    must be a **known framework check** (``check_registry``). Fail loud on a
+    malformed *or unknown* declaration rather than let it silently mis-aggregate
+    at run end: an unrecognized id (e.g. a typo ``test_pass``) matches no check,
+    so the profile would look enforced but quietly revert to inert — the exact
+    "looks-enforced-but-isn't" failure §6.3 forbids ("no fallback that masks").
     """
     checks = defaults.get("required_checks")
     if checks is None:
@@ -85,6 +88,18 @@ def _validate_required_checks(defaults: dict) -> None:
         if entry in seen:
             raise ValueError(f"required_checks contains duplicate check-id {entry!r}")
         seen.add(entry)
+
+    # Reject unknown ids only after the shape is sound (so shape errors report
+    # first). Imported locally to keep the contracts schema import-light.
+    from squadops.cycles.check_registry import framework_check_ids
+
+    known = framework_check_ids()
+    unknown = sorted(c for c in checks if c not in known)
+    if unknown:
+        raise ValueError(
+            f"required_checks contains unknown check-id(s) {unknown}; "
+            f"valid framework checks: {sorted(known)}"
+        )
 
 
 def _validate_workload_sequence_gates(defaults: dict) -> None:
