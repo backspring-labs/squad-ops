@@ -19,7 +19,6 @@ from squadops.tasks.models import TaskEnvelope, TaskResult
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
-    from squadops.agents.skills.registry import SkillRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -29,19 +28,15 @@ class HandlerExecutor(CapabilityExecutor):
 
     Executes capabilities by:
     1. Looking up the appropriate handler from registry
-    2. Creating ExecutionContext with skill access
+    2. Creating ExecutionContext with port access
     3. Invoking handler.handle() with task inputs
     4. Converting result to TaskResult
-
-    This bridges the capability contract system with the
-    skill-based execution infrastructure.
     """
 
     def __init__(
         self,
         executor_id: str,
         handler_registry: HandlerRegistry,
-        skill_registry: SkillRegistry,
         ports: PortsBundle,
         default_role: str = "lead",
     ) -> None:
@@ -50,13 +45,11 @@ class HandlerExecutor(CapabilityExecutor):
         Args:
             executor_id: Unique identifier for this executor
             handler_registry: Registry of capability handlers
-            skill_registry: Registry of skills for execution
             ports: PortsBundle for port access
             default_role: Default role for agent context
         """
         self._executor_id = executor_id
         self._handler_registry = handler_registry
-        self._skill_registry = skill_registry
         self._ports = ports
         self._default_role = default_role
 
@@ -120,7 +113,6 @@ class HandlerExecutor(CapabilityExecutor):
                 task_id=task_id,
                 cycle_id=envelope.cycle_id,
                 ports=self._ports,
-                skill_registry=self._skill_registry,
                 project_id=envelope.project_id,
                 correlation_context=corr_ctx,
             )
@@ -206,7 +198,6 @@ class HandlerExecutor(CapabilityExecutor):
             "status": "healthy",
             "executor_id": self._executor_id,
             "handlers_registered": len(self._handler_registry.list_capabilities()),
-            "skills_registered": len(self._skill_registry.list_skills()),
         }
 
     def can_execute(self, capability_id: str, agent_role: str) -> bool:
@@ -240,7 +231,6 @@ class HandlerExecutor(CapabilityExecutor):
             "capability_id": evidence.capability_id,
             "executed_at": evidence.executed_at.isoformat(),
             "duration_ms": evidence.duration_ms,
-            "skill_executions": list(evidence.skill_executions),
             "inputs_hash": evidence.inputs_hash,
             "outputs_hash": evidence.outputs_hash,
         }

@@ -1,6 +1,6 @@
-"""Capability handlers for orchestrating skill execution.
+"""Capability handlers.
 
-Handlers bridge capability contracts with skill-based execution.
+Handlers fulfill capability contracts by executing against ports.
 Part of SIP-0.8.8 Phase 5.
 """
 

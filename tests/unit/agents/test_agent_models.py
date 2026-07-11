@@ -22,12 +22,6 @@ class TestBuilderRoleInDefaultRoles:
     def test_builder_value_is_builder_role(self):
         assert DEFAULT_ROLES["builder"] is BUILDER_ROLE
 
-    def test_builder_default_skills_include_artifact_generation(self):
-        assert "artifact_generation" in BUILDER_ROLE.default_skills
-
-    def test_builder_default_skills_include_code_generation(self):
-        assert "code_generation" in BUILDER_ROLE.default_skills
-
     def test_builder_role_is_frozen(self):
         with pytest.raises(AttributeError):
             BUILDER_ROLE.role_id = "hacked"

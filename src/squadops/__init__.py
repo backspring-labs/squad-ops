@@ -21,9 +21,9 @@ Quick Start:
     # Execute a task
     from squadops.api import TaskRequestDTO
     request = TaskRequestDTO(
-        task_type="governance.task_delegation",
+        task_type="governance.review",
         source_agent="user",
-        inputs={"task_type": "development.develop", "task_description": "Build a REST API"},
+        inputs={"description": "Review the delivered artifacts"},
     )
     result = await system.task_service.execute_task(request)
 """
@@ -49,7 +49,6 @@ from squadops.bootstrap import (
     SystemConfig,
     create_handler_registry,
     create_orchestrator,
-    create_skill_registry,
     create_system,
 )
 from squadops.tasks.models import (
@@ -63,7 +62,6 @@ __all__ = [
     # Bootstrap
     "create_system",
     "create_orchestrator",
-    "create_skill_registry",
     "create_handler_registry",
     "SystemConfig",
     "SquadOpsSystem",

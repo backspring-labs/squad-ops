@@ -15,11 +15,9 @@ from typing import TYPE_CHECKING, Any
 from squadops.agents.base import PortsBundle
 from squadops.api.service import AgentService, TaskService
 from squadops.bootstrap.handlers import create_handler_registry
-from squadops.bootstrap.skills import create_skill_registry
 from squadops.orchestration.orchestrator import AgentOrchestrator
 
 if TYPE_CHECKING:
-    from squadops.agents.skills.registry import SkillRegistry
     from squadops.orchestration.handler_registry import HandlerRegistry
     from squadops.ports.comms.messaging import MessagingPort
     from squadops.ports.comms.queue import QueuePort
@@ -41,12 +39,10 @@ class SystemConfig:
 
     Attributes:
         roles: Roles to enable (None = all)
-        enable_warmboot: Whether to enable warmboot handlers
         default_timeout: Default task timeout in seconds
     """
 
     roles: list[str] | None = None
-    enable_warmboot: bool = True
     default_timeout: float = 300.0
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -56,13 +52,11 @@ class SquadOpsSystem:
     """Fully configured SquadOps system.
 
     Contains all components needed for operation:
-    - Skill registry with all skills
     - Handler registry with all handlers
     - Orchestrator for task coordination
     - API services for external access
 
     Attributes:
-        skill_registry: Registry of all skills
         handler_registry: Registry of all handlers
         orchestrator: AgentOrchestrator for coordination
         task_service: TaskService for API access
@@ -71,7 +65,6 @@ class SquadOpsSystem:
         config: System configuration
     """
 
-    skill_registry: SkillRegistry
     handler_registry: HandlerRegistry
     orchestrator: AgentOrchestrator
     task_service: TaskService
@@ -89,7 +82,6 @@ class SquadOpsSystem:
 
         return {
             "status": orchestrator_health["status"],
-            "skills": len(self.skill_registry.list_skills()),
             "handlers": len(self.handler_registry.list_capabilities()),
             "orchestrator": orchestrator_health,
         }
@@ -102,7 +94,6 @@ class SquadOpsSystem:
 
 def create_orchestrator(
     ports: PortsBundle,
-    skill_registry: SkillRegistry | None = None,
     handler_registry: HandlerRegistry | None = None,
     roles: list[str] | None = None,
 ) -> AgentOrchestrator:
@@ -110,31 +101,23 @@ def create_orchestrator(
 
     Args:
         ports: PortsBundle with all required ports
-        skill_registry: Optional pre-configured skill registry
         handler_registry: Optional pre-configured handler registry
-        roles: Roles to enable (used if registries not provided)
+        roles: Roles to enable (used if registry not provided)
 
     Returns:
         Configured AgentOrchestrator
     """
-    # Create registries if not provided
-    if skill_registry is None:
-        skill_registry = create_skill_registry(roles=roles)
-
     if handler_registry is None:
         handler_registry = create_handler_registry(roles=roles)
 
-    # Create orchestrator
     orchestrator = AgentOrchestrator(
         handler_registry=handler_registry,
-        skill_registry=skill_registry,
         ports=ports,
     )
 
     logger.info(
         "Created orchestrator",
         extra={
-            "skills": len(skill_registry.list_skills()),
             "handlers": len(handler_registry.list_capabilities()),
         },
     )
@@ -205,13 +188,11 @@ def create_system(
     )
 
     # Create registries
-    skill_registry = create_skill_registry(roles=config.roles)
     handler_registry = create_handler_registry(roles=config.roles)
 
     # Create orchestrator
     orchestrator = AgentOrchestrator(
         handler_registry=handler_registry,
-        skill_registry=skill_registry,
         ports=ports,
         llm_observability=llm_observability,
     )
@@ -223,14 +204,12 @@ def create_system(
     logger.info(
         "Created SquadOps system",
         extra={
-            "skills": len(skill_registry.list_skills()),
             "handlers": len(handler_registry.list_capabilities()),
             "roles": config.roles,
         },
     )
 
     return SquadOpsSystem(
-        skill_registry=skill_registry,
         handler_registry=handler_registry,
         orchestrator=orchestrator,
         task_service=task_service,

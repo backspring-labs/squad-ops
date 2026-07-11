@@ -20,15 +20,3 @@ class AgentRoleNotFoundError(AgentError):
     """Agent role not found in registry."""
 
     pass
-
-
-class SkillNotFoundError(AgentError):
-    """Skill not found in registry."""
-
-    pass
-
-
-class SkillContractViolation(AgentError):
-    """Skill violated its contract (e.g., missing _evidence)."""
-
-    pass

@@ -1,8 +1,8 @@
 """Base classes for capability handlers.
 
 CapabilityHandler is the bridge between capability contracts
-and skill-based execution. Handlers orchestrate one or more
-skills to fulfill a capability contract.
+and execution. Handlers execute against ports to fulfill a
+capability contract.
 
 Part of SIP-0.8.8 Phase 5.
 """
@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 class HandlerEvidence:
     """Evidence of handler execution.
 
-    Aggregates evidence from all skills executed during handling.
     Enables "No Silent Mocks" verification at the capability level.
 
     Attributes:
@@ -33,7 +32,6 @@ class HandlerEvidence:
         capability_id: ID of the capability contract fulfilled
         executed_at: When execution started
         duration_ms: Total execution duration
-        skill_executions: Evidence from each skill execution
         inputs_hash: Hash of handler inputs
         outputs_hash: Hash of handler outputs
         metadata: Additional execution metadata
@@ -43,7 +41,6 @@ class HandlerEvidence:
     capability_id: str
     executed_at: datetime
     duration_ms: float
-    skill_executions: tuple[dict[str, Any], ...] = ()
     inputs_hash: str = ""
     outputs_hash: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -54,7 +51,6 @@ class HandlerEvidence:
         handler_name: str,
         capability_id: str,
         duration_ms: float,
-        skill_executions: list[dict[str, Any]] | None = None,
         inputs_hash: str = "",
         outputs_hash: str = "",
         metadata: dict[str, Any] | None = None,
@@ -65,7 +61,6 @@ class HandlerEvidence:
             handler_name: Name of the handler
             capability_id: Capability ID being fulfilled
             duration_ms: Execution duration in milliseconds
-            skill_executions: Evidence dicts from skill results
             inputs_hash: Hash of inputs (for verification)
             outputs_hash: Hash of outputs (for verification)
             metadata: Additional metadata
@@ -78,7 +73,6 @@ class HandlerEvidence:
             capability_id=capability_id,
             executed_at=datetime.now(UTC),
             duration_ms=duration_ms,
-            skill_executions=tuple(skill_executions or []),
             inputs_hash=inputs_hash,
             outputs_hash=outputs_hash,
             metadata=metadata or {},
@@ -115,10 +109,9 @@ class HandlerResult:
 class CapabilityHandler(ABC):
     """Abstract base for capability handlers.
 
-    Handlers orchestrate skills to fulfill capability contracts.
+    Handlers execute against ports to fulfill capability contracts.
     Each handler:
     - Is associated with a specific capability contract
-    - Executes one or more skills via SkillContext
     - Produces outputs/artifacts per contract spec
     - Generates execution evidence for verification
 
@@ -144,15 +137,6 @@ class CapabilityHandler(ABC):
     def description(self) -> str:
         """Human-readable description."""
         return f"Handler for {self.capability_id}"
-
-    @property
-    def required_skills(self) -> tuple[str, ...]:
-        """Skills required by this handler.
-
-        Override to declare skill dependencies for validation.
-        Default returns empty tuple (no declared requirements).
-        """
-        return ()
 
     def validate_inputs(
         self,
@@ -189,7 +173,7 @@ class CapabilityHandler(ABC):
         """Execute the handler to fulfill the capability.
 
         Args:
-            context: ExecutionContext with skill access
+            context: ExecutionContext with port access
             inputs: Input values per contract spec
 
         Returns:

@@ -1,6 +1,6 @@
 """NoOp port implementations for PortsBundle bootstrap.
 
-Cycle task handlers don't use skills or external ports, but the
+Cycle task handlers don't use external ports, but the
 PortsBundle dataclass requires concrete values for all 7 slots.
 These stubs exist only to satisfy that requirement.
 
@@ -217,7 +217,7 @@ class NoOpQueuePort(QueuePort):
 def create_noop_ports_bundle() -> PortsBundle:
     """Create PortsBundle with NoOp stubs for orchestrator bootstrap.
 
-    Cycle task handlers don't use skills or external ports.
+    Cycle task handlers don't use external ports.
     These stubs exist only to satisfy the PortsBundle dataclass.
     """
     return PortsBundle(

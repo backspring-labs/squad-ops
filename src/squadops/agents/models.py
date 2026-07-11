@@ -12,13 +12,12 @@ from typing import Any
 class AgentRole:
     """Immutable agent role definition.
 
-    Defines the capabilities and default skills for an agent role.
+    Defines the capabilities for an agent role.
     """
 
     role_id: str
     display_name: str
     description: str
-    default_skills: tuple[str, ...] = ()
     capabilities: tuple[str, ...] = ()
 
 
@@ -31,7 +30,6 @@ class AgentConfig:
 
     agent_id: str
     role_id: str
-    skills: tuple[str, ...] = ()
     settings: dict[str, Any] = field(default_factory=dict)
 
 
@@ -40,67 +38,36 @@ LEAD_ROLE = AgentRole(
     role_id="lead",
     display_name="Lead Agent",
     description="Task orchestration and delegation",
-    default_skills=(
-        "task_delegation",
-        "code_review",
-        "cycle_planning",
-        "governance_approval",
-    ),
 )
 
 DEV_ROLE = AgentRole(
     role_id="dev",
     display_name="Developer Agent",
     description="Code generation and implementation",
-    default_skills=(
-        "code_generation",
-        "code_modification",
-        "test_writing",
-        "bug_fixing",
-        "refactoring",
-    ),
 )
 
 QA_ROLE = AgentRole(
     role_id="qa",
     display_name="QA Agent",
     description="Testing and validation",
-    default_skills=(
-        "test_design",
-        "test_execution",
-        "validation",
-        "bug_reporting",
-    ),
 )
 
 STRAT_ROLE = AgentRole(
     role_id="strat",
     display_name="Strategy Agent",
     description="Strategic planning and analysis",
-    default_skills=(
-        "architecture_review",
-        "requirement_analysis",
-    ),
 )
 
 DATA_ROLE = AgentRole(
     role_id="data",
     display_name="Data Agent",
     description="Analytics and data processing",
-    default_skills=(
-        "metrics_collection",
-        "report_generation",
-    ),
 )
 
 BUILDER_ROLE = AgentRole(
     role_id="builder",
     display_name="Builder Agent",
     description="Artifact production from approved plans",
-    default_skills=(
-        "artifact_generation",
-        "code_generation",
-    ),
 )
 
 # Role registry

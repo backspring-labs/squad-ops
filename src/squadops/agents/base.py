@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from squadops.agents.skills.registry import SkillRegistry
     from squadops.ports.comms.messaging import MessagingPort
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.llm.provider import LLMPort
@@ -30,8 +29,8 @@ logger = logging.getLogger(__name__)
 class PortsBundle:
     """Immutable bundle of all ports for easy passing to contexts.
 
-    This bundle provides a single object that can be passed to skill contexts
-    and other components that need access to multiple ports.
+    This bundle provides a single object that can be passed to execution
+    contexts and other components that need access to multiple ports.
     """
 
     llm: LLMPort
@@ -53,7 +52,6 @@ class BaseAgent:
     - Dependency-injected access to all required ports
     - Standardized identity (agent_id, role_id)
     - Lifecycle hooks (on_agent_start, on_agent_stop, etc.)
-    - Skill registry integration
     """
 
     ROLE_ID: str = "base"  # Override in subclasses
@@ -71,7 +69,6 @@ class BaseAgent:
         events: EventPort,
         filesystem: FileSystemPort,
         llm_observability: LLMObservabilityPort | None = None,
-        skill_registry: SkillRegistry | None = None,
     ):
         """Initialize agent with injected ports.
 
@@ -86,7 +83,6 @@ class BaseAgent:
             events: Event/tracing port
             filesystem: Filesystem operations port
             llm_observability: Optional LLM observability port (SIP-0061)
-            skill_registry: Optional skill registry for skill execution
         """
         self._agent_id = agent_id
         self._role_id = role_id or self.ROLE_ID
@@ -112,9 +108,6 @@ class BaseAgent:
             filesystem=filesystem,
             llm_observability=llm_observability,
         )
-
-        # Skill registry (optional)
-        self._skill_registry = skill_registry
 
         logger.info(
             "agent_initialized",
@@ -179,11 +172,6 @@ class BaseAgent:
     def ports(self) -> PortsBundle:
         """Bundle of all ports."""
         return self._ports
-
-    @property
-    def skill_registry(self) -> SkillRegistry | None:
-        """Skill registry for skill execution."""
-        return self._skill_registry
 
     # Lifecycle hooks
 
