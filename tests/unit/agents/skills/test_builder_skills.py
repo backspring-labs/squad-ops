@@ -93,6 +93,14 @@ class TestArtifactGenerationExecution:
         )
         assert result.outputs["build_profile"] == "static_web_builder"
 
+    async def test_absent_build_profile_is_not_fabricated(self, mock_context):
+        """#392: no build_profile → reported as None, never a made-up default.
+        The bug this catches: re-introducing a python_cli_builder fallback would
+        make the output claim a stack the caller never asked for."""
+        skill = ArtifactGenerationSkill()
+        result = await skill.execute(mock_context, {"plan": "Build an app"})
+        assert result.outputs["build_profile"] is None
+
     async def test_llm_failure_returns_error(self, mock_context):
         mock_context.llm.chat = AsyncMock(side_effect=RuntimeError("LLM down"))
         skill = ArtifactGenerationSkill()
