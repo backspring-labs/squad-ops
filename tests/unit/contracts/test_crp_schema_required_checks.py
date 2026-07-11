@@ -61,3 +61,21 @@ def test_duplicate_check_ids_rejected():
     """A duplicate is a profile-authoring bug — surfaced at load, not tolerated."""
     with pytest.raises(ValidationError, match="duplicate check-id"):
         CycleRequestProfile(name="dup", defaults={"required_checks": ["a", "a"]})
+
+
+def test_unknown_check_id_rejected():
+    """The headline bug: a typo'd required id (``test_pass`` for ``tests_pass``)
+    must fail loud at load, not validate and then silently match nothing at run
+    end — the profile would look enforced but be inert (§6.3)."""
+    with pytest.raises(ValidationError, match="unknown check-id"):
+        CycleRequestProfile(name="typo", defaults={"required_checks": ["tests_pass", "test_pass"]})
+
+
+def test_every_registry_id_is_accepted():
+    """The validator and the registry must not drift: every stable framework
+    check must load as a valid required id."""
+    from squadops.cycles.check_registry import framework_check_ids
+
+    ids = sorted(framework_check_ids())
+    profile = CycleRequestProfile(name="all", defaults={"required_checks": ids})
+    assert profile.defaults["required_checks"] == ids
