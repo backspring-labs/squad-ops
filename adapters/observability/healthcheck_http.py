@@ -37,6 +37,10 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
         fail_silently: bool = True,
         token_provider: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
+        # The final default is the runtime-api's in-network compose address — a
+        # service-discovery default, not the config-masking class #333 targets:
+        # an explicit SQUADOPS_RUNTIME_API_URL still wins, and a wrong endpoint
+        # fails visibly (connection error), it doesn't fabricate required data.
         self._base_url = (
             base_url or os.getenv("SQUADOPS_RUNTIME_API_URL") or "http://runtime-api:8001"
         ).rstrip("/")
