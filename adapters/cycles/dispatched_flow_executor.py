@@ -40,6 +40,7 @@ from squadops.cycles.naming import flow_run_name
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan
+from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.runtime.admission import admit_participants, release_participants
@@ -925,12 +926,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # only acts on the returned action token.
             # Loop-scoped values bind as defaults: fixed at definition time,
             # exactly like the old per-call parameter passing (and B023-safe).
+            # SIP-0096 §6.4 (Phase 2): holds the latest failed result so the abort
+            # path — where the correction protocol raises from *inside*
+            # dispatch_with_retry before it can return — can still record the
+            # failing task's verification evidence. The #276-class evidence (a
+            # failed/not-executed qa.test that triggers the abort) is exactly what
+            # must survive, or a failed run reads as "0 verified" instead of red.
+            _last_failed_result: dict[str, Any] = {}
+
             async def _route_outcome(
                 result,
                 _envelope=envelope,
                 _consecutive_failures=consecutive_failures,
                 _correction_attempts=correction_attempts,
+                _holder=_last_failed_result,
             ):
+                _holder["result"] = result
                 return await self._handle_task_outcome(
                     result=result,
                     envelope=_envelope,
@@ -948,15 +959,40 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     flow_run_id=flow_run_id,
                 )
 
-            task_succeeded, result = await self._task_dispatcher.dispatch_with_retry(
-                enriched,
-                envelope,
-                cycle,
-                run_id,
-                flow_run_id=flow_run_id,
-                task_run_id=task_run_id,
-                handle_task_outcome=_route_outcome,
-            )
+            def _record_task_evidence(task_result) -> None:
+                # Normalize this task's verification outputs into the run ledger for
+                # the end-of-run aggregation choke point. Best-effort: a normalizer
+                # defect must never break task execution (the report path is guarded
+                # the same way).
+                if task_result is None or not getattr(task_result, "outputs", None):
+                    return
+                try:
+                    for check_result in normalize_task_checks(task_result.outputs):
+                        ledger.record_check_result(check_result)
+                except Exception:
+                    logger.warning("Verification-evidence recording failed", exc_info=True)
+
+            try:
+                task_succeeded, result = await self._task_dispatcher.dispatch_with_retry(
+                    enriched,
+                    envelope,
+                    cycle,
+                    run_id,
+                    flow_run_id=flow_run_id,
+                    task_run_id=task_run_id,
+                    handle_task_outcome=_route_outcome,
+                )
+            except Exception:
+                # Correction aborted (raised inside dispatch_with_retry). Record the
+                # final failed result before the run unwinds, then re-raise — recording
+                # is additive and never alters the abort's control flow.
+                _record_task_evidence(_last_failed_result.get("result"))
+                raise
+
+            # Every non-abort completion — success AND corrected-failure
+            # (break_correction) — records its final result here; the abort path
+            # above is the only other producer, so no task is double-recorded.
+            _record_task_evidence(result)
 
             if not task_succeeded:
                 # SIP-0079: correction completed with continue/patch outcome.
@@ -1515,6 +1551,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
+        # SIP-0096 Phase 2 slice-1 gap: this fan-out path does NOT yet record
+        # verification evidence to the run ledger (the sequential path does, at the
+        # dispatch-with-retry seam). Harmless while the throttle is off (no shipped
+        # profile declares required_checks) — a FAN_OUT_FAN_IN cycle simply records
+        # zero evidence, same as pre-Phase-2. MUST be wired before slice 4 turns the
+        # throttle on, or a required check would falsely block here. Tracked in #375.
         all_artifact_refs: list[str] = []
         for i, result in enumerate(results):
             task_context = {

@@ -601,3 +601,144 @@ class TestResumeOfAlreadyRunningRun:
         assert state["status"] == "completed"
         first_transition = mock_registry.update_run_status.call_args_list[0].args[1]
         assert first_transition == RunStatus.RUNNING
+
+
+# ---------------------------------------------------------------------------
+# SIP-0096 Phase 2 slice 1: verification-evidence recording to the ledger
+# ---------------------------------------------------------------------------
+
+
+class TestVerificationEvidenceRecording:
+    """Each completed task's verification outputs are normalized into the run
+    ledger at the dispatch seam and surface in the run_report integrity roll-up —
+    the wiring that makes the Phase-1 aggregation non-inert."""
+
+    def _run_report(self, mock_vault) -> str:
+        for call in mock_vault.store.call_args_list:
+            ref, content = call.args[0], call.args[1]
+            if getattr(ref, "filename", "") == "run_report.md":
+                return content.decode()
+        raise AssertionError("run_report.md was not stored")
+
+    async def test_passing_test_result_recorded_and_disclosed(
+        self, executor, mock_registry, mock_queue, mock_vault
+    ) -> None:
+        """A passing test_result on each task makes the roll-up show real executed
+        evidence — not the inert 'Executed: 0'."""
+
+        def responder(env):
+            return TaskResult(
+                task_id=env["task_id"],
+                status="SUCCEEDED",
+                outputs={
+                    "summary": "ok",
+                    "artifacts": [],
+                    "test_result": {"executed": True, "exit_code": 0, "tests_passed": True},
+                },
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        report = self._run_report(mock_vault)
+        assert "## Verification Integrity" in report
+        assert "Verdict: **accepted**" in report
+        # 3 implementation tasks each carry a passing test_result → 3 tests_pass recorded.
+        assert "Executed: 3 " in report
+
+    async def test_not_executed_test_result_is_disclosed_not_dropped(
+        self, executor, mock_registry, mock_queue, mock_vault
+    ) -> None:
+        """A not-executed test_result surfaces under 'Unverified (not executed)' —
+        silence is disclosed through the choke point, never dropped (§6.6.3)."""
+
+        def responder(env):
+            return TaskResult(
+                task_id=env["task_id"],
+                status="SUCCEEDED",
+                outputs={
+                    "summary": "ok",
+                    "artifacts": [],
+                    "test_result": {"executed": False, "error": "ImportError: app"},
+                },
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        report = self._run_report(mock_vault)
+        assert "### Unverified (not executed)" in report
+        assert "tests_pass" in report
+        assert "Executed: 0 " in report  # not-executed excluded from the executed count
+
+    async def test_aborted_task_evidence_survives_the_abort(
+        self, executor, mock_registry, mock_queue, mock_vault
+    ) -> None:
+        """A task that fails and aborts the run must still record its verification
+        evidence. The abort path raises from inside dispatch_with_retry (before the
+        normal recording line), so this is the #276-class failing evidence that
+        would otherwise vanish — a failed run must read as honest red, not '0
+        verified'."""
+
+        def responder(env):
+            return TaskResult(
+                task_id=env["task_id"],
+                status="FAILED",
+                error="tests broke",
+                outputs={"test_result": {"executed": True, "exit_code": 1, "tests_passed": False}},
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        # Run failed, but the failing task's evidence reached the roll-up.
+        status_calls = mock_registry.update_run_status.call_args_list
+        assert status_calls[-1].args[1] == RunStatus.FAILED
+        report = self._run_report(mock_vault)
+        assert "## Verification Integrity" in report
+        assert "Failed: tests_pass" in report
+        assert "Executed: 1 " in report
+
+    async def test_break_correction_records_failure_and_blocks_false_green(
+        self, executor, mock_registry, mock_queue, mock_vault
+    ) -> None:
+        """The #376 leak: after a `patch` correction the executor advances
+        (break_correction) with the ORIGINAL failed result. That failed evidence
+        must still be recorded, and a COMPLETED run whose verdict is rejected must
+        NOT print 'All tasks completed successfully' (§6.6.4 narrative override)."""
+        failed = TaskResult(
+            task_id="t",
+            status="FAILED",
+            error="build failed",
+            outputs={"test_result": {"executed": True, "exit_code": 1, "tests_passed": False}},
+        )
+        with (
+            patch.object(
+                executor._task_dispatcher,
+                "dispatch_with_retry",
+                new_callable=AsyncMock,
+                return_value=(False, failed),
+            ),
+            patch("adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        # Every task advanced on break_correction → run COMPLETED...
+        assert mock_registry.update_run_status.call_args_list[-1].args[1] == RunStatus.COMPLETED
+        report = self._run_report(mock_vault)
+        # ...but the failed evidence was recorded and the narrative is honest.
+        assert "Failed: tests_pass" in report
+        assert "REJECTED" in report
+        assert "All tasks completed successfully." not in report

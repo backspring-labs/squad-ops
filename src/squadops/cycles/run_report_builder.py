@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.models import RunStatus
 from squadops.cycles.pulse_models import PulseDecision
+from squadops.cycles.verification_integrity import RunVerdict
 
 if TYPE_CHECKING:
     from squadops.cycles.verification_integrity import RunVerificationSummary
@@ -54,11 +55,31 @@ def _build_report_metadata_lines(
     return lines
 
 
-def _build_report_quality_lines(terminal_status: str) -> list[str]:
-    """Build the quality notes section for the run report."""
+def _build_report_quality_lines(
+    terminal_status: str, verification_summary: RunVerificationSummary | None = None
+) -> list[str]:
+    """Build the quality notes section for the run report.
+
+    SIP-0096 §6.6(4), narrative-override prohibition: the narrative must not
+    claim success when the structured verification verdict is ``rejected`` or
+    ``blocked_unverified``. A run can reach COMPLETED with failed/unverified
+    evidence — the verdict is deliberately not a ``RunStatus`` (§6.5) — so when
+    it does, this note reflects the verdict instead of asserting all-clear.
+    """
     lines = ["", "## Quality Notes"]
     status = (terminal_status or "").upper()
-    if status == _COMPLETED:
+    verdict = verification_summary.verdict if verification_summary else None
+    if status == _COMPLETED and verdict == RunVerdict.REJECTED:
+        lines.append(
+            "Tasks completed, but verification **REJECTED** — one or more executed "
+            "checks failed. See Verification Integrity."
+        )
+    elif status == _COMPLETED and verdict == RunVerdict.BLOCKED_UNVERIFIED:
+        lines.append(
+            "Tasks completed, but verification **BLOCKED_UNVERIFIED** — a required "
+            "check did not execute. See Verification Integrity."
+        )
+    elif status == _COMPLETED:
         lines.append("All tasks completed successfully.")
     elif status == _FAILED:
         lines.append("One or more tasks failed. Check task artifacts for details.")
@@ -179,6 +200,6 @@ def build_run_report(
         lines.extend(_build_verification_lines(verification_summary))
 
     # Quality notes
-    lines.extend(_build_report_quality_lines(terminal_status))
+    lines.extend(_build_report_quality_lines(terminal_status, verification_summary))
 
     return "\n".join(lines)
