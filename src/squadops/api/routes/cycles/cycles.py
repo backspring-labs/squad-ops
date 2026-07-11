@@ -17,6 +17,7 @@ from squadops.api.routes.cycles.dtos import (
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import cycle_to_response
 from squadops.auth.models import Scope
+from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import (
     Cycle,
@@ -32,6 +33,7 @@ from squadops.cycles.preflight import (
     Finding,
     combine,
     model_availability_decision,
+    required_check_tooling_decision,
     required_roles_decision,
 )
 
@@ -75,6 +77,12 @@ async def _run_create_preflight(
     decision = combine(
         required_roles_decision(profile, applied_defaults),
         model_availability_decision(profile, await _pulled_model_names()),
+        # SIP-0096 §6.5: a required check whose tooling is knowably absent is a
+        # create-time reject, never a mid-run blocked_unverified surprise.
+        required_check_tooling_decision(
+            applied_defaults.get("required_checks") or (),
+            resolve_provisioned_tooling(),
+        ),
     )
     if decision.rejected:
         raise PreflightRejectedError(decision.summary())

@@ -27,6 +27,7 @@ from squadops.cycles.preflight import (
     PreflightDecision,
     combine,
     model_availability_decision,
+    required_check_tooling_decision,
     required_roles_decision,
 )
 
@@ -249,4 +250,47 @@ def test_no_enabled_models_is_empty_decision():
     profile = _model_profile(["x:1b"], disabled_idx={0})
     decision = model_availability_decision(profile, None)
     assert decision.rejected is False
+    assert decision.blocking == () and decision.warnings == ()
+
+
+# --- required-check tooling parity (SIP-0096 §6.5, slice-4a-2) -----------------
+# frontend_build needs `node`; tests_pass/required_files need no external tooling.
+
+
+def test_required_tooling_backed_check_blocks_when_tooling_absent():
+    """The point of the guard: a profile requiring the frontend build on a
+    deployment that provisions no Node is rejected at create-time — not left to
+    surface mid-run as blocked_unverified."""
+    decision = required_check_tooling_decision(["frontend_build"], available_tooling=frozenset())
+    assert decision.rejected is True
+    assert decision.blocking[0].code == "check_tooling_unavailable"
+    assert "frontend_build" in decision.blocking[0].message
+
+
+def test_required_tooling_backed_check_passes_when_provisioned():
+    decision = required_check_tooling_decision(["frontend_build"], available_tooling={"node"})
+    assert decision.rejected is False
+    assert decision.warnings == ()
+
+
+def test_unresolved_provisioning_warns_never_blocks():
+    """None ⇒ provisioning unverifiable ⇒ warn-and-allow, mirroring the model
+    check — never block on missing evidence."""
+    decision = required_check_tooling_decision(["frontend_build"], available_tooling=None)
+    assert decision.rejected is False
+    assert decision.warnings[0].code == "check_tooling_unverifiable"
+
+
+def test_tooling_free_required_checks_never_block():
+    """tests_pass / required_files declare no external tooling, so requiring them
+    is never a tooling-parity concern even when nothing is provisioned."""
+    decision = required_check_tooling_decision(
+        ["tests_pass", "required_files"], available_tooling=frozenset()
+    )
+    assert decision.rejected is False
+    assert decision.warnings == ()
+
+
+def test_empty_required_checks_is_empty_decision():
+    decision = required_check_tooling_decision([], available_tooling=None)
     assert decision.blocking == () and decision.warnings == ()

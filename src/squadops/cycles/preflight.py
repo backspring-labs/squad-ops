@@ -31,6 +31,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from squadops.cycles.check_registry import get_framework_check
 from squadops.cycles.models import REQUIRED_PLAN_ROLES, WORKLOAD_REQUIRED_ROLES
 
 if TYPE_CHECKING:
@@ -195,5 +196,70 @@ def model_availability_decision(
         )
         for model in required
         if _canonical_model(model) not in pulled_canonical
+    ]
+    return PreflightDecision(blocking=tuple(findings))
+
+
+def required_check_tooling_decision(
+    required_check_ids: Iterable[str],
+    available_tooling: Iterable[str] | None,
+) -> PreflightDecision:
+    """Block when a profile requires a framework check whose tooling is knowably absent.
+
+    SIP-0096 §6.5 *create-time-knowable* routing: a required check that cannot
+    execute in the target deployment (e.g. the frontend build check on a squad
+    whose image lacks Node) must be caught here — a create-time reject — never a
+    mid-run ``not-executed → blocked_unverified`` surprise.
+
+    Mirrors :func:`model_availability_decision` on evidence:
+    - ``available_tooling is None`` ⇒ provisioning couldn't be resolved:
+      *unverifiable*, so **warn and allow** — never block on missing evidence.
+    - a resolved set blocks any required check whose ``required_tooling`` isn't a
+      subset. Checks with no external tooling (the test spine, pure-Python diffs)
+      never block.
+
+    ``required_check_ids`` come from ``applied_defaults['required_checks']``; every
+    id is a registered framework check (unknown ids are rejected at CRP load, #395),
+    so an unregistered id here simply contributes no tooling requirement.
+    """
+    needing: list[tuple[str, tuple[str, ...]]] = []
+    for cid in required_check_ids:
+        check = get_framework_check(cid)
+        if check and check.required_tooling:
+            needing.append((cid, check.required_tooling))
+    if not needing:
+        return PreflightDecision()
+
+    if available_tooling is None:
+        return PreflightDecision(
+            warnings=tuple(
+                Finding(
+                    code="check_tooling_unverifiable",
+                    severity="warning",
+                    message=(
+                        f"could not verify tooling for required check `{cid}` "
+                        f"(needs {', '.join(f'`{t}`' for t in tools)}) — the deployment's "
+                        f"provisioning could not be resolved; it may fail to execute at "
+                        f"runtime. Verify the tooling is provisioned."
+                    ),
+                )
+                for cid, tools in needing
+            )
+        )
+
+    have = frozenset(available_tooling)
+    findings = [
+        Finding(
+            code="check_tooling_unavailable",
+            severity="block",
+            message=(
+                f"required check `{cid}` needs {', '.join(f'`{t}`' for t in missing)}, "
+                f"which the target deployment does not provision. Add the package to the "
+                f"role's `system-packages.txt` and rebuild, or drop `{cid}` from "
+                f"`required_checks`."
+            ),
+        )
+        for cid, tools in needing
+        if (missing := [t for t in tools if t not in have])
     ]
     return PreflightDecision(blocking=tuple(findings))
