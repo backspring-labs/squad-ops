@@ -305,6 +305,8 @@ class TestCorrectionPatch:
             ("SUCCEEDED", {"summary": "repaired", "role": "dev"}, None),
             # Repair: qa.validate_repair
             ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
+            # #374: a patch re-runs the ORIGINAL failed check (Task 1) — now passes
+            ("SUCCEEDED", {"summary": "task1 re-run ok", "role": "dev"}, None),
             # Tasks 2-5: succeed
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
@@ -319,12 +321,83 @@ class TestCorrectionPatch:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # 1 (failed) + 2 (correction) + 2 (repair) + 4 (remaining) = 9
-        assert mock_queue.publish.call_count == 9
+        # 1 (failed) + 2 (correction) + 2 (repair) + 1 (#374 re-run of Task 1) + 4 (remaining) = 10
+        assert mock_queue.publish.call_count == 10
 
         status_calls = mock_registry.update_run_status.call_args_list
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.COMPLETED in terminal_statuses
+
+    async def test_patch_rerun_never_converges_fails_run(self, executor, mock_queue, mock_registry):
+        """#374: a patch whose re-run never passes must FAIL the run, not false-complete.
+
+        Catches the pre-#374 false-green (#276 class): a ``patch`` advanced
+        unconditionally, so a task whose repair never actually fixed the check still
+        reached COMPLETED. Now a ``patch`` re-runs the original check; a persistent
+        failure re-enters correction until ``max_correction_attempts`` exhausts,
+        raising ``_ExecutionError`` → the run is FAILED, never COMPLETED.
+        """
+        import dataclasses
+
+        cycle_2 = dataclasses.replace(
+            mock_registry.get_cycle.return_value,
+            applied_defaults={"max_correction_attempts": 2},
+        )
+        mock_registry.get_cycle.return_value = cycle_2
+
+        patch_decision = {
+            "summary": "patch",
+            "role": "lead",
+            "correction_path": "patch",
+            "decision_rationale": "Fix is localized",
+            "affected_task_types": ["development.develop"],
+            "classification": "work_product",
+            "analysis_summary": "Output quality issue",
+        }
+
+        def responder(env):
+            tid = env["task_id"]
+            if "correction_decision" in tid:
+                return TaskResult(
+                    task_id=tid, status="SUCCEEDED", outputs=patch_decision, error=None
+                )
+            if tid.startswith("corr-") or tid.startswith("repair-"):
+                # analyze_failure / repair / validate_repair all succeed
+                return TaskResult(
+                    task_id=tid,
+                    status="SUCCEEDED",
+                    outputs={
+                        "summary": "ok",
+                        "role": "data",
+                        "classification": "work_product",
+                        "analysis_summary": "quality",
+                    },
+                    error=None,
+                )
+            # An original plan task: its check keeps failing on every re-run.
+            return TaskResult(
+                task_id=tid,
+                status="FAILED",
+                outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE, "role": "dev"},
+                error="check still failing",
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        terminal_statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        # The #374 guarantee: a non-converging repair fails honestly, never false-green.
+        assert RunStatus.FAILED in terminal_statuses
+        assert RunStatus.COMPLETED not in terminal_statuses
+        # Proof the check was actually re-run (not advanced-on-first-patch): the old
+        # behavior was exactly 5 publishes (1 fail + 2 correction + 2 repair) then a
+        # false-advance; re-running past the first patch exceeds that.
+        assert mock_queue.publish.call_count > 5
 
 
 # ---------------------------------------------------------------------------
