@@ -2,6 +2,10 @@
 # Docker setup functions for bootstrap (SIP-0081).
 # Sourced by bootstrap.sh — not executed directly.
 
+# Shared secret-provisioning helpers (agent client secret, #326/#371) —
+# single-sourced with the rebuild/deploy path so the two cannot drift.
+source "$(dirname "${BASH_SOURCE[0]}")/../../dev/ops/secrets.sh"
+
 # Ensure .env and .env.console exist for Docker Compose.
 # Copies .env from .env.example (which contains static dev passwords).
 # Generates .env.console from console lock file if missing.
@@ -78,10 +82,14 @@ ensure_env_file() {
             echo -n "postgresql://keycloak:keycloak@postgres:5432/keycloak" > secrets/keycloak_db_dsn.txt
             success "Created secrets/keycloak_db_dsn.txt"
         fi
-        if [[ ! -f "secrets/agent_client_secret.txt" ]]; then
-            # squadops-agent client secret (#326) — matches the realm export
-            echo -n "squadops-agent-secret" > secrets/agent_client_secret.txt
-            success "Created secrets/agent_client_secret.txt"
+        # Agent client secret (#326) — provisioning single-sourced in
+        # scripts/dev/lib/secrets.sh so bootstrap and rebuild/deploy can't drift (#371).
+        if [[ ! -f "$AGENT_CLIENT_SECRET_FILE" ]]; then
+            if ensure_agent_client_secret; then
+                success "Created $AGENT_CLIENT_SECRET_FILE"
+            else
+                warn "Failed to create $AGENT_CLIENT_SECRET_FILE"
+            fi
         fi
     fi
 
