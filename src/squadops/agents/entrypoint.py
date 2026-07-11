@@ -89,10 +89,25 @@ class AgentRunner:
 
         Args:
             role: Agent role (lead, dev, qa, strat, data)
-            agent_id: Optional agent identifier (defaults to role-based)
+            agent_id: Agent identifier. When omitted it is read from the required
+                ``SQUADOPS__AGENT__ID`` env var — never fabricated (identity is not
+                defaulted).
+
+        Raises:
+            ValueError: if no agent id is provided or set in the environment.
         """
         self.role = role
-        self.agent_id = agent_id or os.getenv("SQUADOPS__AGENT__ID", f"{role}-001")
+        # Identity is required, never fabricated. Defaulting the id (the former
+        # f"{role}-001") masks a missing SQUADOPS__AGENT__ID and misdirects
+        # diagnosis to the instance-config load below — which fails with a
+        # confusing "no instance configuration for 'lead-001'" instead of naming
+        # the real cause (#333, the _get_default_instances() masking class).
+        self.agent_id = agent_id or os.getenv("SQUADOPS__AGENT__ID")
+        if not self.agent_id:
+            raise ValueError(
+                "Agent ID is not configured — set SQUADOPS__AGENT__ID. "
+                "Agent identity is never defaulted."
+            )
         self.system: SquadOpsSystem | None = None
         self._shutdown_event = asyncio.Event()
         self._heartbeat_task: asyncio.Task | None = None
