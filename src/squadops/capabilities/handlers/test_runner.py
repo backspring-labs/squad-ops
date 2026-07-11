@@ -453,6 +453,147 @@ async def run_frontend_build(
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+# Subprocess driver for run_backend_import_check (#276). Byte-compiling is not
+# enough — the canonical bug (``backend/main.py`` using ``BaseModel`` without
+# importing it) is a NameError that only surfaces when the module *body runs* —
+# so this executes each delivered module via ``exec_module`` and writes, to the
+# path in argv[1], a JSON verdict of which modules failed. A ModuleNotFoundError
+# whose missing top-level module is not itself a delivered module is recorded as
+# a dependency gap (the runner lacks the dep), not a deliverable failure, so a
+# missing third-party never produces a false red. Output goes to a file, not
+# stdout, so a module that prints on import can't corrupt the verdict.
+_BACKEND_IMPORT_DRIVER = r"""
+import importlib.util as _u, json as _json, pathlib as _pl, sys as _sys
+
+_out = _sys.argv[1]
+_root = _pl.Path(".").resolve()
+_delivered = {}
+for _p in _root.rglob("*.py"):
+    if "__pycache__" in _p.parts:
+        continue
+    _name = _p.name
+    if _name.startswith("test_") or _name.endswith("_test.py") or _name == "conftest.py":
+        continue
+    _delivered[str(_p.relative_to(_root))] = _p
+_stems = {_p.stem for _p in _delivered.values()}
+
+_failures, _assessed, _skipped = [], 0, []
+for _rel, _path in sorted(_delivered.items()):
+    _spec = _u.spec_from_file_location("_qa_imp_" + _rel.replace("/", "_")[:-3], str(_path))
+    if _spec is None or _spec.loader is None:
+        continue
+    _mod = _u.module_from_spec(_spec)
+    try:
+        _spec.loader.exec_module(_mod)
+        _assessed += 1
+    except ModuleNotFoundError as _e:
+        _missing = (getattr(_e, "name", "") or "").split(".")[0]
+        if _missing and _missing in _stems:
+            _failures.append({"module": _rel, "error": "ModuleNotFoundError: " + str(_e)})
+        else:
+            _skipped.append(_missing or _rel)
+    except Exception as _e:
+        _failures.append({"module": _rel, "error": type(_e).__name__ + ": " + str(_e)})
+
+with open(_out, "w", encoding="utf-8") as _fh:
+    _json.dump({"failures": _failures, "assessed": _assessed, "skipped_deps": sorted(set(_skipped))}, _fh)
+"""
+
+
+async def run_backend_import_check(
+    source_files: list[dict[str, str]],
+    timeout_seconds: int = 60,
+) -> BuildCheckResult:
+    """Verify the delivered backend actually imports (#276).
+
+    Executes each delivered backend Python module (everything not under
+    ``frontend/``) in a subprocess, using the same ``PYTHONPATH`` model as the
+    generated tests so sibling imports resolve. The canonical bug — a
+    ``backend/main.py`` that references ``BaseModel`` without importing it —
+    passes the (stubbed) generated suite but raises ``NameError`` here, exactly
+    the ``cyc_2f415e43f9cf`` false-green. Complements ``compute_missing_required_files``
+    (#291), which checks a required file is *present*; this checks it *runs*.
+
+    A *skip* (``ran=False``) never fails: no backend Python source, a runner
+    crash or timeout, or import failures that are only missing third-party
+    dependencies not installed in the runner (not the deliverable's fault). A
+    module that raises anything else — ``NameError``, ``SyntaxError``,
+    ``ImportError`` of a delivered sibling — is a BLOCKING failure: a backend
+    that can't import is broken, not absent. Never raises.
+    """
+    backend_py = [
+        rec
+        for rec in source_files
+        if rec["path"].endswith(".py") and not rec["path"].startswith("frontend/")
+    ]
+    if not backend_py:
+        return BuildCheckResult(ran=False, error="no backend Python source")
+
+    workspace = tempfile.mkdtemp(prefix="qa_import_")
+    try:
+        _materialize_files(workspace, backend_py)
+        outfile = os.path.join(workspace, "__qa_import_result.json")
+        env = {**os.environ, "PYTHONPATH": _source_dir_pythonpath(workspace, backend_py)}
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-c",
+                _BACKEND_IMPORT_DRIVER,
+                outfile,
+                cwd=workspace,
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            return BuildCheckResult(ran=False, error="python interpreter not found")
+
+        try:
+            _, raw_err = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return BuildCheckResult(
+                ran=False, error=f"backend import check timed out after {timeout_seconds}s"
+            )
+
+        import json
+
+        try:
+            with open(outfile, encoding="utf-8") as fh:
+                report = json.load(fh)
+        except (OSError, ValueError):
+            # Driver never wrote a verdict (hard crash / segfault / sys.exit on
+            # import): can't assess, so skip rather than fabricate a failure.
+            logger.warning(
+                "backend import check produced no result; stderr: %s",
+                raw_err.decode(errors="replace")[:500],
+            )
+            return BuildCheckResult(ran=False, error="backend import check produced no result")
+
+        failures = report.get("failures", [])
+        if failures:
+            first = failures[0]
+            return BuildCheckResult(
+                ran=True,
+                ok=False,
+                exit_code=1,
+                error=f"backend module {first['module']} failed to import: {first['error']}",
+                stderr="\n".join(f"{f['module']}: {f['error']}" for f in failures)[:_STDOUT_LIMIT],
+            )
+        if not report.get("assessed"):
+            skipped = ", ".join(report.get("skipped_deps", [])) or "unknown"
+            return BuildCheckResult(
+                ran=False, error=f"backend deps unavailable — cannot assess ({skipped})"
+            )
+        return BuildCheckResult(ran=True, ok=True, exit_code=0)
+    except Exception as exc:  # never raise — a runner error is a skip, not a failure
+        logger.warning("Backend import check error: %s", exc, exc_info=True)
+        return BuildCheckResult(ran=False, error=str(exc))
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
 async def run_fullstack_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
@@ -537,15 +678,17 @@ async def run_build_validation(
     test_files: list[dict[str, str]],
     timeout_seconds: int = 60,
 ) -> RunTestsResult:
-    """Run the framework-appropriate test suite plus a build check, as one result.
+    """Run the framework-appropriate test suite plus build/boot checks, as one result.
 
     Single entry point that owns all test-framework dispatch (pytest / vitest /
-    both) and the #276 frontend build check, so callers stay framework-agnostic.
+    both) and the #276 deliverable checks — the frontend *build* check and the
+    backend *import* check — so callers stay framework-agnostic.
 
-    A frontend *build* failure is BLOCKING (a non-building app is broken) even
-    where frontend unit tests are non-blocking (D13). A build *skip* — no
-    frontend, no ``package.json``, or no Node — never fails. Returns a
-    ``RunTestsResult`` — never raises.
+    A build/boot *failure* is BLOCKING (a non-building frontend or a non-importing
+    backend is broken) even where unit tests passed and are otherwise non-blocking
+    (D13). A *skip* — no frontend/backend source, no ``package.json``, no Node, or
+    a missing third-party dep the runner lacks — never turns a passing suite red.
+    Returns a ``RunTestsResult`` — never raises.
     """
     from squadops.capabilities.dev_capabilities import (
         TEST_FRAMEWORK_BOTH,
@@ -554,24 +697,40 @@ async def run_build_validation(
 
     if test_framework == TEST_FRAMEWORK_VITEST:
         result = await run_node_tests(source_files, test_files, timeout_seconds=timeout_seconds)
-        build_target: str | None = None
+        frontend_target: str | None = None
+        run_frontend, run_backend = True, False
     elif test_framework == TEST_FRAMEWORK_BOTH:
         result = await run_fullstack_tests(
             source_files, test_files, timeout_seconds=timeout_seconds
         )
-        build_target = "frontend"
+        frontend_target = "frontend"
+        run_frontend, run_backend = True, True
     else:
-        # pytest / backend-only: nothing to build
-        return await run_generated_tests(source_files, test_files, timeout_seconds=timeout_seconds)
+        # pytest / backend-only: no frontend to build, but the backend must import
+        result = await run_generated_tests(
+            source_files, test_files, timeout_seconds=timeout_seconds
+        )
+        frontend_target = None
+        run_frontend, run_backend = False, True
 
-    build = await run_frontend_build(
-        source_files, target_dir=build_target, timeout_seconds=timeout_seconds
-    )
-    if build.failed:
-        merged_error = "; ".join(part for part in (result.error, build.error) if part)
+    checks: list[BuildCheckResult] = []
+    if run_frontend:
+        checks.append(
+            await run_frontend_build(
+                source_files, target_dir=frontend_target, timeout_seconds=timeout_seconds
+            )
+        )
+    if run_backend:
+        checks.append(await run_backend_import_check(source_files, timeout_seconds=timeout_seconds))
+
+    failed = [check for check in checks if check.failed]
+    if failed:
+        merged_error = "; ".join(
+            part for part in (result.error, *(check.error for check in failed)) if part
+        )
         result = replace(
             result,
-            exit_code=result.exit_code or build.exit_code or 1,
+            exit_code=result.exit_code or failed[0].exit_code or 1,
             error=merged_error,
         )
     return result
