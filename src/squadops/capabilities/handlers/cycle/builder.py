@@ -277,7 +277,6 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         inputs: dict[str, Any],
     ) -> HandlerResult:
         from squadops.capabilities.handlers.build_profiles import (
-            DEFAULT_BUILD_PROFILE,
             QA_HANDOFF_REQUIRED_SECTIONS,
             get_profile,
         )
@@ -289,8 +288,22 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         prior_outputs = inputs.get("prior_outputs")
         resolved_config = inputs.get("resolved_config", {})
 
-        # Step 1: Resolve build profile
-        profile_name = resolved_config.get("build_profile", DEFAULT_BUILD_PROFILE)
+        # Step 1: Resolve build profile. Required — no default (#392). A missing
+        # build_profile is a misconfiguration, not something to paper over with an
+        # assumed stack; generate_task_plan rejects it before dispatch, and this
+        # is the handler-level backstop.
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+        profile_name = resolved_config.get("build_profile")
+        if not profile_name:
+            return self._fail_result(
+                start_time,
+                inputs,
+                "build_profile is required for builder runs but was not configured "
+                "(no default is assumed). Set build_profile in the cycle request profile.",
+                outcome_class=TaskOutcome.SEMANTIC_FAILURE,
+                failure_classification=FailureClassification.EXECUTION,
+            )
         try:
             profile = get_profile(profile_name)
         except ValueError as exc:

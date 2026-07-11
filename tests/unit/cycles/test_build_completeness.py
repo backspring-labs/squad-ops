@@ -108,21 +108,22 @@ def test_required_file_in_subdirectory_satisfies_by_basename():
     assert result is None
 
 
-def test_default_profile_used_when_build_profile_absent():
-    """When resolved_config omits build_profile, the gate must resolve the same
-    default (python_cli_builder) the builder handler uses — otherwise the check
-    and the handler would disagree on what's required. python_cli_builder needs
-    Dockerfile/__main__.py/requirements.txt/qa_handoff.md; emit none → all
-    reported missing."""
-    result = compute_missing_required_files(
-        _BUILDER_PLAN,
-        [_ref("notes.txt")],
-        {},  # no build_profile
-    )
-    assert result is not None
-    profile_name, missing = result
-    assert profile_name == "python_cli_builder"
-    assert set(missing) == {"Dockerfile", "__main__.py", "requirements.txt", "qa_handoff.md"}
+def test_builder_run_without_build_profile_defers(caplog):
+    """build_profile is required for builder runs (#392) — generate_task_plan
+    rejects a missing one before dispatch. If the gate is somehow reached without
+    one, it must NOT fabricate a default profile to check against; it defers
+    (None) and logs. The bug this catches: re-introducing a python_cli_builder
+    default here would silently check the wrong stack's required files."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        result = compute_missing_required_files(
+            _BUILDER_PLAN,
+            [_ref("notes.txt")],
+            {},  # no build_profile
+        )
+    assert result is None
+    assert "no build_profile" in caplog.text
 
 
 def test_unknown_profile_defers_instead_of_crashing():

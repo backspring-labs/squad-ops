@@ -489,6 +489,18 @@ def generate_task_plan(
         envelopes.append(envelope)
         prev_task_id = task_id
 
+    # #392: a builder deliverable needs an explicit build_profile — there is no
+    # useful default (a builder must not assemble for an assumed stack, and the
+    # #291 completeness gate would otherwise check the wrong profile's required
+    # files). Reject at plan generation, the single point where builder-in-play
+    # is known with config in hand — before any builder task is dispatched.
+    if plan_has_builder_task(envelopes) and not resolved_config.get("build_profile"):
+        raise CycleError(
+            "build_profile is required when the plan includes a builder task, but none "
+            "was configured. Set build_profile in the cycle request profile — there is "
+            "no default (a builder must not assemble for an assumed stack)."
+        )
+
     return envelopes
 
 

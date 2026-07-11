@@ -205,7 +205,12 @@ class TestCustomHandlerTemplateIdCoverage:
             (
                 BuilderAssembleHandler,
                 "request.builder_assemble.build_assemble",
-                {"artifact_contents": {"implementation_plan.md": "Plan"}},
+                {
+                    "artifact_contents": {"implementation_plan.md": "Plan"},
+                    # #392: build_profile is required — without it the handler
+                    # fails before rendering the prompt this test checks.
+                    "resolved_config": {"build_profile": "python_cli_builder"},
+                },
             ),
             (
                 GovernanceIncorporateFeedbackHandler,

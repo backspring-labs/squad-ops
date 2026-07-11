@@ -268,6 +268,11 @@ class TestImplementationWorkload:
         assert actual == expected
 
     def test_builder_present_produces_contract_plus_assembly_steps(self, cycle, builder_profile):
+        # #392: a builder plan requires an explicit build_profile.
+        cycle = replace(
+            cycle,
+            applied_defaults={**cycle.applied_defaults, "build_profile": "python_cli_builder"},
+        )
         envelopes = generate_task_plan(cycle, _run("implementation"), builder_profile)
         actual = [e.task_type for e in envelopes]
         # SIP-0079: governance.define_done prepended before builder assembly steps

@@ -49,12 +49,6 @@ ARTIFACT_MODE_MULTI_FILE = "multi_file"
 ARTIFACT_MODE_SINGLE_FILE = "single_file"
 ARTIFACT_MODE_STRUCTURED_BUNDLE = "structured_bundle"
 
-# Default build profile when a builder run doesn't declare ``build_profile``
-# in its resolved config. Single-sourced here so the builder handler
-# (per-task) and the executor's deliverable-completeness gate (#291,
-# ``build_completeness``) resolve the same fallback and can't drift.
-DEFAULT_BUILD_PROFILE = "python_cli_builder"
-
 
 # ---------------------------------------------------------------------------
 # Build profile dataclass (D2)

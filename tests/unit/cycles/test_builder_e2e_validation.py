@@ -78,6 +78,11 @@ def _make_cycle(
     applied_defaults: dict,
     squad_profile_id: str = "full",
 ) -> Cycle:
+    # A builder cycle now requires an explicit build_profile (#392); these
+    # routing/shape tests aren't about profile selection, so default one in
+    # when build tasks are enabled and none was given.
+    if applied_defaults.get("build_tasks") and "build_profile" not in applied_defaults:
+        applied_defaults = {**applied_defaults, "build_profile": "python_cli_builder"}
     return Cycle(
         cycle_id="cyc_e2e_001",
         project_id="e2e_test",

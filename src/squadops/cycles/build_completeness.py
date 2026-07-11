@@ -24,7 +24,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.handlers.build_profiles import DEFAULT_BUILD_PROFILE, get_profile
+from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.cycles.task_plan import plan_has_builder_task
 
 if TYPE_CHECKING:
@@ -46,8 +46,9 @@ def compute_missing_required_files(
         stored_artifacts: ``(artifact_id, ArtifactRef)`` for every artifact the
             run emitted — the complete deliverable set at run completion.
         resolved_config: ``{**applied_defaults, **execution_overrides}`` — the
-            same merged config the builder handler reads ``build_profile`` from,
-            so the fallback matches.
+            same merged config the builder handler reads ``build_profile`` from.
+            ``build_profile`` is required for builder runs (#392); a builder run
+            reaching here without one was already rejected at plan generation.
 
     Returns:
         ``(profile_name, missing_files)`` when the run built a deliverable and
@@ -63,7 +64,18 @@ def compute_missing_required_files(
     if not plan_has_builder_task(plan):
         return None
 
-    profile_name = resolved_config.get("build_profile", DEFAULT_BUILD_PROFILE)
+    profile_name = resolved_config.get("build_profile")
+    if not profile_name:
+        # A builder run without build_profile is a misconfiguration that
+        # generate_task_plan rejects before dispatch (#392, CycleError → run
+        # FAILED), so this is unreachable in a normal run. Defer rather than
+        # fabricate a profile to check against — but log, since reaching here
+        # means the plan-generation guard was bypassed.
+        logger.warning(
+            "required_files completeness check skipped: builder run has no build_profile "
+            "(should have been rejected at plan generation)"
+        )
+        return None
     try:
         profile = get_profile(profile_name)
     except ValueError:
