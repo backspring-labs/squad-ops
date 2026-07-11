@@ -29,6 +29,9 @@ cd "$REPO_ROOT"
 SOURCE_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 export SOURCE_HASH
 
+# Shared secret-provisioning helpers (agent client secret, #326/#371).
+source "$REPO_ROOT/scripts/dev/ops/secrets.sh"
+
 # Parse command-line arguments
 REBUILD_CONSOLE=false
 REBUILD_AGENTS=false
@@ -235,9 +238,12 @@ fi
 echo ""
 echo -e "${BLUE}🔨 Step 3: Rebuilding containers with updated code...${NC}"
 
-# Track build failures for non-blocking services
+# Track build/restart failures for non-blocking services so the completion
+# banner and exit code stay honest (#370).
 RUNTIME_API_FAILED=0
 CONSOLE_FAILED=0
+AGENTS_RESTART_FAILED=0
+FAILED_AGENTS=""
 
 # Rebuild Runtime API if requested
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
@@ -383,13 +389,30 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
         fi
     done
 
+    # Ensure the #326 agent client secret exists before (re)starting agents.
+    # Only bootstrap used to create it, so a pull+rebuild on an already-
+    # bootstrapped box left agents unable to start — the mounted secret file
+    # was simply absent (#371).
+    if [ ! -f "$AGENT_CLIENT_SECRET_FILE" ]; then
+        if ensure_agent_client_secret; then
+            echo -e "${GREEN}✅ Provisioned ${AGENT_CLIENT_SECRET_FILE} (agent auth secret)${NC}"
+        else
+            echo -e "${RED}  ❌ Could not create ${AGENT_CLIENT_SECRET_FILE} — agents will fail to start${NC}"
+            exit 1
+        fi
+    fi
+
     # Step 4: Restart all agent containers
     echo ""
     echo -e "${BLUE}🔄 Step 4: Restarting agent containers...${NC}"
     for agent in $AGENTS; do
         if docker compose config --services | grep -q "^${agent}$"; then
             echo -e "  🔄 Restarting ${agent}..."
-            docker compose up -d $agent || echo -e "${RED}  ⚠️  Restart failed for ${agent}${NC}"
+            if ! docker compose up -d $agent; then
+                echo -e "${RED}  ⚠️  Restart failed for ${agent}${NC}"
+                AGENTS_RESTART_FAILED=1
+                FAILED_AGENTS="${FAILED_AGENTS} ${agent}"
+            fi
         fi
     done
 
@@ -447,7 +470,17 @@ echo -e "${BLUE}✅ Step 6: Verifying deployment...${NC}"
 docker compose ps
 
 echo ""
-echo -e "${GREEN}🎉 Rebuild and deploy complete!${NC}"
+# Honest completion banner + exit code (#370): a swallowed agent restart
+# failure used to print the success banner and exit 0, leaving stale agents.
+DEPLOY_FAILED=0
+[ "${RUNTIME_API_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${CONSOLE_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${AGENTS_RESTART_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+if [ "$DEPLOY_FAILED" = "1" ]; then
+    echo -e "${RED}⚠️  Rebuild and deploy completed WITH FAILURES (details below).${NC}"
+else
+    echo -e "${GREEN}🎉 Rebuild and deploy complete!${NC}"
+fi
 echo ""
 echo -e "${BLUE}Next steps:${NC}"
 if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
@@ -464,20 +497,25 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo -e "  5. Run smoke tests: ${YELLOW}python3 -m pytest tests/smoke/ -v${NC}"
 fi
 
-# Report any build failures that were deferred
-BUILD_FAILURES=0
+# Report any failures that were deferred so the run could continue. DEPLOY_FAILED
+# (computed with the banner above) drives the non-zero exit so callers and CI can
+# trust the result instead of a blanket exit 0 (#370).
 if [ "${RUNTIME_API_FAILED:-0}" = "1" ]; then
     echo ""
     echo -e "${RED}❌ runtime-api build failed. Fix the error and rebuild:${NC}"
     echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh runtime-api${NC}"
-    BUILD_FAILURES=1
 fi
 if [ "${CONSOLE_FAILED:-0}" = "1" ]; then
     echo ""
     echo -e "${RED}❌ Console build failed. Fix the Svelte error and rebuild:${NC}"
     echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh console${NC}"
-    BUILD_FAILURES=1
 fi
-if [ "$BUILD_FAILURES" = "1" ]; then
+if [ "${AGENTS_RESTART_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ Agent restart failed for:${FAILED_AGENTS}${NC}"
+    echo -e "${RED}   These agents keep running their previous image (stale code).${NC}"
+    echo -e "${YELLOW}   Retry: ./scripts/dev/ops/rebuild_and_deploy.sh agents${FAILED_AGENTS}${NC}"
+fi
+if [ "$DEPLOY_FAILED" = "1" ]; then
     exit 1
 fi
