@@ -16,6 +16,7 @@ from squadops.capabilities.handlers.build_profiles import (
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
+    CycleError,
     Run,
     SquadProfile,
     TaskFlowPolicy,
@@ -80,6 +81,13 @@ def run():
 
 
 def _make_cycle(applied_defaults: dict) -> Cycle:
+    # A builder cycle now requires an explicit build_profile (#392). These
+    # routing/shape tests aren't about profile selection, so default one in
+    # when build tasks are enabled and none was given — keeping the helper a
+    # "valid builder cycle". The missing-profile case is covered explicitly
+    # in TestBuildProfileRequired.
+    if applied_defaults.get("build_tasks") and "build_profile" not in applied_defaults:
+        applied_defaults = {**applied_defaults, "build_profile": "python_cli_builder"}
     return Cycle(
         cycle_id="cyc_001",
         project_id="test_project",
@@ -293,3 +301,56 @@ class TestPlanPlusBuildWithBuilder:
         assert len(envelopes) == 3
         task_types = [e.task_type for e in envelopes]
         assert task_types == ["development.develop", "builder.assemble", "qa.test"]
+
+
+class TestBuildProfileRequired:
+    """#392: a plan that includes a builder task must have an explicit
+    build_profile — there is no default. Rejected at plan generation, before
+    any builder task is dispatched against an assumed stack."""
+
+    @staticmethod
+    def _cycle_without_build_profile(applied_defaults: dict) -> Cycle:
+        # Bypasses _make_cycle's auto-default so the missing-profile case is real.
+        return Cycle(
+            cycle_id="cyc_001",
+            project_id="test_project",
+            created_at=NOW,
+            created_by="system",
+            prd_ref="Build a CLI tool",
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            applied_defaults=applied_defaults,
+            execution_overrides={},
+        )
+
+    def test_builder_plan_without_build_profile_raises(self, run, profile_with_builder):
+        """The config-masking bug this closes: without this guard, a builder run
+        with no build_profile would silently assemble for an assumed
+        python_cli_builder stack. Now it fails loudly at plan generation."""
+        cycle = self._cycle_without_build_profile({"build_tasks": ["builder.assemble", "qa.test"]})
+        with pytest.raises(CycleError, match="build_profile is required"):
+            generate_task_plan(cycle, run, profile_with_builder)
+
+    def test_builder_plan_with_build_profile_succeeds(self, run, profile_with_builder):
+        """An explicit build_profile satisfies the requirement — the plan builds."""
+        cycle = self._cycle_without_build_profile(
+            {
+                "build_tasks": ["builder.assemble", "qa.test"],
+                "build_profile": "fullstack_fastapi_react",
+            }
+        )
+        envelopes = generate_task_plan(cycle, run, profile_with_builder)
+        assert "builder.assemble" in [e.task_type for e in envelopes]
+
+    def test_non_builder_plan_needs_no_build_profile(self, run, profile_without_builder):
+        """A build run with no builder role (development.develop/qa.test) has no
+        build profile and must NOT be forced to declare one — the requirement is
+        scoped to builder tasks, not all build runs."""
+        cycle = self._cycle_without_build_profile(
+            {"build_tasks": ["development.develop", "qa.test"]}
+        )
+        envelopes = generate_task_plan(cycle, run, profile_without_builder)
+        # No builder task, no CycleError.
+        assert "builder.assemble" not in [e.task_type for e in envelopes]

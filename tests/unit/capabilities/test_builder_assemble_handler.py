@@ -259,7 +259,7 @@ class TestAssemblyRequiresSource:
         """Assembly fails if no source artifacts are provided."""
         inputs = {
             "prd": "Build something",
-            "resolved_config": {},
+            "resolved_config": {"build_profile": "python_cli_builder"},
             "artifact_contents": {},
         }
         handler = BuilderAssembleHandler()
@@ -275,12 +275,17 @@ class TestAssemblyRequiresSource:
 
 
 class TestProfileSelection:
-    async def test_default_profile_when_not_specified(self, mock_context, builder_inputs):
+    async def test_missing_build_profile_returns_failure(self, mock_context, builder_inputs):
+        """build_profile is required — no default (#392). A missing one fails loudly
+        rather than silently assembling for an assumed python_cli_builder stack.
+        The bug this catches: a fullstack cycle misconfigured without build_profile
+        would otherwise ship a python_cli_builder deliverable and read green."""
         builder_inputs["resolved_config"] = {}
         handler = BuilderAssembleHandler()
         result = await handler.handle(mock_context, builder_inputs)
 
-        assert result.outputs["diagnostics"]["build_profile"] == "python_cli_builder"
+        assert result.success is False
+        assert "build_profile is required" in result.error
 
     async def test_unknown_profile_returns_failure(self, mock_context, builder_inputs):
         builder_inputs["resolved_config"] = {"build_profile": "nonexistent"}
@@ -821,7 +826,7 @@ class TestBuilderFailureOutcomeClass:
 
         inputs = {
             "prd": "Build something",
-            "resolved_config": {},
+            "resolved_config": {"build_profile": "python_cli_builder"},
             "artifact_contents": {},
         }
         handler = BuilderAssembleHandler()

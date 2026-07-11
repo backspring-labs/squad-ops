@@ -223,6 +223,25 @@ _KNOWN_WORKLOAD_TYPES = {
 # Task types that are build steps (for routing_reason metadata)
 _BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
 
+# Builder-role (SIP-0071) capability namespace. A run is a *builder deliverable*
+# run — subject to the profile-level ``required_files`` completeness gate
+# (#291) — iff its plan contains a ``builder.*`` task. This is deliberately
+# narrower than ``_BUILD_TASK_TYPES``: the generic ``development.develop`` /
+# ``qa.test`` steps are shared by plain build-only runs that have no build
+# profile and emit source, not a packaged deliverable.
+BUILDER_TASK_TYPE_PREFIX = "builder."
+
+
+def plan_has_builder_task(plan: list[TaskEnvelope]) -> bool:
+    """True when the plan contains a builder-role assembly task (#291).
+
+    Distinguishes a builder deliverable run (a build profile with
+    ``required_files`` applies) from a plain develop+test build run, which
+    reuses the ``development.develop`` / ``qa.test`` task types but produces
+    no packaged deliverable to check for completeness.
+    """
+    return any(t.task_type.startswith(BUILDER_TASK_TYPE_PREFIX) for t in plan)
+
 
 def _has_builder_role(profile: SquadProfile) -> bool:
     """Check if squad profile includes a builder role agent.
@@ -469,6 +488,18 @@ def generate_task_plan(
         )
         envelopes.append(envelope)
         prev_task_id = task_id
+
+    # #392: a builder deliverable needs an explicit build_profile — there is no
+    # useful default (a builder must not assemble for an assumed stack, and the
+    # #291 completeness gate would otherwise check the wrong profile's required
+    # files). Reject at plan generation, the single point where builder-in-play
+    # is known with config in hand — before any builder task is dispatched.
+    if plan_has_builder_task(envelopes) and not resolved_config.get("build_profile"):
+        raise CycleError(
+            "build_profile is required when the plan includes a builder task, but none "
+            "was configured. Set build_profile in the cycle request profile — there is "
+            "no default (a builder must not assemble for an assumed stack)."
+        )
 
     return envelopes
 

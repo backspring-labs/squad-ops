@@ -472,6 +472,186 @@ class TestBuildOnlySeeding:
         vault.retrieve.assert_any_call("art_plan_001")
 
 
+class TestBuilderDeliverableCompleteness:
+    """#291: the executor fails a builder run whose emitted set is missing a
+    file the build profile requires — the run-level net the per-task validator
+    (#107) can't provide once framing decomposes builder work."""
+
+    @staticmethod
+    def _builder_squad():
+        from squadops.cycles.models import AgentProfileEntry, SquadProfile
+
+        squad = AsyncMock()
+        squad.resolve_snapshot = AsyncMock(
+            return_value=(
+                SquadProfile(
+                    profile_id="full",
+                    name="Full",
+                    description="",
+                    version=1,
+                    agents=(
+                        AgentProfileEntry(agent_id="neo", role="dev", model="m", enabled=True),
+                        AgentProfileEntry(agent_id="bob", role="builder", model="m", enabled=True),
+                        AgentProfileEntry(agent_id="eve", role="qa", model="m", enabled=True),
+                    ),
+                    created_at=NOW,
+                ),
+                "snap",
+            )
+        )
+        return squad
+
+    @staticmethod
+    def _builder_cycle():
+        return Cycle(
+            cycle_id="cyc_001",
+            project_id="test",
+            created_at=NOW,
+            created_by="system",
+            prd_ref="prd",
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            applied_defaults={
+                "plan_tasks": False,
+                # truthy build_tasks + a builder role → BUILDER_ASSEMBLY_TASK_STEPS
+                # (development.develop → builder.assemble → qa.test).
+                "build_tasks": ["builder.assemble"],
+                "build_profile": "fullstack_fastapi_react",
+            },
+            # build-only run: seed the approved plan so it isn't rejected before
+            # dispatch (the deliverable-completeness gate is what we're testing).
+            execution_overrides={"plan_artifact_refs": ["art_plan_001"]},
+        )
+
+    @staticmethod
+    def _vault():
+        ref_plan = _make_artifact_ref("art_plan_001", "implementation_plan.md", "document")
+        vault = AsyncMock()
+        vault.store = AsyncMock(side_effect=lambda ref, content: ref)
+        vault.retrieve = AsyncMock(return_value=(ref_plan, b"Plan content"))
+        return vault
+
+    @staticmethod
+    def _registry(cycle, run):
+        registry = AsyncMock()
+        registry.get_cycle = AsyncMock(return_value=cycle)
+        registry.get_run = AsyncMock(return_value=run)
+        registry.update_run_status = AsyncMock()
+        registry.append_artifact_refs = AsyncMock()
+        registry.get_latest_checkpoint = AsyncMock(return_value=None)
+        registry.save_checkpoint = AsyncMock(return_value=None)
+        return registry
+
+    async def test_builder_run_missing_required_file_fails(self, reply_router):
+        """fullstack_fastapi_react requires Dockerfile + qa_handoff.md. The build
+        emits only qa_handoff.md (no Dockerfile) → the run must transition FAILED,
+        not COMPLETED. This is the exact #276 green-on-broken-deliverable bug."""
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.tasks.models import TaskResult
+
+        cycle = self._builder_cycle()
+        run = Run(
+            run_id="run_001",
+            cycle_id="cyc_001",
+            run_number=1,
+            status="queued",
+            initiated_by="api",
+            resolved_config_hash="hash",
+        )
+        registry = self._registry(cycle, run)
+        vault = self._vault()
+
+        # Builder emits qa_handoff.md but never a Dockerfile.
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"],
+            status="SUCCEEDED",
+            outputs={
+                "summary": "done",
+                "role": env["metadata"].get("role"),
+                "artifacts": [
+                    {
+                        "name": "qa_handoff.md",
+                        "content": "## How to Run\n## How to Test\n## Expected Behavior\n",
+                        "type": "document",
+                        "media_type": "text/markdown",
+                    }
+                ],
+            },
+        )
+
+        ex = DispatchedFlowExecutor(
+            cycle_registry=registry,
+            artifact_vault=vault,
+            queue=reply_router.bind(AsyncMock()),
+            squad_profile=self._builder_squad(),
+            reply_router=reply_router,
+        )
+
+        await ex.execute_run("cyc_001", "run_001")
+
+        calls = [c.args for c in registry.update_run_status.call_args_list]
+        assert ("run_001", RunStatus.FAILED) in calls
+        assert ("run_001", RunStatus.COMPLETED) not in calls
+
+    async def test_builder_run_with_all_required_files_completes(self, reply_router):
+        """The gate must not over-fire: when the build emits both Dockerfile and
+        qa_handoff.md, the run completes — proving the FAILED case above is the
+        missing file, not merely 'a builder run'."""
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+        from squadops.tasks.models import TaskResult
+
+        cycle = self._builder_cycle()
+        run = Run(
+            run_id="run_001",
+            cycle_id="cyc_001",
+            run_number=1,
+            status="queued",
+            initiated_by="api",
+            resolved_config_hash="hash",
+        )
+        registry = self._registry(cycle, run)
+        vault = self._vault()
+
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"],
+            status="SUCCEEDED",
+            outputs={
+                "summary": "done",
+                "role": env["metadata"].get("role"),
+                "artifacts": [
+                    {
+                        "name": "Dockerfile",
+                        "content": "FROM python:3.12\n",
+                        "type": "source",
+                        "media_type": "text/plain",
+                    },
+                    {
+                        "name": "qa_handoff.md",
+                        "content": "## How to Run\n## How to Test\n## Expected Behavior\n",
+                        "type": "document",
+                        "media_type": "text/markdown",
+                    },
+                ],
+            },
+        )
+
+        ex = DispatchedFlowExecutor(
+            cycle_registry=registry,
+            artifact_vault=vault,
+            queue=reply_router.bind(AsyncMock()),
+            squad_profile=self._builder_squad(),
+            reply_router=reply_router,
+        )
+
+        await ex.execute_run("cyc_001", "run_001")
+
+        calls = [c.args for c in registry.update_run_status.call_args_list]
+        assert ("run_001", RunStatus.COMPLETED) in calls
+        assert ("run_001", RunStatus.FAILED) not in calls
+
+
 class TestPlanOnlyCyclesUnaffected:
     """Regression: plan-only cycles still work as before."""
 

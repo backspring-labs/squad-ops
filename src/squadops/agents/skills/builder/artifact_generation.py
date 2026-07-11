@@ -37,11 +37,12 @@ class ArtifactGenerationSkill(Skill):
     Inputs:
         plan: str - Implementation plan content
         strategy: str (optional) - Strategy analysis context
-        build_profile: str (optional) - Build profile name
+        build_profile: str (optional) - Build profile name, provenance only
+            (the prompt is profile-agnostic). Not defaulted (#392).
 
     Outputs:
         artifacts: str - Raw LLM response with fenced code blocks
-        build_profile: str - Profile used for generation
+        build_profile: str | None - Profile name as supplied (None if unset)
     """
 
     @property
@@ -85,7 +86,10 @@ class ArtifactGenerationSkill(Skill):
 
         plan = inputs["plan"]
         strategy = inputs.get("strategy", "")
-        build_profile = inputs.get("build_profile", "python_cli_builder")
+        # Provenance only — this skill's prompt is profile-agnostic, so the name
+        # is echoed into outputs, not consumed. Never fabricate a default (#392):
+        # an absent profile is reported honestly as None, not a made-up stack.
+        build_profile = inputs.get("build_profile")
 
         prompt = ARTIFACT_GENERATION_PROMPT.format(plan=plan)
         if strategy:

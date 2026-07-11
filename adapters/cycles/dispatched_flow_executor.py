@@ -34,6 +34,7 @@ from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outco
 from adapters.cycles.task_dispatcher import TaskDispatcher
 from adapters.cycles.task_naming import build_task_name
 from squadops.cycles.agent_config import build_agent_resolver
+from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, Run, RunStatus
 from squadops.cycles.naming import flow_run_name
@@ -1085,6 +1086,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     stored_artifacts=stored_artifacts,
                     profile=profile,
                 )
+
+        # #291: deliverable-completeness gate. The per-task builder validator
+        # (#107) only enforces the *active* task's required files; a required
+        # file that framing spread across tasks — or that no single task owns —
+        # is never checked, so a run can ship green without the Dockerfile its
+        # own profile mandates (#276). The loop is done, so stored_artifacts now
+        # holds the complete emitted set — the only point where the deliverable
+        # is fully known. Missing → fail the run (FAILED, via _ExecutionError →
+        # resolve_terminal_outcome) with the missing list.
+        resolved_config = {**cycle.applied_defaults, **cycle.execution_overrides}
+        deficiency = compute_missing_required_files(plan, stored_artifacts, resolved_config)
+        if deficiency is not None:
+            profile_name, missing = deficiency
+            raise _ExecutionError(
+                f"Build deliverable incomplete: build profile {profile_name!r} requires files "
+                f"the run never emitted. Missing required files: {missing}."
+            )
 
     # ------------------------------------------------------------------
     # SIP-0086: Manifest loading for implementation workloads

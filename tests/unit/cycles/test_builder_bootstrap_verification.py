@@ -91,6 +91,8 @@ class TestDryRunPlanGeneration:
             build_strategy="fresh",
             applied_defaults={
                 "build_tasks": ["builder.assemble", "qa.test"],
+                # #392: a builder plan requires an explicit build_profile.
+                "build_profile": "python_cli_builder",
             },
             execution_overrides={},
         )
