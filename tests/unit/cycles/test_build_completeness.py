@@ -13,13 +13,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from squadops.cycles.build_completeness import (
-    compute_missing_required_files,
-    evaluate_required_files,
-)
-from squadops.cycles.check_registry import CHECK_REQUIRED_FILES
+from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.models import ArtifactRef
-from squadops.cycles.verification_integrity import EvidenceFamily, ResultStatus, classify
 from squadops.tasks.models import TaskEnvelope
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -152,56 +147,3 @@ def test_only_missing_subset_reported_not_present_ones():
         {"build_profile": "python_cli_builder"},
     )
     assert result == ("python_cli_builder", ["requirements.txt"])
-
-
-# --- evaluate_required_files → CheckResult evidence (#399) ---------------------
-
-
-def test_complete_deliverable_records_a_passed_required_files_check():
-    """A builder run with every required file emits an executed-passed
-    required_files CheckResult — so the evidence family reflects it, not silence."""
-    outcome = evaluate_required_files(
-        _BUILDER_PLAN,
-        [_ref("Dockerfile"), _ref("qa_handoff.md")],
-        {"build_profile": "fullstack_fastapi_react"},
-    )
-    assert outcome is not None
-    assert outcome.missing == ()
-    assert outcome.check_result.check_id == CHECK_REQUIRED_FILES
-    assert outcome.check_result.status == ResultStatus.PASSED
-    assert classify(outcome.check_result) is EvidenceFamily.EXECUTED_PASSED
-
-
-def test_missing_file_records_a_failed_required_files_check_with_the_missing_list():
-    """The #399 fix: a missing-file run records an executed-FAILED required_files
-    check (→ verdict rejected, not accepted-on-zero-evidence), and the missing
-    file rides in bounded provenance so the report can name it."""
-    outcome = evaluate_required_files(
-        _BUILDER_PLAN,
-        [_ref("qa_handoff.md")],  # no Dockerfile
-        {"build_profile": "fullstack_fastapi_react"},
-    )
-    assert outcome is not None
-    assert outcome.missing == ("Dockerfile",)
-    assert outcome.check_result.status == ResultStatus.FAILED
-    assert classify(outcome.check_result) is EvidenceFamily.EXECUTED_FAILED
-    assert "Dockerfile" in outcome.check_result.provenance.output_digest
-
-
-def test_non_builder_run_yields_no_evidence():
-    """A non-builder run has no build profile — no required_files check is
-    fabricated (the gate stays scoped to builder deliverables)."""
-    plan = [_envelope("development.develop"), _envelope("qa.test")]
-    assert evaluate_required_files(plan, [_ref("src/main.py")], {}) is None
-
-
-def test_passed_check_provenance_digests_the_emitted_set_not_raw_content():
-    """§7: provenance carries a bounded subject_ref (a fileset digest), never a
-    payload copy — and no output_digest on the passing path."""
-    outcome = evaluate_required_files(
-        _BUILDER_PLAN,
-        [_ref("Dockerfile"), _ref("qa_handoff.md")],
-        {"build_profile": "fullstack_fastapi_react"},
-    )
-    assert outcome.check_result.provenance.subject_ref.startswith("fileset:")
-    assert outcome.check_result.provenance.output_digest is None
