@@ -833,7 +833,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # SIP-0079 Phase 3: Outcome routing state
         consecutive_failures: int = 0
-        correction_attempts: int = 0
+        # #374: run-level correction count as a mutable holder. A `patch` re-runs the
+        # failed check via dispatch_with_retry's "continue", so the count must bump on
+        # each inner-loop correction (not just once per outer iteration) to bound it
+        # (max_correction_attempts) and keep corr-/plan_delta- ids unique across re-runs.
+        correction_counter: dict[str, int] = {"n": 0}
         task_attempt_counts: dict[str, int] = {}
 
         # SIP-0079: Time budget enforcement (RC-8)
@@ -938,7 +942,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 result,
                 _envelope=envelope,
                 _consecutive_failures=consecutive_failures,
-                _correction_attempts=correction_attempts,
                 _holder=_last_failed_result,
             ):
                 _holder["result"] = result
@@ -949,7 +952,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     run_id=run_id,
                     task_attempt_counts=task_attempt_counts,
                     consecutive_failures=_consecutive_failures,
-                    correction_attempts=_correction_attempts,
+                    correction_counter=correction_counter,
                     prior_outputs=prior_outputs,
                     all_artifact_refs=all_artifact_refs,
                     stored_artifacts=stored_artifacts,
@@ -1009,13 +1012,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             _record_task_evidence(result)
 
             if not task_succeeded:
-                # SIP-0079: correction completed with continue/patch outcome.
-                # Original flow: consecutive_failures was incremented before
-                # correction, then reset to 0 on continue/patch. The increment
-                # only survives on abort/rewind paths which raise inside
-                # _handle_task_outcome before reaching here. Net effect: reset.
+                # #374: reaching here means the correction returned break_correction —
+                # i.e. governance chose "continue" (advance without repair). A `patch`
+                # now returns "continue", re-running the failed check inside
+                # dispatch_with_retry, so it never lands here. The correction count is
+                # bumped on the shared holder inside _handle_task_outcome, not here.
                 consecutive_failures = 0
-                correction_attempts += 1
 
             if not task_succeeded:
                 # Correction "continue"/"patch" handled — skip to next task
@@ -1276,7 +1278,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         run_id: str,
         task_attempt_counts: dict[str, int],
         consecutive_failures: int,
-        correction_attempts: int,
+        correction_counter: dict[str, int],
         prior_outputs: dict[str, Any],
         all_artifact_refs: list[str],
         stored_artifacts: list[tuple[str, ArtifactRef]],
@@ -1288,12 +1290,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """Route a failed task outcome. Returns an action string.
 
         Returns:
-            "continue" — retry the same task (caller continues while loop)
-            "break_correction" — correction handled, advance to next task
+            "continue" — re-dispatch the same task (caller's while loop retries it):
+                a retryable failure, OR (#374) a ``patch`` correction whose repair is
+                verified behaviorally by re-running the failed check itself.
+            "break_correction" — correction handled without re-run (governance
+                "continue": advance without repair), advance to next task.
 
         Raises:
             _PausedError — task is blocked
-            _ExecutionError — unrecoverable failure
+            _ExecutionError — unrecoverable failure (incl. max_correction_attempts
+                exhausted, so a repair that never converges fails the run)
         """
         outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None
 
@@ -1328,15 +1334,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Trigger correction protocol
         max_corrections = cycle.applied_defaults.get("max_correction_attempts", 2)
 
-        if correction_attempts >= max_corrections:
+        if correction_counter["n"] >= max_corrections:
             raise _ExecutionError(f"Max correction attempts ({max_corrections}) exhausted")
+
+        # #374: bump the shared run-level count on THIS correction (before dispatch) so a
+        # patch that re-runs the check (below) is bounded, and each re-run gets a fresh
+        # corr-/plan_delta- id. The pre-increment value keys those deterministic ids.
+        attempt = correction_counter["n"]
+        correction_counter["n"] = attempt + 1
 
         correction_path = await self._correction_runner.run_correction_protocol(
             run_id=run_id,
             cycle=cycle,
             envelope=envelope,
             result=result,
-            correction_attempts=correction_attempts,
+            correction_attempts=attempt,
             prior_outputs=prior_outputs,
             all_artifact_refs=all_artifact_refs,
             stored_artifacts=stored_artifacts,
@@ -1352,7 +1364,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
         elif correction_path == "rewind":
             raise _ExecutionError(f"Rewinding to checkpoint after {envelope.task_type} failure")
-        elif correction_path in ("continue", "patch"):
+        elif correction_path == "patch":
+            # #374 (pure-behavioral): re-run the ORIGINAL failed check against the
+            # patched artifacts — the re-run's pass/fail IS the verdict, not the LLM
+            # validate_repair judgment. "continue" re-dispatches the same task; a pass
+            # advances with real executed-passed evidence (recording seam), a fail
+            # re-enters correction until max_correction_attempts exhausts (guard above)
+            # → _ExecutionError → the run fails honestly instead of false-completing.
+            return "continue"
+        elif correction_path == "continue":
+            # Governance chose to advance without repair (accept-and-move-on).
             return "break_correction"
         else:
             raise _ExecutionError(f"Unknown correction path: {correction_path}")
