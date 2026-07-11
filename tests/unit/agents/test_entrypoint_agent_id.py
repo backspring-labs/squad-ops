@@ -64,3 +64,45 @@ def test_empty_string_agent_id_is_rejected(monkeypatch):
 
     with pytest.raises(ValueError, match="SQUADOPS__AGENT__ID"):
         AgentRunner(role="qa")
+
+
+# --- role resolution (#333): authoritative roster, never fabricated ------------
+
+
+def test_role_from_env_wins(monkeypatch):
+    """An explicit SQUADOPS_AGENT_ROLE is authoritative (the bootstrap selector)."""
+    from squadops.agents import entrypoint
+
+    monkeypatch.setenv("SQUADOPS_AGENT_ROLE", "lead")
+    assert entrypoint._resolve_role() == "lead"
+
+
+def test_role_derived_from_instances_when_env_unset(monkeypatch):
+    """No role env → resolve from the authoritative roster (instances.yaml) by id."""
+    from squadops.agents import entrypoint
+
+    monkeypatch.delenv("SQUADOPS_AGENT_ROLE", raising=False)
+    monkeypatch.setenv("SQUADOPS__AGENT__ID", "neo")
+    monkeypatch.setattr(entrypoint, "load_instance_config", lambda aid: {"role": "dev"})
+    assert entrypoint._resolve_role() == "dev"
+
+
+def test_role_never_fabricated_from_id(monkeypatch):
+    """The bug this catches: the former ``id.split("-")[0]`` fabricated a role for an
+    id absent from the roster (e.g. 'quark-1' -> 'quark'), silently mislabeling the
+    agent. An unknown id now yields None (→ main() fails loudly), never a guess."""
+    from squadops.agents import entrypoint
+
+    monkeypatch.delenv("SQUADOPS_AGENT_ROLE", raising=False)
+    monkeypatch.setenv("SQUADOPS__AGENT__ID", "quark-1")
+    monkeypatch.setattr(entrypoint, "load_instance_config", lambda aid: None)  # not in roster
+    assert entrypoint._resolve_role() is None
+
+
+def test_role_none_when_nothing_configured(monkeypatch):
+    """Neither role env nor id → None (main() logs the error and exits non-zero)."""
+    from squadops.agents import entrypoint
+
+    monkeypatch.delenv("SQUADOPS_AGENT_ROLE", raising=False)
+    monkeypatch.delenv("SQUADOPS__AGENT__ID", raising=False)
+    assert entrypoint._resolve_role() is None

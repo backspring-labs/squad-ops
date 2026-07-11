@@ -25,7 +25,14 @@ import signal
 import sys
 from typing import TYPE_CHECKING
 
-# Configure logging early
+# Configure logging early.
+# LOG_LEVEL (and MEMORY_DB_PATH / HEARTBEAT_INTERVAL below) are bare-env
+# *operational* knobs with sensible defaults — deliberately distinct from the
+# SQUADOPS__* nested-config convention and NOT the config-masking class #333
+# targets: they are optional tuning values, not required data, and a wrong value
+# fails visibly rather than fabricating something that looks correct. Required
+# identity (agent id / role) is the opposite — never defaulted (see AgentRunner
+# and _resolve_role).
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -363,6 +370,8 @@ class AgentRunner:
         # Create memory adapter
         memory = create_memory_provider(
             provider_type="lancedb",
+            # Operational default (see the LOG_LEVEL note) — intentional, not
+            # masked required config (#333).
             db_path=os.getenv("MEMORY_DB_PATH", "/app/data/memory_db"),
         )
 
@@ -816,6 +825,8 @@ class AgentRunner:
 
         Reports agent status to the health dashboard.
         """
+        # Operational default (see the LOG_LEVEL note) — intentional tuning knob,
+        # not masked required config (#333).
         heartbeat_interval = int(os.getenv("HEARTBEAT_INTERVAL", "30"))
 
         while not self._shutdown_event.is_set():
@@ -865,27 +876,35 @@ def setup_signal_handlers(runner: AgentRunner) -> None:
         loop.add_signal_handler(sig, lambda s=sig: handle_signal(s))
 
 
+def _resolve_role() -> str | None:
+    """Resolve the agent role for bootstrap.
+
+    Role selection happens before the config loader runs, so it is read from the
+    env (``SQUADOPS_AGENT_ROLE`` — a bootstrap selector, deliberately *not* the
+    ``SQUADOPS__*`` nested-config convention). When unset it is resolved from the
+    authoritative roster (``instances.yaml``) by agent id — **never fabricated**
+    from the id string. The former hardcoded ``{id: role}`` map duplicated the
+    roster, and its ``id.split("-")[0]`` fallback could mislabel an agent: the same
+    identity-masking class as the fabricated-id default (#333).
+    """
+    role = os.getenv("SQUADOPS_AGENT_ROLE")
+    if role:
+        return role
+    agent_id = os.getenv("SQUADOPS__AGENT__ID")
+    instance = load_instance_config(agent_id) if agent_id else None
+    return instance.get("role") if instance else None
+
+
 async def main() -> int:
     """Main entry point."""
-    # Get role from environment
-    role = os.getenv("SQUADOPS_AGENT_ROLE")
+    role = _resolve_role()
     if not role:
-        # Try to infer from SQUADOPS__AGENT__ID
-        agent_id = os.getenv("SQUADOPS__AGENT__ID", "")
-        if agent_id:
-            # Map agent IDs to roles (max -> lead, neo -> dev, etc.)
-            agent_role_map = {
-                "max": "lead",
-                "neo": "dev",
-                "bob": "builder",
-                "eve": "qa",
-                "nat": "strat",
-                "data": "data",
-            }
-            role = agent_role_map.get(agent_id.lower(), agent_id.split("-")[0])
-        else:
-            logger.error("SQUADOPS_AGENT_ROLE or SQUADOPS__AGENT__ID must be set")
-            return 1
+        logger.error(
+            "Agent role is not configured — set SQUADOPS_AGENT_ROLE, or ensure the "
+            "agent's instances.yaml entry declares a role. Identity is never "
+            "fabricated from the id string (#333)."
+        )
+        return 1
 
     logger.info(f"Starting agent with role: {role}")
 
