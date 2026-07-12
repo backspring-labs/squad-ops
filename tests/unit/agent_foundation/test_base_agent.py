@@ -72,16 +72,6 @@ class TestBaseAgent:
         assert isinstance(bundle, PortsBundle)
         assert bundle.llm is mock_ports["llm"]
 
-    def test_agent_stores_skill_registry(self, mock_ports):
-        """Agent should store skill registry if provided."""
-        registry = MagicMock()
-        agent = ConcreteAgent(
-            agent_id="agent-1",
-            skill_registry=registry,
-            **mock_ports,
-        )
-        assert agent.skill_registry is registry
-
     @pytest.mark.asyncio
     async def test_lifecycle_hooks_exist(self, mock_ports):
         """Lifecycle hooks should be callable."""

@@ -3,7 +3,6 @@
 Provides the core agent infrastructure:
 - BaseAgent with port injection
 - PortsBundle for immutable port bundling
-- SkillRegistry for skill discovery and execution
 
 Part of SIP-0.8.8.
 """
@@ -13,8 +12,6 @@ from squadops.agents.exceptions import (
     AgentError,
     AgentNotFoundError,
     AgentRoleNotFoundError,
-    SkillContractViolation,
-    SkillNotFoundError,
 )
 from squadops.agents.models import AgentConfig, AgentRole
 
@@ -29,6 +26,4 @@ __all__ = [
     "AgentError",
     "AgentNotFoundError",
     "AgentRoleNotFoundError",
-    "SkillContractViolation",
-    "SkillNotFoundError",
 ]

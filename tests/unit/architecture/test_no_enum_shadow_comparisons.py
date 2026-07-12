@@ -43,9 +43,6 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # RunStatus/TaskStatus but are a different concept.
     ("src/squadops/capabilities/handlers/cycle/develop.py", "failed"),
     ("src/squadops/capabilities/handlers/cycle/develop.py", "error"),
-    # Generated-test result-row status dict ({"status": "passed"|"failed"}); a
-    # per-result vocabulary with no enum.
-    ("src/squadops/agents/skills/qa/test_execution.py", "failed"),
     # External Ollama model-pull job status — a vendor vocabulary, not a domain enum.
     ("src/squadops/cli/commands/models.py", "failed"),
     # window_state() returns a duty-window lifecycle token ("active"/

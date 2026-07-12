@@ -182,7 +182,6 @@ class AgentRunner:
             logger.info(
                 "System bootstrapped",
                 extra={
-                    "skills": len(self.system.skill_registry.list_skills()),
                     "handlers": len(self.system.handler_registry.list_capabilities()),
                 },
             )
@@ -318,7 +317,6 @@ class AgentRunner:
         # Create system
         system_config = SystemConfig(
             roles=[self.role],
-            enable_warmboot=True,
         )
 
         return create_system(

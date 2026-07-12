@@ -9,7 +9,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from squadops.agents.base import PortsBundle
-from squadops.agents.skills.registry import SkillRegistry
 from squadops.capabilities.handlers.base import CapabilityHandler, HandlerEvidence, HandlerResult
 from squadops.orchestration.handler_registry import HandlerRegistry
 from squadops.orchestration.orchestrator import AgentOrchestrator
@@ -59,36 +58,29 @@ def mock_ports():
 
 
 @pytest.fixture
-def skill_registry():
-    """Create empty skill registry."""
-    return SkillRegistry()
-
-
-@pytest.fixture
 def handler_registry():
     """Create handler registry with test handlers."""
     registry = HandlerRegistry()
     registry.register(
-        MockHandler("governance.task_delegation", {"summary": "test"}),
+        MockHandler("governance.review", {"summary": "test"}),
         roles=("lead",),
     )
     registry.register(
-        MockHandler("development.code_generation", {"code": "test code"}),
+        MockHandler("development.develop", {"code": "test code"}),
         roles=("dev",),
     )
     registry.register(
-        MockHandler("qa.validation", {"valid": True}),
+        MockHandler("qa.test", {"valid": True}),
         roles=("qa",),
     )
     return registry
 
 
 @pytest.fixture
-def orchestrator(handler_registry, skill_registry, mock_ports):
+def orchestrator(handler_registry, mock_ports):
     """Create orchestrator."""
     return AgentOrchestrator(
         handler_registry=handler_registry,
-        skill_registry=skill_registry,
         ports=mock_ports,
     )
 
@@ -119,16 +111,16 @@ class TestTaskRouting:
 
     def test_route_governance_task(self, orchestrator):
         """Should route governance tasks to lead."""
-        envelope = create_envelope("governance.task_delegation")
+        envelope = create_envelope("governance.review")
 
         routing = orchestrator.route_task(envelope)
 
         assert routing.target_role == "lead"
-        assert routing.capability_id == "governance.task_delegation"
+        assert routing.capability_id == "governance.review"
 
     def test_route_development_task(self, orchestrator):
         """Should route development tasks to dev."""
-        envelope = create_envelope("development.code_generation")
+        envelope = create_envelope("development.develop")
 
         routing = orchestrator.route_task(envelope)
 
@@ -136,7 +128,7 @@ class TestTaskRouting:
 
     def test_route_qa_task(self, orchestrator):
         """Should route QA tasks to qa."""
-        envelope = create_envelope("qa.validation")
+        envelope = create_envelope("qa.test")
 
         routing = orchestrator.route_task(envelope)
 
@@ -158,7 +150,7 @@ class TestTaskSubmission:
     @pytest.mark.asyncio
     async def test_submit_task_success(self, orchestrator):
         """Should execute task successfully."""
-        envelope = create_envelope("governance.task_delegation")
+        envelope = create_envelope("governance.review")
 
         result = await orchestrator.submit_task(envelope)
 
@@ -179,8 +171,8 @@ class TestTaskSubmission:
     async def test_submit_batch(self, orchestrator):
         """Should execute batch of tasks."""
         envelopes = [
-            create_envelope("governance.task_delegation"),
-            create_envelope("development.code_generation"),
+            create_envelope("governance.review"),
+            create_envelope("development.develop"),
         ]
 
         results = await orchestrator.submit_batch(envelopes)
@@ -194,7 +186,7 @@ class TestTaskSubmission:
         """Should skip remaining on failure."""
         envelopes = [
             create_envelope("nonexistent.capability"),  # Will fail
-            create_envelope("governance.task_delegation"),  # Should be skipped
+            create_envelope("governance.review"),  # Should be skipped
         ]
 
         results = await orchestrator.submit_batch(envelopes)
@@ -210,7 +202,7 @@ class TestTaskSubmission:
         assert orchestrator.get_active_tasks() == []
 
         # After submission (synchronous check not possible, just verify method)
-        envelope = create_envelope("governance.task_delegation")
+        envelope = create_envelope("governance.review")
         await orchestrator.submit_task(envelope)
 
         # After completion
@@ -225,18 +217,18 @@ class TestOrchestratorCapabilities:
         caps = orchestrator.get_available_capabilities()
 
         assert len(caps) == 3
-        assert "governance.task_delegation" in caps
-        assert "development.code_generation" in caps
-        assert "qa.validation" in caps
+        assert "governance.review" in caps
+        assert "development.develop" in caps
+        assert "qa.test" in caps
 
     def test_get_capabilities_by_role(self, orchestrator):
         """Should filter by role."""
         lead_caps = orchestrator.get_available_capabilities(role="lead")
         dev_caps = orchestrator.get_available_capabilities(role="dev")
 
-        assert "governance.task_delegation" in lead_caps
-        assert "development.code_generation" in dev_caps
-        assert "governance.task_delegation" not in dev_caps
+        assert "governance.review" in lead_caps
+        assert "development.develop" in dev_caps
+        assert "governance.review" not in dev_caps
 
 
 class TestHealthCheck:
@@ -286,18 +278,15 @@ class TestOrchestratorCallSiteBoundary:
     """SIP-0061: Orchestrator MUST NOT call record_generation."""
 
     @pytest.mark.asyncio
-    async def test_orchestrator_does_not_call_record_generation(
-        self, handler_registry, skill_registry, mock_ports
-    ):
+    async def test_orchestrator_does_not_call_record_generation(self, handler_registry, mock_ports):
         """Orchestrator lifecycle code never calls record_generation."""
         mock_obs = MagicMock()
         orchestrator = AgentOrchestrator(
             handler_registry=handler_registry,
-            skill_registry=skill_registry,
             ports=mock_ports,
             llm_observability=mock_obs,
         )
-        envelopes = [create_envelope("governance.task_delegation")]
+        envelopes = [create_envelope("governance.review")]
         await orchestrator.submit_batch(envelopes)
 
         mock_obs.record_generation.assert_not_called()

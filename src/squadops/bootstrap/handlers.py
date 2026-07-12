@@ -21,18 +21,6 @@ from squadops.capabilities.handlers.cycle_tasks import (
     QAValidateHandler,
     StrategyAnalyzeHandler,
 )
-from squadops.capabilities.handlers.data import (
-    MetricsCollectionHandler,
-)
-from squadops.capabilities.handlers.development import (
-    CodeAnalysisHandler,
-    CodeGenerationHandler,
-)
-
-# Import handlers
-from squadops.capabilities.handlers.governance import (
-    TaskDelegationHandler,
-)
 from squadops.capabilities.handlers.impl.analyze_failure import (
     DataAnalyzeFailureHandler,
 )
@@ -61,19 +49,11 @@ from squadops.capabilities.handlers.planning_tasks import (
     StrategyFrameObjectiveHandler,
     StrategyProposePlanGuidanceHandler,
 )
-from squadops.capabilities.handlers.qa import (
-    TestExecutionHandler,
-    ValidationHandler,
-)
 from squadops.capabilities.handlers.repair_tasks import (
     DataAnalyzeVerificationHandler,
     DevelopmentRepairHandler,
     GovernanceRootCauseHandler,
     StrategyCorrectivePlanHandler,
-)
-from squadops.capabilities.handlers.warmboot import (
-    ContextSyncHandler,
-    WarmbootHandler,
 )
 from squadops.capabilities.handlers.wrapup_tasks import (
     DataClassifyUnresolvedHandler,
@@ -92,19 +72,6 @@ logger = logging.getLogger(__name__)
 
 # All handler classes with their role assignments
 HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
-    # Governance handlers (lead role)
-    (TaskDelegationHandler, ("lead",)),
-    # Development handlers (dev role)
-    (CodeGenerationHandler, ("dev",)),
-    (CodeAnalysisHandler, ("dev", "lead")),  # Lead can also review code
-    # QA handlers (qa role)
-    (TestExecutionHandler, ("qa",)),
-    (ValidationHandler, ("qa", "lead")),  # Lead can validate too
-    # Data handlers (data role)
-    (MetricsCollectionHandler, ("data",)),
-    # Warmboot handlers (all roles can warmboot)
-    (WarmbootHandler, ("lead", "dev", "qa", "strat", "data", "builder")),
-    (ContextSyncHandler, ("lead", "dev", "qa", "strat", "data", "builder")),
     # Cycle task handlers (SIP-0066: pinned task_types for cycle execution pipeline)
     (StrategyAnalyzeHandler, ("strat",)),
     (DevelopmentDesignHandler, ("dev",)),

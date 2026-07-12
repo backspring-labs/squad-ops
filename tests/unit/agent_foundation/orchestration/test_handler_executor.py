@@ -9,7 +9,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from squadops.agents.base import PortsBundle
-from squadops.agents.skills.registry import SkillRegistry
 from squadops.capabilities.handlers.base import CapabilityHandler, HandlerEvidence, HandlerResult
 from squadops.orchestration.handler_executor import HandlerExecutor
 from squadops.orchestration.handler_registry import HandlerRegistry
@@ -75,12 +74,6 @@ def mock_ports():
 
 
 @pytest.fixture
-def skill_registry():
-    """Create empty skill registry."""
-    return SkillRegistry()
-
-
-@pytest.fixture
 def handler_registry():
     """Create handler registry with mock handler."""
     registry = HandlerRegistry()
@@ -92,12 +85,11 @@ def handler_registry():
 
 
 @pytest.fixture
-def executor(handler_registry, skill_registry, mock_ports):
+def executor(handler_registry, mock_ports):
     """Create handler executor."""
     return HandlerExecutor(
         executor_id="test-executor",
         handler_registry=handler_registry,
-        skill_registry=skill_registry,
         ports=mock_ports,
     )
 
@@ -148,7 +140,7 @@ class TestHandlerExecutor:
         assert "No handler for capability" in result.error
 
     @pytest.mark.asyncio
-    async def test_execute_validation_failure(self, handler_registry, skill_registry, mock_ports):
+    async def test_execute_validation_failure(self, handler_registry, mock_ports):
         """Should fail on validation error."""
         handler_registry.register(
             MockHandler(capability_id="mock.requires_input"),
@@ -157,7 +149,6 @@ class TestHandlerExecutor:
         executor = HandlerExecutor(
             executor_id="test",
             handler_registry=handler_registry,
-            skill_registry=skill_registry,
             ports=mock_ports,
         )
         envelope = create_envelope(task_type="mock.requires_input", inputs={})
@@ -168,7 +159,7 @@ class TestHandlerExecutor:
         assert "Validation failed" in result.error
 
     @pytest.mark.asyncio
-    async def test_execute_handler_failure(self, handler_registry, skill_registry, mock_ports):
+    async def test_execute_handler_failure(self, handler_registry, mock_ports):
         """Should handle handler failure."""
         handler_registry.register(
             MockHandler(
@@ -180,7 +171,6 @@ class TestHandlerExecutor:
         executor = HandlerExecutor(
             executor_id="test",
             handler_registry=handler_registry,
-            skill_registry=skill_registry,
             ports=mock_ports,
         )
         envelope = create_envelope(task_type="mock.failing")
@@ -209,7 +199,6 @@ class TestHandlerExecutor:
         assert health["status"] == "healthy"
         assert health["executor_id"] == "test-executor"
         assert "handlers_registered" in health
-        assert "skills_registered" in health
 
     def test_can_execute_registered(self, executor):
         """Should return True for registered capability."""
@@ -224,7 +213,7 @@ class TestHandlerExecutorTimeout:
     """Tests for timeout handling."""
 
     @pytest.mark.asyncio
-    async def test_execute_timeout(self, handler_registry, skill_registry, mock_ports):
+    async def test_execute_timeout(self, handler_registry, mock_ports):
         """Should raise TimeoutError on timeout."""
         import asyncio
 
@@ -250,7 +239,6 @@ class TestHandlerExecutorTimeout:
         executor = HandlerExecutor(
             executor_id="test",
             handler_registry=handler_registry,
-            skill_registry=skill_registry,
             ports=mock_ports,
         )
         envelope = create_envelope(task_type="mock.slow")

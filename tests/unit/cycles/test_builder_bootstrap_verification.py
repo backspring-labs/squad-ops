@@ -1,8 +1,8 @@
 """Local bootstrap verification tests for builder role (SIP-0071 Phase 3).
 
-Tests that the builder role bootstraps cleanly in the handler and skill
-registries, and that dry-run plan generation emits builder.assemble tasks
-when the full profile is used.
+Tests that the builder role bootstraps cleanly in the handler registry,
+and that dry-run plan generation emits builder.assemble tasks when the
+full profile is used.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ import pytest
 
 from adapters.cycles.config_squad_profile import ConfigSquadProfile
 from squadops.bootstrap.handlers import create_handler_registry
-from squadops.bootstrap.skills import create_skill_registry, get_skills_for_role
 from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
 from squadops.cycles.task_plan import _has_builder_role, generate_task_plan
 
@@ -43,25 +42,6 @@ class TestBuilderHandlerBootstrap:
         assert "builder.assemble" in capabilities
         assert "development.develop" in capabilities
         assert "qa.test" in capabilities
-
-
-# ---------------------------------------------------------------------------
-# Skill registry bootstrap
-# ---------------------------------------------------------------------------
-
-
-class TestBuilderSkillBootstrap:
-    def test_builder_skills_discoverable(self):
-        """Builder role skills should be discoverable."""
-        skills = get_skills_for_role("builder")
-        skill_names = [s().name for s in skills]
-        assert "artifact_generation" in skill_names
-
-    def test_builder_skill_registry_creates(self):
-        """Skill registry with builder role should create without errors."""
-        registry = create_skill_registry(roles=["builder"])
-        skills = registry.list_skills()
-        assert "artifact_generation" in skills
 
 
 # ---------------------------------------------------------------------------

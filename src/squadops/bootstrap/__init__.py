@@ -1,7 +1,6 @@
 """SquadOps Bootstrap - System initialization and configuration.
 
 Provides factory functions for creating fully-configured system components:
-- Skill registries with all skills auto-registered
 - Handler registries with all handlers auto-registered
 - Orchestrators ready for task execution
 
@@ -12,11 +11,6 @@ from squadops.bootstrap.handlers import (
     create_handler_registry,
     get_all_handlers,
 )
-from squadops.bootstrap.skills import (
-    create_skill_registry,
-    get_all_skills,
-    get_skills_for_role,
-)
 from squadops.bootstrap.system import (
     SquadOpsSystem,
     SystemConfig,
@@ -25,10 +19,6 @@ from squadops.bootstrap.system import (
 )
 
 __all__ = [
-    # Skill bootstrap
-    "create_skill_registry",
-    "get_all_skills",
-    "get_skills_for_role",
     # Handler bootstrap
     "create_handler_registry",
     "get_all_handlers",

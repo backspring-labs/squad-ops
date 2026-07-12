@@ -20,7 +20,6 @@ from squadops.telemetry.models import CorrelationContext, StructuredEvent
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
-    from squadops.agents.skills.registry import SkillRegistry
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 
 logger = logging.getLogger(__name__)
@@ -71,7 +70,6 @@ class AgentOrchestrator:
     Example:
         orchestrator = AgentOrchestrator(
             handler_registry=registry,
-            skill_registry=skill_registry,
             ports=ports,
         )
         result = await orchestrator.submit_task(envelope)
@@ -90,7 +88,6 @@ class AgentOrchestrator:
     def __init__(
         self,
         handler_registry: HandlerRegistry,
-        skill_registry: SkillRegistry,
         ports: PortsBundle,
         llm_observability: LLMObservabilityPort | None = None,
     ) -> None:
@@ -98,12 +95,10 @@ class AgentOrchestrator:
 
         Args:
             handler_registry: Registry of capability handlers
-            skill_registry: Registry of skills
             ports: PortsBundle for port access
             llm_observability: LLM observability port (SIP-0061)
         """
         self._handler_registry = handler_registry
-        self._skill_registry = skill_registry
         self._ports = ports
         self._state = OrchestratorState()
 
@@ -118,7 +113,6 @@ class AgentOrchestrator:
         self._executor = HandlerExecutor(
             executor_id="orchestrator-executor",
             handler_registry=handler_registry,
-            skill_registry=skill_registry,
             ports=ports,
         )
 
