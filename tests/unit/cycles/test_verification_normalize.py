@@ -289,3 +289,30 @@ def test_builder_required_files_row_passed_is_executed_passed():
     r = _by_id(normalize_task_checks(out))["required_files"]
     assert r.status == ResultStatus.PASSED
     assert classify(r) is EvidenceFamily.EXECUTED_PASSED
+
+
+# --------------------------------------------------------------------------- #
+# explicit not-executed reason on a generic row (#407 frontend_build skip)
+# --------------------------------------------------------------------------- #
+
+
+def test_generic_skip_row_honors_explicit_reason():
+    """#407: a producer that knows *why* a check didn't run (frontend_build
+    skipped because Node is absent) supplies an explicit reason; normalize must
+    keep it (missing_tooling) rather than defaulting to subject_missing — the
+    §7 reason is what discloses the #306 not-executed case honestly."""
+    out = {
+        "validation_result": {
+            "checks": [{"check": "frontend_build", "executed": False, "reason": "missing_tooling"}]
+        }
+    }
+    r = _by_id(normalize_task_checks(out))["frontend_build"]
+    assert r.status == ResultStatus.SKIPPED
+    assert r.reason == NotExecutedReason.MISSING_TOOLING
+    assert classify(r) is EvidenceFamily.NOT_EXECUTED
+
+
+def test_generic_skip_row_without_reason_defaults_to_subject_missing():
+    out = {"validation_result": {"checks": [{"check": "frontend_build", "executed": False}]}}
+    r = _by_id(normalize_task_checks(out))["frontend_build"]
+    assert r.reason == NotExecutedReason.SUBJECT_MISSING

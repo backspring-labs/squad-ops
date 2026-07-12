@@ -51,3 +51,11 @@ def test_two_run_framing_then_implementation_sequence():
     assert [step["type"] for step in sequence] == ["framing", "implementation"]
     assert sequence[0]["gate"] == "progress_plan_review"
     assert sequence[1]["gate"] is None
+
+
+def test_declares_the_sip_0096_required_check_spine():
+    """#407: the throttle. A typo or accidental removal here silently reverts the
+    profile to inert (no required checks) — so pin the spine explicitly. Omits
+    no_stub_fallback_tests deliberately (failure-only row → would false-block)."""
+    required = load_profile("validated-fullstack").defaults["required_checks"]
+    assert set(required) == {"tests_pass", "frontend_build", "required_files"}

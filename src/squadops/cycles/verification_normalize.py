@@ -110,8 +110,13 @@ def normalize_task_checks(
 def _from_passed_row(cid: str, row: Mapping[str, Any]) -> CheckResult:
     """Normalize a check row that carries a boolean ``passed`` (no ``status``)."""
     if row.get("executed") is False:
+        # Honor an explicit §7 not-executed reason when the producer supplies one
+        # (e.g. frontend_build skipped for missing_tooling, #407); default to
+        # subject_missing for producers that only signal executed=False.
         return CheckResult(
-            check_id=cid, status=ResultStatus.SKIPPED, reason=NotExecutedReason.SUBJECT_MISSING
+            check_id=cid,
+            status=ResultStatus.SKIPPED,
+            reason=_str_or_none(row.get("reason")) or NotExecutedReason.SUBJECT_MISSING,
         )
     status = ResultStatus.PASSED if row.get("passed") else ResultStatus.FAILED
     return CheckResult(check_id=cid, status=status)

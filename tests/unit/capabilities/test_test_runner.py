@@ -238,3 +238,45 @@ class TestRunGeneratedTestsCleanup:
 
         assert created, "run_generated_tests did not create a workspace"
         assert all(not os.path.exists(p) for p in created)
+
+
+class TestRunBuildValidationSurfacesFrontend:
+    """#407: run_build_validation must attach the frontend BuildCheckResult to its
+    RunTestsResult; the folded-away skip is exactly the #306 case qa.test needs."""
+
+    async def test_fullstack_surfaces_frontend_skip(self, monkeypatch):
+        from squadops.capabilities.dev_capabilities import TEST_FRAMEWORK_BOTH
+        from squadops.capabilities.handlers import test_runner as tr
+
+        async def _fullstack(*a, **k):
+            return tr.RunTestsResult(executed=True, exit_code=0)
+
+        async def _frontend(*a, **k):
+            return tr.BuildCheckResult(ran=False, error="npm not found — Node.js not installed")
+
+        async def _backend(*a, **k):
+            return tr.BuildCheckResult(ran=True, ok=True)
+
+        monkeypatch.setattr(tr, "run_fullstack_tests", _fullstack)
+        monkeypatch.setattr(tr, "run_frontend_build", _frontend)
+        monkeypatch.setattr(tr, "run_backend_import_check", _backend)
+
+        result = await tr.run_build_validation(TEST_FRAMEWORK_BOTH, [], [])
+        assert result.frontend_build is not None
+        assert result.frontend_build.ran is False  # the skip is surfaced, not dropped
+
+    async def test_pytest_run_has_no_frontend_build(self, monkeypatch):
+        from squadops.capabilities.dev_capabilities import TEST_FRAMEWORK_PYTEST
+        from squadops.capabilities.handlers import test_runner as tr
+
+        async def _gen(*a, **k):
+            return tr.RunTestsResult(executed=True, exit_code=0)
+
+        async def _backend(*a, **k):
+            return tr.BuildCheckResult(ran=True, ok=True)
+
+        monkeypatch.setattr(tr, "run_generated_tests", _gen)
+        monkeypatch.setattr(tr, "run_backend_import_check", _backend)
+
+        result = await tr.run_build_validation(TEST_FRAMEWORK_PYTEST, [], [])
+        assert result.frontend_build is None
