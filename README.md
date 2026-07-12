@@ -74,7 +74,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 - **Architecture Documents** – Design guides for agent implementations and handoff templates
 - **Book Chapters** – 9 chapters covering methodology, implementation, and operations
 - **Plans** – Implementation plans for major SIPs in `docs/plans/`
-- **Retrospectives** – WarmBoot run analyses and lessons learned
+- **Retrospectives** – Run analyses and lessons learned (2025 WarmBoot era → cycle era; distilled in `docs/book/WARMBOOT_ERA_LESSONS.md`)
 - **Protocols** – Testing, data governance, communication patterns
 
 **Total Documentation**: ~84,000 lines across 260+ markdown files

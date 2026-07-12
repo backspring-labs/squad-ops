@@ -65,13 +65,13 @@
 - Do not reduce coverage or remove test files without an explicit user request.
 
 ###############################################################################
-# 7. CYCLEDATA / WARMBOOT / RUN ARTIFACTS
+# 7. CYCLEDATA / RUN ARTIFACTS
 ###############################################################################
 
 - Do not create arbitrary directories at the repo root for run artifacts.
 - Shared execution-cycle artifacts (cycle data) must go under the agreed `cycle_data/` structure once it exists.
 - Do not repurpose `dist/` as a runtime scratch space; it is strictly for build artifacts.
-- Do not add warmboot-related files outside the designated locations (e.g., warmboot docs in `docs/` and implementation under agents/infra as designed).
+- WarmBoot is a retired concept (2025 era; see `docs/retro/` and `docs/book/WARMBOOT_ERA_LESSONS.md`). Do not add new warmboot artifacts.
 
 ###############################################################################
 # 8. DOCKER COMPOSE & ENVIRONMENT

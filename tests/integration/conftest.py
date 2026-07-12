@@ -656,18 +656,7 @@ async def clean_database(postgres_container):
                     accessed_at TIMESTAMPTZ DEFAULT now(),
                     query_context TEXT
                 );
-                
-                CREATE TABLE IF NOT EXISTS warmboot_runs (
-                    run_id TEXT PRIMARY KEY,
-                    run_name TEXT NOT NULL,
-                    squad_config JSONB,
-                    benchmark_target TEXT,
-                    start_time TIMESTAMP NOT NULL,
-                    end_time TIMESTAMP,
-                    status TEXT NOT NULL,
-                    metrics JSONB,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
+
             """)
 
             # Truncate all tables used in integration tests
@@ -680,8 +669,7 @@ async def clean_database(postgres_container):
                     agent_status,
                     squad_mem_pool,
                     projects,
-                    memory_reuse_log,
-                    warmboot_runs
+                    memory_reuse_log
                 RESTART IDENTITY CASCADE;
             """)
 
@@ -724,8 +712,7 @@ async def clean_database(postgres_container):
                     task_status,
                     agent_status,
                     squad_mem_pool,
-                    memory_reuse_log,
-                    warmboot_runs
+                    memory_reuse_log
                 RESTART IDENTITY CASCADE;
             """)
     finally:
