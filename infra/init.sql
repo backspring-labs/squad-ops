@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS cycle (
     cycle_id TEXT PRIMARY KEY,
     pid TEXT NOT NULL,
     project_id TEXT REFERENCES projects(project_id),
-    run_type TEXT CHECK (run_type IN ('warmboot','project','experiment','tuning')),
+    run_type TEXT CHECK (run_type IN ('project','experiment','tuning')),
     title TEXT,
     description TEXT,
     name TEXT,  -- SIP-0048: Human-readable cycle name
@@ -89,9 +89,9 @@ CREATE INDEX IF NOT EXISTS idx_agent_task_log_status ON agent_task_log(status);
 CREATE INDEX IF NOT EXISTS idx_cycle_run_type ON cycle(run_type);
 CREATE INDEX IF NOT EXISTS idx_cycle_project_id ON cycle(project_id);
 
--- Insert initial projects (SIP-0047)
+-- Insert initial projects (SIP-0047; hello_squad replaced warmboot_selftest)
 INSERT INTO projects (project_id, name, description) VALUES
-('warmboot_selftest', 'WarmBoot Self-Test', 'Framework self-test execution cycles')
+('hello_squad', 'Hello Squad', 'Simple single-agent greeting (replaces warmboot_selftest)')
 ON CONFLICT (project_id) DO NOTHING;
 
 -- Insert initial agent status entries

@@ -181,8 +181,8 @@ class TestStackValidation:
                 f"Correlation ID: {correlation_id}"
             )
 
-    async def test_warmboot_form_accessible(self):
-        """Verify WarmBoot form / dashboard is accessible."""
+    async def test_dashboard_accessible(self):
+        """Verify the console dashboard root is accessible."""
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(f"{BASE_URL}/")
             assert resp.status_code == 200
