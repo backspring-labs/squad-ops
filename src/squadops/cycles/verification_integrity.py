@@ -282,6 +282,8 @@ def _resolve_final_state(results: Sequence[CheckResult]) -> list[CheckResult]:
 def aggregate_verification(
     results: Sequence[CheckResult],
     required_check_ids: Collection[str] = (),
+    *,
+    run_succeeded: bool = True,
 ) -> RunVerificationSummary:
     """Pure aggregation choke point (SIP-0096 §6.2, §6.4).
 
@@ -293,12 +295,25 @@ def aggregate_verification(
     ``required_check_ids`` is supplied by the caller from explicit profile
     declarations only (§6.3, AC#5).
 
+    ``run_succeeded`` is the one piece of run-level context the verdict needs but
+    cannot see in the check ledger: whether the run reached a successful terminal
+    state. The verdict is deliberately not a ``RunStatus`` (§6.5), but it must stay
+    *consistent* with one — a run that FAILED/cancelled/aborted must never read
+    ``accepted`` (#388). The caller derives this from the terminal status; it
+    defaults ``True`` so a pure roll-up over a completed run is unchanged.
+
     Verdict rule (§6.2):
       - any **required** check not-executed (including a required check that
         produced *no* result at all — e.g. ``required_files`` #291) →
         ``blocked_unverified`` (AC#2), taking precedence over a plain failure so
         the incomplete-evidence signal is never hidden behind a product failure;
       - else any executed-and-failed → ``rejected``;
+      - else if the run did **not** reach a successful terminal state →
+        ``blocked_unverified`` (#388): zero-of-zero is zero evidence for the
+        verdict exactly as it is for ``pass_rate`` (AC#1), so an aborted run with
+        no failed check — or only passing checks recorded before it died — cannot
+        be endorsed as ``accepted``; the framework simply never finished
+        verifying it;
       - else ``accepted``.
 
     Not-executed results are excluded from ``executed_count``/``passed_count`` and
@@ -348,6 +363,15 @@ def aggregate_verification(
         verdict = RunVerdict.BLOCKED_UNVERIFIED
     elif failed:
         verdict = RunVerdict.REJECTED
+    elif not run_succeeded:
+        # The run did not reach a successful terminal state, yet no check failed and
+        # nothing required is unmet — so it would fall through to `accepted` on the
+        # strength of zero (or only-passed) evidence. That is the #388 contradiction:
+        # `Status: FAILED` next to `Verdict: accepted`. The run aborted before
+        # verification could complete, so the framework cannot honestly claim the
+        # deliverable is verified (§6.5) — disclose it as blocked_unverified, never
+        # an endorsement.
+        verdict = RunVerdict.BLOCKED_UNVERIFIED
     else:
         verdict = RunVerdict.ACCEPTED
 
