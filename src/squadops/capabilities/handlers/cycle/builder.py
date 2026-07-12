@@ -281,6 +281,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             get_profile,
         )
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+        from squadops.cycles.check_registry import CHECK_REQUIRED_FILES
 
         start_time = time.perf_counter()
 
@@ -405,6 +406,18 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             QA_HANDOFF_REQUIRED_SECTIONS,
             task_required_files=task_required_files or None,
         )
+
+        # #399: emit a required_files check row so the SIP-0096 roll-up sees this
+        # builder task's deliverable evidence. Recorded on BOTH paths — so the
+        # common in-loop failure (a builder that can't emit its required files,
+        # then exhausts correction) is disclosed as executed-failed instead of
+        # leaving the run with zero evidence and a vacuous `accepted` verdict.
+        # Independent of the section check: this row tracks *files* only.
+        effective_required = task_required_files or profile.required_files
+        extracted_basenames = {_os.path.basename(f["filename"]) for f in extracted}
+        rf_missing = [rf for rf in effective_required if rf not in extracted_basenames]
+        required_files_row = {"check": CHECK_REQUIRED_FILES, "passed": not rf_missing}
+
         if validation_error is not None:
             from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 
@@ -412,6 +425,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 start_time,
                 inputs,
                 validation_error,
+                outputs={"validation_result": {"checks": [required_files_row]}},
                 outcome_class=TaskOutcome.SEMANTIC_FAILURE,
                 failure_classification=FailureClassification.WORK_PRODUCT,
             )
@@ -435,6 +449,9 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             "summary": f"[builder] Assembled {len(artifacts)} deployment artifact(s)",
             "role": self._role,
             "artifacts": artifacts,
+            # #399: per-task required_files evidence for the SIP-0096 roll-up
+            # (passed here — validation succeeded, so every required file present).
+            "validation_result": {"checks": [required_files_row]},
             "diagnostics": {
                 "resolved_handler": self._handler_name,
                 "build_profile": profile_name,

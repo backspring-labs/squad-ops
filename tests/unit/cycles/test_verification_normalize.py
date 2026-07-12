@@ -265,3 +265,27 @@ def test_task_re_run_supersedes_earlier_failure_via_subject():
     summary = aggregate_verification(ledger, required_check_ids=[CHECK_TESTS_PASS])
     assert summary.verdict is RunVerdict.ACCEPTED
     assert summary.failed == ()
+
+
+# --------------------------------------------------------------------------- #
+# required_files evidence from the builder task (#399)
+# --------------------------------------------------------------------------- #
+
+
+def test_builder_required_files_row_normalizes_to_a_check_with_subject():
+    """The #399 seam: the builder emits a `required_files` check row on its own
+    outputs; normalize must record it as an executed check stamped with the
+    builder task's subject — so an in-loop builder failure lands honest
+    executed-failed evidence on the ledger (verdict rejected, not accepted/0)."""
+    out = {"validation_result": {"checks": [{"check": "required_files", "passed": False}]}}
+    r = _by_id(normalize_task_checks(out, subject="task-build-7"))["required_files"]
+    assert r.status == ResultStatus.FAILED
+    assert classify(r) is EvidenceFamily.EXECUTED_FAILED
+    assert r.subject == "task-build-7"
+
+
+def test_builder_required_files_row_passed_is_executed_passed():
+    out = {"validation_result": {"checks": [{"check": "required_files", "passed": True}]}}
+    r = _by_id(normalize_task_checks(out))["required_files"]
+    assert r.status == ResultStatus.PASSED
+    assert classify(r) is EvidenceFamily.EXECUTED_PASSED

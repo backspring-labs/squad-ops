@@ -226,6 +226,17 @@ class TestBuilderAssembleSuccess:
         assert diag["qa_validation_errors"] == []
         assert diag["missing_required_files"] == []
 
+    async def test_success_emits_passed_required_files_evidence(self, mock_context, builder_inputs):
+        """#399: a complete build also records the required_files check (passed),
+        so the check is present in the evidence family on every builder task, not
+        only on failure — the roll-up sees a real result either way."""
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, builder_inputs)
+
+        checks = result.outputs["validation_result"]["checks"]
+        rf = next(c for c in checks if c["check"] == "required_files")
+        assert rf["passed"] is True
+
     async def test_source_files_in_prompt(self, mock_context, builder_inputs):
         """Source artifacts from dev role appear in the LLM prompt."""
         handler = BuilderAssembleHandler()
@@ -354,6 +365,26 @@ class TestRequiredFileValidation:
         assert result.success is False
         # Dockerfile is missing
         assert "Dockerfile" in result.error
+
+    async def test_missing_required_file_emits_failed_required_files_evidence(
+        self, mock_context, builder_inputs
+    ):
+        """#399: the builder-task failure must carry a required_files check row so
+        the SIP-0096 roll-up records executed-FAILED evidence — otherwise an
+        in-loop builder failure leaves the run with zero evidence and a vacuous
+        `accepted` verdict (the false-green a live lite cycle exposed)."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_MISSING_REQUIRED_FILE),
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_MISSING_REQUIRED_FILE),
+        )
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, builder_inputs)
+
+        checks = result.outputs["validation_result"]["checks"]
+        rf = next(c for c in checks if c["check"] == "required_files")
+        assert rf["passed"] is False
 
 
 # ---------------------------------------------------------------------------
