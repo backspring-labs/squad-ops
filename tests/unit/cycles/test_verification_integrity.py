@@ -148,6 +148,47 @@ def test_zero_of_zero_executed_is_zero_evidence_not_100_percent():
     assert s.verdict is RunVerdict.ACCEPTED  # inert: no required checks, nothing failed
 
 
+# --------------------------------------------------------------------------- #
+# #388 — a run that did not succeed must never read `accepted` on zero evidence
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("run_succeeded", "expected"),
+    [
+        (True, RunVerdict.ACCEPTED),  # completed run: inert Phase-1 behavior preserved
+        (False, RunVerdict.BLOCKED_UNVERIFIED),  # #388: FAILED + zero evidence ≠ accepted
+    ],
+)
+def test_zero_evidence_verdict_tracks_run_success(run_succeeded, expected):
+    """Zero-of-zero is zero evidence for the *verdict*, not an endorsement (#388).
+
+    Catches the field bug (cyc_60eb5a481b5b): a run that FAILED inside the builder
+    correction loop before any check ran displayed `Verdict: accepted` next to
+    `Status: FAILED`.
+    """
+    s = aggregate_verification([], run_succeeded=run_succeeded)
+    assert s.executed_count == 0
+    assert s.verdict is expected
+
+
+def test_failed_run_with_only_passed_checks_is_not_accepted():
+    """A run that died for a non-check reason after some checks passed still cannot
+    read `accepted` — verification never completed (#388)."""
+    s = aggregate_verification([_passed("a"), _passed("b")], run_succeeded=False)
+    assert s.passed_count == 2
+    assert s.verdict is RunVerdict.BLOCKED_UNVERIFIED
+
+
+def test_failed_run_with_a_failed_check_is_rejected_not_blocked():
+    """A genuine executed-failure on a failed run is a product `rejected`, not a
+    harness `blocked_unverified`: the failed-check branch keeps precedence over the
+    run-success gate (#388) — reordering the two would regress this."""
+    s = aggregate_verification([_failed("a")], run_succeeded=False)
+    assert s.verdict is RunVerdict.REJECTED
+    assert s.failed == ("a",)
+
+
 def test_not_executed_excluded_from_denominator():
     """A skipped check cannot inflate pass_rate: 1 passed + 1 skipped is 1/1, not 1/2."""
     s = aggregate_verification([_passed("a"), _skipped("b")])

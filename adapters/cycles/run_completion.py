@@ -190,7 +190,7 @@ class RunCompletion:
         # and no shipped profile declares required_checks — so this computes
         # `accepted` with zero recorded evidence and discloses it in the report.
         # Phase 2 wires the producers and per-profile required lists (the throttle).
-        summary = self._aggregate_verification(cycle, ledger)
+        summary = self._aggregate_verification(cycle, ledger, terminal_status)
 
         # Run report: best-effort (D10)
         try:
@@ -209,14 +209,22 @@ class RunCompletion:
 
     @staticmethod
     def _aggregate_verification(
-        cycle: Cycle | None, ledger: RunLedger | None
+        cycle: Cycle | None, ledger: RunLedger | None, terminal_status: str
     ) -> RunVerificationSummary:
         """Run the SIP-0096 aggregation over the ledger against the cycle's required set.
 
         Requiredness comes only from the cycle's ``applied_defaults['required_checks']``
         (an explicit profile declaration, §6.3 / AC#5) — never inferred. Both the
         results and the required list default to empty, so a pre-SIP-0096 cycle or
-        a Phase-1 (throttle-off) cycle aggregates to an honest `accepted`.
+        a Phase-1 (throttle-off) cycle that *completes* aggregates to an honest
+        `accepted`.
+
+        ``terminal_status`` supplies the run-level context the pure verdict cannot
+        see: only a ``COMPLETED`` run is eligible for `accepted` (#388). A run that
+        FAILED/cancelled/paused with no failed check would otherwise fall through to
+        `accepted` on zero evidence — the `Status: FAILED` / `Verdict: accepted`
+        contradiction — so we pass ``run_succeeded`` and let the choke point resolve
+        it to `blocked_unverified`.
         """
         required_check_ids: tuple[str, ...] = ()
         if cycle is not None:
@@ -224,7 +232,8 @@ class RunCompletion:
             if declared:
                 required_check_ids = tuple(declared)
         results = ledger.check_results if ledger else ()
-        summary = aggregate_verification(results, required_check_ids)
+        run_succeeded = (terminal_status or "").upper() == RunStatus.COMPLETED.value.upper()
+        summary = aggregate_verification(results, required_check_ids, run_succeeded=run_succeeded)
         logger.info(
             "Verification integrity: verdict=%s executed=%d passed=%d unverified=%d required_unmet=%d",
             summary.verdict.value,

@@ -513,6 +513,24 @@ class TestVerificationIntegrityWiring:
         assert "required_files" in content
         assert "harness/evidence problem" in content  # framed as harness, not product failure
 
+    async def test_finalize_failed_run_zero_evidence_blocks_not_accepts(self):
+        """#388: a FAILED terminal status threads run_succeeded=False through the real
+        finalize→aggregate→report path, so an empty ledger rolls up to
+        blocked_unverified — the report never shows `accepted` next to a FAILED run.
+        Catches the wiring bug of aggregating without the run's terminal disposition."""
+        from squadops.cycles.run_ledger import RunLedger
+
+        completion, vault = self._completion()
+
+        await completion.finalize(
+            "cyc_001", "run_001", "FAILED", None, None, cycle=_make_cycle(), ledger=RunLedger()
+        )
+        content = vault.store.call_args[0][1].decode()
+        assert "Verdict: **blocked_unverified**" in content
+        assert "Verdict: **accepted**" not in content
+        # Zero-evidence block, not a required-check block: no required warning line.
+        assert "required check(s) unverified" not in content
+
     async def test_finalize_reflects_recorded_failure(self):
         """A recorded executed-failed result reaches the verdict (rejected) end-to-end,
         proving the ledger→aggregation→report wiring carries real evidence (Phase 2 shape)."""
