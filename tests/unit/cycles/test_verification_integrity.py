@@ -16,10 +16,15 @@ import pytest
 from squadops.cycles import verification_integrity as vi
 from squadops.cycles.verification_integrity import (
     CheckResult,
+    CycleOutcome,
     EvidenceFamily,
     NotExecutedReason,
     ResultStatus,
     RunVerdict,
+    RunVerificationSummary,
+    UnverifiedCheck,
+    WaivedCheck,
+    aggregate_cycle_outcome,
     aggregate_verification,
     classify,
 )
@@ -374,3 +379,108 @@ def test_summary_is_frozen():
     s = aggregate_verification([_passed("a")])
     with pytest.raises(Exception):
         s.verdict = RunVerdict.REJECTED  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3 slice 1 — aggregate_cycle_outcome (the durable per-cycle roll-up, §10)
+# --------------------------------------------------------------------------- #
+
+
+def _run_summary(
+    verdict, *, verified=(), failed=(), unverified=(), required_unmet=()
+) -> RunVerificationSummary:
+    return RunVerificationSummary(
+        verdict=verdict,
+        verified=tuple(verified),
+        failed=tuple(failed),
+        unverified=tuple(unverified),
+        required_unmet=tuple(required_unmet),
+        executed_count=len(verified) + len(failed),
+        passed_count=len(verified),
+    )
+
+
+@pytest.mark.parametrize(
+    ("run_verdicts", "expected"),
+    [
+        ([RunVerdict.ACCEPTED, RunVerdict.ACCEPTED], RunVerdict.ACCEPTED),
+        ([RunVerdict.ACCEPTED, RunVerdict.REJECTED], RunVerdict.REJECTED),
+        # blocked wins over rejected — the incomplete-evidence signal is never
+        # hidden behind a product failure (§6.2 precedence, at cycle scope).
+        ([RunVerdict.REJECTED, RunVerdict.BLOCKED_UNVERIFIED], RunVerdict.BLOCKED_UNVERIFIED),
+        ([RunVerdict.ACCEPTED, RunVerdict.BLOCKED_UNVERIFIED], RunVerdict.BLOCKED_UNVERIFIED),
+    ],
+)
+def test_cycle_verdict_is_worst_of_runs(run_verdicts, expected):
+    """Cycle verdict = worst per-run verdict; reordering precedence would regress this."""
+    outcome = aggregate_cycle_outcome([_run_summary(v) for v in run_verdicts])
+    assert outcome.verdict is expected
+    assert outcome.run_count == len(run_verdicts)
+
+
+def test_empty_cycle_rolls_up_to_accepted():
+    """Zero runs = zero adverse evidence → accepted, run_count 0 (inert default)."""
+    outcome = aggregate_cycle_outcome([])
+    assert outcome.verdict is RunVerdict.ACCEPTED
+    assert outcome.run_count == 0
+    assert outcome.verified == () and outcome.failed == () and outcome.unverified == ()
+
+
+def test_evidence_unions_across_runs_deduped():
+    """Every run's verified/failed/unverified is disclosed at cycle scope, deduped."""
+    r1 = _run_summary(RunVerdict.ACCEPTED, verified=["tests_pass", "shared"])
+    r2 = _run_summary(RunVerdict.REJECTED, verified=["shared"], failed=["frontend_build"])
+    outcome = aggregate_cycle_outcome([r1, r2])
+    assert outcome.verified == ("tests_pass", "shared")  # 'shared' collapsed to one
+    assert outcome.failed == ("frontend_build",)
+    assert outcome.verdict is RunVerdict.REJECTED
+
+
+def test_check_failed_in_one_run_passed_in_another_disclosed_in_both():
+    """Runs are distinct evidence contexts — a check that failed once and passed once
+    is honestly in BOTH lists; the roll-up must not collapse cross-run outcomes."""
+    r1 = _run_summary(RunVerdict.REJECTED, failed=["tests_pass"])
+    r2 = _run_summary(RunVerdict.ACCEPTED, verified=["tests_pass"])
+    outcome = aggregate_cycle_outcome([r1, r2])
+    assert "tests_pass" in outcome.failed
+    assert "tests_pass" in outcome.verified
+
+
+def test_required_unmet_derived_from_unverified_disclosure():
+    """cycle.required_unmet is derived from the unverified records, so the required
+    set and its disclosure can never drift apart (roll-up integrity, violation #3)."""
+    unmet = UnverifiedCheck(
+        check_id="required_files", reason=NotExecutedReason.SUBJECT_MISSING, required=True
+    )
+    optional = UnverifiedCheck(
+        check_id="opt", reason=NotExecutedReason.CONFIG_DISABLED, required=False
+    )
+    outcome = aggregate_cycle_outcome(
+        [_run_summary(RunVerdict.BLOCKED_UNVERIFIED, unverified=[unmet, optional])]
+    )
+    assert outcome.required_unmet == ("required_files",)  # only the required one
+    assert {u.check_id for u in outcome.unverified} == {"required_files", "opt"}  # both disclosed
+
+
+def test_waiver_recorded_but_never_alters_verdict():
+    """A waiver sits beside the evidence and does not flip a blocked verdict (§6.5):
+    the result stands un-loosened; the operator decision is recorded above it."""
+    waiver = WaivedCheck(
+        check_id="required_files", reason="known-good manual build", waived_by="op"
+    )
+    unmet = UnverifiedCheck(
+        check_id="required_files", reason=NotExecutedReason.SUBJECT_MISSING, required=True
+    )
+    outcome = aggregate_cycle_outcome(
+        [_run_summary(RunVerdict.BLOCKED_UNVERIFIED, unverified=[unmet])], waived=[waiver]
+    )
+    assert outcome.verdict is RunVerdict.BLOCKED_UNVERIFIED  # unaltered by the waiver
+    assert outcome.waived == (waiver,)
+
+
+def test_cycle_outcome_is_frozen():
+    """The roll-up is an immutable value object — no post-hoc mutation of the verdict."""
+    outcome = aggregate_cycle_outcome([_run_summary(RunVerdict.ACCEPTED)])
+    assert isinstance(outcome, CycleOutcome)
+    with pytest.raises(Exception):
+        outcome.verdict = RunVerdict.REJECTED  # type: ignore[misc]
