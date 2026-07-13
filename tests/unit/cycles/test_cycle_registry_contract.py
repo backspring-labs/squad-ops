@@ -333,3 +333,46 @@ class TestRecordPulseVerification:
         assert run.run_id == "run_001"
         stored = registry._pulse_verifications["run_001"][-1]
         assert stored["repair_task_refs"] == ["task_repair_001", "task_repair_002"]
+
+
+class TestRecordRunVerificationSummary:
+    """Contract tests for record_run_verification_summary (SIP-0096 Phase 3 §10)."""
+
+    async def _setup_terminal_run(self, registry):
+        await registry.create_cycle(_make_cycle())
+        await registry.create_run(_make_run())
+        await registry.update_run_status("run_001", RunStatus.RUNNING)
+        await registry.update_run_status("run_001", RunStatus.COMPLETED)
+
+    async def test_records_summary_on_terminal_run(self, registry):
+        """Written at finalize, so — unlike pulse — a TERMINAL run must be accepted,
+        not rejected. The stored verdict is the SIP-0096 run verdict."""
+        from squadops.cycles.verification_integrity import RunVerdict, aggregate_verification
+
+        await self._setup_terminal_run(registry)
+        await registry.record_run_verification_summary("run_001", aggregate_verification([]))
+        assert registry._verification_summaries["run_001"].verdict is RunVerdict.ACCEPTED
+
+    async def test_unknown_run_raises(self, registry):
+        from squadops.cycles.verification_integrity import aggregate_verification
+
+        with pytest.raises(RunNotFoundError):
+            await registry.record_run_verification_summary("nope", aggregate_verification([]))
+
+    async def test_refinalize_upserts_not_appends(self, registry):
+        """A re-finalize supersedes the prior summary rather than erroring/appending —
+        the final state wins (§6.5), not the union of attempts."""
+        from squadops.cycles.verification_integrity import (
+            CheckResult,
+            RunVerdict,
+            aggregate_verification,
+        )
+
+        await self._setup_terminal_run(registry)
+        await registry.record_run_verification_summary("run_001", aggregate_verification([]))
+        rejected = aggregate_verification([CheckResult(check_id="frontend_build", status="failed")])
+        await registry.record_run_verification_summary("run_001", rejected)
+
+        stored = registry._verification_summaries["run_001"]
+        assert stored.verdict is RunVerdict.REJECTED
+        assert stored.failed == ("frontend_build",)

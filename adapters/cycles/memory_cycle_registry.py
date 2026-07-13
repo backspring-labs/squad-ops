@@ -28,6 +28,7 @@ from squadops.cycles.models import (
     ValidationError,
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
+from squadops.cycles.verification_integrity import RunVerificationSummary
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
 
@@ -40,6 +41,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         self._runs: dict[str, dict] = {}
         self._cancelled_cycles: set[str] = set()
         self._pulse_verifications: dict[str, list[dict]] = {}
+        self._verification_summaries: dict[str, RunVerificationSummary] = {}
         self._checkpoints: dict[str, list[RunCheckpoint]] = {}
 
     # --- Cycle CRUD ---
@@ -212,6 +214,19 @@ class MemoryCycleRegistry(CycleRegistryPort):
         }
         self._pulse_verifications.setdefault(run_id, []).append(rec)
         return self._to_run(data)
+
+    # --- Verification Summary (SIP-0096 Phase 3) ---
+
+    async def record_run_verification_summary(
+        self, run_id: str, summary: RunVerificationSummary
+    ) -> None:
+        """Store a run's verification roll-up (upsert; terminal-OK, unlike pulse).
+
+        The summary is frozen, so the object is kept as-is; a re-finalize overwrites.
+        """
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        self._verification_summaries[run_id] = summary
 
     # --- Internal helpers ---
 

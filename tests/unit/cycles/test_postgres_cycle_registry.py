@@ -665,3 +665,68 @@ class TestPostgresCycleRegistry:
         assert len(runs[0].gate_decisions) == 1
         assert runs[0].gate_decisions[0].gate_name == "qa_gate"
         assert len(runs[1].gate_decisions) == 0
+
+
+class TestRecordRunVerificationSummary:
+    """Unit tests for record_run_verification_summary (SIP-0096 Phase 3) — SQL + serialization."""
+
+    @pytest.fixture
+    def conn(self):
+        return _make_conn()
+
+    @pytest.fixture
+    def registry(self, conn):
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        return PostgresCycleRegistry(_make_pool(conn))
+
+    async def test_upserts_verdict_and_serialized_summary(self, registry, conn):
+        from squadops.cycles.verification_integrity import CheckResult, aggregate_verification
+
+        conn.fetchrow.return_value = {"?column?": 1}  # run exists
+        conn.execute.return_value = None
+        # a run with a failure + a required-not-executed → rejected/blocked disclosure
+        summary = aggregate_verification(
+            [CheckResult(check_id="frontend_build", status="failed")],
+            required_check_ids=["required_files"],
+        )
+
+        await registry.record_run_verification_summary("run_001", summary)
+
+        sql, run_id, verdict, payload = conn.execute.call_args[0]
+        assert "INSERT INTO run_verification_summaries" in sql
+        assert "ON CONFLICT (run_id) DO UPDATE" in sql  # upsert, not a plain insert
+        assert run_id == "run_001"
+        assert verdict == "blocked_unverified"  # required_files unmet drives the verdict
+        stored = json.loads(payload)
+        assert stored["verdict"] == "blocked_unverified"
+        assert stored["failed"] == ["frontend_build"]
+        assert stored["required_unmet"] == ["required_files"]
+        # not-executed disclosure survives the round-trip with its reason (§6.6.3)
+        assert {
+            "check_id": "required_files",
+            "reason": "subject_missing",
+            "required": True,
+        } in stored["unverified"]
+
+    async def test_unknown_run_raises_and_writes_nothing(self, registry, conn):
+        from squadops.cycles.models import RunNotFoundError
+        from squadops.cycles.verification_integrity import aggregate_verification
+
+        conn.fetchrow.return_value = None  # run absent
+
+        with pytest.raises(RunNotFoundError):
+            await registry.record_run_verification_summary("nope", aggregate_verification([]))
+        conn.execute.assert_not_awaited()
+
+    def test_serializer_shape_is_json_safe(self):
+        """_verification_summary_to_dict yields only JSON primitives (no enums/tuples)."""
+        from adapters.cycles.postgres_cycle_registry import _verification_summary_to_dict
+        from squadops.cycles.verification_integrity import CheckResult, aggregate_verification
+
+        summary = aggregate_verification([CheckResult(check_id="a", status="passed")])
+        d = _verification_summary_to_dict(summary)
+        # round-trips through json without a custom encoder
+        assert json.loads(json.dumps(d))["verdict"] == "accepted"
+        assert d["verified"] == ["a"]
+        assert isinstance(d["unverified"], list)

@@ -547,3 +547,52 @@ class TestVerificationIntegrityWiring:
         content = vault.store.call_args[0][1].decode()
         assert "rejected" in content
         assert "tests_pass" in content
+
+    @pytest.mark.parametrize(
+        ("terminal_status", "expected_verdict"),
+        [
+            ("COMPLETED", "accepted"),
+            ("FAILED", "blocked_unverified"),  # #388 verdict carried into the persisted row
+        ],
+    )
+    async def test_finalize_persists_run_verification_summary(
+        self, terminal_status, expected_verdict
+    ):
+        """#415: finalize persists the computed summary as durable structured evidence
+        (not just the markdown report) — the CycleOutcome roll-up substrate. Catches the
+        summary being discarded, and that the persisted verdict tracks the terminal status."""
+        from squadops.cycles.run_ledger import RunLedger
+
+        completion, _vault = self._completion()
+
+        await completion.finalize(
+            "cyc_001",
+            "run_001",
+            terminal_status,
+            None,
+            None,
+            cycle=_make_cycle(),
+            ledger=RunLedger(),
+        )
+
+        record = completion._cycle_registry.record_run_verification_summary
+        record.assert_awaited_once()
+        run_id, summary = record.call_args[0]
+        assert run_id == "run_001"
+        assert summary.verdict.value == expected_verdict
+
+    async def test_finalize_survives_summary_persistence_failure(self):
+        """Persistence is best-effort: a registry error must not break finalize or the
+        run report (same contract as the report write)."""
+        from squadops.cycles.run_ledger import RunLedger
+
+        completion, vault = self._completion()
+        completion._cycle_registry.record_run_verification_summary = AsyncMock(
+            side_effect=RuntimeError("db down")
+        )
+
+        await completion.finalize(
+            "cyc_001", "run_001", "COMPLETED", None, None, cycle=_make_cycle(), ledger=RunLedger()
+        )
+        # report still generated despite the persistence failure
+        assert vault.store.call_args is not None
