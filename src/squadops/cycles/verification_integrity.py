@@ -36,6 +36,7 @@ from __future__ import annotations
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 
 class ResultStatus:
@@ -202,6 +203,60 @@ class RunVerificationSummary:
         denominator, so they can never inflate this toward success.
         """
         return self.passed_count / self.executed_count if self.executed_count else 0.0
+
+
+@dataclass(frozen=True)
+class WaivedCheck:
+    """An operator gate waiver, recorded *above* the evidence (SIP-0096 §6.5).
+
+    A waiver is an operator decision recorded on the roll-up — never a mutation of
+    the underlying check result (SIP-0092 §6.3.2: results stand un-loosened). Empty
+    until the Phase-3 gate-waiver slice wires it; part of the contract shape now so
+    downstream consumers can depend on it.
+    """
+
+    check_id: str
+    reason: str
+    waived_by: str | None = None
+
+
+@dataclass(frozen=True)
+class CycleOutcome:
+    """The durable per-cycle verification-evidence roll-up (SIP-0096 §10).
+
+    The contract downstream consumers read, in order of arrival: **wrap-up**
+    (SIP-0080 confidence classification gets an honest basis), **operator gates**
+    (a ``blocked_unverified`` gate sees the harness-vs-product distinction + the
+    waiver option), and — the strategic one — the **Campaign continuation
+    decision** (1.6). References only (``check_id``s / disclosure records), never
+    copies of the underlying SIP-0070/0092 records (§10).
+
+    This is also the substrate the later cycle-evaluation scorecard derives its
+    outcome/quality/efficiency/stability dimensions from — those are *projections*
+    over this honest evidence, not new raw fields here.
+
+    ``verdict`` is the cycle-level roll-up of the per-run verdicts (worst wins, so
+    the incomplete-evidence signal is never hidden); it is **not** a cycle status,
+    and it is the **un-waived** evidence verdict — a waiver sits beside it in
+    ``waived`` and never alters it (§6.5).
+    """
+
+    verdict: RunVerdict
+    verified: tuple[str, ...]  # executed-and-passed across the cycle's runs
+    failed: tuple[str, ...]  # executed-and-failed
+    unverified: tuple[UnverifiedCheck, ...]  # not-executed, with reasons — always disclosed
+    run_count: int
+    inert: tuple[str, ...] = ()  # §9 chronic not-executed — populated by the inert-detection slice
+    waived: tuple[WaivedCheck, ...] = ()  # §6.5 operator waivers — populated by the waiver slice
+
+    @property
+    def required_unmet(self) -> tuple[str, ...]:
+        """Required check_ids not-executed in any run (what drove ``blocked_unverified``).
+
+        Derived from ``unverified`` rather than stored, so the required set and its
+        disclosure can never drift apart.
+        """
+        return tuple(u.check_id for u in self.unverified if u.required)
 
 
 def classify(result: CheckResult) -> EvidenceFamily:
@@ -383,4 +438,86 @@ def aggregate_verification(
         required_unmet=required_unmet,
         executed_count=executed_count,
         passed_count=passed_count,
+    )
+
+
+def _dedupe(items: Collection[Any]) -> tuple[Any, ...]:
+    """Order-preserving dedupe for the roll-up's reference lists.
+
+    A ``check_id`` (or ``UnverifiedCheck``) can legitimately recur across a cycle's
+    runs; the roll-up discloses each distinct value once, in first-seen order.
+    """
+    seen: set[Any] = set()
+    out: list[Any] = []
+    for it in items:
+        if it not in seen:
+            seen.add(it)
+            out.append(it)
+    return tuple(out)
+
+
+def aggregate_cycle_outcome(
+    run_summaries: Sequence[RunVerificationSummary],
+    *,
+    waived: Collection[WaivedCheck] = (),
+    inert: Collection[str] = (),
+) -> CycleOutcome:
+    """Pure cycle-level roll-up over per-run summaries (SIP-0096 §10).
+
+    Rolls each run's ``RunVerificationSummary`` into the durable per-cycle contract.
+    Side-effect free — the ``CycleOutcome`` is constructible **only** here (AC#11),
+    so no path can silently discard not-executed results.
+
+    **Verdict precedence** mirrors the run-level rule (§6.2) so the
+    incomplete-evidence signal is never hidden behind a product failure:
+
+      - any run ``blocked_unverified`` → cycle ``blocked_unverified``;
+      - else any run ``rejected`` → cycle ``rejected``;
+      - else ``accepted``.
+
+    The cycle verdict is the worst of the per-run verdicts — each run verdict
+    already folded in its own required-unmet/failure state, so requiredness is not
+    re-derived here. An empty cycle (no runs) rolls up to ``accepted`` (zero runs =
+    zero adverse evidence — the inert default, matching the run-level empty case).
+
+    **Evidence lists union** across the cycle's runs: framing and implementation
+    runs are distinct evidence contexts, so everything executed / failed /
+    not-executed is disclosed (a check that failed in one run and passed in another
+    is honestly in *both* lists — runs are not collapsed), deduped to first-seen.
+
+    ``waived`` (§6.5 operator) and ``inert`` (§9 chronic) are recorded **above** the
+    evidence and passed through unchanged — a waiver never mutates a result and
+    never alters the verdict. Both default empty until their Phase-3 slices wire
+    them.
+    """
+    verified: list[str] = []
+    failed: list[str] = []
+    unverified: list[UnverifiedCheck] = []
+    any_blocked = False
+    any_rejected = False
+
+    for s in run_summaries:
+        verified.extend(s.verified)
+        failed.extend(s.failed)
+        unverified.extend(s.unverified)
+        if s.verdict is RunVerdict.BLOCKED_UNVERIFIED:
+            any_blocked = True
+        elif s.verdict is RunVerdict.REJECTED:
+            any_rejected = True
+
+    if any_blocked:
+        verdict = RunVerdict.BLOCKED_UNVERIFIED
+    elif any_rejected:
+        verdict = RunVerdict.REJECTED
+    else:
+        verdict = RunVerdict.ACCEPTED
+
+    return CycleOutcome(
+        verdict=verdict,
+        verified=_dedupe(verified),
+        failed=_dedupe(failed),
+        unverified=_dedupe(unverified),
+        run_count=len(run_summaries),
+        inert=_dedupe(inert),
+        waived=tuple(waived),
     )
