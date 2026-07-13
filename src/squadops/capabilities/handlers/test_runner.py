@@ -35,6 +35,12 @@ class RunTestsResult:
     error: str = ""
     test_file_count: int = 0
     source_file_count: int = 0
+    # #407: the fullstack frontend build outcome, surfaced distinctly so qa.test
+    # can emit a frontend_build SIP-0096 CheckResult. None when no frontend was in
+    # scope (non-fullstack run). A skip (``ran=False``) is otherwise folded away by
+    # run_build_validation — exactly the #306 not-executed case that must not read
+    # green once frontend_build is a required check.
+    frontend_build: BuildCheckResult | None = None
 
     @property
     def tests_passed(self) -> bool:
@@ -714,12 +720,12 @@ async def run_build_validation(
         run_frontend, run_backend = False, True
 
     checks: list[BuildCheckResult] = []
+    frontend_check: BuildCheckResult | None = None
     if run_frontend:
-        checks.append(
-            await run_frontend_build(
-                source_files, target_dir=frontend_target, timeout_seconds=timeout_seconds
-            )
+        frontend_check = await run_frontend_build(
+            source_files, target_dir=frontend_target, timeout_seconds=timeout_seconds
         )
+        checks.append(frontend_check)
     if run_backend:
         checks.append(await run_backend_import_check(source_files, timeout_seconds=timeout_seconds))
 
@@ -733,4 +739,8 @@ async def run_build_validation(
             exit_code=result.exit_code or failed[0].exit_code or 1,
             error=merged_error,
         )
+    # #407: attach the frontend build outcome distinctly (a skip is dropped by the
+    # `failed` merge above, so qa.test can't otherwise see it). None ⇒ no frontend.
+    if frontend_check is not None:
+        result = replace(result, frontend_build=frontend_check)
     return result

@@ -14,6 +14,8 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
+from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
+from squadops.cycles.verification_integrity import NotExecutedReason
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 
@@ -30,6 +32,20 @@ from squadops.capabilities.handlers.cycle.validation import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _frontend_skip_reason(error: str) -> str:
+    """Map a frontend-build skip error to a §7 not-executed reason (#407).
+
+    ``run_frontend_build`` skips (``ran=False``) with the cause in ``error``: an
+    absent Node toolchain (``npm/npx not found``) is ``missing_tooling`` — the
+    #306 case a required frontend_build must block on; anything else (no frontend
+    source) is ``subject_missing``.
+    """
+    e = (error or "").lower()
+    if "not found" in e or "not installed" in e:
+        return NotExecutedReason.MISSING_TOOLING
+    return NotExecutedReason.SUBJECT_MISSING
 
 
 class QATestHandler(_CycleTaskHandler):
@@ -602,6 +618,27 @@ class QATestHandler(_CycleTaskHandler):
             outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
             outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
             outputs["validation_result"] = evidence_extra.get("validation_result", {})
+
+        # #407: record the fullstack frontend build as a first-class SIP-0096
+        # check on BOTH the pass and fail paths. run_build_validation folds a
+        # frontend skip/failure into the combined result, so without this a
+        # required frontend_build that never executed (Node absent, #306) would
+        # read green — the SIP-0070 D13 false-green. A *passing* fullstack run
+        # must record frontend_build=passed too, or requiring it would false-block.
+        # Runs after the classification above so it isn't overwritten by the
+        # failure-path validation_result assignment.
+        fb = test_result.frontend_build
+        if fb is not None:
+            if fb.ran:
+                fb_row: dict[str, Any] = {"check": CHECK_FRONTEND_BUILD, "passed": fb.ok}
+            else:
+                fb_row = {
+                    "check": CHECK_FRONTEND_BUILD,
+                    "executed": False,
+                    "reason": _frontend_skip_reason(fb.error),
+                }
+            vr = outputs.setdefault("validation_result", {})
+            vr.setdefault("checks", []).append(fb_row)
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(

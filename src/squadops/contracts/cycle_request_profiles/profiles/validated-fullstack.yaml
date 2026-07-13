@@ -41,6 +41,18 @@ defaults:
   # SIP-0092 M1 instrumentation (typed + command acceptance).
   typed_acceptance: true
   command_acceptance_checks: true
+  # SIP-0096 §6.3 throttle: the fullstack build/test spine this profile REQUIRES.
+  # A run that doesn't execute one — e.g. frontend_build skipped because Node is
+  # absent (#306) — is blocked_unverified instead of reading green (the D13
+  # false-green). Each is emitted on the happy path (tests_pass synthesized from
+  # test_result; frontend_build by qa.test #407; required_files by builder.assemble
+  # #399), so requiring them never false-blocks a clean run. no_stub_fallback_tests
+  # is intentionally omitted — it's a failure-only row, so requiring it would block
+  # a stub-free run.
+  required_checks:
+    - tests_pass
+    - frontend_build
+    - required_files
   # Long-cycle budget for a full instrumented fullstack build.
   time_budget_seconds: 7200
   experiment_context: {}

@@ -702,6 +702,79 @@ class TestQATestExecutionFoldsIntoOutcome:
         assert any("tests_failed:exit_1" in m for m in val["missing_components"])
         assert "Tests failed" in val["summary"]
 
+    def _frontend_check(self, **kw):
+        from squadops.capabilities.handlers.test_runner import BuildCheckResult
+
+        return BuildCheckResult(**kw)
+
+    async def test_frontend_build_passed_recorded_on_a_green_run(self) -> None:
+        """#407: a passing fullstack run must record frontend_build=passed — else
+        declaring it a required check (validated-fullstack) would false-block a
+        clean build. This is the success-path emission the builder-only #399 lacked."""
+        handler = QATestHandler()
+        ctx = self._make_context()
+        self._mock_llm_test_output(ctx)
+        self._patched_test_suite(
+            handler,
+            {
+                "executed": True,
+                "exit_code": 0,
+                "test_file_count": 1,
+                "source_file_count": 1,
+                "frontend_build": self._frontend_check(ran=True, ok=True),
+            },
+        )
+
+        result = await handler.handle(ctx, self._qa_inputs())
+
+        assert result.success is True
+        checks = result.outputs["validation_result"]["checks"]
+        fb = next(c for c in checks if c["check"] == "frontend_build")
+        assert fb["passed"] is True
+
+    async def test_frontend_build_skip_recorded_as_not_executed_missing_tooling(self) -> None:
+        """The #306 false-green: tests pass but the frontend never built (Node
+        absent). It must record as not-executed/missing_tooling — so a required
+        frontend_build blocks instead of the run reading green."""
+        handler = QATestHandler()
+        ctx = self._make_context()
+        self._mock_llm_test_output(ctx)
+        self._patched_test_suite(
+            handler,
+            {
+                "executed": True,
+                "exit_code": 0,
+                "test_file_count": 1,
+                "source_file_count": 1,
+                "frontend_build": self._frontend_check(
+                    ran=False, error="npm not found — Node.js not installed"
+                ),
+            },
+        )
+
+        result = await handler.handle(ctx, self._qa_inputs())
+
+        checks = result.outputs["validation_result"]["checks"]
+        fb = next(c for c in checks if c["check"] == "frontend_build")
+        assert fb["executed"] is False
+        assert fb["reason"] == "missing_tooling"
+
+    async def test_non_fullstack_run_emits_no_frontend_build_row(self) -> None:
+        """A python_cli run has no frontend in scope (frontend_build is None) — it
+        must not fabricate a frontend_build check that would then be 'missing'."""
+        handler = QATestHandler()
+        ctx = self._make_context()
+        self._mock_llm_test_output(ctx)
+        self._patched_test_suite(
+            handler,
+            {"executed": True, "exit_code": 0, "test_file_count": 1, "source_file_count": 1},
+        )
+
+        result = await handler.handle(ctx, self._qa_inputs())
+
+        checks = result.outputs.get("validation_result", {}).get("checks", [])
+        assert not any(c["check"] == "frontend_build" for c in checks)
+
     async def test_tests_not_collected_yields_semantic_failure(self) -> None:
         """Exit 5 (no tests collected — e.g., import errors) must fail the QA task.
 
