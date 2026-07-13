@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
@@ -43,6 +44,20 @@ if TYPE_CHECKING:
     from squadops.tasks.models import TaskResult
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CorrectionProtocolResult:
+    """Outcome of one correction-protocol run.
+
+    ``repair_artifacts`` carries the repair steps' emitted files (handler
+    ``artifacts`` dicts, validate step excluded) so the executor can verify
+    the patch behaviorally against them (#389) instead of re-dispatching
+    the generative task and re-rolling its output.
+    """
+
+    correction_path: str
+    repair_artifacts: list[dict[str, Any]] = field(default_factory=list)
 
 
 class CorrectionRunner:
@@ -241,10 +256,11 @@ class CorrectionRunner:
         plan_delta_refs: list[str],
         profile: Any = None,
         flow_run_id: str | None = None,
-    ) -> str:
+    ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
 
-        Returns the correction_path chosen by the governance handler.
+        Returns the correction_path chosen by the governance handler plus,
+        on the patch path, the repair steps' emitted artifacts (#389).
         Side effects: dispatches correction/repair tasks, stores plan delta,
         emits correction events.
         """
@@ -399,6 +415,7 @@ class CorrectionRunner:
         # field, which is free-text and previously caused builder failures
         # (`affected_task_types: ["QA Handoff"]`) to silently route to the
         # dev repair handler.
+        repair_artifacts: list[dict[str, Any]] = []
         if correction_path == "patch":
             for step_idx, (task_type, role) in enumerate(repair_steps_for(envelope.task_type)):
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
@@ -470,6 +487,14 @@ class CorrectionRunner:
                 role_key = repair_envelope.metadata.get("role", "unknown")
                 prior_outputs[role_key] = dict(repair_result.outputs or {})
 
+                # #389: surface the repair's emitted files to the executor for
+                # behavioral patch verification. The validate step's output is
+                # an LLM judgment document, not product content — excluded so
+                # it can't shadow a product file in the overlay.
+                if task_type != "qa.validate_repair":
+                    step_artifacts = (repair_result.outputs or {}).get("artifacts") or []
+                    repair_artifacts.extend(a for a in step_artifacts if isinstance(a, dict))
+
         # 8. Emit CORRECTION_COMPLETED
         self._event_bus.emit(
             EventType.CORRECTION_COMPLETED,
@@ -479,4 +504,6 @@ class CorrectionRunner:
             payload={"correction_path": correction_path},
         )
 
-        return correction_path
+        return CorrectionProtocolResult(
+            correction_path=correction_path, repair_artifacts=repair_artifacts
+        )

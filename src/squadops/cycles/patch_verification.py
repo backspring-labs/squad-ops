@@ -142,13 +142,31 @@ def _coerce_typed_criteria(criteria: list[Any]) -> list[TypedCheck] | None:
             try:
                 parsed = _parse_acceptance_criteria([dict(item)], task_index=-1)
             except ValueError:
-                logger.warning(
-                    "patch_verification: unparseable criterion %r — unverifiable", item
-                )
+                logger.warning("patch_verification: unparseable criterion %r — unverifiable", item)
                 return None
             typed.extend(c for c in parsed if isinstance(c, TypedCheck))
         # str → prose, informational only
     return typed
+
+
+async def _evaluate_criterion(
+    criterion: TypedCheck,
+    workspace_root: Path,
+    *,
+    stack: str | None,
+    typed_acceptance_enabled: bool,
+    command_acceptance_enabled: bool,
+) -> CheckOutcome:
+    """Evaluate one criterion, honoring the same config gates the handler side does."""
+    if not typed_acceptance_enabled:
+        return CheckOutcome.skipped(reason="typed_acceptance_disabled")
+    if criterion.check == "command_exit_zero" and not command_acceptance_enabled:
+        return CheckOutcome.skipped(reason="command_acceptance_checks_disabled")
+    try:
+        evaluator = get_check(criterion.check)
+    except KeyError:
+        return CheckOutcome.error(reason="no_evaluator_registered")
+    return await evaluator.evaluate(criterion.params, workspace_root, stack=stack)
 
 
 async def verify_patched_artifacts(
@@ -180,19 +198,13 @@ async def verify_patched_artifacts(
         materialize_artifacts(artifacts, workspace_root)
 
         for criterion in typed:
-            if not typed_acceptance_enabled:
-                outcome = CheckOutcome.skipped(reason="typed_acceptance_disabled")
-            elif criterion.check == "command_exit_zero" and not command_acceptance_enabled:
-                outcome = CheckOutcome.skipped(reason="command_acceptance_checks_disabled")
-            else:
-                try:
-                    evaluator = get_check(criterion.check)
-                except KeyError:
-                    outcome = CheckOutcome.error(reason="no_evaluator_registered")
-                else:
-                    outcome = await evaluator.evaluate(
-                        criterion.params, workspace_root, stack=stack
-                    )
+            outcome = await _evaluate_criterion(
+                criterion,
+                workspace_root,
+                stack=stack,
+                typed_acceptance_enabled=typed_acceptance_enabled,
+                command_acceptance_enabled=command_acceptance_enabled,
+            )
 
             records.append(
                 PatchCheckRecord(

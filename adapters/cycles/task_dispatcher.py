@@ -338,6 +338,8 @@ class TaskDispatcher:
         closure over its orchestration state (§6.1: classification/routing
         stays with the orchestration loop). This method only acts on the
         returned action token: "continue" retries the same task,
+        "accept_patch" returns success without re-dispatch (#389 — the caller
+        substitutes the behaviorally-verified corrected result),
         "break_correction" returns to advance past a corrected failure.
         """
         while True:
@@ -380,6 +382,11 @@ class TaskDispatcher:
 
                 if action == "continue":
                     continue  # retry same task
+                elif action == "accept_patch":
+                    # #389: repaired artifacts behaviorally passed the failed
+                    # task's acceptance criteria — re-dispatching would re-roll
+                    # the generative output and clobber the repair.
+                    return True, result
                 elif action == "break_correction":
                     return False, result
 

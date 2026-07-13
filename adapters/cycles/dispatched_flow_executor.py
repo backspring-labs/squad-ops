@@ -38,6 +38,11 @@ from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, Run, RunStatus
 from squadops.cycles.naming import flow_run_name
+from squadops.cycles.patch_verification import (
+    PATCH_PASSED,
+    overlay_artifacts,
+    verify_patched_artifacts,
+)
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan
@@ -46,7 +51,7 @@ from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.runtime.admission import admit_participants, release_participants
 from squadops.runtime.recruitment import reserve_buffer_decision
-from squadops.tasks.models import TaskEnvelope, TaskResult
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.telemetry.context import use_correlation_context
 from squadops.telemetry.models import CorrelationContext
 
@@ -961,11 +966,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     plan_delta_refs=plan_delta_refs,
                     profile=profile,
                     flow_run_id=flow_run_id,
+                    patched_result_holder=_holder,
                 )
-                if action == "continue":
-                    # #379: this attempt failed and is about to be re-dispatched — a
-                    # correction patch re-verifying behaviorally (#374), or a plain
-                    # retry. Record its evidence now so the ledger honestly holds the
+                if action in ("continue", "accept_patch"):
+                    # #379: this attempt failed — re-dispatched ("continue") or
+                    # superseded by a verified patch ("accept_patch", #389). Record
+                    # its evidence now so the ledger honestly holds the
                     # failed→passed history; aggregation supersedes it to the final
                     # state per (check_id, subject). Self-filtering: a transport retry
                     # carries no validation_result/test_result → nothing is recorded.
@@ -1006,6 +1012,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 # is additive and never alters the abort's control flow.
                 _record_task_evidence(_last_failed_result.get("result"))
                 raise
+
+            # #389: a verified patch supersedes the failed result — swap before
+            # recording/collection so the ledger and artifact store see the
+            # corrected outputs (repaired artifacts + executed-passed checks).
+            patched = _last_failed_result.pop("patched_result", None)
+            if patched is not None:
+                result = patched
 
             # Every non-abort completion — success AND corrected-failure
             # (break_correction) — records its final result here; the abort path
@@ -1307,6 +1320,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         plan_delta_refs: list[str],
         profile: Any = None,
         flow_run_id: str | None = None,
+        patched_result_holder: dict[str, Any] | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
 
@@ -1314,6 +1328,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             "continue" — re-dispatch the same task (caller's while loop retries it):
                 a retryable failure, OR (#374) a ``patch`` correction whose repair is
                 verified behaviorally by re-running the failed check itself.
+            "accept_patch" — (#389) a ``patch`` correction whose repaired artifacts
+                behaviorally pass the failed task's typed acceptance criteria; the
+                corrected result is placed in ``patched_result_holder`` and the task
+                advances without re-dispatch (re-dispatching a generative task
+                re-rolls its artifacts and clobbers the repair).
             "break_correction" — correction handled without re-run (governance
                 "continue": advance without repair), advance to next task.
 
@@ -1364,7 +1383,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         attempt = correction_counter["n"]
         correction_counter["n"] = attempt + 1
 
-        correction_path = await self._correction_runner.run_correction_protocol(
+        protocol = await self._correction_runner.run_correction_protocol(
             run_id=run_id,
             cycle=cycle,
             envelope=envelope,
@@ -1378,6 +1397,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             profile=profile,
             flow_run_id=flow_run_id,
         )
+        correction_path = protocol.correction_path
 
         if correction_path == "abort":
             raise _ExecutionError(
@@ -1386,18 +1406,84 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         elif correction_path == "rewind":
             raise _ExecutionError(f"Rewinding to checkpoint after {envelope.task_type} failure")
         elif correction_path == "patch":
-            # #374 (pure-behavioral): re-run the ORIGINAL failed check against the
-            # patched artifacts — the re-run's pass/fail IS the verdict, not the LLM
-            # validate_repair judgment. "continue" re-dispatches the same task; a pass
-            # advances with real executed-passed evidence (recording seam), a fail
-            # re-enters correction until max_correction_attempts exhausts (guard above)
-            # → _ExecutionError → the run fails honestly instead of false-completing.
-            return "continue"
+            # #374/#389 (pure-behavioral): the verdict is the re-executed check,
+            # never the LLM validate_repair judgment. First re-run the failed
+            # task's typed acceptance criteria against the REPAIRED artifacts
+            # (#389) — a pass accepts the patch outright, because re-dispatching
+            # a generative task re-rolls its artifacts and discards the repair
+            # (the cyc_6841d75f167c oscillation). Anything short of a verified
+            # pass falls back to "continue": re-dispatch, re-enter correction
+            # until max_correction_attempts exhausts (guard above) →
+            # _ExecutionError → the run fails honestly instead of false-completing.
+            action = await self._try_accept_patch(
+                envelope, result, protocol.repair_artifacts, patched_result_holder
+            )
+            return action
         elif correction_path == "continue":
             # Governance chose to advance without repair (accept-and-move-on).
             return "break_correction"
         else:
             raise _ExecutionError(f"Unknown correction path: {correction_path}")
+
+    async def _try_accept_patch(
+        self,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        repair_artifacts: list[dict[str, Any]],
+        patched_result_holder: dict[str, Any] | None,
+    ) -> str:
+        """Behaviorally verify a patch (#389); return "accept_patch" or "continue".
+
+        Verification itself is the pure ``patch_verification`` module; this
+        method only assembles its inputs from the failed task and renders the
+        corrected result. Any non-pass (failed, unverifiable, no repair
+        artifacts, no holder) falls back to the pre-#389 re-dispatch path —
+        conservative by construction, never a false accept.
+        """
+        if not repair_artifacts or patched_result_holder is None:
+            return "continue"
+
+        resolved_config = (envelope.inputs or {}).get("resolved_config") or {}
+        criteria = (envelope.inputs or {}).get("acceptance_criteria") or []
+        patched_artifacts = overlay_artifacts(
+            (result.outputs or {}).get("artifacts") or [], repair_artifacts
+        )
+        verification = await verify_patched_artifacts(
+            criteria,
+            patched_artifacts,
+            stack=resolved_config.get("stack"),
+            typed_acceptance_enabled=resolved_config.get("typed_acceptance", True),
+            command_acceptance_enabled=resolved_config.get("command_acceptance_checks", True),
+        )
+        logger.info(
+            "patch_verification task=%s task_type=%s status=%s reason=%s checks=%d",
+            envelope.task_id,
+            envelope.task_type,
+            verification.status,
+            verification.reason or "",
+            len(verification.checks),
+        )
+        if verification.status != PATCH_PASSED:
+            return "continue"
+
+        corrected_outputs = dict(result.outputs or {})
+        corrected_outputs["artifacts"] = patched_artifacts
+        prior_validation = corrected_outputs.get("validation_result")
+        corrected_outputs["validation_result"] = {
+            **(prior_validation if isinstance(prior_validation, dict) else {}),
+            "passed": True,
+            "patch_verified": True,
+            "checks": [r.to_check_row() for r in verification.checks],
+        }
+        corrected_outputs.pop("outcome_class", None)
+        patched_result_holder["patched_result"] = dataclasses.replace(
+            result,
+            status=TaskResultStatus.SUCCEEDED,
+            outputs=corrected_outputs,
+            error=None,
+            outcome_class=None,
+        )
+        return "accept_patch"
 
     async def _collect_artifacts_and_checkpoint(
         self,
