@@ -730,3 +730,56 @@ class TestRecordRunVerificationSummary:
         assert json.loads(json.dumps(d))["verdict"] == "accepted"
         assert d["verified"] == ["a"]
         assert isinstance(d["unverified"], list)
+
+
+class TestListRunVerificationSummaries:
+    """Unit tests for list_run_verification_summaries + serializer round-trip (SIP-0096 §10)."""
+
+    @pytest.fixture
+    def conn(self):
+        return _make_conn()
+
+    @pytest.fixture
+    def registry(self, conn):
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        return PostgresCycleRegistry(_make_pool(conn))
+
+    async def test_reconstructs_summaries_from_jsonb_in_order(self, registry, conn):
+        from adapters.cycles.postgres_cycle_registry import _verification_summary_to_dict
+        from squadops.cycles.verification_integrity import (
+            CheckResult,
+            RunVerdict,
+            aggregate_verification,
+        )
+
+        s1 = aggregate_verification([CheckResult(check_id="a", status="passed")])
+        s2 = aggregate_verification([CheckResult(check_id="b", status="failed")])
+        # asyncpg hands JSONB back as a JSON string → parse_jsonb decodes it
+        conn.fetch.return_value = [
+            {"summary": json.dumps(_verification_summary_to_dict(s1))},
+            {"summary": json.dumps(_verification_summary_to_dict(s2))},
+        ]
+
+        result = await registry.list_run_verification_summaries("cyc_001")
+
+        assert [r.verdict for r in result] == [RunVerdict.ACCEPTED, RunVerdict.REJECTED]
+        assert result[1].failed == ("b",)
+        sql = conn.fetch.call_args[0][0]
+        assert "run_verification_summaries" in sql
+        assert "r.cycle_id = $1" in sql and "ORDER BY r.run_number" in sql
+
+    def test_summary_dict_round_trip_is_lossless(self):
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+        from squadops.cycles.verification_integrity import CheckResult, aggregate_verification
+
+        # a blocked verdict with a disclosed not-executed reason exercises every field
+        original = aggregate_verification(
+            [CheckResult(check_id="a", status="passed")],
+            required_check_ids=["required_files"],
+        )
+        restored = _verification_summary_from_dict(_verification_summary_to_dict(original))
+        assert restored == original  # frozen dataclass equality — lossless

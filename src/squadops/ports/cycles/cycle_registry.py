@@ -157,6 +157,16 @@ class CycleRegistryPort(ABC):
             RunNotFoundError: If the run_id is not found.
         """
 
+    @abstractmethod
+    async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
+        """Return the persisted verification summaries for a cycle's runs (SIP-0096 §10).
+
+        One entry per run that recorded a summary (runs without one — e.g. still
+        running — are omitted). Feeds the derive-on-read ``CycleOutcome`` roll-up
+        (``aggregate_cycle_outcome``). Order is by run_number; the roll-up is
+        order-independent. Returns an empty list for an unknown or run-less cycle.
+        """
+
     # --- Checkpoint (SIP-0079) ---
 
     @abstractmethod

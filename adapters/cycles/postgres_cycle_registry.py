@@ -36,7 +36,11 @@ from squadops.cycles.models import (
     ValidationError,
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
-from squadops.cycles.verification_integrity import RunVerificationSummary
+from squadops.cycles.verification_integrity import (
+    RunVerdict,
+    RunVerificationSummary,
+    UnverifiedCheck,
+)
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
 logger = logging.getLogger(__name__)
@@ -407,6 +411,17 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 json.dumps(_verification_summary_to_dict(summary)),
             )
 
+    async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
+        """Return a cycle's persisted per-run verification summaries (SIP-0096 §10)."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT rvs.summary FROM run_verification_summaries rvs "
+                "JOIN cycle_runs r ON r.run_id = rvs.run_id "
+                "WHERE r.cycle_id = $1 ORDER BY r.run_number",
+                cycle_id,
+            )
+        return [_verification_summary_from_dict(parse_jsonb(row["summary"])) for row in rows]
+
     # --- Checkpoint (SIP-0079) ---
 
     async def save_checkpoint(self, checkpoint: RunCheckpoint, max_keep: int = 5) -> None:
@@ -586,3 +601,24 @@ def _verification_summary_to_dict(summary: RunVerificationSummary) -> dict:
         "executed_count": summary.executed_count,
         "passed_count": summary.passed_count,
     }
+
+
+def _verification_summary_from_dict(d: dict) -> RunVerificationSummary:
+    """Reconstruct a RunVerificationSummary from its stored dict (inverse of _..to_dict).
+
+    The read side of the slice-2a contract, feeding the derive-on-read cycle roll-up.
+    """
+    return RunVerificationSummary(
+        verdict=RunVerdict(d["verdict"]),
+        verified=tuple(d.get("verified", [])),
+        failed=tuple(d.get("failed", [])),
+        unverified=tuple(
+            UnverifiedCheck(
+                check_id=u["check_id"], reason=u["reason"], required=bool(u["required"])
+            )
+            for u in d.get("unverified", [])
+        ),
+        required_unmet=tuple(d.get("required_unmet", [])),
+        executed_count=int(d.get("executed_count", 0)),
+        passed_count=int(d.get("passed_count", 0)),
+    )
