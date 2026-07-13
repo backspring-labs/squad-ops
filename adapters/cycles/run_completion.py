@@ -192,6 +192,17 @@ class RunCompletion:
         # Phase 2 wires the producers and per-profile required lists (the throttle).
         summary = self._aggregate_verification(cycle, ledger, terminal_status)
 
+        # SIP-0096 Phase 3 (§10): persist the run's verdict as durable structured
+        # evidence so the CycleOutcome roll-up can read it back — until now the
+        # summary was only rendered into run_report.md and discarded. Best-effort:
+        # a persistence failure is logged, never affects the run's terminal status
+        # (same contract as the run report below).
+        if run_id:
+            try:
+                await self._cycle_registry.record_run_verification_summary(run_id, summary)
+            except Exception:
+                logger.warning("Verification summary persistence failed", exc_info=True)
+
         # Run report: best-effort (D10)
         try:
             if cycle_id and run_id:

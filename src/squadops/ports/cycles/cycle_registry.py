@@ -15,6 +15,7 @@ from squadops.cycles.models import (
     RunStatus,
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
+from squadops.cycles.verification_integrity import RunVerificationSummary
 
 
 class CycleRegistryPort(ABC):
@@ -137,6 +138,23 @@ class CycleRegistryPort(ABC):
         Raises:
             RunNotFoundError: If the run_id is not found.
             RunTerminalError: If the run is in a terminal state.
+        """
+
+    # --- Verification Summary (SIP-0096 Phase 3) ---
+
+    @abstractmethod
+    async def record_run_verification_summary(
+        self, run_id: str, summary: RunVerificationSummary
+    ) -> None:
+        """Persist a run's SIP-0096 verification roll-up (§10), one row per run.
+
+        Written at run finalization, when the run is already terminal — so, unlike
+        ``record_pulse_verification``, this does **not** reject a terminal run. It
+        upserts: a re-finalize overwrites the prior summary rather than erroring.
+        ``summary.verdict`` is the SIP-0096 run verdict, not a ``RunStatus`` (§6.5).
+
+        Raises:
+            RunNotFoundError: If the run_id is not found.
         """
 
     # --- Checkpoint (SIP-0079) ---

@@ -36,6 +36,7 @@ from squadops.cycles.models import (
     ValidationError,
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
+from squadops.cycles.verification_integrity import RunVerificationSummary
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
 logger = logging.getLogger(__name__)
@@ -384,6 +385,28 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
         return await self.get_run(run_id)
 
+    # --- Verification Summary (SIP-0096 Phase 3) ---
+
+    async def record_run_verification_summary(
+        self, run_id: str, summary: RunVerificationSummary
+    ) -> None:
+        """Persist a run's verification roll-up to Postgres (upsert, terminal-OK)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT 1 FROM cycle_runs WHERE run_id = $1", run_id)
+            if row is None:
+                raise RunNotFoundError(f"Run not found: {run_id}")
+            # Written at finalization (run is terminal), so no terminal guard. Upsert
+            # so a re-finalize supersedes rather than colliding on the PK.
+            await conn.execute(
+                "INSERT INTO run_verification_summaries (run_id, verdict, summary) "
+                "VALUES ($1, $2, $3) "
+                "ON CONFLICT (run_id) DO UPDATE SET "
+                "verdict = EXCLUDED.verdict, summary = EXCLUDED.summary, recorded_at = now()",
+                run_id,
+                summary.verdict.value,
+                json.dumps(_verification_summary_to_dict(summary)),
+            )
+
     # --- Checkpoint (SIP-0079) ---
 
     async def save_checkpoint(self, checkpoint: RunCheckpoint, max_keep: int = 5) -> None:
@@ -541,4 +564,25 @@ def _policy_to_dict(policy: TaskFlowPolicy) -> dict:
             }
             for g in policy.gates
         ],
+    }
+
+
+def _verification_summary_to_dict(summary: RunVerificationSummary) -> dict:
+    """Serialize a RunVerificationSummary to a JSON-compatible dict (SIP-0096 §10).
+
+    Explicit (not ``dataclasses.asdict``) so the stored shape is a stable contract
+    the CycleOutcome roll-up (slice 2b) reconstructs from. ``unverified`` carries
+    each not-executed check's reason so disclosure survives the round-trip (§6.6.3).
+    """
+    return {
+        "verdict": summary.verdict.value,
+        "verified": list(summary.verified),
+        "failed": list(summary.failed),
+        "unverified": [
+            {"check_id": u.check_id, "reason": u.reason, "required": u.required}
+            for u in summary.unverified
+        ],
+        "required_unmet": list(summary.required_unmet),
+        "executed_count": summary.executed_count,
+        "passed_count": summary.passed_count,
     }
