@@ -435,3 +435,117 @@ class TestNeedsRepairOutcome:
         status_calls = mock_registry.update_run_status.call_args_list
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.FAILED in terminal_statuses
+
+
+class TestAcceptPatch:
+    """#389: a behaviorally-verified patch is accepted without re-dispatching
+    the generative task (re-dispatch re-rolls artifacts and clobbers repairs)."""
+
+    def _failed_builder_result(self):
+        return TaskResult(
+            task_id="task_5",
+            status="FAILED",
+            outputs={
+                "artifacts": [
+                    {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Run\n"}
+                ],
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="acceptance failed",
+        )
+
+    def _builder_envelope(self):
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_5",
+            agent_id="bob",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="builder.assemble",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {},
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "qa_handoff.md", "pattern": "## How to Test"},
+                        severity="error",
+                        description="Contains How to Test section",
+                    )
+                ],
+            },
+            metadata={"role": "builder"},
+        )
+
+    async def test_verified_patch_accepted_with_corrected_result(self, executor):
+        """Bug caught: verified repairs re-dispatched into a re-roll — the
+        cyc_6841d75f167c oscillation that starved the correction budget."""
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._builder_envelope(),
+            self._failed_builder_result(),
+            [{"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\nok\n"}],
+            holder,
+        )
+
+        assert action == "accept_patch"
+        corrected = holder["patched_result"]
+        assert corrected.status == "SUCCEEDED"
+        assert corrected.error is None
+        assert corrected.outcome_class is None
+        assert "outcome_class" not in corrected.outputs
+        # The repaired artifact supersedes the broken generation.
+        by_name = {a["name"]: a["content"] for a in corrected.outputs["artifacts"]}
+        assert "## How to Test" in by_name["qa_handoff.md"]
+        # Executed-passed evidence in the shape normalize_task_checks reads.
+        checks = corrected.outputs["validation_result"]["checks"]
+        assert checks and all(c["status"] == "passed" for c in checks)
+        assert corrected.outputs["validation_result"]["patch_verified"] is True
+
+    async def test_failed_verification_falls_back_to_continue(self, executor):
+        """Bug caught: accepting a repair that still violates the contract —
+        a false green at the task level."""
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._builder_envelope(),
+            self._failed_builder_result(),
+            [{"name": "qa_handoff.md", "content": "# QA Handoff\nstill missing sections\n"}],
+            holder,
+        )
+        assert action == "continue"
+        assert "patched_result" not in holder
+
+    async def test_no_repair_artifacts_falls_back_to_continue(self, executor):
+        """Bug caught: 'verifying' an empty patch against the broken original
+        (which would fail) or worse, against nothing (which could pass)."""
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._builder_envelope(), self._failed_builder_result(), [], holder
+        )
+        assert action == "continue"
+        assert holder == {}
+
+    async def test_unverifiable_contract_falls_back_to_continue(self, executor):
+        """Bug caught: accepting a patch with no typed criteria — zero
+        executed evidence (the §6.2 false-green shape)."""
+        import dataclasses as _dc
+
+        envelope = self._builder_envelope()
+        envelope = _dc.replace(
+            envelope, inputs={"resolved_config": {}, "acceptance_criteria": ["prose only"]}
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            envelope,
+            self._failed_builder_result(),
+            [{"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\n"}],
+            holder,
+        )
+        assert action == "continue"
+        assert holder == {}

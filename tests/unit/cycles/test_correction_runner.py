@@ -1533,7 +1533,7 @@ class TestCorrectionRunnerStandalone:
         runner, _registry, vault, _bus = self._make_runner(responder)
         plan_delta_refs: list[str] = []
 
-        path = await runner.run_correction_protocol(
+        protocol_result = await runner.run_correction_protocol(
             run_id="run_001",
             cycle=cycle,
             envelope=self._failed_envelope(),
@@ -1546,7 +1546,7 @@ class TestCorrectionRunnerStandalone:
             plan_delta_refs=plan_delta_refs,
         )
 
-        assert path == "continue"
+        assert protocol_result.correction_path == "continue"
         assert len(plan_delta_refs) == 1
         delta_calls = [
             c for c in vault.store.call_args_list if c.args[0].artifact_type == "plan_delta"
@@ -1567,7 +1567,7 @@ class TestCorrectionRunnerStandalone:
 
         runner, _registry, _vault, bus = self._make_runner(responder)
 
-        path = await runner.run_correction_protocol(
+        protocol_result = await runner.run_correction_protocol(
             run_id="run_001",
             cycle=cycle,
             envelope=self._failed_envelope(),
@@ -1580,7 +1580,7 @@ class TestCorrectionRunnerStandalone:
             plan_delta_refs=[],
         )
 
-        assert path == "abort"
+        assert protocol_result.correction_path == "abort"
         emitted = [c.args[0] for c in bus.emit.call_args_list]
         assert EventType.CORRECTION_INITIATED in emitted
         assert EventType.CORRECTION_DECIDED in emitted
@@ -1630,3 +1630,93 @@ class TestCorrectionRunnerStandalone:
         assert any("governance.correction_decision" in t for t in completed)
         # One checkpoint saved (decision step only).
         assert registry.save_checkpoint.await_count == 1
+
+    async def test_patch_path_returns_repair_artifacts_excluding_validate_step(self, cycle):
+        """#389 regression: the executor verifies patches against the repair
+        steps' emitted files — if the protocol doesn't surface them (or lets
+        the validate step's judgment doc shadow a product file), patch
+        verification silently never engages and every repair is re-rolled."""
+        import dataclasses as _dc
+
+        repaired = {"name": "qa_handoff.md", "content": "## How to Test\n", "type": "document"}
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "repairable",
+                        "affected_task_types": ["builder.assemble"],
+                    },
+                )
+            if envelope.task_type == "builder.assemble_repair":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"artifacts": [repaired], "summary": "repaired"},
+                )
+            if envelope.task_type == "qa.validate_repair":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "artifacts": [{"name": "repair_validation.md", "content": "PASS"}],
+                        "verdict": "PASS",
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        failed_envelope = _dc.replace(
+            self._failed_envelope(), task_type="builder.assemble", metadata={"role": "builder"}
+        )
+
+        protocol_result = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed_envelope,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="missing sections"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert protocol_result.correction_path == "patch"
+        assert protocol_result.repair_artifacts == [repaired]
+
+    async def test_non_patch_path_returns_no_repair_artifacts(self, cycle):
+        """#389: a 'continue' decision dispatches no repair steps — surfacing
+        stale/empty artifacts here would make the executor 'verify' nothing
+        and could accept an unrepaired task."""
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"correction_path": "continue"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+
+        protocol_result = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert protocol_result.correction_path == "continue"
+        assert protocol_result.repair_artifacts == []

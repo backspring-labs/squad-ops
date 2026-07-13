@@ -530,3 +530,72 @@ class TestPublishAndAwaitInvariants:
 
         assert r1.outputs["r"] == "a"
         assert r2.outputs["r"] == "b"
+
+
+class TestAcceptPatchToken:
+    """#389: the "accept_patch" routing token returns success WITHOUT
+    re-dispatching the task."""
+
+    def _envelope(self):
+        return TaskEnvelope(
+            task_id="task_patch",
+            agent_id="bob",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="builder.assemble",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            metadata={"role": "builder"},
+        )
+
+    def _cycle(self):
+        from squadops.cycles.models import Cycle, TaskFlowPolicy
+
+        return Cycle(
+            cycle_id="cyc_001",
+            project_id="proj_001",
+            created_at=NOW,
+            created_by="system",
+            prd_ref="prd",
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+        )
+
+    async def test_accept_patch_returns_success_without_redispatch(
+        self, mock_queue, reply_router
+    ) -> None:
+        """Bug caught: an unhandled token falls through the retry loop and
+        re-dispatches — the generative re-roll that clobbers the repair."""
+        dispatcher = TaskDispatcher(
+            queue=mock_queue,
+            reply_router=reply_router,
+            task_timeout=5.0,
+            event_bus=MagicMock(),
+        )
+        envelope = self._envelope()
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"], status="FAILED", error="acceptance failed"
+        )
+
+        async def handle_outcome(result):
+            return "accept_patch"
+
+        with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+            task_succeeded, result = await dispatcher.dispatch_with_retry(
+                envelope,
+                envelope,
+                self._cycle(),
+                "run_001",
+                handle_task_outcome=handle_outcome,
+            )
+
+        assert task_succeeded is True
+        # The dispatcher hands back the raw failed result; the executor
+        # substitutes the corrected one from its holder (#389).
+        assert result.status == "FAILED"
+        assert mock_queue.publish.await_count == 1
