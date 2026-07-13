@@ -18,6 +18,7 @@ from squadops.capabilities.handlers.base import (
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.cycles.acceptance_checks import CheckOutcome, get_check
 from squadops.cycles.implementation_plan import TypedCheck
+from squadops.cycles.patch_verification import materialize_artifacts
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 
@@ -283,33 +284,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                     typed_error_counts[fp] = prior + 1
                 # status in {passed, skipped} never blocks.
 
-    @staticmethod
-    def _materialize_artifacts(artifacts: list[dict], workspace_root: Path) -> None:
-        """Write in-memory artifacts to disk under ``workspace_root``.
-
-        Skips entries whose ``name`` is missing or escapes the workspace —
-        the typed-check evaluators apply their own ``_safe_resolve`` chroot
-        on top of this, but it is cheaper to refuse here than to
-        materialize a malformed file just to fail evaluation.
-        """
-        root_resolved = workspace_root.resolve()
-        for art in artifacts:
-            name = art.get("name")
-            content = art.get("content", "")
-            if not isinstance(name, str) or not name:
-                continue
-            if Path(name).is_absolute():
-                continue
-            target = (workspace_root / name).resolve()
-            try:
-                target.relative_to(root_resolved)
-            except ValueError:
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if isinstance(content, bytes):
-                target.write_bytes(content)
-            else:
-                target.write_text(str(content), encoding="utf-8")
+    # Shared with the executor-side patch verification (#389) — one
+    # materializer, one safety policy.
+    _materialize_artifacts = staticmethod(materialize_artifacts)
 
     @staticmethod
     async def _evaluate_typed_check(
