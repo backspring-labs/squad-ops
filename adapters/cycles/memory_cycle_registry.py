@@ -228,6 +228,18 @@ class MemoryCycleRegistry(CycleRegistryPort):
             raise RunNotFoundError(f"Run not found: {run_id}")
         self._verification_summaries[run_id] = summary
 
+    async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
+        """Return a cycle's persisted per-run verification summaries, by run_number."""
+        runs = sorted(
+            (r for r in self._runs.values() if r["cycle_id"] == cycle_id),
+            key=lambda r: r["run_number"],
+        )
+        return [
+            self._verification_summaries[r["run_id"]]
+            for r in runs
+            if r["run_id"] in self._verification_summaries
+        ]
+
     # --- Internal helpers ---
 
     def _to_cycle(self, data: dict) -> Cycle:

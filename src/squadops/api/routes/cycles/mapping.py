@@ -7,6 +7,7 @@ from __future__ import annotations
 from squadops.api.routes.cycles.dtos import (
     AgentProfileEntryResponse,
     ArtifactRefResponse,
+    CycleOutcomeDTO,
     CycleResponse,
     GateDecisionResponse,
     GateDTO,
@@ -14,6 +15,7 @@ from squadops.api.routes.cycles.dtos import (
     RunResponse,
     SquadProfileResponse,
     TaskFlowPolicyDTO,
+    UnverifiedCheckDTO,
     WorkloadProgressEntry,
 )
 from squadops.api.runtime.agent_labels import get_role_label
@@ -27,6 +29,7 @@ from squadops.cycles.models import (
     RunStatus,
     SquadProfile,
 )
+from squadops.cycles.verification_integrity import CycleOutcome
 
 
 def project_to_response(project: Project) -> ProjectResponse:
@@ -138,7 +141,23 @@ def compute_workload_progress(
     return entries
 
 
-def cycle_to_response(cycle: Cycle, runs: list[Run]) -> CycleResponse:
+def _cycle_outcome_to_dto(outcome: CycleOutcome) -> CycleOutcomeDTO:
+    return CycleOutcomeDTO(
+        verdict=outcome.verdict.value,
+        verified=list(outcome.verified),
+        failed=list(outcome.failed),
+        unverified=[
+            UnverifiedCheckDTO(check_id=u.check_id, reason=u.reason, required=u.required)
+            for u in outcome.unverified
+        ],
+        required_unmet=list(outcome.required_unmet),
+        run_count=outcome.run_count,
+    )
+
+
+def cycle_to_response(
+    cycle: Cycle, runs: list[Run], cycle_outcome: CycleOutcome | None = None
+) -> CycleResponse:
     ws = cycle.applied_defaults.get("workload_sequence", [])
     progress = compute_workload_progress(ws, runs)
     workload_statuses = [e.status for e in progress] if progress else None
@@ -163,6 +182,7 @@ def cycle_to_response(cycle: Cycle, runs: list[Run]) -> CycleResponse:
         status=status.value,
         runs=[run_to_response(r) for r in runs],
         workload_progress=progress,
+        cycle_outcome=_cycle_outcome_to_dto(cycle_outcome) if cycle_outcome else None,
     )
 
 

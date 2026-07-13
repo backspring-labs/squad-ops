@@ -159,6 +159,30 @@ class WorkloadProgressEntry(BaseModel):
     status: str  # "pending" | "running" | "completed" | "failed" | "gate_awaiting" | "rejected"
 
 
+class UnverifiedCheckDTO(BaseModel):
+    """A not-executed check disclosed in the cycle roll-up (SIP-0096 §6.6.3)."""
+
+    check_id: str
+    reason: str
+    required: bool
+
+
+class CycleOutcomeDTO(BaseModel):
+    """SIP-0096 §10 per-cycle verification roll-up, derived on read.
+
+    `verdict` is the worst-of-runs verification verdict — **not** a cycle status
+    (§6.5). `blocked_unverified` is a harness/evidence problem, not a product
+    failure. Not-executed checks are always disclosed in `unverified`.
+    """
+
+    verdict: str  # accepted | rejected | blocked_unverified
+    verified: list[str] = Field(default_factory=list)
+    failed: list[str] = Field(default_factory=list)
+    unverified: list[UnverifiedCheckDTO] = Field(default_factory=list)
+    required_unmet: list[str] = Field(default_factory=list)
+    run_count: int = 0
+
+
 class CycleResponse(BaseModel):
     cycle_id: str
     project_id: str
@@ -177,6 +201,7 @@ class CycleResponse(BaseModel):
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)
     workload_progress: list[WorkloadProgressEntry] = Field(default_factory=list)
+    cycle_outcome: CycleOutcomeDTO | None = None  # SIP-0096 §10, derived on the detail GET
 
 
 class PreflightWarningDTO(BaseModel):

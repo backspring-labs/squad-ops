@@ -213,3 +213,36 @@ class TestCycleToResponseStatus:
         resp = cycle_to_response(cycle, runs=[])
 
         assert resp.status == "cancelled"
+
+
+class TestCycleOutcomeInResponse:
+    """SIP-0096 §10: the derived verification roll-up is surfaced on the detail response."""
+
+    def test_outcome_omitted_when_not_provided(self):
+        """List/legacy callers pass no outcome → the field is None, not fabricated."""
+        resp = cycle_to_response(_make_cycle(), runs=[])
+        assert resp.cycle_outcome is None
+
+    def test_outcome_mapped_when_provided(self):
+        from squadops.cycles.verification_integrity import (
+            CycleOutcome,
+            RunVerdict,
+            UnverifiedCheck,
+        )
+
+        outcome = CycleOutcome(
+            verdict=RunVerdict.BLOCKED_UNVERIFIED,
+            verified=("tests_pass",),
+            failed=(),
+            unverified=(UnverifiedCheck("required_files", "subject_missing", required=True),),
+            run_count=2,
+        )
+
+        resp = cycle_to_response(_make_cycle(), runs=[], cycle_outcome=outcome)
+
+        assert resp.cycle_outcome is not None
+        assert resp.cycle_outcome.verdict == "blocked_unverified"
+        assert resp.cycle_outcome.verified == ["tests_pass"]
+        assert resp.cycle_outcome.required_unmet == ["required_files"]  # derived from unverified
+        assert resp.cycle_outcome.unverified[0].check_id == "required_files"
+        assert resp.cycle_outcome.unverified[0].required is True

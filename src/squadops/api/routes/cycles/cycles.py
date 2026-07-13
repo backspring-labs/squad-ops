@@ -18,6 +18,7 @@ from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import cycle_to_response
 from squadops.auth.models import Scope
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
+from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import (
     Cycle,
@@ -246,7 +247,11 @@ async def get_cycle(project_id: str, cycle_id: str):
         registry = get_cycle_registry()
         cycle = await registry.get_cycle(cycle_id)
         runs = await registry.list_runs(cycle_id)
-        return cycle_to_response(cycle, runs)
+        # SIP-0096 §10: derive the verification roll-up on read (detail GET only —
+        # kept out of the list path to avoid a per-cycle query), the same
+        # derive-on-read pattern as the cycle status above.
+        outcome = await resolve_cycle_outcome(registry, cycle_id)
+        return cycle_to_response(cycle, runs, cycle_outcome=outcome)
     except CycleError as e:
         raise handle_cycle_error(e) from e
 

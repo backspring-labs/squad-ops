@@ -376,3 +376,33 @@ class TestRecordRunVerificationSummary:
         stored = registry._verification_summaries["run_001"]
         assert stored.verdict is RunVerdict.REJECTED
         assert stored.failed == ("frontend_build",)
+
+
+class TestListRunVerificationSummaries:
+    """Contract tests for list_run_verification_summaries (SIP-0096 Phase 3 §10)."""
+
+    async def test_returns_summaries_by_run_number_skipping_runless(self, registry):
+        """One entry per run that recorded a summary, ordered by run_number; a run
+        without one (e.g. still running) is omitted — not a None/gap."""
+        from squadops.cycles.verification_integrity import (
+            CheckResult,
+            RunVerdict,
+            aggregate_verification,
+        )
+
+        await registry.create_cycle(_make_cycle())
+        for n in (1, 2, 3):
+            await registry.create_run(_make_run(run_id=f"run_00{n}", run_number=n))
+            await registry.update_run_status(f"run_00{n}", RunStatus.RUNNING)
+            await registry.update_run_status(f"run_00{n}", RunStatus.COMPLETED)
+        # run_002 deliberately records NO summary — it must be skipped, not surfaced.
+        await registry.record_run_verification_summary("run_001", aggregate_verification([]))
+        await registry.record_run_verification_summary(
+            "run_003", aggregate_verification([CheckResult(check_id="x", status="failed")])
+        )
+
+        summaries = await registry.list_run_verification_summaries("cyc_001")
+        assert [s.verdict for s in summaries] == [RunVerdict.ACCEPTED, RunVerdict.REJECTED]
+
+    async def test_unknown_cycle_returns_empty(self, registry):
+        assert await registry.list_run_verification_summaries("nope") == []
