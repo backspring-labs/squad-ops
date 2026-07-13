@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 
 
@@ -84,6 +85,22 @@ class TaskEnvelope:
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
+class TaskResultStatus(StrEnum):
+    """``TaskResult.status`` vocabulary (ACI §7.2) — the A2A wire values.
+
+    UPPERCASE, and deliberately distinct from the lowercase capability-layer
+    ``TaskStatus`` enum; the two must never be compared across (#381). This is
+    the dedicated-enum option from #381's proposal: a ``str`` subclass whose
+    members compare equal to the existing wire literals, so producers and the
+    11 comparison sites can migrate incrementally. Do not add new bare
+    status literals — use these members.
+    """
+
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    CANCELED = "CANCELED"
+
+
 @dataclass(frozen=True)
 class TaskResult:
     """ACI Task Result - Terminal result from agent container execution.
@@ -95,7 +112,7 @@ class TaskResult:
     """
 
     task_id: str
-    status: str  # SUCCEEDED, FAILED, or CANCELED
+    status: str  # TaskResultStatus member (wire values SUCCEEDED/FAILED/CANCELED, #381)
     outputs: dict[str, Any] | None = None
     error: str | None = None
     execution_evidence: dict[str, Any] | None = None  # SIP-0.8.8
