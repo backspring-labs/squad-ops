@@ -156,11 +156,29 @@ S runs 1A verification-truth + 1B sandbox; M runs 2A scaffold + evidence P3 clos
   validated for the price of one experiment; if not, the arc redirects **before** a new
   privileged service is committed to a minor. Mostly Mac-ownable; the two theses are
   validated *decoupled* before they ever compose.
-- **Fallback clause (the exit):** if the spike fails, or the golden-path slice stalls at
-  a mid-release checkpoint, 1.4 reverts to the evidence-release shape (SIP-0096
-  completion + SIP-0091 returns from 1.6) and the golden path moves to 1.6. SIP-0096 P3
-  consumers keep landing as ordinary PRs on main regardless of this gate — deployed
-  value never waits on the bet.
+- **Fallback clause (the exit — pinned, rev 2 final):** 1.4 reverts to the
+  evidence-release shape (SIP-0096 completion + SIP-0091 returns from 1.6) and the
+  golden path moves to 1.6 when **any** of these fires. Each is a **default that
+  requires an explicit, recorded maintainer decision to override** — stalling is never
+  a judgment call:
+  1. **Spike verdict due 2026-07-25.** No verdict by then = fallback fires (a spike that
+     can't be run in ten days is itself the signal).
+  2. **Mid-release checkpoint 2026-08-15.** Fallback fires unless, by this date, (a) the
+     scaffold's CI skeleton gate is green **and** (b) the sandbox floor has executed the
+     golden path end-to-end at least once — engine-turns-over, regardless of FAY.
+  3. **Post-integration: FAY still 0 after 10 benchmark attempts** = fallback fires
+     (the capability isn't demonstrating; stop paying for it in release time).
+
+  SIP-0096 P3 consumers keep landing as ordinary PRs on main regardless of this gate —
+  deployed value never waits on the bet.
+- **What the spike does and doesn't prove (rev 2 final, Mac-lane note):** a green spike
+  validates the **scaffold thesis** (a 27b fills the skeleton into a working app) and
+  the **sandbox's demand** (a clean execution locus is needed) — it does **not** test
+  the sandbox's implementation feasibility. Post-spike, the new privileged execution
+  service is the residual concentration risk; checkpoint 2 above exists precisely
+  because the spike cannot cover it. Note also the spike's decisive half (the fill-only
+  cycle) is Spark-bound — 27b is Spark-only — so the go/no-go is mostly, not entirely,
+  Mac-ownable.
 - **Phase 0 — golden benchmark (joint, after the spike):** freeze the canonical challenge
   (group_run PRD, one blueprint, one environment image, one verification suite, uniform
   `full` model policy as experimental control). Primary metric: **Functional App Yield**
@@ -300,7 +318,9 @@ trustworthy" — the same producer-before-consumer discipline that separates 1.4
 1. **Evidence SIP acceptance** ← Phase 0 audit complete (no vocabulary collision with 0092/0070/0079). *(Done — accepted 2026-07-06.)*
 2. **Golden-path SIP acceptance (both)** ← the **Phase-0.5 walking-skeleton spike
    succeeds** (skeleton builds+boots deterministically; one fill-only Spark cycle yields
-   a manually-verified working app). Spike failure exercises the fallback clause instead.
+   a manually-verified working app), **verdict due 2026-07-25**. Spike failure or
+   no-verdict exercises the fallback clause; the mid-release checkpoint (2026-08-15,
+   engine-turns-over) and the 10-attempt FAY trigger gate the middle of the bet.
 3. **1.4 cut** ← evidence phases live-validated (the honest-blocking half is **already
    proven** — every failed 2026-07-14 cycle reported `blocked_unverified` with explicit
    `required_unmet`) **and** the golden path proven: ≥3 consecutive Phase-0 benchmark

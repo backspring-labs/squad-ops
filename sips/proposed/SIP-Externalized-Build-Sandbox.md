@@ -22,8 +22,11 @@ Build" vertical slice: *one canonical stack can be deterministically composed,
 executed, and honestly verified without manual intervention.*
 **Acceptance gate (arc rev 2, Mac-lane review):** acceptance of this SIP is gated on
 the **Phase-0.5 walking-skeleton spike** succeeding (see the 1.4 arc plan) — empirical
-proof of the golden-path thesis before this service is committed to a minor. The arc
-carries an explicit fallback clause if the spike fails.
+proof of the golden-path thesis before this service is committed to a minor. Noted
+residual (rev 2 final): a green spike validates this service's *demand*, not its
+*implementation feasibility* — the arc's mid-release checkpoint (2026-08-15,
+engine-turns-over: the floor executes the golden path end-to-end at least once) covers
+that residual risk, and the fallback fires by default if it isn't met.
 **v1.4 floor (arc rev 2):** build runner + `start_application` + HTTP health probe,
 with environment contract + preflight and clean-room verification. Browser probe,
 probe-as-peer implementation, and operator-access CLI/caddy defer to 1.5+; if the
