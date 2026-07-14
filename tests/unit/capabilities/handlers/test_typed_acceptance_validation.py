@@ -474,9 +474,7 @@ class TestWireShapeCriteria:
         )
         assert result.passed is False
         assert "acceptance:frontend manifest" in result.missing_components
-        acceptance_rows = [
-            c for c in result.checks if c.get("check", "").startswith("acceptance:")
-        ]
+        acceptance_rows = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
         assert len(acceptance_rows) == 1
         assert acceptance_rows[0]["status"] == "failed"
 
@@ -490,9 +488,7 @@ class TestWireShapeCriteria:
         assert result.passed is True
         prose_rows = [c for c in result.checks if c.get("check") == "acceptance_criteria_prose"]
         assert prose_rows == []
-        acceptance_rows = [
-            c for c in result.checks if c.get("check", "").startswith("acceptance:")
-        ]
+        acceptance_rows = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
         assert len(acceptance_rows) == 1
         assert acceptance_rows[0]["status"] == "passed"
 
