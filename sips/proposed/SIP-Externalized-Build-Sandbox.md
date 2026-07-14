@@ -256,6 +256,38 @@ startup / runtime / timeout / unsupported / unavailable):
   defect, health never ready, browser hits an app exception): local builder
   patch, outer correction, or replan — these are patchable and budgeted.
 
+### 4.9 Operator access / manual inspection
+
+The runtime unit is short-lived by design — started, probed, torn down. But
+the operator's boot-it-yourself verification habit (the #376 lesson) deserves
+a first-class affordance, and the persistent workspace makes it cheap:
+
+- **`squadops sandbox up <cycle-id>`** — the execution service re-provisions
+  the application runtime *on demand*, clean-room, from the exact persisted
+  workspace revision the verdict was rendered on (fresh containers, cached
+  installs, same pinned images), then publishes endpoints to the operator:
+  routed through the existing caddy reverse proxy
+  (`/sandbox/<cycle-id>/` → frontend, `/sandbox/<cycle-id>/api/` → backend)
+  or, minimally, ephemeral host ports printed back. On the `local` profile
+  the tailnet is the reach boundary; `lab`/`cloud` profiles must put the
+  route behind the existing auth before enabling this.
+- **`squadops sandbox down <cycle-id>`** tears it down; every exposure
+  carries a **TTL lease** (auto-teardown unless renewed) and idempotent
+  cleanup on service restart — no stranded runtimes (the FocusLease lesson
+  applied to sandboxes).
+- A `--hold` variant on cycle create covers the watching-it-live case:
+  after final verification, re-expose instead of tear down, same TTL.
+- Exposure is an explicit typed operation (`expose_application`) that punches
+  through the sandbox's deny-by-default network — never a default — and the
+  published endpoints are recorded in run evidence.
+
+On-demand re-provisioning is deliberately preferred over keeping runtimes
+alive: a fresh boot from the persisted revision re-proves reproducibility on
+every inspection, whereas a lingering container is stale evidence and a
+resource leak. The bare-metal escape hatch remains free — the assembled
+workspace is an ordinary host directory, and `qa_handoff.md` still documents
+how to run it directly.
+
 ## 5. v1.4 scope split
 
 | Designed correctly in 1.4 (contract level) | May be minimal in 1.4 (implementation level) |
@@ -267,6 +299,7 @@ startup / runtime / timeout / unsupported / unavailable):
 | Environment contract + preflight validation | One canonical environment image |
 | Probe-as-peer | HTTP probes + one narrow browser happy-path |
 | Locus × mode failure classification | Wired for sandbox-originated failures first |
+| `expose_application` as explicit, TTL-leased, evidenced operation | `sandbox up/down` CLI + ephemeral host ports; caddy routing may follow |
 
 ## 6. Migration
 
@@ -310,6 +343,9 @@ startup / runtime / timeout / unsupported / unavailable):
 14. Functional probes execute from outside the application process boundary.
 15. Verification evidence identifies the exact workspace revision,
     blueprint, environment contract, image, and operation versions used.
+16. Application exposure for manual inspection is an explicit operation,
+    TTL-leased, recorded in evidence, and auth-gated on any profile whose
+    reach boundary is not a private network.
 
 ## 8. Open Questions
 
