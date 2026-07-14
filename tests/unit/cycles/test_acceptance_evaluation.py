@@ -175,3 +175,20 @@ class TestEvaluateCriterionGates:
         )
         assert outcome.status == "failed"
         assert outcome.reason == "file_not_found"
+
+
+def test_split_keeps_non_safelisted_command_rows_typed():
+    """The #422 authoring lint must NOT leak into wire coercion: a dispatched
+    plan may legally carry an out-of-safelist command (pre-lint plan, static
+    fallback). Demoting it to unparseable here would fail OPEN — the row must
+    stay typed so evaluation fails CLOSED with command_not_in_safelist."""
+    wire_row = {
+        "check": "command_exit_zero",
+        "severity": "error",
+        "description": "runs tests",
+        "params": {"argv": ["npm", "test"]},
+    }
+    result = split_acceptance_criteria([wire_row])
+    assert len(result.typed) == 1
+    assert result.typed[0].params["argv"] == ["npm", "test"]
+    assert not result.unparseable

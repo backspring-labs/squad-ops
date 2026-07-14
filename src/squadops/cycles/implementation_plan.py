@@ -25,6 +25,8 @@ import yaml
 from squadops.cycles.acceptance_check_spec import (
     ALLOWED_SEVERITIES,
     CHECK_SPECS,
+    argv_matches_safelist,
+    command_safelist_names,
     reserved_keys_for,
 )
 
@@ -140,7 +142,9 @@ class ImplementationPlan:
     summary: PlanSummary
 
     @classmethod
-    def from_yaml(cls, content: str) -> ImplementationPlan:
+    def from_yaml(
+        cls, content: str, *, enforce_command_safelist: bool = False
+    ) -> ImplementationPlan:
         """Parse and validate a plan from YAML string.
 
         Performs structural validation: required fields, known task types,
@@ -148,6 +152,15 @@ class ImplementationPlan:
 
         Policy validation (min/max subtask counts) is NOT performed here —
         that belongs in the handler/executor using resolved config.
+
+        Args:
+            content: The plan YAML document.
+            enforce_command_safelist: When true, reject ``command_exit_zero``
+                criteria whose argv is outside the RC-10a execution safelist
+                (#422). Authoring-boundary only — leave false when re-parsing
+                already-approved plans, so pre-lint plans stay loadable and
+                out-of-safelist commands keep failing closed at evaluation
+                time instead of being demoted to unparseable.
 
         Raises:
             ValueError: If the YAML is malformed or structurally invalid.
@@ -199,7 +212,11 @@ class ImplementationPlan:
             raw_criteria = td.get("acceptance_criteria", [])
             if not isinstance(raw_criteria, list):
                 raise ValueError(f"Task {task_index}: acceptance_criteria must be a list")
-            criteria = _parse_acceptance_criteria(raw_criteria, task_index)
+            criteria = _parse_acceptance_criteria(
+                raw_criteria,
+                task_index,
+                enforce_command_safelist=enforce_command_safelist,
+            )
 
             tasks.append(
                 PlanTask(
@@ -324,7 +341,12 @@ def _serialize_acceptance_criterion(c: str | TypedCheck) -> str | dict:
     return flat
 
 
-def _parse_acceptance_criteria(raw: list, task_index: int) -> list[str | TypedCheck]:
+def _parse_acceptance_criteria(
+    raw: list,
+    task_index: int,
+    *,
+    enforce_command_safelist: bool = False,
+) -> list[str | TypedCheck]:
     """Parse a mixed acceptance_criteria list per SIP-0092 M1.
 
     Accepts:
@@ -341,6 +363,11 @@ def _parse_acceptance_criteria(raw: list, task_index: int) -> list[str | TypedCh
         - Path-typed param value containing absolute path or '..' traversal
           (cheap pre-eval rejection; full chrooting still applies at
           evaluation time per RC-10).
+        - When ``enforce_command_safelist`` is set (authoring boundary only,
+          #422): ``command_exit_zero`` argv outside the RC-10a execution
+          safelist, or with non-string items. Such a command can never
+          execute, so accepting it authors a run that is guaranteed to die
+          at evaluation.
 
     Returns:
         Mixed list of str and TypedCheck instances, preserving authored order.
@@ -439,6 +466,22 @@ def _parse_acceptance_criteria(raw: list, task_index: int) -> list[str | TypedCh
         for path_key in spec.path_params:
             if path_key in params:
                 _reject_unsafe_path(params[path_key], path_key, task_index, j, check_name)
+
+        # Authoring-time command-safelist lint (#422)
+        if enforce_command_safelist and check_name == "command_exit_zero":
+            argv = params["argv"]
+            if not all(isinstance(a, str) for a in argv):
+                raise ValueError(
+                    f"Task {task_index}.acceptance_criteria[{j}] "
+                    f"(command_exit_zero): every argv item must be a string"
+                )
+            if not argv_matches_safelist(argv):
+                raise ValueError(
+                    f"Task {task_index}.acceptance_criteria[{j}] "
+                    f"(command_exit_zero): command {argv!r} is not in the "
+                    f"execution safelist and can never run. Use one of: "
+                    f"{'; '.join(command_safelist_names())}"
+                )
 
         parsed.append(
             TypedCheck(

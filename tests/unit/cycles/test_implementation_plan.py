@@ -570,3 +570,104 @@ class TestPlannerBuildTaskTypes:
         result.add("bogus.capability")
         assert "bogus.capability" not in planner_build_task_types(has_builder=True)
         assert "bogus.capability" not in planner_build_task_types(has_builder=False)
+
+
+# ---------------------------------------------------------------------------
+# Command-safelist authoring lint (#422)
+# ---------------------------------------------------------------------------
+
+
+def _plan_yaml_with_command(argv_yaml: str) -> str:
+    return f"""\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend"
+    description: "Build the backend"
+    expected_artifacts:
+      - "backend/main.py"
+    acceptance_criteria:
+      - check: command_exit_zero
+        description: "command check"
+        argv: {argv_yaml}
+    depends_on: []
+summary:
+  total_tasks: 1
+"""
+
+
+class TestCommandSafelistLint:
+    """Authoring-boundary rejection of commands the evaluator can never run.
+
+    Live failure this pins: cycle cyc_bc325a67417d authored `npm test` /
+    `pytest --cov` / `make build` acceptance commands that passed plan
+    validation, then deterministically died at evaluation with
+    command_not_in_safelist after the correction budget was spent.
+    """
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            '["npm", "test"]',
+            '["pytest", "--cov=backend"]',
+            '["make", "build"]',
+            '["python", "setup.py", "install"]',
+            '["python", "-m", "pytest", "tests/"]',
+        ],
+    )
+    def test_authoring_rejects_non_safelisted_command(self, argv):
+        with pytest.raises(ValueError, match=r"Task 0\.acceptance_criteria\[0\].*safelist"):
+            ImplementationPlan.from_yaml(
+                _plan_yaml_with_command(argv), enforce_command_safelist=True
+            )
+
+    def test_rejection_message_teaches_allowed_forms(self):
+        """The ValueError text becomes the merger's corrective feedback —
+        it must name concrete allowed forms, not just say 'no'."""
+        with pytest.raises(ValueError, match=r"python -m py_compile <file>"):
+            ImplementationPlan.from_yaml(
+                _plan_yaml_with_command('["npm", "test"]'), enforce_command_safelist=True
+            )
+
+    @pytest.mark.parametrize(
+        "argv,parsed_argv",
+        [
+            (
+                '["python", "-m", "py_compile", "backend/main.py"]',
+                ["python", "-m", "py_compile", "backend/main.py"],
+            ),
+            ('["python", "-m", "mypy", "src/"]', ["python", "-m", "mypy", "src/"]),
+            ('["node", "--check", "app.js"]', ["node", "--check", "app.js"]),
+            ('["ruff", "check", "."]', ["ruff", "check", "."]),
+            ('["tsc", "--noEmit"]', ["tsc", "--noEmit"]),
+            ('["eslint", "src/"]', ["eslint", "src/"]),
+            ('["pyflakes", "main.py"]', ["pyflakes", "main.py"]),
+        ],
+    )
+    def test_authoring_accepts_every_safelisted_form(self, argv, parsed_argv):
+        plan = ImplementationPlan.from_yaml(
+            _plan_yaml_with_command(argv), enforce_command_safelist=True
+        )
+        criterion = plan.tasks[0].acceptance_criteria[0]
+        assert isinstance(criterion, TypedCheck)
+        assert criterion.params["argv"] == parsed_argv
+
+    def test_default_parse_accepts_non_safelisted_command(self):
+        """Dispatch-time re-parse must stay permissive: flipping the default
+        would break loading pre-lint plans and demote out-of-safelist commands
+        from blocking evaluation errors to unparseable (fail-open)."""
+        plan = ImplementationPlan.from_yaml(_plan_yaml_with_command('["npm", "test"]'))
+        criterion = plan.tasks[0].acceptance_criteria[0]
+        assert isinstance(criterion, TypedCheck)
+        assert criterion.params["argv"] == ["npm", "test"]
+
+    def test_authoring_rejects_non_string_argv_items(self):
+        with pytest.raises(ValueError, match="every argv item must be a string"):
+            ImplementationPlan.from_yaml(
+                _plan_yaml_with_command('["python", 1]'), enforce_command_safelist=True
+            )

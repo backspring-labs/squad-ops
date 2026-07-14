@@ -264,7 +264,11 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             handler_name=self._handler_name,
         )
 
-        # Structural validation
+        # Structural validation. enforce_command_safelist stays OFF here (#422):
+        # this path has no corrective-retry loop, so a safelist rejection would
+        # silently downgrade to static task steps (#424) instead of feeding the
+        # error back — strictly worse than letting the check fail closed at
+        # evaluation time. Revisit with #424's fail-fast design.
         try:
             manifest = ImplementationPlan.from_yaml(yaml_content)
         except ValueError as exc:
