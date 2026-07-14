@@ -156,18 +156,25 @@ S runs 1A verification-truth + 1B sandbox; M runs 2A scaffold + evidence P3 clos
   validated for the price of one experiment; if not, the arc redirects **before** a new
   privileged service is committed to a minor. Mostly Mac-ownable; the two theses are
   validated *decoupled* before they ever compose.
-- **Fallback clause (the exit — pinned, rev 2 final):** 1.4 reverts to the
-  evidence-release shape (SIP-0096 completion + SIP-0091 returns from 1.6) and the
-  golden path moves to 1.6 when **any** of these fires. Each is a **default that
-  requires an explicit, recorded maintainer decision to override** — stalling is never
-  a judgment call:
-  1. **Spike verdict due 2026-07-25.** No verdict by then = fallback fires (a spike that
-     can't be run in ten days is itself the signal).
-  2. **Mid-release checkpoint 2026-08-15.** Fallback fires unless, by this date, (a) the
-     scaffold's CI skeleton gate is green **and** (b) the sandbox floor has executed the
-     golden path end-to-end at least once — engine-turns-over, regardless of FAY.
+- **Fallback clause (the exit — pinned by sequencing and counts, no calendar):** 1.4
+  reverts to the evidence-release shape (SIP-0096 completion + SIP-0091 returns from
+  1.6) and the golden path moves to 1.6 when **any** of these fires. Each is a
+  **default that requires an explicit, recorded maintainer decision to override** —
+  stalling is never a judgment call:
+  1. **Spike-first ordering.** The spike verdict must exist before any other
+     golden-path implementation work begins — no scaffold or sandbox implementation
+     PRs ahead of it. The spike itself is count-bounded: the deterministic half
+     (skeleton builds + boots) gates the fill-only cycle, and the fill-only cycle gets
+     **≤3 attempts** to produce a manually-verified working app; a fourth attempt is a
+     fail verdict, not a retry.
+  2. **Alternative-ready checkpoint.** The moment SIP-0096 completion is implemented
+     and the evidence release is otherwise cut-ready, the golden path must have reached
+     **engine-turns-over** — scaffold CI gate green **and** the sandbox floor has
+     executed the golden path end-to-end at least once, regardless of FAY. If it
+     hasn't, the fallback fires and 1.4 cuts as the evidence release: **a ready release
+     never waits on an unproven bet.**
   3. **Post-integration: FAY still 0 after 10 benchmark attempts** = fallback fires
-     (the capability isn't demonstrating; stop paying for it in release time).
+     (the capability isn't demonstrating; stop paying for it in release scope).
 
   SIP-0096 P3 consumers keep landing as ordinary PRs on main regardless of this gate —
   deployed value never waits on the bet.
@@ -317,10 +324,11 @@ trustworthy" — the same producer-before-consumer discipline that separates 1.4
 
 1. **Evidence SIP acceptance** ← Phase 0 audit complete (no vocabulary collision with 0092/0070/0079). *(Done — accepted 2026-07-06.)*
 2. **Golden-path SIP acceptance (both)** ← the **Phase-0.5 walking-skeleton spike
-   succeeds** (skeleton builds+boots deterministically; one fill-only Spark cycle yields
-   a manually-verified working app), **verdict due 2026-07-25**. Spike failure or
-   no-verdict exercises the fallback clause; the mid-release checkpoint (2026-08-15,
-   engine-turns-over) and the 10-attempt FAY trigger gate the middle of the bet.
+   succeeds** (skeleton builds+boots deterministically; a fill-only Spark cycle yields
+   a manually-verified working app within **≤3 attempts**). The spike verdict precedes
+   all other golden-path implementation work; spike failure exercises the fallback.
+   The alternative-ready (engine-turns-over) checkpoint and the 10-attempt FAY trigger
+   gate the middle of the bet.
 3. **1.4 cut** ← evidence phases live-validated (the honest-blocking half is **already
    proven** — every failed 2026-07-14 cycle reported `blocked_unverified` with explicit
    `required_unmet`) **and** the golden path proven: ≥3 consecutive Phase-0 benchmark

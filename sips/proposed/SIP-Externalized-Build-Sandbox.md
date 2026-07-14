@@ -24,9 +24,9 @@ executed, and honestly verified without manual intervention.*
 the **Phase-0.5 walking-skeleton spike** succeeding (see the 1.4 arc plan) — empirical
 proof of the golden-path thesis before this service is committed to a minor. Noted
 residual (rev 2 final): a green spike validates this service's *demand*, not its
-*implementation feasibility* — the arc's mid-release checkpoint (2026-08-15,
-engine-turns-over: the floor executes the golden path end-to-end at least once) covers
-that residual risk, and the fallback fires by default if it isn't met.
+*implementation feasibility* — the arc's **alternative-ready checkpoint** covers that
+residual risk (when the evidence release is otherwise cut-ready, this floor must have
+executed the golden path end-to-end at least once, or the fallback fires by default).
 **v1.4 floor (arc rev 2):** build runner + `start_application` + HTTP health probe,
 with environment contract + preflight and clean-room verification. Browser probe,
 probe-as-peer implementation, and operator-access CLI/caddy defer to 1.5+; if the
