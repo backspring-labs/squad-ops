@@ -14,10 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from squadops.cycles.acceptance_check_spec import CHECK_SPECS
+from squadops.cycles.acceptance_check_spec import CHECK_SPECS, argv_matches_safelist
 from squadops.cycles.acceptance_checks import (
     _CHECK_IMPLS,
-    _argv_matches_safelist,
     _safe_resolve,
     assert_registry_complete,
     get_check,
@@ -563,7 +562,7 @@ class TestCommandExitZero:
     ],
 )
 def test_argv_matches_safelist(argv, expected):
-    assert _argv_matches_safelist(argv) is expected
+    assert argv_matches_safelist(argv) is expected
 
 
 # ---------------------------------------------------------------------------

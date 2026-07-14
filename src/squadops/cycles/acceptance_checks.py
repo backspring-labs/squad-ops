@@ -26,7 +26,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from squadops.cycles.acceptance_check_spec import CHECK_SPECS, CheckSpec
+from squadops.cycles.acceptance_check_spec import (
+    CHECK_SPECS,
+    CheckSpec,
+    argv_matches_safelist,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,69 +143,6 @@ def _restricted_env() -> dict[str, str]:
 
     keep = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}
     return {k: v for k, v in os.environ.items() if k in keep}
-
-
-# ---------------------------------------------------------------------------
-# Command safelist (RC-10a)
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class _CommandPattern:
-    name: str
-    matcher: Callable[[list[str]], bool]
-
-
-def _exact(*expected: str) -> Callable[[list[str]], bool]:
-    expected_list = list(expected)
-
-    def matcher(argv: list[str]) -> bool:
-        return list(argv) == expected_list
-
-    return matcher
-
-
-def _exact_then_one_path(*prefix: str) -> Callable[[list[str]], bool]:
-    prefix_list = list(prefix)
-
-    def matcher(argv: list[str]) -> bool:
-        return len(argv) == len(prefix_list) + 1 and list(argv[: len(prefix_list)]) == prefix_list
-
-    return matcher
-
-
-def _prefix_with_args(*prefix: str) -> Callable[[list[str]], bool]:
-    prefix_list = list(prefix)
-
-    def matcher(argv: list[str]) -> bool:
-        return len(argv) > len(prefix_list) and list(argv[: len(prefix_list)]) == prefix_list
-
-    return matcher
-
-
-def _argv0_with_args(name: str) -> Callable[[list[str]], bool]:
-    def matcher(argv: list[str]) -> bool:
-        return len(argv) >= 1 and argv[0] == name
-
-    return matcher
-
-
-# Order matters only for human readability; the matcher is `any(...)`.
-_COMMAND_SAFELIST: tuple[_CommandPattern, ...] = (
-    _CommandPattern(
-        "python -m py_compile <file>", _exact_then_one_path("python", "-m", "py_compile")
-    ),
-    _CommandPattern("python -m mypy <args...>", _prefix_with_args("python", "-m", "mypy")),
-    _CommandPattern("node --check <file>", _exact_then_one_path("node", "--check")),
-    _CommandPattern("ruff check <args...>", _prefix_with_args("ruff", "check")),
-    _CommandPattern("tsc --noEmit", _exact("tsc", "--noEmit")),
-    _CommandPattern("eslint <args...>", _argv0_with_args("eslint")),
-    _CommandPattern("pyflakes <file>", _exact_then_one_path("pyflakes")),
-)
-
-
-def _argv_matches_safelist(argv: list[str]) -> bool:
-    return any(pat.matcher(argv) for pat in _COMMAND_SAFELIST)
 
 
 # ---------------------------------------------------------------------------
@@ -624,7 +565,7 @@ class CommandExitZeroCheck(BaseCheck):
             return CheckOutcome.error(reason="command_must_be_argv")
         if not argv:
             return CheckOutcome.error(reason="command_must_be_argv")
-        if not _argv_matches_safelist(argv):
+        if not argv_matches_safelist(argv):
             return CheckOutcome.error(reason="command_not_in_safelist", argv=argv)
 
         timeout_s = int(params.get("timeout_s", DEFAULT_COMMAND_TIMEOUT_S))

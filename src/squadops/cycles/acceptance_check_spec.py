@@ -25,6 +25,7 @@ PlanTask, etc.).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 
@@ -63,6 +64,9 @@ class CheckSpec:
             proposer vocabulary so models see the exact flat-YAML shape. Kept in
             sync with the spec by test (must include every required param and
             only allowed params, with correct types).
+        notes: Free-text constraint rendered into the proposer vocabulary as a
+            ``- Note:`` line. For constraints the param schema alone can't
+            express (e.g. the command safelist).
     """
 
     name: str
@@ -73,10 +77,83 @@ class CheckSpec:
     requires_stack_context: bool = False
     path_params: frozenset[str] = frozenset()
     example: dict[str, object] = field(default_factory=dict)
+    notes: str = ""
 
 
 # Allowed severity values. Anything else → ValueError at parse time.
 ALLOWED_SEVERITIES: frozenset[str] = frozenset({"error", "warning", "info"})
+
+
+# ---------------------------------------------------------------------------
+# Command safelist (RC-10a) — single source for the ``command_exit_zero``
+# argv contract. Consumed by the runtime evaluator (``acceptance_checks.py``),
+# the authoring-time lint (``implementation_plan.py``, #422), and the proposer
+# vocabulary below, so the three surfaces cannot drift.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CommandPattern:
+    name: str
+    matcher: Callable[[list[str]], bool]
+
+
+def _exact(*expected: str) -> Callable[[list[str]], bool]:
+    expected_list = list(expected)
+
+    def matcher(argv: list[str]) -> bool:
+        return list(argv) == expected_list
+
+    return matcher
+
+
+def _exact_then_one_path(*prefix: str) -> Callable[[list[str]], bool]:
+    prefix_list = list(prefix)
+
+    def matcher(argv: list[str]) -> bool:
+        return len(argv) == len(prefix_list) + 1 and list(argv[: len(prefix_list)]) == prefix_list
+
+    return matcher
+
+
+def _prefix_with_args(*prefix: str) -> Callable[[list[str]], bool]:
+    prefix_list = list(prefix)
+
+    def matcher(argv: list[str]) -> bool:
+        return len(argv) > len(prefix_list) and list(argv[: len(prefix_list)]) == prefix_list
+
+    return matcher
+
+
+def _argv0_with_args(name: str) -> Callable[[list[str]], bool]:
+    def matcher(argv: list[str]) -> bool:
+        return len(argv) >= 1 and argv[0] == name
+
+    return matcher
+
+
+# Order matters only for human readability; the matcher is `any(...)`.
+COMMAND_SAFELIST: tuple[CommandPattern, ...] = (
+    CommandPattern(
+        "python -m py_compile <file>", _exact_then_one_path("python", "-m", "py_compile")
+    ),
+    CommandPattern("python -m mypy <args...>", _prefix_with_args("python", "-m", "mypy")),
+    CommandPattern("node --check <file>", _exact_then_one_path("node", "--check")),
+    CommandPattern("ruff check <args...>", _prefix_with_args("ruff", "check")),
+    CommandPattern("tsc --noEmit", _exact("tsc", "--noEmit")),
+    CommandPattern("eslint <args...>", _argv0_with_args("eslint")),
+    CommandPattern("pyflakes <file>", _exact_then_one_path("pyflakes")),
+)
+
+
+def argv_matches_safelist(argv: list[str]) -> bool:
+    """True when argv matches one of the safelisted command forms."""
+    return any(pat.matcher(argv) for pat in COMMAND_SAFELIST)
+
+
+def command_safelist_names() -> tuple[str, ...]:
+    """Human-readable safelisted command forms, for error messages and prompts."""
+    return tuple(pat.name for pat in COMMAND_SAFELIST)
 
 
 # Rev 1 vocabulary. Each entry's evaluator implementation lands in M1.2;
@@ -141,11 +218,16 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         param_types={"argv": list, "cwd": str, "timeout_s": int},
         supported_stacks=frozenset(),
         requires_stack_context=False,
-        # argv elements are not single paths; the M1.2 safelist (RC-10a)
+        # argv elements are not single paths; the RC-10a safelist above
         # validates argv shapes pattern-by-pattern. cwd is path-checked at
         # evaluation time, not here.
         path_params=frozenset(),
         example={"argv": ["python", "-m", "py_compile", "app/main.py"]},
+        notes=(
+            "argv MUST match one of these safelisted forms (anything else — "
+            "pytest, npm, make, pip, setup.py, ... — cannot execute and fails "
+            "plan validation): " + "; ".join(f"`{p.name}`" for p in COMMAND_SAFELIST)
+        ),
     ),
 }
 
@@ -226,6 +308,8 @@ def render_typed_acceptance_vocabulary() -> str:
                 f"`{p}` ({_type_label(spec, p)})" for p in sorted(spec.optional_params)
             )
             out.append(f"- Optional: {optional}")
+        if spec.notes:
+            out.append(f"- Note: {spec.notes}")
         out.append("- Example:")
         out.append("  ```yaml")
         out.append(f"  - check: {name}")
