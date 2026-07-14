@@ -5,7 +5,9 @@ Split from cycle_tasks.py (#152).
 from __future__ import annotations
 
 import logging
+import tempfile
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.base import (
@@ -13,6 +15,13 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.cycles.acceptance_checks import CheckOutcome
+from squadops.cycles.acceptance_evaluation import (
+    evaluate_criterion,
+    split_acceptance_criteria,
+)
+from squadops.cycles.implementation_plan import TypedCheck
+from squadops.cycles.patch_verification import materialize_artifacts
 from squadops.llm.exceptions import LLMError
 from squadops.llm.model_registry import get_model_spec
 from squadops.llm.models import ChatMessage
@@ -255,6 +264,155 @@ class _CycleTaskHandler(CapabilityHandler):
         async so subclasses can await without restructuring.
         """
         return ValidationResult(passed=True, summary="No validation configured")
+
+    # ---- SIP-0092 M1.3 typed acceptance (shared seam, #419/#420) ----------
+    #
+    # Hoisted from DevelopmentDevelopHandler so every cycle handler whose
+    # plan task carries typed acceptance criteria enforces them identically
+    # (#419: the builder seam silently ignored its contract). Criteria arrive
+    # as wire-shape dicts after distributed dispatch; coercion happens in
+    # split_acceptance_criteria (#420), never via isinstance filtering here.
+
+    async def _evaluate_typed_acceptance(
+        self,
+        inputs: dict[str, Any],
+        artifacts: list[dict],
+        checks: list[dict],
+        missing: list[str],
+        typed_error_counts: dict[str, int],
+    ) -> None:
+        """Evaluate typed acceptance criteria, mutating ``checks`` and ``missing`` in place.
+
+        Implements RC-9 (severity × status blocking matrix), RC-9a (error-vs-
+        failed wording distinction), RC-9b (per-criterion error count with
+        2-strikes escalation), RC-12a (skipped-not-error for unset stack).
+        """
+        split = split_acceptance_criteria(inputs.get("acceptance_criteria", []))
+
+        # Prose strings stay informational, evidence-only — same as Rev 1's
+        # included_in_evidence behavior. They never block.
+        if split.prose:
+            checks.append(
+                {
+                    "check": "acceptance_criteria_prose",
+                    "criteria": list(split.prose),
+                    "evaluation": "included_in_evidence",
+                    "passed": True,
+                }
+            )
+
+        # #420: disclosed, non-blocking. The parser enforces vocabulary at
+        # plan-authoring time, so a row landing here is a transport-shape
+        # bug — surface it in evidence rather than misfiling it as prose.
+        if split.unparseable:
+            checks.append(
+                {
+                    "check": "acceptance_criteria_unparseable",
+                    "criteria": [repr(c) for c in split.unparseable],
+                    "evaluation": "unparseable_not_evaluated",
+                    "passed": True,
+                }
+            )
+
+        typed_criteria = list(split.typed)
+        if not typed_criteria:
+            return
+
+        resolved_config = inputs.get("resolved_config", {})
+        typed_acceptance_enabled = resolved_config.get("typed_acceptance", True)
+        command_acceptance_enabled = resolved_config.get("command_acceptance_checks", True)
+        stack = resolved_config.get("stack")
+
+        with tempfile.TemporaryDirectory(prefix="squadops-typed-acc-") as tmpdir_str:
+            workspace_root = Path(tmpdir_str)
+            self._materialize_artifacts(artifacts, workspace_root)
+
+            for check_index, criterion in enumerate(typed_criteria):
+                outcome = await evaluate_criterion(
+                    criterion,
+                    workspace_root,
+                    stack=stack,
+                    typed_acceptance_enabled=typed_acceptance_enabled,
+                    command_acceptance_enabled=command_acceptance_enabled,
+                )
+                check_record = {
+                    "check": f"acceptance:{criterion.check}",
+                    "severity": criterion.severity,
+                    "params": criterion.params,
+                    "description": criterion.description,
+                    "status": outcome.status,
+                    "actual": outcome.actual,
+                    "reason": outcome.reason,
+                    # `passed` flag for compatibility with the legacy
+                    # all-checks-pass aggregator: only severity=error AND
+                    # blocking status counts as not-passed.
+                    "passed": not (
+                        criterion.severity == "error" and outcome.status in {"failed", "error"}
+                    ),
+                    # Issue #114: identity fields for downstream trigger
+                    # composition and per-cycle evaluation persistence.
+                    # task_index is None for tasks not driven by an
+                    # implementation_plan (legacy monolithic flow).
+                    "task_index": inputs.get("subtask_index"),
+                    "check_index": check_index,
+                }
+                checks.append(check_record)
+
+                # Issue #83: per-check observability. Without these the M1.3
+                # path is invisible to operators — see issue body for context.
+                blocking = criterion.severity == "error" and outcome.status in {"failed", "error"}
+                log_fn = logger.info if blocking else logger.debug
+                log_fn(
+                    "typed_acceptance_check subtask=%s check=%s severity=%s status=%s blocking=%s reason=%s",
+                    inputs.get("subtask_index"),
+                    criterion.check,
+                    criterion.severity,
+                    outcome.status,
+                    blocking,
+                    outcome.reason or "",
+                )
+
+                # RC-9: severity AND status are independent. Only error+blocking missions.
+                if criterion.severity != "error":
+                    continue
+                if outcome.status == "failed":
+                    # RC-9a: app-incompleteness wording.
+                    label = criterion.description or criterion.check
+                    missing.append(f"acceptance:{label}")
+                elif outcome.status == "error":
+                    fp = criterion.fingerprint()
+                    prior = typed_error_counts.get(fp, 0)
+                    if prior < 2:
+                        # RC-9a: evaluator-error wording, distinct from app-incomplete.
+                        missing.append(f"evaluator-error:{criterion.check}: {outcome.reason}")
+                    else:
+                        self._escalate_persistent_evaluator_error(criterion, outcome)
+                    typed_error_counts[fp] = prior + 1
+                # status in {passed, skipped} never blocks.
+
+    # Shared with the executor-side patch verification (#389) — one
+    # materializer, one safety policy.
+    _materialize_artifacts = staticmethod(materialize_artifacts)
+
+    @staticmethod
+    def _escalate_persistent_evaluator_error(criterion: TypedCheck, outcome: CheckOutcome) -> None:
+        """RC-9b: surface a persistent evaluator error outside the self-eval feedback loop.
+
+        Logged at WARNING with structured fields; the correction protocol
+        and operator-facing surfaces consume the log. A first-class
+        escalation channel is a follow-up if/when the prompt-feedback
+        suppression proves insufficient.
+        """
+        logger.warning(
+            "typed_check_evaluator_error_escalated",
+            extra={
+                "check": criterion.check,
+                "severity": criterion.severity,
+                "fingerprint": criterion.fingerprint(),
+                "reason": outcome.reason,
+                "actual": outcome.actual,
+            },
+        )
 
     @staticmethod
     def _build_self_eval_prompt(

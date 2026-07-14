@@ -377,7 +377,8 @@ class TestM13Observability:
             severity="error",
             description="users endpoint",
         )
-        with caplog.at_level("DEBUG", logger="squadops.capabilities.handlers.cycle.develop"):
+        # Per-check log emits from the shared base seam (#419 hoist).
+        with caplog.at_level("DEBUG", logger="squadops.capabilities.handlers.cycle.base"):
             await h._validate_output(
                 _inputs([criterion], config={"stack": "fastapi"}),
                 [_art("main.py", _FASTAPI_ALL)],
@@ -398,7 +399,8 @@ class TestM13Observability:
             severity="error",
             description="users CRUD",
         )
-        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle.develop"):
+        # Per-check log emits from the shared base seam (#419 hoist).
+        with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle.base"):
             await h._validate_output(
                 _inputs([criterion], config={"stack": "fastapi"}),
                 [_art("main.py", _FASTAPI_MISSING)],
@@ -443,6 +445,65 @@ class TestM13Observability:
             )
         summary_logs = [r for r in caplog.records if "typed_acceptance_summary" in r.getMessage()]
         assert len(summary_logs) == 0
+
+
+# ---------------------------------------------------------------------------
+# Wire-shape criteria (#420)
+# ---------------------------------------------------------------------------
+
+
+class TestWireShapeCriteria:
+    """Criteria arrive as plain dicts after distributed dispatch —
+    ``dataclasses.asdict`` flattens TypedCheck on ``TaskEnvelope.to_dict()``
+    and nothing agent-side rehydrates. Before #420 these rows were
+    misclassified as prose and M1.3 silently never ran in the field.
+    """
+
+    async def test_dict_criteria_are_evaluated_and_block(self):
+        h = DevelopmentDevelopHandler()
+        wire_row = {
+            "check": "regex_match",
+            "severity": "error",
+            "description": "frontend manifest",
+            "file": "frontend/package.json",
+            "pattern": "vite",
+        }
+        result = await h._validate_output(
+            _inputs([wire_row]),
+            [_art("main.py"), _art("package.json", '{"scripts": {"dev": "vite"}}')],
+        )
+        assert result.passed is False
+        assert "acceptance:frontend manifest" in result.missing_components
+        acceptance_rows = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
+        assert len(acceptance_rows) == 1
+        assert acceptance_rows[0]["status"] == "failed"
+
+    async def test_dict_criteria_are_not_misfiled_as_prose(self):
+        h = DevelopmentDevelopHandler()
+        wire_row = {"check": "regex_match", "file": "main.py", "pattern": "def"}
+        result = await h._validate_output(
+            _inputs([wire_row]),
+            [_art("main.py", "def main():\n    return 0\n" + "#" * 180)],
+        )
+        assert result.passed is True
+        prose_rows = [c for c in result.checks if c.get("check") == "acceptance_criteria_prose"]
+        assert prose_rows == []
+        acceptance_rows = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
+        assert len(acceptance_rows) == 1
+        assert acceptance_rows[0]["status"] == "passed"
+
+    async def test_unparseable_row_is_disclosed_not_blocking(self):
+        h = DevelopmentDevelopHandler()
+        result = await h._validate_output(
+            _inputs([{"severity": "error", "note": "no check key"}]),
+            [_art("main.py")],
+        )
+        assert result.passed is True
+        disclosed = [
+            c for c in result.checks if c.get("check") == "acceptance_criteria_unparseable"
+        ]
+        assert len(disclosed) == 1
+        assert disclosed[0]["evaluation"] == "unparseable_not_evaluated"
 
 
 class TestEvaluationIdentityFields:

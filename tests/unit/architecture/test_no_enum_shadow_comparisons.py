@@ -39,10 +39,12 @@ _ALLOWLIST: set[tuple[str, str]] = {
     ("src/squadops/capabilities/runner.py", "succeeded"),
     ("src/squadops/orchestration/orchestrator.py", "succeeded"),
     # CheckOutcome.status vocabulary (passed/failed/skipped/error) — CheckOutcome
-    # is a dataclass, not a StrEnum (SIP-0092); "failed"/"error" coincide with
-    # RunStatus/TaskStatus but are a different concept.
+    # is a dataclass, not a StrEnum (SIP-0092); "failed" coincides with
+    # RunStatus/TaskStatus but is a different concept. The evaluation loop was
+    # hoisted from develop.py to the shared cycle-handler base (#419); develop
+    # keeps its summary-line filter over the same vocabulary.
+    ("src/squadops/capabilities/handlers/cycle/base.py", "failed"),
     ("src/squadops/capabilities/handlers/cycle/develop.py", "failed"),
-    ("src/squadops/capabilities/handlers/cycle/develop.py", "error"),
     # Same CheckOutcome.status vocabulary, evaluated executor-side for patch
     # verification (#389).
     ("src/squadops/cycles/patch_verification.py", "failed"),

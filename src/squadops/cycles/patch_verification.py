@@ -26,13 +26,15 @@ from __future__ import annotations
 
 import logging
 import tempfile
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from squadops.cycles.acceptance_checks import CheckOutcome, get_check
-from squadops.cycles.implementation_plan import TypedCheck, _parse_acceptance_criteria
+from squadops.cycles.acceptance_evaluation import (
+    evaluate_criterion,
+    split_acceptance_criteria,
+)
+from squadops.cycles.implementation_plan import TypedCheck
 
 logger = logging.getLogger(__name__)
 
@@ -128,45 +130,20 @@ def materialize_artifacts(artifacts: list[dict], workspace_root: Path) -> None:
 
 
 def _coerce_typed_criteria(criteria: list[Any]) -> list[TypedCheck] | None:
-    """Extract TypedCheck entries, re-parsing dict rows (deserialized envelopes).
+    """Extract TypedCheck entries via the shared seam (#420).
 
     Prose strings are informational and never block — dropped. Returns None
-    when any dict row fails to parse: an unintelligible contract must fall
+    when any row fails to parse: an unintelligible contract must fall
     back to re-dispatch, not silently verify against a subset of itself.
     """
-    typed: list[TypedCheck] = []
-    for item in criteria:
-        if isinstance(item, TypedCheck):
-            typed.append(item)
-        elif isinstance(item, Mapping):
-            try:
-                parsed = _parse_acceptance_criteria([dict(item)], task_index=-1)
-            except ValueError:
-                logger.warning("patch_verification: unparseable criterion %r — unverifiable", item)
-                return None
-            typed.extend(c for c in parsed if isinstance(c, TypedCheck))
-        # str → prose, informational only
-    return typed
-
-
-async def _evaluate_criterion(
-    criterion: TypedCheck,
-    workspace_root: Path,
-    *,
-    stack: str | None,
-    typed_acceptance_enabled: bool,
-    command_acceptance_enabled: bool,
-) -> CheckOutcome:
-    """Evaluate one criterion, honoring the same config gates the handler side does."""
-    if not typed_acceptance_enabled:
-        return CheckOutcome.skipped(reason="typed_acceptance_disabled")
-    if criterion.check == "command_exit_zero" and not command_acceptance_enabled:
-        return CheckOutcome.skipped(reason="command_acceptance_checks_disabled")
-    try:
-        evaluator = get_check(criterion.check)
-    except KeyError:
-        return CheckOutcome.error(reason="no_evaluator_registered")
-    return await evaluator.evaluate(criterion.params, workspace_root, stack=stack)
+    split = split_acceptance_criteria(criteria)
+    if split.unparseable:
+        logger.warning(
+            "patch_verification: %d unparseable criteria — unverifiable",
+            len(split.unparseable),
+        )
+        return None
+    return list(split.typed)
 
 
 async def verify_patched_artifacts(
@@ -198,7 +175,7 @@ async def verify_patched_artifacts(
         materialize_artifacts(artifacts, workspace_root)
 
         for criterion in typed:
-            outcome = await _evaluate_criterion(
+            outcome = await evaluate_criterion(
                 criterion,
                 workspace_root,
                 stack=stack,

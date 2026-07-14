@@ -108,6 +108,13 @@ is itself an arc prerequisite — a reason to protect the 1.3 batch, not change 
   and classification/provenance retrofit of the shipped #289/#290 checks. Each lands
   with a live `lite` cycle per the live-validation rule. (Split M/S along the usual
   file ownership: executor/handlers = M; test-runner/build-check/agent-image = S.)
+- **#419/#420 typed-acceptance seam integrity** (Phase-2-shaped, found via the
+  post-#413 validation cycle): builder.assemble evaluates the plan's typed contract
+  (SIP-0092 M1.3) through a seam hoisted to the cycle-handler base, and criteria now
+  survive distributed dispatch — `asdict()` was flattening `TypedCheck` to dicts the
+  handlers misfiled as prose, so M1.3 was silently inert in the field (#420). With
+  #413 in, a builder path-contract violation becomes a one-round self-heal instead
+  of an unfixable qa.test stall.
 - **Evidence SIP Phase 3** — `CycleOutcome` roll-up persisted + consumed by wrap-up,
   gate waiver flow, doctor verification category (non-executable + inert reporting;
   console badging and a dedicated event are deferred until demand).

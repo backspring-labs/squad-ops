@@ -399,7 +399,11 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 failure_classification=FailureClassification.WORK_PRODUCT,
             )
 
-        # Step 6-8: Validate builder output
+        # Step 6: Deduplicate and classify. Runs before validation (#419) so
+        # typed acceptance evaluates the exact artifact set that ships.
+        extracted, artifacts, qa_handoff_content = self._dedup_and_classify(extracted)
+
+        # Step 7: profile/task-scoped required-files + qa_handoff sections
         validation_error = self._validate_builder_output(
             extracted,
             profile,
@@ -418,20 +422,46 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         rf_missing = [rf for rf in effective_required if rf not in extracted_basenames]
         required_files_row = {"check": CHECK_REQUIRED_FILES, "passed": not rf_missing}
 
-        if validation_error is not None:
-            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+        # Step 8 (#419): typed acceptance criteria — the plan's contract on
+        # this builder task, evaluated identically to the dev seam (SIP-0092
+        # M1.3, RC-9 blocking matrix). The required_files seam above matches
+        # basenames (#107); typed checks address full paths in a materialized
+        # workspace, so a path-prefix violation fails HERE, at the seam that
+        # can repair it, instead of surfacing as an unfixable qa.test failure.
+        validation_checks: list[dict] = [required_files_row]
+        acceptance_missing: list[str] = []
+        await self._evaluate_typed_acceptance(
+            inputs, artifacts, validation_checks, acceptance_missing, typed_error_counts={}
+        )
 
+        # Issue #114: per-task typed-check evaluation evidence, same as the
+        # dev seam — emitted whenever typed checks ran, both outcomes.
+        tce_artifact = self._build_typed_check_evaluation_artifact(
+            validation_checks, inputs.get("subtask_index"), self._capability_id
+        )
+        if tce_artifact is not None:
+            artifacts.append(tce_artifact)
+
+        if acceptance_missing:
+            acceptance_error = "Typed acceptance criteria not met: " + "; ".join(acceptance_missing)
+            validation_error = (
+                f"{validation_error}; {acceptance_error}" if validation_error else acceptance_error
+            )
+
+        if validation_error is not None:
             return self._fail_result(
                 start_time,
                 inputs,
                 validation_error,
-                outputs={"validation_result": {"checks": [required_files_row]}},
+                # Artifacts ride the failure so the #413 patch overlay
+                # verifies repairs against the emitted set, not a vacuum.
+                outputs={
+                    "artifacts": artifacts,
+                    "validation_result": {"checks": validation_checks},
+                },
                 outcome_class=TaskOutcome.SEMANTIC_FAILURE,
                 failure_classification=FailureClassification.WORK_PRODUCT,
             )
-
-        # Step 8b: Deduplicate and classify
-        extracted, artifacts, qa_handoff_content = self._dedup_and_classify(extracted)
 
         # Step 9: Build outputs with diagnostics
         # SIP-0084 §10: build prompt provenance for artifact traceability
@@ -449,9 +479,9 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             "summary": f"[builder] Assembled {len(artifacts)} deployment artifact(s)",
             "role": self._role,
             "artifacts": artifacts,
-            # #399: per-task required_files evidence for the SIP-0096 roll-up
-            # (passed here — validation succeeded, so every required file present).
-            "validation_result": {"checks": [required_files_row]},
+            # #399/#419: per-task required_files + typed-acceptance evidence
+            # for the SIP-0096 roll-up (all passed — validation succeeded).
+            "validation_result": {"checks": validation_checks},
             "diagnostics": {
                 "resolved_handler": self._handler_name,
                 "build_profile": profile_name,
