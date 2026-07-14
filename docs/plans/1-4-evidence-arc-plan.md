@@ -156,6 +156,27 @@ S runs 1A verification-truth + 1B sandbox; M runs 2A scaffold + evidence P3 clos
   validated for the price of one experiment; if not, the arc redirects **before** a new
   privileged service is committed to a minor. Mostly Mac-ownable; the two theses are
   validated *decoupled* before they ever compose.
+  - **Authoring probe (spike rider):** after the fill-only cycle, one framing run —
+    the merger gets the PRD + the manifest-schema vocabulary and authors the manifest
+    cold; diff against the hand-written reference. The probe **does not gate the spike
+    verdict** (the spike stays a two-suspect experiment) but **shapes SIP acceptance**:
+    a failed probe means the scaffold SIP ships schema-constrained manifest authoring
+    from day one (pulled forward from Phase 5) instead of assuming vocabulary+lint
+    suffices. Diff-to-reference is diagnostic telemetry, never a gate — a
+    different-but-valid interface is fine.
+  - **Hand-written manifest lifecycle (three roles, three retirement points):**
+    1. *Spike input* — retired immediately after the spike verdict (single use).
+    2. *Cycle input* — permitted only for the spike and early integration shakeout
+       (debugging expander/sandbox against a known-good input). Retired at
+       **authoring parity**: the merger authors a manifest that (a) passes schema
+       validation within its normal retry budget and (b) expands to a skeleton passing
+       the same CI gate, with one fill-only cycle completing on it. Similarity to the
+       reference is explicitly NOT the bar. If parity isn't reached within **5 framing
+       attempts** under vocabulary+lint, the remedy fires: schema-constrained decoding
+       for this artifact — authoring gets fixed, not waited on.
+    3. *Benchmark reference fixture* — never retired, but demoted: the expander's CI
+       test vector and the diff baseline that makes squad authoring quality a measured
+       number per benchmark run.
 - **Fallback clause (the exit — pinned by sequencing and counts, no calendar):** 1.4
   reverts to the evidence-release shape (SIP-0096 completion + SIP-0091 returns from
   1.6) and the golden path moves to 1.6 when **any** of these fires. Each is a
@@ -231,6 +252,9 @@ S runs 1A verification-truth + 1B sandbox; M runs 2A scaffold + evidence P3 clos
   builds, starts, passes declared health checks, and receives a verified outcome with
   zero manual file modification* (`verified_functional`, or honestly
   `verified_executable` if the browser probe descoped — then the release says so).
+  **Cut-bar runs are squad-authored-manifest mode only** — a hand-authored interface
+  manifest is a manually authored file, so it is barred from cut-bar runs by the
+  acceptance statement itself; see the manifest lifecycle in Phase 0.5.
   **This bar claims capability *demonstrated*, not capability *reliable*** —
   repeatability and anti-overfit are the 1.5 campaigns' job, enforced by 1.6's
   FAY gate before anything automates over it. Promotion sweep expects: SIP-0096 →
