@@ -20,6 +20,14 @@ Proposed
 SIP-Contract-First-Build-Scaffolding it forms the "Verified Canonical App
 Build" vertical slice: *one canonical stack can be deterministically composed,
 executed, and honestly verified without manual intervention.*
+**Acceptance gate (arc rev 2, Mac-lane review):** acceptance of this SIP is gated on
+the **Phase-0.5 walking-skeleton spike** succeeding (see the 1.4 arc plan) — empirical
+proof of the golden-path thesis before this service is committed to a minor. The arc
+carries an explicit fallback clause if the spike fails.
+**v1.4 floor (arc rev 2):** build runner + `start_application` + HTTP health probe,
+with environment contract + preflight and clean-room verification. Browser probe,
+probe-as-peer implementation, and operator-access CLI/caddy defer to 1.5+; if the
+browser probe descopes, the 1.4 verdict is honestly named `verified_executable`.
 **Builds on:** `ContainerPort` (`src/squadops/ports/tools/container.py`,
 `ContainerSpec`/`ContainerResult`) and the `CapabilityExecutor` port. Extends
 the build lineage: SIP-0068, SIP-0071 (Builder Role), SIP-0086 (Build
@@ -299,7 +307,7 @@ how to run it directly.
 | Environment contract + preflight validation | One canonical environment image |
 | Probe-as-peer | HTTP probes + one narrow browser happy-path |
 | Locus × mode failure classification | Wired for sandbox-originated failures first |
-| `expose_application` as explicit, TTL-leased, evidenced operation | `sandbox up/down` CLI + ephemeral host ports; caddy routing may follow |
+| `expose_application` as explicit, TTL-leased, evidenced operation | **deferred to 1.5+** (arc rev 2), as are the browser probe and probe-as-peer implementation; the 1.4 floor is build runner + app start + HTTP health |
 
 ## 6. Migration
 
@@ -354,8 +362,9 @@ how to run it directly.
 2. Workspace representation: bind-mounted host dir per cycle vs volume vs
    content-addressed store (the v1 "files inline in BuildJob" is resolved —
    workspace revisions, not inline bytes; the storage backend is open).
-3. Browser probe runtime: headless chromium in the probe image — acceptable
-   image weight for v1.4, or HTTP-only with the `verified_executable` name?
+3. Browser probe runtime: headless chromium in the probe image — **resolved for
+   v1.4 by arc rev 2: HTTP-only floor, `verified_executable` naming; the browser
+   probe is a 1.5+ decision.**
 4. Toolchain/environment image ownership and publish pipeline (this repo vs
    deployment-profile repo).
 5. How much of the locus × mode taxonomy lands in this SIP vs the

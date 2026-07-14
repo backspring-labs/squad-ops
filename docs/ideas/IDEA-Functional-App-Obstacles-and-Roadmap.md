@@ -242,6 +242,13 @@ smaller implementation models suffice — not before.
 
 ## Release framing (even/odd convention, #281)
 
+*(Arc rev 2, Mac-lane review 2026-07-14: the golden-path commitment is staged — a
+walking-skeleton spike gates both SIP acceptances, an explicit fallback reverts 1.4 to
+the evidence-release shape if the bet fails, the 1.4 sandbox floor is build-runner +
+app-start + HTTP health with `verified_executable` naming if the browser probe defers,
+and the cut bar is ≥3 consecutive benchmark runs claiming capability* demonstrated *—
+reliability belongs to 1.5/1.6. Governing text: `docs/plans/1-4-evidence-arc-plan.md`.)*
+
 - **v1.4 — Verified Canonical App Build** (feature): headline = the sandbox
   SIP + scaffold SIP vertical slice. Acceptance: *given the canonical
   group_run brief and a supported `full` profile, SquadOps produces an

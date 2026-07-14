@@ -9,7 +9,14 @@ created_at: '2026-07-10T00:00:00Z'
 ## Status
 Proposed
 
-**Targets:** feature minor (even) — candidate build-reliability headline. Not release-blocking; sequenced after SIP-0096's honest-red layer lands (this SIP relies on behavioral acceptance to prove the scaffold works).
+**Targets:** **v1.4 headline (Lane M)** per the revised 1.4 arc (2026-07-14; was: unslotted candidate). Sequenced after SIP-0096's honest-red layer lands (this SIP relies on behavioral acceptance to prove the scaffold works).
+**Acceptance gate (arc rev 2, Mac-lane review):** acceptance is gated on the
+**Phase-0.5 walking-skeleton spike** — this SIP's own §"fastest validation" promoted to
+an arc checkpoint: hand-written group_run manifest → `fullstack_fastapi_react` expander
+only → empty skeleton builds+boots (local/CI, Spark-independent) → one fill-only cycle,
+output boot-built manually. **This SIP's own acceptance surface is the Mac-owned CI
+skeleton gate** (expander runs, `vite build` passes, backend imports, on plain runners);
+Functional App Yield is the *integration* gate with the sandbox SIP, not this SIP's gate.
 **Builds on:** the build lineage — SIP-0068 (Enhanced Agent Build Capabilities), SIP-0071 (Builder Role), SIP-0086 (Build Convergence Loop); and the framing/plan artifact `implementation_plan.yaml` (`src/squadops/cycles/implementation_plan.py`, authored in `_plan_authoring_service.py`).
 **Motivating case:** #376 — the group_run 1.3.1 regression (`cyc_769db63c9d2b`) shipped a `completed` cycle over a React frontend that fails `vite build` (no entry point; `App.jsx` rendered inline stubs and never imported its own components). The root cause is not model weakness; it is an unscaffolded task. Distilled principle: `docs/ideas/IDEA-Scaffold-Interface-vs-Implementation.md`.
 **Coordinates with:** SIP-0096 (Verification Evidence Integrity — makes failure *honest*; this SIP makes it *rare* — complementary), and SIP-Externalized-Build-Sandbox (*where* builds run; this SIP is about *what* gets scaffolded vs. generated — orthogonal).

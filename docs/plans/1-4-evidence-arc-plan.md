@@ -14,6 +14,19 @@ forever — the evidence layer can only report that nothing is verifiable until 
 path exists. The ladder gains a rung: evidence must be honest **and obtainable** before
 1.6 automates over it or 1.8 grades it fairly.
 
+**Revision 2 (2026-07-14, Mac-lane review):** the golden-path commitment is restructured
+from an unconditional bet into a **staged, exit-able one**: (1) a cheap
+**walking-skeleton spike (Phase 0.5)** gates *acceptance* of both golden-path SIPs —
+empirical proof before design commitment; (2) an explicit **fallback clause** — if the
+spike fails or the slice stalls at checkpoint, 1.4 reverts to the evidence-release shape
+(SIP-0096 + SIP-0091 returns) and the golden path moves out, so the ladder never blocks;
+(3) the 1.4 sandbox floor is **de-scoped** to build-runner + app-start + HTTP health
+(browser probe / probe-as-peer / operator CLI → 1.5+, verdict honestly named);
+(4) the scaffold's own acceptance surface is a **Mac-owned CI gate** (skeleton builds +
+boots on plain runners), decoupled from Spark; (5) the cut bar rises to **≥3 consecutive**
+benchmark runs, explicitly claiming *capability demonstrated* — reliability is 1.5's
+campaigns and 1.6's FAY gate.
+
 **Lane-pinning amendment (2026-07-14):** headline feature SIPs are pinned by **file
 ownership**, not lane identity (previously: features come from the Macbook lane). The
 existing ownership split already encodes this — executor/handlers/framing = M;
@@ -87,8 +100,8 @@ behind "evidence is honest," and "compound over grades" behind "grades are trust
 | SIP | Status | Release | Role in the arc |
 |---|---|---|---|
 | **SIP-0096** Verification Evidence Integrity | **accepted 2026-07-06** (PR #337, rev 2); P1–P3 landing through 1.3.x/1.4 (P3 slice 2b merged #418) | **1.4 headline** | integrity invariant, provenance, inert-check detection, `CycleOutcome` contract |
-| **Ephemeral Application Sandbox** (`SIP-Externalized-Build-Sandbox.md`, evolved 2026-07-14) | proposed | **1.4 headline (Lane S)** | the golden path's execution half: environment contract + preflight, workspace/execution service, typed ops, clean-room verification, operator access |
-| **Contract-First Build Scaffolding** | proposed (2026-07-10) | **1.4 headline (Lane M)** | the golden path's composition half: interface manifest → deterministic walking skeleton → fill-only dev tasks; ownership classes + assembly validator |
+| **Ephemeral Application Sandbox** (`SIP-Externalized-Build-Sandbox.md`, evolved 2026-07-14) | proposed — **acceptance gated on the Phase-0.5 spike** | **1.4 headline (Lane S)** | the golden path's execution half; 1.4 floor: build runner + app start + HTTP health (rest → 1.5+) |
+| **Contract-First Build Scaffolding** | proposed (2026-07-10) — **acceptance gated on the Phase-0.5 spike** | **1.4 headline (Lane M)** | the golden path's composition half; own acceptance surface = the Mac-owned CI skeleton-builds+boots gate |
 | SIP-0091 Duty Durability via Temporal | accepted | **1.6** (moved from 1.4, 2026-07-14 — serves Campaign-era long-running automation, not the golden path) | durable responsibility |
 | **SIP-0097** Executor Decomposition Boundaries | **accepted 2026-07-06** (PR #340, rev 2) | **1.3** (structural) | produces the `RunCompletion`+`RunLedger` seam SIP-0096 §6.4 wires into (slice 2 scheduled early for exactly this) |
 | SIP-0090 Embodiment Phase 2 (Discord) | accepted (phased) | **1.6** (decision resolved 2026-07-14) | first live embodiment consumer |
@@ -99,7 +112,7 @@ behind "evidence is honest," and "compound over grades" behind "grades are trust
 
 ## Phase-by-release execution
 
-### Now / patch lane (no release gate — ship when ready)
+### Now / patch lane (HISTORICAL — retained for provenance; all rows shipped/closed by 1.3.x–2026-07-14, and #306's image-fix row is superseded by the sandbox SIP)
 
 | Item | Lane | Notes |
 |---|---|---|
@@ -113,7 +126,7 @@ The remaining bug fixes ship as ordinary patches; the evidence SIP locks the *cl
 (its Phase 2 covers the shipped #289/#290 checks with classification + provenance
 conformance, no behavior change).
 
-### During 1.3 (riders — additive to the two-lane plan, not amendments)
+### During 1.3 (HISTORICAL — 1.3 shipped 2026-07-08; riders landed)
 
 | Item | Lane | Why it rides here |
 |---|---|---|
@@ -134,7 +147,21 @@ S runs 1A verification-truth + 1B sandbox; M runs 2A scaffold + evidence P3 clos
 1A ∥ 2A interleave is literally the two lanes. Governing dependency: don't* claim
 *scaffold success until verification truth exists.)*
 
-- **Phase 0 — golden benchmark (joint, first):** freeze the canonical challenge
+- **Phase 0.5 — walking-skeleton spike (runs FIRST; gates both golden-path SIP
+  acceptances):** hand-write the group_run interface manifest; build the
+  `fullstack_fastapi_react` expander only; confirm the *empty* skeleton builds + boots
+  (local/CI — no sandbox, no Spark); then one fill-only cycle on Spark with dev scoped
+  to filling slots, boot-building the output manually (spike-grade verification). If a
+  27b produces a working app once freed of the plumbing, both headlines' thesis is
+  validated for the price of one experiment; if not, the arc redirects **before** a new
+  privileged service is committed to a minor. Mostly Mac-ownable; the two theses are
+  validated *decoupled* before they ever compose.
+- **Fallback clause (the exit):** if the spike fails, or the golden-path slice stalls at
+  a mid-release checkpoint, 1.4 reverts to the evidence-release shape (SIP-0096
+  completion + SIP-0091 returns from 1.6) and the golden path moves to 1.6. SIP-0096 P3
+  consumers keep landing as ordinary PRs on main regardless of this gate — deployed
+  value never waits on the bet.
+- **Phase 0 — golden benchmark (joint, after the spike):** freeze the canonical challenge
   (group_run PRD, one blueprint, one environment image, one verification suite, uniform
   `full` model policy as experimental control). Primary metric: **Functional App Yield**
   — % of canonical builds reaching verified-functional with zero manual intervention.
@@ -146,14 +173,24 @@ S runs 1A verification-truth + 1B sandbox; M runs 2A scaffold + evidence P3 clos
   carrying config/squad/pack provenance from the start. New outcome vocabulary from the
   golden path: `verified_executable` / `verified_functional` (three verification levels).
 - **Ephemeral Application Sandbox** (Lane S headline; `SIP-Externalized-Build-Sandbox.md`)
-  — environment contract + preflight, workspace/execution service, typed operations,
-  clean-room verification, operator access. **Supersedes** the old Phase-2 items
-  "#306 image fix + preflight tooling-parity" (image-fix approach rejected 2026-07-14)
-  and absorbs command-check execution relocation.
+  — **1.4 floor (rev 2): build runner + `start_application` + HTTP health probe.**
+  Browser probe, probe-as-peer implementation, operator-access CLI/caddy → 1.5+; if the
+  browser probe descopes, the 1.4 verdict is honestly named `verified_executable`.
+  Environment contract + preflight and clean-room verification stay in the floor.
+  **Supersedes** the old Phase-2 items "#306 image fix + preflight tooling-parity"
+  (image-fix approach rejected 2026-07-14) and absorbs command-check execution
+  relocation.
 - **Contract-First Build Scaffolding** (Lane M headline) — interface manifest →
   deterministic walking skeleton → fill-only dev tasks; ownership classes; assembly
   validator. **Absorbs** old Phase-2 item "#291 required-files as a checked contract."
-- **Remaining Phase-2 conformance** — SIP-0070 amendments (SKIP-only→PASS pulse fix;
+  **Own acceptance surface = the CI skeleton gate** (expander runs, `vite build` passes,
+  backend imports — plain runners, Mac-owned, Spark-independent); FAY is the
+  *integration* gate, not the scaffold's gate.
+- **Integration order (rev 2):** scaffold lands first behind its CI gate; the sandbox
+  consumes the blueprint contract second; the M/S executor seam goes through the
+  SIP-0097 boundaries. No parallel-blind development toward a first-try integration.
+- **Evidence-adjacent conformance tail (post-P2 — SIP-0096 P2 itself is done)** —
+  SIP-0070 amendments (SKIP-only→PASS pulse fix;
   D13 required-frontend blocking) now generalized as **#423** (skip-as-pass polarity,
   typed-check variant included); classification/provenance retrofit of #289/#290;
   **#427** failure observability; **#426/#424** config coherence; correction-policy
@@ -164,12 +201,16 @@ S runs 1A verification-truth + 1B sandbox; M runs 2A scaffold + evidence P3 clos
   lint). #420 live-validated; **#419's builder-seam live proof deliberately waits for
   the sandbox** (its migration step 7) — three cycles stalled pre-builder on
   environment, which is the revision's motivating evidence.
-- **Cut gate:** standard checklist, plus: **≥2 consecutive Phase-0 benchmark runs
+- **Cut gate:** standard checklist, plus: **≥3 consecutive Phase-0 benchmark runs
   achieving the acceptance statement** — *an assembled application that installs,
-  builds, starts, passes declared health checks, and receives a verified functional
-  outcome with zero manual file modification* (honestly `verified_executable` if the
-  browser probe descopes — then the release says so). Promotion sweep expects:
-  SIP-0096 → implemented; both golden-path SIPs → implemented.
+  builds, starts, passes declared health checks, and receives a verified outcome with
+  zero manual file modification* (`verified_functional`, or honestly
+  `verified_executable` if the browser probe descoped — then the release says so).
+  **This bar claims capability *demonstrated*, not capability *reliable*** —
+  repeatability and anti-overfit are the 1.5 campaigns' job, enforced by 1.6's
+  FAY gate before anything automates over it. Promotion sweep expects: SIP-0096 →
+  implemented; both golden-path SIPs → implemented (or the fallback clause exercised
+  and the sweep re-scoped accordingly).
 
 ### 1.5 (stabilization — feature-free by rule)
 
@@ -256,15 +297,19 @@ trustworthy" — the same producer-before-consumer discipline that separates 1.4
 
 ## What must be true before each "go"
 
-1. **Evidence SIP acceptance** ← Phase 0 audit complete (no vocabulary collision with 0092/0070/0079).
-2. **1.4 cut** ← evidence phases live-validated (the honest-blocking half is **already
+1. **Evidence SIP acceptance** ← Phase 0 audit complete (no vocabulary collision with 0092/0070/0079). *(Done — accepted 2026-07-06.)*
+2. **Golden-path SIP acceptance (both)** ← the **Phase-0.5 walking-skeleton spike
+   succeeds** (skeleton builds+boots deterministically; one fill-only Spark cycle yields
+   a manually-verified working app). Spike failure exercises the fallback clause instead.
+3. **1.4 cut** ← evidence phases live-validated (the honest-blocking half is **already
    proven** — every failed 2026-07-14 cycle reported `blocked_unverified` with explicit
-   `required_unmet`) **and** the golden path proven: ≥2 consecutive Phase-0 benchmark
+   `required_unmet`) **and** the golden path proven: ≥3 consecutive Phase-0 benchmark
    runs achieving the acceptance statement, including the deferred #419 builder-seam
-   live validation (sandbox migration step 7).
-3. **Campaign SIP acceptance** ← the five 1.6 gates above (incl. FAY repeatably > 0).
-4. **1.8 grading (cycle-evaluation scorecard) acceptance** ← the vision SIP (`SIP-Plutarch-…`) retargeted off `v1.1` and the scorecard sliced thin; `CycleAssessment` consumes `CycleOutcome` only, never raw check results; the fields it reads already exist in the 1.4 `CycleOutcome` contract (no re-cut).
-5. **Any 2.0 compounding work (self-improvement, capability-backed agents)** ← the 1.8 scorecard is shipped and live-proven; it acts on `CycleAssessment` grades, never on raw checks.
+   live validation (sandbox migration step 7) — **or** the fallback clause exercised and
+   1.4 cut in the evidence-release shape.
+4. **Campaign SIP acceptance** ← the five 1.6 gates above (incl. FAY repeatably > 0).
+5. **1.8 grading (cycle-evaluation scorecard) acceptance** ← the vision SIP (`SIP-Plutarch-…`) retargeted off `v1.1` and the scorecard sliced thin; `CycleAssessment` consumes `CycleOutcome` only, never raw check results; the fields it reads already exist in the 1.4 `CycleOutcome` contract (no re-cut).
+6. **Any 2.0 compounding work (self-improvement, capability-backed agents)** ← the 1.8 scorecard is shipped and live-proven; it acts on `CycleAssessment` grades, never on raw checks.
 
 ## Ratification note
 
