@@ -41,6 +41,12 @@ defaults:
   # SIP-0092 M1 instrumentation (typed + command acceptance).
   typed_acceptance: true
   command_acceptance_checks: true
+  # Plan-authoring retry runway. The default (2) is too tight for a merger
+  # converging through validation feedback — cyc_7d2f505e5e8f exhausted both
+  # attempts and silently fell back to static (untyped) task steps, voiding
+  # this profile's instrumentation promise (#424). The #422 safelist lint adds
+  # one more constraint to converge on, so give the loop room.
+  manifest_max_attempts: 4
   # SIP-0096 §6.3 throttle: the fullstack build/test spine this profile REQUIRES.
   # A run that doesn't execute one — e.g. frontend_build skipped because Node is
   # absent (#306) — is blocked_unverified instead of reading green (the D13

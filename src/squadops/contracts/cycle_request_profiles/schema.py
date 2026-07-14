@@ -35,6 +35,9 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "implementation_plan",
     "max_build_subtasks",
     "min_build_subtasks",
+    # Plan-authoring retry runway for the merge/manifest loop (#424); read by
+    # _plan_authoring_service via resolved_config (default 2).
+    "manifest_max_attempts",
     "output_validation",
     "max_self_eval_passes",
     "min_artifact_count",

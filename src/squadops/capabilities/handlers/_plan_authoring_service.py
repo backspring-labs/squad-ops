@@ -378,7 +378,7 @@ def _validate_manifest_candidate(
         )
 
     try:
-        manifest = ImplementationPlan.from_yaml(yaml_content)
+        manifest = ImplementationPlan.from_yaml(yaml_content, enforce_command_safelist=True)
     except ValueError as exc:
         return None, (
             f"The previous plan YAML failed validation: {exc}. "

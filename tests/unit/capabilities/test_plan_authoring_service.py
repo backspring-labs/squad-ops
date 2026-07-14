@@ -484,3 +484,58 @@ async def test_produce_plan_filters_builder_assemble_by_squad_capability():
     )
     builder_render = str(ctx_builder.ports.request_renderer.render.call_args)
     assert "builder.assemble" in builder_render
+
+
+# ---------------------------------------------------------------------------
+# Command-safelist enforcement at the authoring boundary (#422)
+# ---------------------------------------------------------------------------
+
+_SAFELIST_PLAN_TEMPLATE = """\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend"
+    description: "Build the backend"
+    expected_artifacts:
+      - "backend/main.py"
+    acceptance_criteria:
+      - check: command_exit_zero
+        description: "command check"
+        argv: {argv}
+    depends_on: []
+summary:
+  total_tasks: 1
+"""
+
+
+def test_validate_manifest_candidate_feeds_safelist_error_back():
+    """A merger-authored plan with an unrunnable command must produce
+    corrective error_msg (retry feedback), not a valid manifest — the live
+    failure was cyc_bc325a67417d dying at evaluation on `npm test`."""
+    from squadops.capabilities.handlers._plan_authoring_service import (
+        _validate_manifest_candidate,
+    )
+
+    yaml_content = _SAFELIST_PLAN_TEMPLATE.format(argv='["npm", "test"]')
+    manifest, error_msg = _validate_manifest_candidate(yaml_content, 1, 15, ["dev"])
+    assert manifest is None
+    assert "safelist" in error_msg
+    assert "py_compile" in error_msg  # feedback must teach an allowed form
+
+
+def test_validate_manifest_candidate_accepts_safelisted_command():
+    from squadops.capabilities.handlers._plan_authoring_service import (
+        _validate_manifest_candidate,
+    )
+
+    yaml_content = _SAFELIST_PLAN_TEMPLATE.format(
+        argv='["python", "-m", "py_compile", "backend/main.py"]'
+    )
+    manifest, error_msg = _validate_manifest_candidate(yaml_content, 1, 15, ["dev"])
+    assert error_msg is None
+    assert manifest is not None
