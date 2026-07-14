@@ -253,9 +253,13 @@ smaller implementation models suffice — not before.
 - **v1.5 — Stabilization**: repeated benchmark campaigns, builder-loop
   reliability, evidence completeness, security hardening (rootless/socket
   proxy candidates), flaky-check elimination.
-- **v1.6 — Generalized Build Capability**: pluginized blueprints, reusable
-  capability pack, second canonical stack, schema-constrained control
-  artifacts, stronger functional probes.
+- **v1.6 — Campaign + Generalized Build Capability** (reconciled with the 1.4
+  evidence arc, 2026-07-14): Campaign Orchestration (Lane M) alongside
+  pluginized blueprints, reusable capability pack, second canonical stack,
+  schema-constrained control artifacts, stronger functional probes (Lane S);
+  SIP-0091 + SIP-0090 P2 ride here. Campaign gains the gate *Functional App
+  Yield repeatably > 0*. See `docs/plans/1-4-evidence-arc-plan.md` (revised)
+  for the governing arc.
 
 ## Changes from v2 (for reviewers)
 
