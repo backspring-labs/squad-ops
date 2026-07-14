@@ -1,0 +1,100 @@
+# group_run interface manifest — Phase-0.5 spike reference instance.
+#
+# Hand-authored from prd.md (v0.3) ALONE, per the 1.4 arc's contamination
+# discipline — every entry cites the PRD section it derives from; the
+# `decisions:` block lists the choices the PRD explicitly delegates to
+# implementation, pinned here because the interface must fix them for the
+# frontend and backend to agree.
+#
+# Lifecycle (1-4-evidence-arc-plan.md, Phase 0.5): spike input (once) →
+# early integration shakeout → retired as cycle input at authoring parity →
+# permanent benchmark reference fixture and authoring-probe diff baseline.
+# The schema this file instantiates is formalized by
+# SIP-Contract-First-Build-Scaffolding; this instance is its first test vector.
+#
+# NOT manifest content (blueprint-owned invariants per the scaffold SIP's
+# ownership rule): entrypoints, vite/proxy config, CORS wiring, the standard
+# health endpoint, test-runner wiring, package manifests.
+
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: examples/03_group_run/prd.md  # v0.3
+stack: fullstack_fastapi_react
+scope: core-mvp-only  # PRD §4.1 expansion tiers are fill-time additions, not interface
+
+# ---------------------------------------------------------------- PRD §8
+entities:
+  - name: Participant
+    fields:
+      - { name: id,   type: string, required: true, generated: true }
+      - { name: name, type: string, required: true }
+  - name: RunEvent
+    fields:
+      - { name: id,           type: string, required: true, generated: true }
+      - { name: title,        type: string, required: true }
+      - { name: datetime,     type: string, required: true }   # string input acceptable for MVP (§5.1)
+      - { name: location,     type: string, required: true }
+      - { name: distance,     type: string, required: false }  # e.g. "5K", "6 mi"
+      - { name: pace_target,  type: string, required: false }  # e.g. "9:00-10:00/mi"
+      - { name: route_notes,  type: string, required: false }
+      - { name: participants, type: "list[Participant]", required: true, default: [] }
+
+# ---------------------------------------------------------------- PRD §6
+api:
+  base_path: ""  # PRD endpoint paths are unprefixed (/runs); dev integration via proxy (blueprint-owned)
+  request_shapes:
+    RunEventCreate:  # §5.1 — RunEvent minus generated/derived fields
+      required: [title, datetime, location]
+      optional: [distance, pace_target, route_notes]
+    ParticipantName:  # §5.4/§5.5
+      required: [name]
+  endpoints:
+    - { method: GET,  path: /runs,              summary: list runs,
+        response: "list[RunEvent]" }                                 # §5.2
+    - { method: POST, path: /runs,              summary: create run,
+        request: RunEventCreate, response: RunEvent,
+        errors: [validation_error] }                                 # §5.1
+    - { method: GET,  path: "/runs/{id}",       summary: run details,
+        response: RunEvent, errors: [run_not_found] }                # §5.3
+    - { method: POST, path: "/runs/{id}/join",  summary: join run by participant name,
+        request: ParticipantName, response: RunEvent,
+        errors: [run_not_found, duplicate_participant, validation_error] }   # §5.4
+    - { method: POST, path: "/runs/{id}/leave", summary: leave run by participant name,
+        request: ParticipantName, response: RunEvent,
+        errors: [run_not_found, participant_not_found, validation_error] }   # §5.5
+  error_contract:  # §6 "clear error payloads"; shape pinned so both sides agree
+    shape: '{"error": {"code": string, "message": string}}'
+    codes:
+      validation_error:      { http: 422 }  # FastAPI/Pydantic default for body validation
+      run_not_found:         { http: 404 }
+      duplicate_participant: { http: 409 }
+      participant_not_found: { http: 404 }
+
+# ---------------------------------------------------------------- PRD §7
+frontend:
+  framework: react_vite
+  language: javascript  # §9: no TypeScript requirement this cycle
+  api_client: fetch     # §7: prefer simple fetch over heavier abstractions
+  routes:
+    - { path: "/",          view: RunsListView,  purpose: "upcoming runs list + participant counts + CTA to create" }  # §7.1, §5.2
+    - { path: "/create",    view: CreateRunView, purpose: "create form, required-field validation, submit" }          # §7.2, §5.1
+    - { path: "/runs/:id",  view: RunDetailView, purpose: "event details, participant list, join form, leave action, not-found state" }  # §7.3, §5.3–5.5
+
+persistence: in_memory  # §8: required for this cycle; no DB/migrations (§9)
+
+# Interface decisions the PRD explicitly delegates ("choose one and
+# document"), pinned here with their PRD warrant:
+decisions:
+  - id: duplicate-name-uniqueness
+    choice: case-insensitive uniqueness per run
+    warrant: "§5.4 validation — 'default recommendation: case-insensitive uniqueness'"
+  - id: leave-unknown-participant
+    choice: error (404 participant_not_found), not silent no-op
+    warrant: "§5.5 — 'clear error (or no-op with clear response; choose one and document)'; error chosen for §6's 'participant not found on leave' error-payload expectation"
+  - id: mutation-response-shape
+    choice: join/leave/create return the full updated RunEvent
+    warrant: "§5.4 'participant list updates immediately' + §5.2 'appears in list' — returning the entity avoids a second fetch for the MVP flows"
+  - id: no-name-normalization
+    choice: exact-string names (no trimming) in core scope
+    warrant: "§4.1 Tier 2 item 5 reserves normalization as expansion; core stays minimal"
