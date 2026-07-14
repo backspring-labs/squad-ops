@@ -879,3 +879,146 @@ class TestBuilderFailureOutcomeClass:
         # Transient failures must NOT set outcome_class so the executor's
         # D5 retry-before-semantic-failure path activates.
         assert "outcome_class" not in result.outputs
+
+
+# ---------------------------------------------------------------------------
+# Issue #419: typed acceptance criteria at the builder seam (SIP-0092 M1.3)
+# ---------------------------------------------------------------------------
+
+LLM_BARE_PATH_FRONTEND = (
+    # The cyc_815d769b7a3a field shape: frontend files emitted at bare paths
+    # while the task contract addresses frontend/-prefixed paths.
+    "```json:package.json\n"
+    '{"name": "app", "scripts": {"dev": "vite", "build": "vite build"}}\n'
+    "```\n\n"
+    "```python:my_app/__main__.py\n"
+    "pass\n"
+    "```\n\n"
+    "```dockerfile:Dockerfile\n"
+    "FROM python:3.11-slim\n"
+    "```\n\n"
+    "```text:requirements.txt\n"
+    "# none\n"
+    "```\n\n"
+    "```markdown:qa_handoff.md\n"
+    "## How to Run\nrun it\n\n"
+    "## How to Test\ntest it\n\n"
+    "## Expected Behavior\nworks\n"
+    "```\n"
+)
+
+# Wire-shape criterion (#420): dicts, exactly as a dispatched envelope
+# delivers them — never TypedCheck instances.
+_FRONTEND_MANIFEST_CRITERION = {
+    "check": "regex_match",
+    "severity": "error",
+    "description": "frontend package manifest",
+    "file": "frontend/package.json",
+    "pattern": "vite",
+}
+
+
+class TestTypedAcceptance:
+    """#419: builder.assemble evaluates the plan's typed contract — a
+    path-contract violation fails HERE, repairable, instead of surfacing
+    downstream as an unfixable qa.test failure."""
+
+    def _with_response(self, mock_context, content: str):
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=content),
+        )
+
+    async def test_bare_path_emission_fails_the_contract(self, mock_context, builder_inputs):
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+        self._with_response(mock_context, LLM_BARE_PATH_FRONTEND)
+        builder_inputs["acceptance_criteria"] = [_FRONTEND_MANIFEST_CRITERION]
+        builder_inputs["subtask_index"] = 5
+
+        result = await BuilderAssembleHandler().handle(mock_context, builder_inputs)
+
+        assert result.success is False
+        assert "Typed acceptance criteria not met" in result.error
+        assert "acceptance:frontend package manifest" in result.error
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
+
+        checks = result.outputs["validation_result"]["checks"]
+        row = next(c for c in checks if c["check"] == "acceptance:regex_match")
+        assert row["status"] == "failed"
+        assert row["reason"] == "file_not_found"
+        assert row["task_index"] == 5
+
+    async def test_failure_outputs_carry_artifacts_for_patch_overlay(
+        self, mock_context, builder_inputs
+    ):
+        """#413: patch verification overlays repairs onto the failed task's
+        artifacts; a builder failure without them would force every repair
+        to re-emit the full set."""
+        self._with_response(mock_context, LLM_BARE_PATH_FRONTEND)
+        builder_inputs["acceptance_criteria"] = [_FRONTEND_MANIFEST_CRITERION]
+
+        result = await BuilderAssembleHandler().handle(mock_context, builder_inputs)
+
+        assert result.success is False
+        names = [a["name"] for a in result.outputs["artifacts"]]
+        assert "package.json" in names
+        assert "Dockerfile" in names
+
+    async def test_correctly_pathed_emission_passes(self, mock_context, builder_inputs):
+        fixed = LLM_BARE_PATH_FRONTEND.replace(
+            "```json:package.json\n", "```json:frontend/package.json\n"
+        )
+        self._with_response(mock_context, fixed)
+        builder_inputs["acceptance_criteria"] = [_FRONTEND_MANIFEST_CRITERION]
+        builder_inputs["subtask_index"] = 5
+
+        result = await BuilderAssembleHandler().handle(mock_context, builder_inputs)
+
+        assert result.success is True
+        checks = result.outputs["validation_result"]["checks"]
+        row = next(c for c in checks if c["check"] == "acceptance:regex_match")
+        assert row["status"] == "passed"
+        assert row["passed"] is True
+        # Issue #114: evaluation evidence artifact rides the outputs.
+        names = [a["name"] for a in result.outputs["artifacts"]]
+        assert "typed_check_evaluation_task_5.json" in names
+
+    async def test_warning_severity_failure_is_disclosed_not_blocking(
+        self, mock_context, builder_inputs
+    ):
+        self._with_response(mock_context, LLM_BARE_PATH_FRONTEND)
+        builder_inputs["acceptance_criteria"] = [
+            {**_FRONTEND_MANIFEST_CRITERION, "severity": "warning"}
+        ]
+
+        result = await BuilderAssembleHandler().handle(mock_context, builder_inputs)
+
+        assert result.success is True
+        checks = result.outputs["validation_result"]["checks"]
+        row = next(c for c in checks if c["check"] == "acceptance:regex_match")
+        assert row["status"] == "failed"  # disclosed in evidence
+        assert row["passed"] is True  # but never blocks (RC-9)
+
+    async def test_typed_acceptance_config_gate_skips(self, mock_context, builder_inputs):
+        self._with_response(mock_context, LLM_BARE_PATH_FRONTEND)
+        builder_inputs["acceptance_criteria"] = [_FRONTEND_MANIFEST_CRITERION]
+        builder_inputs["resolved_config"]["typed_acceptance"] = False
+
+        result = await BuilderAssembleHandler().handle(mock_context, builder_inputs)
+
+        assert result.success is True
+        checks = result.outputs["validation_result"]["checks"]
+        row = next(c for c in checks if c["check"] == "acceptance:regex_match")
+        assert row["status"] == "skipped"
+
+    async def test_no_criteria_keeps_legacy_behavior(self, mock_context, builder_inputs):
+        # Cycles without a plan contract: exactly one required_files row,
+        # no acceptance rows, no #114 artifact.
+        result = await BuilderAssembleHandler().handle(mock_context, builder_inputs)
+
+        assert result.success is True
+        checks = result.outputs["validation_result"]["checks"]
+        assert [c["check"] for c in checks] == ["required_files"]
+        names = [a["name"] for a in result.outputs["artifacts"]]
+        assert not any(n.startswith("typed_check_evaluation") for n in names)
