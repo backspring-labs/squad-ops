@@ -704,3 +704,59 @@ async def test_absolute_path_all_path_checks_error(check_name, params, tmp_path)
     result = await get_check(check_name).evaluate(params, tmp_path, stack=stack)
     assert result.status == "error"
     assert result.reason == "path_escapes_workspace"
+
+
+class TestImportPresentDotlessLeniency:
+    """#441: a dotless module spec matches a relative import of the same name.
+
+    Attempt 3.5's framing authored `module: errors` for code using
+    `from .errors import ApiError` — exact-form matching made the check
+    unwinnable against correct code (the #436 class, from the spec side).
+    """
+
+    @pytest.fixture
+    def relative_ws(self, tmp_path):
+        (tmp_path / "routes.py").write_text("from .errors import ApiError\n")
+        return tmp_path
+
+    async def test_dotless_spec_matches_relative_import(self, relative_ws):
+        result = await get_check("import_present").evaluate(
+            {"file": "routes.py", "module": "errors", "symbol": "ApiError"},
+            relative_ws,
+        )
+        assert result.status == "passed"
+
+    async def test_dotless_spec_still_matches_absolute_import(self, tmp_path):
+        (tmp_path / "app.py").write_text("from errors import ApiError\n")
+        result = await get_check("import_present").evaluate(
+            {"file": "app.py", "module": "errors", "symbol": "ApiError"},
+            tmp_path,
+        )
+        assert result.status == "passed"
+
+    async def test_dotted_spec_stays_exact_rejects_absolute(self, tmp_path):
+        (tmp_path / "app.py").write_text("from backend.errors import ApiError\n")
+        result = await get_check("import_present").evaluate(
+            {"file": "app.py", "module": ".errors", "symbol": "ApiError"},
+            tmp_path,
+        )
+        assert result.status == "failed"
+        assert result.reason == "module_not_imported"
+
+    async def test_dotless_spec_rejects_different_name(self, relative_ws):
+        result = await get_check("import_present").evaluate(
+            {"file": "routes.py", "module": "exceptions", "symbol": "ApiError"},
+            relative_ws,
+        )
+        assert result.status == "failed"
+        assert result.reason == "module_not_imported"
+
+    async def test_dotless_spec_does_not_match_plain_import_of_submodule(self, tmp_path):
+        # `import backend.errors` is alias 'backend.errors', not 'errors' —
+        # dotless leniency applies only to relative ImportFrom nodes.
+        (tmp_path / "app.py").write_text("import backend.errors\n")
+        result = await get_check("import_present").evaluate(
+            {"file": "app.py", "module": "errors"},
+            tmp_path,
+        )
+        assert result.status == "failed"
