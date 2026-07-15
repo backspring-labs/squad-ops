@@ -115,12 +115,23 @@ def write() -> int:
             print(f"ERROR: fragment file missing for {fid} ({path})", file=sys.stderr)
         return 1
     if drift:
-        # Minimal edit: replace only the changed (globally unique) hash strings
-        # so the diff is exactly the stale lines and all other formatting is
-        # preserved.
+        # Minimal edit, ANCHORED to the sha256 line (#451): a bare global
+        # replace of the stored value corrupts the whole file when the stale
+        # hash is degenerate (a placeholder like '0' matched every zero in
+        # every other hash, the version, and the timestamp). Replace exactly
+        # one `sha256: <stored>` occurrence per drift entry; tolerate quoted
+        # placeholder forms.
         raw = MANIFEST_PATH.read_text(encoding="utf-8")
         for fid, path, stored, computed in drift:
-            raw = raw.replace(stored, computed)
+            replaced = False
+            for old_line in (f"sha256: {stored}", f"sha256: '{stored}'", f'sha256: "{stored}"'):
+                if old_line in raw:
+                    raw = raw.replace(old_line, f"sha256: {computed}", 1)
+                    replaced = True
+                    break
+            if not replaced:
+                print(f"ERROR: could not locate sha256 line for {fid} ({path})", file=sys.stderr)
+                return 1
             print(f"updated {fid} ({path})")
         MANIFEST_PATH.write_text(raw, encoding="utf-8")
         print(f"wrote {len(drift)} fragment hash(es) to {MANIFEST_PATH}")
@@ -128,8 +139,9 @@ def write() -> int:
     if hash_drift:
         stored, computed = hash_drift
         raw = MANIFEST_PATH.read_text(encoding="utf-8")
-        if stored and stored in raw:
-            raw = raw.replace(stored, computed)
+        if stored and f"manifest_hash: {stored}" in raw:
+            # Anchored for the same reason as the fragment hashes (#451).
+            raw = raw.replace(f"manifest_hash: {stored}", f"manifest_hash: {computed}", 1)
         else:
             print(
                 "ERROR: could not locate stored manifest_hash for in-place update", file=sys.stderr
