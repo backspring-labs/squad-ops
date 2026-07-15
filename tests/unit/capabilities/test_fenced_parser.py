@@ -463,3 +463,89 @@ class TestRealWorldFailurePatterns:
         assert "qa_handoff.md" in filenames
         qa_handoff = next(r for r in result if r["filename"] == "qa_handoff.md")
         assert "## How to Run" in qa_handoff["content"]
+
+
+class TestNestedFences:
+    """#430: a block body may legitimately contain fenced examples; the parser
+    must close the block at its own fence, not the first nested close."""
+
+    def test_nested_example_content_retained(self):
+        """Regression pin for #430: cyc_8830cfc78a1e clipped qa_handoff.md at
+        the close of its first embedded bash example, discarding every later
+        section, on all three assemble attempts."""
+        response = (
+            "```markdown:qa_handoff.md\n"
+            "# QA Handoff\n"
+            "## How to Test\n"
+            "```bash\n"
+            "cd backend\n"
+            "pytest\n"
+            "```\n"
+            "## Expected Behavior\n"
+            "All endpoints return JSON.\n"
+            "## Known Limitations\n"
+            "In-memory store only.\n"
+            "```\n"
+        )
+        [record] = extract_fenced_files(response)
+        assert record["filename"] == "qa_handoff.md"
+        assert "```bash\ncd backend\npytest\n```" in record["content"]
+        assert "## Expected Behavior" in record["content"]
+        assert record["content"].endswith("In-memory store only.")
+
+    def test_multiple_nested_examples_in_one_block(self):
+        response = (
+            "```markdown:docs/guide.md\n"
+            "## Backend\n"
+            "```bash\n"
+            "uvicorn main:app\n"
+            "```\n"
+            "## Frontend\n"
+            "```bash\n"
+            "npm run dev\n"
+            "```\n"
+            "Done.\n"
+            "```\n"
+        )
+        [record] = extract_fenced_files(response)
+        assert record["content"].count("```bash") == 2
+        assert record["content"].endswith("Done.")
+
+    def test_scan_resumes_correctly_after_nested_block(self):
+        """A file following a nested-fence block must still be extracted with
+        its own content — the scanner must advance past the OUTER close."""
+        response = (
+            "```markdown:docs/guide.md\n"
+            "Example:\n"
+            "```bash\n"
+            "make test\n"
+            "```\n"
+            "End of guide.\n"
+            "```\n"
+            "\n"
+            "```python:app.py\n"
+            "print('hello')\n"
+            "```\n"
+        )
+        records = extract_fenced_files(response)
+        assert [r["filename"] for r in records] == ["docs/guide.md", "app.py"]
+        assert records[0]["content"].endswith("End of guide.")
+        assert records[1]["content"] == "print('hello')"
+
+    def test_unmatched_nested_opener_abandons_block_but_recovers_later_files(self):
+        """An inner tokened fence that never closes leaves the outer block
+        unclosed: the block is dropped whole (documented #430 trade-off), and
+        the scanner still recovers subsequent well-formed files."""
+        response = (
+            "```markdown:docs/broken.md\n"
+            "Example that never closes:\n"
+            "```python\n"
+            "x = 1\n"
+            "\n"
+            "```json:config.json\n"
+            '{"ok": true}\n'
+            "```\n"
+        )
+        records = extract_fenced_files(response)
+        assert [r["filename"] for r in records] == ["config.json"]
+        assert records[0]["content"] == '{"ok": true}'

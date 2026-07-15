@@ -20,6 +20,14 @@ Models naturally drift between these formats; the parser tolerates all of
 them so a one-character format slip doesn't drop the whole task on the floor.
 The strict format is still the recommended one and round-trips losslessly.
 
+Nested fences (#430): a block's body may itself contain fenced examples —
+any markdown deliverable with an embedded ``` ```bash``` ``` snippet, or a
+docstring quoting fenced code. A ``` ```<token>``` ``` line inside a block
+opens a nested level and a bare ``` ``` ``` ``` closes the innermost one; the
+block ends only when the depth returns to zero. Trade-off: a body containing
+an *unmatched* tokened opener leaves the block unclosed and it is abandoned
+whole — rarer and louder than the silent mid-document clip it replaces.
+
 Part of SIP-Enhanced-Agent-Build-Capabilities, Phase 1.
 """
 
@@ -32,16 +40,13 @@ from squadops.capabilities.handlers.impl._json_extraction import _strip_think_bl
 # Strict format header: ```<lang>:<path>
 _STRICT_HEADER_RE = re.compile(r"^```(\w+):(\S+)\s*$", re.MULTILINE)
 
-# Permissive open fence: ```<token> where <token> may be empty. Models
-# sometimes emit a bare ``` immediately after a filename heading
-# (``## Dockerfile`` then ``` ```\n...```\n`` `), so we cannot require
-# a non-empty language slot. The ambiguity with a close fence is resolved
-# by sequential scanning: after parsing a fence we advance past its
-# close, so a stray unmatched ``` only causes a wasted lookahead.
+# Any fence line: ```<token> where <token> may be empty. Models sometimes
+# emit a bare ``` immediately after a filename heading (``## Dockerfile``
+# then ``` ```\n...```\n`` `), so we cannot require a non-empty language
+# slot. The open/close ambiguity of a bare ``` is resolved by depth
+# tracking in _find_block_close: a tokened fence opens a nested level, a
+# bare fence closes the innermost one.
 _OPEN_FENCE_RE = re.compile(r"^```(\S*)\s*$", re.MULTILINE)
-
-# Closing fence: ``` on its own line (possibly trailing whitespace)
-_FENCE_CLOSE_RE = re.compile(r"^```\s*$", re.MULTILINE)
 
 # Markdown heading whose text is a path-like token. Accepts headings of the
 # form "## models.py", "### `backend/main.py`", "# Dockerfile". Requires
@@ -112,6 +117,28 @@ def _resolve_filename_from_heading(
     return None, last_used_heading_pos
 
 
+def _find_block_close(response: str, body_start: int) -> re.Match[str] | None:
+    """Find the close fence for a block whose body starts at ``body_start``,
+    honoring nesting (#430): a ``` ```<token>``` ``` line inside the body opens
+    a nested level, a bare ``` ``` ``` ``` closes the innermost one, and the
+    block closes when depth returns to zero. Returns the close-fence match, or
+    ``None`` if the block never closes (e.g. an unmatched nested opener).
+    """
+    depth = 1
+    pos = body_start
+    while True:
+        fence = _OPEN_FENCE_RE.search(response, pos)
+        if fence is None:
+            return None
+        if fence.group(1):
+            depth += 1
+        else:
+            depth -= 1
+            if depth == 0:
+                return fence
+        pos = fence.end()
+
+
 def _resolve_filename_from_first_comment(body: str) -> tuple[str | None, str]:
     """If the first line of ``body`` is a comment containing a filename,
     return ``(filename, body_with_first_line_stripped)``. Otherwise
@@ -161,7 +188,7 @@ def extract_fenced_files(response: str) -> list[dict]:
             break
 
         body_start = open_match.end() + 1  # skip newline after header
-        close_match = _FENCE_CLOSE_RE.search(response, body_start)
+        close_match = _find_block_close(response, body_start)
         if not close_match:
             # No closing fence — abandon this opener and resume past it
             pos = body_start
