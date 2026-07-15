@@ -203,19 +203,6 @@ class QATestHandler(_CycleTaskHandler):
 
         parts.append(capability.test_prompt_supplement)
 
-        # #448: generated tests must be executable in the workspace as-is.
-        # The dependency manifests among the source files are the universe.
-        parts.append(
-            "\n\n## Dependency Constraint (hard rule)\n\n"
-            "Generated tests may ONLY import packages that appear in the "
-            "workspace's dependency manifests shown above (requirements.txt, "
-            "package.json). Never introduce a new dependency in a test file — "
-            "a suite that fails to import fails the whole tests_pass check. "
-            "If a test would need an unavailable library, cover that behavior "
-            "from the other side of the stack (e.g. backend API tests) or "
-            "omit it.\n"
-        )
-
         # Prior analysis last — prompt guard truncates from this heading onward
         if prior_outputs:
             parts.append("\n\n## Prior Analysis from Upstream Roles\n")
@@ -357,7 +344,12 @@ class QATestHandler(_CycleTaskHandler):
                 capability_name,
             )
 
-        assembled = context.ports.prompt_service.get_system_prompt(self._role)
+        # #448: include the qa.test task_type fragment (dependency constraint,
+        # scope discipline) in the assembled system prompt. The fragment is the
+        # externalized owner of task-content guidance — not inline literals.
+        assembled = context.ports.prompt_service.assemble(
+            self._role, "agent_start", task_type="qa.test"
+        )
         system_prompt = assembled.content
 
         # Resolve model, token budget, and prompt guard
