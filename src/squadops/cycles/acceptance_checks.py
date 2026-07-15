@@ -366,7 +366,11 @@ class ImportPresentCheck(BaseCheck):
                         if target_symbol is None:
                             symbol_imported = True
             elif isinstance(node, ast.ImportFrom):
-                if node.module == target_module:
+                # ast stores relative-import dots in `level`, never in `module`:
+                # `from .errors import X` → ImportFrom(module='errors', level=1).
+                prefix = "." * node.level
+                effective_module = prefix + (node.module or "")
+                if effective_module == target_module:
                     module_imported = True
                     if target_symbol is None:
                         symbol_imported = True
@@ -374,6 +378,12 @@ class ImportPresentCheck(BaseCheck):
                         for alias in node.names:
                             if alias.name == target_symbol:
                                 symbol_imported = True
+                elif node.module is None and target_symbol is None:
+                    # `from . import errors` imports module `.errors`
+                    for alias in node.names:
+                        if prefix + alias.name == target_module:
+                            module_imported = True
+                            symbol_imported = True
 
         if not module_imported:
             return CheckOutcome.failed(reason="module_not_imported", module=target_module)

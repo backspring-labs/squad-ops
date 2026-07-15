@@ -194,6 +194,64 @@ class TestImportPresent:
         assert result.status == "failed"
         assert result.reason == "module_not_imported"
 
+    @pytest.fixture
+    def relative_import_workspace(self, tmp_path):
+        (tmp_path / "routes.py").write_text(
+            "from .errors import ApiError\nfrom ..pkg.util import helper\nfrom . import models\n"
+        )
+        return tmp_path
+
+    async def test_relative_module_with_symbol_passed(self, relative_import_workspace):
+        # #436 regression: ast stores the dot in `level`, so `from .errors
+        # import ApiError` never matched spec module='.errors' — 13 identical
+        # acceptance failures against correct code in run_39a3bca8746b.
+        result = await get_check("import_present").evaluate(
+            {"file": "routes.py", "module": ".errors", "symbol": "ApiError"},
+            relative_import_workspace,
+        )
+        assert result.status == "passed"
+
+    async def test_relative_module_level_two_passed(self, relative_import_workspace):
+        result = await get_check("import_present").evaluate(
+            {"file": "routes.py", "module": "..pkg.util", "symbol": "helper"},
+            relative_import_workspace,
+        )
+        assert result.status == "passed"
+
+    async def test_from_dot_import_module_form_passed(self, relative_import_workspace):
+        result = await get_check("import_present").evaluate(
+            {"file": "routes.py", "module": ".models"},
+            relative_import_workspace,
+        )
+        assert result.status == "passed"
+
+    async def test_relative_spec_rejects_absolute_import(self, tmp_path):
+        # Exact-form matching is deliberate: `from backend.errors import X`
+        # does not satisfy module='.errors' (documented in #436).
+        (tmp_path / "routes.py").write_text("from backend.errors import ApiError\n")
+        result = await get_check("import_present").evaluate(
+            {"file": "routes.py", "module": ".errors", "symbol": "ApiError"},
+            tmp_path,
+        )
+        assert result.status == "failed"
+        assert result.reason == "module_not_imported"
+
+    async def test_relative_module_wrong_symbol_failed(self, relative_import_workspace):
+        result = await get_check("import_present").evaluate(
+            {"file": "routes.py", "module": ".errors", "symbol": "NotThere"},
+            relative_import_workspace,
+        )
+        assert result.status == "failed"
+        assert result.reason == "symbol_not_imported"
+
+    async def test_from_dot_import_does_not_bind_symbol(self, relative_import_workspace):
+        # `from . import models` imports the module but binds no symbol from it.
+        result = await get_check("import_present").evaluate(
+            {"file": "routes.py", "module": ".models", "symbol": "RunEvent"},
+            relative_import_workspace,
+        )
+        assert result.status == "failed"
+
     async def test_ts_extension_skipped(self, tmp_path):
         (tmp_path / "x.ts").write_text("import { foo } from 'bar';")
         result = await get_check("import_present").evaluate(
