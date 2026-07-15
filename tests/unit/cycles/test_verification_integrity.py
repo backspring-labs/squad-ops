@@ -484,3 +484,86 @@ def test_cycle_outcome_is_frozen():
     assert isinstance(outcome, CycleOutcome)
     with pytest.raises(Exception):
         outcome.verdict = RunVerdict.REJECTED  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------- #
+# #444 — per-check reconciliation (§10 amendment)
+# --------------------------------------------------------------------------- #
+
+
+def _subject_missing(check_id: str, *, required: bool = True) -> UnverifiedCheck:
+    return UnverifiedCheck(
+        check_id=check_id, reason=NotExecutedReason.SUBJECT_MISSING, required=required
+    )
+
+
+class TestCycleOutcomeReconciliation:
+    """A framing run's subject_missing rows must not veto later real evidence —
+    the cyc_17bdc66c1669 contradiction (required_files simultaneously verified
+    and required_unmet; cycle blocked while run 2's honest verdict was rejected)."""
+
+    def test_attempt_35_reproduction_rejected_not_blocked(self):
+        framing = _run_summary(
+            RunVerdict.BLOCKED_UNVERIFIED,
+            unverified=[
+                _subject_missing("frontend_build"),
+                _subject_missing("required_files"),
+                _subject_missing("tests_pass"),
+            ],
+        )
+        impl = _run_summary(
+            RunVerdict.REJECTED,
+            verified=["required_files", "non_stub_files"],
+            failed=["frontend_build", "tests_pass"],
+        )
+        outcome = aggregate_cycle_outcome([framing, impl])
+        assert outcome.verdict is RunVerdict.REJECTED
+        assert outcome.required_unmet == ()  # everything required was executed
+        assert "required_files" in outcome.verified
+        assert {u.check_id for u in outcome.unverified} == set()
+
+    def test_fully_verified_impl_after_blocked_framing_accepted(self):
+        framing = _run_summary(
+            RunVerdict.BLOCKED_UNVERIFIED,
+            unverified=[_subject_missing("frontend_build"), _subject_missing("tests_pass")],
+        )
+        impl = _run_summary(
+            RunVerdict.ACCEPTED, verified=["frontend_build", "tests_pass", "required_files"]
+        )
+        outcome = aggregate_cycle_outcome([framing, impl])
+        assert outcome.verdict is RunVerdict.ACCEPTED
+        assert outcome.required_unmet == ()
+        assert outcome.unverified == ()
+
+    def test_never_executed_required_check_still_blocks(self):
+        framing = _run_summary(
+            RunVerdict.BLOCKED_UNVERIFIED, unverified=[_subject_missing("tests_pass")]
+        )
+        impl = _run_summary(RunVerdict.ACCEPTED, verified=["frontend_build"])
+        outcome = aggregate_cycle_outcome([framing, impl])
+        assert outcome.verdict is RunVerdict.BLOCKED_UNVERIFIED
+        assert outcome.required_unmet == ("tests_pass",)
+
+    def test_later_execution_supersedes_earlier_failure(self):
+        r1 = _run_summary(RunVerdict.REJECTED, failed=["tests_pass"])
+        r2 = _run_summary(RunVerdict.ACCEPTED, verified=["tests_pass"])
+        outcome = aggregate_cycle_outcome([r1, r2])
+        assert outcome.verdict is RunVerdict.ACCEPTED
+        # disclosure keeps both sides of the story
+        assert "tests_pass" in outcome.failed and "tests_pass" in outcome.verified
+
+    def test_opaque_blocked_run_still_blocks_cycle(self):
+        """#388 abort: adverse verdict with no evidence rows cannot be reconciled away."""
+        aborted = _run_summary(RunVerdict.BLOCKED_UNVERIFIED)  # no unverified rows
+        impl = _run_summary(RunVerdict.ACCEPTED, verified=["frontend_build"])
+        outcome = aggregate_cycle_outcome([aborted, impl])
+        assert outcome.verdict is RunVerdict.BLOCKED_UNVERIFIED
+
+    def test_executed_failure_never_superseded_by_non_evidence(self):
+        r1 = _run_summary(RunVerdict.REJECTED, failed=["frontend_build"])
+        r2 = _run_summary(
+            RunVerdict.BLOCKED_UNVERIFIED, unverified=[_subject_missing("frontend_build")]
+        )
+        outcome = aggregate_cycle_outcome([r1, r2])
+        assert outcome.verdict is RunVerdict.REJECTED
+        assert outcome.required_unmet == ()
