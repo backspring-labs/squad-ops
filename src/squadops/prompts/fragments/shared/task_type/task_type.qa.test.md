@@ -1,3 +1,9 @@
+---
+fragment_id: task_type.qa.test
+layer: task_type
+version: "0.9.21"
+roles: ["qa"]
+---
 # Task: Generate and Execute Tests (qa.test)
 
 You are generating test files that will be executed immediately, as-is, in the
