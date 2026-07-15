@@ -135,3 +135,38 @@ def test_unknown_stack_raises():
 def test_missing_required_key_raises():
     with pytest.raises(ValueError, match="missing required keys"):
         InterfaceManifest.from_dict({"version": 1, "kind": "interface_manifest"})
+
+
+def test_expand_renders_pinned_error_contract():
+    # The manifest pins {"error": {code, message}} incl. validation_error -> 422,
+    # which FastAPI's default would render as {"detail": [...]} before any body
+    # runs — so the renderer + RequestValidationError handler are scaffold-owned.
+    files = _by_name(expand(_group_run_manifest()))
+
+    errors = files["backend/errors.py"]
+    assert '"run_not_found": 404,' in errors
+    assert '"duplicate_participant": 409,' in errors
+    assert '"validation_error": 422,' in errors
+    assert '"participant_not_found": 404,' in errors
+    assert 'return {"error": {"code": code, "message": message}}' in errors
+    assert "class ApiError(Exception):" in errors
+    assert "RequestValidationError" in errors  # the framework-level 422 is overridden
+
+    main = files["backend/main.py"]
+    assert "from .errors import register_error_handlers" in main
+    assert "register_error_handlers(app)" in main
+
+    # route stubs steer the fill dev at ApiError with the real codes
+    assert "raise ApiError(code, message) from .errors" in files["backend/routes.py"]
+
+
+def test_expand_emits_api_client_prefixing_api():
+    # vite.config strips /api before forwarding, so views MUST call /api/... to
+    # reach the backend — the client encodes that so a fill dev never guesses.
+    files = _by_name(expand(_group_run_manifest()))
+    api = files["frontend/src/api.js"]
+    assert "export async function apiFetch(path, options = {})" in api
+    assert "fetch(`/api${path}`" in api
+    assert "body.error" in api  # unwraps the pinned envelope
+    assert "class ApiError extends Error" in api
+    assert "apiFetch from '../api.js'" in files["frontend/src/views/RunsListView.jsx"]

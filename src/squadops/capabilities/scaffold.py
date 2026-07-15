@@ -323,12 +323,22 @@ def _routes_source(manifest: InterfaceManifest) -> str:
             if base in known_models:
                 referenced.add(base)
     import_line = f"from .models import {', '.join(sorted(referenced))}" if referenced else ""
+    error_codes = [
+        c.code for c in (manifest.api.error_contract.codes if manifest.api.error_contract else ())
+    ]
+    codes_hint = (
+        f"On failure raise ApiError(code, message) from .errors — codes: {', '.join(error_codes)}."
+        if error_codes
+        else "On failure raise ApiError(code, message) from .errors."
+    )
     lines = [
         '"""API route stubs — scaffold-owned signatures, fill-only bodies.',
         "",
         "Every endpoint the interface manifest declares is wired here with its",
         "correct path, method, and response model. Bodies raise 501 until filled;",
         "the app imports and boots regardless.",
+        "",
+        codes_hint,
         '"""',
         "",
         "from fastapi import APIRouter, HTTPException",
@@ -358,10 +368,75 @@ def _routes_source(manifest: InterfaceManifest) -> str:
     return "\n".join(lines)
 
 
+_ERRORS_PY = '''"""Error contract rendering — scaffold-owned interface wiring.
+
+The interface manifest pins one error envelope shape and a code->status map. Both
+the ApiError exception (raise ApiError(code, message) from a route body) and the
+request-validation handler render that exact shape, so a fill-only dev conforms
+the contract by raising ApiError — never by hand-rendering JSON, and never by
+editing this file. FastAPI's default validation error ({"detail": [...]}) fires
+before any route body, so this handler is the only place it can be conformed.
+"""
+
+from __future__ import annotations
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+# code -> HTTP status, generated from the manifest error_contract.
+_ERROR_STATUS: dict[str, int] = __STATUS_MAP__
+
+
+class ApiError(Exception):
+    """Raise from a route body to emit the pinned {"error": {...}} envelope."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.status_code = _ERROR_STATUS.get(code, 400)
+
+
+def _envelope(code: str, message: str) -> dict:
+    return {"error": {"code": code, "message": message}}
+
+
+async def _api_error_handler(request: Request, exc: ApiError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content=_envelope(exc.code, exc.message))
+
+
+async def _validation_error_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=_ERROR_STATUS.get("validation_error", 422),
+        content=_envelope("validation_error", "request validation failed"),
+    )
+
+
+def register_error_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(ApiError, _api_error_handler)
+    app.add_exception_handler(RequestValidationError, _validation_error_handler)
+'''
+
+
+def _errors_source(manifest: InterfaceManifest) -> str:
+    ec = manifest.api.error_contract
+    codes = ec.codes if ec else ()
+    if codes:
+        entries = "\n".join(f'    "{c.code}": {c.http},' for c in codes)
+        status_map = "{\n" + entries + "\n}"
+    else:
+        status_map = "{}"
+    return _ERRORS_PY.replace("__STATUS_MAP__", status_map)
+
+
 _MAIN_PY = '''"""FastAPI application entry point — scaffold-owned invariant bootstrap.
 
 CORS origins come from the CORS_ORIGINS env var (comma-separated); the health
-endpoint is the deterministic readiness probe. Business routes live in routes.py.
+endpoint is the deterministic readiness probe. Error handlers render the pinned
+error envelope. Business routes live in routes.py.
 """
 
 from __future__ import annotations
@@ -371,6 +446,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .errors import register_error_handlers
 from .routes import router
 
 app = FastAPI(title="{project_id}")
@@ -382,6 +458,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+register_error_handlers(app)
 
 
 @app.get("/health")
@@ -466,6 +544,38 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 )
 """
 
+_API_JS = """// Scaffold-owned API client — the /api base path and error-envelope unwrapping
+// are interface wiring, fixed here. Views call apiFetch('/runs'); the /api prefix
+// routes through the Vite dev proxy to the backend. A response carrying the pinned
+// {"error": {code, message}} envelope is thrown as ApiError.
+export class ApiError extends Error {
+  constructor(code, message, status) {
+    super(message)
+    this.code = code
+    this.status = status
+  }
+}
+
+export async function apiFetch(path, options = {}) {
+  const response = await fetch(`/api${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  })
+  if (!response.ok) {
+    let body = null
+    try {
+      body = await response.json()
+    } catch {
+      // non-JSON error body
+    }
+    const err = (body && body.error) || {}
+    throw new ApiError(err.code || 'error', err.message || response.statusText, response.status)
+  }
+  if (response.status === 204) return null
+  return response.json()
+}
+"""
+
 
 def _app_jsx(manifest: InterfaceManifest) -> str:
     routes = manifest.frontend.routes
@@ -496,7 +606,8 @@ def _view_stub(route: Route) -> str:
     purpose = route.purpose or route.view
     return (
         "// Scaffold-owned slot: fill this component's body. The default export\n"
-        "// name and file path are fixed by the interface manifest.\n"
+        "// name and file path are fixed by the interface manifest. Fetch backend\n"
+        "// data via apiFetch from '../api.js' (handles the /api prefix + errors).\n"
         f"export default function {route.view}() {{\n"
         f"  // TODO: {purpose}\n"
         f"  return <div>{route.view}</div>\n"
@@ -513,6 +624,7 @@ def _expand_fullstack_fastapi_react(manifest: InterfaceManifest) -> list[dict[st
         {"name": "backend/main.py", "content": _MAIN_PY.format(project_id=manifest.project_id)}
     )
     files.append({"name": "backend/models.py", "content": _model_source(manifest)})
+    files.append({"name": "backend/errors.py", "content": _errors_source(manifest)})
     files.append({"name": "backend/routes.py", "content": _routes_source(manifest)})
     files.append({"name": "backend/requirements.txt", "content": _REQUIREMENTS_TXT})
 
@@ -531,6 +643,7 @@ def _expand_fullstack_fastapi_react(manifest: InterfaceManifest) -> list[dict[st
     )
     files.append({"name": "frontend/vite.config.js", "content": _VITE_CONFIG})
     files.append({"name": "frontend/src/main.jsx", "content": _MAIN_JSX})
+    files.append({"name": "frontend/src/api.js", "content": _API_JS})
     files.append({"name": "frontend/src/App.jsx", "content": _app_jsx(manifest)})
     for route in manifest.frontend.routes:
         files.append({"name": f"frontend/src/views/{route.view}.jsx", "content": _view_stub(route)})
