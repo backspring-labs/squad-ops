@@ -483,7 +483,7 @@ async def run_frontend_build(
 # missing third-party never produces a false red. Output goes to a file, not
 # stdout, so a module that prints on import can't corrupt the verdict.
 _BACKEND_IMPORT_DRIVER = r"""
-import importlib.util as _u, json as _json, pathlib as _pl, sys as _sys
+import importlib as _il, importlib.util as _u, json as _json, pathlib as _pl, sys as _sys
 
 _out = _sys.argv[1]
 _root = _pl.Path(".").resolve()
@@ -497,14 +497,43 @@ for _p in _root.rglob("*.py"):
     _delivered[str(_p.relative_to(_root))] = _p
 _stems = {_p.stem for _p in _delivered.values()}
 
+
+def _qualified(_path):
+    # #469: a module inside a package must be imported by its package-
+    # qualified name — executing backend/main.py under a fake top-level
+    # name breaks its relative imports ("no known parent package") and
+    # false-reds correct code (attempt 3.12: pytest passed 4/4 three
+    # times while this check failed the run). Returns
+    # (module_name, package_base) or None for top-level files.
+    if not (_path.parent / "__init__.py").exists():
+        return None
+    _parts = [] if _path.name == "__init__.py" else [_path.stem]
+    _dir = _path.parent
+    while (_dir / "__init__.py").exists() and _dir != _root:
+        _parts.insert(0, _dir.name)
+        _dir = _dir.parent
+    if not _parts:
+        return None
+    return ".".join(_parts), str(_dir)
+
+
 _failures, _assessed, _skipped = [], 0, []
 for _rel, _path in sorted(_delivered.items()):
-    _spec = _u.spec_from_file_location("_qa_imp_" + _rel.replace("/", "_")[:-3], str(_path))
-    if _spec is None or _spec.loader is None:
-        continue
-    _mod = _u.module_from_spec(_spec)
+    _qual = _qualified(_path)
     try:
-        _spec.loader.exec_module(_mod)
+        if _qual is not None:
+            _mod_name, _base = _qual
+            if _base not in _sys.path:
+                _sys.path.insert(0, _base)
+            _il.import_module(_mod_name)
+        else:
+            _spec = _u.spec_from_file_location(
+                "_qa_imp_" + _rel.replace("/", "_")[:-3], str(_path)
+            )
+            if _spec is None or _spec.loader is None:
+                continue
+            _mod = _u.module_from_spec(_spec)
+            _spec.loader.exec_module(_mod)
         _assessed += 1
     except ModuleNotFoundError as _e:
         _missing = (getattr(_e, "name", "") or "").split(".")[0]
