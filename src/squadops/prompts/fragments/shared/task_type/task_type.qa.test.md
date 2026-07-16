@@ -20,6 +20,15 @@ that fails to import fails the whole `tests_pass` check. If a test would need
 an unavailable library, cover that behavior from the other side of the stack
 (e.g. backend API tests) or omit it.
 
+## Test Isolation (hard rule)
+
+- Every test must be order-independent: never rely on state created,
+  mutated, or left behind by another test.
+- Application state that lives at module level (in-memory stores, caches,
+  registries) persists across all tests in a session. Reset it in a fixture
+  that runs before each test (e.g. an autouse fixture clearing the store) —
+  a test asserting "empty" must establish empty, not hope to run first.
+
 ## Scope Discipline
 
 - Test the deliverable that exists, against the interfaces it actually
