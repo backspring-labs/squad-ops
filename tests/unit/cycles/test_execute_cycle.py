@@ -1184,3 +1184,126 @@ class TestBuildForwardingOverrides:
         result = await executor._build_forwarding_overrides(cycle, completed)
 
         assert result["prior_workload_artifact_refs"] == ["art_early", "art_mid", "art_late"]
+
+
+_PLAN_YAML_SOURCE_REGEX_WL = """\
+version: 1
+project_id: proj_001
+cycle_id: cyc_001
+prd_hash: abc123
+summary:
+  total_dev_tasks: 1
+  total_qa_tasks: 0
+  total_tasks: 1
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: Run detail view
+    description: Fill the view stub
+    expected_artifacts: ["frontend/src/views/RunDetailView.jsx"]
+    acceptance_criteria:
+      - {check: regex_match, file: frontend/src/views/RunDetailView.jsx, pattern: 'apiFetch\\(', count_min: 1}
+"""
+
+
+class TestInterWorkloadGatePlanValidation:
+    """#464 at the seam cycles ACTUALLY traverse: multi-workload runs gate
+    between workloads on a COMPLETED framing run — the mid-run gate check
+    never fires there. The 3.10/3.11 lesson: a check wired to a path the live
+    flow doesn't traverse is decoration. These tests drive execute_cycle
+    itself, not the helper."""
+
+    def _cycle_with_gate(self):
+        cycle = _make_cycle(
+            workload_sequence=[
+                {"type": "framing", "gate": "progress_plan_review"},
+                {"type": "implementation"},
+            ]
+        )
+        import dataclasses
+
+        return dataclasses.replace(
+            cycle,
+            applied_defaults={
+                **cycle.applied_defaults,
+                "implementation_plan": True,
+            },
+        )
+
+    def _plan_ref(self, yaml_text: str):
+        ref = ArtifactRef(
+            artifact_id="art_plan",
+            project_id="proj_001",
+            artifact_type="control_implementation_plan",
+            filename="implementation_plan.yaml",
+            content_hash="h",
+            size_bytes=len(yaml_text),
+            media_type="text/yaml",
+            created_at=NOW,
+            cycle_id="cyc_001",
+            run_id="run_001",
+        )
+        return ref, yaml_text.encode()
+
+    async def test_source_regex_plan_rejected_before_gate_awaiting(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """The 3.10 shape through the REAL path: framing completes carrying a
+        source-regex plan → the sequence must fail before the operator is
+        asked to review, and no implementation run may be created."""
+        cycle = self._cycle_with_gate()
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run1 = __import__("dataclasses").replace(run1, artifact_refs=("art_plan",))
+        mock_registry.get_run.return_value = run1
+        executor._artifact_vault.retrieve.return_value = self._plan_ref(_PLAN_YAML_SOURCE_REGEX_WL)
+
+        with pytest.raises(Exception) as exc_info:
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        assert "RunDetailView.jsx" in str(exc_info.value)
+        assert "#464" in str(exc_info.value)
+        mock_registry.create_run.assert_not_called()
+        emit_types = _emit_types(mock_event_bus)
+        assert EventType.WORKLOAD_GATE_AWAITING not in emit_types
+
+    async def test_document_regex_plan_gates_normally(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """The allowed shape must still reach the gate and advance on
+        approval — the guard adds rejections, never blocks good plans."""
+        cycle = self._cycle_with_gate()
+        mock_registry.get_cycle.return_value = cycle
+
+        doc_plan = _PLAN_YAML_SOURCE_REGEX_WL.replace(
+            "file: frontend/src/views/RunDetailView.jsx, pattern: 'apiFetch\\('",
+            "file: qa_handoff.md, pattern: '## How to Test'",
+        )
+        import dataclasses
+
+        run1 = dataclasses.replace(
+            _make_run("run_001", 1, "completed", "framing"), artifact_refs=("art_plan",)
+        )
+        run1_approved = dataclasses.replace(
+            run1,
+            gate_decisions=(_gate_decision("progress_plan_review", GateDecisionValue.APPROVED),),
+        )
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+
+        mock_registry.get_run.side_effect = [
+            run1,  # status check after execute_run
+            run1,  # _is_cancelled in _poll
+            run1_approved,  # _poll finds approval
+            run2,  # status check after second execute_run
+        ]
+        mock_registry.list_runs.side_effect = [[run1_approved], [run1_approved]]
+        mock_registry.create_run.side_effect = lambda r: r
+        executor._artifact_vault.retrieve.return_value = self._plan_ref(doc_plan)
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        assert executor.execute_run.await_count == 2
+        mock_registry.create_run.assert_called_once()

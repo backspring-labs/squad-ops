@@ -671,3 +671,71 @@ class TestCommandSafelistLint:
             ImplementationPlan.from_yaml(
                 _plan_yaml_with_command('["python", 1]'), enforce_command_safelist=True
             )
+
+
+class TestValidateCriteriaScope:
+    """#464: regex_match on a source file is a style lottery — 3.9/3.10 both
+    burned on framing-invented criteria unwinnable by correct code. The scope
+    validator rejects them at the plan level so the gate fails in seconds
+    instead of the run failing after an hour of correction budget."""
+
+    def _plan(self, criteria_yaml: str) -> ImplementationPlan:
+        return ImplementationPlan.from_yaml(f"""\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Frontend view"
+    description: "Fill stubs"
+    expected_artifacts: ["frontend/src/views/RunDetailView.jsx"]
+    depends_on: []
+    acceptance_criteria:
+{criteria_yaml}
+summary:
+  total_dev_tasks: 1
+  total_qa_tasks: 0
+  total_tasks: 1
+  estimated_layers: [frontend]
+""")
+
+    def test_regex_on_source_file_rejected(self):
+        """The 3.10 reproduction: quote-delimited regex against a .jsx file."""
+        plan = self._plan(
+            "      - {check: regex_match, file: frontend/src/views/RunDetailView.jsx, "
+            "pattern: 'apiFetch\\(', count_min: 1}"
+        )
+        errors = plan.validate_criteria_scope()
+        assert len(errors) == 1
+        assert "RunDetailView.jsx" in errors[0]
+        assert "#464" in errors[0]
+
+    def test_regex_on_document_allowed(self):
+        plan = self._plan(
+            "      - {check: regex_match, file: qa_handoff.md, "
+            "pattern: '## How to Test', count_min: 1}"
+        )
+        assert plan.validate_criteria_scope() == []
+
+    def test_non_regex_source_checks_and_prose_untouched(self):
+        """Only regex_match is scoped: AST checks on source files and prose
+        criteria must not be rejected."""
+        plan = self._plan(
+            "      - {check: import_present, file: frontend/src/views/RunDetailView.jsx, "
+            "module: react}\n"
+            "      - Renders the participant list"
+        )
+        assert plan.validate_criteria_scope() == []
+
+    def test_taught_example_is_scope_legal(self):
+        """Guard: the regex_match exemplar rendered to proposers must satisfy
+        the scope rule — teaching a forbidden shape re-creates the lottery."""
+        from squadops.cycles.acceptance_check_spec import (
+            CHECK_SPECS,
+            regex_target_is_document,
+        )
+
+        assert regex_target_is_document(CHECK_SPECS["regex_match"].example["file"])

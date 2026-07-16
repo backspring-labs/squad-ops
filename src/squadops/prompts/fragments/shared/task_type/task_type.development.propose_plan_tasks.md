@@ -67,7 +67,11 @@ informational only. The user prompt lists the vocabulary with examples
 
 - `field_present` for model fields
 - `import_present` for module/symbol wiring
-- `regex_match` for code pattern presence
+- `regex_match` for DOCUMENT artifacts only (`.md`/`.txt`/`.rst`, e.g.
+  handoff section headers). Never author a regex against a source file —
+  it prescribes stylistic choices (quote style, identifier names) the
+  implementation is free to make differently, and plan validation
+  REJECTS it. Verify source files with the AST/behavioral checks below.
 - `endpoint_defined` for HTTP route presence
 - `command_exit_zero` for static checkers (argv-only safelist). The command
   runs in the container of the role that executes the task — only author

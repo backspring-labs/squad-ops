@@ -151,6 +151,20 @@ def argv_matches_safelist(argv: list[str]) -> bool:
     return any(pat.matcher(argv) for pat in COMMAND_SAFELIST)
 
 
+# #464: regex_match may only target document artifacts. Regexes against
+# source files prescribe another roll's stylistic choices (quote style,
+# identifier names) and have twice produced criteria unwinnable by correct
+# code; source files are verifiable by the style-immune checks
+# (endpoint_defined / import_present / command_exit_zero) and the
+# behavioral required checks (tests_pass / frontend_build).
+REGEX_DOCUMENT_SUFFIXES: tuple[str, ...] = (".md", ".txt", ".rst")
+
+
+def regex_target_is_document(file: str) -> bool:
+    """True when a regex_match target is a document artifact (#464)."""
+    return isinstance(file, str) and file.lower().endswith(REGEX_DOCUMENT_SUFFIXES)
+
+
 def command_safelist_names() -> tuple[str, ...]:
     """Human-readable safelisted command forms, for error messages and prompts."""
     return tuple(pat.name for pat in COMMAND_SAFELIST)
@@ -200,7 +214,9 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         # pattern carries a backslash escape on purpose: the rendered example
         # must teach proposers the single-quote style for real regexes, since
         # double-quoting \w / \. is exactly what broke YAML parsing in #182's wake.
-        example={"file": "tests/test_runs.py", "pattern": r"def test_\w+", "count_min": 5},
+        # The example targets a DOCUMENT on purpose (#464): regex on source
+        # files is rejected at plan validation — teach the allowed shape.
+        example={"file": "qa_handoff.md", "pattern": r"## How to \w+", "count_min": 2},
     ),
     "count_at_least": CheckSpec(
         name="count_at_least",

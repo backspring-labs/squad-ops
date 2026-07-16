@@ -35,7 +35,11 @@ the universe; anything outside it errors at evaluation time. Also reject
 any ``command_exit_zero`` whose binary is absent from the executing
 role's container (Node tooling lives ONLY in the QA container; dev-role
 tasks may use Python tooling only) — such a check is skipped at
-evaluation time and verifies nothing.
+evaluation time and verifies nothing. Also reject any ``regex_match``
+targeting a source file (allowed only on document artifacts —
+``.md``/``.txt``/``.rst``): source-file regexes prescribe stylistic
+choices the implementation is free to make differently, and plan
+validation rejects the whole plan for them.
 
 ### Identifier discipline
 

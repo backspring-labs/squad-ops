@@ -125,5 +125,5 @@ def test_regex_example_demonstrates_a_backslash_in_single_quotes():
     quotes — that is what teaches proposers the safe style. A backslash-free or
     double-quoted exemplar would silently re-teach the broken pattern."""
     rendered = render_typed_acceptance_vocabulary()
-    assert r"pattern: 'def test_\w+'" in rendered
-    assert r'pattern: "def test_\w+"' not in rendered
+    assert r"pattern: '## How to \w+'" in rendered
+    assert r'pattern: "## How to \w+"' not in rendered
