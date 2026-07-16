@@ -549,3 +549,202 @@ class TestAcceptPatch:
         )
         assert action == "continue"
         assert holder == {}
+
+
+class TestAcceptPatchRetest:
+    """#456: a qa.test-class patch (failed outputs carry ``test_result``) must
+    re-execute the repaired suite before acceptance — tests_pass is synthesized
+    from test_result, so accepting with the stale one records the pre-repair
+    failure as the check's final state (run_8c14a430ad1c false-red)."""
+
+    def _failed_qa_result(self):
+        return TaskResult(
+            task_id="task_9",
+            status="FAILED",
+            outputs={
+                "artifacts": [
+                    {
+                        "name": "tests/test_api.py",
+                        "content": "def test_x():\n    assert 0\n",
+                        "type": "test",
+                    },
+                    {"name": "test_report.md", "content": "exit 1", "type": "test_report"},
+                ],
+                "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+                "validation_result": {"passed": False, "checks": []},
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="tests failed",
+        )
+
+    def _qa_envelope(self):
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_9",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {},
+                "artifact_contents": {"src/main.py": "def main():\n    pass\n"},
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "tests/test_api.py", "pattern": "def test_"},
+                        severity="error",
+                        description="Suite defines tests",
+                    )
+                ],
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _repair(self):
+        return [{"name": "tests/test_api.py", "content": "def test_x():\n    assert 1\n"}]
+
+    def _retest_success(self):
+        return TaskResult(
+            task_id="retest-run_001-00-qa.test",
+            status="SUCCEEDED",
+            outputs={
+                "test_result": {"executed": True, "exit_code": 0, "tests_passed": True},
+                "validation_result": {
+                    "passed": True,
+                    "checks": [{"check": "frontend_build", "passed": True}],
+                },
+            },
+        )
+
+    def _kwargs(self, cycle):
+        return {
+            "run_id": "run_001",
+            "cycle": cycle,
+            "correction_attempts": 0,
+            "prior_outputs": {},
+            "all_artifact_refs": [],
+            "stored_artifacts": [],
+            "completed_task_ids": [],
+            "plan_delta_refs": [],
+            "profile": None,
+            "flow_run_id": None,
+        }
+
+    async def test_retest_pass_accepts_with_fresh_evidence(self, executor, cycle):
+        """Bug caught (run_8c14a430ad1c): patched result keeping the stale
+        exit-1 test_result — the ledger's final tests_pass state stays failed."""
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest_success()
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._qa_envelope(),
+            self._failed_qa_result(),
+            self._repair(),
+            holder,
+            **self._kwargs(cycle),
+        )
+
+        assert action == "accept_patch"
+        corrected = holder["patched_result"]
+        # Fresh behavioral evidence supersedes the stale failure.
+        assert corrected.outputs["test_result"]["tests_passed"] is True
+        assert corrected.outputs["test_result"]["exit_code"] == 0
+        # Retest rows (frontend_build) ride along with the typed rows.
+        checks = corrected.outputs["validation_result"]["checks"]
+        assert any(c.get("check") == "frontend_build" for c in checks)
+        # The retest received the patched (overlaid) suite, not the broken one.
+        call = executor._correction_runner.reexecute_repaired_suite.await_args
+        patched = call.args[3]
+        by_name = {a["name"]: a["content"] for a in patched}
+        assert "assert 1" in by_name["tests/test_api.py"]
+
+    async def test_retest_failure_falls_back_to_continue(self, executor, cycle):
+        """Bug caught: accepting a repair whose suite still fails when
+        re-executed — typed rows alone said yes."""
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=TaskResult(
+                task_id="retest",
+                status="FAILED",
+                outputs={"test_result": {"executed": True, "exit_code": 1, "tests_passed": False}},
+                error="still failing",
+            )
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._qa_envelope(),
+            self._failed_qa_result(),
+            self._repair(),
+            holder,
+            **self._kwargs(cycle),
+        )
+        assert action == "continue"
+        assert "patched_result" not in holder
+
+    async def test_missing_retest_context_never_accepts_stale_evidence(self, executor):
+        """Bug caught: a legacy call shape (no cycle) silently accepting with
+        the stale test_result — conservative fallback is re-dispatch."""
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._qa_envelope(), self._failed_qa_result(), self._repair(), holder
+        )
+        assert action == "continue"
+        assert holder == {}
+
+    async def test_non_behavioral_patch_skips_retest(self, executor, cycle):
+        """Guard: tasks without test_result (builder) accept on typed rows
+        alone — no retest dispatch, behavior unchanged from #389."""
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock()
+        envelope = TaskEnvelope(
+            task_id="task_5",
+            agent_id="bob",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="builder.assemble",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {},
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "qa_handoff.md", "pattern": "## How to Test"},
+                        severity="error",
+                        description="Contains How to Test section",
+                    )
+                ],
+            },
+            metadata={"role": "builder"},
+        )
+        failed = TaskResult(
+            task_id="task_5",
+            status="FAILED",
+            outputs={
+                "artifacts": [{"name": "qa_handoff.md", "content": "# QA\n"}],
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="acceptance failed",
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            envelope,
+            failed,
+            [{"name": "qa_handoff.md", "content": "# QA\n## How to Test\nok\n"}],
+            holder,
+            **self._kwargs(cycle),
+        )
+        assert action == "accept_patch"
+        executor._correction_runner.reexecute_repaired_suite.assert_not_awaited()

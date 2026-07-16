@@ -296,6 +296,153 @@ class QATestHandler(_CycleTaskHandler):
         )
         return "".join(parts)
 
+    async def _handle_retest(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        capability: Any,
+        start_time: float,
+        retest_files: list[dict[str, Any]],
+    ) -> HandlerResult:
+        """Execute-only mode (#456): re-run a repaired test suite as-is.
+
+        The correction loop's patch verification covers typed criteria only;
+        ``tests_pass`` evidence is behavioral and must come from an actual
+        execution of the repaired suite in this (the QA agent's) environment.
+        No LLM is involved — the suite is provided in ``retest_files``, the
+        source workspace comes from ``artifact_contents`` exactly as the
+        original run saw it, and success is exactly "the suite passed".
+        """
+        del context  # no LLM/prompt ports in execute-only mode
+
+        extracted = []
+        for f in retest_files:
+            if not isinstance(f, dict):
+                continue
+            filename = f.get("filename") or f.get("name") or f.get("path")
+            if isinstance(filename, str) and filename:
+                extracted.append({"filename": filename, "content": f.get("content", "")})
+        if not extracted:
+            return self._fail_result(start_time, inputs, "retest_files contained no usable files")
+
+        sources = self._get_source_artifacts(inputs)
+        test_result, test_report_artifact = await self._run_test_suite(
+            capability, sources, extracted
+        )
+
+        artifacts = [
+            {
+                "name": f["filename"],
+                "content": f["content"],
+                "media_type": _classify_file(f["filename"])[1],
+                "type": "test",
+            }
+            for f in extracted
+        ]
+        artifacts.append(test_report_artifact)
+
+        checks: list[dict[str, Any]] = []
+        missing: list[str] = []
+        passed = bool(test_result.executed and test_result.tests_passed)
+        if not passed:
+            if test_result.executed:
+                detail = f"tests_failed:exit_{test_result.exit_code}"
+                summary = f"Repaired suite still fails (exit {test_result.exit_code})"
+            else:
+                reason = test_result.error or "runner_error"
+                detail = f"tests_not_executed:{reason}"
+                summary = f"Repaired suite not executed: {reason}"
+            checks.append(
+                {
+                    "check": "tests_pass",
+                    "executed": test_result.executed,
+                    "exit_code": test_result.exit_code,
+                    "tests_passed": test_result.tests_passed,
+                    "passed": False,
+                }
+            )
+            missing.append(detail)
+        else:
+            summary = "Repaired suite passed"
+
+        # #276 guard holds on the retest path too: a repair must not smuggle a
+        # stub-fallback past the correction loop.
+        from squadops.capabilities.handlers.stub_detection import detect_stub_fallback_tests
+
+        stub_offenders = detect_stub_fallback_tests(artifacts)
+        if stub_offenders:
+            passed = False
+            checks.append(
+                {
+                    "check": "no_stub_fallback_tests",
+                    "offenders": stub_offenders,
+                    "passed": False,
+                }
+            )
+            missing.append(f"stub_fallback_tests:{','.join(stub_offenders)}")
+            summary = f"{summary}; repaired test masks the entrypoint: {', '.join(stub_offenders)}"
+
+        passed_count = sum(1 for c in checks if c.get("passed"))
+        outputs: dict[str, Any] = {
+            "summary": f"[qa] Re-executed repaired suite ({len(extracted)} file(s)): {summary}",
+            "role": self._role,
+            "artifacts": artifacts,
+            "test_result": {
+                "executed": test_result.executed,
+                "exit_code": test_result.exit_code,
+                "tests_passed": test_result.tests_passed,
+                "test_file_count": test_result.test_file_count,
+                "source_file_count": test_result.source_file_count,
+                "summary": test_result.summary,
+            },
+            "validation_result": {
+                "passed": passed,
+                "checks": checks,
+                "missing_components": missing,
+                "coverage_ratio": (passed_count / len(checks)) if checks else 1.0,
+                "summary": summary,
+            },
+        }
+
+        if passed:
+            from squadops.cycles.task_outcome import TaskOutcome
+
+            outputs["outcome_class"] = TaskOutcome.SUCCESS
+        else:
+            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+            outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
+            outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
+
+        # #407: frontend build is first-class evidence on this path too.
+        fb = test_result.frontend_build
+        if fb is not None:
+            if fb.ran:
+                fb_row: dict[str, Any] = {"check": CHECK_FRONTEND_BUILD, "passed": fb.ok}
+            else:
+                fb_row = {
+                    "check": CHECK_FRONTEND_BUILD,
+                    "executed": False,
+                    "reason": _frontend_skip_reason(fb.error),
+                }
+            outputs["validation_result"]["checks"].append(fb_row)
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            capability_id=self._capability_id,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+            metadata={"retest": True},
+        )
+        return HandlerResult(
+            success=passed,
+            outputs=outputs,
+            _evidence=evidence,
+            error=None if passed else summary,
+        )
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -315,6 +462,13 @@ class QATestHandler(_CycleTaskHandler):
             capability = get_capability(capability_name)
         except ValueError as exc:
             return self._fail_result(start_time, inputs, str(exc))
+
+        # #456 execute-only mode: the correction loop re-runs a repaired suite
+        # verbatim — no generation, no LLM. The verdict is the execution.
+        if inputs.get("retest_files"):
+            return await self._handle_retest(
+                context, inputs, capability, start_time, inputs["retest_files"]
+            )
 
         # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
         if inputs.get("subtask_focus") is not None:
