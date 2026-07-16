@@ -532,6 +532,37 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 if decision.decision == GateDecisionValue.REJECTED:
                     break  # Run stays COMPLETED; rejection in gate_decisions
 
+                if decision.decision == GateDecisionValue.RETURNED_FOR_REVISION:
+                    # #466: revision is NOT an approval — do not advance the
+                    # sequence with the un-revised plan (the 3.10 false-approve).
+                    # Parity with the mid-run gate path: revision requires
+                    # manual retry-run creation; the decision + notes stay in
+                    # gate_decisions for whoever creates it.
+                    logger.info(
+                        "Gate %r returned_for_revision on run %s: stopping the "
+                        "workload sequence; revision requires manual retry-run "
+                        "creation (automatic retry-in-same-phase is not "
+                        "implemented in this version)",
+                        gate_name,
+                        current_run_id,
+                    )
+                    break
+
+                if decision.decision not in (
+                    GateDecisionValue.APPROVED,
+                    GateDecisionValue.APPROVED_WITH_REFINEMENTS,
+                ):
+                    # #466: exhaustive dispatch — an unknown/future decision
+                    # value must never silently act as an approval.
+                    logger.warning(
+                        "Gate %r on run %s carries unrecognized decision %r: "
+                        "stopping the workload sequence",
+                        gate_name,
+                        current_run_id,
+                        decision.decision,
+                    )
+                    break
+
                 # Write refinement notes as artifact (D10)
                 if (
                     decision.decision == GateDecisionValue.APPROVED_WITH_REFINEMENTS
