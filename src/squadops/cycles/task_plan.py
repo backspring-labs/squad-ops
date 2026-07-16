@@ -522,6 +522,12 @@ def _replace_build_steps_with_plan(
             f"Plan validation failed against profile '{profile.profile_id}': " + "; ".join(errors)
         )
 
+    # #464 dispatch-time net: fires for every plan-driven run regardless of
+    # gate shape — the gate-time checks only ever add an earlier rejection.
+    scope_errors = plan.validate_criteria_scope()
+    if scope_errors:
+        raise CycleError("Plan validation failed (criteria scope): " + "; ".join(scope_errors))
+
     # Remove static build steps, keep everything else (planning steps)
     static_build_types = {s[0] for s in BUILD_TASK_STEPS} | {
         s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS

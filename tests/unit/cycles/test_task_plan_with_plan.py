@@ -303,3 +303,23 @@ class TestGenerateTaskPlanWithManifest:
         # Only planning steps, no build steps at all
         assert len(envelopes) == 5
         assert all("subtask_focus" not in e.inputs for e in envelopes)
+
+
+class TestCriteriaScopeDispatchNet:
+    """#464 final net: generate_task_plan rejects a source-regex plan for
+    EVERY run shape — gate-time checks only ever add earlier rejections."""
+
+    def test_source_regex_plan_fails_at_dispatch(self):
+        from squadops.cycles.models import CycleError
+
+        manifest = ImplementationPlan.from_yaml(
+            MANIFEST_YAML.replace(
+                'acceptance_criteria: ["Models exist"]',
+                "acceptance_criteria: [{check: regex_match, "
+                "file: backend/models.py, pattern: 'class \\w+', count_min: 1}]",
+            )
+        )
+        with pytest.raises(CycleError) as exc_info:
+            generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=manifest)
+        assert "criteria scope" in str(exc_info.value)
+        assert "backend/models.py" in str(exc_info.value)

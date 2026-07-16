@@ -516,6 +516,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # Inter-workload gate
             gate_name = workload_entry.get("gate")
             if gate_name and gate_name != "auto":
+                # #464: the inter-workload gate is the plan gate our cycle
+                # shapes actually traverse (the mid-run _handle_gate path only
+                # fires for task_flow_policy gates) — validate the authored
+                # plan BEFORE asking the operator to review it. A doomed plan
+                # gets a rejection, not a review request.
+                await self._reject_invalid_plan_before_workload_gate(run, cycle, gate_name)
                 self._cycle_event_bus.emit(
                     EventType.WORKLOAD_GATE_AWAITING,
                     entity_type="workload",
@@ -1825,6 +1831,55 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                             )
 
             await asyncio.sleep(poll_interval)
+
+    async def _reject_invalid_plan_before_workload_gate(
+        self,
+        run: Any,
+        cycle: Cycle,
+        gate_name: str,
+    ) -> None:
+        """#464: criteria-scope validation at the inter-workload plan gate.
+
+        This is the gate path multi-workload cycles actually traverse (the
+        framing run COMPLETES, then the sequence gates) — the mid-run
+        ``_reject_unsatisfiable_plan_at_gate`` never fires here. Searches the
+        completed run's artifacts for the authored plan and rejects the
+        sequence before the operator is asked to review a mechanically doomed
+        plan. Role validation is not duplicated at this seam: it keeps its
+        dispatch-time net in ``generate_task_plan``, which fails the next
+        workload within seconds. Absent or unreadable plans defer to that same
+        net — this check only ever adds an earlier rejection, never a pass.
+        """
+        if not cycle.applied_defaults.get("implementation_plan", False):
+            return
+
+        from squadops.cycles.implementation_plan import ImplementationPlan
+
+        for ref_id in tuple(run.artifact_refs or ()):
+            try:
+                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
+            except Exception:
+                continue
+            if ref.filename == "implementation_plan.yaml" or (
+                getattr(ref, "artifact_type", None) == "control_implementation_plan"
+            ):
+                try:
+                    plan = ImplementationPlan.from_yaml(content_bytes.decode(errors="replace"))
+                except Exception:
+                    logger.warning(
+                        "Plan artifact %s unreadable before gate %r — deferring to the "
+                        "dispatch-time validation net",
+                        ref_id,
+                        gate_name,
+                        exc_info=True,
+                    )
+                    return
+                errors = plan.validate_criteria_scope()
+                if errors:
+                    raise _ExecutionError(
+                        f"Plan rejected before gate {gate_name!r}: " + "; ".join(errors)
+                    )
+                return
 
     async def _reject_unsatisfiable_plan_at_gate(
         self,
