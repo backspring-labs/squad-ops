@@ -144,3 +144,43 @@ async def test_pytest_build_validation_clean_backend_stays_green(monkeypatch):
     )
     assert result.tests_passed is True
     assert result.exit_code == 0
+
+
+# --- #469: package-qualified imports ------------------------------------------
+
+
+async def test_package_relative_imports_ok():
+    """The 3.12 reproduction: a package whose modules use relative imports
+    BEFORE any third-party import. Loading them under fake top-level names
+    raised "no known parent package" and failed a run whose pytest suite had
+    passed 4/4 three times."""
+    result = await run_backend_import_check(
+        [
+            _rec("backend/__init__.py", ""),
+            _rec("backend/errors.py", "class ApiError(Exception):\n    pass\n"),
+            _rec(
+                "backend/routes.py",
+                "from .errors import ApiError\n\nrouter = object()\n",
+            ),
+            _rec(
+                "backend/main.py",
+                "from .routes import router\n\napp = router\n",
+            ),
+        ]
+    )
+    assert result.ran is True
+    assert result.ok is True
+
+
+async def test_package_member_nameerror_still_fails():
+    """Guard: package-qualified importing must not skip real body-execution
+    bugs — the canonical #276 NameError inside a package still blocks."""
+    result = await run_backend_import_check(
+        [
+            _rec("backend/__init__.py", ""),
+            _rec("backend/models.py", "class Run(BaseModel):\n    pass\n"),
+        ]
+    )
+    assert result.ran is True
+    assert result.ok is False
+    assert "NameError" in (result.error or "")
