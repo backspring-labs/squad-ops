@@ -36,7 +36,14 @@ from adapters.cycles.task_naming import build_task_name
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.models import ArtifactRef, Cycle, GateDecisionValue, Run, RunStatus
+from squadops.cycles.models import (
+    ArtifactRef,
+    Cycle,
+    GateDecision,
+    GateDecisionValue,
+    Run,
+    RunStatus,
+)
 from squadops.cycles.naming import flow_run_name
 from squadops.cycles.patch_verification import (
     PATCH_PASSED,
@@ -57,7 +64,7 @@ from squadops.telemetry.models import CorrelationContext
 
 if TYPE_CHECKING:
     from adapters.cycles.reply_router import ReplyRouter
-    from squadops.cycles.models import GateDecision, SquadProfile
+    from squadops.cycles.models import SquadProfile
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
@@ -521,7 +528,43 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 # fires for task_flow_policy gates) — validate the authored
                 # plan BEFORE asking the operator to review it. A doomed plan
                 # gets a rejection, not a review request.
-                await self._reject_invalid_plan_before_workload_gate(run, cycle, gate_name)
+                #
+                # #473: mechanical rejection is congruent with a human
+                # --reject: a REJECTED gate decision is recorded (visible in
+                # `runs show` / gate_decisions), GATE_DECIDED is emitted, and
+                # the sequence stops cleanly — never a silent orchestrator
+                # death the operator can only diagnose by re-reviewing the
+                # manifest by hand (the 3.13 stall).
+                plan_errors = await self._reject_invalid_plan_before_workload_gate(
+                    run, cycle, gate_name
+                )
+                if plan_errors:
+                    rejection = GateDecision(
+                        gate_name=gate_name,
+                        decision=GateDecisionValue.REJECTED.value,
+                        decided_by="system:plan_validation",
+                        decided_at=datetime.now(UTC),
+                        notes="; ".join(plan_errors),
+                    )
+                    await self._cycle_registry.record_gate_decision(current_run_id, rejection)
+                    self._cycle_event_bus.emit(
+                        EventType.GATE_DECIDED,
+                        entity_type="run",
+                        entity_id=current_run_id,
+                        context={"cycle_id": cycle_id, "run_id": current_run_id},
+                        payload={
+                            "gate_name": gate_name,
+                            "decision": GateDecisionValue.REJECTED.value,
+                            "decided_by": "system:plan_validation",
+                        },
+                    )
+                    logger.error(
+                        "Plan auto-rejected at gate %r on run %s: %s",
+                        gate_name,
+                        current_run_id,
+                        "; ".join(plan_errors),
+                    )
+                    break
                 self._cycle_event_bus.emit(
                     EventType.WORKLOAD_GATE_AWAITING,
                     entity_type="workload",
@@ -1971,21 +2014,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         run: Any,
         cycle: Cycle,
         gate_name: str,
-    ) -> None:
+    ) -> list[str]:
         """#464: criteria-scope validation at the inter-workload plan gate.
 
         This is the gate path multi-workload cycles actually traverse (the
         framing run COMPLETES, then the sequence gates) — the mid-run
         ``_reject_unsatisfiable_plan_at_gate`` never fires here. Searches the
-        completed run's artifacts for the authored plan and rejects the
-        sequence before the operator is asked to review a mechanically doomed
-        plan. Role validation is not duplicated at this seam: it keeps its
-        dispatch-time net in ``generate_task_plan``, which fails the next
-        workload within seconds. Absent or unreadable plans defer to that same
-        net — this check only ever adds an earlier rejection, never a pass.
+        completed run's artifacts for the authored plan; validation errors
+        are RETURNED (#473) so the caller records a system REJECTED gate
+        decision instead of the orchestrator dying silently (the 3.13
+        stall). Role validation is not duplicated at this seam: it keeps its
+        dispatch-time net in ``generate_task_plan``. Absent or unreadable
+        plans defer to that same net — this check only ever adds an earlier
+        rejection, never a pass.
         """
         if not cycle.applied_defaults.get("implementation_plan", False):
-            return
+            return []
 
         from squadops.cycles.implementation_plan import ImplementationPlan
 
@@ -2007,13 +2051,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         gate_name,
                         exc_info=True,
                     )
-                    return
-                errors = plan.validate_criteria_scope()
-                if errors:
-                    raise _ExecutionError(
-                        f"Plan rejected before gate {gate_name!r}: " + "; ".join(errors)
-                    )
-                return
+                    return []
+                return plan.validate_criteria_scope()
+        return []
 
     async def _reject_unsatisfiable_plan_at_gate(
         self,
