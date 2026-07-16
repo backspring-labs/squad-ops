@@ -609,6 +609,14 @@ class CommandExitZeroCheck(BaseCheck):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
+        except FileNotFoundError as exc:
+            # #462: a missing binary is an environment gap, not an app defect —
+            # the evaluating role's container simply lacks the tool (e.g. `node`
+            # in the dev container, #306). RC-9 skipped: never blocks the task,
+            # never counts as executed evidence, surfaces with its reason —
+            # an unrunnable check must not fail correct code or burn the
+            # shared correction budget (attempt 3.9, cyc_323a1e35bee5).
+            return CheckOutcome.skipped(reason="missing_tooling", command=argv[0], detail=str(exc))
         except (OSError, ValueError) as exc:
             return CheckOutcome.error(reason="command_spawn_failed", detail=str(exc))
 

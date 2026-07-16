@@ -72,7 +72,10 @@ Prefer **typed checks** for qa assertions:
   `pattern: "def test_", count_min: N`)
 - `count_at_least` for test-file/spec-file counts via glob
 - `command_exit_zero` for invoking a test runner (argv-only safelist:
-  `python -m py_compile`, `ruff check`, `tsc --noEmit`, etc.)
+  `python -m py_compile`, `ruff check`, `tsc --noEmit`, etc.). The command
+  runs in the container of the role that executes the task — only author
+  commands whose binary exists there. Node tooling (`node`, `npm`, `npx`)
+  exists only in the QA container; dev-role tasks get Python tooling only.
 - `import_present` to verify a test file imports the production module
   it should be exercising
 

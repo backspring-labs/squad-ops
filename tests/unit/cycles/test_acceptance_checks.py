@@ -706,6 +706,50 @@ async def test_absolute_path_all_path_checks_error(check_name, params, tmp_path)
     assert result.reason == "path_escapes_workspace"
 
 
+class TestCommandMissingTooling:
+    """#462: a safelisted command whose binary is absent from the evaluating
+    container (node --check on a dev task — Node is qa-only, #306) must skip,
+    not error: an error blocks the task, fails correct code, and burns the
+    run's shared correction budget on a check that can never pass there
+    (attempt 3.9 lost all 3 corrections to it)."""
+
+    async def test_missing_binary_skips_with_reason(self, tmp_path, monkeypatch):
+        (tmp_path / "view.jsx").write_text("export default 1\n")
+
+        async def _no_such_binary(*_a, **_k):
+            raise FileNotFoundError(2, "No such file or directory: 'node'")
+
+        monkeypatch.setattr(
+            "squadops.cycles.acceptance_checks.asyncio.create_subprocess_exec",
+            _no_such_binary,
+        )
+        result = await get_check("command_exit_zero").evaluate(
+            {"argv": ["node", "--check", "view.jsx"]}, tmp_path
+        )
+
+        assert result.status == "skipped"
+        assert result.reason == "missing_tooling"
+        assert result.actual["command"] == "node"
+
+    async def test_other_spawn_failures_still_error(self, tmp_path, monkeypatch):
+        """Guard: only the missing-binary case is an environment gap; a
+        permission failure is an evaluator fault and must stay blocking."""
+
+        async def _denied(*_a, **_k):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(
+            "squadops.cycles.acceptance_checks.asyncio.create_subprocess_exec",
+            _denied,
+        )
+        result = await get_check("command_exit_zero").evaluate(
+            {"argv": ["node", "--check", "view.jsx"]}, tmp_path
+        )
+
+        assert result.status == "error"
+        assert result.reason == "command_spawn_failed"
+
+
 class TestImportPresentDotlessLeniency:
     """#441: a dotless module spec matches a relative import of the same name.
 
