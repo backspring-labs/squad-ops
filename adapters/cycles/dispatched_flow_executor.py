@@ -732,12 +732,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         "builder.assemble": {
             "by_producing_task": ["development.develop"],
             "by_type": ["source", "config"],
+            # #443: provenance-less documents are the seeded scaffold (frozen
+            # fill-contract files) — without them assembly packages a partial app.
+            "by_type_fallback": ["document"],
         },
         "qa.test": {
             # SIP-0086: include development.develop for manifest-driven QA
             # subtasks that need to see all prior build artifacts
             "by_producing_task": ["qa.validate", "builder.assemble", "development.develop"],
             "by_type": ["source", "config"],
+            # #443: same fallback development.develop already has — the seeded
+            # scaffold must reach verification or frontend_build/tests_pass run
+            # against a workspace missing package.json and the backend modules.
+            "by_type_fallback": ["document"],
         },
     }
 
