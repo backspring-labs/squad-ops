@@ -280,3 +280,78 @@ class TestRunBuildValidationSurfacesFrontend:
 
         result = await tr.run_build_validation(TEST_FRAMEWORK_PYTEST, [], [])
         assert result.frontend_build is None
+
+
+# ---------------------------------------------------------------------------
+# #454 — package dirs stay off PYTHONPATH (relative-import scaffolds)
+# ---------------------------------------------------------------------------
+
+
+class TestPackageRelativeImports:
+    """#454: the fill-contract scaffold is a package (backend/__init__.py) whose
+    modules use relative imports. Putting backend/ itself on PYTHONPATH made
+    those modules importable as top-level, where `from .errors import X` dies —
+    run_33640d896265's suite passed 35/35 yet exited 1 on exactly this."""
+
+    _PKG_SOURCES = [
+        {"path": "backend/__init__.py", "content": ""},
+        {"path": "backend/errors.py", "content": "class ApiError(Exception):\n    pass\n"},
+        {
+            "path": "backend/routes.py",
+            "content": "from .errors import ApiError\n\ndef ping():\n    return 'ok'\n",
+        },
+    ]
+
+    async def test_package_relative_scaffold_tests_pass(self):
+        tests = [
+            {
+                "path": "tests/test_routes.py",
+                "content": (
+                    "from backend.routes import ping\n\n"
+                    "def test_ping():\n    assert ping() == 'ok'\n"
+                ),
+            },
+        ]
+        result = await run_generated_tests(self._PKG_SOURCES, tests)
+        assert result.executed is True
+        assert result.exit_code == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+        assert result.tests_passed is True
+
+    async def test_flat_layout_303_still_works(self):
+        """The #303 case this fix must not regress: no __init__.py, test uses
+        a bare `from main import app`-style import against a nested dir."""
+        sources = [{"path": "backend/main.py", "content": "app = 'the-app'\n"}]
+        tests = [
+            {
+                "path": "test_main.py",
+                "content": "from main import app\n\ndef test_app():\n    assert app == 'the-app'\n",
+            },
+        ]
+        result = await run_generated_tests(sources, tests)
+        assert result.executed is True
+        assert result.exit_code == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+
+    def test_pythonpath_excludes_package_dirs(self, tmp_path):
+        from squadops.capabilities.handlers.test_runner import (
+            _materialize_files,
+            _source_dir_pythonpath,
+        )
+
+        ws = str(tmp_path)
+        _materialize_files(ws, self._PKG_SOURCES)
+        path = _source_dir_pythonpath(ws, self._PKG_SOURCES)
+        parts = path.split(os.pathsep)
+        assert ws in parts
+        assert str(tmp_path / "backend") not in parts  # package dir stays off
+
+    def test_pythonpath_keeps_non_package_dirs(self, tmp_path):
+        from squadops.capabilities.handlers.test_runner import (
+            _materialize_files,
+            _source_dir_pythonpath,
+        )
+
+        sources = [{"path": "backend/main.py", "content": "x = 1\n"}]
+        ws = str(tmp_path)
+        _materialize_files(ws, sources)
+        path = _source_dir_pythonpath(ws, sources)
+        assert str(tmp_path / "backend") in path.split(os.pathsep)  # #303 preserved
