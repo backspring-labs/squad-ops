@@ -357,19 +357,43 @@ class CorrectionRunner:
             elif task_type == "governance.correction_decision":
                 decision_outputs = step_outputs
 
-        # 4. Read correction_path
-        correction_path = decision_outputs.get("correction_path", "abort")
+        # 4. Read correction_path — bounded by the deterministic policy guard
+        # (#447): `continue` may not discard a required check that executed
+        # and failed while this chain's repair slot is unspent. The model's
+        # original rationale stays intact in the decision artifact; the
+        # override is disclosed in the event payload below.
+        from squadops.cycles.correction_policy import resolve_correction_path
+
+        resolution = resolve_correction_path(
+            decision_outputs.get("correction_path", "abort"),
+            failure_evidence,
+            cycle.applied_defaults,
+        )
+        correction_path = resolution.path
+        if resolution.overridden_from:
+            logger.warning(
+                "correction_policy_override: %s -> patch (executed-failed required checks: %s)",
+                resolution.overridden_from,
+                ", ".join(resolution.failed_required_checks),
+            )
 
         # 5. Emit CORRECTION_DECIDED
+        decided_payload: dict[str, Any] = {
+            "correction_path": correction_path,
+            "decision_rationale": decision_outputs.get("decision_rationale", ""),
+        }
+        if resolution.overridden_from:
+            decided_payload["policy_override"] = {
+                "from": resolution.overridden_from,
+                "reason": "executed_failed_required_checks",
+                "checks": list(resolution.failed_required_checks),
+            }
         self._event_bus.emit(
             EventType.CORRECTION_DECIDED,
             entity_type="run",
             entity_id=run_id,
             context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-            payload={
-                "correction_path": correction_path,
-                "decision_rationale": decision_outputs.get("decision_rationale", ""),
-            },
+            payload=decided_payload,
         )
 
         # 6. Store plan delta as artifact
