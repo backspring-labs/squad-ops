@@ -68,11 +68,11 @@ Each task you propose must:
 
 Prefer **typed checks** for qa assertions:
 
-- `regex_match` for test-function presence (e.g.,
-  `pattern: "def test_", count_min: N`) — DOCUMENT artifacts
-  (`.md`/`.txt`/`.rst`) only; a regex against a source file prescribes
-  stylistic choices and is REJECTED by plan validation. Test-file
-  behavior is verified by executing the suite, not by pattern-matching it.
+- `regex_match` for DOCUMENT artifacts only (`.md`/`.txt`/`.rst` — e.g.
+  `file: qa_handoff.md`, `pattern: "## How to Test"`). NEVER against a
+  source or test file — that prescribes stylistic choices and is REJECTED
+  by plan validation, failing the whole plan. Test-file behavior is
+  verified by executing the suite, not by pattern-matching it.
 - `count_at_least` for test-file/spec-file counts via glob
 - `command_exit_zero` for invoking a test runner (argv-only safelist:
   `python -m py_compile`, `ruff check`, `tsc --noEmit`, etc.). The command
