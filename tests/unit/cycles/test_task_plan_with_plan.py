@@ -365,6 +365,42 @@ summary:
 """
 
 
+QA_BEFORE_ASSEMBLE_MANIFEST_YAML = """\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend routes"
+    description: "Fill route stubs"
+    expected_artifacts: ["backend/routes.py"]
+    depends_on: []
+  - task_index: 1
+    task_type: qa.test
+    role: qa
+    focus: "Backend API Tests"
+    description: "Write tests"
+    expected_artifacts: ["tests/test_api.py"]
+    depends_on: [0]
+  - task_index: 2
+    task_type: builder.assemble
+    role: builder
+    focus: "QA Handoff and Assembly"
+    description: "Assemble qa_handoff.md"
+    expected_artifacts: ["qa_handoff.md"]
+    depends_on: [1]
+summary:
+  total_dev_tasks: 1
+  total_builder_tasks: 1
+  total_qa_tasks: 1
+  total_tasks: 3
+  estimated_layers: [backend, test]
+"""
+
+
 def _make_builder_profile() -> SquadProfile:
     profile = _make_profile()
     return SquadProfile(
@@ -467,3 +503,54 @@ class TestWorkloadInvariantTail:
         types = [e.task_type for e in envelopes]
         assert len(envelopes) == 9
         assert types.count("qa.test") == 1
+
+    def test_plan_authored_qa_before_assemble_is_reordered(self):
+        """#458, the attempt-3.8 reproduction (art_d76f0a2bf05c): the manifest
+        authored qa.test BEFORE builder.assemble, so testing preceded assembly
+        and the (repaired) assembled deliverable was never tested. Ordering is
+        workload-owned: plan tasks stand in, but the tail runs in canonical
+        order regardless of authored position."""
+        manifest = ImplementationPlan.from_yaml(QA_BEFORE_ASSEMBLE_MANIFEST_YAML)
+        run = _make_run(workload_type="implementation")
+        cycle = _make_cycle(
+            applied_defaults={
+                "plan_tasks": True,
+                "build_tasks": True,
+                "build_profile": "fullstack_fastapi_react",
+            }
+        )
+        envelopes = generate_task_plan(cycle, run, _make_builder_profile(), plan=manifest)
+
+        types = [e.task_type for e in envelopes]
+        assert types == [
+            "governance.define_done",
+            "development.develop",
+            "builder.assemble",
+            "qa.test",
+        ]
+        # The plan's own tasks stand in (manifest -m namespace), not statics
+        assert all(
+            "-m00" in e.task_id for e in envelopes if e.task_type in ("builder.assemble", "qa.test")
+        )
+
+    def test_plan_qa_only_static_assemble_precedes_it(self):
+        """Second-order #458 case: plan authors qa.test but NOT builder.assemble.
+        The re-appended static assemble must still run BEFORE the plan's qa.test
+        (pre-fix it was appended after all plan tasks, i.e. after testing)."""
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)  # 3 dev + qa.test
+        run = _make_run(workload_type="implementation")
+        cycle = _make_cycle(
+            applied_defaults={
+                "plan_tasks": True,
+                "build_tasks": True,
+                "build_profile": "fullstack_fastapi_react",
+            }
+        )
+        envelopes = generate_task_plan(cycle, run, _make_builder_profile(), plan=manifest)
+
+        types = [e.task_type for e in envelopes]
+        assert types.index("builder.assemble") < types.index("qa.test")
+        assert types[-1] == "qa.test"
+        # The surviving qa task is the plan's, not the static tuple's
+        qa_env = next(e for e in envelopes if e.task_type == "qa.test")
+        assert "-m003-" in qa_env.task_id
