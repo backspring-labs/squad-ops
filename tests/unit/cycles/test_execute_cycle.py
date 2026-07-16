@@ -447,6 +447,81 @@ class TestInterWorkloadGates:
         executor.execute_run.assert_awaited_once()
         mock_registry.create_run.assert_not_called()
 
+    async def test_returned_for_revision_stops_orchestration(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """#466, the 3.10 false-approve: returned_for_revision advanced the
+        sequence and spawned implementation with the un-revised plan. Revision
+        is not an approval — no next workload Run may be created."""
+        cycle = _make_cycle(
+            workload_sequence=[
+                {"type": "framing", "gate": "progress_plan_review"},
+                {"type": "implementation"},
+            ]
+        )
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run1_with_revision = _make_run(
+            "run_001",
+            1,
+            "completed",
+            "framing",
+            gate_decisions=(
+                _gate_decision(
+                    "progress_plan_review",
+                    GateDecisionValue.RETURNED_FOR_REVISION,
+                    notes="remove three style regexes",
+                ),
+            ),
+        )
+
+        mock_registry.get_run.side_effect = [
+            run1,  # status check after execute_run
+            run1,  # _is_cancelled in _poll (not cancelled)
+            run1_with_revision,  # _poll finds the revision decision
+        ]
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        executor.execute_run.assert_awaited_once()
+        mock_registry.create_run.assert_not_called()
+
+    async def test_unrecognized_decision_never_advances(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """#466 exhaustive-dispatch guard: a decision value outside the known
+        approval set must stop the sequence, not silently act as an approval."""
+        cycle = _make_cycle(
+            workload_sequence=[
+                {"type": "framing", "gate": "progress_plan_review"},
+                {"type": "implementation"},
+            ]
+        )
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run1_with_unknown = _make_run(
+            "run_001",
+            1,
+            "completed",
+            "framing",
+            gate_decisions=(_gate_decision("progress_plan_review", "deferred"),),
+        )
+
+        mock_registry.get_run.side_effect = [
+            run1,
+            run1,
+            run1_with_unknown,
+        ]
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        executor.execute_run.assert_awaited_once()
+        mock_registry.create_run.assert_not_called()
+
     async def test_no_gate_skips_polling(self, executor, mock_registry, mock_event_bus):
         """No gate on workload entry → advances without polling."""
         cycle = _make_cycle(

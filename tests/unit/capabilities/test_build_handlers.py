@@ -1231,3 +1231,98 @@ class TestBuilderNoTokenBudget:
         call_kwargs = ctx.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert "max_tokens" not in call_kwargs
         assert "timeout_seconds" not in call_kwargs
+
+
+# ---------------------------------------------------------------------------
+# QATestHandler — execute-only retest mode (#456)
+# ---------------------------------------------------------------------------
+
+
+class TestQARetestExecuteOnly:
+    """#456: ``retest_files`` puts the handler in execute-only mode — the
+    correction loop re-runs a repaired suite for fresh behavioral evidence.
+    A retest that generates (calls the LLM) would re-roll the repaired suite
+    and discard the patch; a retest that fabricates a pass without executing
+    is the false-green the whole fix exists to prevent."""
+
+    def _retest_inputs(self, qa_inputs):
+        return {
+            **qa_inputs,
+            "retest_files": [
+                {
+                    "filename": "tests/test_api.py",
+                    "content": "def test_ok():\n    assert True\n",
+                }
+            ],
+        }
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_retest_passes_without_llm(self, _mock_run, mock_context, qa_inputs):
+        handler = QATestHandler()
+        result = await handler.handle(mock_context, self._retest_inputs(qa_inputs))
+
+        assert result.success is True
+        mock_context.ports.llm.chat_stream_with_usage.assert_not_called()
+        assert result.outputs["test_result"]["tests_passed"] is True
+        assert result.outputs["validation_result"]["passed"] is True
+        # Fresh execution report accompanies the evidence.
+        names = [a["name"] for a in result.outputs["artifacts"]]
+        assert "test_report.md" in names
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_FAILED)
+    async def test_retest_failure_is_semantic_failure_with_evidence(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        handler = QATestHandler()
+        result = await handler.handle(mock_context, self._retest_inputs(qa_inputs))
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        assert result.outputs["test_result"]["tests_passed"] is False
+        assert result.outputs["test_result"]["exit_code"] == 1
+        rows = result.outputs["validation_result"]["checks"]
+        tests_row = next(r for r in rows if r["check"] == "tests_pass")
+        assert tests_row["executed"] is True
+        assert tests_row["passed"] is False
+
+    async def test_retest_with_no_usable_files_fails(self, mock_context, qa_inputs):
+        handler = QATestHandler()
+        result = await handler.handle(
+            mock_context, {**qa_inputs, "retest_files": [{"content": "orphan"}]}
+        )
+
+        assert result.success is False
+        assert "retest_files" in (result.error or "")
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_retest_stub_fallback_blocks_even_when_suite_passes(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        """A repair that hides the entrypoint behind an ImportError stub passes
+        pytest against the stub — the #276 false-green — and must still fail."""
+        stub_suite = {
+            **qa_inputs,
+            "retest_files": [
+                {
+                    "filename": "tests/test_api.py",
+                    "content": (
+                        "try:\n"
+                        "    from src.main import app\n"
+                        "except ImportError:\n"
+                        "    from fastapi import FastAPI\n"
+                        "    app = FastAPI()\n"
+                        "def test_ok():\n    assert app\n"
+                    ),
+                }
+            ],
+        }
+        handler = QATestHandler()
+        result = await handler.handle(mock_context, stub_suite)
+
+        assert result.success is False
+        rows = result.outputs["validation_result"]["checks"]
+        stub_row = next(r for r in rows if r["check"] == "no_stub_fallback_tests")
+        assert stub_row["passed"] is False
+        assert "tests/test_api.py" in stub_row["offenders"]

@@ -217,6 +217,8 @@ Two concurrent lanes feed this. **Feature SIPs gate even minors and are pinned b
 
 **Close issues from PRs**: Every PR body must include `Closes #NNN` (or `Fixes #NNN`) for each issue it fully resolves, so the merge auto-closes them. A bare `(#NNN)` reference does **not** close the issue — that gap left #133/#205 credited-but-open after 1.1.1 (closed 2026-06-29 during the #281 reconcile). If a PR only partially addresses an issue, reference it without `Closes` and say what remains.
 
+**Ownership before extension (edit-time rule)**: Before adding content, config, or a new pattern to ANY file, check whether an existing seam already owns that concern (`ports/`, a service or module named for it). Use the seam or flag the conflict *before* editing — "the neighboring code does it this way" is never justification. Content edits (prompt text, string blocks, config literals) get the same scrutiny as logic; they are where shortcuts hide. Canonical example: prompt content belongs in `src/squadops/prompts/fragments/` via PromptService, not inline string literals in handlers (#448 — two fixes shipped as inline literals while the fragment system sat unused for build handlers).
+
 **Proactive guidance**: If you observe a workflow or code best practice being bypassed, call it out early — don't wait to be asked. Examples:
 - Workflow: developing on main instead of a feature branch, skipping tests, hardcoding secrets
 - Code structure: copy-pasted logic that should be a shared helper, inconsistent patterns across similar modules, missing registry updates when adding new entries, constants duplicated across files instead of single-sourced

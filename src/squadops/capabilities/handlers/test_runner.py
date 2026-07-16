@@ -100,14 +100,28 @@ def _source_dir_pythonpath(workspace: str, source_files: list[dict[str, str]]) -
     So a ``backend/``-nested app whose test does ``from main import app`` (main at
     ``backend/main.py``) imports cleanly even though pytest runs from the
     workspace root (#303).
+
+    #454: a directory that IS a package (has ``__init__.py``) never goes on the
+    path directly — putting ``backend/`` itself on PYTHONPATH makes its modules
+    importable as top-level, where ``from .errors import X`` raises "attempted
+    relative import with no known parent package" (the fill-contract scaffold's
+    35/35-passing suite failed on exactly this in run_33640d896265). Instead,
+    walk up to the first non-package ancestor (usually the workspace root,
+    already present). Flat layouts without ``__init__.py`` keep the #303
+    behavior unchanged.
     """
     dirs = {
         os.path.dirname(os.path.join(workspace, rec["path"]))
         for rec in source_files
         if rec["path"].endswith(".py")
     }
+    resolved: set[str] = set()
+    for d in dirs:
+        while os.path.exists(os.path.join(d, "__init__.py")) and len(d) > len(workspace):
+            d = os.path.dirname(d)
+        resolved.add(d)
     existing = os.environ.get("PYTHONPATH", "")
-    parts = [workspace, *sorted(dirs)]
+    parts = [workspace, *sorted(resolved)]
     if existing:
         parts.append(existing)
     return os.pathsep.join(parts)

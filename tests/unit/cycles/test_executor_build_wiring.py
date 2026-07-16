@@ -736,3 +736,63 @@ class TestPlanOnlyCyclesUnaffected:
         # Should complete successfully (not fail with build-only error)
         calls = [c.args for c in registry.update_run_status.call_args_list]
         assert ("run_001", RunStatus.COMPLETED) in calls
+
+
+class TestSeededScaffoldReachesVerification:
+    """#443: provenance-less seeded scaffold documents must reach qa.test and
+    builder.assemble — attempt 3.5 ran frontend_build/tests_pass against a
+    workspace missing package.json and the backend modules and failed both."""
+
+    def _scaffold_and_source(self):
+        ref_scaffold = _make_artifact_ref(
+            "art_001",
+            "frontend/package.json",
+            "document",  # uploaded seed: no producing_task_type, type document
+        )
+        ref_src = _make_artifact_ref(
+            "art_002",
+            "backend/routes.py",
+            "source",
+            producing_task_type="development.develop",
+        )
+        return ref_scaffold, ref_src
+
+    async def test_qa_test_receives_seeded_scaffold(self, executor):
+        ref_scaffold, ref_src = self._scaffold_and_source()
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[
+                (ref_scaffold, b'{"name": "app"}'),
+                (ref_src, b"routes"),
+            ]
+        )
+        contents = await executor._resolve_artifact_contents(
+            "qa.test", [("art_001", ref_scaffold), ("art_002", ref_src)]
+        )
+        assert "frontend/package.json" in contents
+        assert "backend/routes.py" in contents
+
+    async def test_builder_assemble_receives_seeded_scaffold(self, executor):
+        ref_scaffold, ref_src = self._scaffold_and_source()
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[
+                (ref_scaffold, b'{"name": "app"}'),
+                (ref_src, b"routes"),
+            ]
+        )
+        contents = await executor._resolve_artifact_contents(
+            "builder.assemble", [("art_001", ref_scaffold), ("art_002", ref_src)]
+        )
+        assert "frontend/package.json" in contents
+
+    async def test_framing_documents_with_provenance_stay_excluded_from_qa(self, executor):
+        """The fallback is for provenance-less seeds only — framing docs carry
+        producing_task_type and must not flood the qa workspace."""
+        ref_framing = _make_artifact_ref(
+            "art_001",
+            "context_research.md",
+            "document",
+            producing_task_type="data.research_context",
+        )
+        executor._artifact_vault.retrieve = AsyncMock()
+        contents = await executor._resolve_artifact_contents("qa.test", [("art_001", ref_framing)])
+        assert contents == {}
