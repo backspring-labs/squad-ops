@@ -1870,12 +1870,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return
 
         errors = plan.validate_against_profile(profile)
+        # #464: criteria-scope validation rides the same fail-fast seam — a
+        # style-lottery regex costs seconds at the gate, not an hour of
+        # correction budget mid-implementation.
+        errors += plan.validate_criteria_scope()
         if errors:
             raise _ExecutionError(
                 f"Plan rejected at gate(s) {gate_names}: the materialized implementation "
-                f"plan cannot be satisfied by squad profile {profile.profile_id!r} — "
+                f"plan fails gate validation against squad profile {profile.profile_id!r} — "
                 + "; ".join(errors)
-                + ". Fix the plan or run with a squad profile that has the missing role(s)."
+                + ". Fix the plan: roles must exist in the profile, and regex criteria "
+                "may only target document artifacts."
             )
 
     # ------------------------------------------------------------------

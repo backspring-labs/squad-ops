@@ -280,6 +280,37 @@ class ImplementationPlan:
                 errors.append(f"Task {task.task_index}: role '{task.role}' not in profile")
         return errors
 
+    def validate_criteria_scope(self) -> list[str]:
+        """#464: regex_match criteria may only target document artifacts.
+
+        Regexes against source files prescribe another roll's stylistic
+        choices (quote style, identifier names) and have twice produced
+        criteria unwinnable by correct code (attempts 3.9/3.10 of the
+        Phase-0.5 spike). Prose guidance reduces the frequency; this is the
+        mechanical guard. Prose criteria and unparseable rows are out of
+        scope here (non-blocking per #420).
+
+        Returns:
+            List of validation error strings (empty = valid).
+        """
+        from squadops.cycles.acceptance_check_spec import regex_target_is_document
+
+        errors: list[str] = []
+        for task in self.tasks:
+            for criterion in task.acceptance_criteria:
+                if not isinstance(criterion, TypedCheck) or criterion.check != "regex_match":
+                    continue
+                target = criterion.params.get("file", "")
+                if not regex_target_is_document(target):
+                    errors.append(
+                        f"Task {task.task_index} ({task.focus}): regex_match on source "
+                        f"file {target!r} — regex criteria are allowed only on document "
+                        "artifacts (.md/.txt/.rst); verify source files with "
+                        "endpoint_defined/import_present/command_exit_zero or the "
+                        "behavioral checks (#464)"
+                    )
+        return errors
+
     def to_dict(self) -> dict:
         """Serialize to dict for YAML/JSON transport.
 

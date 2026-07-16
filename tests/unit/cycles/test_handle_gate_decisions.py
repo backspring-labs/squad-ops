@@ -390,3 +390,76 @@ class TestPlanReviewGateCheck:
 
         status_calls = mock_registry.update_run_status.call_args_list
         assert status_calls[-1] == ((("run_001", RunStatus.RUNNING),))
+
+
+_PLAN_YAML_SOURCE_REGEX = """\
+version: 1
+project_id: proj_001
+cycle_id: cyc_001
+prd_hash: abc123
+summary:
+  total_dev_tasks: 1
+  total_qa_tasks: 0
+  total_tasks: 1
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: Run detail view
+    description: Fill the view stub
+    expected_artifacts: ["frontend/src/views/RunDetailView.jsx"]
+    acceptance_criteria:
+      - {check: regex_match, file: frontend/src/views/RunDetailView.jsx, pattern: 'apiFetch\\(', count_min: 1}
+"""
+
+
+class TestCriteriaScopeGateCheck:
+    """#464: a source-file regex criterion is rejected AT the plan-review
+    gate — the 3.10 shape (style-lottery regexes on .jsx) must cost seconds,
+    not a returned-for-revision round or an hour of correction budget."""
+
+    async def test_source_regex_plan_rejected_before_pause(
+        self, executor, mock_registry, mock_event_bus, cycle
+    ):
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        stored = [_plan_artifact(executor._artifact_vault, "art_plan", _PLAN_YAML_SOURCE_REGEX)]
+
+        with pytest.raises(_ExecutionError) as exc_info:
+            await executor._handle_gate(
+                "run_001",
+                _plan_cycle(cycle),
+                "plan_tasks",
+                stored_artifacts=stored,
+                profile=_profile_without_builder(),
+            )
+
+        msg = str(exc_info.value)
+        assert "RunDetailView.jsx" in msg
+        assert "#464" in msg
+        mock_registry.update_run_status.assert_not_awaited()
+        emit_types = [c[0][0] for c in mock_event_bus.emit.call_args_list]
+        assert EventType.RUN_PAUSED not in emit_types
+
+    async def test_document_regex_plan_gates_normally(
+        self, executor, mock_registry, mock_event_bus, cycle
+    ):
+        """A document-targeted regex (the allowed shape) must not trip the
+        check — gate pauses and approval resumes as before."""
+        mock_registry.get_run.return_value = _run_with_gate_decision(GateDecisionValue.APPROVED)
+        doc_plan = _PLAN_YAML_SOURCE_REGEX.replace(
+            "file: frontend/src/views/RunDetailView.jsx, pattern: 'apiFetch\\('",
+            "file: qa_handoff.md, pattern: '## How to Test'",
+        )
+        stored = [_plan_artifact(executor._artifact_vault, "art_plan", doc_plan)]
+
+        await executor._handle_gate(
+            "run_001",
+            _plan_cycle(cycle),
+            "plan_tasks",
+            stored_artifacts=stored,
+            profile=_profile_without_builder(),
+        )
+
+        status_calls = mock_registry.update_run_status.call_args_list
+        assert status_calls[-1] == ((("run_001", RunStatus.RUNNING),))
