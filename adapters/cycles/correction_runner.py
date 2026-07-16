@@ -557,6 +557,17 @@ class CorrectionRunner:
             return None
 
         failed_inputs = envelope.inputs or {}
+        if not failed_inputs.get("artifact_contents") and "artifact_vault" not in failed_inputs:
+            # No workspace to test against — the handler would reject the
+            # envelope at input validation anyway (the 3.11 instant-fail).
+            # Skip the doomed dispatch; the caller falls back to re-dispatch.
+            logger.warning(
+                "retest for %s skipped: failed envelope carries no workspace "
+                "(artifact_contents/artifact_vault) — was the enriched envelope threaded?",
+                envelope.task_id,
+            )
+            return None
+
         resolved = resolve_agent_config("qa", profile)
         retest_inputs: dict[str, Any] = {
             "prd": cycle.prd_ref,

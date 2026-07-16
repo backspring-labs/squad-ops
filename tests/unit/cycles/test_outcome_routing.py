@@ -748,3 +748,84 @@ class TestAcceptPatchRetest:
         )
         assert action == "accept_patch"
         executor._correction_runner.reexecute_repaired_suite.assert_not_awaited()
+
+
+class TestAcceptPatchRetestWorkspaceThreading:
+    """3.11 instant-fail: the retest was built from the BASE envelope, but
+    artifact_contents (the workspace) exists only on the dispatch-time
+    enriched envelope — eve rejected every retest at input validation in
+    300ms and the fallback re-rolls burned the correction budget."""
+
+    async def test_retest_receives_enriched_envelope(self, executor, cycle):
+        import dataclasses
+
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=TaskResult(
+                task_id="retest",
+                status="SUCCEEDED",
+                outputs={"test_result": {"executed": True, "exit_code": 0, "tests_passed": True}},
+            )
+        )
+        base = TaskEnvelope(
+            task_id="task_9",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {},
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "tests/test_api.py", "pattern": "def test_"},
+                        severity="error",
+                        description="Suite defines tests",
+                    )
+                ],
+            },
+            metadata={"role": "qa"},
+        )
+        enriched = dataclasses.replace(
+            base,
+            inputs={**base.inputs, "artifact_contents": {"src/main.py": "app = 1\n"}},
+        )
+        failed = TaskResult(
+            task_id="task_9",
+            status="FAILED",
+            outputs={
+                "artifacts": [{"name": "tests/test_api.py", "content": "def test_x(): assert 0\n"}],
+                "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="tests failed",
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            base,
+            failed,
+            [{"name": "tests/test_api.py", "content": "def test_x(): assert 1\n"}],
+            holder,
+            run_id="run_001",
+            cycle=cycle,
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=enriched,
+        )
+
+        assert action == "accept_patch"
+        retest_envelope = executor._correction_runner.reexecute_repaired_suite.await_args.args[2]
+        assert retest_envelope.inputs["artifact_contents"] == {"src/main.py": "app = 1\n"}

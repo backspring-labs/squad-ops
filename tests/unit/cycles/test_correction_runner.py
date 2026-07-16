@@ -1896,3 +1896,30 @@ class TestReexecuteRepairedSuite:
 
         assert result is None
         assert dispatcher.dispatched == []
+
+    async def test_workspaceless_envelope_never_dispatches(self):
+        """3.11 reproduction: a retest built without artifact_contents fails
+        eve's input validation in 300ms and burns a fallback re-roll — the
+        runner must refuse the doomed dispatch and return None instead."""
+        import dataclasses
+
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        bare = dataclasses.replace(
+            self._failed_qa_envelope(),
+            inputs={"resolved_config": {}, "acceptance_criteria": []},
+        )
+
+        result = await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            bare,
+            [{"name": "tests/test_api.py", "content": "repaired", "type": "test"}],
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+
+        assert result is None
+        assert dispatcher.dispatched == []

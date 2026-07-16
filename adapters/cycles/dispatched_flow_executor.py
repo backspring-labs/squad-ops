@@ -947,6 +947,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             async def _route_outcome(
                 result,
                 _envelope=envelope,
+                _enriched=enriched,
                 _consecutive_failures=consecutive_failures,
                 _holder=_last_failed_result,
             ):
@@ -954,6 +955,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 action = await self._handle_task_outcome(
                     result=result,
                     envelope=_envelope,
+                    enriched_envelope=_enriched,
                     cycle=cycle,
                     run_id=run_id,
                     task_attempt_counts=task_attempt_counts,
@@ -1321,8 +1323,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         profile: Any = None,
         flow_run_id: str | None = None,
         patched_result_holder: dict[str, Any] | None = None,
+        enriched_envelope: TaskEnvelope | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
+
+        ``enriched_envelope`` is the dispatch-time envelope carrying the
+        materialized workspace (``artifact_contents``) — the base ``envelope``
+        never has it (#456 retest plumbing; the 3.11 instant-fail).
 
         Returns:
             "continue" — re-dispatch the same task (caller's while loop retries it):
@@ -1423,6 +1430,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 run_id=run_id,
                 cycle=cycle,
                 correction_attempts=attempt,
+                enriched_envelope=enriched_envelope,
                 prior_outputs=prior_outputs,
                 all_artifact_refs=all_artifact_refs,
                 stored_artifacts=stored_artifacts,
@@ -1455,6 +1463,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         plan_delta_refs: list[str] | None = None,
         profile: Any = None,
         flow_run_id: str | None = None,
+        enriched_envelope: TaskEnvelope | None = None,
     ) -> str:
         """Behaviorally verify a patch (#389); return "accept_patch" or "continue".
 
@@ -1513,10 +1522,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     envelope.task_id,
                 )
                 return "continue"
+            # The retest needs the dispatch-time workspace: artifact_contents
+            # is added by _enrich_envelope and never exists on the base
+            # envelope (3.11: the retest instant-failed input validation
+            # because it was built from the un-enriched envelope).
             retest_result = await self._correction_runner.reexecute_repaired_suite(
                 run_id,
                 cycle,
-                envelope,
+                enriched_envelope if enriched_envelope is not None else envelope,
                 patched_artifacts,
                 correction_attempts,
                 prior_outputs=prior_outputs if prior_outputs is not None else {},
