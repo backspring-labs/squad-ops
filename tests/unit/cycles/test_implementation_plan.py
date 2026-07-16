@@ -679,7 +679,7 @@ class TestValidateCriteriaScope:
     validator rejects them at the plan level so the gate fails in seconds
     instead of the run failing after an hour of correction budget."""
 
-    def _plan(self, criteria_yaml: str) -> "ImplementationPlan":
+    def _plan(self, criteria_yaml: str) -> ImplementationPlan:
         return ImplementationPlan.from_yaml(f"""\
 version: 1
 project_id: group_run
